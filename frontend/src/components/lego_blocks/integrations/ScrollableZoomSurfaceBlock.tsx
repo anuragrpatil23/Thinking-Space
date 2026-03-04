@@ -6,6 +6,7 @@ import {
   scaledWidthStyleFromClassBlock,
 } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { cn } from '@/lib/utils'
+import { getSpaceStorageKeyBlock } from '@/services/orchestrators/storageOrch'
 
 interface ScrollableZoomSurfaceBlockProps {
   children: ReactNode
@@ -70,7 +71,9 @@ export default function ScrollableZoomSurfaceBlock({
   persistStateKey,
 }: ScrollableZoomSurfaceBlockProps) {
   const normalizedPersistStateKey = persistStateKey?.trim() ?? ''
-  const storageKey = normalizedPersistStateKey ? `scrollable-zoom-surface:${normalizedPersistStateKey}` : ''
+  const storageKey = normalizedPersistStateKey
+    ? getSpaceStorageKeyBlock(`scrollable-zoom-surface:${normalizedPersistStateKey}`)
+    : ''
   const initialZoom = clampZoomBlock(defaultZoom, minZoom, maxZoom)
   const [zoom, setZoom] = useState<number>(() => {
     if (!storageKey) return initialZoom

@@ -288,7 +288,7 @@ export default function VaultSetup({ onComplete }: Props) {
               </div>
               <div className="flex items-start gap-2">
                 <Check className="mt-1 h-3 w-3 shrink-0 text-green-500" />
-                <span>When you switch folders, Thinking Space reloads and rebuilds local cache from the selected folder</span>
+                <span>When you switch folders, Thinking Space hot-switches without reload and refreshes local cache for the selected folder</span>
               </div>
               <div className="flex items-start gap-2">
                 <Check className="mt-1 h-3 w-3 shrink-0 text-green-500" />

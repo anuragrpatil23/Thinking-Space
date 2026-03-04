@@ -1,4 +1,5 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { getActiveSpaceIdBlock } from '@/services/orchestrators/storageOrch'
 
 function hashContent(content: string): string {
   // FNV-1a 32-bit hash is fast and stable enough for local conflict detection.
@@ -30,19 +31,25 @@ const MARKDOWN_READ_CACHE_MAX_ENTRIES = 8
 const markdownReadCacheByPath = new Map<string, MarkdownReadCacheEntry>()
 const markdownReadInFlightByPath = new Map<string, Promise<MarkdownReadCacheEntry>>()
 
+function getCacheKey(path: string): string {
+  return `${getActiveSpaceIdBlock()}::${path}`
+}
+
 function readCacheEntry(path: string): MarkdownReadCacheEntry | null {
-  const entry = markdownReadCacheByPath.get(path)
+  const cacheKey = getCacheKey(path)
+  const entry = markdownReadCacheByPath.get(cacheKey)
   if (!entry) return null
   if ((Date.now() - entry.cachedAt) > MARKDOWN_READ_CACHE_TTL_MS) {
-    markdownReadCacheByPath.delete(path)
+    markdownReadCacheByPath.delete(cacheKey)
     return null
   }
   return entry
 }
 
 function writeCacheEntry(path: string, entry: Omit<MarkdownReadCacheEntry, 'cachedAt'>): MarkdownReadCacheEntry {
+  const cacheKey = getCacheKey(path)
   const next: MarkdownReadCacheEntry = { ...entry, cachedAt: Date.now() }
-  markdownReadCacheByPath.set(path, next)
+  markdownReadCacheByPath.set(cacheKey, next)
   while (markdownReadCacheByPath.size > MARKDOWN_READ_CACHE_MAX_ENTRIES) {
     const oldestKey = markdownReadCacheByPath.keys().next().value
     if (typeof oldestKey !== 'string') break
@@ -52,7 +59,8 @@ function writeCacheEntry(path: string, entry: Omit<MarkdownReadCacheEntry, 'cach
 }
 
 async function readMarkdownDocumentShared(path: string): Promise<MarkdownReadCacheEntry> {
-  const existing = markdownReadInFlightByPath.get(path)
+  const cacheKey = getCacheKey(path)
+  const existing = markdownReadInFlightByPath.get(cacheKey)
   if (existing) return existing
 
   const request = (async (): Promise<MarkdownReadCacheEntry> => {
@@ -75,10 +83,10 @@ async function readMarkdownDocumentShared(path: string): Promise<MarkdownReadCac
     })
   })()
 
-  markdownReadInFlightByPath.set(path, request)
+  markdownReadInFlightByPath.set(cacheKey, request)
   return request.finally(() => {
-    if (markdownReadInFlightByPath.get(path) === request) {
-      markdownReadInFlightByPath.delete(path)
+    if (markdownReadInFlightByPath.get(cacheKey) === request) {
+      markdownReadInFlightByPath.delete(cacheKey)
     }
   })
 }

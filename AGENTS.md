@@ -47,6 +47,7 @@ Use `DEVELOPMENT.md` as source of truth for implementation phases and detailed a
 Current status (v1.0): Phases 0–5, Agent Capability Transport, and EPIC-3 are all complete.
 
 Upcoming:
+- TS-HOTSWITCH: Multi Thinking Space Hot Switch (No Reload) - active (TS-HS-001 to TS-HS-008)
 - EPIC-5: AI Actions Everywhere
 - EPIC-6: Optional Remote/Agent Backends (later)
 
@@ -65,7 +66,8 @@ If sequence changes, update `DEVELOPMENT.md` first, then align active organizer 
 10. Extension platform rollout is feature-flagged (`extension_host_enabled`, `extension_builder_enabled`) and defaults to disabled until explicitly enabled.
 
 ## Architecture Reference
-Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
+- YAML source-of-truth schema: `docs/ADR-004-YAML-Architecture.md`
+- Multi-space hot-switch and isolation contract: `docs/ADR-007-Multi-Space-Hot-Switch-Isolation.md`
 
 ## Architecture Guardrails
 - Keep markdown files with YAML frontmatter as portable source-of-truth content.
@@ -76,6 +78,7 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - Add conflict-safe saves for thought editing (`mtime`/hash checks).
 - Avoid destructive migrations without rollback/recovery path.
 - No backend dependency for core features.
+- Thinking Space switching must be no-reload and preserve strict per-space state isolation for cache/settings/runtime session state.
 
 ## Code Design Philosophy
 - Use lego blocks: small reusable primitives for UI, hooks, and services.

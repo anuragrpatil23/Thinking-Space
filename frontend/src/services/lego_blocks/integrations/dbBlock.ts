@@ -3,6 +3,7 @@
 // Can be rebuilt from vault files at any time.
 
 import Dexie, { type Table } from 'dexie'
+import { getActiveSpaceIdBlock } from '@/services/lego_blocks/units/storageKeyBlock'
 import type {
   NodeType,
   NodeStatus,
@@ -70,8 +71,8 @@ export interface NodeRecord {
 class ThinkingSpaceDB extends Dexie {
   nodes!: Table<NodeRecord>
 
-  constructor() {
-    super('ThinkingSpaceDB')
+  constructor(dbName: string) {
+    super(dbName)
     this.version(1).stores({
       nodes: '++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, *tags',
     })
@@ -87,11 +88,20 @@ class ThinkingSpaceDB extends Dexie {
   }
 }
 
-let _db: ThinkingSpaceDB | null = null
+const THINKING_SPACE_DB_NAME_BLOCK = 'ThinkingSpaceDB'
+const _dbByName = new Map<string, ThinkingSpaceDB>()
+
+function getCurrentDbNameBlock(): string {
+  return `${THINKING_SPACE_DB_NAME_BLOCK}::${getActiveSpaceIdBlock()}`
+}
 
 function getDb(): ThinkingSpaceDB {
-  if (!_db) _db = new ThinkingSpaceDB()
-  return _db
+  const dbName = getCurrentDbNameBlock()
+  const existing = _dbByName.get(dbName)
+  if (existing) return existing
+  const next = new ThinkingSpaceDB(dbName)
+  _dbByName.set(dbName, next)
+  return next
 }
 
 // ── Public API ──
@@ -299,21 +309,35 @@ export async function getAllFilePaths(): Promise<Set<string>> {
  * Close the database connection. Useful for testing cleanup.
  */
 export async function closeDb(): Promise<void> {
-  if (_db) {
-    _db.close()
-    _db = null
+  for (const db of _dbByName.values()) {
+    db.close()
   }
+  _dbByName.clear()
 }
 
 /**
  * Delete the entire database. Useful for testing or full reset.
  */
 export async function deleteDb(): Promise<void> {
-  if (_db) {
-    _db.close()
-    _db = null
+  const dbName = getCurrentDbNameBlock()
+  const existing = _dbByName.get(dbName)
+  if (existing) {
+    existing.close()
+    _dbByName.delete(dbName)
   }
-  await Dexie.delete('ThinkingSpaceDB')
+  await Dexie.delete(dbName)
+}
+
+/**
+ * Delete all Thinking Space databases across all spaces.
+ */
+export async function deleteAllThinkingSpaceDbs(): Promise<void> {
+  await closeDb()
+  const names = await Dexie.getDatabaseNames()
+  const targets = names.filter(
+    name => name === THINKING_SPACE_DB_NAME_BLOCK || name.startsWith(`${THINKING_SPACE_DB_NAME_BLOCK}::`),
+  )
+  await Promise.all(targets.map(name => Dexie.delete(name)))
 }
 
 function normalizeRecordForStorage(record: Omit<NodeRecord, 'id'>): Omit<NodeRecord, 'id'> {

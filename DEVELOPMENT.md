@@ -61,6 +61,7 @@ Internal development documentation for Thinking Space. For an overview of the pr
 - **Folders are user's choice** — organize by date, domain, source, inbox/archive, whatever works
 
 Full schema: `docs/ADR-004-YAML-Architecture.md`
+Multi-space hot-switch + isolation contract: `docs/ADR-007-Multi-Space-Hot-Switch-Isolation.md`
 
 ### Example Note File
 
@@ -206,6 +207,9 @@ Completed: 55-capability registry with typed I/O contracts, capability router wi
 
 ### EPIC-3: Local-Only Extension Platform — Done
 Completed: extension manifest parser/validator + compatibility contract, extension loader/registry lifecycle orchestration, declarative action schema + slot routing, runtime extension UI slot integration, Electron JS/TS runtime sandbox with capability-bridge permission checks + audit propagation, in-app extension builder flow with permission approval gate.
+
+### TS-HOTSWITCH: Multi Thinking Space Hot Switch (No Reload) — Done
+Completed: deterministic space registry + active pointer, no-reload runtime switching path, per-space localStorage namespace contract, per-space IndexedDB namespaces, space-safe tab/route sanitization on switch, space-scoped UI persistence for explorer/new-thought/F9 surfaces, and rollout gates documented in `docs/ADR-007-Multi-Space-Hot-Switch-Isolation.md`.
 
 ### Future Work
 - **EPIC-5: AI Actions Everywhere** — Shared text action component for all text surfaces, Summarize/Cleanup/Related actions with preview-before-apply

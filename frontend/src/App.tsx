@@ -55,7 +55,7 @@ import { useUIThemeBlock } from './components/lego_blocks/units/UIThemeBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
-import { listMarkdownEntries } from './services/orchestrators/fileSystemOrch'
+import { getVaultPathKind, listMarkdownEntries } from './services/orchestrators/fileSystemOrch'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import {
   gitCommitAllOrch,
@@ -65,6 +65,7 @@ import {
 } from '@/services/orchestrators/gitSyncToolsOrch'
 import {
   STORAGE_KEYS,
+  getActiveSpaceIdBlock,
   getJsonStorageItem,
   getStoredVaultRoot,
   getStorageItem,
@@ -75,6 +76,12 @@ import { getCapabilityFeatureFlags } from './services/orchestrators/capabilityFe
 import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from '@/services/lego_blocks/integrations/fsBlock'
 import { getUIShellThemeProfileOrch } from './services/orchestrators/uiThemeOrch'
 import { readUserProfileOrch } from './services/orchestrators/userProfileOrch'
+import {
+  listThinkingSpacesOrch,
+  migrateThinkingSpaceRegistryOrch,
+  registerThinkingSpaceOrch,
+  type ThinkingSpaceRegistryEntryOrch,
+} from './services/orchestrators/spaceRegistryOrch'
 import {
   setExplorerFolderColorPreferencesOrch,
   type ExplorerFolderColorPreferenceBlock,
@@ -94,6 +101,7 @@ import {
   THINKING_SPACE_GOOGLE_WORKSPACE_CHROME_STATE_EVENT_BLOCK,
   type ThinkingSpaceGoogleWorkspaceChromeStateBlock,
 } from '@/services/lego_blocks/units/thinkingSpaceGoogleWorkspaceChromeBlock'
+import { sanitizeWorkspaceTabsForSpaceBlock } from '@/services/lego_blocks/units/spaceRouteSafetyBlock'
 
 type NavIcon = ComponentType<{ className?: string }>
 
@@ -116,6 +124,12 @@ interface CommandItem {
 interface AppWorkspaceTab {
   id: string
   route: string
+}
+
+interface PendingWorkspaceTabNavigation {
+  tabId: string
+  route: string
+  sourceRoute: string
 }
 
 interface SyncRunSummary {
@@ -200,6 +214,31 @@ function createWorkspaceTabId(): string {
   return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function readSidebarCollapsedFromStorageBlock(): boolean {
+  const stored = getStorageItem(STORAGE_KEYS.appShellSidebarCollapsed)
+  if (stored === null) return true
+  return stored === '1'
+}
+
+function readWorkspaceTabsFromStorageBlock(currentRoute: string): AppWorkspaceTab[] {
+  const savedTabs = getJsonStorageItem<AppWorkspaceTab[]>(STORAGE_KEYS.appShellTabs, [])
+    .filter((candidate) => (
+      !!candidate
+      && typeof candidate.id === 'string'
+      && typeof candidate.route === 'string'
+      && candidate.id.trim().length > 0
+      && candidate.route.trim().length > 0
+    ))
+    .slice(0, 24)
+    .map((candidate) => ({
+      id: candidate.id.trim(),
+      route: normalizeTabRoute(candidate.route),
+    }))
+
+  if (savedTabs.length > 0) return savedTabs
+  return [{ id: createWorkspaceTabId(), route: normalizeTabRoute(currentRoute) }]
+}
+
 function normalizeTabRoute(route: string): string {
   const trimmed = route.trim()
   if (!trimmed) return '/thinking-space'
@@ -212,6 +251,18 @@ function parseTabRoute(route: string): { pathname: string; search: URLSearchPara
     return { pathname: parsed.pathname, search: parsed.searchParams }
   } catch {
     return { pathname: '/thinking-space', search: new URLSearchParams() }
+  }
+}
+
+function buildPendingWorkspaceTabNavigation(
+  tabId: string,
+  route: string,
+  sourceRoute: string,
+): PendingWorkspaceTabNavigation {
+  return {
+    tabId,
+    route: normalizeTabRoute(route),
+    sourceRoute: normalizeTabRoute(sourceRoute),
   }
 }
 
@@ -305,11 +356,7 @@ function App() {
   const gitSyncToolsSupported = useMemo(() => isGitSyncToolsSupportedOrch(), [])
 
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    const stored = getStorageItem(STORAGE_KEYS.appShellSidebarCollapsed)
-    if (stored === null) return true
-    return stored === '1'
-  })
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsedFromStorageBlock)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [commandQuery, setCommandQuery] = useState('')
   const [commandFileItems, setCommandFileItems] = useState<CommandItem[]>([])
@@ -338,16 +385,20 @@ function App() {
   const [gitCommitMessageDraft, setGitCommitMessageDraft] = useState('')
   const commandInputRef = useRef<HTMLInputElement | null>(null)
   const gitCommitMessageInputRef = useRef<HTMLInputElement | null>(null)
+  const currentRouteRef = useRef(currentRoute)
   const syncToolsRef = useRef<HTMLDivElement | null>(null)
   const topChromeMenuRef = useRef<HTMLDivElement | null>(null)
   const syncPanelRef = useRef<HTMLDivElement | null>(null)
   const syncToggleButtonRef = useRef<HTMLButtonElement | null>(null)
   const appShellRef = useRef<HTMLDivElement | null>(null)
   const scrollbarActivityTimeoutRef = useRef<number | null>(null)
-  const pendingWorkspaceTabNavigationRef = useRef<{ tabId: string; route: string } | null>(null)
+  const pendingWorkspaceTabNavigationRef = useRef<PendingWorkspaceTabNavigation | null>(null)
   const drawerEdgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
   const drawerPanelSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
-  const [vaultSwitchHardRefreshPending, setVaultSwitchHardRefreshPending] = useState(false)
+  const [activeSpaceId, setActiveSpaceId] = useState(() => getActiveSpaceIdBlock())
+  const [registeredThinkingSpaces, setRegisteredThinkingSpaces] = useState<ThinkingSpaceRegistryEntryOrch[]>(
+    () => listThinkingSpacesOrch(),
+  )
   const [needsVaultSetup, setNeedsVaultSetup] = useState(() => {
     const stored = getStoredVaultRoot()
     if (!stored) return true
@@ -355,25 +406,9 @@ function App() {
     if (isCapacitorNative() && stored.startsWith('/')) return true
     return false
   })
-  const [workspaceTabs, setWorkspaceTabs] = useState<AppWorkspaceTab[]>(() => {
-    const savedTabs = getJsonStorageItem<AppWorkspaceTab[]>(STORAGE_KEYS.appShellTabs, [])
-      .filter((candidate) => (
-        !!candidate
-        && typeof candidate.id === 'string'
-        && typeof candidate.route === 'string'
-        && candidate.id.trim().length > 0
-        && candidate.route.trim().length > 0
-      ))
-      .slice(0, 24)
-      .map((candidate) => ({
-        id: candidate.id.trim(),
-        route: normalizeTabRoute(candidate.route),
-      }))
-
-    if (savedTabs.length > 0) return savedTabs
-
-    return [{ id: createWorkspaceTabId(), route: normalizeTabRoute(currentRoute) }]
-  })
+  const [workspaceTabs, setWorkspaceTabs] = useState<AppWorkspaceTab[]>(
+    () => readWorkspaceTabsFromStorageBlock(currentRoute),
+  )
   const [activeWorkspaceTabId, setActiveWorkspaceTabId] = useState(
     () => getStorageItem(STORAGE_KEYS.appShellActiveTabId) ?? '',
   )
@@ -457,13 +492,23 @@ function App() {
   const showBottomNav = false
   const phoneMode = layout.mode === 'phone'
   const iPhoneMode = layout.surface === 'capacitor-ios' && phoneMode
+  const isMacDesktopElectron = layout.surface === 'electron'
+    && !phoneMode
+    && typeof navigator !== 'undefined'
+    && /mac/i.test(navigator.platform || navigator.userAgent || '')
   const iPhoneUserAgent = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent || '')
   const iPhoneHandsetMode = phoneMode && (iPhoneMode || iPhoneUserAgent)
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
   const showCapacitorTopChromeMenu = compactNav && !drawerOpen && isCapacitorSurface
-  const topChromeLeftWidth = showCapacitorTopChromeMenu
-    ? Math.max(phoneMode ? 42 : 96, topChromeMenuWidth)
+  const topChromeMacTrafficLightInsetPx = showGoogleWorkspaceChromeControls && isMacDesktopElectron
+    ? 64
     : 0
+  const topChromeGoogleWorkspaceControlsWidth = showGoogleWorkspaceChromeControls
+    ? (phoneMode ? 76 : 84 + topChromeMacTrafficLightInsetPx)
+    : 0
+  const topChromeLeftWidth = showCapacitorTopChromeMenu
+    ? Math.max(phoneMode ? 42 : 96, topChromeMenuWidth, topChromeGoogleWorkspaceControlsWidth)
+    : topChromeGoogleWorkspaceControlsWidth
   const topChromeRightWidth = Math.max(phoneMode ? 86 : 120, syncToolsWidth)
   const topChromeBalancedWidth = Math.max(120, topChromeLeftWidth, topChromeRightWidth)
   const topChromePaddingLeft = phoneMode ? topChromeLeftWidth : topChromeBalancedWidth
@@ -596,9 +641,26 @@ function App() {
   const handleRequestVaultSwitch = useCallback(() => {
     setDrawerOpen(false)
     setCommandPaletteOpen(false)
-    setVaultSwitchHardRefreshPending(true)
     setNeedsVaultSetup(true)
   }, [])
+
+  const handleSwitchThinkingSpace = useCallback((spaceId: string) => {
+    const targetSpace = listThinkingSpacesOrch().find((entry) => entry.spaceId === spaceId)
+    if (!targetSpace) return
+    const registered = registerThinkingSpaceOrch(targetSpace.root, targetSpace.label)
+    setVaultRoot(registered.root)
+    setActiveSpaceId(registered.spaceId)
+    setNeedsVaultSetup(false)
+    setRegisteredThinkingSpaces(listThinkingSpacesOrch())
+    setDrawerOpen(false)
+    setCommandPaletteOpen(false)
+  }, [])
+
+  useEffect(() => {
+    if (needsVaultSetup) return
+    migrateThinkingSpaceRegistryOrch(getStoredVaultRoot())
+    setRegisteredThinkingSpaces(listThinkingSpacesOrch())
+  }, [needsVaultSetup])
 
   useEffect(() => {
     if (needsVaultSetup) return
@@ -609,12 +671,74 @@ function App() {
 
   useEffect(() => {
     if (!needsVaultSetup || !isElectron()) return
-    if (vaultSwitchHardRefreshPending) return
     const persistedRoot = getStoredVaultRoot()?.trim()
     if (!persistedRoot) return
-    setVaultRoot(persistedRoot)
+    const registered = registerThinkingSpaceOrch(persistedRoot)
+    setVaultRoot(registered.root)
+    setActiveSpaceId(registered.spaceId)
+    setRegisteredThinkingSpaces(listThinkingSpacesOrch())
     setNeedsVaultSetup(false)
-  }, [needsVaultSetup, vaultSwitchHardRefreshPending])
+  }, [needsVaultSetup])
+
+  useEffect(() => {
+    currentRouteRef.current = currentRoute
+  }, [currentRoute])
+
+  useEffect(() => {
+    if (needsVaultSetup) return
+
+    let cancelled = false
+
+    const resetShellForActiveSpace = async () => {
+      setDrawerOpen(false)
+      setCommandPaletteOpen(false)
+      setCommandQuery('')
+      setCommandFileItems([])
+      setCommandFilesLastLoadedAt(0)
+      setSidebarCollapsed(readSidebarCollapsedFromStorageBlock())
+      setSyncPanelOpen(false)
+      setSyncActionRunning(null)
+      setGitActionRunning(null)
+      setLastSyncedAt(getLastSyncTimestamp())
+      setLastSyncAttemptAt(null)
+      setLastSyncSummary(null)
+      setLastGitActionSummary(null)
+
+      const initialTabs = readWorkspaceTabsFromStorageBlock(currentRouteRef.current)
+      const sanitizedTabs = await sanitizeWorkspaceTabsForSpaceBlock(initialTabs, {
+        getVaultPathKind: (path) => getVaultPathKind(path),
+      })
+      if (cancelled) return
+
+      setWorkspaceTabs(sanitizedTabs)
+      const savedActiveTabId = getStorageItem(STORAGE_KEYS.appShellActiveTabId) ?? ''
+      const resolvedActiveTabId = (
+        sanitizedTabs.some((tab) => tab.id === savedActiveTabId)
+          ? savedActiveTabId
+          : sanitizedTabs[0]?.id
+      ) ?? ''
+      setActiveWorkspaceTabId(resolvedActiveTabId)
+
+      const activeTabRoute = sanitizedTabs.find((tab) => tab.id === resolvedActiveTabId)?.route
+      const targetRoute = activeTabRoute ? normalizeTabRoute(activeTabRoute) : '/thinking-space'
+      const normalizedCurrentRoute = normalizeTabRoute(currentRouteRef.current)
+      if (targetRoute !== normalizedCurrentRoute) {
+        pendingWorkspaceTabNavigationRef.current = buildPendingWorkspaceTabNavigation(
+          resolvedActiveTabId || (sanitizedTabs[0]?.id ?? ''),
+          targetRoute,
+          normalizedCurrentRoute,
+        )
+        navigate(targetRoute, { replace: true })
+      } else {
+        pendingWorkspaceTabNavigationRef.current = null
+      }
+    }
+
+    void resetShellForActiveSpace()
+    return () => {
+      cancelled = true
+    }
+  }, [activeSpaceId, navigate, needsVaultSetup])
 
   useEffect(() => {
     if (needsVaultSetup) {
@@ -828,24 +952,26 @@ function App() {
       id: createWorkspaceTabId(),
       route: '/thinking-space',
     }
-    pendingWorkspaceTabNavigationRef.current = {
-      tabId: tab.id,
-      route: normalizeTabRoute(tab.route),
-    }
+    pendingWorkspaceTabNavigationRef.current = buildPendingWorkspaceTabNavigation(
+      tab.id,
+      tab.route,
+      currentRoute,
+    )
     setWorkspaceTabs(prev => [...prev, tab])
     setActiveWorkspaceTabId(tab.id)
     navigate(tab.route)
-  }, [navigate])
+  }, [currentRoute, navigate])
 
   const handleSelectWorkspaceTab = useCallback((tabId: string) => {
     if (tabId === activeWorkspaceTabId) return
     const target = workspaceTabs.find(tab => tab.id === tabId)
     if (!target) return
     if (target.route !== currentRoute) {
-      pendingWorkspaceTabNavigationRef.current = {
+      pendingWorkspaceTabNavigationRef.current = buildPendingWorkspaceTabNavigation(
         tabId,
-        route: normalizeTabRoute(target.route),
-      }
+        target.route,
+        currentRoute,
+      )
     } else if (pendingWorkspaceTabNavigationRef.current?.tabId === tabId) {
       pendingWorkspaceTabNavigationRef.current = null
     }
@@ -869,10 +995,11 @@ function App() {
     if (!nextActive) return
     setActiveWorkspaceTabId(nextActive.id)
     if (nextActive.route !== currentRoute) {
-      pendingWorkspaceTabNavigationRef.current = {
-        tabId: nextActive.id,
-        route: normalizeTabRoute(nextActive.route),
-      }
+      pendingWorkspaceTabNavigationRef.current = buildPendingWorkspaceTabNavigation(
+        nextActive.id,
+        nextActive.route,
+        currentRoute,
+      )
       navigate(nextActive.route)
     }
   }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
@@ -1168,20 +1295,24 @@ function App() {
   useEffect(() => {
     const pending = pendingWorkspaceTabNavigationRef.current
     if (!pending) return
-    if (activeWorkspaceTabId !== pending.tabId) return
+    if (activeWorkspaceTabId !== pending.tabId) {
+      pendingWorkspaceTabNavigationRef.current = null
+      return
+    }
     if (!workspaceTabs.some(tab => tab.id === pending.tabId)) {
       pendingWorkspaceTabNavigationRef.current = null
       return
     }
 
     const normalizedCurrentRoute = normalizeTabRoute(currentRoute)
-    if (normalizedCurrentRoute !== pending.route) {
-      navigate(pending.route)
+    if (normalizedCurrentRoute === pending.route) {
+      pendingWorkspaceTabNavigationRef.current = null
       return
     }
-
-    pendingWorkspaceTabNavigationRef.current = null
-  }, [activeWorkspaceTabId, currentRoute, navigate, workspaceTabs])
+    if (normalizedCurrentRoute !== pending.sourceRoute) {
+      pendingWorkspaceTabNavigationRef.current = null
+    }
+  }, [activeWorkspaceTabId, currentRoute, workspaceTabs])
 
   useEffect(() => {
     setJsonStorageItem(STORAGE_KEYS.appShellTabs, workspaceTabs)
@@ -1200,16 +1331,21 @@ function App() {
         id: createWorkspaceTabId(),
         route,
       }
-      pendingWorkspaceTabNavigationRef.current = { tabId: tab.id, route }
+      pendingWorkspaceTabNavigationRef.current = buildPendingWorkspaceTabNavigation(
+        tab.id,
+        route,
+        currentRoute,
+      )
       setWorkspaceTabs(prev => [...prev, tab])
       setActiveWorkspaceTabId(tab.id)
+      navigate(route)
     }
 
     window.addEventListener('ltm:workspace-open-route-in-new-tab', onOpenRouteInNewTab as EventListener)
     return () => {
       window.removeEventListener('ltm:workspace-open-route-in-new-tab', onOpenRouteInNewTab as EventListener)
     }
-  }, [])
+  }, [currentRoute, navigate])
 
   useEffect(() => {
     const handleChromeState = (event: Event) => {
@@ -1260,11 +1396,10 @@ function App() {
     return (
       <VaultSetup
         onComplete={(vaultRoot) => {
-          setVaultRoot(vaultRoot)
-          if (vaultSwitchHardRefreshPending) {
-            window.location.reload()
-            return
-          }
+          const registered = registerThinkingSpaceOrch(vaultRoot)
+          setVaultRoot(registered.root)
+          setActiveSpaceId(registered.spaceId)
+          setRegisteredThinkingSpaces(listThinkingSpacesOrch())
           setNeedsVaultSetup(false)
         }}
       />
@@ -1284,6 +1419,7 @@ function App() {
       data-ltm-theme={themeId}
       data-ltm-explorer-icon-style={explorerIconStyle}
       data-ltm-ios-phone={iPhoneHandsetMode ? 'true' : 'false'}
+      data-ltm-space-id={activeSpaceId}
     >
       {explorerFolderColorCss && <style>{explorerFolderColorCss}</style>}
       <div className="ltm-shell-layer-base">
@@ -1314,6 +1450,37 @@ function App() {
                   </button>
                 </div>
               )}
+
+              {showGoogleWorkspaceChromeControls && (
+                <div className={`inline-flex items-center gap-2 ${showCapacitorTopChromeMenu ? 'ml-2' : 'ml-1'} ${topChromeMacTrafficLightInsetPx > 0 ? 'pl-16' : ''}`}>
+                  <button
+                    type="button"
+                    onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
+                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                    aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
+                    title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
+                  >
+                    {thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed
+                      ? <PanelLeft className="h-3.5 w-3.5" />
+                      : <PanelLeftClose className="h-3.5 w-3.5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock}
+                    disabled={!canToggleGoogleWorkspaceHeader}
+                    className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-55"
+                    aria-label={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
+                    title={canToggleGoogleWorkspaceHeader
+                      ? (thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header')
+                      : 'Collapse explorer to toggle document header'}
+                  >
+                    {thinkingSpaceGoogleWorkspaceChromeState.headerVisible
+                      ? <EyeOff className="h-3.5 w-3.5" />
+                      : <Eye className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div
@@ -1340,37 +1507,6 @@ function App() {
               style={{ width: `${phoneMode ? topChromeRightWidth : topChromeBalancedWidth}px` }}
             >
               <div ref={syncToolsRef} className="inline-flex items-center gap-2">
-                {showGoogleWorkspaceChromeControls && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={dispatchThinkingSpaceGoogleWorkspaceToggleExplorerBlock}
-                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
-                      title={thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
-                    >
-                      {thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed
-                        ? <PanelLeft className="h-3.5 w-3.5" />
-                        : <PanelLeftClose className="h-3.5 w-3.5" />}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={dispatchThinkingSpaceGoogleWorkspaceToggleHeaderBlock}
-                      disabled={!canToggleGoogleWorkspaceHeader}
-                      className="ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-55"
-                      aria-label={thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header'}
-                      title={canToggleGoogleWorkspaceHeader
-                        ? (thinkingSpaceGoogleWorkspaceChromeState.headerVisible ? 'Hide document header' : 'Show document header')
-                        : 'Collapse explorer to toggle document header'}
-                    >
-                      {thinkingSpaceGoogleWorkspaceChromeState.headerVisible
-                        ? <EyeOff className="h-3.5 w-3.5" />
-                        : <Eye className="h-3.5 w-3.5" />}
-                    </button>
-                  </>
-                )}
-
                 <button
                   type="button"
                   onClick={handleGlobalRefresh}
@@ -1549,7 +1685,7 @@ function App() {
             className="ltm-app-main ltm-shell-main ltm-shell-content-stage"
             style={mainBottomPadding ? { paddingBottom: `${mainBottomPadding}px` } : undefined}
           >
-            <Routes>
+            <Routes key={activeSpaceId}>
               <Route path="/" element={<Home />} />
               <Route path="/thinking-space" element={<ThinkingSpace />} />
               <Route path="/thinking-organizer" element={<ThinkingOrganizer />} />
@@ -1581,6 +1717,9 @@ function App() {
                     explorerFolderColorRules={explorerFolderColorRules}
                     onExplorerFolderColorRulesChange={handleExplorerFolderColorRulesChange}
                     onRequestVaultSwitch={handleRequestVaultSwitch}
+                    activeSpaceId={activeSpaceId}
+                    thinkingSpaces={registeredThinkingSpaces}
+                    onSwitchThinkingSpace={handleSwitchThinkingSpace}
                   />
                 }
               />

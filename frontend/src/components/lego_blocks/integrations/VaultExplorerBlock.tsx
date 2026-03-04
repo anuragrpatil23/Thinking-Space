@@ -28,6 +28,7 @@ import {
 } from '@/components/lego_blocks/units/VaultExplorerUtilsBlock'
 import { rankFuzzyItemsBlock } from '@/services/lego_blocks/units/fuzzySearchBlock'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
+import { getSpaceStorageKeyBlock } from '@/services/orchestrators/storageOrch'
 import { cn } from '@/lib/utils'
 
 interface FolderEntries {
@@ -130,7 +131,7 @@ export default function VaultExplorerBlock({
   listenToGlobalSyncRefresh = false,
   className,
 }: VaultExplorerBlockProps) {
-  const storageKey = `${EXPLORER_PERSISTENCE_PREFIX}:${persistenceKey}`
+  const storageKey = getSpaceStorageKeyBlock(`${EXPLORER_PERSISTENCE_PREFIX}:${persistenceKey}`)
   const initialPersistedState = useMemo(
     () => readPersistedExplorerState(storageKey),
     [storageKey],

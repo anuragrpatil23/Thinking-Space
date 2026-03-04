@@ -1,5 +1,5 @@
-import { deleteDb } from '@/services/lego_blocks/integrations/dbBlock'
-import { STORAGE_KEYS, getStoredVaultRoot } from './storageOrch'
+import { deleteAllThinkingSpaceDbs } from '@/services/lego_blocks/integrations/dbBlock'
+import { STORAGE_KEYS, clearAllSpaceStorageBlock, getStoredVaultRoot } from './storageOrch'
 
 const LAST_SYNC_STORAGE_KEY_ORCH = 'thinkingspace:lastSyncTimestamp'
 const FS_HANDLE_DB_NAME_ORCH = 'ltm-fs-handles'
@@ -40,6 +40,7 @@ export async function clearAppCacheOrch(options: ClearAppCacheOptionsOrch = {}):
   const preserveVaultRoot = options.preserveVaultRoot ?? true
   const vaultRoot = preserveVaultRoot ? getStoredVaultRoot() : null
 
+  clearAllSpaceStorageBlock()
   for (const key of Object.values(STORAGE_KEYS)) {
     removeStorageKeyOrch(key)
   }
@@ -50,7 +51,7 @@ export async function clearAppCacheOrch(options: ClearAppCacheOptionsOrch = {}):
   }
 
   await Promise.all([
-    deleteDb().catch(() => {}),
+    deleteAllThinkingSpaceDbs().catch(() => {}),
     deleteIndexedDbOrch(FS_HANDLE_DB_NAME_ORCH).catch(() => {}),
   ])
 }

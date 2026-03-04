@@ -17,6 +17,7 @@ import {
   getNodeCount,
   type NodeRecord,
 } from '@/services/lego_blocks/integrations/dbBlock'
+import { getSpaceStorageKeyBlock } from '@/services/orchestrators/storageOrch'
 
 // ── Types ──
 
@@ -36,6 +37,11 @@ export interface VaultSyncOptions {
 const IOS_MAX_SYNC_FILE_SIZE_BYTES = 2 * 1024 * 1024
 const DEFAULT_MAX_SYNC_FILE_SIZE_BYTES = 12 * 1024 * 1024
 const MAX_REASONABLE_EPOCH_SECONDS = 10_000_000_000
+const LAST_SYNC_STORAGE_SUFFIX_ORCH = 'thinkingspace:lastSyncTimestamp'
+
+function getLastSyncStorageKeyOrch(): string {
+  return getSpaceStorageKeyBlock(LAST_SYNC_STORAGE_SUFFIX_ORCH)
+}
 
 function resolveMaxSyncFileSizeBytes(options?: VaultSyncOptions): number {
   if (typeof options?.maxFileSizeBytes === 'number' && Number.isFinite(options.maxFileSizeBytes)) {
@@ -143,8 +149,16 @@ export async function syncSingleFile(
  */
 export function getLastSyncTimestamp(): number {
   try {
-    const stored = localStorage.getItem('thinkingspace:lastSyncTimestamp')
-    return stored ? normalizeEpochSeconds(Number(stored)) : 0
+    const scopedKey = getLastSyncStorageKeyOrch()
+    const stored = localStorage.getItem(scopedKey)
+    if (stored) return normalizeEpochSeconds(Number(stored))
+
+    // Backward compatibility for pre-space-scoped key.
+    const legacy = localStorage.getItem(LAST_SYNC_STORAGE_SUFFIX_ORCH)
+    if (!legacy) return 0
+    localStorage.setItem(scopedKey, legacy)
+    localStorage.removeItem(LAST_SYNC_STORAGE_SUFFIX_ORCH)
+    return normalizeEpochSeconds(Number(legacy))
   } catch {
     return 0
   }
@@ -156,7 +170,7 @@ export function getLastSyncTimestamp(): number {
 export function setLastSyncTimestamp(ts?: number): void {
   try {
     localStorage.setItem(
-      'thinkingspace:lastSyncTimestamp',
+      getLastSyncStorageKeyOrch(),
       String(normalizeEpochSeconds(ts ?? Math.floor(Date.now() / 1000))),
     )
   } catch {

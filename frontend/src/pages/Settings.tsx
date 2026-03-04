@@ -5,6 +5,7 @@ import type {
   ExplorerFolderColorPreferenceBlock,
   ExplorerIconStyleBlock,
 } from '@/services/orchestrators/vaultUiPreferencesOrch'
+import type { ThinkingSpaceRegistryEntryOrch } from '@/services/orchestrators/spaceRegistryOrch'
 
 interface SettingsPageProps {
   explorerIconStyle: ExplorerIconStyleBlock
@@ -12,6 +13,9 @@ interface SettingsPageProps {
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
   onExplorerFolderColorRulesChange: (nextRules: ExplorerFolderColorPreferenceBlock[]) => Promise<void> | void
   onRequestVaultSwitch: () => void
+  activeSpaceId: string
+  thinkingSpaces: ThinkingSpaceRegistryEntryOrch[]
+  onSwitchThinkingSpace: (spaceId: string) => void
 }
 
 export default function Settings({
@@ -20,6 +24,9 @@ export default function Settings({
   explorerFolderColorRules,
   onExplorerFolderColorRulesChange,
   onRequestVaultSwitch,
+  activeSpaceId,
+  thinkingSpaces,
+  onSwitchThinkingSpace,
 }: SettingsPageProps) {
   const [searchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
@@ -62,6 +69,9 @@ export default function Settings({
           explorerFolderColorRules={explorerFolderColorRules}
           onExplorerFolderColorRulesChange={onExplorerFolderColorRulesChange}
           onRequestVaultSwitch={onRequestVaultSwitch}
+          activeSpaceId={activeSpaceId}
+          thinkingSpaces={thinkingSpaces}
+          onSwitchThinkingSpace={onSwitchThinkingSpace}
           initialTab={initialTab}
         />
       </div>

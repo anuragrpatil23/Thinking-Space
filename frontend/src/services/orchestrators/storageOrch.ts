@@ -1,6 +1,10 @@
 import {
   STORAGE_KEYS,
+  buildSpaceIdBlock,
+  clearAllSpaceStorageBlock,
+  getActiveSpaceIdBlock,
   getJsonStorageItem,
+  getSpaceStorageKeyBlock,
   getStorageItem,
   getStoredVaultRoot,
   setJsonStorageItem,
@@ -10,7 +14,11 @@ import {
 
 export {
   STORAGE_KEYS,
+  buildSpaceIdBlock,
+  clearAllSpaceStorageBlock,
+  getActiveSpaceIdBlock,
   getJsonStorageItem,
+  getSpaceStorageKeyBlock,
   getStorageItem,
   getStoredVaultRoot,
   setJsonStorageItem,

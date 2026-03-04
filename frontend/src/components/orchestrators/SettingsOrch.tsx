@@ -36,6 +36,7 @@ import {
   type ExplorerIconStyleBlock,
 } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { UIThemeId } from '@/services/orchestrators/uiThemeOrch'
+import type { ThinkingSpaceRegistryEntryOrch } from '@/services/orchestrators/spaceRegistryOrch'
 
 export type SettingsTabId = 'theme' | 'explorer' | 'ai' | 'google_docs_sheets' | 'f9' | 'cache' | 'vault'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
@@ -46,6 +47,9 @@ interface SettingsOrchProps {
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
   onExplorerFolderColorRulesChange: (nextRules: ExplorerFolderColorPreferenceBlock[]) => Promise<void> | void
   onRequestVaultSwitch: () => void
+  activeSpaceId: string
+  thinkingSpaces: ThinkingSpaceRegistryEntryOrch[]
+  onSwitchThinkingSpace: (spaceId: string) => void
   initialTab?: SettingsTabWithProfileId
 }
 
@@ -78,6 +82,9 @@ export default function SettingsOrch({
   explorerFolderColorRules,
   onExplorerFolderColorRulesChange,
   onRequestVaultSwitch,
+  activeSpaceId,
+  thinkingSpaces,
+  onSwitchThinkingSpace,
   initialTab = 'theme',
 }: SettingsOrchProps) {
   const { profile, loading: profileLoading, saveProfile, reloadProfile } = useUserProfileBlock()
@@ -101,6 +108,7 @@ export default function SettingsOrch({
   const [googleDriveConnected, setGoogleDriveConnected] = useState(() => Boolean(readGoogleDriveAuthOrch()?.accessToken))
   const [googleDriveAuthBusy, setGoogleDriveAuthBusy] = useState(false)
   const [busyAction, setBusyAction] = useState<SettingsTabId | null>(null)
+  const [busySpaceSwitchId, setBusySpaceSwitchId] = useState<string | null>(null)
   const [explorerFolderColorRulesDraft, setExplorerFolderColorRulesDraft] = useState<ExplorerFolderColorPreferenceBlock[]>(
     () => explorerFolderColorRules,
   )
@@ -216,11 +224,28 @@ export default function SettingsOrch({
   }
 
   const onSwitchVault = () => {
-    const confirmed = window.confirm('Open Thinking Space folder selector and reload after selection?')
+    const confirmed = window.confirm('Open Thinking Space selector and hot-switch to the selected space?')
     if (!confirmed) return
     setError(null)
     setMessage('Opening Thinking Space selector...')
     onRequestVaultSwitch()
+  }
+
+  const onSwitchRegisteredSpace = (space: ThinkingSpaceRegistryEntryOrch) => {
+    if (space.spaceId === activeSpaceId) return
+    const confirmed = window.confirm(`Switch to "${space.label}" without reloading the app?`)
+    if (!confirmed) return
+    setBusySpaceSwitchId(space.spaceId)
+    setError(null)
+    setMessage(`Switching to ${space.label}...`)
+    try {
+      onSwitchThinkingSpace(space.spaceId)
+      setMessage(`Switched to ${space.label}.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to switch Thinking Space')
+    } finally {
+      setBusySpaceSwitchId(null)
+    }
   }
 
   const updateMarkdownEditorSettings = (nextSettings: MarkdownEditorSettingsBlock) => {
@@ -949,19 +974,66 @@ export default function SettingsOrch({
           <CardHeader>
             <CardTitle>Select Thinking Space</CardTitle>
             <CardDescription>
-              Open the folder selector for this {runtimeLabel} runtime. The app reloads after selection.
+              Open the folder selector for this {runtimeLabel} runtime. Thinking Space hot-switches without reloading the app.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Use this if you want to switch to a different Thinking Space folder or recover from stale folder context.
-            </p>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Registered Spaces</p>
+              {thinkingSpaces.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No Thinking Spaces have been registered yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {thinkingSpaces.map((space) => {
+                    const active = space.spaceId === activeSpaceId
+                    return (
+                      <div
+                        key={space.spaceId}
+                        className="rounded-md border border-border/60 bg-muted/10 px-3 py-2"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-medium text-foreground">{space.label}</span>
+                              {active && (
+                                <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
+                                  Active
+                                </span>
+                              )}
+                            </div>
+                            <p className="break-all font-mono text-xs text-muted-foreground">{space.root}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Runtime: {space.runtime} · Last opened: {new Date(space.lastOpenedAt).toLocaleString()}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={active ? 'outline' : 'default'}
+                            disabled={active || busySpaceSwitchId === space.spaceId}
+                            onClick={() => onSwitchRegisteredSpace(space)}
+                          >
+                            {busySpaceSwitchId === space.spaceId ? 'Switching...' : (active ? 'Current Space' : 'Switch')}
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="space-y-2 border-t border-border/60 pt-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Add or Select New Space</p>
+              <p className="text-sm text-muted-foreground">
+                Use the selector to connect a new Thinking Space root or recover from stale folder context.
+              </p>
+              <Button type="button" onClick={onSwitchVault}>
+                Open Thinking Space Selector
+              </Button>
+            </div>
             <p className="text-sm text-muted-foreground">
               Switching Thinking Space folders does not delete API keys or credentials.
             </p>
-            <Button type="button" onClick={onSwitchVault}>
-              Open Thinking Space Selector
-            </Button>
           </CardContent>
         </Card>
       )}

@@ -25,6 +25,7 @@ import {
   setNewThoughtQuickDestinationsPreferenceOrch,
   type NewThoughtQuickDestinationPreferenceBlock,
 } from '@/services/orchestrators/vaultUiPreferencesOrch'
+import { getSpaceStorageKeyBlock } from '@/services/orchestrators/storageOrch'
 import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 
 const DESTINATION_RECENTS_KEY = 'ltm-new-note-destination-recents'
@@ -96,8 +97,18 @@ function withSuffix(path: string[], suffix: string[]): string[] {
 }
 
 function readJsonStorage<T>(key: string, fallback: T): T {
+  const scopedKey = getSpaceStorageKeyBlock(`new-thought:${key}`)
   try {
-    const raw = localStorage.getItem(key)
+    let raw = localStorage.getItem(scopedKey)
+    if (!raw) {
+      // Lazy-migrate legacy unscoped keys.
+      const legacy = localStorage.getItem(key)
+      if (legacy) {
+        localStorage.setItem(scopedKey, legacy)
+        localStorage.removeItem(key)
+        raw = legacy
+      }
+    }
     if (!raw) return fallback
     return JSON.parse(raw) as T
   } catch {
@@ -106,8 +117,9 @@ function readJsonStorage<T>(key: string, fallback: T): T {
 }
 
 function writeJsonStorage<T>(key: string, value: T): void {
+  const scopedKey = getSpaceStorageKeyBlock(`new-thought:${key}`)
   try {
-    localStorage.setItem(key, JSON.stringify(value))
+    localStorage.setItem(scopedKey, JSON.stringify(value))
   } catch {
     // Ignore storage failures in restricted runtimes.
   }
@@ -148,7 +160,9 @@ function readLegacyQuickDestinations(): QuickDestination[] {
 }
 
 function clearLegacyQuickDestinations(): void {
+  const scopedKey = getSpaceStorageKeyBlock(`new-thought:${LEGACY_QUICK_DESTINATIONS_KEY}`)
   try {
+    localStorage.removeItem(scopedKey)
     localStorage.removeItem(LEGACY_QUICK_DESTINATIONS_KEY)
   } catch {
     // Ignore storage failures in restricted runtimes.

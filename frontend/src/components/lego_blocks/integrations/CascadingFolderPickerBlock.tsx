@@ -12,33 +12,47 @@ import {
   type VaultPathKind,
   listChildFolders,
 } from '@/services/orchestrators/fileSystemOrch'
+import { getActiveSpaceIdBlock, getSpaceStorageKeyBlock } from '@/services/orchestrators/storageOrch'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 const SESSION_PREFIX = 'ltm-folder-children:'
 const childrenCache = new Map<string, { ts: number; data: string[] }>()
 const inFlight = new Map<string, Promise<string[]>>()
 
+function getSpaceCacheKey(path: string): string {
+  return `${getActiveSpaceIdBlock()}::${path}`
+}
+
+function getSessionChildrenKey(path: string): string {
+  return `${SESSION_PREFIX}${getSpaceCacheKey(path)}`
+}
+
+function getScopedRecentsStorageKey(storageKey: string): string {
+  return getSpaceStorageKeyBlock(`folder-recents:${storageKey}`)
+}
+
 function getCachedChildren(path: string): string[] | null {
-  const entry = childrenCache.get(path)
+  const entry = childrenCache.get(getSpaceCacheKey(path))
   if (!entry) return null
   if (Date.now() - entry.ts > CACHE_TTL_MS) {
-    childrenCache.delete(path)
+    childrenCache.delete(getSpaceCacheKey(path))
     return null
   }
   return entry.data
 }
 
 function getSessionChildren(path: string): string[] | null {
+  const sessionKey = getSessionChildrenKey(path)
   try {
-    const raw = sessionStorage.getItem(`${SESSION_PREFIX}${path}`)
+    const raw = sessionStorage.getItem(sessionKey)
     if (!raw) return null
     const parsed = JSON.parse(raw) as { ts: number; data: string[] }
     if (!parsed || !Array.isArray(parsed.data)) return null
     if (Date.now() - parsed.ts > CACHE_TTL_MS) {
-      sessionStorage.removeItem(`${SESSION_PREFIX}${path}`)
+      sessionStorage.removeItem(sessionKey)
       return null
     }
-    childrenCache.set(path, { ts: parsed.ts, data: parsed.data })
+    childrenCache.set(getSpaceCacheKey(path), { ts: parsed.ts, data: parsed.data })
     return parsed.data
   } catch {
     return null
@@ -46,9 +60,10 @@ function getSessionChildren(path: string): string[] | null {
 }
 
 function setSessionChildren(path: string, data: string[]) {
+  const sessionKey = getSessionChildrenKey(path)
   try {
     sessionStorage.setItem(
-      `${SESSION_PREFIX}${path}`,
+      sessionKey,
       JSON.stringify({ ts: Date.now(), data }),
     )
   } catch {
@@ -74,13 +89,14 @@ export function addRecent(
   segments: string[],
   max: number = 10,
 ) {
-  const raw = localStorage.getItem(storageKey)
+  const scopedStorageKey = getScopedRecentsStorageKey(storageKey)
+  const raw = localStorage.getItem(scopedStorageKey)
   let recents: string[][] = raw ? JSON.parse(raw) : []
   const path = normalizeSegments(segments).join('/')
   recents = recents.filter(r => normalizeSegments(r).join('/') !== path)
   recents.unshift(normalizeSegments(segments))
   if (recents.length > max) recents = recents.slice(0, max)
-  localStorage.setItem(storageKey, JSON.stringify(recents))
+  localStorage.setItem(scopedStorageKey, JSON.stringify(recents))
   window.dispatchEvent(new CustomEvent('folder-recents-updated', { detail: storageKey }))
 }
 
@@ -145,6 +161,7 @@ export default function CascadingFolderPicker({
   maxRecents = 10,
   previewLabel = 'Destination preview',
 }: CascadingFolderPickerProps) {
+  const scopedStorageKey = getScopedRecentsStorageKey(storageKey)
   const [levels, setLevels] = useState<Level[]>([])
   const [recents, setRecents] = useState<string[][]>([])
   const [customSegments, setCustomSegments] = useState<string[]>([])
@@ -159,12 +176,12 @@ export default function CascadingFolderPicker({
   )
 
   useEffect(() => {
-    setRecents(parseRecents(localStorage.getItem(storageKey)))
-  }, [storageKey])
+    setRecents(parseRecents(localStorage.getItem(scopedStorageKey)))
+  }, [scopedStorageKey])
 
   const refreshRecents = useCallback(() => {
-    setRecents(parseRecents(localStorage.getItem(storageKey)))
-  }, [storageKey])
+    setRecents(parseRecents(localStorage.getItem(scopedStorageKey)))
+  }, [scopedStorageKey])
 
   const fetchChildren = useCallback(async (path: string): Promise<string[]> => {
     const cached = getCachedChildren(path)
@@ -172,21 +189,22 @@ export default function CascadingFolderPicker({
     const sessionCached = getSessionChildren(path)
     if (sessionCached) return sessionCached
 
-    const inFlightReq = inFlight.get(path)
+    const cacheKey = getSpaceCacheKey(path)
+    const inFlightReq = inFlight.get(cacheKey)
     if (inFlightReq) return inFlightReq
 
     const req = listChildFolders(path)
       .then(files => {
-        childrenCache.set(path, { ts: Date.now(), data: files })
+        childrenCache.set(cacheKey, { ts: Date.now(), data: files })
         setSessionChildren(path, files)
         return files
       })
       .catch(() => [] as string[])
       .finally(() => {
-        inFlight.delete(path)
+        inFlight.delete(cacheKey)
       })
 
-    inFlight.set(path, req)
+    inFlight.set(cacheKey, req)
     return req
   }, [])
 
@@ -323,7 +341,7 @@ export default function CascadingFolderPicker({
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
-      if (event.key === storageKey) refreshRecents()
+      if (event.key === scopedStorageKey) refreshRecents()
     }
 
     const onCustom = (event: Event) => {

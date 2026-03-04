@@ -3,19 +3,21 @@
 
 import type { VaultFS, VaultEntry } from '@/services/lego_blocks/integrations/fsBlock'
 import { extractSection } from '@/services/lego_blocks/units/vaultConstantsBlock'
+import { getActiveSpaceIdBlock } from '@/services/lego_blocks/units/storageKeyBlock'
 
 // ── In-memory cache ──
 
-let _cache: { timestamp: number; entries: VaultEntry[] } | null = null
+let _cache: { timestamp: number; spaceId: string; entries: VaultEntry[] } | null = null
 const CACHE_TTL = 120_000 // 120 seconds in ms
 
 async function walkVaultCached(fs: VaultFS): Promise<VaultEntry[]> {
   const now = Date.now()
-  if (_cache && now - _cache.timestamp < CACHE_TTL) {
+  const spaceId = getActiveSpaceIdBlock()
+  if (_cache && _cache.spaceId === spaceId && now - _cache.timestamp < CACHE_TTL) {
     return _cache.entries
   }
   const entries = await fs.walkVault(['.md'])
-  _cache = { timestamp: now, entries }
+  _cache = { timestamp: now, spaceId, entries }
   return entries
 }
 

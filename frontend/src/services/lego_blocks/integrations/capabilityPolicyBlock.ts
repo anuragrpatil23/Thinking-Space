@@ -1,5 +1,6 @@
 import type { NodeType } from '@/services/lego_blocks/units/yamlNoteBlock'
 import type { CapabilityActor, CapabilityName } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
+import { STORAGE_KEYS, getJsonStorageItem } from '@/services/orchestrators/storageOrch'
 
 const MAX_INPUT_BYTES = 64_000
 
@@ -25,8 +26,6 @@ const WRITE_CAPABILITIES = new Set<CapabilityName>([
   'tools.pdf.convert',
   'tools.transcript.clean_save',
 ])
-
-const STORAGE_KEY = 'ltm-capability-policy'
 
 export interface CapabilityPolicy {
   allowedWritableProjectRoots?: string[]
@@ -114,9 +113,7 @@ export function getCapabilityPolicy(): CapabilityPolicy {
   }
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return fallback
-    const parsed = JSON.parse(raw) as Partial<CapabilityPolicy>
+    const parsed = getJsonStorageItem<Partial<CapabilityPolicy>>(STORAGE_KEYS.capabilityPolicy, {})
     return {
       allowAgentWrites: parsed.allowAgentWrites ?? fallback.allowAgentWrites,
       allowAgentDestructive: parsed.allowAgentDestructive ?? fallback.allowAgentDestructive,

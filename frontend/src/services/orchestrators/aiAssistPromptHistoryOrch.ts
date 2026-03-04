@@ -1,4 +1,4 @@
-import { getStoredVaultRoot } from '@/services/orchestrators/storageOrch'
+import { getActiveSpaceIdBlock, getStoredVaultRoot } from '@/services/orchestrators/storageOrch'
 import { getVaultFS } from '@/services/orchestrators/runtimeOrch'
 import {
   AI_ASSIST_PROMPT_HISTORY_DIR_PATH_BLOCK,
@@ -11,7 +11,7 @@ import {
 export type { AiAssistPromptHistoryEntryBlock }
 
 let cachedPromptHistoryOrch: AiAssistPromptHistoryEntryBlock[] | null = null
-let cachedPromptHistoryVaultRootOrch: string | null = null
+let cachedPromptHistorySpaceIdOrch: string | null = null
 let promptHistoryWriteQueueOrch: Promise<AiAssistPromptHistoryEntryBlock[]> = Promise.resolve([])
 
 function normalizeVaultRootBlock(value: string | null | undefined): string {
@@ -54,38 +54,40 @@ async function writePromptHistoryToVaultBlock(entries: AiAssistPromptHistoryEntr
 
 async function getPromptHistoryForWriteBlock(): Promise<AiAssistPromptHistoryEntryBlock[]> {
   const normalizedRoot = normalizeVaultRootBlock(getStoredVaultRoot())
+  const spaceId = getActiveSpaceIdBlock()
   if (!normalizedRoot) {
     cachedPromptHistoryOrch = []
-    cachedPromptHistoryVaultRootOrch = null
+    cachedPromptHistorySpaceIdOrch = null
     return []
   }
 
-  if (cachedPromptHistoryOrch && cachedPromptHistoryVaultRootOrch === normalizedRoot) {
+  if (cachedPromptHistoryOrch && cachedPromptHistorySpaceIdOrch === spaceId) {
     return cachedPromptHistoryOrch
   }
 
   const fromVault = await readPromptHistoryFromVaultBlock()
   cachedPromptHistoryOrch = fromVault
-  cachedPromptHistoryVaultRootOrch = normalizedRoot
+  cachedPromptHistorySpaceIdOrch = spaceId
   return fromVault
 }
 
 export async function listAiAssistPromptHistoryOrch(limit = 20): Promise<AiAssistPromptHistoryEntryBlock[]> {
   const normalizedRoot = normalizeVaultRootBlock(getStoredVaultRoot())
+  const spaceId = getActiveSpaceIdBlock()
   if (!normalizedRoot) {
     cachedPromptHistoryOrch = []
-    cachedPromptHistoryVaultRootOrch = null
+    cachedPromptHistorySpaceIdOrch = null
     return []
   }
 
-  if (!cachedPromptHistoryOrch || cachedPromptHistoryVaultRootOrch !== normalizedRoot) {
+  if (!cachedPromptHistoryOrch || cachedPromptHistorySpaceIdOrch !== spaceId) {
     try {
       cachedPromptHistoryOrch = await readPromptHistoryFromVaultBlock()
-      cachedPromptHistoryVaultRootOrch = normalizedRoot
+      cachedPromptHistorySpaceIdOrch = spaceId
     } catch (error) {
       console.warn('[aiAssistPromptHistoryOrch] Failed to read prompt history:', error)
       cachedPromptHistoryOrch = []
-      cachedPromptHistoryVaultRootOrch = normalizedRoot
+      cachedPromptHistorySpaceIdOrch = spaceId
     }
   }
 
@@ -111,7 +113,7 @@ export async function recordAiAssistPromptHistoryOrch(prompt: string): Promise<A
     try {
       await writePromptHistoryToVaultBlock(next)
       cachedPromptHistoryOrch = next
-      cachedPromptHistoryVaultRootOrch = normalizeVaultRootBlock(getStoredVaultRoot())
+      cachedPromptHistorySpaceIdOrch = getActiveSpaceIdBlock()
     } catch (error) {
       console.warn('[aiAssistPromptHistoryOrch] Failed to persist prompt history:', error)
       return current

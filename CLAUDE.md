@@ -45,6 +45,7 @@ Current status (v1.0):
 - EPIC-3 (Extension Platform): DONE
 
 Next up:
+- TS-HOTSWITCH: Multi Thinking Space Hot Switch (No Reload) - active (TS-HS-001 to TS-HS-008)
 - EPIC-5: AI Actions Everywhere
 - EPIC-6: Optional Remote/Agent Backends (later)
 
@@ -63,9 +64,11 @@ Next up:
   - Reusable primitives in components/hooks/services.
   - Page/feature orchestration in orchestrator containers.
   - New major orchestrators follow `agents/TEMPLATES/ORCHESTRATOR_TEMPLATE.md`.
+12. Multi-space switching must be no-reload and enforce per-space namespace isolation for cache/settings/runtime session state (see ADR-007).
 
 ## Architecture Reference
-Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
+- YAML source-of-truth schema: `docs/ADR-004-YAML-Architecture.md`
+- Multi-space hot-switch and isolation contract: `docs/ADR-007-Multi-Space-Hot-Switch-Isolation.md`
 
 ## Frontend Architecture Contract (Enforced)
 - Small reusable UI primitives must live in `frontend/src/components/lego_blocks/units/*`.

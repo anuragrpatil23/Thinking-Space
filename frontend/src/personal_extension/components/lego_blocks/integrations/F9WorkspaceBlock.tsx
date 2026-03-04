@@ -13,7 +13,13 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { cn } from '@/lib/utils'
 import { getAllNodes, type NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
-import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
+import {
+  STORAGE_KEYS,
+  getJsonStorageItem,
+  getStorageItem,
+  setJsonStorageItem,
+  setStorageItem,
+} from '@/services/orchestrators/storageOrch'
 import { readOrganizerUiStateOrch, writeOrganizerUiStateOrch } from '@/services/orchestrators/organizerUiStateOrch'
 import {
   normalizeOrganizerUiStateBlock,
@@ -124,8 +130,8 @@ interface F9WorkspaceBlockProps {
   onOpenNodeFile: (filePath: string) => void
 }
 
-const F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'f9_workspace_side_tabs_collapsed'
 const F9_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1360px]'
+const LEGACY_F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'f9_workspace_side_tabs_collapsed'
 type F9ProjectPresetTagsByRootBlock = Record<string, string[]>
 type F9ProjectProgramGroupsByRootBlock = Record<string, OrganizerProgramGroupEntryBlock[]>
 type F9ProjectMemoryFilesByRootBlock = Record<string, {
@@ -723,14 +729,24 @@ export default function F9WorkspaceBlock({
     : asRecordArrayBlock(accountPositionsLegacy)
   const [preserveOverallContext, setPreserveOverallContext] = useState(false)
   const [sideTabsCollapsed, setSideTabsCollapsed] = useState(() => {
+    const scoped = getStorageItem(STORAGE_KEYS.f9WorkspaceSideTabsCollapsed)
+    if (scoped === '1') return true
+    if (scoped === '0') return false
     if (typeof window === 'undefined') return false
-    return window.localStorage.getItem(F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK) === '1'
+    try {
+      const legacy = window.localStorage.getItem(LEGACY_F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK)
+      if (legacy !== '1' && legacy !== '0') return false
+      setStorageItem(STORAGE_KEYS.f9WorkspaceSideTabsCollapsed, legacy)
+      window.localStorage.removeItem(LEGACY_F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK)
+      return legacy === '1'
+    } catch {
+      return false
+    }
   })
   const projectRootKey = normalizeRelativePathBlock(executionRoot ?? 'f9-execution') || 'f9-execution'
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(F9_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK, sideTabsCollapsed ? '1' : '0')
+    setStorageItem(STORAGE_KEYS.f9WorkspaceSideTabsCollapsed, sideTabsCollapsed ? '1' : '0')
   }, [sideTabsCollapsed])
 
   const selectedCompany = useMemo(
