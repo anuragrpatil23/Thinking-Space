@@ -4,6 +4,7 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import AiTelemetryPanelBlock from '@/components/lego_blocks/integrations/AiTelemetryPanelBlock'
+import IntelligenceDiagnosticsBlock from '@/components/lego_blocks/integrations/IntelligenceDiagnosticsBlock'
 import { listProvidersOrch, type AiProvider, type AiProviderStatus } from '@/services/orchestrators/chatOrch'
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
 import {
@@ -445,6 +446,19 @@ export default function AiSettingsOrch() {
               <Button size="sm" variant="outline" onClick={() => { void onClearNativeLogins() }}>
                 Clear Native Logins
               </Button>
+            </div>
+
+            <div className="h-px bg-border/70" />
+
+            <div className="space-y-2">
+              <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                Intelligence Subsystem
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Internal AI tasks (session titles, structured extracts, tool loops) run through a shared intelligence layer.
+                Pick the default provider and monitor recent activity below. This is not user chat.
+              </div>
+              <IntelligenceDiagnosticsBlock />
             </div>
 
             <div className="h-px bg-border/70" />

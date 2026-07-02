@@ -21,9 +21,9 @@ import {
   getManualOpenAiApiKeyBlock,
 } from '@/services/lego_blocks/integrations/aiCredentialStoreBlock'
 import {
-  discoverOpenSourceAiModelBlock,
-  normalizeOpenSourceAiBaseUrlBlock,
-} from '@/services/lego_blocks/units/openSourceAiModelDiscoveryBlock'
+  normalizeBaseUrlBlock,
+  probeServerProfileBlock,
+} from '@/services/lego_blocks/units/intelligence/serverProfileBlock'
 import {
   getNativeClaudeOauthCredentialsBlock,
   getNativeCodexOauthCredentialsBlock,
@@ -78,7 +78,7 @@ function resolveOpenSourceAiConfigBlock(options?: ChatSendOptions): {
   think: boolean
 } {
   const manual = getManualOpenSourceAiCredentialsBlock()
-  const baseUrl = normalizeOpenSourceAiBaseUrlBlock(options?.opensourceAi?.baseUrl || manual?.baseUrl)
+  const baseUrl = normalizeBaseUrlBlock(options?.opensourceAi?.baseUrl || manual?.baseUrl)
   const apiKey = (options?.opensourceAi?.apiKey || manual?.apiKey || '').trim() || undefined
   const model = (options?.opensourceAi?.model || manual?.model || '').trim() || undefined
   const think = typeof options?.opensourceAi?.think === 'boolean'
@@ -218,7 +218,8 @@ async function sendOpenSourceAiDirectBlock(
   // the local server, then the sentinel as last resort.
   let requestedModel = optionModel && optionModel !== sentinel ? optionModel : (config.model || '')
   if (!requestedModel || requestedModel === sentinel) {
-    const discovered = await discoverOpenSourceAiModelBlock(config.baseUrl, config.apiKey)
+    const profile = await probeServerProfileBlock(config.baseUrl, config.apiKey)
+    const discovered = profile?.models[0] ?? null
     requestedModel = discovered || optionModel || sentinel
   }
   const client = new OpenAI({

@@ -2276,26 +2276,49 @@ ipcMain.handle(
 );
 
 // =====================================================================
-// IPC Handlers — AI session-title sidecar cache
+// IPC Handlers — Intelligence subsystem sidecar cache
 // =====================================================================
 
 import {
-  readSessionTitleBlock,
-  writeSessionTitleBlock,
-  type SessionTitleRecord,
-} from './lego_blocks/sessionTitleStoreBlock';
+  cleanupLegacySessionTitlesBlock,
+  clearIntelligenceCacheBlock,
+  readIntelligenceCacheBlock,
+  writeIntelligenceCacheBlock,
+  type IntelligenceCacheRecord,
+} from './lego_blocks/intelligenceCacheStoreBlock';
 
-ipcMain.handle('session-titles:get', async (_event, key: string) => {
-  if (typeof key !== 'string' || !key.trim()) return null;
-  return readSessionTitleBlock(key.trim());
+// Fire-and-forget cleanup of the legacy ~/.thinking-space/session-titles/ dir
+// left behind by the pre-intelligence implementation. Never blocks startup.
+void cleanupLegacySessionTitlesBlock();
+
+ipcMain.handle('intelligence-cache:get', async (_event, taskId: string, cacheKey: string) => {
+  if (typeof taskId !== 'string' || !taskId.trim()) return null;
+  if (typeof cacheKey !== 'string' || !cacheKey.trim()) return null;
+  return readIntelligenceCacheBlock(taskId.trim(), cacheKey.trim());
 });
 
-ipcMain.handle('session-titles:set', async (_event, record: SessionTitleRecord) => {
-  if (!record || typeof record.sessionId !== 'string' || typeof record.title !== 'string') {
+ipcMain.handle('intelligence-cache:set', async (_event, record: IntelligenceCacheRecord) => {
+  if (
+    !record ||
+    typeof record.taskId !== 'string' ||
+    typeof record.cacheKey !== 'string' ||
+    typeof record.valueJson !== 'string' ||
+    typeof record.providerId !== 'string' ||
+    typeof record.model !== 'string'
+  ) {
     return { ok: false, error: 'invalid record' };
   }
   try {
-    await writeSessionTitleBlock(record);
+    await writeIntelligenceCacheBlock(record);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+ipcMain.handle('intelligence-cache:clear', async (_event, taskId?: string) => {
+  try {
+    await clearIntelligenceCacheBlock(typeof taskId === 'string' && taskId.trim() ? taskId.trim() : undefined);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

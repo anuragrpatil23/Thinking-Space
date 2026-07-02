@@ -48,6 +48,7 @@ export const STORAGE_KEYS = {
   goodnotesReadingAnnotationGate: 'ltm-goodnotes-reading-annotation-gate',
   aiActivityHomePostItEnabled: 'ltm-ai-activity-home-post-it-enabled',
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
+  intelligenceDefaultProvider: 'ltm-intelligence-default-provider',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]

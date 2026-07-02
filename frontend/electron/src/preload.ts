@@ -590,22 +590,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
     status: string | null
   } | null) => ipcRenderer.invoke('webull:token:set', payload),
 
-  // AI-generated session titles — sidecar JSON under ~/.thinking-space/session-titles/.
-  sessionTitleGet: (key: string): Promise<{
-    sessionId: string
-    title: string
+  // Intelligence subsystem sidecar cache — one file per (taskId, cacheKey)
+  // under ~/.thinking-space/intelligence-cache/.
+  intelligenceCacheGet: (
+    taskId: string,
+    cacheKey: string,
+  ): Promise<{
+    taskId: string
+    cacheKey: string
+    providerId: string
     model: string
     generatedAt: string
-    sourceMtimeMs: number
-    msgCount: number
-  } | null> => ipcRenderer.invoke('session-titles:get', key),
-  sessionTitleSet: (record: {
-    sessionId: string
-    title: string
+    valueJson: string
+  } | null> => ipcRenderer.invoke('intelligence-cache:get', taskId, cacheKey),
+  intelligenceCacheSet: (record: {
+    taskId: string
+    cacheKey: string
+    providerId: string
     model: string
     generatedAt: string
-    sourceMtimeMs: number
-    msgCount: number
+    valueJson: string
   }): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke('session-titles:set', record),
+    ipcRenderer.invoke('intelligence-cache:set', record),
+  intelligenceCacheClear: (taskId?: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('intelligence-cache:clear', taskId),
 });

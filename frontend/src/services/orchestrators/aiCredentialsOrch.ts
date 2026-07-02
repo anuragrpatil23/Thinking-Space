@@ -9,7 +9,7 @@ import {
   setManualClaudeCredentialsBlock,
   setManualOpenAiCredentialsBlock,
 } from '@/services/lego_blocks/integrations/aiCredentialStoreBlock'
-import { invalidateOpenSourceAiModelCacheBlock } from '@/services/lego_blocks/units/openSourceAiModelDiscoveryBlock'
+import { invalidateServerProfileBlock } from '@/services/lego_blocks/units/intelligence/serverProfileBlock'
 
 export interface NativeAiLoginState {
   claudeApiKey: string
@@ -67,12 +67,12 @@ export function setNativeOpenSourceAiLoginOrch(input: {
   setManualOpenSourceAiCredentialsBlock(input)
   // Force re-discovery on next call so a new base URL / cleared model is
   // picked up immediately instead of waiting for the 60s TTL.
-  invalidateOpenSourceAiModelCacheBlock()
+  invalidateServerProfileBlock()
   return getNativeAiLoginStateOrch()
 }
 
 export function clearNativeAiLoginsOrch(): NativeAiLoginState {
   clearAiManualCredentialsBlock()
-  invalidateOpenSourceAiModelCacheBlock()
+  invalidateServerProfileBlock()
   return getNativeAiLoginStateOrch()
 }

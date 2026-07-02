@@ -1,0 +1,50 @@
+// Central lookup for intelligence providers. Callers ask for a provider by
+// id; the registry hands back the (singleton) implementation. Also owns the
+// user's default-provider preference — stored in localStorage under a stable
+// key so it survives across sessions.
+
+import { getJsonStorageItem, setJsonStorageItem, STORAGE_KEYS } from '@/services/lego_blocks/units/storageKeyBlock'
+import { openaiCompatProvider } from './providers/openaiCompatProviderBlock'
+import { anthropicProvider } from './providers/anthropicProviderBlock'
+import type { IntelligenceProvider } from './providers/providerInterfaceBlock'
+import type { ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
+
+const PROVIDERS: Record<ProviderId, IntelligenceProvider> = {
+  'openai-compat': openaiCompatProvider,
+  'anthropic': anthropicProvider,
+}
+
+const FALLBACK_DEFAULT: ProviderId = 'openai-compat'
+
+export function getProviderBlock(id: ProviderId): IntelligenceProvider {
+  const p = PROVIDERS[id]
+  if (!p) throw new Error(`unknown intelligence provider: ${id}`)
+  return p
+}
+
+export function listProvidersBlock(): IntelligenceProvider[] {
+  return Object.values(PROVIDERS)
+}
+
+export function readDefaultProviderBlock(): ProviderId {
+  const stored = getJsonStorageItem<string>(STORAGE_KEYS.intelligenceDefaultProvider, FALLBACK_DEFAULT)
+  return stored === 'anthropic' || stored === 'openai-compat' ? stored : FALLBACK_DEFAULT
+}
+
+export function writeDefaultProviderBlock(id: ProviderId): void {
+  setJsonStorageItem(STORAGE_KEYS.intelligenceDefaultProvider, id)
+}
+
+// Resolve which provider a request should run against, given the caller's
+// explicit choice (or none). Falls back to first-configured when the default
+// isn't set up — so users who only configured Claude get Claude, not a hard
+// error, when they run a task.
+export function resolveProviderBlock(explicit?: ProviderId): IntelligenceProvider {
+  if (explicit) return getProviderBlock(explicit)
+  const preferred = getProviderBlock(readDefaultProviderBlock())
+  if (preferred.isConfigured()) return preferred
+  for (const p of listProvidersBlock()) {
+    if (p.isConfigured()) return p
+  }
+  return preferred
+}

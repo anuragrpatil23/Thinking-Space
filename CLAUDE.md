@@ -138,11 +138,22 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 - `frontend/src/services/orchestrators/extensionUiOrch.ts` — UI slot resolve + action invocation orchestration
 - `frontend/src/services/orchestrators/extensionBuilderOrch.ts` — generate/preview/save/activate extension builder workflow
 
+## Intelligence Subsystem
+Model-agnostic layer for internal AI tasks (session titles, structured extracts, tool loops). Never used for user chat — that path stays in `aiChatBlock`.
+
+- `frontend/src/services/orchestrators/intelligenceOrch.ts` — public surface: `runContract`, `runWithTools`, `availability`, `diagnose`.
+- `frontend/src/services/lego_blocks/units/intelligence/*` — schemaBlock (typed JSON-Schema DSL), promptContractBlock (Contract type), modelProfileBlock (per-model quirks), serverProfileBlock (openai-compat server probe), reasoningStripBlock, intelligenceErrorsBlock, intelligenceTelemetryBlock, contracts/sessionTitleContractBlock.
+- `frontend/src/services/lego_blocks/integrations/intelligence/*` — providers/openaiCompatProviderBlock (mlx_lm.server, LM Studio, Ollama, llama.cpp, vLLM, OpenAI), providers/anthropicProviderBlock (Claude via @anthropic-ai/sdk), providerRegistryBlock (default provider + per-call override), toolLoopBlock, jobQueueBlock (concurrency + dedup), intelligenceCacheBlock (sidecar JSON via electron IPC).
+- Cache lives at `~/.thinking-space/intelligence-cache/<taskId>/<key>.json`. Keyed by `(taskId, inputHash, promptVersion, model)` — any of those changing invalidates automatically.
+- Default provider is user-configurable in Settings → AI → Intelligence Subsystem. Diagnostics panel there shows live provider status, capability probes, and the last 20 requests.
+- To add a new intelligence task: define a Contract in `units/intelligence/contracts/<name>ContractBlock.ts`, call `runContract(contract, input)`. Do NOT open a new HTTP path or add another `sessionTitle`-style module.
+
 ## Key Electron Blocks (main process)
 - `frontend/electron/src/lego_blocks/sourceConfigBlock.ts` — read/write `userData/state/source-config.json` (mode, sourcePath, vitePort)
 - `frontend/electron/src/lego_blocks/viteServerBlock.ts` — spawn Vite dev server from source path, poll readiness (45s timeout)
 - `frontend/electron/src/lego_blocks/viteRebuildBlock.ts` — 5-step rebuild pipeline + detached swap script (`applyRebuildBlock`)
 - `frontend/electron/src/lego_blocks/ptyManagerBlock.ts` — node-pty PTY lifecycle, IPC routing by `webContentsId`, per-window cleanup
+- `frontend/electron/src/lego_blocks/intelligenceCacheStoreBlock.ts` — sidecar JSON cache for intelligence outputs; also cleans up the legacy `session-titles/` dir on startup.
 
 ## Startup Sequence (Claude Sessions)
 1. `CLAUDE.md` is auto-loaded — contains architecture, contracts, and locked decisions.
