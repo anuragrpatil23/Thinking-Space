@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.anurag.ltm',
+  appId: 'com.anurag.thinking-space',
   appName: 'Thinking Space',
   webDir: 'dist',
   server: {

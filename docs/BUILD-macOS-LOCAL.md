@@ -99,7 +99,7 @@ identity changes, previously-saved encrypted data can no longer be decrypted
 and the app may show a decryption error. Clear the stale store and re-enter:
 
 ```bash
-rm -f "$HOME/Library/Application Support/long-term-memory/secure-storage/webull.v1.json"
+rm -f "$HOME/Library/Application Support/thinking-space/secure-storage/webull.v1.json"
 ```
 
 (Re-signing with the **same** certificate each time avoids this — credentials
@@ -155,5 +155,5 @@ To remove it later: Keychain Access → login → delete "Thinking Space Local S
 | Built app | `frontend/electron/dist/mac-arm64/Thinking Space.app` |
 | Installed app | `~/Applications/Thinking Space.app` |
 | Signing identity | `Thinking Space Local Signing` (self-signed) |
-| App data (userData) | `~/Library/Application Support/long-term-memory` |
+| App data (userData) | `~/Library/Application Support/thinking-space` (migrated from legacy `long-term-memory` on first launch) |
 | Typecheck only | `./build.sh typecheck` |

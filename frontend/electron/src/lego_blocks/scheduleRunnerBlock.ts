@@ -97,7 +97,7 @@ export async function runScheduleBlock(
       {
         // THINKING_SPACE_USERDATA matches what the launchd plist injects —
         // without it the runner falls back to a default that's wrong for any
-        // app whose name differs from productName (ours: "long-term-memory"
+        // app whose name differs from productName (ours: "thinking-space"
         // vs "Thinking Space"), and readSpec returns spec_not_found.
         env: {
           ...process.env,

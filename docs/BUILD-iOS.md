@@ -32,7 +32,7 @@ The app supports storing the vault in iCloud Drive for cross-device sync. This r
 3. Go to **Signing & Capabilities** tab
 4. Click **+ Capability** and add **iCloud**
 5. Check **iCloud Documents**
-6. Under Containers, click **+** and add: `iCloud.com.anurag.ltm`
+6. Under Containers, click **+** and add: `iCloud.com.anurag.thinking-space`
 
 ### 2. Verify Entitlements
 
@@ -41,11 +41,11 @@ After enabling iCloud, Xcode creates `App.entitlements` with:
 ```xml
 <key>com.apple.developer.icloud-container-identifiers</key>
 <array>
-    <string>iCloud.com.anurag.ltm</string>
+    <string>iCloud.com.anurag.thinking-space</string>
 </array>
 <key>com.apple.developer.ubiquity-container-identifiers</key>
 <array>
-    <string>iCloud.com.anurag.ltm</string>
+    <string>iCloud.com.anurag.thinking-space</string>
 </array>
 ```
 

@@ -214,6 +214,23 @@ const appMenuBarMenuTemplate: (MenuItemConstructorOptions | MenuItem)[] = [
   },
 ];
 
+// One-shot userData migration: when the app was renamed from `long-term-memory`
+// to `thinking-space`, Electron's derived userData dir shifted. If the new
+// location doesn't exist yet but the legacy one does, move it so users keep
+// their vault-root, source-config, secure-storage, window-state, etc.
+(function migrateLegacyUserDataDir() {
+  try {
+    const newDir = app.getPath('userData');
+    if (fs.existsSync(newDir)) return;
+    const legacyDir = path.join(path.dirname(newDir), 'long-term-memory');
+    if (!fs.existsSync(legacyDir)) return;
+    fs.renameSync(legacyDir, newDir);
+    console.log(`[migration] moved ${legacyDir} -> ${newDir}`);
+  } catch (err) {
+    console.error('[migration] userData rename failed:', err);
+  }
+})();
+
 // Get Config options from capacitor.config
 // Enable 2-finger trackpad swipe-to-navigate in webviews (same as Chrome/Safari).
 // Must be set before app.whenReady(). The React app is unaffected because

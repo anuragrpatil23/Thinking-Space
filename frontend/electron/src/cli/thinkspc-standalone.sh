@@ -252,6 +252,7 @@ resolve_node_exec() {
 
 resolve_persisted_vault_root() {
   local candidate_paths=(
+    "$HOME/Library/Application Support/thinking-space/state/vault-root.json"
     "$HOME/Library/Application Support/long-term-memory/state/vault-root.json"
     "$HOME/Library/Application Support/Thinking Space/state/vault-root.json"
     "$HOME/Library/Application Support/thinking-space-ai-app/state/vault-root.json"
