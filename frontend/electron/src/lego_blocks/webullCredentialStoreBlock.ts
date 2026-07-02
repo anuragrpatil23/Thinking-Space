@@ -170,7 +170,17 @@ async function readStateBlock(): Promise<WebullSecureStoreStateBlock> {
     throw error;
   }
   if (!raw.trim()) return EMPTY_WEBULL_STATE_BLOCK;
-  return decodeStateBlock(raw);
+  try {
+    return decodeStateBlock(raw);
+  } catch (error) {
+    // The ciphertext on disk was encrypted by a different Keychain key than
+    // the one this app currently has access to (e.g. after the
+    // long-term-memory -> thinking-space rename moved userData but the
+    // safeStorage key stayed under the old app name). Treat as empty so the
+    // next save overwrites the stale blob with a re-encryptable one.
+    console.warn('[webull] secure store unreadable, resetting on next save:', error);
+    return EMPTY_WEBULL_STATE_BLOCK;
+  }
 }
 
 async function writeStateBlock(state: WebullSecureStoreStateBlock): Promise<void> {
