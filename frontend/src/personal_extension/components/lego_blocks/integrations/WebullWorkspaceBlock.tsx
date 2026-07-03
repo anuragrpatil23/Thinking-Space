@@ -2633,11 +2633,7 @@ export default function WebullWorkspaceBlock({
                           </ResponsiveContainer>
                         </div>
                         <div className="relative flex-1">
-                          <div
-                            aria-hidden
-                            className="pointer-events-none absolute inset-y-1 left-1/2 hidden w-px -translate-x-1/2 bg-border/40 sm:block"
-                          />
-                          <ul className="grid grid-cols-1 justify-between gap-x-10 gap-y-0.5 text-xs sm:grid-cols-[max-content_max-content] md:max-h-[260px] md:overflow-y-auto md:pr-2">
+                          <ul className="grid grid-cols-1 justify-center gap-x-16 gap-y-0.5 text-xs sm:grid-cols-[max-content_max-content] md:max-h-[260px] md:overflow-y-auto md:pr-2">
                           {legend.map((entry) => (
                             <li key={entry.ticker} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-foreground/[0.04]">
                               <div className="flex w-16 min-w-0 items-center gap-2">
