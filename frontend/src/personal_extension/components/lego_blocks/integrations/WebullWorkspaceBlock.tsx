@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, Building2, Clock, Layers, Wallet, type LucideIcon } from 'lucide-react'
+import { BookOpen, Building2, Clock, Eye, EyeOff, Layers, Wallet, type LucideIcon } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import {
   dispatchWebullSidebarChromeStateBlock,
@@ -222,6 +222,73 @@ function buildCompanyPieDataBlock(companies: WebullCompanyOverviewBlock[]): {
 }
 
 const Webull_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK = 'webull_workspace_side_tabs_collapsed'
+const Webull_COMPANY_ORDER_STORAGE_KEY_BLOCK = 'webull_workspace_company_order_v1'
+const Webull_ARCHIVED_DEFAULT_STORAGE_KEY_BLOCK = 'webull_workspace_show_archived_default_v1'
+const Webull_ARCHIVED_OVERRIDES_STORAGE_KEY_BLOCK = 'webull_workspace_archived_overrides_v1'
+
+function readPersistedShowArchivedDefaultBlock(): boolean {
+  if (typeof window === 'undefined') return false
+  const raw = window.localStorage.getItem(Webull_ARCHIVED_DEFAULT_STORAGE_KEY_BLOCK)
+  if (raw === null) return false
+  return raw === '1'
+}
+
+function writePersistedShowArchivedDefaultBlock(value: boolean): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(Webull_ARCHIVED_DEFAULT_STORAGE_KEY_BLOCK, value ? '1' : '0')
+  } catch {
+    // ignore
+  }
+}
+
+function readPersistedArchivedOverridesBlock(): Record<string, boolean> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = window.localStorage.getItem(Webull_ARCHIVED_OVERRIDES_STORAGE_KEY_BLOCK)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const out: Record<string, boolean> = {}
+    for (const [ticker, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'boolean') out[ticker.toUpperCase()] = value
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+function writePersistedArchivedOverridesBlock(overrides: Record<string, boolean>): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(Webull_ARCHIVED_OVERRIDES_STORAGE_KEY_BLOCK, JSON.stringify(overrides))
+  } catch {
+    // ignore
+  }
+}
+
+function readPersistedCompanyOrderBlock(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(Webull_COMPANY_ORDER_STORAGE_KEY_BLOCK)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+  } catch {
+    return []
+  }
+}
+
+function writePersistedCompanyOrderBlock(order: string[]): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(Webull_COMPANY_ORDER_STORAGE_KEY_BLOCK, JSON.stringify(order))
+  } catch {
+    // ignore quota / disabled storage errors
+  }
+}
 const Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK = 'min-w-[1360px]'
 type WebullProjectPresetTagsByRootBlock = Record<string, string[]>
 type WebullProjectProgramGroupsByRootBlock = Record<string, OrganizerProgramGroupEntryBlock[]>
@@ -1070,6 +1137,40 @@ export default function WebullWorkspaceBlock({
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem(Webull_SIDE_TABS_COLLAPSED_STORAGE_KEY_BLOCK) === '1'
   })
+  const [companyOrder, setCompanyOrder] = useState<string[]>(() => readPersistedCompanyOrderBlock())
+  const [showArchivedByDefault, setShowArchivedByDefault] = useState<boolean>(() => readPersistedShowArchivedDefaultBlock())
+  const [archivedOverrides, setArchivedOverrides] = useState<Record<string, boolean>>(() => readPersistedArchivedOverridesBlock())
+  const [backlogLayoutEditMode, setBacklogLayoutEditMode] = useState(false)
+
+  const isArchivedVisibleForTickerBlock = useCallback((ticker: string) => {
+    const upper = ticker.toUpperCase()
+    if (Object.prototype.hasOwnProperty.call(archivedOverrides, upper)) return archivedOverrides[upper]
+    return showArchivedByDefault
+  }, [archivedOverrides, showArchivedByDefault])
+
+  const toggleShowArchivedByDefault = useCallback(() => {
+    setShowArchivedByDefault(prev => {
+      const next = !prev
+      writePersistedShowArchivedDefaultBlock(next)
+      return next
+    })
+  }, [])
+
+  const toggleArchivedOverrideForTicker = useCallback((ticker: string) => {
+    const upper = ticker.toUpperCase()
+    setArchivedOverrides(prev => {
+      const currentEffective = Object.prototype.hasOwnProperty.call(prev, upper) ? prev[upper] : showArchivedByDefault
+      const nextEffective = !currentEffective
+      const next = { ...prev }
+      if (nextEffective === showArchivedByDefault) {
+        delete next[upper]
+      } else {
+        next[upper] = nextEffective
+      }
+      writePersistedArchivedOverridesBlock(next)
+      return next
+    })
+  }, [showArchivedByDefault])
   const projectRootKey = normalizeRelativePathBlock(executionRoot ?? 'webull-execution') || 'webull-execution'
 
   // Ticker → display name (e.g. "AAPL" → "Apple"). Sourced from each study
@@ -1126,9 +1227,31 @@ export default function WebullWorkspaceBlock({
     const ticker = typeof program.metadata?.webull_company_ticker === 'string'
       ? program.metadata.webull_company_ticker
       : null
-    if (!ticker || !executionRoot) return null
-    return <TickerLogoBlock ticker={ticker} executionRoot={executionRoot} />
-  }, [executionRoot])
+    if (!ticker) return null
+    const isActive = program.status !== 'archived'
+    const archivedVisible = isArchivedVisibleForTickerBlock(ticker)
+    const showOverrideButton = backlogLayoutEditMode && isActive
+    return (
+      <div className="flex items-center gap-1.5">
+        {executionRoot && <TickerLogoBlock ticker={ticker} executionRoot={executionRoot} />}
+        {showOverrideButton && (
+          <button
+            type="button"
+            aria-label={archivedVisible ? 'Hide archived positions' : 'Show archived positions'}
+            title={archivedVisible ? 'Hide archived positions for this company' : 'Show archived positions for this company'}
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              toggleArchivedOverrideForTicker(ticker)
+            }}
+          >
+            {archivedVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </button>
+        )}
+      </div>
+    )
+  }, [backlogLayoutEditMode, executionRoot, isArchivedVisibleForTickerBlock, toggleArchivedOverrideForTicker])
   useIosSidebarSwipeBlock({
     isIos,
     isOpen: !sideTabsCollapsed,
@@ -1167,11 +1290,22 @@ export default function WebullWorkspaceBlock({
       if ((executionOverview?.companies.length ?? 0) > 0) return executionOverview?.companies ?? []
       return buildFallbackCompaniesFromOverallRowsBlock(overallRows)
     })()
-    return sourceCompanies.map(company => ({
+    const mapped = sourceCompanies.map(company => ({
       ...company,
       positions: sortWebullPositionsAscendingBlock(company.positions),
     }))
-  }, [executionOverview?.companies, overallRows, selectedCompany, showCompanyView])
+    if (companyOrder.length === 0 || showCompanyView) return mapped
+    const indexByTicker = new Map<string, number>()
+    companyOrder.forEach((ticker, idx) => { indexByTicker.set(ticker.toUpperCase(), idx) })
+    return [...mapped].sort((a, b) => {
+      const aIdx = indexByTicker.get(a.companyTicker.toUpperCase())
+      const bIdx = indexByTicker.get(b.companyTicker.toUpperCase())
+      if (aIdx === undefined && bIdx === undefined) return 0
+      if (aIdx === undefined) return 1
+      if (bIdx === undefined) return -1
+      return aIdx - bIdx
+    })
+  }, [companyOrder, executionOverview?.companies, overallRows, selectedCompany, showCompanyView])
 
   const backlogTableModel = useMemo(() => {
     // Stable synthetic timestamp — recomputing `new Date()` here would mutate
@@ -1275,7 +1409,7 @@ export default function WebullWorkspaceBlock({
       nodeByUuid.set(programUuid, programNode)
       positionNodesByProgramUuid.set(programUuid, buildPositionNodes(activePositions, programUuid, 'positions'))
 
-      if (archivedPositions.length > 0) {
+      if (archivedPositions.length > 0 && isArchivedVisibleForTickerBlock(companyTicker)) {
         const archivedProgramUuid = `webull-company-archived-${normalizeKeyFragmentBlock(companyTicker)}`
         companyTickerByProgramUuid.set(archivedProgramUuid, companyTicker)
         const archivedProgramNode: NodeRecord = {
@@ -1314,7 +1448,7 @@ export default function WebullWorkspaceBlock({
       positionRefByNodeUuid,
       nodeUuidByCompanyAndFile,
     }
-  }, [companiesForTable, executionRoot, tickerToCompanyName])
+  }, [companiesForTable, executionRoot, isArchivedVisibleForTickerBlock, tickerToCompanyName])
 
   // Sort companies by active cost-basis to match the Allocation pie ordering,
   // then map each program (live + archived) to the same Tailwind border class
@@ -1494,6 +1628,65 @@ export default function WebullWorkspaceBlock({
   }, [backlogTableModel.positionNodesByProgramUuid])
 
   const loadBacklogChildren = useCallback(async (): Promise<NodeRecord[]> => [], [])
+
+  const handleReorderBacklogPrograms = useCallback(async (params: {
+    parentKey: string | null
+    orderedNodes: NodeRecord[]
+  }): Promise<void> => {
+    const seen = new Set<string>()
+    const nextOrder: string[] = []
+    for (const node of params.orderedNodes) {
+      if (node.status === 'archived') continue
+      const ticker = backlogTableModel.companyTickerByProgramUuid.get(node.uuid)
+      if (!ticker) continue
+      const upper = ticker.toUpperCase()
+      if (seen.has(upper)) continue
+      seen.add(upper)
+      nextOrder.push(upper)
+    }
+    setCompanyOrder(nextOrder)
+    writePersistedCompanyOrderBlock(nextOrder)
+  }, [backlogTableModel.companyTickerByProgramUuid])
+
+  // 1-based company rank per active program (ignores archived rows entirely).
+  const activeCompanyRankByProgramUuid = useMemo(() => {
+    const map = new Map<string, number>()
+    let rank = 0
+    for (const program of backlogTableModel.programs) {
+      if (program.status === 'archived') continue
+      rank += 1
+      map.set(program.uuid, rank)
+    }
+    return map
+  }, [backlogTableModel.programs])
+
+  const resolveBacklogProgramOrdinal = useCallback((program: NodeRecord): number | null => {
+    if (program.status === 'archived') return null
+    return activeCompanyRankByProgramUuid.get(program.uuid) ?? null
+  }, [activeCompanyRankByProgramUuid])
+
+  const handleSetBacklogProgramOrdinal = useCallback((program: NodeRecord, nextOrdinal: number): void => {
+    if (program.status === 'archived') return
+    const ticker = backlogTableModel.companyTickerByProgramUuid.get(program.uuid)
+    if (!ticker) return
+    const upper = ticker.toUpperCase()
+
+    // Rebuild the ticker order from the current visible active companies, then
+    // move `upper` to the requested 1-based rank.
+    const currentTickers: string[] = []
+    for (const p of backlogTableModel.programs) {
+      if (p.status === 'archived') continue
+      const t = backlogTableModel.companyTickerByProgramUuid.get(p.uuid)
+      if (!t) continue
+      const up = t.toUpperCase()
+      if (!currentTickers.includes(up)) currentTickers.push(up)
+    }
+    const withoutTarget = currentTickers.filter(t => t !== upper)
+    const clamped = Math.max(1, Math.min(currentTickers.length, Math.trunc(nextOrdinal)))
+    withoutTarget.splice(clamped - 1, 0, upper)
+    setCompanyOrder(withoutTarget)
+    writePersistedCompanyOrderBlock(withoutTarget)
+  }, [backlogTableModel.companyTickerByProgramUuid, backlogTableModel.programs])
 
   const onSelectBacklogNode = useCallback((node: NodeRecord) => {
     if (node.type === 'program') {
@@ -2562,7 +2755,29 @@ export default function WebullWorkspaceBlock({
                 )}
               />
 
-              <div className="rounded-xl border bg-background p-3">
+              <div className="rounded-2xl border p-5">
+                <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
+                  {backlogLayoutEditMode && (
+                    <label className="mr-auto flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={showArchivedByDefault}
+                        onChange={toggleShowArchivedByDefault}
+                        className="h-3.5 w-3.5"
+                      />
+                      Show archived positions by default
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setBacklogLayoutEditMode(prev => !prev)}
+                    className={backlogLayoutEditMode
+                      ? 'inline-flex h-8 items-center rounded-md bg-foreground px-3 text-xs font-medium text-background transition-colors hover:bg-foreground/90'
+                      : 'inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted'}
+                  >
+                    {backlogLayoutEditMode ? 'Done' : 'Edit'}
+                  </button>
+                </div>
                 <ScrollableZoomSurfaceBlock
                   minWidthClassName={Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
                   controlsLabel="Table zoom"
@@ -2571,6 +2786,13 @@ export default function WebullWorkspaceBlock({
                 >
                   <BacklogListBlock
                     programs={backlogTableModel.programs}
+                    onReorderSiblings={handleReorderBacklogPrograms}
+                    resolveProgramOrdinal={resolveBacklogProgramOrdinal}
+                    onSetProgramOrdinal={handleSetBacklogProgramOrdinal}
+                    renderProgramTitlePrefix={renderProgramTitlePrefix}
+                    programLayoutEditMode={backlogLayoutEditMode}
+                    onProgramLayoutEditModeChange={setBacklogLayoutEditMode}
+                    showProgramLayoutToggle={false}
                     epicBorderClassByProgramUuid={companyBorderClassByProgramUuid}
                     loadEpics={loadBacklogEpics}
                     loadChildren={loadBacklogChildren}
@@ -2763,7 +2985,29 @@ export default function WebullWorkspaceBlock({
               />
             </>
           ) : overallTabActive ? (
-            <div className="rounded-xl border bg-background p-3">
+            <div className="rounded-2xl border p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
+                {backlogLayoutEditMode && (
+                  <label className="mr-auto flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={showArchivedByDefault}
+                      onChange={toggleShowArchivedByDefault}
+                      className="h-3.5 w-3.5"
+                    />
+                    Show archived positions by default
+                  </label>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setBacklogLayoutEditMode(prev => !prev)}
+                  className={backlogLayoutEditMode
+                    ? 'inline-flex h-8 items-center rounded-md bg-foreground px-3 text-xs font-medium text-background transition-colors hover:bg-foreground/90'
+                    : 'inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted'}
+                >
+                  {backlogLayoutEditMode ? 'Done' : 'Edit'}
+                </button>
+              </div>
               <ScrollableZoomSurfaceBlock
                 minWidthClassName={Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
                 controlsLabel="Table zoom"
@@ -2772,7 +3016,13 @@ export default function WebullWorkspaceBlock({
               >
                 <BacklogListBlock
                   programs={backlogTableModel.programs}
+                  onReorderSiblings={handleReorderBacklogPrograms}
+                  resolveProgramOrdinal={resolveBacklogProgramOrdinal}
+                  onSetProgramOrdinal={handleSetBacklogProgramOrdinal}
                   renderProgramTitlePrefix={renderProgramTitlePrefix}
+                  programLayoutEditMode={backlogLayoutEditMode}
+                  onProgramLayoutEditModeChange={setBacklogLayoutEditMode}
+                  showProgramLayoutToggle={false}
                   epicBorderClassByProgramUuid={companyBorderClassByProgramUuid}
                   loadEpics={loadBacklogEpics}
                   loadChildren={loadBacklogChildren}

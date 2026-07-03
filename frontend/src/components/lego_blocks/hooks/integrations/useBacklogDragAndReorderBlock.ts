@@ -31,6 +31,7 @@ interface UseBacklogDragAndReorderBlockResult {
   handleDragLeave: (nodeId: string) => void
   handleDrop: (target: NodeRecord, event: DragEvent) => Promise<void>
   moveProgramByOffset: (program: NodeRecord, offset: -1 | 1) => Promise<void>
+  moveProgramToIndex: (program: NodeRecord, nextIndex: number) => Promise<void>
 }
 
 export function useBacklogDragAndReorderBlock({
@@ -278,6 +279,30 @@ export function useBacklogDragAndReorderBlock({
     }
   }, [allowProgramLayoutEditing, onReorderSiblings, programs, setLocalError])
 
+  const moveProgramToIndex = useCallback(async (program: NodeRecord, nextIndex: number) => {
+    if (!allowProgramLayoutEditing) return
+    if (!onReorderSiblings) return
+    if (!Number.isFinite(nextIndex)) return
+    const currentIndex = programs.findIndex(entry => entry.uuid === program.uuid)
+    if (currentIndex < 0) return
+    const clamped = Math.max(0, Math.min(programs.length - 1, Math.trunc(nextIndex)))
+    if (clamped === currentIndex) return
+
+    const reordered = [...programs]
+    const [moved] = reordered.splice(currentIndex, 1)
+    reordered.splice(clamped, 0, moved)
+
+    setLocalError(null)
+    try {
+      await onReorderSiblings({
+        parentKey: null,
+        orderedNodes: reordered,
+      })
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to reorder programs')
+    }
+  }, [allowProgramLayoutEditing, onReorderSiblings, programs, setLocalError])
+
   return {
     draggingNodeId,
     dragOverNodeId,
@@ -288,5 +313,6 @@ export function useBacklogDragAndReorderBlock({
     handleDragLeave,
     handleDrop,
     moveProgramByOffset,
+    moveProgramToIndex,
   }
 }

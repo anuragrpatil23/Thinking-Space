@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Check, Copy, FolderTree, Info, Loader2 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { formatRowOrdinal, nodeDisplayTitle, nodeTitleWithoutTicket, PriorityDot, type DropEdge } from '@/components/lego_blocks/units/BacklogListDomainBlock'
@@ -65,10 +65,62 @@ interface BacklogProgramRowBlockProps {
   onDrop: (event: React.DragEvent) => void
   onMoveProgramUp: () => void
   onMoveProgramDown: () => void
+  onSetProgramIndex?: (nextIndex: number) => void
+  // When provided, overrides the default 1-based display ordinal.
+  // Return `null` to fully suppress the ordinal + reorder control on this row.
+  resolvedOrdinal?: number | null
   onAssignProgramToGroup: (groupId: string | null) => void
   onToggleInlineNotes: () => void
   onCopyRowLabel: (event: React.MouseEvent<HTMLButtonElement>) => void
   onNodeStatusChange: (nextStatus: NodeStatus) => void
+}
+
+function ProgramSortOrdinalInputBlock({
+  value,
+  onCommit,
+}: {
+  value: number
+  onCommit: (next: number) => void
+}) {
+  const [text, setText] = useState<string>(String(value))
+  const focusedRef = useRef(false)
+
+  useEffect(() => {
+    if (!focusedRef.current) setText(String(value))
+  }, [value])
+
+  return (
+    <input
+      type="number"
+      min={1}
+      value={text}
+      title="Sort position"
+      className="h-6 w-11 rounded border border-input bg-background px-1 text-center text-xs tabular-nums outline-none focus:border-ring"
+      onClick={(event) => event.stopPropagation()}
+      onFocus={(event) => {
+        focusedRef.current = true
+        event.currentTarget.select()
+      }}
+      onChange={(event) => setText(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur()
+      }}
+      onBlur={() => {
+        focusedRef.current = false
+        const parsed = Number(text)
+        if (!Number.isFinite(parsed)) {
+          setText(String(value))
+          return
+        }
+        const truncated = Math.max(1, Math.trunc(parsed))
+        if (truncated === value) {
+          setText(String(value))
+          return
+        }
+        onCommit(truncated)
+      }}
+    />
+  )
 }
 
 export function BacklogProgramRowBlock({
@@ -116,6 +168,8 @@ export function BacklogProgramRowBlock({
   onDrop,
   onMoveProgramUp,
   onMoveProgramDown,
+  onSetProgramIndex,
+  resolvedOrdinal,
   onAssignProgramToGroup,
   onToggleInlineNotes,
   onCopyRowLabel,
@@ -144,36 +198,50 @@ export function BacklogProgramRowBlock({
       onClick={onSelectProgram}
     >
       <div className="flex min-w-max items-center gap-2">
-      <sup
-        aria-hidden="true"
-        className="-ml-1.5 mr-0.5 mt-0.5 self-start font-mono text-[8px] leading-none tabular-nums text-muted-foreground/45"
-      >
-        {formatRowOrdinal(programIndex)}
-      </sup>
-      {allowProgramLayoutEditing && (
-        <div
-          className="mr-0.5 flex items-center gap-0.5"
-          onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+      {resolvedOrdinal !== null && !(allowProgramLayoutEditing && onSetProgramIndex) && (
+        <sup
+          aria-hidden="true"
+          className="-ml-1.5 mr-0.5 mt-0.5 self-start font-mono text-[8px] leading-none tabular-nums text-muted-foreground/45"
         >
-          <button
-            type="button"
-            className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-            title="Move up"
-            onClick={onMoveProgramUp}
-            disabled={programIndex <= 0}
+          {formatRowOrdinal((resolvedOrdinal ?? (programIndex + 1)) - 1)}
+        </sup>
+      )}
+      {allowProgramLayoutEditing && resolvedOrdinal !== null && (
+        onSetProgramIndex ? (
+          <div
+            className="mr-0.5 flex items-center"
+            onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
           >
-            <ArrowUp className="h-3 w-3" />
-          </button>
-          <button
-            type="button"
-            className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-            title="Move down"
-            onClick={onMoveProgramDown}
-            disabled={programIndex >= (programCount - 1)}
+            <ProgramSortOrdinalInputBlock
+              value={resolvedOrdinal ?? (programIndex + 1)}
+              onCommit={(next) => onSetProgramIndex(next - 1)}
+            />
+          </div>
+        ) : (
+          <div
+            className="mr-0.5 flex items-center gap-0.5"
+            onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
           >
-            <ArrowDown className="h-3 w-3" />
-          </button>
-        </div>
+            <button
+              type="button"
+              className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              title="Move up"
+              onClick={onMoveProgramUp}
+              disabled={programIndex <= 0}
+            >
+              <ArrowUp className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              title="Move down"
+              onClick={onMoveProgramDown}
+              disabled={programIndex >= (programCount - 1)}
+            >
+              <ArrowDown className="h-3 w-3" />
+            </button>
+          </div>
+        )
       )}
       {showNodeTypeIcon && <FolderTree className="h-4 w-4 shrink-0 text-sky-600" />}
       <div className={cn(

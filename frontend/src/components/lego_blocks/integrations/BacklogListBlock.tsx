@@ -131,6 +131,15 @@ export interface BacklogListBlockProps {
   ) => Promise<NodeRecord>
   onDropNodeToNode?: (sourceUuid: string, target: NodeRecord) => Promise<void>
   onReorderSiblings?: (params: { parentKey: string | null; orderedNodes: NodeRecord[] }) => Promise<NodeRecord[] | void>
+  // Optional: resolve a per-row 1-based ordinal for display + the sort-order input.
+  // Return null to fully suppress ordinal + reorder control on that row.
+  // Return undefined to fall back to the default (row position in `programs`).
+  resolveProgramOrdinal?: (program: NodeRecord, defaultOrdinal: number) => number | null | undefined
+  // Optional: when set, called instead of the built-in program-index reorder when
+  // the sort-order input changes. Consumers receive the 1-based value the user
+  // typed, so they can translate it to whatever domain-level ordering they own
+  // (e.g. company rank vs. flat program index).
+  onSetProgramOrdinal?: (program: NodeRecord, nextOrdinal: number) => void | Promise<void>
   projectPresetTagsByRoot?: Record<string, string[]>
   projectTagColorsByRoot?: Record<string, Record<string, string>>
   programGroups?: ProgramGroupEntryBlock[]
@@ -205,6 +214,8 @@ function BacklogListBlockImpl({
   onCreateChild,
   onDropNodeToNode,
   onReorderSiblings,
+  resolveProgramOrdinal,
+  onSetProgramOrdinal,
   projectPresetTagsByRoot = {},
   projectTagColorsByRoot = {},
   programGroups = [],
@@ -295,7 +306,6 @@ function BacklogListBlockImpl({
   const allowStatusEditing = !readOnly || allowStatusEditingInReadOnly
   const programNounSingular = toSentenceCaseLabelBlock(programLabelSingular, 'program')
   const programNounPlural = toSentenceCaseLabelBlock(programLabelPlural, 'programs')
-  const programNounSingularTitle = toTitleCaseLabelBlock(programLabelSingular, 'program')
   const programNounPluralTitle = toTitleCaseLabelBlock(programLabelPlural, 'programs')
   const programGroupNounSingular = toSentenceCaseLabelBlock(programGroupLabelSingular, 'group')
 
@@ -564,6 +574,7 @@ function BacklogListBlockImpl({
     handleDragLeave,
     handleDrop,
     moveProgramByOffset,
+    moveProgramToIndex,
   } = useBacklogDragAndReorderBlock({
     allowProgramLayoutEditing,
     programs,
@@ -1103,6 +1114,20 @@ function BacklogListBlockImpl({
           onDrop={event => { void handleDrop(program, event) }}
           onMoveProgramUp={() => { void moveProgramByOffset(program, -1) }}
           onMoveProgramDown={() => { void moveProgramByOffset(program, 1) }}
+          onSetProgramIndex={(nextIndex) => {
+            if (onSetProgramOrdinal) {
+              void onSetProgramOrdinal(program, nextIndex + 1)
+            } else {
+              void moveProgramToIndex(program, nextIndex)
+            }
+          }}
+          resolvedOrdinal={(() => {
+            if (!resolveProgramOrdinal) return programIndex + 1
+            const next = resolveProgramOrdinal(program, programIndex + 1)
+            if (next === null) return null
+            if (next === undefined) return programIndex + 1
+            return next
+          })()}
           onAssignProgramToGroup={(groupId) => onAssignProgramToGroup?.(program, groupId)}
           onToggleInlineNotes={() => { void toggleRowDetails(program) }}
           onCopyRowLabel={event => { void copyRowLabelForNode(program, event) }}
@@ -1135,27 +1160,20 @@ function BacklogListBlockImpl({
         )}
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, expandedNodes, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderProgramTitlePrefix, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
+  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, expandedNodes, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, moveProgramToIndex, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onSetProgramOrdinal, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderProgramTitlePrefix, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, resolveProgramOrdinal, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
 
   return (
     <div className="flex flex-col space-y-3">
       {showProgramLayoutToggle && allowProgramLayoutModeToggle && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             type="button"
             size="sm"
             variant={allowProgramLayoutEditing ? 'default' : 'outline'}
             onClick={() => setProgramLayoutEditMode(!allowProgramLayoutEditing)}
           >
-            {allowProgramLayoutEditing
-              ? `Done Organizing ${programNounPluralTitle}`
-              : `Edit ${programNounSingularTitle} Layout`}
+            {allowProgramLayoutEditing ? 'Done' : 'Edit'}
           </Button>
-          {allowProgramLayoutEditing && (
-            <p className="text-xs text-muted-foreground">
-              {`Layout editing is on. Use drag/drop or arrow controls to reorder, assign ${programGroupNounSingular}s from the right-side dropdown on each ${programNounSingular} row, and remove ${programGroupNounSingular}s with the X button on each ${programGroupNounSingular} header.`}
-            </p>
-          )}
         </div>
       )}
 
