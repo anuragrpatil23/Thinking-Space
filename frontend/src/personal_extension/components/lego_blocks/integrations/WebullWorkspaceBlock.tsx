@@ -2040,7 +2040,7 @@ export default function WebullWorkspaceBlock({
                 <p key={`${node.uuid}-related-${path}`} className="break-words">
                   <button
                     type="button"
-                    className="text-blue-700 hover:underline"
+                    className="text-blue-700 dark:text-blue-300 hover:underline"
                     onClick={(event) => {
                       event.preventDefault()
                       event.stopPropagation()
@@ -2404,7 +2404,7 @@ export default function WebullWorkspaceBlock({
           )}
 
           {allWarnings.length > 0 && (
-            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-800 dark:text-amber-300">
               {allWarnings.map((warning) => (
                 <p key={warning}>{warning}</p>
               ))}
@@ -2412,7 +2412,7 @@ export default function WebullWorkspaceBlock({
           )}
 
           {workspaceMessage && (
-            <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300">
+            <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 dark:bg-emerald-500/20 p-3 text-sm text-emerald-700 dark:text-emerald-300">
               {workspaceMessage}
             </div>
           )}
@@ -2468,8 +2468,8 @@ export default function WebullWorkspaceBlock({
                   </span>
                 </div>
                 <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-emerald-500/10 via-background to-sky-500/10 p-5 shadow-sm">
-                  <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-emerald-500/10 blur-3xl" />
-                  <div className="pointer-events-none absolute -bottom-20 -left-10 h-44 w-44 rounded-full bg-sky-500/10 blur-3xl" />
+                  <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 blur-3xl" />
+                  <div className="pointer-events-none absolute -bottom-20 -left-10 h-44 w-44 rounded-full bg-sky-500/10 dark:bg-sky-500/20 blur-3xl" />
                   <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
@@ -3076,12 +3076,12 @@ export default function WebullWorkspaceBlock({
             </summary>
             <div className="space-y-2 p-3 text-xs text-muted-foreground">
               {!liveRefreshAvailable && (
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-800 dark:text-amber-300">
                   Live Webull refresh is available only in the Electron app. This runtime shows saved Webull data from your last Electron refresh.
                 </div>
               )}
               {liveRefreshAvailable && !hasConfig && (
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-700 dark:text-amber-300">
                   Missing Webull credentials. Open Settings {'>'} Webull and save your Webull app key + app secret to secure device storage.
                 </div>
               )}

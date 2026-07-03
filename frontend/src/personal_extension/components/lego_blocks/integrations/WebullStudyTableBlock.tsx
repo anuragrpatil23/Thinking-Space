@@ -456,7 +456,7 @@ export default function WebullStudyTableBlock({
                   onClick={() => toggleExpanded(row.ticker)}
                   title={impNote.raw}
                 >
-                  <span className="mt-px shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                  <span className="mt-px shrink-0 rounded bg-amber-500/15 dark:bg-amber-500/25 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
                     Imp
                   </span>
                   <span className="min-w-0 flex-1 text-muted-foreground">
@@ -490,7 +490,7 @@ export default function WebullStudyTableBlock({
                   {row.record.impQuickNotes.length > 0 && (
                     <div className="mb-4">
                       <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px]">
+                        <span className="rounded bg-amber-500/15 dark:bg-amber-500/25 px-1.5 py-0.5 text-[9px]">
                           Imp
                         </span>
                         Quick note

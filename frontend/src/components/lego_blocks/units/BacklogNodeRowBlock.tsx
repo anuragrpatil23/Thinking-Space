@@ -162,7 +162,7 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
         dragOver && 'ring-2 ring-primary/40 bg-primary/5',
         dragOver && dragOverEdge === 'before' && 'shadow-[inset_0_2px_0_rgba(59,130,246,0.7)]',
         dragOver && dragOverEdge === 'after' && 'shadow-[inset_0_-2px_0_rgba(59,130,246,0.7)]',
-        newlyCreated && 'bg-emerald-100/80 ring-2 ring-emerald-400/70',
+        newlyCreated && 'bg-emerald-100/80 dark:bg-emerald-500/30 ring-2 ring-emerald-400/70',
       )}
       style={{ paddingLeft: `${12 + (depth * 16)}px` }}
     >

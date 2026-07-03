@@ -156,20 +156,20 @@ export default function TodayFileActivityOrch({
           card boxes. Mirrors the AI Activity totals strip styling. */}
       <div className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-2 text-sm">
         <FlatMetric label="Total files" value={total} />
-        <FlatMetric label="Created" value={data?.created_count ?? 0} valueClassName="text-emerald-600" />
-        <FlatMetric label="Modified" value={data?.modified_count ?? 0} valueClassName="text-blue-600" />
+        <FlatMetric label="Created" value={data?.created_count ?? 0} valueClassName="text-emerald-600 dark:text-emerald-400" />
+        <FlatMetric label="Modified" value={data?.modified_count ?? 0} valueClassName="text-blue-600 dark:text-blue-400" />
         <FlatMetric label="Active sections" value={sections.length} />
         {showDailyHighlights && (
           <>
             <FlatMetric
               label="Insights today"
               value={highlights?.todayInsightsCount ?? 0}
-              valueClassName="text-amber-600"
+              valueClassName="text-amber-600 dark:text-amber-400"
             />
             <FlatMetric
               label="Memorized today"
               value={highlights?.todayMemorizedCount ?? 0}
-              valueClassName="text-violet-600"
+              valueClassName="text-violet-600 dark:text-violet-400"
             />
           </>
         )}

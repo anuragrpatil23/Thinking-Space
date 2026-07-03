@@ -446,7 +446,7 @@ export default function PasswordManagerOrch() {
   return (
     <div className="space-y-4">
       {(error || message) && (
-        <div className={`rounded-xl border px-4 py-3 text-sm ${error ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>
+        <div className={`rounded-xl border px-4 py-3 text-sm ${error ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'}`}>
           {error ?? message}
         </div>
       )}

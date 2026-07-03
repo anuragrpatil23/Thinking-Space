@@ -4,40 +4,40 @@ export function normalizeTagBlock(value: string): string {
 
 const TAG_COLOR_PALETTE_BLOCK = [
   {
-    solid: 'border-emerald-200/80 bg-emerald-100/75 text-emerald-800',
-    subtle: 'border-emerald-200/70 bg-emerald-50/70 text-emerald-800/80',
-    selected: 'border-emerald-300 bg-emerald-100/80 text-emerald-800',
-    unselected: 'border-emerald-200/80 text-emerald-700/70 hover:bg-emerald-50/60',
+    solid: 'border-emerald-200/80 dark:border-emerald-500/45 bg-emerald-100/75 dark:bg-emerald-500/25 text-emerald-800 dark:text-emerald-200',
+    subtle: 'border-emerald-200/70 dark:border-emerald-500/40 bg-emerald-50/70 dark:bg-emerald-500/20 text-emerald-800/80 dark:text-emerald-200/80',
+    selected: 'border-emerald-300 dark:border-emerald-500/55 bg-emerald-100/80 dark:bg-emerald-500/30 text-emerald-800 dark:text-emerald-200',
+    unselected: 'border-emerald-200/80 dark:border-emerald-500/45 text-emerald-700/70 dark:text-emerald-300/70 hover:bg-emerald-50/60 dark:hover:bg-emerald-500/25',
   },
   {
-    solid: 'border-sky-200/80 bg-sky-100/75 text-sky-800',
-    subtle: 'border-sky-200/70 bg-sky-50/70 text-sky-800/80',
-    selected: 'border-sky-300 bg-sky-100/80 text-sky-800',
-    unselected: 'border-sky-200/80 text-sky-700/70 hover:bg-sky-50/60',
+    solid: 'border-sky-200/80 dark:border-sky-500/45 bg-sky-100/75 dark:bg-sky-500/25 text-sky-800 dark:text-sky-200',
+    subtle: 'border-sky-200/70 dark:border-sky-500/40 bg-sky-50/70 dark:bg-sky-500/20 text-sky-800/80 dark:text-sky-200/80',
+    selected: 'border-sky-300 dark:border-sky-500/55 bg-sky-100/80 dark:bg-sky-500/30 text-sky-800 dark:text-sky-200',
+    unselected: 'border-sky-200/80 dark:border-sky-500/45 text-sky-700/70 dark:text-sky-300/70 hover:bg-sky-50/60 dark:hover:bg-sky-500/25',
   },
   {
-    solid: 'border-amber-200/80 bg-amber-100/75 text-amber-800',
-    subtle: 'border-amber-200/70 bg-amber-50/70 text-amber-800/80',
-    selected: 'border-amber-300 bg-amber-100/80 text-amber-800',
-    unselected: 'border-amber-200/80 text-amber-700/70 hover:bg-amber-50/60',
+    solid: 'border-amber-200/80 dark:border-amber-500/45 bg-amber-100/75 dark:bg-amber-500/25 text-amber-800 dark:text-amber-200',
+    subtle: 'border-amber-200/70 dark:border-amber-500/40 bg-amber-50/70 dark:bg-amber-500/20 text-amber-800/80 dark:text-amber-200/80',
+    selected: 'border-amber-300 dark:border-amber-500/55 bg-amber-100/80 dark:bg-amber-500/30 text-amber-800 dark:text-amber-200',
+    unselected: 'border-amber-200/80 dark:border-amber-500/45 text-amber-700/70 dark:text-amber-300/70 hover:bg-amber-50/60 dark:hover:bg-amber-500/25',
   },
   {
-    solid: 'border-rose-200/80 bg-rose-100/75 text-rose-800',
-    subtle: 'border-rose-200/70 bg-rose-50/70 text-rose-800/80',
-    selected: 'border-rose-300 bg-rose-100/80 text-rose-800',
-    unselected: 'border-rose-200/80 text-rose-700/70 hover:bg-rose-50/60',
+    solid: 'border-rose-200/80 dark:border-rose-500/45 bg-rose-100/75 dark:bg-rose-500/25 text-rose-800 dark:text-rose-200',
+    subtle: 'border-rose-200/70 dark:border-rose-500/40 bg-rose-50/70 dark:bg-rose-500/20 text-rose-800/80 dark:text-rose-200/80',
+    selected: 'border-rose-300 dark:border-rose-500/55 bg-rose-100/80 dark:bg-rose-500/30 text-rose-800 dark:text-rose-200',
+    unselected: 'border-rose-200/80 dark:border-rose-500/45 text-rose-700/70 dark:text-rose-300/70 hover:bg-rose-50/60 dark:hover:bg-rose-500/25',
   },
   {
-    solid: 'border-violet-200/80 bg-violet-100/75 text-violet-800',
-    subtle: 'border-violet-200/70 bg-violet-50/70 text-violet-800/80',
-    selected: 'border-violet-300 bg-violet-100/80 text-violet-800',
-    unselected: 'border-violet-200/80 text-violet-700/70 hover:bg-violet-50/60',
+    solid: 'border-violet-200/80 dark:border-violet-500/45 bg-violet-100/75 dark:bg-violet-500/25 text-violet-800 dark:text-violet-200',
+    subtle: 'border-violet-200/70 dark:border-violet-500/40 bg-violet-50/70 dark:bg-violet-500/20 text-violet-800/80 dark:text-violet-200/80',
+    selected: 'border-violet-300 dark:border-violet-500/55 bg-violet-100/80 dark:bg-violet-500/30 text-violet-800 dark:text-violet-200',
+    unselected: 'border-violet-200/80 dark:border-violet-500/45 text-violet-700/70 dark:text-violet-300/70 hover:bg-violet-50/60 dark:hover:bg-violet-500/25',
   },
   {
-    solid: 'border-cyan-200/80 bg-cyan-100/75 text-cyan-800',
-    subtle: 'border-cyan-200/70 bg-cyan-50/70 text-cyan-800/80',
-    selected: 'border-cyan-300 bg-cyan-100/80 text-cyan-800',
-    unselected: 'border-cyan-200/80 text-cyan-700/70 hover:bg-cyan-50/60',
+    solid: 'border-cyan-200/80 dark:border-cyan-500/45 bg-cyan-100/75 dark:bg-cyan-500/25 text-cyan-800 dark:text-cyan-200',
+    subtle: 'border-cyan-200/70 dark:border-cyan-500/40 bg-cyan-50/70 dark:bg-cyan-500/20 text-cyan-800/80 dark:text-cyan-200/80',
+    selected: 'border-cyan-300 dark:border-cyan-500/55 bg-cyan-100/80 dark:bg-cyan-500/30 text-cyan-800 dark:text-cyan-200',
+    unselected: 'border-cyan-200/80 dark:border-cyan-500/45 text-cyan-700/70 dark:text-cyan-300/70 hover:bg-cyan-50/60 dark:hover:bg-cyan-500/25',
   },
 ] as const
 
@@ -158,6 +158,16 @@ function darkerTextColorBlock(rgb: RGB, alpha: number): string {
   return rgbaBlock(darker, alpha)
 }
 
+// Pins lightness so any user hex (even navy/black) stays visible on dark surfaces
+function toneAtLightnessBlock(rgb: RGB, lightness: number, satBoost = 1.08): RGB {
+  const hsl = rgbToHslBlock(rgb)
+  return hslToRgbBlock({
+    h: hsl.h,
+    s: Math.min(100, Math.max(45, hsl.s * satBoost)),
+    l: lightness,
+  })
+}
+
 export function tagColorClassBlock(tag: string, variant: TagColorVariantBlock = 'solid'): string {
   return tagPaletteBlock(tag)[variant]
 }
@@ -171,10 +181,14 @@ export function tagColorStyleBlock(
   if (!normalized) return undefined
   const rgb = parseHexRgbBlock(normalized)
   const tone = TAG_COLOR_FALLBACK_BY_VARIANT[variant]
+  const darkBase = toneAtLightnessBlock(rgb, 58)
+  const darkText = toneAtLightnessBlock(rgb, 80, 1.2)
+  // light-dark() resolves per-element from color-scheme, which uiThemeOrch
+  // sets on the root — inline styles cannot use Tailwind dark: variants
   return {
-    backgroundColor: rgbaBlock(rgb, tone.bgAlpha),
-    borderColor: rgbaBlock(rgb, tone.borderAlpha),
-    color: darkerTextColorBlock(rgb, tone.textAlpha),
+    backgroundColor: `light-dark(${rgbaBlock(rgb, tone.bgAlpha)}, ${rgbaBlock(darkBase, Math.min(0.34, tone.bgAlpha * 1.6))})`,
+    borderColor: `light-dark(${rgbaBlock(rgb, tone.borderAlpha)}, ${rgbaBlock(darkBase, Math.min(0.7, tone.borderAlpha * 1.25))})`,
+    color: `light-dark(${darkerTextColorBlock(rgb, tone.textAlpha)}, ${rgbaBlock(darkText, tone.textAlpha)})`,
   }
 }
 

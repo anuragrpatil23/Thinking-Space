@@ -34,9 +34,9 @@ function formatLatency(ms: number): string {
 }
 
 function statusPill(status: TelemetryEntry['status']): string {
-  if (status === 'ok') return 'bg-emerald-500/10 text-emerald-500'
-  if (status === 'cache-hit') return 'bg-blue-500/10 text-blue-500'
-  return 'bg-red-500/10 text-red-500'
+  if (status === 'ok') return 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-500'
+  if (status === 'cache-hit') return 'bg-blue-500/10 dark:bg-blue-500/20 text-blue-500'
+  return 'bg-red-500/10 dark:bg-red-500/20 text-red-500'
 }
 
 export default function IntelligenceDiagnosticsBlock() {
@@ -115,7 +115,7 @@ export default function IntelligenceDiagnosticsBlock() {
                 <div className="font-medium">{PROVIDER_LABELS[p.id]}</div>
                 <div
                   className={`rounded-full px-2 py-0.5 text-xs ${
-                    p.available ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
+                    p.available ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-500' : 'bg-red-500/10 dark:bg-red-500/20 text-red-500'
                   }`}
                 >
                   {p.available ? 'ready' : p.configured ? 'unreachable' : 'not configured'}

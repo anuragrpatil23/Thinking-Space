@@ -240,7 +240,7 @@ export default function ReadingSessionEditModalBlock({
           </div>
 
           {absorbCount > 0 && isValid && (
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/20 px-2.5 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
               Absorbs {absorbCount} other {absorbCount === 1 ? 'record' : 'records'} of <em>{chain.project}</em> on save.
             </div>
           )}
@@ -252,7 +252,7 @@ export default function ReadingSessionEditModalBlock({
           )}
 
           {error && (
-            <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-700 dark:text-rose-300">
+            <div className="rounded-md border border-rose-500/30 bg-rose-500/10 dark:bg-rose-500/20 px-2.5 py-1.5 text-[11px] text-rose-700 dark:text-rose-300">
               {error}
             </div>
           )}

@@ -240,19 +240,19 @@ export default function FormatExcalidraw() {
 
           {/* Error */}
           {error && (
-            <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+            <div className="p-4 rounded-lg bg-red-50 dark:bg-red-500/20 border border-red-200 dark:border-red-500/45 text-red-700 dark:text-red-300 text-sm">
               {error}
             </div>
           )}
 
           {/* Success */}
           {result?.success && (
-            <div className="p-4 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm">
+            <div className="p-4 rounded-lg bg-green-50 dark:bg-green-500/20 border border-green-200 dark:border-green-500/45 text-green-700 dark:text-green-300 text-sm">
               <div className="flex items-center gap-2 font-medium">
                 <Check className="h-4 w-4" />
                 File formatted successfully
               </div>
-              <div className="mt-2 text-green-600">
+              <div className="mt-2 text-green-600 dark:text-green-400">
                 Saved to: <span className="font-mono">{result.output_path}</span>
               </div>
             </div>

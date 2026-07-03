@@ -682,7 +682,7 @@ export default function NodeDetailPanelBlock({
               variant="outline"
               onClick={handleManualSaveClick}
               disabled={notesSaving}
-              className={manualSaveFeedbackVisible && !notesSaving ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15' : undefined}
+              className={manualSaveFeedbackVisible && !notesSaving ? 'border-emerald-500/40 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15' : undefined}
             >
               {notesSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : manualSaveFeedbackVisible ? 'Saved' : 'Save'}
             </Button>

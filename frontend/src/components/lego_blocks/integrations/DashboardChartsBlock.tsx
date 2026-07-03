@@ -56,21 +56,21 @@ const ACCENTS: Record<AccentKey, { stroke: string; gradFrom: string; gradTo: str
     gradFrom: 'rgba(56,189,248,0.55)',
     gradTo: 'rgba(56,189,248,0)',
     chip: 'text-sky-300',
-    chipActive: 'bg-sky-500/15 text-sky-200 ring-sky-400/30',
+    chipActive: 'bg-sky-500/15 dark:bg-sky-500/25 text-sky-200 ring-sky-400/30',
   },
   amber: {
     stroke: 'rgb(251,191,36)',
     gradFrom: 'rgba(251,191,36,0.55)',
     gradTo: 'rgba(251,191,36,0)',
     chip: 'text-amber-300',
-    chipActive: 'bg-amber-500/15 text-amber-200 ring-amber-400/30',
+    chipActive: 'bg-amber-500/15 dark:bg-amber-500/25 text-amber-200 ring-amber-400/30',
   },
   violet: {
     stroke: 'rgb(167,139,250)',
     gradFrom: 'rgba(167,139,250,0.55)',
     gradTo: 'rgba(167,139,250,0)',
     chip: 'text-violet-300',
-    chipActive: 'bg-violet-500/15 text-violet-200 ring-violet-400/30',
+    chipActive: 'bg-violet-500/15 dark:bg-violet-500/25 text-violet-200 ring-violet-400/30',
   },
 }
 

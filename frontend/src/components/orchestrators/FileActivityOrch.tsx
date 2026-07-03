@@ -287,8 +287,8 @@ export default function FileActivityOrch() {
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
-                <MetricBlock label="Files created" value={summaryCreated} className="text-emerald-600" />
-                <MetricBlock label="Files modified" value={summaryModified} className="text-blue-600" />
+                <MetricBlock label="Files created" value={summaryCreated} className="text-emerald-600 dark:text-emerald-400" />
+                <MetricBlock label="Files modified" value={summaryModified} className="text-blue-600 dark:text-blue-400" />
                 <MetricBlock label="Active days" value={activeDays} />
                 <MetricBlock
                   label="Most active day"

@@ -98,7 +98,7 @@ export default function AiTelemetryPanelBlock({
                     <td className="py-2 pr-3 text-muted-foreground">{formatTokens(event)}</td>
                     <td className="py-2 pr-3 text-muted-foreground">{event.latencyMs ?? '-'} ms</td>
                     <td className="py-2">
-                      <span className={event.status === 'success' ? 'text-emerald-600' : 'text-destructive'}>
+                      <span className={event.status === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive'}>
                         {event.status}
                       </span>
                     </td>

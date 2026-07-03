@@ -120,7 +120,7 @@ export default function OrganizerIntegrityOrch() {
           {(message || error) && (
             <div className="space-y-2">
               {message && (
-                <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
+                <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/20 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
                   {message}
                 </div>
               )}
@@ -159,7 +159,7 @@ export default function OrganizerIntegrityOrch() {
         </CardHeader>
         <CardContent>
           {sortedIssues.length === 0 ? (
-            <div className="flex items-center gap-2 text-sm text-emerald-700">
+            <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
               <CheckCircle2 className="h-4 w-4" />
               No integrity issues detected.
             </div>
@@ -171,7 +171,7 @@ export default function OrganizerIntegrityOrch() {
                     {issue.severity === 'error' ? (
                       <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
                     ) : (
-                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
                     )}
                     <span className="font-medium uppercase tracking-wide text-muted-foreground">{issue.kind}</span>
                   </div>

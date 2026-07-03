@@ -51,21 +51,21 @@ const LEVEL_CONFIG: Record<DebugLogLevel, {
 }> = {
   error: {
     icon: AlertCircle,
-    badge: 'bg-red-500/15 text-red-600 dark:text-red-300 border-red-500/30',
+    badge: 'bg-red-500/15 dark:bg-red-500/25 text-red-600 dark:text-red-300 border-red-500/30',
     text: 'text-red-500 dark:text-red-400',
     rail: 'bg-red-500',
     bg: 'hover:bg-red-500/[0.04]',
   },
   warn: {
     icon: AlertTriangle,
-    badge: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+    badge: 'bg-amber-500/15 dark:bg-amber-500/25 text-amber-700 dark:text-amber-300 border-amber-500/30',
     text: 'text-amber-600 dark:text-amber-400',
     rail: 'bg-amber-500',
     bg: 'hover:bg-amber-500/[0.04]',
   },
   info: {
     icon: Info,
-    badge: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
+    badge: 'bg-blue-500/15 dark:bg-blue-500/25 text-blue-700 dark:text-blue-300 border-blue-500/30',
     text: 'text-blue-600 dark:text-blue-400',
     rail: 'bg-blue-500',
     bg: 'hover:bg-blue-500/[0.04]',

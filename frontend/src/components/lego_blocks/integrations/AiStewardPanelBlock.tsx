@@ -209,7 +209,7 @@ export default function AiStewardPanelBlock({
       </div>
 
       {message && (
-        <div className="inline-flex h-8 items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 text-xs text-emerald-700">
+        <div className="inline-flex h-8 items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/20 px-2.5 text-xs text-emerald-700 dark:text-emerald-300">
           {message}
         </div>
       )}

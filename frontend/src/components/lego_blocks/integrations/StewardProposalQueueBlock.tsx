@@ -181,9 +181,9 @@ export default function StewardProposalQueueBlock({
                     <span
                       className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
                         proposal.status === 'pending'
-                          ? 'bg-amber-500/15 text-amber-700'
+                          ? 'bg-amber-500/15 dark:bg-amber-500/25 text-amber-700 dark:text-amber-300'
                           : proposal.status === 'accepted'
-                            ? 'bg-emerald-500/15 text-emerald-700'
+                            ? 'bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300'
                             : 'bg-muted text-muted-foreground'
                       }`}
                     >

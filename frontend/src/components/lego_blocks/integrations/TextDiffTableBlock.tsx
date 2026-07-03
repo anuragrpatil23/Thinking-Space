@@ -3,9 +3,9 @@ import { buildAiAssistDiffBlock } from '@/services/lego_blocks/units/aiAssistDif
 
 function diffRowClass(kind: 'unchanged' | 'changed' | 'added' | 'removed'): string {
   if (kind === 'unchanged') return ''
-  if (kind === 'added') return 'bg-emerald-500/10'
+  if (kind === 'added') return 'bg-emerald-500/10 dark:bg-emerald-500/20'
   if (kind === 'removed') return 'bg-destructive/10'
-  return 'bg-amber-500/10'
+  return 'bg-amber-500/10 dark:bg-amber-500/20'
 }
 
 type WordOp = { kind: 'equal' | 'added' | 'removed'; text: string }

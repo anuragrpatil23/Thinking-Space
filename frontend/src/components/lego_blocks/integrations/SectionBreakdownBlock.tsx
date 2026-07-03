@@ -8,7 +8,7 @@ export interface SectionData {
 export interface TagMetric {
   label: string
   value: number
-  color: string // tailwind text color class e.g. "text-emerald-600"
+  color: string // tailwind text color class e.g. "text-emerald-600 dark:text-emerald-400"
 }
 
 export interface TagSelectorItem {
@@ -138,8 +138,8 @@ export function sectionsToTagItems(sections: SectionData[]): TagSelectorItem[] {
   return sections.map(s => ({
     name: s.name,
     metrics: [
-      { label: `+${s.created}`, value: s.created, color: 'text-emerald-600' },
-      { label: `${s.modified} mod`, value: s.modified, color: 'text-blue-600' },
+      { label: `+${s.created}`, value: s.created, color: 'text-emerald-600 dark:text-emerald-400' },
+      { label: `${s.modified} mod`, value: s.modified, color: 'text-blue-600 dark:text-blue-400' },
     ],
   }))
 }

@@ -93,7 +93,7 @@ export default function TikzDiagramBlock({ source, className }: TikzDiagramBlock
         <div className="text-sm text-muted-foreground">Rendering TikZ…</div>
       )}
       {status === 'error' && (
-        <pre className="text-sm text-red-600 whitespace-pre-wrap">
+        <pre className="text-sm text-red-600 dark:text-red-400 whitespace-pre-wrap">
 {`TikZ render failed: ${errorMessage ?? 'unknown error'}
 
 ${source}`}

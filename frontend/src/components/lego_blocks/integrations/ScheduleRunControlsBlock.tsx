@@ -260,9 +260,9 @@ export default function ScheduleRunControlsBlock({ spec, onChanged }: Props) {
             <span
               className={cn(
                 'rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider',
-                pill.tone === 'good' && 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-                pill.tone === 'warn' && 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
-                pill.tone === 'info' && 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
+                pill.tone === 'good' && 'bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300',
+                pill.tone === 'warn' && 'bg-amber-500/15 dark:bg-amber-500/25 text-amber-700 dark:text-amber-300',
+                pill.tone === 'info' && 'bg-sky-500/15 dark:bg-sky-500/25 text-sky-700 dark:text-sky-300',
                 pill.tone === 'muted' && 'bg-muted text-muted-foreground',
               )}
             >

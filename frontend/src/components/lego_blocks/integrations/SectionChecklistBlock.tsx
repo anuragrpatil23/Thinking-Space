@@ -72,8 +72,8 @@ function toTagItems(sections: ChecklistSection[]): TagSelectorItem[] {
   return sections.map((section) => ({
     name: section.name,
     metrics: [
-      { label: `${section.done} done`, value: section.done, color: 'text-violet-600' },
-      { label: `${section.pending} todo`, value: section.pending, color: 'text-orange-600' },
+      { label: `${section.done} done`, value: section.done, color: 'text-violet-600 dark:text-violet-400' },
+      { label: `${section.pending} todo`, value: section.pending, color: 'text-orange-600 dark:text-orange-400' },
     ],
   }))
 }
@@ -353,8 +353,8 @@ export default function SectionChecklistBlock({
             <CardContent className="space-y-5">
               <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
                 <MetricBlock label="Total items" value={monthData.total} />
-                <MetricBlock label="Done" value={monthData.done} className="text-violet-600" />
-                <MetricBlock label="Pending" value={monthData.pending} className="text-orange-600" />
+                <MetricBlock label="Done" value={monthData.done} className="text-violet-600 dark:text-violet-400" />
+                <MetricBlock label="Pending" value={monthData.pending} className="text-orange-600 dark:text-orange-400" />
                 <MetricBlock label="Active days" value={activeDays} />
               </div>
 

@@ -19,23 +19,23 @@ export function iconForNodeType(type: NodeType): ComponentType<{ className?: str
 }
 
 export function iconColorForNodeType(type: NodeType): string {
-  if (type === 'program') return 'text-sky-600'
-  if (type === 'epic') return 'text-violet-600'
-  if (type === 'idea_bucket') return 'text-indigo-600'
-  if (type === 'idea') return 'text-amber-600'
-  if (type === 'thought_bucket') return 'text-emerald-600'
-  if (type === 'thought') return 'text-cyan-600'
-  if (type === 'task') return 'text-rose-600'
-  if (type === 'run') return 'text-blue-700'
-  if (type === 'handoff') return 'text-fuchsia-700'
+  if (type === 'program') return 'text-sky-600 dark:text-sky-400'
+  if (type === 'epic') return 'text-violet-600 dark:text-violet-400'
+  if (type === 'idea_bucket') return 'text-indigo-600 dark:text-indigo-400'
+  if (type === 'idea') return 'text-amber-600 dark:text-amber-400'
+  if (type === 'thought_bucket') return 'text-emerald-600 dark:text-emerald-400'
+  if (type === 'thought') return 'text-cyan-600 dark:text-cyan-400'
+  if (type === 'task') return 'text-rose-600 dark:text-rose-400'
+  if (type === 'run') return 'text-blue-700 dark:text-blue-300'
+  if (type === 'handoff') return 'text-fuchsia-700 dark:text-fuchsia-300'
   return 'text-muted-foreground'
 }
 
 export const TASK_STATUS_COLORS = {
-  ready: 'bg-indigo-500/15 text-indigo-700',
-  in_progress: 'bg-emerald-500/15 text-emerald-700',
-  blocked: 'bg-amber-500/15 text-amber-700',
-  done: 'bg-blue-500/15 text-blue-700',
+  ready: 'bg-indigo-500/15 dark:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300',
+  in_progress: 'bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300',
+  blocked: 'bg-amber-500/15 dark:bg-amber-500/25 text-amber-700 dark:text-amber-300',
+  done: 'bg-blue-500/15 dark:bg-blue-500/25 text-blue-700 dark:text-blue-300',
   cancelled: 'bg-zinc-500/15 text-zinc-500',
 } as const
 
@@ -66,21 +66,21 @@ export const EPIC_BORDER_PALETTE = [
 ]
 
 export const EPIC_ICON_COLOR_BY_BORDER: Record<string, string> = {
-  'border-l-blue-500': 'text-blue-600',
-  'border-l-violet-500': 'text-violet-600',
-  'border-l-emerald-500': 'text-emerald-600',
-  'border-l-amber-500': 'text-amber-600',
-  'border-l-rose-500': 'text-rose-600',
-  'border-l-cyan-500': 'text-cyan-600',
-  'border-l-fuchsia-500': 'text-fuchsia-600',
-  'border-l-lime-500': 'text-lime-600',
-  'border-l-sky-500': 'text-sky-600',
-  'border-l-purple-500': 'text-purple-600',
-  'border-l-red-500': 'text-red-600',
-  'border-l-teal-500': 'text-teal-600',
-  'border-l-indigo-500': 'text-indigo-600',
-  'border-l-pink-500': 'text-pink-600',
-  'border-l-orange-500': 'text-orange-600',
+  'border-l-blue-500': 'text-blue-600 dark:text-blue-400',
+  'border-l-violet-500': 'text-violet-600 dark:text-violet-400',
+  'border-l-emerald-500': 'text-emerald-600 dark:text-emerald-400',
+  'border-l-amber-500': 'text-amber-600 dark:text-amber-400',
+  'border-l-rose-500': 'text-rose-600 dark:text-rose-400',
+  'border-l-cyan-500': 'text-cyan-600 dark:text-cyan-400',
+  'border-l-fuchsia-500': 'text-fuchsia-600 dark:text-fuchsia-400',
+  'border-l-lime-500': 'text-lime-600 dark:text-lime-400',
+  'border-l-sky-500': 'text-sky-600 dark:text-sky-400',
+  'border-l-purple-500': 'text-purple-600 dark:text-purple-400',
+  'border-l-red-500': 'text-red-600 dark:text-red-400',
+  'border-l-teal-500': 'text-teal-600 dark:text-teal-400',
+  'border-l-indigo-500': 'text-indigo-600 dark:text-indigo-400',
+  'border-l-pink-500': 'text-pink-600 dark:text-pink-400',
+  'border-l-orange-500': 'text-orange-600 dark:text-orange-400',
 }
 
 export const NEW_ROW_HIGHLIGHT_MS = 2200

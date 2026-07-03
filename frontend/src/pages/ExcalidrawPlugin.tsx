@@ -13,15 +13,15 @@ function statusPill(status: ExcalidrawPluginStatus | null): { label: string; cla
     return { label: 'Unknown', className: 'bg-muted text-muted-foreground' }
   }
   if (!status.installed) {
-    return { label: 'Not Installed', className: 'bg-amber-500/10 text-amber-700 dark:text-amber-300' }
+    return { label: 'Not Installed', className: 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300' }
   }
   if (status.update_available) {
-    return { label: 'Update Available', className: 'bg-blue-500/10 text-blue-700 dark:text-blue-300' }
+    return { label: 'Update Available', className: 'bg-blue-500/10 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300' }
   }
   if (!status.enabled) {
-    return { label: 'Installed (Disabled)', className: 'bg-amber-500/10 text-amber-700 dark:text-amber-300' }
+    return { label: 'Installed (Disabled)', className: 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300' }
   }
-  return { label: 'Up To Date', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' }
+  return { label: 'Up To Date', className: 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' }
 }
 
 function formatPublishedAt(value: string | null): string {
@@ -169,13 +169,13 @@ export default function ExcalidrawPlugin() {
           </Card>
 
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <div className="rounded-lg border border-red-200 dark:border-red-500/45 bg-red-50 dark:bg-red-500/20 p-4 text-sm text-red-700 dark:text-red-300">
               {error}
             </div>
           )}
 
           {lastActionMessage && (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-500/45 bg-emerald-50 dark:bg-emerald-500/20 p-4 text-sm text-emerald-700 dark:text-emerald-300">
               {lastActionMessage}
             </div>
           )}

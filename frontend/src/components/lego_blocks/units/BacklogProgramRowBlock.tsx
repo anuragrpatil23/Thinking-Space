@@ -193,7 +193,7 @@ export function BacklogProgramRowBlock({
         dragOver && 'ring-2 ring-primary/40 bg-primary/5',
         dragOver && dragOverEdge === 'before' && 'shadow-[inset_0_2px_0_rgba(59,130,246,0.7)]',
         dragOver && dragOverEdge === 'after' && 'shadow-[inset_0_-2px_0_rgba(59,130,246,0.7)]',
-        newlyCreated && 'bg-emerald-100/80 ring-2 ring-emerald-400/70',
+        newlyCreated && 'bg-emerald-100/80 dark:bg-emerald-500/30 ring-2 ring-emerald-400/70',
       )}
       onClick={onSelectProgram}
     >
@@ -243,7 +243,7 @@ export function BacklogProgramRowBlock({
           </div>
         )
       )}
-      {showNodeTypeIcon && <FolderTree className="h-4 w-4 shrink-0 text-sky-600" />}
+      {showNodeTypeIcon && <FolderTree className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />}
       <div className={cn(
         'min-w-0 flex gap-2',
         titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',

@@ -1083,7 +1083,7 @@ export default function VaultExplorerBlock({
               key={`file-${filePath}`}
               className={cn(
                 'ltm-explorer-row ltm-explorer-file-row flex w-full items-center gap-2 rounded-md border border-[#c73773]/95 bg-[#c73773] px-2 py-1.5 text-[13px] text-white',
-                canDropOnRows && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/10',
+                canDropOnRows && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/10 dark:bg-blue-500/20',
               )}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
               data-path={filePath}

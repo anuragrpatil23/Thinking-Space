@@ -164,7 +164,7 @@ export default function ExtensionBuilderOrch() {
       )}
 
       {saveMessage && (
-        <div className="flex items-center gap-2 rounded-md border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-700">
+        <div className="flex items-center gap-2 rounded-md border border-green-500/40 bg-green-500/10 dark:bg-green-500/20 px-3 py-2 text-sm text-green-700 dark:text-green-300">
           <CheckCircle2 className="h-4 w-4" />
           {saveMessage}
         </div>

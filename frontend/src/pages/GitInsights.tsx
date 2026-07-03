@@ -132,12 +132,12 @@ function GitActivityTab() {
               <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
                 <MetricBlock label="Total commits" value={fmt(data.summary.total_commits)} />
                 <MetricBlock label="Unique files" value={fmt(data.summary.unique_files)} />
-                <MetricBlock label="Lines added" value={`+${fmt(data.summary.additions)}`} className="text-emerald-600" />
-                <MetricBlock label="Lines removed" value={`-${fmt(data.summary.deletions)}`} className="text-rose-600" />
+                <MetricBlock label="Lines added" value={`+${fmt(data.summary.additions)}`} className="text-emerald-600 dark:text-emerald-400" />
+                <MetricBlock label="Lines removed" value={`-${fmt(data.summary.deletions)}`} className="text-rose-600 dark:text-rose-400" />
                 <MetricBlock
                   label="Net change"
                   value={`${data.summary.net_change >= 0 ? '+' : ''}${fmt(data.summary.net_change)}`}
-                  className={data.summary.net_change >= 0 ? 'text-emerald-600' : 'text-rose-600'}
+                  className={data.summary.net_change >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}
                 />
               </div>
             </CardContent>
@@ -157,8 +157,8 @@ function GitActivityTab() {
                 <MetricBlock label="Commits" value={fmt(data.pulse.commits)} />
                 <MetricBlock label="Authors" value={fmt(data.pulse.authors)} />
                 <MetricBlock label="Files changed" value={fmt(data.pulse.files_changed)} />
-                <MetricBlock label="Additions" value={`+${fmt(data.pulse.additions)}`} className="text-emerald-600" />
-                <MetricBlock label="Deletions" value={`-${fmt(data.pulse.deletions)}`} className="text-rose-600" />
+                <MetricBlock label="Additions" value={`+${fmt(data.pulse.additions)}`} className="text-emerald-600 dark:text-emerald-400" />
+                <MetricBlock label="Deletions" value={`-${fmt(data.pulse.deletions)}`} className="text-rose-600 dark:text-rose-400" />
               </div>
             </CardContent>
           </Card>
@@ -283,8 +283,8 @@ function GitActivityTab() {
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <span>{file.edits} edits</span>
-                      <span className="text-emerald-600">+{fmt(file.additions)}</span>
-                      <span className="text-rose-600">-{fmt(file.deletions)}</span>
+                      <span className="text-emerald-600 dark:text-emerald-400">+{fmt(file.additions)}</span>
+                      <span className="text-rose-600 dark:text-rose-400">-{fmt(file.deletions)}</span>
                     </div>
                   </div>
                 ))}

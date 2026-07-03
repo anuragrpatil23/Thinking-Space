@@ -47,7 +47,7 @@ export default function LinkedItemChipsBlock({
           {onOpenItem ? (
             <button
               type="button"
-              className={cn('max-w-[13rem] truncate text-blue-700 hover:underline', labelClassName)}
+              className={cn('max-w-[13rem] truncate text-blue-700 dark:text-blue-300 hover:underline', labelClassName)}
               onClick={(event) => onOpenItem(item.path, event)}
             >
               {item.label}

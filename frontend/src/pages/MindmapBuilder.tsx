@@ -368,13 +368,13 @@ export default function MindmapBuilder() {
           </Card>
 
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <div className="rounded-lg border border-red-200 dark:border-red-500/45 bg-red-50 dark:bg-red-500/20 p-4 text-sm text-red-700 dark:text-red-300">
               {error}
             </div>
           )}
 
           {message && (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-500/45 bg-emerald-50 dark:bg-emerald-500/20 p-4 text-sm text-emerald-700 dark:text-emerald-300">
               {message}
             </div>
           )}

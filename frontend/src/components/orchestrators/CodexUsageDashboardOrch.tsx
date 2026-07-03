@@ -53,17 +53,17 @@ function formatHostname(value: string): string {
 
 function sessionBadgeClassName(result: CodexUsageProbeResultBlock | null | undefined): string {
   if (!result || result.sessionState === 'loading' || result.sessionState === 'unknown') return ''
-  if (result.sessionState === 'ready') return 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'
-  if (result.sessionState === 'needs_login') return 'bg-rose-500/10 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400'
+  if (result.sessionState === 'ready') return 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/25 dark:text-emerald-400'
+  if (result.sessionState === 'needs_login') return 'bg-rose-500/10 text-rose-600 dark:bg-rose-500/25 dark:text-rose-400'
   if (result.sessionState === 'error') return 'bg-destructive/10 text-destructive'
   return ''
 }
 
 function cliBadgeClassName(status: CodexProfileRuntimeStatusBlock | null): string {
   if (!status) return ''
-  if (status.active && status.hasAuthFile) return 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'
-  if (status.hasAuthFile) return 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400'
-  if (status.exists) return 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400'
+  if (status.active && status.hasAuthFile) return 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/25 dark:text-emerald-400'
+  if (status.hasAuthFile) return 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/25 dark:text-blue-400'
+  if (status.exists) return 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/25 dark:text-amber-400'
   return ''
 }
 
@@ -234,7 +234,7 @@ export default function CodexUsageDashboardOrch() {
           </div>
 
           {activationNote && (
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
               {activationNote}
             </div>
           )}

@@ -62,7 +62,7 @@ export default function WebullStudyBlock() {
       )}
 
       {snapshot && snapshot.warnings.length > 0 && (
-        <details className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+        <details className="rounded-md border border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/20 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
           <summary className="cursor-pointer text-xs font-medium">
             {snapshot.warnings.length} warning{snapshot.warnings.length === 1 ? '' : 's'}
           </summary>

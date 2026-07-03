@@ -449,7 +449,7 @@ function ChainTopicCellBlock({
     >
       {isReconstructed && (
         <span
-          className="mr-1.5 rounded bg-amber-500/15 px-1 py-px text-[9px] uppercase tracking-[0.08em] text-amber-500/90"
+          className="mr-1.5 rounded bg-amber-500/15 dark:bg-amber-500/25 px-1 py-px text-[9px] uppercase tracking-[0.08em] text-amber-500/90"
           title="Rebuilt from the prompt history log — the original transcript was deleted by Claude Code's cleanup. Times and prompt counts are real; tokens and assistant turns are gone."
         >
           rebuilt

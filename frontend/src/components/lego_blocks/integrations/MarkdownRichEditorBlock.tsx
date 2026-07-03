@@ -1305,7 +1305,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
             )}
             <span className={cn(
               'text-xs',
-              aiStateBusy ? 'text-amber-700' : 'text-muted-foreground',
+              aiStateBusy ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground',
             )}>
               {`State: ${aiStateLabel}`}
             </span>
@@ -1323,7 +1323,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
             {assistResultPill && (
               <span className={cn(
                 'inline-flex h-8 items-center rounded-md border px-2 text-xs',
-                assistResultPill.tone === 'success' && 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700',
+                assistResultPill.tone === 'success' && 'border-emerald-500/40 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300',
                 assistResultPill.tone === 'error' && 'border-destructive/40 bg-destructive/10 text-destructive',
                 assistResultPill.tone === 'neutral' && 'border-border/60 bg-background text-muted-foreground',
               )}>
@@ -1413,7 +1413,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
                   <button
                     type="button"
                     onClick={acceptAllInlineDiffHunks}
-                    className="inline-flex h-8 items-center rounded-md border border-emerald-500/50 bg-emerald-500/10 px-3 text-xs text-emerald-700"
+                    className="inline-flex h-8 items-center rounded-md border border-emerald-500/50 bg-emerald-500/10 dark:bg-emerald-500/20 px-3 text-xs text-emerald-700 dark:text-emerald-300"
                   >
                     Accept all
                   </button>

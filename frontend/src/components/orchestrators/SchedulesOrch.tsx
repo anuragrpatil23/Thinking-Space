@@ -55,7 +55,7 @@ export default function SchedulesOrch(_props: SchedulesOrchProps) {
             </p>
           </header>
 
-          <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
+          <div className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-900 dark:text-amber-200">
             <strong className="font-semibold">Heads up:</strong> Scheduled jobs run through Thinking Space itself, so the app needs to be running at the scheduled time. Quitting the app pauses your schedules.
           </div>
 

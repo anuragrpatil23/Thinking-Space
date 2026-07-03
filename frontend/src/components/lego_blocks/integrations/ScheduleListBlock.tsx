@@ -110,8 +110,8 @@ export default function ScheduleListBlock({ onRefresh }: ScheduleListBlockProps)
             const pill = !enabled
               ? { text: 'Off', cls: 'bg-muted text-muted-foreground' }
               : status.loaded
-                ? { text: '●', cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' }
-                : { text: '!', cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' }
+                ? { text: '●', cls: 'bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300' }
+                : { text: '!', cls: 'bg-amber-500/15 dark:bg-amber-500/25 text-amber-700 dark:text-amber-300' }
             return (
               <Link
                 key={spec.key}

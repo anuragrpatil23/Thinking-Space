@@ -3042,7 +3042,7 @@ function App() {
               if (!hasAnyError) return null
 
               return (
-                <div className="rounded-md bg-red-50 p-2 text-[10px] text-red-700">
+                <div className="rounded-md bg-red-50 dark:bg-red-500/20 p-2 text-[10px] text-red-700 dark:text-red-300">
                   {(syncActionError || syncEntryErrors.length > 0) && (
                     <div>
                       <p className="font-semibold uppercase tracking-[0.12em]">Sync Errors</p>

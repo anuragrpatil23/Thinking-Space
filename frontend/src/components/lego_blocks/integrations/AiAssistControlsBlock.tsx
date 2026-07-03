@@ -75,7 +75,7 @@ export default function AiAssistControlsBlock({
           <span
             className={cn(
               'inline-flex h-8 items-center rounded-md border px-2 text-xs',
-              statusPill.tone === 'success' && 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700',
+              statusPill.tone === 'success' && 'border-emerald-500/40 bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300',
               statusPill.tone === 'error' && 'border-destructive/40 bg-destructive/10 text-destructive',
               statusPill.tone === 'neutral' && 'border-border/60 bg-background text-muted-foreground',
             )}

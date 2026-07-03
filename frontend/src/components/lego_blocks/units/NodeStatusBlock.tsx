@@ -10,14 +10,14 @@ import { NODE_STATUSES, type NodeStatus } from '@/services/lego_blocks/units/yam
 export const NODE_STATUS_OPTIONS_BLOCK: NodeStatus[] = [...NODE_STATUSES]
 
 export const NODE_STATUS_COLOR_CLASSES_BLOCK: Record<NodeStatus, string> = {
-  active: 'bg-emerald-500/15 text-emerald-700',
-  paused: 'bg-amber-500/15 text-amber-700',
-  incomplete: 'bg-orange-500/15 text-orange-700',
-  taken: 'bg-emerald-500/15 text-emerald-700',
-  planned: 'bg-orange-500/15 text-orange-700',
-  watchlist: 'bg-amber-500/15 text-amber-700',
-  completed: 'bg-blue-500/15 text-blue-700',
-  cancelled: 'bg-rose-500/15 text-rose-700',
+  active: 'bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300',
+  paused: 'bg-amber-500/15 dark:bg-amber-500/25 text-amber-700 dark:text-amber-300',
+  incomplete: 'bg-orange-500/15 dark:bg-orange-500/25 text-orange-700 dark:text-orange-300',
+  taken: 'bg-emerald-500/15 dark:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300',
+  planned: 'bg-orange-500/15 dark:bg-orange-500/25 text-orange-700 dark:text-orange-300',
+  watchlist: 'bg-amber-500/15 dark:bg-amber-500/25 text-amber-700 dark:text-amber-300',
+  completed: 'bg-blue-500/15 dark:bg-blue-500/25 text-blue-700 dark:text-blue-300',
+  cancelled: 'bg-rose-500/15 dark:bg-rose-500/25 text-rose-700 dark:text-rose-300',
   archived: 'bg-zinc-500/15 text-zinc-500',
 }
 

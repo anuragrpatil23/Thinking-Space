@@ -1127,7 +1127,7 @@ function TableDocumentBlock({
       {(saveError || successMessage || conflict) && (
         <div className="border-t border-border/50 px-5 py-2.5 text-sm">
           {saveError && <div className="text-destructive">{saveError}</div>}
-          {successMessage && <div className="text-emerald-700">{successMessage}</div>}
+          {successMessage && <div className="text-emerald-700 dark:text-emerald-300">{successMessage}</div>}
           {conflict && (
             <button
               type="button"

@@ -342,7 +342,7 @@ export default function AiSettingsOrch() {
       {(message || error) && (
         <div className="space-y-2">
           {message && (
-            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
+            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/20 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
               {message}
             </div>
           )}

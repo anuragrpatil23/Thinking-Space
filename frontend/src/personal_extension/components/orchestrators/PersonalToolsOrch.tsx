@@ -375,8 +375,8 @@ export default function PersonalToolsOrch() {
             </div>
 
             {documentLoading && <p className="text-xs text-muted-foreground">Reading headings from the selected file…</p>}
-            {bootstrapError && <p className="text-sm text-red-600">{bootstrapError}</p>}
-            {documentError && <p className="text-sm text-red-600">{documentError}</p>}
+            {bootstrapError && <p className="text-sm text-red-600 dark:text-red-400">{bootstrapError}</p>}
+            {documentError && <p className="text-sm text-red-600 dark:text-red-400">{documentError}</p>}
           </CardContent>
         </Card>
 
@@ -489,7 +489,7 @@ export default function PersonalToolsOrch() {
                           <td className={`px-3 py-3 align-top text-foreground ${rowBorderClassName}`}>
                             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                               {assigned && (
-                                <span className="rounded-full bg-emerald-100 px-2 py-1 font-medium text-emerald-700">
+                                <span className="rounded-full bg-emerald-100 dark:bg-emerald-500/30 px-2 py-1 font-medium text-emerald-700 dark:text-emerald-300">
                                   Assigned
                                 </span>
                               )}
@@ -507,7 +507,7 @@ export default function PersonalToolsOrch() {
                               onValueChange={(value) => handleAssignmentChange(heading.id, value)}
                               disabled={dropdownValues.length === 0}
                             >
-                              <SelectTrigger className={assigned ? 'border-emerald-300 bg-white shadow-sm focus:ring-emerald-500 dark:bg-background' : 'border-slate-200 bg-white shadow-sm dark:border-border dark:bg-background'}>
+                              <SelectTrigger className={assigned ? 'border-emerald-300 dark:border-emerald-500/55 bg-white shadow-sm focus:ring-emerald-500 dark:bg-background' : 'border-slate-200 bg-white shadow-sm dark:border-border dark:bg-background'}>
                                 <SelectValue placeholder={dropdownValues.length === 0 ? 'Add values first' : 'Choose a value'} />
                               </SelectTrigger>
                               <SelectContent>

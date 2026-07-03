@@ -402,7 +402,7 @@ export default function MarkdownMindmapPanelBlock({
           </div>
         )}
         {mindmapMessage && (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          <div className="rounded-lg border border-emerald-200 dark:border-emerald-500/45 bg-emerald-50 dark:bg-emerald-500/20 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
             {mindmapMessage}
           </div>
         )}
