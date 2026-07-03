@@ -1,5 +1,7 @@
-import { memo, useEffect, useState } from 'react'
-import DashboardChartsBlock from '@/components/lego_blocks/integrations/DashboardChartsBlock'
+import { Suspense, lazy, memo, useEffect, useState } from 'react'
+
+// Code-split boundary: keeps recharts out of the startup bundle.
+const DashboardChartsBlock = lazy(() => import('@/components/lego_blocks/integrations/DashboardChartsBlock'))
 import ThisWeekDigestBlock from '@/components/lego_blocks/integrations/ThisWeekDigestBlock'
 import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
@@ -139,14 +141,16 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
       </FloatingPanel>
 
       <FloatingPanel {...charts} theme={theme}>
-        <DashboardChartsBlock
-          series={activity.series}
-          loading={activity.loading}
-          error={activity.error}
-          preset={activity.preset}
-          onPresetChange={activity.setPreset}
-          showDailyHighlights={showDailyHighlights}
-        />
+        <Suspense fallback={null}>
+          <DashboardChartsBlock
+            series={activity.series}
+            loading={activity.loading}
+            error={activity.error}
+            preset={activity.preset}
+            onPresetChange={activity.setPreset}
+            showDailyHighlights={showDailyHighlights}
+          />
+        </Suspense>
       </FloatingPanel>
 
       <FloatingPanel {...thisWeek} theme={theme}>

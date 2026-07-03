@@ -14,7 +14,7 @@ import CascadingFolderPicker, {
 } from '@/components/lego_blocks/integrations/CascadingFolderPickerBlock'
 import EmotionTagger from '@/components/lego_blocks/integrations/EmotionTaggerBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
-import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
+import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorLazyBlock'
 import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
 import CanvasSurfaceOrch from '@/components/orchestrators/CanvasSurfaceOrch'
 import BacklogCanvasAnchorBlock from '@/components/lego_blocks/integrations/BacklogCanvasAnchorBlock'

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDays, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -12,10 +12,11 @@ import {
 } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import AiActivityHeatmapBlock from '@/components/lego_blocks/units/AiActivityHeatmapBlock'
 import AiActivityProjectChipsBlock from '@/components/lego_blocks/units/AiActivityProjectChipsBlock'
-import AiActivityTrendChartBlock from '@/components/lego_blocks/units/AiActivityTrendChartBlock'
+// Code-split boundaries: these two pull recharts; keep it out of the startup bundle.
+const AiActivityTrendChartBlock = lazy(() => import('@/components/lego_blocks/units/AiActivityTrendChartBlock'))
 import AiActivityDayTableBlock from '@/components/lego_blocks/units/AiActivityDayTableBlock'
 import AiActivityDayTimelineBlock from '@/components/lego_blocks/units/AiActivityDayTimelineBlock'
-import AiActivityAggregateBlock from '@/components/lego_blocks/units/AiActivityAggregateBlock'
+const AiActivityAggregateBlock = lazy(() => import('@/components/lego_blocks/units/AiActivityAggregateBlock'))
 import MonthCalendar from '@/components/lego_blocks/integrations/MonthCalendarBlock'
 import {
   fmtDurationMsBlock,
@@ -355,23 +356,27 @@ export default function AiActivityPanelBlock() {
             onSelectRange={setSelectedRange}
           />
         ) : view === 'totals' ? (
-          <AiActivityAggregateBlock
-            chains={aggregateChains}
-            filterProject={activeProject}
-            onSelectRange={range => {
-              setSelectedDate(null)
-              setSelectedRange(range)
-            }}
-          />
+          <Suspense fallback={null}>
+            <AiActivityAggregateBlock
+              chains={aggregateChains}
+              filterProject={activeProject}
+              onSelectRange={range => {
+                setSelectedDate(null)
+                setSelectedRange(range)
+              }}
+            />
+          </Suspense>
         ) : (
-          <AiActivityTrendChartBlock
-            days={activity.days}
-            chains={activity.chains}
-            projects={activity.projects}
-            filterProject={activeProject}
-            selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
-          />
+          <Suspense fallback={null}>
+            <AiActivityTrendChartBlock
+              days={activity.days}
+              chains={activity.chains}
+              projects={activity.projects}
+              filterProject={activeProject}
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+            />
+          </Suspense>
         )}
       </div>
 

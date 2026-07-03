@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef } from 'react'
 import type { CanvasTile } from '@/components/lego_blocks/hooks/shared/useCanvasTilesBlock'
 import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
-import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
+import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentLazyBlock'
 import CanvasWebWidgetBlock from './CanvasWebWidgetBlock'
 import { POST_IT_PALETTE } from './postItPaletteBlock'
 

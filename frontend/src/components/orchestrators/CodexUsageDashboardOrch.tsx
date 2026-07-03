@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Clock3, ExternalLink, Fingerprint, RefreshCw, ShieldCheck, TerminalSquare } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import CodexUsageMetricChartBlock from '@/components/lego_blocks/integrations/CodexUsageMetricChartBlock'
+// Code-split boundary: keeps recharts out of the startup bundle.
+const CodexUsageMetricChartBlock = lazy(() => import('@/components/lego_blocks/integrations/CodexUsageMetricChartBlock'))
 import CodexUsageProbeBlock from '@/components/lego_blocks/integrations/CodexUsageProbeBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
@@ -368,7 +369,9 @@ export default function CodexUsageDashboardOrch() {
                             )}
                           </div>
                           {/* Chart */}
-                          <CodexUsageMetricChartBlock metrics={usageMetrics} />
+                          <Suspense fallback={null}>
+                            <CodexUsageMetricChartBlock metrics={usageMetrics} />
+                          </Suspense>
                         </>
                       ) : (
                         <p className="text-[13px] leading-relaxed text-muted-foreground">

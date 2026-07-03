@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import MarkdownDocumentBlock, {
   type MarkdownViewerMode,
-} from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
+} from '@/components/lego_blocks/integrations/MarkdownDocumentLazyBlock'
 import { useReadingDwellBlock } from '@/components/lego_blocks/hooks/shared/useReadingDwellBlock'
 
 type MarkdownSavedCallback = (result: { output_path: string; revision_path: string | null }) => void

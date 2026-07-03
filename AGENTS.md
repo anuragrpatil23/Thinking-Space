@@ -69,6 +69,11 @@ If sequence changes, update `DEVELOPMENT.md` first, then align active organizer 
 ## Architecture Reference
 Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 
+## Startup Performance Contract (Enforced)
+- Heavy vendors (Excalidraw, pdfjs/react-pdf, CodeMirror, recharts) must never be statically reachable from the app entry; they load through code-split boundaries (`MarkdownDocumentLazyBlock`, `MarkdownRichEditorLazyBlock`, per-consumer `lazy()` chart imports).
+- Do NOT add lazy-only vendors to `vite.config.ts` `manualChunks` — object-form manualChunks pulls those chunks back into the entry's static import graph.
+- After changing imports, verify `dist/index.html` modulepreloads only `vendor-react` + `vendor-dexie`. Startup JS budget: ≤ 2.4 MB.
+
 ## Architecture Guardrails
 - Keep markdown files with YAML frontmatter as portable source-of-truth content.
 - Hierarchy is defined by YAML `parent`/`type`/`level` fields, NOT folder structure.

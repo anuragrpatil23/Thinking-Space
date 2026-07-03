@@ -10,7 +10,7 @@ import {
 } from '@/components/lego_blocks/hooks/shared/useNotebookEntriesBlock'
 import NotebookPageBlock from '@/components/lego_blocks/integrations/NotebookPageBlock'
 import NotebookTocBlock, { type NotebookTocViewMode } from '@/components/lego_blocks/integrations/NotebookTocBlock'
-import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
+import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentLazyBlock'
 import { writeSortOrdersBlock } from '@/services/lego_blocks/units/notebookOrderBlock'
 import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebookSidecarBlock'
 

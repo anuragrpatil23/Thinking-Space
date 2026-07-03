@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { Plus, X } from 'lucide-react'
 import FileSelectionViewerBlock, { type FileSelectionOptionBlock } from '@/components/lego_blocks/integrations/FileSelectionViewerBlock'
-import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
+import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentLazyBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
 

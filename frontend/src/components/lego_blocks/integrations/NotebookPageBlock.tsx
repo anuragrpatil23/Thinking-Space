@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react'
-import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
+import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentLazyBlock'
 import type { NotebookEntry } from '@/components/lego_blocks/hooks/shared/useNotebookEntriesBlock'
 
 const PLACEHOLDER_HEIGHT = 96

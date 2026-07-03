@@ -1,5 +1,8 @@
-import DashboardChartsBlock from '@/components/lego_blocks/integrations/DashboardChartsBlock'
+import { Suspense, lazy } from 'react'
 import ActivityHotspotBlock from '@/components/lego_blocks/integrations/ActivityHotspotBlock'
+
+// Code-split boundary: keeps recharts out of the startup bundle.
+const DashboardChartsBlock = lazy(() => import('@/components/lego_blocks/integrations/DashboardChartsBlock'))
 import type { UseDashboardActivityResult } from '@/components/lego_blocks/hooks/shared/useDashboardActivityBlock'
 
 interface HomeDashboardOrchProps {
@@ -11,13 +14,15 @@ export default function HomeDashboardOrch({ activity }: HomeDashboardOrchProps) 
 
   return (
     <div className="space-y-6">
-      <DashboardChartsBlock
-        series={series}
-        loading={loading}
-        error={error}
-        preset={preset}
-        onPresetChange={setPreset}
-      />
+      <Suspense fallback={null}>
+        <DashboardChartsBlock
+          series={series}
+          loading={loading}
+          error={error}
+          preset={preset}
+          onPresetChange={setPreset}
+        />
+      </Suspense>
 
       <ActivityHotspotBlock
         days={series?.days ?? []}

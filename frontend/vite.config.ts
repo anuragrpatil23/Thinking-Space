@@ -35,18 +35,15 @@ export default defineConfig({
       output: {
         // Split heavy vendor dependencies into separate chunks for better caching
         // and smaller initial bundle size
+        // Only split vendors that are genuinely needed at startup. Heavy libs
+        // (Excalidraw, pdfjs, CodeMirror, recharts) are reached exclusively via
+        // dynamic import boundaries, so Rollup already splits them into lazy
+        // chunks — listing them here would force them back into the entry's
+        // static import graph (object-form manualChunks preserves side-effect
+        // ordering by importing the chunk eagerly).
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
           'vendor-dexie': ['dexie'],
-          'vendor-excalidraw': ['@excalidraw/excalidraw'],
-          'vendor-pdf': ['react-pdf', 'pdfjs-dist'],
-          'vendor-codemirror': [
-            '@codemirror/state',
-            '@codemirror/view',
-            '@codemirror/language',
-            '@uiw/react-codemirror',
-          ],
-          'vendor-recharts': ['recharts'],
         },
       },
     },

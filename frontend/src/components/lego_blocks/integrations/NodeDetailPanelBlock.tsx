@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from '@/components/lego_blocks/units/ui/select'
 import ExtensionSlotBlock from '@/components/lego_blocks/integrations/ExtensionSlotBlock'
-import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
+import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorLazyBlock'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import { buildPathSearchCandidatesBlock } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
 import LinkedItemChipsBlock from '@/components/lego_blocks/units/LinkedItemChipsBlock'
