@@ -7,8 +7,10 @@ import {
   setGoodnotesAnnotationGate,
 } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
+  getVaultWriteAiActivityEnabled,
   getVaultWriteAiRawEnabled,
   isVaultWritePrefsAvailable,
+  setVaultWriteAiActivityEnabled,
   setVaultWriteAiRawEnabled,
 } from '@/services/lego_blocks/units/vaultWritePrefsBlock'
 import {
@@ -30,6 +32,7 @@ export default function AiActivitySessionSourcesSettingsBlock() {
   const [annotationGate, setAnnotationGate] = useState<boolean>(() => getGoodnotesAnnotationGate())
   const vaultWritePrefsAvailable = isVaultWritePrefsAvailable()
   const [writeAiRaw, setWriteAiRaw] = useState<boolean | null>(null)
+  const [writeAiActivity, setWriteAiActivity] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const toggleAnnotationGate = (checked: boolean) => {
@@ -51,8 +54,13 @@ export default function AiActivitySessionSourcesSettingsBlock() {
   useEffect(() => {
     if (!vaultWritePrefsAvailable) return
     let cancelled = false
-    void getVaultWriteAiRawEnabled().then(value => {
-      if (!cancelled) setWriteAiRaw(value)
+    void Promise.all([
+      getVaultWriteAiRawEnabled(),
+      getVaultWriteAiActivityEnabled(),
+    ]).then(([rawValue, activityValue]) => {
+      if (cancelled) return
+      setWriteAiRaw(rawValue)
+      setWriteAiActivity(activityValue)
     })
     return () => { cancelled = true }
   }, [vaultWritePrefsAvailable])
@@ -63,6 +71,16 @@ export default function AiActivitySessionSourcesSettingsBlock() {
       await setVaultWriteAiRawEnabled(checked)
     } catch (err) {
       setWriteAiRaw(!checked)
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const toggleWriteAiActivity = async (checked: boolean) => {
+    setWriteAiActivity(checked)
+    try {
+      await setVaultWriteAiActivityEnabled(checked)
+    } catch (err) {
+      setWriteAiActivity(!checked)
       setError(err instanceof Error ? err.message : String(err))
     }
   }
@@ -172,6 +190,26 @@ export default function AiActivitySessionSourcesSettingsBlock() {
                 disabled={writeAiRaw === null}
                 onCheckedChange={checked => { void toggleWriteAiRaw(checked) }}
                 aria-label="Write raw activity signals to ai-raw/"
+              />
+            </label>
+            <label className="flex items-start justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+              <div className="min-w-0 space-y-0.5">
+                <div className="text-sm font-medium text-foreground">
+                  Mirror AI-derived digests to <span className="font-mono text-xs">ai-activity/</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Writes durable per-day project digests (headline, why-it-matters, what's next) as
+                  browsable markdown notes under <span className="font-mono">ai-activity/atoms/</span>.
+                  Digests are always cached locally for the This Week / Set card; enabling this makes
+                  them a permanent record in the vault so you can page through them like any note.
+                  Off by default; syncs across devices via the vault.
+                </p>
+              </div>
+              <Switch
+                checked={writeAiActivity === true}
+                disabled={writeAiActivity === null}
+                onCheckedChange={checked => { void toggleWriteAiActivity(checked) }}
+                aria-label="Mirror AI-derived digests to ai-activity/"
               />
             </label>
           </div>

@@ -13,9 +13,14 @@ import * as path from 'path';
 // if the vault already contains `ai-raw/` (or the legacy `ai_raw/` before
 // the dir migration runs) we set `true` (preserve behavior for existing
 // installs), otherwise `false` (opt-in for new users).
+//
+// `writeAiActivity` gates the AI-derived project-day atoms mirror at
+// `<vaultRoot>/ai-activity/atoms/…`. Same tristate migration semantics —
+// existing `ai-activity/` directory → keep on; otherwise opt-in off.
 
 interface PersistedVaultWritePrefsPayloadBlock {
   writeAiRaw: boolean | null;
+  writeAiActivity: boolean | null;
 }
 
 const PERSISTED_VAULT_WRITE_PREFS_RELATIVE_PATH_BLOCK = path.join(
@@ -35,15 +40,23 @@ function normalizeTristateBooleanBlock(value: unknown): boolean | null {
   return null;
 }
 
+const EMPTY_PREFS: PersistedVaultWritePrefsPayloadBlock = {
+  writeAiRaw: null,
+  writeAiActivity: null,
+};
+
 export function readPersistedVaultWritePrefsBlock(): PersistedVaultWritePrefsPayloadBlock {
   const filePath = getPersistedVaultWritePrefsPathBlock();
   try {
     const raw = fs.readFileSync(filePath, 'utf-8');
-    if (!raw.trim()) return { writeAiRaw: null };
+    if (!raw.trim()) return { ...EMPTY_PREFS };
     const parsed = JSON.parse(raw) as Partial<PersistedVaultWritePrefsPayloadBlock>;
-    return { writeAiRaw: normalizeTristateBooleanBlock(parsed.writeAiRaw) };
+    return {
+      writeAiRaw: normalizeTristateBooleanBlock(parsed.writeAiRaw),
+      writeAiActivity: normalizeTristateBooleanBlock(parsed.writeAiActivity),
+    };
   } catch {
-    return { writeAiRaw: null };
+    return { ...EMPTY_PREFS };
   }
 }
 
@@ -56,6 +69,10 @@ export function writePersistedVaultWritePrefsBlock(
       patch.writeAiRaw === undefined
         ? current.writeAiRaw
         : normalizeTristateBooleanBlock(patch.writeAiRaw),
+    writeAiActivity:
+      patch.writeAiActivity === undefined
+        ? current.writeAiActivity
+        : normalizeTristateBooleanBlock(patch.writeAiActivity),
   };
   const filePath = getPersistedVaultWritePrefsPathBlock();
   const directoryPath = path.dirname(filePath);
@@ -82,6 +99,19 @@ export function resolveWriteAiRawEnabledBlock(vaultRoot: string): boolean {
     );
   const migrated = writePersistedVaultWritePrefsBlock({ writeAiRaw: existed });
   return migrated.writeAiRaw === true;
+}
+
+// Same tristate-with-migration semantics as `resolveWriteAiRawEnabledBlock`,
+// for the `ai-activity/` digests mirror. Users with a pre-existing
+// `ai-activity/` dir (e.g. cross-machine iCloud sync) keep it on; new users
+// default off.
+export function resolveWriteAiActivityEnabledBlock(vaultRoot: string): boolean {
+  const current = readPersistedVaultWritePrefsBlock();
+  if (current.writeAiActivity !== null) return current.writeAiActivity;
+  const existed = vaultRoot.trim().length > 0
+    && fs.existsSync(path.join(vaultRoot, 'ai-activity'));
+  const migrated = writePersistedVaultWritePrefsBlock({ writeAiActivity: existed });
+  return migrated.writeAiActivity === true;
 }
 
 // One-shot rename of the legacy snake_case `ai_raw/` vault dir to the

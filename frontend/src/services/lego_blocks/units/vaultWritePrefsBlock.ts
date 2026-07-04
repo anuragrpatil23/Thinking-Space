@@ -38,3 +38,19 @@ export async function setVaultWriteAiRawEnabled(enabled: boolean): Promise<void>
   if (!api) return
   await api.vaultWritesAiRawSetPersisted!(enabled)
 }
+
+export async function getVaultWriteAiActivityEnabled(): Promise<boolean> {
+  const api = getBridge()
+  if (!api || typeof api.vaultWritesAiActivityGetPersisted !== 'function') return false
+  try {
+    return await api.vaultWritesAiActivityGetPersisted!(getStoredVaultRoot())
+  } catch {
+    return false
+  }
+}
+
+export async function setVaultWriteAiActivityEnabled(enabled: boolean): Promise<void> {
+  const api = getBridge()
+  if (!api || typeof api.vaultWritesAiActivitySetPersisted !== 'function') return
+  await api.vaultWritesAiActivitySetPersisted!(enabled)
+}

@@ -298,6 +298,8 @@ interface ElectronAPI {
   // vaultRoot so main can auto-migrate legacy installs on first read.
   vaultWritesAiRawGetPersisted?(vaultRoot: string | null): Promise<boolean>
   vaultWritesAiRawSetPersisted?(enabled: boolean): Promise<void>
+  vaultWritesAiActivityGetPersisted?(vaultRoot: string | null): Promise<boolean>
+  vaultWritesAiActivitySetPersisted?(enabled: boolean): Promise<void>
   read(vaultRoot: string, relPath: string): Promise<string>
   write(vaultRoot: string, relPath: string, data: string): Promise<void>
   readBytesBase64?(vaultRoot: string, relPath: string): Promise<string>

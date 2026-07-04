@@ -48,6 +48,7 @@ import {
   readPersistedVaultWritePrefsBlock,
   writePersistedVaultWritePrefsBlock,
   resolveWriteAiRawEnabledBlock,
+  resolveWriteAiActivityEnabledBlock,
   migrateLegacyAiRawDirBlock,
 } from './lego_blocks/vaultWritePrefsPersistenceBlock';
 import {
@@ -1683,6 +1684,22 @@ ipcMain.handle('vaultWrites:aiRaw:setPersisted', async (_event, enabled: boolean
     throw new Error('vaultWrites:aiRaw:setPersisted requires a boolean.');
   }
   writePersistedVaultWritePrefsBlock({ writeAiRaw: enabled });
+});
+
+ipcMain.handle('vaultWrites:aiActivity:getPersisted', async (_event, vaultRoot?: string) => {
+  const stored = readPersistedVaultWritePrefsBlock();
+  if (stored.writeAiActivity !== null) return stored.writeAiActivity;
+  if (typeof vaultRoot === 'string' && vaultRoot.trim().length > 0) {
+    return resolveWriteAiActivityEnabledBlock(vaultRoot);
+  }
+  return false;
+});
+
+ipcMain.handle('vaultWrites:aiActivity:setPersisted', async (_event, enabled: boolean) => {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('vaultWrites:aiActivity:setPersisted requires a boolean.');
+  }
+  writePersistedVaultWritePrefsBlock({ writeAiActivity: enabled });
 });
 
 ipcMain.handle('vault:watch:start', async (_event, vaultRoot: string) => {

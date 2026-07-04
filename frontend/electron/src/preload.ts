@@ -389,6 +389,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('vaultWrites:aiRaw:getPersisted', vaultRoot ?? undefined),
   vaultWritesAiRawSetPersisted: (enabled: boolean): Promise<void> =>
     ipcRenderer.invoke('vaultWrites:aiRaw:setPersisted', enabled),
+  // Sibling toggle for the AI-derived project-day atoms mirror. Same shape
+  // as the ai-raw pair; kept separate so users can enable durable digests
+  // without also opting into raw-signal writes.
+  vaultWritesAiActivityGetPersisted: (vaultRoot: string | null): Promise<boolean> =>
+    ipcRenderer.invoke('vaultWrites:aiActivity:getPersisted', vaultRoot ?? undefined),
+  vaultWritesAiActivitySetPersisted: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('vaultWrites:aiActivity:setPersisted', enabled),
 
   // Filesystem operations (all take vaultRoot as first arg)
   read: (vaultRoot: string, relPath: string) =>
