@@ -300,6 +300,14 @@ interface ElectronAPI {
   vaultWritesAiRawSetPersisted?(enabled: boolean): Promise<void>
   vaultWritesAiActivityGetPersisted?(vaultRoot: string | null): Promise<boolean>
   vaultWritesAiActivitySetPersisted?(enabled: boolean): Promise<void>
+  // Claude Code CLI intelligence provider — shells `claude -p` in main so
+  // Pro-plan users don't get billed on the API. See claudeCliBlock in main.
+  claudeCliChat?(
+    requestId: string,
+    request: { model: string; system: string; userPrompt: string; timeoutMs: number },
+  ): Promise<{ ok: boolean; content?: string; error?: string; latencyMs?: number }>
+  claudeCliCancel?(requestId: string): Promise<void>
+  claudeCliProbe?(): Promise<{ available: boolean; version: string | null }>
   read(vaultRoot: string, relPath: string): Promise<string>
   write(vaultRoot: string, relPath: string, data: string): Promise<void>
   readBytesBase64?(vaultRoot: string, relPath: string): Promise<string>

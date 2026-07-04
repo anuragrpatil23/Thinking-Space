@@ -6,13 +6,17 @@
 import { getJsonStorageItem, setJsonStorageItem, STORAGE_KEYS } from '@/services/lego_blocks/units/storageKeyBlock'
 import { openaiCompatProvider } from './providers/openaiCompatProviderBlock'
 import { anthropicProvider } from './providers/anthropicProviderBlock'
+import { claudeCliProvider } from './providers/claudeCliProviderBlock'
 import type { IntelligenceProvider } from './providers/providerInterfaceBlock'
 import type { ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 
 const PROVIDERS: Record<ProviderId, IntelligenceProvider> = {
   'openai-compat': openaiCompatProvider,
   'anthropic': anthropicProvider,
+  'claude-cli': claudeCliProvider,
 }
+
+const KNOWN_IDS: readonly ProviderId[] = ['openai-compat', 'anthropic', 'claude-cli']
 
 const FALLBACK_DEFAULT: ProviderId = 'openai-compat'
 
@@ -28,7 +32,7 @@ export function listProvidersBlock(): IntelligenceProvider[] {
 
 export function readDefaultProviderBlock(): ProviderId {
   const stored = getJsonStorageItem<string>(STORAGE_KEYS.intelligenceDefaultProvider, FALLBACK_DEFAULT)
-  return stored === 'anthropic' || stored === 'openai-compat' ? stored : FALLBACK_DEFAULT
+  return (KNOWN_IDS as readonly string[]).includes(stored) ? (stored as ProviderId) : FALLBACK_DEFAULT
 }
 
 export function writeDefaultProviderBlock(id: ProviderId): void {

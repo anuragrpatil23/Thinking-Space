@@ -7,7 +7,7 @@
 // belongs to. When a model doesn't match any known pattern we fall back to a
 // conservative default (tools off, JSON schema off, no reasoning toggle).
 
-export type ProviderId = 'openai-compat' | 'anthropic'
+export type ProviderId = 'openai-compat' | 'anthropic' | 'claude-cli'
 
 export interface ModelProfile {
   /** Human-readable family name for diagnostics UI. */

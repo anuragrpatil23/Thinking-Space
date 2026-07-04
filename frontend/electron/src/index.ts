@@ -52,6 +52,12 @@ import {
   migrateLegacyAiRawDirBlock,
 } from './lego_blocks/vaultWritePrefsPersistenceBlock';
 import {
+  invokeClaudeCliChatBlock,
+  cancelClaudeCliRequestBlock,
+  probeClaudeCliBlock,
+  type ClaudeCliChatRequestBlock,
+} from './lego_blocks/claudeCliBlock';
+import {
   startVaultWatcherBlock,
   stopVaultWatcherBlock,
   stopAllVaultWatcherBlocks,
@@ -1700,6 +1706,27 @@ ipcMain.handle('vaultWrites:aiActivity:setPersisted', async (_event, enabled: bo
     throw new Error('vaultWrites:aiActivity:setPersisted requires a boolean.');
   }
   writePersistedVaultWritePrefsBlock({ writeAiActivity: enabled });
+});
+
+// -- Claude CLI intelligence provider — shells out to `claude -p` so Pro-plan
+//    users don't get billed on the API on top of their subscription. Payload
+//    is a normalized chat request; response is buffered stdout. Requests are
+//    keyed by `requestId` for cancellation from the renderer. --
+ipcMain.handle('claudeCli:chat', async (_event, requestId: string, request: ClaudeCliChatRequestBlock) => {
+  if (typeof requestId !== 'string' || !requestId) {
+    throw new Error('claudeCli:chat requires a requestId.');
+  }
+  if (!request || typeof request !== 'object') {
+    throw new Error('claudeCli:chat requires a request payload.');
+  }
+  return invokeClaudeCliChatBlock(requestId, request);
+});
+ipcMain.handle('claudeCli:cancel', async (_event, requestId: string) => {
+  if (typeof requestId !== 'string' || !requestId) return;
+  cancelClaudeCliRequestBlock(requestId);
+});
+ipcMain.handle('claudeCli:probe', async () => {
+  return probeClaudeCliBlock();
 });
 
 ipcMain.handle('vault:watch:start', async (_event, vaultRoot: string) => {

@@ -397,6 +397,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   vaultWritesAiActivitySetPersisted: (enabled: boolean): Promise<void> =>
     ipcRenderer.invoke('vaultWrites:aiActivity:setPersisted', enabled),
 
+  // Claude CLI intelligence provider — shells out to `claude -p` in the
+  // main process. Reuses the OAuth login the interactive Claude Code CLI
+  // has already set up, so Pro-plan users don't pay API tokens on top of
+  // their subscription.
+  claudeCliChat: (
+    requestId: string,
+    request: { model: string; system: string; userPrompt: string; timeoutMs: number },
+  ): Promise<{ ok: boolean; content?: string; error?: string; latencyMs?: number }> =>
+    ipcRenderer.invoke('claudeCli:chat', requestId, request),
+  claudeCliCancel: (requestId: string): Promise<void> =>
+    ipcRenderer.invoke('claudeCli:cancel', requestId),
+  claudeCliProbe: (): Promise<{ available: boolean; version: string | null }> =>
+    ipcRenderer.invoke('claudeCli:probe'),
+
   // Filesystem operations (all take vaultRoot as first arg)
   read: (vaultRoot: string, relPath: string) =>
     ipcRenderer.invoke('vault:read', vaultRoot, relPath),

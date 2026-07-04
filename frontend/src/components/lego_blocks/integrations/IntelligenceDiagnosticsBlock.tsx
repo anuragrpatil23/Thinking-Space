@@ -24,7 +24,8 @@ import { clearIntelligenceCacheBlock } from '@/services/lego_blocks/integrations
 
 const PROVIDER_LABELS: Record<ProviderId, string> = {
   'openai-compat': 'Local (OpenAI-compatible)',
-  'anthropic': 'Claude (Anthropic)',
+  'anthropic': 'Claude (Anthropic API)',
+  'claude-cli': 'Claude Code CLI (Pro sub)',
 }
 
 function formatLatency(ms: number): string {
@@ -85,7 +86,7 @@ export default function IntelligenceDiagnosticsBlock() {
           Default Provider
         </div>
         <div className="flex flex-wrap gap-2">
-          {(['openai-compat', 'anthropic'] as ProviderId[]).map(id => (
+          {(['openai-compat', 'anthropic', 'claude-cli'] as ProviderId[]).map(id => (
             <Button
               key={id}
               size="sm"
