@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
-import { CalendarDays, ChevronDown, ChevronUp } from 'lucide-react'
+import { CalendarDays, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   useAiActivityBlock,
@@ -11,6 +11,7 @@ import {
   type ReadingSourceFilter,
 } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import AiActivityHeatmapBlock from '@/components/lego_blocks/units/AiActivityHeatmapBlock'
+import AiActivityRangeSummaryBlock from '@/components/lego_blocks/integrations/AiActivityRangeSummaryBlock'
 import AiActivityProjectChipsBlock from '@/components/lego_blocks/units/AiActivityProjectChipsBlock'
 // Code-split boundaries: these two pull recharts; keep it out of the startup bundle.
 const AiActivityTrendChartBlock = lazy(() => import('@/components/lego_blocks/units/AiActivityTrendChartBlock'))
@@ -37,6 +38,25 @@ function fmtDateShort(iso: string): string {
     month: 'short',
     day: 'numeric',
   })
+}
+
+/** Pick the project with the most wall-clock time in the drill so the
+ *  range-summary card has a sensible focus when no chip is selected.
+ *  Ignores noise buckets ([auto-commit], [telegram], etc). */
+function topProjectByTime(chains: ActivityChain[]): string | null {
+  const totals = new Map<string, number>()
+  for (const c of chains) {
+    if (c.project.startsWith('[') && c.project.endsWith(']')) continue
+    const dur = Date.parse(c.endedIso) - Date.parse(c.startedIso)
+    if (!Number.isFinite(dur)) continue
+    totals.set(c.project, (totals.get(c.project) ?? 0) + dur)
+  }
+  let best: string | null = null
+  let bestMs = -1
+  for (const [proj, ms] of totals) {
+    if (ms > bestMs) { best = proj; bestMs = ms }
+  }
+  return best
 }
 
 export default function AiActivityPanelBlock() {
@@ -83,22 +103,22 @@ export default function AiActivityPanelBlock() {
   }
 
   const drillChains = useMemo(() => {
+    let base: ActivityChain[] = []
     if (selectedDate) {
       // Overnight-aware "day": chains starting between selectedDate 00:00 and
       // 06:00 the next morning still belong to the selected day, so a 2-3am
       // session at the end of a long night doesn't get orphaned onto tomorrow.
       const dayStart = Date.parse(selectedDate + 'T00:00:00')
       const nextMorningCutoff = dayStart + 30 * 3_600_000
-      return activity.chains.filter(c => {
+      base = activity.chains.filter(c => {
         if (isMinorChain(c)) return false
         const t = Date.parse(c.startedIso)
         return t >= dayStart && t < nextMorningCutoff
       })
-    }
-    if (selectedRange) {
+    } else if (selectedRange) {
       // Compare in local-calendar day, not UTC slice — matches how the heatmap
       // buckets chains into days (see useAiActivityBlock days memo).
-      return activity.chains.filter(c => {
+      base = activity.chains.filter(c => {
         if (isMinorChain(c)) return false
         const d = new Date(c.startedIso)
         const y = d.getFullYear()
@@ -107,10 +127,16 @@ export default function AiActivityPanelBlock() {
         const localDay = `${y}-${m}-${day}`
         return localDay >= selectedRange.startIso && localDay <= selectedRange.endIso
       })
+    } else {
+      return []
     }
-    return []
+    // Project chip acts as a hard filter on the drill (timeline + table +
+    // summary), not just a row highlight — the "project active time" chip
+    // already reports the range total, so the drill should match.
+    if (activeProject) base = base.filter(c => c.project === activeProject)
+    return base
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activity.chains, selectedDate, selectedRange])
+  }, [activity.chains, selectedDate, selectedRange, activeProject])
 
   const drillTitle = selectedDate
     ? fmtDateShort(selectedDate)
@@ -163,57 +189,16 @@ export default function AiActivityPanelBlock() {
     setSelectedRange(null)
   }
 
-  // The canvas hides scrollbars globally on tile content, so a long drill table
-  // looks cut off rather than scrollable. Track whether the inner scroll
-  // container has overflow + is not at the end, and surface a bottom fade as
-  // the visual "more below" affordance. Cleared when the user scrolls to the
-  // bottom so the fade doesn't sit there on short days.
-  const scrollRef = useRef<HTMLDivElement | null>(null)
-  const [showBottomFade, setShowBottomFade] = useState(false)
-  const [showTopFade, setShowTopFade] = useState(false)
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    const update = () => {
-      const overflow = el.scrollHeight - el.clientHeight
-      if (overflow <= 1) {
-        setShowBottomFade(false)
-        setShowTopFade(false)
-        return
-      }
-      setShowTopFade(el.scrollTop > 4)
-      setShowBottomFade(el.scrollTop + el.clientHeight < el.scrollHeight - 4)
-    }
-    update()
-    el.addEventListener('scroll', update, { passive: true })
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    // Children resizing (drill table appearing) also changes scrollHeight.
-    const mo = new MutationObserver(update)
-    mo.observe(el, { childList: true, subtree: true })
-    return () => {
-      el.removeEventListener('scroll', update)
-      ro.disconnect()
-      mo.disconnect()
-    }
-  }, [])
-
-  const scrollByPage = (direction: 'up' | 'down') => {
-    const el = scrollRef.current
-    if (!el) return
-    const delta = el.clientHeight * 0.7 * (direction === 'up' ? -1 : 1)
-    el.scrollBy({ top: delta, behavior: 'smooth' })
-  }
-
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* Sticky header — title, range pills, totals stay visible while content
-          below scrolls. Keeps the controls reachable on long drill-down tables. */}
+    <div className="flex flex-col">
+      {/* Header — title, range pills, totals. Content below flows naturally
+          and the surrounding container (canvas tile / page section) grows to
+          fit; no internal scroll. */}
       <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h3 className="text-base font-semibold text-foreground">AI activity</h3>
           <p className="text-xs text-muted-foreground">
-            What you actually worked on with AI — sessions, msgs, projects over time.
+            AI sessions, msgs, projects over time
           </p>
         </div>
         {/* Pills tuck into the card's top-right corner: sources on top, range
@@ -266,48 +251,9 @@ export default function AiActivityPanelBlock() {
         <span title="Merged wall-clock time across all non-noise chains in range">
           <strong className="tabular-nums text-foreground/85">{rangeDurationLabel}</strong>
         </span>
-        <span className="ml-auto text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">
-          {activity.customRange?.label ?? activity.preset}
-        </span>
       </div>
 
-      {/* Everything below the header scrolls together. The canvas hides
-          scrollbars globally, so the fade gradients above/below act as the
-          "there's more content" affordance. */}
-      <div className="relative mt-3 flex-1 min-h-0">
-        {showTopFade && (
-          <div
-            className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-background to-transparent"
-            aria-hidden
-          />
-        )}
-        {showBottomFade && (
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-6 bg-gradient-to-t from-background to-transparent"
-            aria-hidden
-          />
-        )}
-        {showTopFade && (
-          <button
-            type="button"
-            onClick={() => scrollByPage('up')}
-            className="absolute right-3 top-1 z-20 rounded-full border border-border/30 bg-background/85 p-0.5 text-muted-foreground shadow-sm transition-colors hover:border-border/60 hover:text-foreground"
-            aria-label="Scroll up"
-          >
-            <ChevronUp className="h-3.5 w-3.5" />
-          </button>
-        )}
-        {showBottomFade && (
-          <button
-            type="button"
-            onClick={() => scrollByPage('down')}
-            className="absolute right-3 bottom-1 z-20 rounded-full border border-border/30 bg-background/85 p-0.5 text-muted-foreground shadow-sm transition-colors hover:border-border/60 hover:text-foreground"
-            aria-label="Scroll down"
-          >
-            <ChevronDown className="h-3.5 w-3.5" />
-          </button>
-        )}
-        <div ref={scrollRef} className="h-full overflow-y-auto pr-1">
+      <div className="mt-3">
       <div>
         <AiActivityProjectChipsBlock
           projects={activity.projects}
@@ -342,6 +288,40 @@ export default function AiActivityPanelBlock() {
               )}
             </button>
           )}
+          {/* Select-all-days lives on the same row as the view toggle, right-
+              aligned. Toggles: first click drills every day in the visible
+              range; second click clears back to whatever was drilled before
+              (today by default). */}
+          {(() => {
+            const rangeStart = activity.customRange?.startIso ?? activity.startIso
+            const rangeEnd = activity.customRange?.endIso ?? activity.endIso
+            const wholeRangeSelected =
+              selectedRange?.startIso === rangeStart &&
+              selectedRange?.endIso === rangeEnd
+            const label = activity.customRange?.label ?? activity.preset
+            return (
+              <button
+                type="button"
+                onClick={() => {
+                  if (wholeRangeSelected) {
+                    clearDrill()
+                  } else {
+                    setSelectedDate(null)
+                    setSelectedRange({ startIso: rangeStart, endIso: rangeEnd })
+                  }
+                }}
+                className={cn(
+                  'ml-auto rounded-full border px-2 py-0.5 text-[10px] transition-colors',
+                  wholeRangeSelected
+                    ? 'border-foreground/70 bg-foreground/10 text-foreground'
+                    : 'border-border/40 bg-card/40 text-muted-foreground hover:border-border/70 hover:text-foreground',
+                )}
+                title={wholeRangeSelected ? 'Clear the range drill' : `Drill on every day in ${label}`}
+              >
+                {wholeRangeSelected ? 'clear range' : 'select all days'}
+              </button>
+            )
+          })()}
         </div>
         {view === 'heatmap' ? (
           <AiActivityHeatmapBlock
@@ -389,18 +369,91 @@ export default function AiActivityPanelBlock() {
               highlightProject={activeProject}
             />
           )}
-          <AiActivityDayTableBlock
-            title={drillTitle}
-            chains={drillChains}
-            summary={drillSummary}
-            highlightProject={activeProject}
-            onBack={clearDrill}
-            onReadingEdited={activity.refresh}
-          />
+          {/* Range summary appears above the table on every drill (single
+              day or multi-day). Uses the active project chip when the user
+              has one selected; otherwise focuses on the dominant project in
+              the drill by wall-clock time so a summary always renders — the
+              deterministic fallback (Settings → Off) still shows a ranked
+              titles list, so the card is useful without any provider setup. */}
+          {drillChains.length > 0 && (() => {
+            const focusProject = activeProject ?? topProjectByTime(drillChains)
+            if (!focusProject) return null
+            const scopedChains = activeProject
+              ? drillChains
+              : drillChains.filter(c => c.project === focusProject)
+            return (
+              <AiActivityRangeSummaryBlock
+                projectId={focusProject}
+                projectLabel={focusProject}
+                rangeStartDate={selectedDate ?? selectedRange?.startIso ?? ''}
+                rangeEndDate={selectedDate ?? selectedRange?.endIso ?? ''}
+                chains={scopedChains}
+              />
+            )
+          })()}
+          {/* Table is the only scrolling region — keeps header/heatmap/timeline
+              pinned so context stays visible while you scan a "select all"
+              multi-day drill. Wheel-capture stops the canvas from panning
+              underneath while the cursor is over an overflowing table. */}
+          <DrillTableScroll>
+            <AiActivityDayTableBlock
+              title={drillTitle}
+              chains={drillChains}
+              summary={drillSummary}
+              highlightProject={activeProject}
+              onReadingEdited={activity.refresh}
+            />
+          </DrillTableScroll>
         </div>
       )}
-        </div>
       </div>
+    </div>
+  )
+}
+
+// Very high cap — practically "grow with the content" for normal usage. The
+// card is intended to expand and push the canvas world; internal scroll is
+// only the safety valve for pathological "select all + full year" drills.
+const DRILL_TABLE_MAX_HEIGHT = 3200
+
+function DrillTableScroll({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [overflowing, setOverflowing] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const update = () => setOverflowing(el.scrollHeight - el.clientHeight > 1)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  useEffect(() => {
+    if (!overflowing) return
+    const el = ref.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.stopPropagation()
+      const atTop = el.scrollTop <= 0
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
+      // Let the canvas keep receiving wheel at the natural end of scroll so
+      // you can pan past the card once you've scrolled to the boundary.
+      if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) return
+      e.preventDefault()
+      el.scrollTop += e.deltaY
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [overflowing])
+  return (
+    <div
+      ref={ref}
+      style={{
+        maxHeight: DRILL_TABLE_MAX_HEIGHT,
+        overflowY: 'auto',
+      }}
+    >
+      {children}
     </div>
   )
 }

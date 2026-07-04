@@ -48,6 +48,9 @@ export const STORAGE_KEYS = {
   goodnotesReadingAnnotationGate: 'ltm-goodnotes-reading-annotation-gate',
   aiActivityHomePostItEnabled: 'ltm-ai-activity-home-post-it-enabled',
   aiActivitySetMode: 'ltm-ai-activity-set-mode-enabled',
+  aiActivityCalendarMode: 'ltm-ai-activity-calendar-mode-enabled',
+  aiActivityAiTitlesEnabled: 'ltm-ai-activity-ai-titles-enabled',
+  aiActivityRangeSummaryProvider: 'ltm-ai-activity-range-summary-provider',
   aiActivityRestDays: 'ltm-ai-activity-rest-days',
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
   intelligenceDefaultProvider: 'ltm-intelligence-default-provider',
@@ -192,6 +195,78 @@ export function setAiActivitySetMode(enabled: boolean): void {
  *  value, so this bridges same-tab updates from the settings page to any open
  *  AI-Activity surfaces. */
 export const AI_ACTIVITY_SET_MODE_EVENT = 'thinkspc:ai-activity-set-mode-changed'
+
+/**
+ * When on, the AI-Activity heatmap swaps its GitHub-style contribution grid
+ * for a month-by-month calendar layout (Mon–Sun columns, dates in cells).
+ * Off by default; opt-in for people who read time-of-month faster than
+ * time-of-year at a glance.
+ */
+export function getAiActivityCalendarMode(): boolean {
+  return getLocalStorageItemBlock(STORAGE_KEYS.aiActivityCalendarMode) === 'true'
+}
+
+export function setAiActivityCalendarMode(enabled: boolean): void {
+  setLocalStorageItemBlock(STORAGE_KEYS.aiActivityCalendarMode, enabled ? 'true' : 'false')
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AI_ACTIVITY_CALENDAR_MODE_EVENT, { detail: enabled }))
+  }
+}
+
+export const AI_ACTIVITY_CALENDAR_MODE_EVENT = 'thinkspc:ai-activity-calendar-mode-changed'
+
+/**
+ * Master toggle for AI-generated chain titles + day summaries. Independent of
+ * whether a local model is configured — when off, the atom/chain-digest
+ * orchestrators skip model calls entirely and callers see the deterministic
+ * topic-based fallback. Default on: preserves existing behavior for users
+ * who already have an intelligence provider set up.
+ */
+export function getAiActivityAiTitlesEnabled(): boolean {
+  const raw = getLocalStorageItemBlock(STORAGE_KEYS.aiActivityAiTitlesEnabled)
+  if (raw === null) return true
+  return raw === 'true'
+}
+
+export function setAiActivityAiTitlesEnabled(enabled: boolean): void {
+  setLocalStorageItemBlock(STORAGE_KEYS.aiActivityAiTitlesEnabled, enabled ? 'true' : 'false')
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AI_ACTIVITY_AI_TITLES_EVENT, { detail: enabled }))
+  }
+}
+
+export const AI_ACTIVITY_AI_TITLES_EVENT = 'thinkspc:ai-activity-ai-titles-changed'
+
+/**
+ * Provider choice for the range-summary pipeline. Independent of the chain-
+ * digest / day-atom AI toggle above because the compute profile is very
+ * different — range summaries synthesize 5-25 chains in one pass, which
+ * exceeds small local models' reliability ceiling. User picks:
+ *   'off'         — deterministic fallback only (titles list, or stub when
+ *                   even titles are missing). Default.
+ *   'local'       — two-stage (label → cluster → narrate) on whatever the
+ *                   configured local intelligence provider is.
+ *   'claude-cli'  — one-shot via the `claude -p` provider. Handles bigger
+ *                   ranges reliably; consumes the user's Pro-plan budget.
+ * Both non-fallback paths still fall through to the deterministic route if
+ * their model call fails.
+ */
+export type AiActivityRangeSummaryProvider = 'off' | 'local' | 'claude-cli'
+
+export function getAiActivityRangeSummaryProvider(): AiActivityRangeSummaryProvider {
+  const raw = getLocalStorageItemBlock(STORAGE_KEYS.aiActivityRangeSummaryProvider)
+  if (raw === 'local' || raw === 'claude-cli' || raw === 'off') return raw
+  return 'off'
+}
+
+export function setAiActivityRangeSummaryProvider(provider: AiActivityRangeSummaryProvider): void {
+  setLocalStorageItemBlock(STORAGE_KEYS.aiActivityRangeSummaryProvider, provider)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AI_ACTIVITY_RANGE_SUMMARY_PROVIDER_EVENT, { detail: provider }))
+  }
+}
+
+export const AI_ACTIVITY_RANGE_SUMMARY_PROVIDER_EVENT = 'thinkspc:ai-activity-range-summary-provider-changed'
 
 /**
  * User-declared rest weekdays — numbers 0..6 with 0 = Sunday, 6 = Saturday.

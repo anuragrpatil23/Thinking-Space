@@ -14,6 +14,7 @@ import {
 } from '@/services/lego_blocks/units/intelligence/contracts/chainDigestContractBlock'
 import { availability, runContract } from '@/services/orchestrators/intelligenceOrch'
 import { intelligenceCacheAvailableBlock } from '@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock'
+import { getAiActivityAiTitlesEnabled } from '@/services/lego_blocks/units/storageKeyBlock'
 
 // Public surface for per-chain digests. Wraps the intelligence contract with:
 //   - the durable store (cache + vault) added earlier,
@@ -50,6 +51,14 @@ export async function ensureChainDigestOrch(
 
   if (!intelligenceCacheAvailableBlock()) {
     return { digest: buildFallbackDigest(chain, parts, nextHash), isAi: false }
+  }
+  // User-controlled kill switch — orthogonal to provider availability.
+  // Off: never call the model, use the deterministic fallback (existing stored
+  // digests still surface via the `existing` branch above).
+  if (!getAiActivityAiTitlesEnabled()) {
+    return existing
+      ? { digest: existing, isAi: true }
+      : { digest: buildFallbackDigest(chain, parts, nextHash), isAi: false }
   }
   const av = await availability().catch(() => ({ available: false }))
   if (!av.available) {

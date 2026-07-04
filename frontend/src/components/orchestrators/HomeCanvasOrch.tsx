@@ -1,3 +1,4 @@
+import { useCallback, useMemo, useState } from 'react'
 import CanvasSurfaceOrch, {
   type CanvasSurfaceTilesApi,
 } from '@/components/orchestrators/CanvasSurfaceOrch'
@@ -7,6 +8,9 @@ import { useAiActivityPostItBlock } from '@/components/lego_blocks/hooks/shared/
 import HomeAnchorTileBlock from '@/components/lego_blocks/integrations/HomeAnchorTileBlock'
 import MoonSceneBlock from '@/components/lego_blocks/units/MoonSceneBlock'
 import { homeCanvasStorage } from '@/services/lego_blocks/integrations/homeCanvasStorageBlock'
+
+const DEFAULT_WORLD_HEIGHT = 3800
+const CONTENT_BOTTOM_BREATHING = 320
 
 const ANCHOR_CENTER_X = 4500 / 2
 // +200 vs the original 3000/2 center: extra sky above the moon scene.
@@ -65,12 +69,23 @@ function HomeTilesEffect({ tiles, setAllTiles, loaded }: CanvasSurfaceTilesApi) 
 }
 
 export default function HomeCanvasOrch() {
+  // The AI-Activity tile grows when its drill-down opens; the panels below
+  // cascade off it and the world height stretches to fit. Reported bottom
+  // is the todayBottom edge in world coords.
+  const [contentBottomY, setContentBottomY] = useState<number | null>(null)
+  const onContentBottomChange = useCallback((next: number) => {
+    setContentBottomY(prev => (prev != null && Math.abs(prev - next) < 1 ? prev : next))
+  }, [])
+  const worldHeight = useMemo(() => {
+    if (contentBottomY == null) return DEFAULT_WORLD_HEIGHT
+    return Math.max(DEFAULT_WORLD_HEIGHT, Math.ceil(contentBottomY + CONTENT_BOTTOM_BREATHING))
+  }, [contentBottomY])
   return (
     <CanvasSurfaceOrch
       surfaceId="home"
       storage={homeCanvasStorage}
       seedTiles={SEED_TILES}
-      worldHeight={3800}
+      worldHeight={worldHeight}
       initialFocus={{
         worldX: ANCHOR_CENTER_X,
         worldY: ANCHOR_CENTER_Y - 280,
@@ -80,7 +95,11 @@ export default function HomeCanvasOrch() {
       worldExtras={
         <>
           <MoonSceneBlock x={ANCHOR_CENTER_X - 260} y={ANCHOR_CENTER_Y - 810} />
-          <HomeAnchorTileBlock centerX={ANCHOR_CENTER_X} centerY={ANCHOR_CENTER_Y} />
+          <HomeAnchorTileBlock
+            centerX={ANCHOR_CENTER_X}
+            centerY={ANCHOR_CENTER_Y}
+            onContentBottomChange={onContentBottomChange}
+          />
         </>
       }
       tilesEffect={HomeTilesEffect}

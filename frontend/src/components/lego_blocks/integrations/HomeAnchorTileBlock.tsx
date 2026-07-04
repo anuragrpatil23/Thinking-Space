@@ -1,4 +1,4 @@
-import { Suspense, lazy, memo, useEffect, useState } from 'react'
+import { Suspense, lazy, memo, useCallback, useEffect, useRef, useState } from 'react'
 
 // Code-split boundary: keeps recharts out of the startup bundle.
 const DashboardChartsBlock = lazy(() => import('@/components/lego_blocks/integrations/DashboardChartsBlock'))
@@ -17,37 +17,109 @@ import {
 interface AnchorElementProps {
   centerX: number
   centerY: number
+  /** Notified whenever the world's needed bottom edge changes so the parent
+   *  canvas can grow its worldHeight to fit the expanded AI-Activity tile
+   *  (drill-down opens/closes) without scroll or clipping. */
+  onContentBottomChange?: (bottomWorldY: number) => void
 }
 
+// aiActivity + thisWeek have an *initial* height only — actual height is
+// measured at runtime and the panels below cascade off them. Order top→bottom:
+// aiActivity → thisWeek → charts → today. Both intrinsic panels sit near the
+// top of the stack so their expansion pushes everything below in one shot.
 const ANCHOR_ELEMENTS = {
   welcome: { w: 640, h: 200, offsetY: -540 },
-  // Tall enough to hold the chart + drill-down table without scrolling.
-  aiActivity: { w: 880, h: 980, offsetY: -380 },
-  charts: { w: 880, h: 360, offsetY: 640 },
-  thisWeek: { w: 880, h: 360, offsetY: 1040 },
-  today: { w: 880, h: 440, offsetY: 1440 },
+  aiActivity: { w: 880, initialH: 620, offsetY: -380 },
+  thisWeek: { w: 880, initialH: 360, gap: 40 },
+  charts: { w: 880, h: 360, gap: 40 },
+  today: { w: 880, h: 440, gap: 40 },
 } as const
+
+// Hard cap for intrinsic panels — beyond this the card scrolls internally
+// (and captures wheel from the canvas) instead of pushing the whole cascade
+// further down. Picked to match a typical laptop viewport with room to
+// breathe; tune here if the "select all days" drill produces very tall days.
+const INTRINSIC_MAX_HEIGHT = 1100
 
 function FloatingPanel({
   x,
   y,
   w,
   h,
+  maxHeight,
   variant = 'panel',
   theme,
+  innerRef,
   children,
 }: {
   x: number
   y: number
   w: number
-  h: number
+  /** Omit for an intrinsic-height panel that grows with its content. */
+  h?: number
+  /** Only meaningful for intrinsic panels: caps the outer height and turns on
+   *  internal scroll when the content would spill past. When capped and the
+   *  cursor is over the card, wheel events are captured so the card scrolls
+   *  and the canvas doesn't pan/zoom underneath. */
+  maxHeight?: number
   variant?: 'panel' | 'text'
   theme: CanvasThemeTokens
+  /** Attach a ref to the outer positioned element — used to measure intrinsic
+   *  height so the world can grow around it. */
+  innerRef?: React.Ref<HTMLDivElement>
   children: React.ReactNode
 }) {
   const isPanel = variant === 'panel'
+  const intrinsic = h === undefined
+  const localRef = useRef<HTMLDivElement | null>(null)
+  const setRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      localRef.current = node
+      if (typeof innerRef === 'function') innerRef(node)
+      else if (innerRef && typeof innerRef === 'object') {
+        (innerRef as React.MutableRefObject<HTMLDivElement | null>).current = node
+      }
+    },
+    [innerRef],
+  )
+  // Only intrinsic + capped panels can overflow — track it so we know when to
+  // hijack wheel from the canvas. Runs on scroll + resize (both trigger the
+  // scrollHeight vs clientHeight check).
+  const [overflowing, setOverflowing] = useState(false)
+  useEffect(() => {
+    const el = localRef.current
+    if (!el || maxHeight === undefined || typeof ResizeObserver === 'undefined') return
+    const update = () => setOverflowing(el.scrollHeight - el.clientHeight > 1)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [maxHeight])
+  // Wheel-capture: only when we're actively overflowing. When the card can't
+  // scroll, wheel passes through so canvas pan/zoom keeps working. `wheel`
+  // has to be attached natively to opt out of passive-listener defaults so
+  // preventDefault can stop the canvas from also handling it.
+  useEffect(() => {
+    if (!overflowing) return
+    const el = localRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.stopPropagation()
+      // Only preventDefault when there's actually room to scroll in the
+      // wheel's direction — lets the browser bounce at the edges without
+      // trapping the user inside the card.
+      const atTop = el.scrollTop <= 0
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
+      if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) return
+      e.preventDefault()
+      el.scrollTop += e.deltaY
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [overflowing])
   return (
     <div
+      ref={setRefs}
       data-canvas-anchor-element="true"
       onMouseDown={e => e.stopPropagation()}
       onDoubleClick={e => e.stopPropagation()}
@@ -57,12 +129,21 @@ function FloatingPanel({
         top: y,
         width: w,
         height: h,
+        maxHeight,
         padding: isPanel ? 20 : 0,
         borderRadius: isPanel ? 14 : 0,
         background: isPanel ? theme.anchorPanelBg : 'transparent',
         border: isPanel ? `1px solid ${theme.anchorPanelBorder}` : 'none',
         boxShadow: isPanel ? theme.anchorPanelShadow : 'none',
-        overflow: 'hidden',
+        // Capped intrinsic panels scroll internally when their content spills;
+        // uncapped intrinsic panels stay visible so drill-down grows the
+        // canvas world; fixed-height panels keep clipping for safety.
+        overflow:
+          maxHeight !== undefined
+            ? 'auto'
+            : intrinsic
+              ? 'visible'
+              : 'hidden',
         cursor: 'default',
         zIndex: 2,
       }}
@@ -72,7 +153,7 @@ function FloatingPanel({
   )
 }
 
-function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
+function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: AnchorElementProps) {
   const theme = useCanvasThemeBlock()
   const { profile } = useUserProfileBlock()
   const activity = useDashboardActivityBlock('30d')
@@ -87,16 +168,77 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
     return () => { cancelled = true }
   }, [])
 
-  const place = (key: keyof typeof ANCHOR_ELEMENTS) => {
-    const { w, h, offsetY } = ANCHOR_ELEMENTS[key]
-    return { x: centerX - w / 2, y: centerY + offsetY, w, h }
+  // Measured height of the AI-Activity tile — drives the cascade of every
+  // panel below it, and (via callback) the canvas world height. Seeded from
+  // `initialH` so first paint uses a sensible layout before ResizeObserver
+  // reports the real value.
+  const [aiActivityHeight, setAiActivityHeight] = useState<number>(ANCHOR_ELEMENTS.aiActivity.initialH)
+  const [thisWeekHeight, setThisWeekHeight] = useState<number>(ANCHOR_ELEMENTS.thisWeek.initialH)
+  const aiActivityRef = useRef<HTMLDivElement | null>(null)
+  const thisWeekRef = useRef<HTMLDivElement | null>(null)
+  // Same measurement recipe for both intrinsic panels: borderBoxSize (with a
+  // contentRect fallback) already includes FloatingPanel's own padding.
+  const observeIntrinsicPanel = (
+    ref: React.MutableRefObject<HTMLDivElement | null>,
+    apply: (measured: number) => void,
+  ) => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return () => {}
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const measured = Math.ceil((entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height))
+        if (measured < 100) return
+        apply(measured)
+      }
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
   }
+  useEffect(
+    () => observeIntrinsicPanel(aiActivityRef, m =>
+      setAiActivityHeight(prev => (Math.abs(prev - m) < 1 ? prev : m)),
+    ),
+    [],
+  )
+  useEffect(
+    () => observeIntrinsicPanel(thisWeekRef, m =>
+      setThisWeekHeight(prev => (Math.abs(prev - m) < 1 ? prev : m)),
+    ),
+    [],
+  )
 
-  const welcome = place('welcome')
-  const charts = place('charts')
-  const thisWeek = place('thisWeek')
-  const today = place('today')
-  const aiActivity = place('aiActivity')
+  const w = 880
+  const welcomeSpec = ANCHOR_ELEMENTS.welcome
+  const aiSpec = ANCHOR_ELEMENTS.aiActivity
+  const chartsSpec = ANCHOR_ELEMENTS.charts
+  const thisWeekSpec = ANCHOR_ELEMENTS.thisWeek
+  const todaySpec = ANCHOR_ELEMENTS.today
+
+  const welcome = {
+    x: centerX - welcomeSpec.w / 2,
+    y: centerY + welcomeSpec.offsetY,
+    w: welcomeSpec.w,
+    h: welcomeSpec.h,
+  }
+  const aiActivityTop = centerY + aiSpec.offsetY
+  const aiActivityBottom = aiActivityTop + aiActivityHeight
+  const thisWeekTop = aiActivityBottom + thisWeekSpec.gap
+  const thisWeekBottom = thisWeekTop + thisWeekHeight
+  const chartsTop = thisWeekBottom + chartsSpec.gap
+  const chartsBottom = chartsTop + chartsSpec.h
+  const todayTop = chartsBottom + todaySpec.gap
+  const todayBottom = todayTop + todaySpec.h
+
+  const aiActivity = { x: centerX - w / 2, y: aiActivityTop, w }
+  const thisWeek = { x: centerX - w / 2, y: thisWeekTop, w }
+  const charts = { x: centerX - w / 2, y: chartsTop, w, h: chartsSpec.h }
+  const today = { x: centerX - w / 2, y: todayTop, w, h: todaySpec.h }
+
+  const notifyBottom = useCallback(
+    (bottom: number) => onContentBottomChange?.(bottom),
+    [onContentBottomChange],
+  )
+  useEffect(() => { notifyBottom(todayBottom) }, [todayBottom, notifyBottom])
 
   return (
     <div className={theme.isDark ? 'dark' : ''}>
@@ -153,7 +295,12 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
         </Suspense>
       </FloatingPanel>
 
-      <FloatingPanel {...thisWeek} theme={theme}>
+      <FloatingPanel
+        {...thisWeek}
+        maxHeight={INTRINSIC_MAX_HEIGHT}
+        theme={theme}
+        innerRef={thisWeekRef}
+      >
         <ThisWeekDigestBlock />
       </FloatingPanel>
 
@@ -164,7 +311,10 @@ function HomeAnchorTileBlockImpl({ centerX, centerY }: AnchorElementProps) {
         />
       </FloatingPanel>
 
-      <FloatingPanel {...aiActivity} theme={theme}>
+      <FloatingPanel {...aiActivity} theme={theme} innerRef={aiActivityRef}>
+        {/* The AI-Activity panel caps its own drill table internally, so
+            the outer card grows only through header+heatmap+timeline — the
+            table scrolls in place instead of the whole card scrolling. */}
         <AiActivityPanelBlock />
       </FloatingPanel>
     </div>

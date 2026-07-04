@@ -7,9 +7,14 @@ import {
   projectDigestBlock,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import AiActivityRangeSummaryBlock from '@/components/lego_blocks/integrations/AiActivityRangeSummaryBlock'
+import { cn } from '@/lib/utils'
 import {
+  AI_ACTIVITY_RANGE_SUMMARY_PROVIDER_EVENT,
   AI_ACTIVITY_SET_MODE_EVENT,
+  getAiActivityRangeSummaryProvider,
   getAiActivitySetMode,
+  type AiActivityRangeSummaryProvider,
 } from '@/services/lego_blocks/units/storageKeyBlock'
 
 function mondayOf(date: Date): Date {
@@ -25,6 +30,34 @@ const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 function fmtMonthDay(d: Date): string {
   return `${MONTH_SHORT[d.getMonth()]} ${d.getDate()}`
 }
+
+/** Small badge derived from the user's range-summary provider setting. All
+ *  projects in a section use the same strategy, so we show one badge next
+ *  to the section header instead of repeating it per project. The actual
+ *  provider that ran may differ (fallback on failure) — the underlying
+ *  summary records that, but here we prioritize signal-to-noise. */
+function providerBadgeFor(provider: AiActivityRangeSummaryProvider): { label: string; className: string } | null {
+  // Small coloured text, no pill background — quiet source marker, matches
+  // the compact styling used everywhere else the provider is surfaced.
+  switch (provider) {
+    case 'claude-cli':
+      return { label: 'claude', className: 'text-orange-600 dark:text-orange-300' }
+    case 'local':
+      return { label: 'local', className: 'text-emerald-600 dark:text-emerald-300' }
+    case 'off':
+    default:
+      return { label: 'rules based', className: 'text-muted-foreground' }
+  }
+}
+
+function isoLocalDate(ms: number): string {
+  const d = new Date(ms)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 
 export default function ThisWeekDigestBlock() {
   // 30d covers both the current week and the last two 3-day sets (max reach
@@ -42,6 +75,23 @@ export default function ThisWeekDigestBlock() {
       window.removeEventListener('storage', onChange)
     }
   }, [])
+
+  // Range-summary provider — all projects in this card share the same
+  // strategy, so we surface one badge per section rather than repeating it
+  // on every project row.
+  const [provider, setProvider] = useState<AiActivityRangeSummaryProvider>(() =>
+    getAiActivityRangeSummaryProvider(),
+  )
+  useEffect(() => {
+    const onChange = () => setProvider(getAiActivityRangeSummaryProvider())
+    window.addEventListener(AI_ACTIVITY_RANGE_SUMMARY_PROVIDER_EVENT, onChange)
+    window.addEventListener('storage', onChange)
+    return () => {
+      window.removeEventListener(AI_ACTIVITY_RANGE_SUMMARY_PROVIDER_EVENT, onChange)
+      window.removeEventListener('storage', onChange)
+    }
+  }, [])
+  const providerBadge = useMemo(() => providerBadgeFor(provider), [provider])
 
   // Default (week) mode: a single Monday-to-now window. Set mode: two
   // separate windows — the current set (start-of-set → now) and the
@@ -114,6 +164,9 @@ export default function ThisWeekDigestBlock() {
 
   // For each window: chains (excluding noise buckets), project digest, and
   // a compact summary. Building once per window keeps the render loop clean.
+  // Also captures the range-summary inputs (top project + iso date bounds)
+  // so the range-summary card can render at the top of each section without
+  // reshaping state per-render.
   const sections = useMemo(() => {
     return windows.map(w => {
       const chains = activity.chains.filter(c => {
@@ -131,6 +184,11 @@ export default function ThisWeekDigestBlock() {
           chains: chains.length,
           msgs,
         },
+        /** Non-noise ActivityChain objects in this window — the per-project
+         *  range-summary card needs them to hand into the orchestrator. */
+        rawChains: chains,
+        rangeStartDate: isoLocalDate(w.startMs),
+        rangeEndDate: isoLocalDate(w.endMs),
       }
     })
   }, [windows, activity.chains])
@@ -189,12 +247,20 @@ export default function ThisWeekDigestBlock() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-baseline justify-between gap-3">
         <div>
+          {/* The individual section headers below already carry the window
+              label (THIS SET / PREV SET / date range), so the card's own
+              heading just says the intent once, cleanly. */}
           <h3 className="text-base font-semibold text-foreground">
-            {setMode ? 'This set · Prev set' : 'This week'}
+            What you worked on
           </h3>
-          <p className="text-xs text-muted-foreground">
-            {setMode ? 'what you worked on with AI' : `${sections[0].label} · what you worked on with AI`}
-          </p>
+          {providerBadge && (
+            <span
+              className={cn('block text-[9px] uppercase tracking-[0.08em]', providerBadge.className)}
+              title={`Range summaries in this card use "${provider}" (Settings → AI Activity → Range summary provider)`}
+            >
+              {providerBadge.label}
+            </span>
+          )}
         </div>
         {totalSummary.chains > 0 && (
           <div className="flex items-baseline gap-3 text-xs text-muted-foreground">
@@ -231,38 +297,42 @@ export default function ThisWeekDigestBlock() {
           <div className="space-y-5">
             {sections.map((section, sIdx) => (
               <div key={section.key} className="space-y-2">
-                {setMode && (
-                  <div
-                    className={
-                      sIdx > 0
-                        ? 'flex items-baseline justify-between gap-3 border-t border-border/30 pt-3'
-                        : 'flex items-baseline justify-between gap-3'
-                    }
-                  >
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-[0.08em] text-foreground/80">
-                        {section.heading}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground/70">{section.label}</span>
-                    </div>
-                    {section.summary.chains > 0 && (
-                      <div className="flex items-baseline gap-2 text-[10px] text-muted-foreground">
-                        <span className="tabular-nums text-foreground/70">{section.summary.durLabel}</span>
-                        <span className="tabular-nums">
-                          {section.summary.chains} · {section.summary.msgs.toLocaleString()}
-                        </span>
-                      </div>
-                    )}
+                {/* Section header renders in every mode now — the card's own
+                    title no longer names the window, so this row is where
+                    "THIS WEEK · date range" (or THIS SET / PREV SET) shows. */}
+                <div
+                  className={
+                    sIdx > 0
+                      ? 'flex items-baseline justify-between gap-3 border-t border-border/30 pt-3'
+                      : 'flex items-baseline justify-between gap-3'
+                  }
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-foreground/80">
+                      {section.heading}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/70">{section.label}</span>
                   </div>
-                )}
+                  {section.summary.chains > 0 && (
+                    <div className="flex items-baseline gap-2 text-[10px] text-muted-foreground">
+                      <span className="tabular-nums text-foreground/70">{section.summary.durLabel}</span>
+                      <span className="tabular-nums">
+                        {section.summary.chains} · {section.summary.msgs.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                </div>
                 {section.digest.length === 0 ? (
                   <p className="text-[11px] text-muted-foreground/60">Nothing this window.</p>
                 ) : (
                   <div className="space-y-3">
                     {section.digest.map(d => {
                       const color = getProjectColor(d.project)
+                      // Chains in this window that belong to this project —
+                      // the range-summary orchestrator consumes them directly.
+                      const projectChains = section.rawChains.filter(c => c.project === d.project)
                       return (
-                        <div key={d.project} className="space-y-0.5">
+                        <div key={d.project} className="space-y-1">
                           <div className="flex items-baseline gap-2 text-[11px]">
                             <span
                               className="inline-flex items-center gap-1.5 font-medium"
@@ -281,14 +351,17 @@ export default function ThisWeekDigestBlock() {
                               {d.chains} chain{d.chains === 1 ? '' : 's'} · {d.msgs.toLocaleString()} msgs
                             </span>
                           </div>
-                          {d.topics.length > 0 && (
-                            <ul className="space-y-0.5 pl-3.5 text-[11px] text-muted-foreground">
-                              {d.topics.map((t, i) => (
-                                <li key={i} className="truncate" title={t}>
-                                  · {t}
-                                </li>
-                              ))}
-                            </ul>
+                          {projectChains.length > 0 && (
+                            <div className="pl-3.5">
+                              <AiActivityRangeSummaryBlock
+                                projectId={d.project}
+                                projectLabel={d.project}
+                                rangeStartDate={section.rangeStartDate}
+                                rangeEndDate={section.rangeEndDate}
+                                chains={projectChains}
+                                compact
+                              />
+                            </div>
                           )}
                         </div>
                       )

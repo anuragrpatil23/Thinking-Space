@@ -28,7 +28,6 @@ interface AiActivityDayTableBlockProps {
   /** When set, rows whose calendar date doesn't match get a day-divider above
    *  them so the user can see when the table crosses midnight (overnight tail). */
   anchorDateIso?: string | null
-  onBack?: () => void
   /** Called when a reading-session edit lands. Caller should refresh AI
    *  activity so the new times propagate to the timeline, totals, heatmap, etc. */
   onReadingEdited?: () => void
@@ -125,7 +124,6 @@ export default function AiActivityDayTableBlock({
   summary,
   highlightProject = null,
   anchorDateIso = null,
-  onBack,
   onReadingEdited,
 }: AiActivityDayTableBlockProps) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
@@ -174,15 +172,6 @@ export default function AiActivityDayTableBlock({
             <p className="text-[11px] text-muted-foreground/80">{summary}</p>
           )}
         </div>
-        {onBack && (
-          <button
-            type="button"
-            onClick={onBack}
-            className="rounded-full border border-border/40 bg-card/40 px-2.5 py-1 text-[11px] text-muted-foreground hover:border-border/70 hover:text-foreground"
-          >
-            ← back
-          </button>
-        )}
       </div>
       {sorted.length === 0 ? (
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-4 text-xs text-muted-foreground/70">

@@ -4,8 +4,10 @@ import { cn } from '@/lib/utils'
 import type { ActivityDay } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import {
+  AI_ACTIVITY_CALENDAR_MODE_EVENT,
   AI_ACTIVITY_REST_DAYS_EVENT,
   AI_ACTIVITY_SET_MODE_EVENT,
+  getAiActivityCalendarMode,
   getAiActivityRestDays,
   getAiActivitySetMode,
 } from '@/services/lego_blocks/units/storageKeyBlock'
@@ -81,21 +83,31 @@ export default function AiActivityHeatmapBlock({
   onSelectRange,
 }: AiActivityHeatmapBlockProps) {
   const [setMode, setSetMode] = useState<boolean>(() => getAiActivitySetMode())
+  const [calendarMode, setCalendarMode] = useState<boolean>(() => getAiActivityCalendarMode())
   const [restDays, setRestDays] = useState<number[]>(() => getAiActivityRestDays())
   useEffect(() => {
     const onSetMode = () => setSetMode(getAiActivitySetMode())
+    const onCalMode = () => setCalendarMode(getAiActivityCalendarMode())
     const onRestDays = () => setRestDays(getAiActivityRestDays())
     window.addEventListener(AI_ACTIVITY_SET_MODE_EVENT, onSetMode)
+    window.addEventListener(AI_ACTIVITY_CALENDAR_MODE_EVENT, onCalMode)
     window.addEventListener(AI_ACTIVITY_REST_DAYS_EVENT, onRestDays)
     window.addEventListener('storage', onSetMode)
+    window.addEventListener('storage', onCalMode)
     window.addEventListener('storage', onRestDays)
     return () => {
       window.removeEventListener(AI_ACTIVITY_SET_MODE_EVENT, onSetMode)
+      window.removeEventListener(AI_ACTIVITY_CALENDAR_MODE_EVENT, onCalMode)
       window.removeEventListener(AI_ACTIVITY_REST_DAYS_EVENT, onRestDays)
       window.removeEventListener('storage', onSetMode)
+      window.removeEventListener('storage', onCalMode)
       window.removeEventListener('storage', onRestDays)
     }
   }, [])
+  // "Calendar look" = same big-cell / day-of-month layout that set-mode uses,
+  // but without the 3-day dividers or the current-set ring. Either toggle
+  // activates the layout; set-specific decorations still gate on setMode.
+  const showDayNumbers = setMode || calendarMode
 
   // Rest-day predicate: true when this date falls in the *current calendar
   // month* AND its weekday is one the user marked as rest. Bucket the check
@@ -204,8 +216,8 @@ export default function AiActivityHeatmapBlock({
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const cellStepPx = setMode ? SET_CELL_PX + SET_CELL_GAP : 15
-  const leftLabelPad = setMode ? 8 : 36 // weekday labels + margin, or just padding
+  const cellStepPx = showDayNumbers ? SET_CELL_PX + SET_CELL_GAP : 15
+  const leftLabelPad = showDayNumbers ? 8 : 36 // weekday labels + margin, or just padding
   const fitVisibleWeeks =
     containerWidth > 0
       ? Math.max(4, Math.floor((containerWidth - leftLabelPad) / cellStepPx))
@@ -371,8 +383,8 @@ export default function AiActivityHeatmapBlock({
   }
 
   // Set-mode geometry: cells grow so day-of-month numbers stay legible.
-  const cellPx = setMode ? SET_CELL_PX : 12
-  const cellGap = setMode ? SET_CELL_GAP : 3
+  const cellPx = showDayNumbers ? SET_CELL_PX : 12
+  const cellGap = showDayNumbers ? SET_CELL_GAP : 3
   const step = cellPx + cellGap
   const gridHeight = 7 * cellPx + 6 * cellGap
   const gridWidth = weeks.length * step - cellGap
@@ -420,7 +432,7 @@ export default function AiActivityHeatmapBlock({
         <div ref={scrollContainerRef} className="overflow-x-auto pt-1.5 pb-1.5">
           <div className="inline-block min-w-full">
             <div
-              className={cn('relative mb-1', !setMode && 'ml-7')}
+              className={cn('relative mb-1', !showDayNumbers && 'ml-7')}
               style={{ height: 14, width: gridWidth }}
             >
               {monthHeaders.map(h => (
@@ -437,7 +449,7 @@ export default function AiActivityHeatmapBlock({
               ))}
             </div>
             <div className="flex">
-              {!setMode && (
+              {!showDayNumbers && (
                 <div className="mr-1 flex flex-col" style={{ gap: cellGap }}>
                   {WEEKDAY_LABELS.map((label, i) => (
                     <div
@@ -495,13 +507,20 @@ export default function AiActivityHeatmapBlock({
                       const inRange = cell.date >= startIso && cell.date <= endIso
                       const isSelected = selectedDate === cell.date
                       const inActiveRange = isInActiveRange(cell.date)
-                      const dayNum = new Date(cell.date + 'T00:00:00').getDate()
+                      const cellDate = new Date(cell.date + 'T00:00:00')
+                      const dayNum = cellDate.getDate()
                       const strongTint = cell.intensity > 0.55
+                      // 3-day set markers are a *forward-looking* pacing aid.
+                      // In past months they read as noise, so gate the divider
+                      // + day-number tint to the current calendar month only.
+                      const cellMonthKey = `${cellDate.getFullYear()}-${cellDate.getMonth()}`
+                      const isCurrentMonthCell = cellMonthKey === currentMonthKey
                       // Set-boundary dividers on trailing edges: bottom edge
                       // when next date is below in the same column, right edge
                       // when this cell is Sun (row 6) and the set boundary
                       // falls on the week-column seam.
-                      const isSetBoundary = setMode && isLastDayOfSet(cell.date)
+                      const isSetBoundary =
+                        setMode && isCurrentMonthCell && isLastDayOfSet(cell.date)
                       const drawBottomDivider =
                         isSetBoundary && rIdx < 6
                       const drawRightDivider = isSetBoundary && rIdx === 6
@@ -516,8 +535,8 @@ export default function AiActivityHeatmapBlock({
                           onMouseLeave={() => setHoverDate(d => (d === cell.date ? null : d))}
                           className={cn(
                             'relative flex items-center justify-center rounded-[3px] transition-all',
-                            setMode && 'font-medium tabular-nums text-[10px]',
-                            setMode &&
+                            showDayNumbers && 'font-medium tabular-nums text-[10px]',
+                            showDayNumbers &&
                               (strongTint ? 'text-background/95' : 'text-foreground/75'),
                             isHover && 'ring-1 ring-foreground/60',
                             (isSelected || inActiveRange) && 'ring-1 ring-foreground',
@@ -536,7 +555,7 @@ export default function AiActivityHeatmapBlock({
                           }}
                           aria-label={`${cell.date}: ${cell.msgs} messages${isRest ? ' (Claude Code reset day)' : ''}`}
                         >
-                          {setMode && dayNum}
+                          {showDayNumbers && dayNum}
                           {drawBottomDivider && (
                             <span
                               aria-hidden
@@ -607,7 +626,9 @@ export default function AiActivityHeatmapBlock({
           <span className="text-muted-foreground/60">
             {setMode
               ? 'Numbers are day-of-month · thin lines mark 3-day set boundaries · ringed cells are today’s set'
-              : 'Hover for details · click a day · drag or shift-click for range · click a month label for the whole month'}
+              : calendarMode
+                ? 'Numbers are day-of-month · click a day · drag or shift-click for range · click a month label for the whole month'
+                : 'Hover for details · click a day · drag or shift-click for range · click a month label for the whole month'}
           </span>
         )}
       </div>

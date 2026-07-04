@@ -14,6 +14,7 @@ import {
 } from '@/services/orchestrators/aiActivityChainDigestOrch'
 import { availability, runContract } from '@/services/orchestrators/intelligenceOrch'
 import { intelligenceCacheAvailableBlock } from '@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock'
+import { getAiActivityAiTitlesEnabled } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   dayAtomContract,
   type DayAtomContractInput,
@@ -122,6 +123,9 @@ async function generateAtomViaContractBlock(
 ): Promise<ProjectDayAtom | null> {
   if (!input.chainDigests || input.chainDigests.length === 0) return null
   if (!intelligenceCacheAvailableBlock()) return null
+  // User-controlled kill switch — mirrors the chain-digest orchestrator so
+  // the day-atom pipeline also falls back to the stub when AI titles are off.
+  if (!getAiActivityAiTitlesEnabled()) return null
   const av = await availability().catch(() => ({ available: false }))
   if (!av.available) return null
 
