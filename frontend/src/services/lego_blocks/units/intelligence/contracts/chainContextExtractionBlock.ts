@@ -1,31 +1,70 @@
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { readNativeAiSession } from '@/services/lego_blocks/integrations/nativeAiSessionsBlock'
 
-// Shared chain-context extraction. Both the (legacy) session-title contract
-// and the (new) chain-digest contract feed the model:
-//   - the first 1-2 substantive user turns (the original ask)
-//   - every assistant "recap" (summary-shaped turn)
-// …never the full transcript. Recaps are what capture the actual work done;
-// full transcripts blow the context budget with tool churn.
+// Shared chain-context extraction.
+//
+// Old shape (removed): split into intro user turns + assistant "recap" turns
+// picked via a summary-phrase regex. That heuristic missed ~95% of real
+// wrap-up turns on tool-heavy sessions and ~93% on talk-heavy sessions —
+// eyeballed across TS / F9 / sfpi chains — so it was a signal-remover
+// disguised as a signal-picker.
+//
+// New shape: return every substantive turn in original conversation order,
+// each head+tail'd to a tight per-turn budget. Two levers per role:
+//   - filter noise (slash-commands, tool_results, mid-loop stubs,
+//     skill-docs dumps, trailing "Want me to…" conversational tails)
+//   - head+tail with sentence-boundary snap on turns above a threshold
+// Budgets: ~5K tokens across TS/F9 (tiny signal fits without truncation),
+// ~5K tokens on deep ideation chains like sfpi (per-turn truncation kicks
+// in). See empirical eval in tmp/extract_v2.py which was the design proto.
 
-const MAX_USER_TURNS = 2
-const MAX_PROMPT_CHARS = 5000
-const MAX_PER_TURN_CHARS = 1200
+const USER_HEAD_CHARS = 300
+const USER_TAIL_CHARS = 200
+const USER_TRUNCATE_ABOVE = 600
 
-const SUMMARY_PHRASE_RE = /\b(fix summary|what landed|what changed|summary:|all done|done\s*[\-—]|here'?s what|changes:|the result is|to recap)\b/i
-const HEADING_RE = /^\s*#{2,4}\s+\S/m
-const ACTION_BULLET_RE = /^[\s>]*[-*]\s+(?:I\s+|We\s+)?(added|fixed|updated|refactored|moved|removed|wired|renamed|introduced|extracted|deleted|created|switched|migrated|tightened|loosened|reworked|simplified|inlined|replaced|gated|exposed|persisted|cached|invalidated|landed)\b/mi
+const ASST_HEAD_CHARS = 250
+const ASST_TAIL_CHARS = 200
+const ASST_TRUNCATE_ABOVE = 600
+/** Below this, the "prose" left after tool_use JSON is stripped is a
+ *  mid-loop stub (e.g. "Now add the sort handler:") — pure noise. */
+const ASST_MIN_PROSE_CHARS = 300
+
+const SENTENCE_SNAP_WINDOW = 80
+
+const SYSTEM_REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g
+const LOCAL_CMD_WRAPPER_RE = /^<(local-command-caveat|command-name|command-message|local-command-stdout)/
+const CLEAR_CMD_RE = /<command-name>\s*\/clear/i
+const SKILL_DOCS_PREFIX = 'Base directory for this skill:'
+const SKILL_DOCS_ARGUMENTS_RE = /^ARGUMENTS:\s*([\s\S]*)$/m
+const TRAILING_QUESTION_RE =
+  /\n+(?:Want me to|Want you to|Want to|Would you like|Should I|Shall I)[^\n?]{5,240}\?\s*$/i
 
 export interface ExtractedTurnBlock {
   role: 'user' | 'assistant'
   text: string
+  /** Sequence position across the chain, useful for stable rendering. */
   order: number
 }
 
-export interface ChainContextBlock {
-  userIntro: ExtractedTurnBlock[]
-  summaryTurns: ExtractedTurnBlock[]
+export interface ChainContextMetaBlock {
+  /** Substantive turns kept after filtering. */
+  turnCount: number
+  /** Every tool_use invocation across the chain — including turns we
+   *  didn't keep (mid-loop stubs still count for shape). */
+  toolCallCount: number
+  /** User invoked `/clear` at least once — chain grew across topic hops. */
+  hadClear: boolean
+  /** At least one turn was head+tail'd — flagged so the prompt can note
+   *  that `[…Nc omitted…]` markers may appear. */
+  hadTruncation: boolean
 }
+
+export interface ChainContextBlock {
+  turns: ExtractedTurnBlock[]
+  meta: ChainContextMetaBlock
+}
+
+// ── flatten + parse helpers ──────────────────────────────────────────────
 
 function flattenContent(content: unknown): string {
   if (typeof content === 'string') return content
@@ -39,38 +78,117 @@ function flattenContent(content: unknown): string {
   return parts.join('\n')
 }
 
-function isLabelOnly(text: string): boolean {
-  const trimmed = text.trim()
-  if (!trimmed) return true
-  if (/^<command-name>/i.test(trimmed)) return true
-  if (/^\//.test(trimmed) && trimmed.length < 40) return true
-  return false
+function containsOnlyToolResults(content: unknown): boolean {
+  if (!Array.isArray(content) || content.length === 0) return false
+  for (const part of content) {
+    if (!part || typeof part !== 'object') return false
+    const p = part as Record<string, unknown>
+    if (p.type !== 'tool_result') return false
+  }
+  return true
 }
 
-function clip(text: string): string {
-  return text.length > MAX_PER_TURN_CHARS ? `${text.slice(0, MAX_PER_TURN_CHARS)}…` : text
+function countToolUses(content: unknown): number {
+  if (!Array.isArray(content)) return 0
+  let n = 0
+  for (const part of content) {
+    if (!part || typeof part !== 'object') continue
+    if ((part as Record<string, unknown>).type === 'tool_use') n += 1
+  }
+  return n
 }
 
-function looksLikeSummary(text: string): boolean {
-  if (text.length < 60) return false
-  if (SUMMARY_PHRASE_RE.test(text)) return true
-  if (HEADING_RE.test(text)) return true
-  const matches = text.match(new RegExp(ACTION_BULLET_RE.source, 'gmi'))
-  if (matches && matches.length >= 2) return true
-  return false
+// ── per-role filters ─────────────────────────────────────────────────────
+
+function filterUserText(text: string): string | null {
+  const clean = text
+    .replace(SYSTEM_REMINDER_RE, '')
+    .trim()
+    .replace(/^-+/, '')
+    .trim()
+  if (!clean) return null
+  if (clean.startsWith('[tool_result]')) return null
+  if (LOCAL_CMD_WRAPPER_RE.test(clean)) return null
+  if (clean.startsWith(SKILL_DOCS_PREFIX)) {
+    // Skill invocations dump the entire skill readme into the transcript;
+    // the real user intent is the trailing `ARGUMENTS: …` block. Keep that,
+    // drop the docs body.
+    const match = SKILL_DOCS_ARGUMENTS_RE.exec(clean)
+    if (!match) return null
+    return `ARGUMENTS: ${match[1].trim()}`
+  }
+  return clean
 }
+
+function filterAssistantText(text: string): string | null {
+  const stripped = text.replace(TRAILING_QUESTION_RE, '').trim()
+  if (stripped.length < ASST_MIN_PROSE_CHARS) return null
+  return stripped
+}
+
+// ── head + tail with sentence-boundary snap ──────────────────────────────
+
+function snapToSentence(text: string, pos: number): number {
+  const lo = Math.max(0, pos - SENTENCE_SNAP_WINDOW)
+  const hi = Math.min(text.length, pos + SENTENCE_SNAP_WINDOW)
+  const slice = text.slice(lo, hi)
+  const marks: number[] = []
+  const re = /(\.\s|\n\n|\?\s|!\s)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(slice)) !== null) marks.push(m.index + m[0].length)
+  if (marks.length === 0) return pos
+  const target = pos - lo
+  let best = marks[0]
+  let bestDist = Math.abs(marks[0] - target)
+  for (let i = 1; i < marks.length; i += 1) {
+    const d = Math.abs(marks[i] - target)
+    if (d < bestDist) {
+      best = marks[i]
+      bestDist = d
+    }
+  }
+  return lo + best
+}
+
+function headTail(body: string, head: number, tail: number, above: number): {
+  text: string
+  truncated: boolean
+} {
+  if (body.length <= above || body.length <= head + tail + 100) {
+    return { text: body, truncated: false }
+  }
+  const hEnd = snapToSentence(body, head)
+  const tStart = snapToSentence(body, body.length - tail)
+  if (tStart <= hEnd) return { text: body, truncated: false }
+  const omitted = tStart - hEnd
+  return {
+    text: `${body.slice(0, hEnd).trimEnd()}\n[…${omitted}c omitted…]\n${body
+      .slice(tStart)
+      .trimStart()}`,
+    truncated: true,
+  }
+}
+
+// ── public API ───────────────────────────────────────────────────────────
 
 /**
- * Walk a chain's native-jsonl sessions and pull out the intro user turns +
- * the assistant recap turns that carry summary shape. Vault-md-only chains
- * yield empty; callers fall back to `chain.topic`.
+ * Walk a chain's native-jsonl sessions and produce a compact, ordered
+ * transcript for the chain-digest contract. Returns an empty `turns` array
+ * for vault-md-only chains; callers fall back to `chain.topic`.
  */
 export async function extractChainContextBlock(chain: ActivityChain): Promise<ChainContextBlock> {
-  const userIntro: ExtractedTurnBlock[] = []
-  const summaryTurns: ExtractedTurnBlock[] = []
+  const turns: ExtractedTurnBlock[] = []
+  const meta: ChainContextMetaBlock = {
+    turnCount: 0,
+    toolCallCount: 0,
+    hadClear: false,
+    hadTruncation: false,
+  }
+
   const ordered = [...chain.sessions]
     .sort((a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso))
     .slice(0, 5)
+
   let order = 0
   for (const s of ordered) {
     const cleanPath = s.path.replace(/#w\d+$/, '')
@@ -86,44 +204,69 @@ export async function extractChainContextBlock(chain: ActivityChain): Promise<Ch
     } catch {
       continue
     }
+
     for (const line of jsonl.split('\n')) {
       if (!line.trim()) continue
       let ev: Record<string, unknown>
-      try { ev = JSON.parse(line) } catch { continue }
+      try {
+        ev = JSON.parse(line)
+      } catch {
+        continue
+      }
       if (ev.type !== 'user' && ev.type !== 'assistant') continue
       const msg = ev.message as Record<string, unknown> | undefined
-      const text = flattenContent(msg?.content).trim()
+      const content = msg?.content
+
+      // Count tool_use across every asst message, even ones we won't keep,
+      // so `session shape` reflects the true tool density.
+      if (ev.type === 'assistant') meta.toolCallCount += countToolUses(content)
+
+      // User tool_result-only messages carry the tool output back to Claude
+      // — pure noise for post-hoc summarization; drop before flatten.
+      if (ev.type === 'user' && containsOnlyToolResults(content)) continue
+
+      const text = flattenContent(content).trim()
       if (!text) continue
+      if (CLEAR_CMD_RE.test(text)) meta.hadClear = true
+
       order += 1
       if (ev.type === 'user') {
-        if (isLabelOnly(text)) continue
-        if (userIntro.length < MAX_USER_TURNS) {
-          userIntro.push({ role: 'user', text: clip(text), order })
-        }
-      } else if (looksLikeSummary(text)) {
-        summaryTurns.push({ role: 'assistant', text: clip(text), order })
+        const filtered = filterUserText(text)
+        if (!filtered) continue
+        const trimmed = headTail(filtered, USER_HEAD_CHARS, USER_TAIL_CHARS, USER_TRUNCATE_ABOVE)
+        if (trimmed.truncated) meta.hadTruncation = true
+        turns.push({ role: 'user', text: trimmed.text, order })
+      } else {
+        const filtered = filterAssistantText(text)
+        if (!filtered) continue
+        const trimmed = headTail(filtered, ASST_HEAD_CHARS, ASST_TAIL_CHARS, ASST_TRUNCATE_ABOVE)
+        if (trimmed.truncated) meta.hadTruncation = true
+        turns.push({ role: 'assistant', text: trimmed.text, order })
       }
     }
   }
-  const introChars = userIntro.reduce((n, t) => n + t.text.length, 0)
-  let budget = Math.max(0, MAX_PROMPT_CHARS - introChars)
-  const kept: ExtractedTurnBlock[] = []
-  for (let i = summaryTurns.length - 1; i >= 0; i -= 1) {
-    const t = summaryTurns[i]
-    if (t.text.length > budget) break
-    kept.push(t)
-    budget -= t.text.length
-  }
-  kept.reverse()
-  return { userIntro, summaryTurns: kept }
+  meta.turnCount = turns.length
+  return { turns, meta }
 }
 
-// Regex + helpers used by both contracts for output cleanup.
+/** One-line metadata anchor for the prompt: `session: 12 turns · 32 tool calls · had /clear`. */
+export function formatSessionShapeBlock(meta: ChainContextMetaBlock): string {
+  const parts: string[] = [
+    `${meta.turnCount} substantive ${meta.turnCount === 1 ? 'turn' : 'turns'}`,
+    `${meta.toolCallCount} tool ${meta.toolCallCount === 1 ? 'call' : 'calls'}`,
+  ]
+  if (meta.hadClear) parts.push('had /clear')
+  if (meta.hadTruncation) parts.push('some turns truncated')
+  return `session shape: ${parts.join(' · ')}`
+}
+
+// ── shared output-cleanup helpers used by chainDigestContract ────────────
 
 export const CHAIN_DIGEST_LEAK_PREFIX_RE =
   /^(?:first user message|user (?:message|input|prompt|\d+)|recap \d+|the user(?:'s)?(?: message| input| prompt| ask)?|note|topic|title|label|summary|description|output|project|input|response|here(?:'s| is)|looking at|based on)\s*[:\-—–]\s*/i
 
-export const CHAIN_DIGEST_USER_QUOTE_LEAD_RE = /^(?:hey|hi|hello|can you|could you|please|i want|i need|let'?s)\b/i
+export const CHAIN_DIGEST_USER_QUOTE_LEAD_RE =
+  /^(?:hey|hi|hello|can you|could you|please|i want|i need|let'?s)\b/i
 
 export function stripWrappersBlock(text: string): string {
   return text

@@ -5,6 +5,7 @@ import {
   CHAIN_DIGEST_LEAK_PREFIX_RE,
   CHAIN_DIGEST_USER_QUOTE_LEAD_RE,
   extractChainContextBlock,
+  formatSessionShapeBlock,
   stripWrappersBlock,
 } from './chainContextExtractionBlock'
 
@@ -18,7 +19,9 @@ import {
 // contract portable across the openai-compat provider matrix.
 
 const MAX_TITLE_CHARS = 240
-const MAX_SUMMARY_CHARS = 800
+// Deep ideation sessions (e.g. sfpi) legitimately produce 7 numbered bullets
+// ~200 chars each ≈ 1400 chars. Cap gives headroom without being loose.
+const MAX_SUMMARY_CHARS = 1800
 
 const TITLE_LINE_RE = /^\s*(?:title\s*[:\-—]\s*)?(.+)$/i
 
@@ -54,77 +57,108 @@ function sanitizeTitle(raw: string, projectName: string): string | null {
 }
 
 function sanitizeSummary(raw: string): string {
+  // Preserve newlines — the summary body is numbered bullets, not prose,
+  // so collapsing whitespace would destroy the shape. Just strip leading
+  // labels the model sometimes emits and collapse >2 blank lines.
   const cleaned = raw
     .split('\n')
-    .map(l => l.replace(/^(summary|body|notes)\s*[:\-—]\s*/i, '').trim())
-    .filter(Boolean)
-    .join(' ')
-    .replace(/\s+/g, ' ')
+    .map(l => l.replace(/^(summary|body|notes)\s*[:\-—]\s*/i, ''))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim()
   if (!cleaned) return ''
   if (cleaned.length <= MAX_SUMMARY_CHARS) return cleaned
   const cut = cleaned.slice(0, MAX_SUMMARY_CHARS)
+  // Try to end at the last complete bullet (line starting with `N.`); fall
+  // back to the last sentence-terminating punctuation.
+  const bulletEnds: number[] = []
+  const re = /\n\d+\.\s/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(cut)) !== null) bulletEnds.push(m.index)
+  const lastBullet = bulletEnds.length ? bulletEnds[bulletEnds.length - 1] : -1
+  if (lastBullet > MAX_SUMMARY_CHARS * 0.6) return cut.slice(0, lastBullet).trimEnd() + '…'
   const lastPunct = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? '), cut.lastIndexOf('! '))
   return (lastPunct > MAX_SUMMARY_CHARS * 0.6 ? cut.slice(0, lastPunct + 1) : cut).trim() + '…'
 }
 
 const SYSTEM_PROMPT = [
-  'You describe what an AI-assisted session was about, in two parts.',
-  'Sessions cover anything: coding, business research, studying, writing,',
-  'math, life planning. Stay neutral on domain — describe the actual subject.',
+  'You describe what an AI-assisted session was about, in two parts: a',
+  'title and a numbered-bullet summary. Sessions cover anything — coding,',
+  'business research, studying, writing, math, life planning. Stay neutral',
+  'on domain; describe the actual subject.',
   '',
   'INPUT FORMAT:',
-  '  <<<USER>>>      one or two user messages (the original ask)',
-  '  <<<RECAP>>>     zero or more assistant recaps (what was done or covered)',
+  '  Line 1 is a session shape line (turn / tool-call counts).',
+  '  Then alternating turns marked `USER:` and `ASST:` in original order.',
+  '  Long turns may show `[…Nc omitted…]` mid-turn — that\'s a middle',
+  '  section snipped for length. Work with what\'s there.',
+  '  Tool_use JSON payloads and tool_results are already filtered out;',
+  '  slash-commands and mid-loop assistant stubs too. What remains is signal.',
   '',
   'OUTPUT FORMAT (strict):',
   '  Line 1 must be: TITLE: <one line, no line breaks>',
   '  Line 2 must be blank.',
-  '  Lines 3+ are the summary body: 1-3 sentences in plain prose.',
+  '  Lines 3+ are the summary body as a numbered bullet list — one bullet',
+  '  per distinct sub-task or phase of the session. Use `1.` `2.` `3.`',
+  '  prefixes with a period.',
   '',
-  '  Example:',
-  '  TITLE: Refactored auth middleware to remove session token storage',
+  '  Example (multi-task coding session — three unrelated bugs):',
+  '  TITLE: Auth middleware token-storage fix + settings modal polish',
   '',
-  '  Extracted the token-storage code path out of the middleware into a',
-  '  dedicated service, then updated the two callers. Legal-driven change;',
-  '  session cookies now carry only a signed reference, not the token.',
+  '  1. Refactored auth middleware to stop storing raw session tokens',
+  '     — moved storage into a signed-cookie helper and updated the two',
+  '     callers. Legal-driven change flagged in the last compliance pass.',
+  '  2. Fixed the settings modal briefly rendering the previous user\'s',
+  '     avatar during account switch (races with the auth swap).',
+  '  3. Tightened the retry backoff on the sync worker: exponential with',
+  '     jitter capped at 30s, was previously fixed at 5s.',
   '',
-  '  - NO preamble ("Here is the output", "Looking at the input"). NO trailing',
-  '    meta-notes. NO quoting the user verbatim. NO markdown headings, bullets,',
-  '    or code fences.',
+  '  Example (single-arc research/writing session):',
+  '  TITLE: Wrote the TSMC capacity note for Q3 planning',
   '',
-  'TITLE GUIDELINES:',
-  '  - Concrete and specific: name the feature, company, concept, file, or',
-  '    decision. Avoid generic words like "prompt", "request", "skill" when a',
-  '    real noun is available.',
-  '  - Use past-tense action verbs when RECAPs are present ("Fixed…",',
-  '    "Walked through…", "Researched…"). Use present-progressive when only',
-  '    USER is present ("Studying…", "Debugging…", "Planning…").',
-  '  - If multiple sub-tasks happened, lead with the dominant one and mention',
-  '    a second briefly.',
-  '  - Never just the project or app name.',
+  '  1. Read the last two TSMC earnings calls and pulled the wafer-capacity',
+  '     numbers into a working table under Semiconductor/Foundry/TSMC/.',
+  '  2. Landed the note at Q3-planning/tsmc-capacity.md — capacity vs.',
+  '     announced demand, three named risks, one open question about',
+  '     Arizona ramp timing.',
+  '  3. Caught a units inconsistency in the source data (300mm equivalents',
+  '     vs raw wafer starts) — normalized in the note and flagged the',
+  '     upstream sheet for correction.',
   '',
-  'SUMMARY GUIDELINES:',
-  '  - 1-3 sentences. Concrete: what was done, what decisions were made,',
-  '    what open questions remain (if any).',
-  '  - Prefer the recap voice ("landed the change to X, deferred Y") over',
-  '    describing the conversation ("the user asked about X and the assistant',
-  '    explained…"). Never refer to "the user" or "the assistant".',
-  '  - If nothing substantive happened (session ended in a slash-command,',
-  '    empty scratch), write a single short sentence noting it and stop.',
+  'RULES:',
+  '  - NO preamble ("Here is the output", "Looking at the input"). NO',
+  '    trailing meta-notes. NO quoting the user verbatim. NO markdown',
+  '    headings or code fences.',
+  '  - Bullet count = number of distinct sub-tasks. Usually 1-5; up to 7',
+  '    for a deep ideation session; 1 for a tight single-issue session.',
+  '  - Never refer to "the user" or "the assistant". Use the work-voice:',
+  '    "Added X", "Caught Y", "Landed Z", "Deferred W".',
+  '  - Concrete nouns: name the feature, file, company, decision. Avoid',
+  '    generic words like "prompt", "request", "skill", "changes" when a',
+  '    real noun exists.',
+  '  - Title should lead with the dominant work; if the session touched',
+  '    multiple things, mention a second briefly with `+` or `;`.',
+  '  - Open loops (things left unfinished, script bugs flagged, questions',
+  '    for later) appear as narrative inside a bullet — never as their own',
+  '    structured field.',
+  '  - If nothing substantive happened (session was empty scratch or a',
+  '    single slash-command), write "TITLE: (empty session)" and one',
+  '    bullet noting that; stop there.',
 ].join('\n')
 
 async function buildUserPromptBlock(chain: ActivityChain): Promise<string> {
   const ctx = await extractChainContextBlock(chain)
-  if (ctx.userIntro.length === 0 && chain.topic) {
-    ctx.userIntro.push({ role: 'user', text: chain.topic, order: 0 })
+  if (ctx.turns.length === 0 && chain.topic) {
+    ctx.turns.push({ role: 'user', text: chain.topic, order: 0 })
   }
-  const sections: string[] = ['<<<USER>>>']
-  sections.push(ctx.userIntro.length ? ctx.userIntro.map(t => t.text).join('\n---\n') : '(none)')
-  sections.push('', '<<<RECAP>>>')
-  sections.push(ctx.summaryTurns.length ? ctx.summaryTurns.map(t => t.text).join('\n---\n') : '(none — infer from the user messages alone)')
-  sections.push('', '<<<OUTPUT>>>')
-  return sections.join('\n')
+  const lines: string[] = [formatSessionShapeBlock(ctx.meta), '']
+  for (const turn of ctx.turns) {
+    lines.push(`${turn.role === 'user' ? 'USER' : 'ASST'}: ${turn.text}`)
+    lines.push('')
+  }
+  lines.push('---')
+  lines.push('OUTPUT:')
+  return lines.join('\n')
 }
 
 // The extraction step reads native JSONL from disk to find recaps. The
@@ -168,18 +202,20 @@ function splitTitleAndSummary(raw: string): { title: string; summary: string } {
 
 export const chainDigestContract = defineContractBlock({
   id: 'chain-digest',
-  promptVersion: 1,
+  promptVersion: 2,
   outputSchema: s.string({ description: 'TITLE line + blank line + summary body' }),
   buildRequest: (chain: ActivityChain, ctx) => {
     const userPrompt = PREPARED.get(chain)
+    // Fallback prompt for callers that skipped the async prepare step —
+    // matches the new interleaved-turns shape with just the topic as the
+    // sole user turn.
     const prompt = userPrompt ?? [
-      '<<<USER>>>',
-      chain.topic || '(none)',
+      'session shape: 1 substantive turn · 0 tool calls',
       '',
-      '<<<RECAP>>>',
-      '(none)',
+      `USER: ${chain.topic || '(none)'}`,
       '',
-      '<<<OUTPUT>>>',
+      '---',
+      'OUTPUT:',
     ].join('\n')
     return {
       system: SYSTEM_PROMPT,
