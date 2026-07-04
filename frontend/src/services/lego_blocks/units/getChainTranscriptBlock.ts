@@ -82,7 +82,7 @@ function renderJsonlTranscript(jsonl: string): string {
 }
 
 // `session.path` formats observed:
-//   - "ai_raw/raw/claude-code/YYYY-MM-DD_<sid8>[_slug].md"  (vault md mirror)
+//   - "ai-raw/raw/claude-code/YYYY-MM-DD_<sid8>[_slug].md"  (vault md mirror)
 //   - "native/claude/<encoded-cwd>/<sid>.jsonl[#wN]"         (native JSONL)
 //   - "native/codex/.../rollout-...jsonl[#wN]"
 // Strip the optional `#wN` activity-window suffix the cache appends when one

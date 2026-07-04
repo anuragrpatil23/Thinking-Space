@@ -3,7 +3,7 @@
 // macOS purges knowledgeC.db rows after ~28 days. To keep history forever we
 // append every event we see to per-day JSONLs in the vault:
 //
-//   ai_raw/raw/apple_screen_time/<sanitized_stream>/YYYY-MM-DD.jsonl
+//   ai-raw/raw/apple_screen_time/<sanitized_stream>/YYYY-MM-DD.jsonl
 //
 // Each JSONL line is one event. Files are written in append-only fashion;
 // once a UTC day rolls over, that day's file is sealed and never touched
@@ -24,7 +24,7 @@ import {
 } from './appleScreenTimeBlock';
 
 /** Vault-relative root for all Apple Screen Time mirrors. */
-const VAULT_ROOT_REL = path.join('ai_raw', 'raw', 'apple_screen_time');
+const VAULT_ROOT_REL = path.join('ai-raw', 'raw', 'apple_screen_time');
 
 /** Streams the dumper mirrors by default. High-signal, low-noise.
  *  Skipped intentionally: /display/isBacklit, /device/batteryPercentage —

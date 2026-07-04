@@ -224,7 +224,7 @@ export interface ParseInput {
 }
 
 // ── Chat-export sessions (ChatGPT / Grok) ───────────────────────────────────
-// The vault's `ai_raw/raw/{chatgpt,grok}/` markdown is generated from the
+// The vault's `ai-raw/raw/{chatgpt,grok}/` markdown is generated from the
 // providers' export JSON by the user's converter scripts. Everything we need
 // is machine-written YAML frontmatter: provider, conversation_id, created,
 // user_messages, title, model(s). No cwd exists for web chats — per user

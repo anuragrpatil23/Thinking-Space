@@ -12,6 +12,14 @@ const GITIGNORE_PATH = '.gitignore'
 const BEGIN_MARKER = '# BEGIN Thinking Space managed exclusions'
 const END_MARKER = '# END Thinking Space managed exclusions'
 
+// Vault-relative prefixes that Thinking Space always keeps out of git,
+// regardless of which caller triggered the sync. These directories hold
+// auto-generated activity dumps + AI-derived digests: high-churn, machine-
+// written, and often containing sensitive signal (screen-time streams,
+// per-doc reading windows). Baked in so the ignore lands even for users
+// who never touch settings that today explicitly call the sync (e.g. Webull).
+const APP_MANAGED_GITIGNORE_BASELINE = ['ai-raw', 'ai-activity']
+
 function normalizePrefix(value: string): string | null {
   const trimmed = value
     .replace(/\\/g, '/')
@@ -68,7 +76,7 @@ export async function setManagedVaultGitignorePrefixes(
   fsParam?: VaultFS,
 ): Promise<void> {
   const fs = fsParam ?? getVaultFS()
-  const normalized = dedupePrefixes(prefixes)
+  const normalized = dedupePrefixes([...APP_MANAGED_GITIGNORE_BASELINE, ...prefixes])
 
   let existing = ''
   try {

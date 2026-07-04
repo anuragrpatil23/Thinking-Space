@@ -380,6 +380,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     persistedOpensourceAiBaseUrlBlock = normalized
   },
 
+  // Vault write prefs — gate for the raw-signal harvesters that dump under
+  // `ai-raw/` (Apple Screen Time, GoodNotes reading log). Opt-in for new
+  // users; existing installs with an `ai-raw/` directory auto-migrate on.
+  // Pass the current vaultRoot so the main process can run the one-shot
+  // migration probe when no explicit value has been stored yet.
+  vaultWritesAiRawGetPersisted: (vaultRoot: string | null): Promise<boolean> =>
+    ipcRenderer.invoke('vaultWrites:aiRaw:getPersisted', vaultRoot ?? undefined),
+  vaultWritesAiRawSetPersisted: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('vaultWrites:aiRaw:setPersisted', enabled),
+
   // Filesystem operations (all take vaultRoot as first arg)
   read: (vaultRoot: string, relPath: string) =>
     ipcRenderer.invoke('vault:read', vaultRoot, relPath),

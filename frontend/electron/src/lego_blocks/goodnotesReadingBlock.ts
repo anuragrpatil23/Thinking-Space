@@ -1,6 +1,6 @@
 // Attribute GoodNotes reading sessions from the Apple Screen Time mirror.
 //
-// Source of truth: the per-day `ai_raw/raw/apple_screen_time/app_usage/*.jsonl`
+// Source of truth: the per-day `ai-raw/raw/apple_screen_time/app_usage/*.jsonl`
 // files written by the Screen Time dumper. We filter to GoodNotes' bundle id,
 // then for each focus session find the doc whose `document_meta.last_modified`
 // (from GoodNotes' fts.sqlite) falls inside the focus window. The latest
@@ -14,7 +14,7 @@
 // events to this Mac). We emit a default-30min phantom row ending at
 // `last_modified`; the user can adjust it via the edit modal.
 //
-// Output: `ai_raw/raw/goodnotes/reading.jsonl` with monotonic-cursor
+// Output: `ai-raw/raw/goodnotes/reading.jsonl` with monotonic-cursor
 // append-only semantics — once a row is in the file, the harvester never
 // touches it. A sidecar `.harvest-cursor.json` tracks the highest `Z_PK`
 // ingested and the latest `last_modified` per doc, so re-runs are idempotent
@@ -45,9 +45,9 @@ const GOODNOTES_CONTAINER = path.join(
 );
 const FTS_DB = path.join(GOODNOTES_CONTAINER, 'Library', 'Databases', 'fts.sqlite');
 
-const APP_USAGE_DIR_REL = path.join('ai_raw', 'raw', 'apple_screen_time', 'app_usage');
-const READING_LOG_RELPATH = path.join('ai_raw', 'raw', 'goodnotes', 'reading.jsonl');
-const CURSOR_RELPATH = path.join('ai_raw', 'raw', 'goodnotes', '.harvest-cursor.json');
+const APP_USAGE_DIR_REL = path.join('ai-raw', 'raw', 'apple_screen_time', 'app_usage');
+const READING_LOG_RELPATH = path.join('ai-raw', 'raw', 'goodnotes', 'reading.jsonl');
+const CURSOR_RELPATH = path.join('ai-raw', 'raw', 'goodnotes', '.harvest-cursor.json');
 
 const UNATTRIBUTED_DOC_ID = 'goodnotes-unattributed';
 const UNATTRIBUTED_TITLE = '(reading — unattributed)';

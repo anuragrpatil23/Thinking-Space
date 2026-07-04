@@ -7,6 +7,11 @@ import {
   setGoodnotesAnnotationGate,
 } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
+  getVaultWriteAiRawEnabled,
+  isVaultWritePrefsAvailable,
+  setVaultWriteAiRawEnabled,
+} from '@/services/lego_blocks/units/vaultWritePrefsBlock'
+import {
   getNativeAiSessionRoots,
   setNativeAiSessionRoots,
   type NativeAiSessionRoots,
@@ -23,6 +28,8 @@ export default function AiActivitySessionSourcesSettingsBlock() {
   const [rootsUnavailable, setRootsUnavailable] = useState(false)
   const [prefixes, setPrefixes] = useState<string[]>(() => readVaultSessionPrefixesBlock())
   const [annotationGate, setAnnotationGate] = useState<boolean>(() => getGoodnotesAnnotationGate())
+  const vaultWritePrefsAvailable = isVaultWritePrefsAvailable()
+  const [writeAiRaw, setWriteAiRaw] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const toggleAnnotationGate = (checked: boolean) => {
@@ -40,6 +47,25 @@ export default function AiActivitySessionSourcesSettingsBlock() {
     })
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (!vaultWritePrefsAvailable) return
+    let cancelled = false
+    void getVaultWriteAiRawEnabled().then(value => {
+      if (!cancelled) setWriteAiRaw(value)
+    })
+    return () => { cancelled = true }
+  }, [vaultWritePrefsAvailable])
+
+  const toggleWriteAiRaw = async (checked: boolean) => {
+    setWriteAiRaw(checked)
+    try {
+      await setVaultWriteAiRawEnabled(checked)
+    } catch (err) {
+      setWriteAiRaw(!checked)
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   const saveRoot = async (source: 'claude' | 'codex', value: string | null) => {
     setError(null)
@@ -124,6 +150,32 @@ export default function AiActivitySessionSourcesSettingsBlock() {
           </p>
           <PrefixesEditor value={prefixes} onSave={savePrefixes} />
         </div>
+
+        {vaultWritePrefsAvailable && (
+          <div className="space-y-2 border-t border-border/60 pt-4">
+            <h3 className="text-sm font-medium text-foreground">Vault writes</h3>
+            <label className="flex items-start justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+              <div className="min-w-0 space-y-0.5">
+                <div className="text-sm font-medium text-foreground">
+                  Write raw activity signals to <span className="font-mono text-xs">ai-raw/</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Lets Thinking Space mirror macOS Screen Time streams and GoodNotes reading
+                  sessions into per-day JSONLs under your vault's <span className="font-mono">ai-raw/raw/</span>
+                  {' '}folder. Needed so activity history survives the macOS 28-day cliff and so the
+                  Reading pill has data. Off by default for new installs; existing vaults that already
+                  contain <span className="font-mono">ai-raw/</span> keep it on. Requires Full Disk Access.
+                </p>
+              </div>
+              <Switch
+                checked={writeAiRaw === true}
+                disabled={writeAiRaw === null}
+                onCheckedChange={checked => { void toggleWriteAiRaw(checked) }}
+                aria-label="Write raw activity signals to ai-raw/"
+              />
+            </label>
+          </div>
+        )}
 
         <div className="space-y-2 border-t border-border/60 pt-4">
           <h3 className="text-sm font-medium text-foreground">Reading (GoodNotes)</h3>

@@ -7,10 +7,10 @@
 import { getJsonStorageItem, setJsonStorageItem, STORAGE_KEYS } from '@/services/lego_blocks/units/storageKeyBlock'
 
 export const DEFAULT_VAULT_SESSION_PREFIXES = [
-  'ai_raw/raw/claude-code/',
-  'ai_raw/raw/codex/',
-  'ai_raw/raw/chatgpt/',
-  'ai_raw/raw/grok/',
+  'ai-raw/raw/claude-code/',
+  'ai-raw/raw/codex/',
+  'ai-raw/raw/chatgpt/',
+  'ai-raw/raw/grok/',
 ]
 
 function sanitizePrefixes(raw: unknown): string[] | null {
@@ -20,6 +20,9 @@ function sanitizePrefixes(raw: unknown): string[] | null {
     if (typeof item !== 'string') continue
     let p = item.trim().replace(/^\/+/, '')
     if (!p) continue
+    // Migrate any stored `ai_raw/…` prefix from before the kebab-case rename;
+    // the vault dir gets renamed at watcher startup so old paths won't resolve.
+    if (p.startsWith('ai_raw/')) p = `ai-raw/${p.slice('ai_raw/'.length)}`
     if (!p.endsWith('/')) p += '/'
     if (!out.includes(p)) out.push(p)
   }

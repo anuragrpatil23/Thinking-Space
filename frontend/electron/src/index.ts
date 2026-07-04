@@ -45,6 +45,12 @@ import {
   writePersistedOpensourceAiBaseUrlBlock,
 } from './lego_blocks/opensourceAiBaseUrlPersistenceBlock';
 import {
+  readPersistedVaultWritePrefsBlock,
+  writePersistedVaultWritePrefsBlock,
+  resolveWriteAiRawEnabledBlock,
+  migrateLegacyAiRawDirBlock,
+} from './lego_blocks/vaultWritePrefsPersistenceBlock';
+import {
   startVaultWatcherBlock,
   stopVaultWatcherBlock,
   stopAllVaultWatcherBlocks,
@@ -1658,15 +1664,43 @@ ipcMain.handle('opensource-ai:base-url:setPersisted', async (_event, baseUrl: st
   writePersistedOpensourceAiBaseUrlBlock(baseUrl);
 });
 
+// -- Vault write prefs (gates raw-signal harvests writing under `ai-raw/`) --
+// Async getter — the settings UI reads this on mount, not on the critical
+// startup path, so no need for the sync-preload dance the vault-root uses.
+// `vaultRoot` is optional and only used for the first-launch migration
+// (existing `ai-raw/` or legacy `ai_raw/` → keep on for backwards compat).
+ipcMain.handle('vaultWrites:aiRaw:getPersisted', async (_event, vaultRoot?: string) => {
+  const stored = readPersistedVaultWritePrefsBlock();
+  if (stored.writeAiRaw !== null) return stored.writeAiRaw;
+  if (typeof vaultRoot === 'string' && vaultRoot.trim().length > 0) {
+    return resolveWriteAiRawEnabledBlock(vaultRoot);
+  }
+  return false;
+});
+
+ipcMain.handle('vaultWrites:aiRaw:setPersisted', async (_event, enabled: boolean) => {
+  if (typeof enabled !== 'boolean') {
+    throw new Error('vaultWrites:aiRaw:setPersisted requires a boolean.');
+  }
+  writePersistedVaultWritePrefsBlock({ writeAiRaw: enabled });
+});
+
 ipcMain.handle('vault:watch:start', async (_event, vaultRoot: string) => {
   if (typeof vaultRoot !== 'string' || !vaultRoot.trim()) {
     return { ok: false, error: 'vault:watch:start requires a vault root string.' };
   }
+  // Rename the legacy snake_case `ai_raw/` dir to `ai-raw/` before any code
+  // reads or writes it — idempotent, silent on failure.
+  migrateLegacyAiRawDirBlock(vaultRoot);
   // App-launch trigger for the Apple Screen Time mirror — the renderer
   // starts the vault watcher once on boot, so this is the natural place to
   // top up the per-day JSONLs without waiting for the AI Activity panel to
   // open. Fire-and-forget; FDA denial / unavailability is harmless.
-  void harvestAppleScreenTimeBlock(vaultRoot).catch(() => undefined);
+  // Gated by the vault-write-prefs `writeAiRaw` flag (opt-in for new users,
+  // auto-migrated to on for users whose vault already contains `ai-raw/`).
+  if (resolveWriteAiRawEnabledBlock(vaultRoot)) {
+    void harvestAppleScreenTimeBlock(vaultRoot).catch(() => undefined);
+  }
   return startVaultWatcherBlock(vaultRoot, {
     onEvent: (_root, event) => {
       for (const win of BrowserWindow.getAllWindows()) {
@@ -1998,16 +2032,23 @@ ipcMain.handle('nativeAiSessions:readClaudeHistory', async () => {
 });
 
 // -- Apple Screen Time dump (mirrors knowledgeC.db streams into per-day
-//    JSONLs under ai_raw/raw/apple_screen_time/ so we keep history past the
-//    macOS 28-day cliff). Requires Full Disk Access. --
+//    JSONLs under ai-raw/raw/apple_screen_time/ so we keep history past the
+//    macOS 28-day cliff). Requires Full Disk Access. Gated by the
+//    vault-write-prefs `writeAiRaw` flag — no-op when the user has opted
+//    out of raw-signal writes. --
 ipcMain.handle('appleScreenTime:harvest', async (_event, vaultRoot: string) => {
+  if (!resolveWriteAiRawEnabledBlock(vaultRoot)) return;
   return harvestAppleScreenTimeBlock(vaultRoot);
 });
 
 // -- GoodNotes reading activity (attributes app_usage focus events to docs
 //    via fts.sqlite; writes only to the vault's durable reading log). Runs
-//    the Screen Time dump first so its source data is fresh. --
+//    the Screen Time dump first so its source data is fresh. Same gate as
+//    the Screen Time handler — both produce files under `ai-raw/`. --
 ipcMain.handle('goodnotes:harvest', async (_event, vaultRoot: string) => {
+  if (!resolveWriteAiRawEnabledBlock(vaultRoot)) {
+    return { added: 0, total: 0, unavailable: true };
+  }
   if (typeof vaultRoot === 'string' && vaultRoot) {
     await harvestAppleScreenTimeBlock(vaultRoot);
   }

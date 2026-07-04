@@ -14,6 +14,8 @@
 import { smartSync } from './vaultSyncOrch'
 import { isElectron } from '@/services/lego_blocks/integrations/fsBlock'
 import { wasRecentSelfWriteBlock } from '@/services/lego_blocks/units/selfWriteTrackerBlock'
+import { setManagedVaultGitignorePrefixes } from '@/services/lego_blocks/units/vaultGitignoreBlock'
+import { getSyncExcludedPathPrefixes } from '@/services/lego_blocks/units/vaultSyncExclusionsBlock'
 
 type Trigger = 'focus' | 'visibility' | 'fs'
 
@@ -72,6 +74,12 @@ export function startVaultLiveRefresh(
       window.electronAPI.vaultWatchStart(root).catch((err) =>
         console.warn('[vaultLiveRefresh] failed to start fs watch', err),
       )
+      // Ensure the vault .gitignore has the app-managed baseline (`ai-raw/`,
+      // `ai-activity/`, …) plus any dynamic prefixes contributed by extensions
+      // like Webull. Fire-and-forget: this is best-effort — a missing entry
+      // in .gitignore doesn't stop the app, and any writer error is already
+      // swallowed inside setManagedVaultGitignorePrefixes.
+      void setManagedVaultGitignorePrefixes(getSyncExcludedPathPrefixes()).catch(() => undefined)
       unsubscribeFsWatch = window.electronAPI.onVaultWatchEvent((event) => {
         // Suppress events caused by this app's own writes — every internal
         // save (markdown editor, capability runner, auto-heal rewrites, etc.)

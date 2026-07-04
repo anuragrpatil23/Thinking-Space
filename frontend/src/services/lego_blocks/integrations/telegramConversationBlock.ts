@@ -29,7 +29,7 @@ function vaultClaudeSessionsRoot(): string {
   return path.join(
     os.homedir(),
     'Library', 'Mobile Documents', 'iCloud~md~obsidian', 'Documents',
-    'Long-Term-Memory-iCloud', 'ai_raw', 'raw', 'claude-code',
+    'Long-Term-Memory-iCloud', 'ai-raw', 'raw', 'claude-code',
   )
 }
 
