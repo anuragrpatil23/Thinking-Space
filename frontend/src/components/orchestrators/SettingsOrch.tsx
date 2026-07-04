@@ -82,6 +82,8 @@ import type { AiWebsiteBlock } from '@/services/lego_blocks/units/aiWebsiteBlock
 import AiActivityProjectMappingSettingsBlock from '@/components/lego_blocks/integrations/AiActivityProjectMappingSettingsBlock'
 import AiActivitySessionSourcesSettingsBlock from '@/components/lego_blocks/integrations/AiActivitySessionSourcesSettingsBlock'
 import AiActivityHomePostItSettingsBlock from '@/components/lego_blocks/integrations/AiActivityHomePostItSettingsBlock'
+import AiActivitySetModeSettingsBlock from '@/components/lego_blocks/integrations/AiActivitySetModeSettingsBlock'
+import AiActivityRestDaysSettingsBlock from '@/components/lego_blocks/integrations/AiActivityRestDaysSettingsBlock'
 import {
   addWebSiteOrch,
   addWebSiteGroupOrch,
@@ -1426,6 +1428,8 @@ export default function SettingsOrch({
           <AiActivitySessionSourcesSettingsBlock />
           <AiActivityProjectMappingSettingsBlock />
           <AiActivityHomePostItSettingsBlock />
+          <AiActivitySetModeSettingsBlock />
+          <AiActivityRestDaysSettingsBlock />
         </div>
       )}
 

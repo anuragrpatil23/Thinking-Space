@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  ReferenceArea,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -22,6 +23,10 @@ import {
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { formatTokens, formatUsd } from '@/services/lego_blocks/units/aiPriceTableBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import {
+  AI_ACTIVITY_SET_MODE_EVENT,
+  getAiActivitySetMode,
+} from '@/services/lego_blocks/units/storageKeyBlock'
 
 interface AiActivityAggregateBlockProps {
   /** Chains to aggregate — caller pre-filters by project / source / range. */
@@ -32,8 +37,14 @@ interface AiActivityAggregateBlockProps {
   onSelectRange?: (range: { startIso: string; endIso: string } | null) => void
 }
 
-const GRANULARITIES: ReadonlyArray<{ id: AggregateGranularity; label: string }> = [
+const GRANULARITIES_WEEK: ReadonlyArray<{ id: AggregateGranularity; label: string }> = [
   { id: 'week', label: 'week' },
+  { id: 'month', label: 'month' },
+  { id: 'year', label: 'year' },
+]
+
+const GRANULARITIES_SET: ReadonlyArray<{ id: AggregateGranularity; label: string }> = [
+  { id: 'set', label: 'set' },
   { id: 'month', label: 'month' },
   { id: 'year', label: 'year' },
 ]
@@ -86,7 +97,7 @@ function readStoredGranularity(): AggregateGranularity | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = window.localStorage.getItem(GRANULARITY_STORAGE_KEY)
-    if (raw === 'week' || raw === 'month' || raw === 'year') return raw
+    if (raw === 'week' || raw === 'set' || raw === 'month' || raw === 'year') return raw
   } catch {
     /* localStorage unavailable */
   }
@@ -109,9 +120,30 @@ export default function AiActivityAggregateBlock({
   filterProject = null,
   onSelectRange,
 }: AiActivityAggregateBlockProps) {
+  const [setMode, setSetMode] = useState<boolean>(() => getAiActivitySetMode())
+  useEffect(() => {
+    const onChange = () => setSetMode(getAiActivitySetMode())
+    window.addEventListener(AI_ACTIVITY_SET_MODE_EVENT, onChange)
+    window.addEventListener('storage', onChange)
+    return () => {
+      window.removeEventListener(AI_ACTIVITY_SET_MODE_EVENT, onChange)
+      window.removeEventListener('storage', onChange)
+    }
+  }, [])
+
   const [granularity, setGranularityState] = useState<AggregateGranularity>(
     () => readStoredGranularity() ?? 'week',
   )
+  // When set-mode is on, `week` and `set` are the same slot in the picker —
+  // fold either stored value onto the currently-visible one so the row
+  // aggregation and the highlighted chip stay in sync.
+  const effectiveGranularity: AggregateGranularity =
+    setMode && granularity === 'week'
+      ? 'set'
+      : !setMode && granularity === 'set'
+        ? 'week'
+        : granularity
+  const GRANULARITIES = setMode ? GRANULARITIES_SET : GRANULARITIES_WEEK
   const setGranularity = (g: AggregateGranularity) => {
     try {
       window.localStorage.setItem(GRANULARITY_STORAGE_KEY, g)
@@ -143,9 +175,17 @@ export default function AiActivityAggregateBlock({
     setMetricState(m)
   }
 
+  // Bucket key of the current period under the effective granularity — used
+  // to highlight "you are here" in both the table and the bar chart. Only
+  // matters when set-mode is on (set), but it's cheap to compute unconditionally.
+  const currentPeriodKey = useMemo(
+    () => periodKeyOfBlock(new Date().toISOString(), effectiveGranularity),
+    [effectiveGranularity],
+  )
+
   const rows = useMemo(
-    () => aggregateChainsByPeriodBlock(chains, granularity),
-    [chains, granularity],
+    () => aggregateChainsByPeriodBlock(chains, effectiveGranularity),
+    [chains, effectiveGranularity],
   )
 
   // Inline period summary: clicking a table row expands a per-project digest
@@ -155,13 +195,13 @@ export default function AiActivityAggregateBlock({
   const chainsByPeriodKey = useMemo(() => {
     const m = new Map<string, ActivityChain[]>()
     for (const c of chains) {
-      const key = periodKeyOfBlock(c.startedIso, granularity)
+      const key = periodKeyOfBlock(c.startedIso, effectiveGranularity)
       const arr = m.get(key)
       if (arr) arr.push(c)
       else m.set(key, [c])
     }
     return m
-  }, [chains, granularity])
+  }, [chains, effectiveGranularity])
   const expandedDigest = useMemo(
     () => (expandedKey ? projectDigestBlock(chainsByPeriodKey.get(expandedKey) ?? []) : null),
     [expandedKey, chainsByPeriodKey],
@@ -217,7 +257,7 @@ export default function AiActivityAggregateBlock({
   // click can drill into that period, same as the graph always did.
   const graph = useMemo(() => {
     if (display !== 'graph') return null
-    const { periods, series } = aggregateProjectMetricsByPeriodBlock(chains, granularity)
+    const { periods, series } = aggregateProjectMetricsByPeriodBlock(chains, effectiveGranularity)
     const ranked = series
       .map(s => ({ ...s, total: metricValueOf(metric, s.totals) }))
       .filter(s => s.total > 0)
@@ -240,7 +280,7 @@ export default function AiActivityAggregateBlock({
       return row
     })
     return { points, top, hiddenCount: rest.length }
-  }, [display, chains, granularity, metric])
+  }, [display, chains, effectiveGranularity, metric])
 
   // Same zero-size mount guard as the trend chart — recharts'
   // ResponsiveContainer warns and renders nothing if measured at width 0.
@@ -262,7 +302,7 @@ export default function AiActivityAggregateBlock({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 p-0.5 w-fit">
           {GRANULARITIES.map(g => {
-            const active = granularity === g.id
+            const active = effectiveGranularity === g.id
             return (
               <button
                 key={g.id}
@@ -354,6 +394,24 @@ export default function AiActivityAggregateBlock({
                 style={{ cursor: onSelectRange ? 'pointer' : 'default' }}
               >
                 <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
+                {(() => {
+                  const currentPoint = graph.points.find(
+                    p => p.startIso === currentPeriodKey,
+                  )
+                  if (!currentPoint) return null
+                  const label = String(currentPoint.label)
+                  return (
+                    <ReferenceArea
+                      x1={label}
+                      x2={label}
+                      fill="rgba(148,163,184,0.18)"
+                      fillOpacity={1}
+                      stroke="rgba(148,163,184,0.5)"
+                      strokeOpacity={0.6}
+                      ifOverflow="hidden"
+                    />
+                  )
+                })()}
                 <XAxis
                   dataKey="label"
                   tick={{ fontSize: 10, fill: 'rgba(148,163,184,0.7)' }}
@@ -511,11 +569,17 @@ export default function AiActivityAggregateBlock({
                     'cursor-pointer border-b border-border/20 transition-colors last:border-0',
                     'hover:bg-foreground/[0.04]',
                     expandedKey === r.key && 'bg-foreground/[0.04]',
+                    r.key === currentPeriodKey && 'bg-foreground/[0.06] ring-1 ring-inset ring-foreground/25',
                   )}
                   onClick={() => setExpandedKey(prev => (prev === r.key ? null : r.key))}
-                  title="Click for a summary of this period"
+                  title={r.key === currentPeriodKey ? 'Current period' : 'Click for a summary of this period'}
                 >
-                  <td className="whitespace-nowrap px-3 py-1.5 text-foreground/85">{r.label}</td>
+                  <td className="whitespace-nowrap px-3 py-1.5 text-foreground/85">
+                    {r.label}
+                    {r.key === currentPeriodKey && (
+                      <span className="ml-1.5 text-[9px] uppercase tracking-[0.1em] text-foreground/60">now</span>
+                    )}
+                  </td>
                   <td className="px-2 py-1.5">
                     <div className="h-[6px] w-full overflow-hidden rounded-full bg-muted/30">
                       <div

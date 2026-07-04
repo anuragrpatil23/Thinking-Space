@@ -1,8 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ActivityDay } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import {
+  AI_ACTIVITY_REST_DAYS_EVENT,
+  AI_ACTIVITY_SET_MODE_EVENT,
+  getAiActivityRestDays,
+  getAiActivitySetMode,
+} from '@/services/lego_blocks/units/storageKeyBlock'
 
 interface AiActivityHeatmapBlockProps {
   days: ActivityDay[]
@@ -24,8 +30,10 @@ const WEEKDAY_LABELS = ['Mon', '', 'Wed', '', 'Fri', '', '']
 
 /** Widest window the grid renders at once — longer ranges page via chevrons. */
 const MAX_VISIBLE_WEEKS = 53
-/** Chevron page step — half a window so adjacent pages share context. */
-const PAGE_STEP_WEEKS = 26
+// Set-mode cell geometry — larger than default so day-of-month numbers fit
+// legibly inside each cell.
+const SET_CELL_PX = 18
+const SET_CELL_GAP = 3
 
 function mondayOf(date: Date): Date {
   const d = new Date(date)
@@ -72,6 +80,41 @@ export default function AiActivityHeatmapBlock({
   selectedRange = null,
   onSelectRange,
 }: AiActivityHeatmapBlockProps) {
+  const [setMode, setSetMode] = useState<boolean>(() => getAiActivitySetMode())
+  const [restDays, setRestDays] = useState<number[]>(() => getAiActivityRestDays())
+  useEffect(() => {
+    const onSetMode = () => setSetMode(getAiActivitySetMode())
+    const onRestDays = () => setRestDays(getAiActivityRestDays())
+    window.addEventListener(AI_ACTIVITY_SET_MODE_EVENT, onSetMode)
+    window.addEventListener(AI_ACTIVITY_REST_DAYS_EVENT, onRestDays)
+    window.addEventListener('storage', onSetMode)
+    window.addEventListener('storage', onRestDays)
+    return () => {
+      window.removeEventListener(AI_ACTIVITY_SET_MODE_EVENT, onSetMode)
+      window.removeEventListener(AI_ACTIVITY_REST_DAYS_EVENT, onRestDays)
+      window.removeEventListener('storage', onSetMode)
+      window.removeEventListener('storage', onRestDays)
+    }
+  }, [])
+
+  // Rest-day predicate: true when this date falls in the *current calendar
+  // month* AND its weekday is one the user marked as rest. Bucket the check
+  // by month first so historical months are cheap no-ops.
+  const restDaySet = useMemo(() => new Set(restDays), [restDays])
+  const currentMonthKey = useMemo(() => {
+    const n = new Date()
+    return `${n.getFullYear()}-${n.getMonth()}`
+  }, [])
+  const isRestDay = useMemo(
+    () => (iso: string): boolean => {
+      if (restDaySet.size === 0) return false
+      const d = new Date(iso + 'T00:00:00')
+      if (`${d.getFullYear()}-${d.getMonth()}` !== currentMonthKey) return false
+      return restDaySet.has(d.getDay())
+    },
+    [restDaySet, currentMonthKey],
+  )
+
   const [hoverDate, setHoverDate] = useState<string | null>(null)
   const [dragAnchor, setDragAnchor] = useState<string | null>(null)
   // Weeks paged back from the most recent window (0 = latest). Reset when the
@@ -85,9 +128,21 @@ export default function AiActivityHeatmapBlock({
     return m
   }, [days])
 
+  // End-of-current-month, used to always show the rest of this month even
+  // when endIso lands on "today". Lets the user see where rest-day markers
+  // will fall and pace against upcoming sets.
+  const endOfCurrentMonthIso = useMemo(() => {
+    const n = new Date()
+    return isoDayLocal(new Date(n.getFullYear(), n.getMonth() + 1, 0))
+  }, [])
+
   const allWeeks = useMemo(() => {
     const start = new Date(startIso + 'T00:00:00')
-    const end = new Date(endIso + 'T00:00:00')
+    // Extend past endIso when the current month falls in the range, so
+    // future dates in this month still get rendered (muted, not tinted).
+    const rawEnd = new Date(endIso + 'T00:00:00')
+    const monthEnd = new Date(endOfCurrentMonthIso + 'T00:00:00')
+    const end = monthEnd > rawEnd ? monthEnd : rawEnd
     const firstMonday = mondayOf(start)
 
     const cells: CellModel[] = []
@@ -131,23 +186,48 @@ export default function AiActivityHeatmapBlock({
     const w: CellModel[][] = []
     for (let i = 0; i < cells.length; i += 7) w.push(cells.slice(i, i + 7))
     return w
-  }, [dayMap, startIso, endIso, filterProject])
+  }, [dayMap, startIso, endIso, endOfCurrentMonthIso, filterProject])
 
-  const maxWeeksBack = Math.max(0, allWeeks.length - MAX_VISIBLE_WEEKS)
+  // Measure the outer scroll container so paging kicks in whenever the grid
+  // would actually overflow — not just past the 53-week fallback. This
+  // matters most in home-canvas embeds where the card is narrower than the
+  // AI-Activity panel, and in set-mode where cells are ~1.75× wider so a
+  // whole year no longer fits in the previously "always fits" 53-week band.
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const [containerWidth, setContainerWidth] = useState(0)
+  useEffect(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const update = () => setContainerWidth(el.clientWidth)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const cellStepPx = setMode ? SET_CELL_PX + SET_CELL_GAP : 15
+  const leftLabelPad = setMode ? 8 : 36 // weekday labels + margin, or just padding
+  const fitVisibleWeeks =
+    containerWidth > 0
+      ? Math.max(4, Math.floor((containerWidth - leftLabelPad) / cellStepPx))
+      : MAX_VISIBLE_WEEKS
+  const visibleWeeksCap = Math.min(MAX_VISIBLE_WEEKS, fitVisibleWeeks)
+  const pageStep = Math.max(1, Math.floor(visibleWeeksCap / 2))
+
+  const maxWeeksBack = Math.max(0, allWeeks.length - visibleWeeksCap)
   const clampedWeeksBack = Math.min(weeksBack, maxWeeksBack)
   const weeks = useMemo(() => {
-    if (allWeeks.length <= MAX_VISIBLE_WEEKS) return allWeeks
+    if (allWeeks.length <= visibleWeeksCap) return allWeeks
     const start = maxWeeksBack - clampedWeeksBack
-    return allWeeks.slice(start, start + MAX_VISIBLE_WEEKS)
-  }, [allWeeks, maxWeeksBack, clampedWeeksBack])
+    return allWeeks.slice(start, start + visibleWeeksCap)
+  }, [allWeeks, maxWeeksBack, clampedWeeksBack, visibleWeeksCap])
   const canPageBack = clampedWeeksBack < maxWeeksBack
   const canPageForward = clampedWeeksBack > 0
 
   function pageBy(dir: 'back' | 'forward') {
     setWeeksBack(prev =>
       dir === 'back'
-        ? Math.min(maxWeeksBack, prev + PAGE_STEP_WEEKS)
-        : Math.max(0, prev - PAGE_STEP_WEEKS),
+        ? Math.min(maxWeeksBack, prev + pageStep)
+        : Math.max(0, prev - pageStep),
     )
   }
 
@@ -263,17 +343,85 @@ export default function AiActivityHeatmapBlock({
     setDragAnchor(null)
   }
 
+  // ── Set-mode helpers ─────────────────────────────────────────────────────
+  // The "current set" is the 3-day window anchored to the 1st of the month
+  // that contains today. Shown as a soft ring on whichever cells fall in it.
+  const currentSetDates = useMemo(() => {
+    const now = new Date()
+    const day = now.getDate()
+    const setNum = Math.floor((day - 1) / 3) + 1
+    const startDay = 3 * (setNum - 1) + 1
+    const monthLen = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    const endDay = Math.min(3 * setNum, monthLen)
+    const dates: string[] = []
+    for (let d = startDay; d <= endDay; d++) {
+      dates.push(isoDayLocal(new Date(now.getFullYear(), now.getMonth(), d)))
+    }
+    return { dates, setNum }
+  }, [])
+
+  // True when this date is the last day of its set — used to draw a thin
+  // boundary line on the trailing edge of the cell so sets read as visual
+  // chunks even inside the standard 7-row grid.
+  function isLastDayOfSet(iso: string): boolean {
+    const d = new Date(iso + 'T00:00:00')
+    const day = d.getDate()
+    const monthLen = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+    return day % 3 === 0 || day === monthLen
+  }
+
+  // Set-mode geometry: cells grow so day-of-month numbers stay legible.
+  const cellPx = setMode ? SET_CELL_PX : 12
+  const cellGap = setMode ? SET_CELL_GAP : 3
+  const step = cellPx + cellGap
+  const gridHeight = 7 * cellPx + 6 * cellGap
+  const gridWidth = weeks.length * step - cellGap
+
+  // Position map for every visible cell, keyed by ISO date. Used to overlay
+  // the "current set" ring across whichever cells the set falls on.
+  const cellPositions = useMemo(() => {
+    const m = new Map<string, { col: number; row: number }>()
+    weeks.forEach((week, wIdx) => {
+      week.forEach((cell, rIdx) => {
+        m.set(cell.date, { col: wIdx, row: rIdx })
+      })
+    })
+    return m
+  }, [weeks])
+
+  // Current-set overlay rects: group the set's visible dates by column into
+  // contiguous row runs so 3 dates in the same week render as one vertical
+  // rectangle (and a set that straddles Sun→Mon splits into two rects).
+  const currentSetRects = useMemo(() => {
+    if (!setMode) return []
+    interface Rect { col: number; topRow: number; bottomRow: number }
+    const byCol = new Map<number, number[]>()
+    for (const d of currentSetDates.dates) {
+      const pos = cellPositions.get(d)
+      if (!pos) continue
+      const rows = byCol.get(pos.col) ?? []
+      rows.push(pos.row)
+      byCol.set(pos.col, rows)
+    }
+    const rects: Rect[] = []
+    for (const [col, rows] of byCol) {
+      rows.sort((a, b) => a - b)
+      rects.push({ col, topRow: rows[0], bottomRow: rows[rows.length - 1] })
+    }
+    return rects
+  }, [setMode, currentSetDates, cellPositions])
+
   return (
     <div className="space-y-2">
       {loading ? (
         <div className="h-32 w-full animate-pulse rounded-lg bg-muted/20" />
       ) : (
         <div className="relative">
-        <div className="overflow-x-auto pt-1.5 pb-1.5">
+        <div ref={scrollContainerRef} className="overflow-x-auto pt-1.5 pb-1.5">
           <div className="inline-block min-w-full">
             <div
-              className="relative ml-7 mb-1"
-              style={{ height: 14, width: weeks.length * 15 - 3 }}
+              className={cn('relative mb-1', !setMode && 'ml-7')}
+              style={{ height: 14, width: gridWidth }}
             >
               {monthHeaders.map(h => (
                 <button
@@ -281,7 +429,7 @@ export default function AiActivityHeatmapBlock({
                   type="button"
                   onClick={() => selectMonth(h.year, h.month)}
                   className="absolute top-0 whitespace-nowrap rounded-sm text-[10px] text-muted-foreground transition-colors hover:text-foreground"
-                  style={{ left: h.col * 15 }}
+                  style={{ left: h.col * step }}
                   title={`Select all of ${h.label}`}
                 >
                   {h.label}
@@ -289,45 +437,75 @@ export default function AiActivityHeatmapBlock({
               ))}
             </div>
             <div className="flex">
-              <div className="mr-1 flex flex-col" style={{ gap: 3 }}>
-                {WEEKDAY_LABELS.map((label, i) => (
-                  <div
-                    key={i}
-                    className="flex h-[12px] w-6 items-center text-[10px] text-muted-foreground"
-                  >
-                    {label}
-                  </div>
-                ))}
-              </div>
+              {!setMode && (
+                <div className="mr-1 flex flex-col" style={{ gap: cellGap }}>
+                  {WEEKDAY_LABELS.map((label, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center text-[10px] text-muted-foreground"
+                      style={{ height: cellPx, width: 24 }}
+                    >
+                      {label}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div
                 className="relative flex"
-                style={{ gap: 3 }}
+                style={{ gap: cellGap }}
                 onMouseLeave={() => setDragAnchor(null)}
               >
-                {/* Vertical month-boundary lines sit centered in the 3px gap
-                    before a month-start column. 1px wide, full grid height
-                    (7×12 + 6×3 = 102), very low contrast so they read as
-                    quiet structure rather than data. */}
+                {/* Vertical month-boundary lines sit centered in the gap
+                    before a month-start column. 1px wide, full grid height,
+                    very low contrast so they read as quiet structure. */}
                 {monthDividerCols.map(col => (
                   <div
                     key={`mdiv-${col}`}
                     aria-hidden
                     className="pointer-events-none absolute bg-foreground/15"
                     style={{
-                      left: col * 15 - 2,
+                      left: col * step - 2,
                       top: 0,
                       width: 1,
-                      height: 7 * 12 + 6 * 3,
+                      height: gridHeight,
+                    }}
+                  />
+                ))}
+                {/* Current-set ring: soft outlined box wrapping whichever
+                    cells the set falls on. Splits across columns when the
+                    set straddles a Sun→Mon boundary. */}
+                {currentSetRects.map(rect => (
+                  <div
+                    key={`curset-${rect.col}-${rect.topRow}`}
+                    aria-hidden
+                    className="pointer-events-none absolute rounded-[5px] bg-foreground/[0.04] ring-1 ring-foreground/40"
+                    style={{
+                      left: rect.col * step - 2,
+                      top: rect.topRow * step - 2,
+                      width: cellPx + 4,
+                      height:
+                        (rect.bottomRow - rect.topRow + 1) * step - cellGap + 4,
                     }}
                   />
                 ))}
                 {weeks.map((week, wIdx) => (
-                  <div key={wIdx} className="flex flex-col" style={{ gap: 3 }}>
-                    {week.map(cell => {
+                  <div key={wIdx} className="flex flex-col" style={{ gap: cellGap }}>
+                    {week.map((cell, rIdx) => {
                       const isHover = hoverDate === cell.date
                       const inRange = cell.date >= startIso && cell.date <= endIso
                       const isSelected = selectedDate === cell.date
                       const inActiveRange = isInActiveRange(cell.date)
+                      const dayNum = new Date(cell.date + 'T00:00:00').getDate()
+                      const strongTint = cell.intensity > 0.55
+                      // Set-boundary dividers on trailing edges: bottom edge
+                      // when next date is below in the same column, right edge
+                      // when this cell is Sun (row 6) and the set boundary
+                      // falls on the week-column seam.
+                      const isSetBoundary = setMode && isLastDayOfSet(cell.date)
+                      const drawBottomDivider =
+                        isSetBoundary && rIdx < 6
+                      const drawRightDivider = isSetBoundary && rIdx === 6
+                      const isRest = isRestDay(cell.date)
                       return (
                         <button
                           key={cell.date}
@@ -337,14 +515,51 @@ export default function AiActivityHeatmapBlock({
                           onMouseEnter={() => setHoverDate(cell.date)}
                           onMouseLeave={() => setHoverDate(d => (d === cell.date ? null : d))}
                           className={cn(
-                            'h-[12px] w-[12px] rounded-[3px] transition-all',
+                            'relative flex items-center justify-center rounded-[3px] transition-all',
+                            setMode && 'font-medium tabular-nums text-[10px]',
+                            setMode &&
+                              (strongTint ? 'text-background/95' : 'text-foreground/75'),
                             isHover && 'ring-1 ring-foreground/60',
                             (isSelected || inActiveRange) && 'ring-1 ring-foreground',
                             !inRange && 'opacity-30',
                           )}
-                          style={{ background: cellBackground(cell) }}
-                          aria-label={`${cell.date}: ${cell.msgs} messages`}
-                        />
+                          style={{
+                            height: cellPx,
+                            width: cellPx,
+                            backgroundColor: cellBackground(cell),
+                            // Rest-day tell: soft diagonal stripes overlaid on
+                            // the intensity color. Reads as "different rhythm"
+                            // without changing what the color means.
+                            backgroundImage: isRest
+                              ? 'repeating-linear-gradient(45deg, transparent 0 3px, rgba(148,163,184,0.35) 3px 4px)'
+                              : undefined,
+                          }}
+                          aria-label={`${cell.date}: ${cell.msgs} messages${isRest ? ' (Claude Code reset day)' : ''}`}
+                        >
+                          {setMode && dayNum}
+                          {drawBottomDivider && (
+                            <span
+                              aria-hidden
+                              className="pointer-events-none absolute left-0 bg-foreground/30"
+                              style={{
+                                bottom: -Math.ceil(cellGap / 2) - 0.5,
+                                width: cellPx,
+                                height: 1,
+                              }}
+                            />
+                          )}
+                          {drawRightDivider && (
+                            <span
+                              aria-hidden
+                              className="pointer-events-none absolute top-0 bg-foreground/30"
+                              style={{
+                                right: -Math.ceil(cellGap / 2) - 0.5,
+                                height: cellPx,
+                                width: 1,
+                              }}
+                            />
+                          )}
+                        </button>
                       )
                     })}
                   </div>
@@ -390,7 +605,9 @@ export default function AiActivityHeatmapBlock({
           </div>
         ) : (
           <span className="text-muted-foreground/60">
-            Hover for details · click a day · drag or shift-click for range · click a month label for the whole month
+            {setMode
+              ? 'Numbers are day-of-month · thin lines mark 3-day set boundaries · ringed cells are today’s set'
+              : 'Hover for details · click a day · drag or shift-click for range · click a month label for the whole month'}
           </span>
         )}
       </div>

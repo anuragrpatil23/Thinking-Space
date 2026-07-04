@@ -47,6 +47,8 @@ export const STORAGE_KEYS = {
   aiActivityVaultSourcePrefixes: 'ltm-ai-activity-vault-source-prefixes',
   goodnotesReadingAnnotationGate: 'ltm-goodnotes-reading-annotation-gate',
   aiActivityHomePostItEnabled: 'ltm-ai-activity-home-post-it-enabled',
+  aiActivitySetMode: 'ltm-ai-activity-set-mode-enabled',
+  aiActivityRestDays: 'ltm-ai-activity-rest-days',
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
   intelligenceDefaultProvider: 'ltm-intelligence-default-provider',
 } as const
@@ -165,6 +167,63 @@ export function getAiActivityHomePostItEnabled(): boolean {
 export function setAiActivityHomePostItEnabled(enabled: boolean): void {
   setLocalStorageItemBlock(STORAGE_KEYS.aiActivityHomePostItEnabled, enabled ? 'true' : 'false')
 }
+
+/**
+ * When on, AI-Activity surfaces group time by fixed 3-day "sets" anchored to
+ * month boundaries instead of ISO weeks. Off by default — this is an opt-in
+ * alternate rhythm for people whose completion window sits around 3 days.
+ * When on: the heatmap switches to a month/set layout with day-of-month
+ * numbers inside cells, and the aggregate bar chart's `week` granularity is
+ * replaced by `set`.
+ */
+export function getAiActivitySetMode(): boolean {
+  return getLocalStorageItemBlock(STORAGE_KEYS.aiActivitySetMode) === 'true'
+}
+
+export function setAiActivitySetMode(enabled: boolean): void {
+  setLocalStorageItemBlock(STORAGE_KEYS.aiActivitySetMode, enabled ? 'true' : 'false')
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AI_ACTIVITY_SET_MODE_EVENT, { detail: enabled }))
+  }
+}
+
+/** Fired on the window whenever set-mode is toggled — lets consumers re-render
+ *  without polling. `storage` events don't fire in the same tab that wrote the
+ *  value, so this bridges same-tab updates from the settings page to any open
+ *  AI-Activity surfaces. */
+export const AI_ACTIVITY_SET_MODE_EVENT = 'thinkspc:ai-activity-set-mode-changed'
+
+/**
+ * User-declared rest weekdays — numbers 0..6 with 0 = Sunday, 6 = Saturday.
+ * Only cells whose date falls in the *current calendar month* AND whose
+ * weekday matches get the soft highlight; historical months are untouched
+ * because rest cadence is a forward-looking preference, not a log.
+ */
+export function getAiActivityRestDays(): number[] {
+  const raw = getLocalStorageItemBlock(STORAGE_KEYS.aiActivityRestDays)
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (n): n is number => typeof n === 'number' && n >= 0 && n <= 6 && Number.isInteger(n),
+    )
+  } catch {
+    return []
+  }
+}
+
+export function setAiActivityRestDays(days: number[]): void {
+  const clean = Array.from(new Set(days.filter(n => n >= 0 && n <= 6 && Number.isInteger(n)))).sort(
+    (a, b) => a - b,
+  )
+  setLocalStorageItemBlock(STORAGE_KEYS.aiActivityRestDays, JSON.stringify(clean))
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AI_ACTIVITY_REST_DAYS_EVENT, { detail: clean }))
+  }
+}
+
+export const AI_ACTIVITY_REST_DAYS_EVENT = 'thinkspc:ai-activity-rest-days-changed'
 
 export function setStoredVaultRoot(path: string): void {
   setStorageItem(STORAGE_KEYS.vaultRoot, path)

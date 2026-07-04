@@ -5,6 +5,7 @@ import {
   ComposedChart,
   LabelList,
   Line,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -21,6 +22,12 @@ import {
   mergedDurationMsBlock,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import {
+  AI_ACTIVITY_REST_DAYS_EVENT,
+  AI_ACTIVITY_SET_MODE_EVENT,
+  getAiActivityRestDays,
+  getAiActivitySetMode,
+} from '@/services/lego_blocks/units/storageKeyBlock'
 
 interface AiActivityTrendChartBlockProps {
   days: ActivityDay[]
@@ -67,6 +74,56 @@ export default function AiActivityTrendChartBlock({
   selectedDate = null,
   onSelectDate,
 }: AiActivityTrendChartBlockProps) {
+  const [setMode, setSetMode] = useState<boolean>(() => getAiActivitySetMode())
+  const [restDays, setRestDays] = useState<number[]>(() => getAiActivityRestDays())
+  useEffect(() => {
+    const onSetMode = () => setSetMode(getAiActivitySetMode())
+    const onRestDays = () => setRestDays(getAiActivityRestDays())
+    window.addEventListener(AI_ACTIVITY_SET_MODE_EVENT, onSetMode)
+    window.addEventListener(AI_ACTIVITY_REST_DAYS_EVENT, onRestDays)
+    window.addEventListener('storage', onSetMode)
+    window.addEventListener('storage', onRestDays)
+    return () => {
+      window.removeEventListener(AI_ACTIVITY_SET_MODE_EVENT, onSetMode)
+      window.removeEventListener(AI_ACTIVITY_REST_DAYS_EVENT, onRestDays)
+      window.removeEventListener('storage', onSetMode)
+      window.removeEventListener('storage', onRestDays)
+    }
+  }, [])
+
+  // Rest-day ISO dates within the current calendar month. Historical months
+  // are intentionally excluded — rest cadence is forward-looking, so past
+  // days don't get recolored just because today's weekday preferences say so.
+  const restDayIsos = useMemo(() => {
+    if (restDays.length === 0) return [] as string[]
+    const set = new Set(restDays)
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth()
+    const monthLen = new Date(year, month + 1, 0).getDate()
+    const out: string[] = []
+    for (let d = 1; d <= monthLen; d++) {
+      const date = new Date(year, month, d)
+      if (set.has(date.getDay())) out.push(isoDayLocal(date))
+    }
+    return out
+  }, [restDays])
+
+  // Current set's [startIso, endIso] — shaded on the chart when set-mode is on
+  // so today's 3-day window reads as a soft band across the day bars.
+  const currentSetRange = useMemo(() => {
+    const now = new Date()
+    const day = now.getDate()
+    const setNumber = Math.floor((day - 1) / 3) + 1
+    const startDay = 3 * (setNumber - 1) + 1
+    const monthLen = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    const endDay = Math.min(3 * setNumber, monthLen)
+    return {
+      startIso: isoDayLocal(new Date(now.getFullYear(), now.getMonth(), startDay)),
+      endIso: isoDayLocal(new Date(now.getFullYear(), now.getMonth(), endDay)),
+    }
+  }, [])
+
   const visibleProjects = useMemo(() => {
     let list = projects
     if (hideNoise) list = list.filter(p => !p.isNoise)
@@ -271,6 +328,29 @@ export default function AiActivityTrendChartBlock({
                 ifOverflow="extendDomain"
               />
             )}
+            {setMode && (
+              <ReferenceArea
+                x1={currentSetRange.startIso}
+                x2={currentSetRange.endIso}
+                fill="rgba(148,163,184,0.16)"
+                fillOpacity={1}
+                stroke="rgba(148,163,184,0.5)"
+                strokeOpacity={0.6}
+                ifOverflow="hidden"
+              />
+            )}
+            {restDayIsos.map(iso => (
+              <ReferenceArea
+                key={`rest-${iso}`}
+                x1={iso}
+                x2={iso}
+                fill="rgba(251,191,36,0.14)"
+                fillOpacity={1}
+                stroke="rgba(251,191,36,0.35)"
+                strokeOpacity={0.5}
+                ifOverflow="hidden"
+              />
+            ))}
             {visibleProjects.map(p => (
               <Bar
                 key={p.name}
