@@ -2,18 +2,17 @@ import { defineContractBlock, type ContractOutput } from '../promptContractBlock
 import { s } from '../schemaBlock'
 
 // Contract that composes a day's chain-level digests into a single-day
-// project atom — one headline, one "why it matters", one "what to watch
-// next". Runs once per (project, date) and cached in the intelligence
-// sidecar; the atom orchestrator handles invalidation via inputHash.
+// project atom — a HEADLINE and a WHY-it-matters paragraph. Runs once
+// per (project, date) and cached in the intelligence sidecar; the atom
+// orchestrator handles invalidation via inputHash.
 //
-// Output is delimited plain text (HEADLINE / WHY / NEXT sections) rather
-// than JSON — same reasoning as the chain-digest contract: small local
-// models (Qwen, Gemma, Llama-3-8B) follow labeled-section layouts far more
-// reliably than they follow strict JSON schemas.
+// Output is delimited plain text (HEADLINE / WHY sections) rather than
+// JSON — same reasoning as the chain-digest contract: small local
+// models (Qwen, Gemma, Llama-3-8B) follow labeled-section layouts far
+// more reliably than they follow strict JSON schemas.
 
 const MAX_HEADLINE_CHARS = 180
 const MAX_WHY_CHARS = 480
-const MAX_NEXT_CHARS = 320
 
 export interface DayAtomContractInput {
   projectId: string
@@ -36,21 +35,18 @@ export interface DayAtomContractInput {
 export interface DayAtomOutput {
   headline: string
   whyItMatters: string
-  nextSignal: string
 }
 
 const SYSTEM_PROMPT = [
   'You compose one day of AI-assisted project work into a short daily',
-  'atom: a headline, a "why it matters" paragraph, and a forward-looking',
-  '"what to watch next" line. You are given a list of per-session',
-  'digests (each with a title and a numbered-bullet summary) for one',
-  'project on one calendar date, and optionally the previous day\'s atom',
-  'headline as an anchor.',
+  'atom: a headline and a "why it matters" paragraph. You are given a',
+  'list of per-session digests (each with a title and a numbered-bullet',
+  'summary) for one project on one calendar date, and optionally the',
+  'previous day\'s atom headline as an anchor.',
   '',
-  'OUTPUT FORMAT (strict, three labeled sections in this exact order):',
+  'OUTPUT FORMAT (strict, two labeled sections in this exact order):',
   '  HEADLINE: <one line — the day\'s dominant arc>',
   '  WHY: <1-3 sentences on why this day mattered for the project>',
-  '  NEXT: <one line on open loops, next step, or thing to watch>',
   '',
   'Example (three related coding sessions in a day):',
   '  HEADLINE: Auth middleware landed + settings modal fallout',
@@ -59,20 +55,16 @@ const SYSTEM_PROMPT = [
   '  and the settings-modal regressions surfaced during rollout got',
   '  patched same day. The retry-backoff tweak is unrelated but rides',
   '  along cleanly.',
-  '  NEXT: Watch for the mobile client\'s next release cut — it still',
-  '  reads the old token format and will need the migration path.',
   '',
   'Example (a single research/writing arc):',
   '  HEADLINE: TSMC capacity note landed for Q3 planning',
   '  WHY: First proper capacity model tied to announced demand rather',
   '  than raw wafer starts; three named risks and one open question',
   '  give planning something to push against.',
-  '  NEXT: Chase down the Arizona ramp timing — the upstream sheet',
-  '  needs correction before the next planning pass.',
   '',
   'RULES:',
   '  - NO preamble, NO trailing meta-notes, NO markdown headings or',
-  '    code fences. Just the three labeled lines.',
+  '    code fences. Just the two labeled sections.',
   '  - Use the work-voice ("Landed X", "Caught Y", "Deferred Z"). Never',
   '    "the user" / "the assistant" / "you".',
   '  - Concrete nouns: name the feature, file, company, or decision.',
@@ -82,10 +74,8 @@ const SYSTEM_PROMPT = [
   '  - WHY is about significance, not a re-list of what happened. If',
   '    a previous-day anchor was supplied, you may reference it in one',
   '    short clause ("continues yesterday\'s X…").',
-  '  - NEXT is a single forward-looking line: an open loop, a thing to',
-  '    check, or "hold" if the day was self-contained. Never a to-do list.',
   '  - If the day had one tiny session or nothing substantive, write',
-  '    HEADLINE: (quiet day) / WHY: <one short line> / NEXT: hold.',
+  '    HEADLINE: (quiet day) / WHY: <one short line>.',
 ].join('\n')
 
 function truncateAtWord(value: string, max: number): string {
@@ -97,7 +87,7 @@ function truncateAtWord(value: string, max: number): string {
 }
 
 function stripLabelPrefix(line: string): string {
-  return line.replace(/^(headline|why|next|next signal|why it matters)\s*[:\-—]\s*/i, '').trim()
+  return line.replace(/^(headline|why|why it matters)\s*[:\-—]\s*/i, '').trim()
 }
 
 function stripWrappers(line: string): string {
@@ -108,14 +98,15 @@ function stripWrappers(line: string): string {
     .trim()
 }
 
-// Pulls three labeled sections out of the raw model output. Tolerates
-// variations: label on its own line, label + inline body, missing sections.
-// Missing HEADLINE is the only fatal case — orchestrator falls through to
-// the stub generator when we return null.
+// Pulls two labeled sections out of the raw model output. Tolerates
+// variations: label on its own line, label + inline body, missing WHY.
+// Missing HEADLINE is the only fatal case — orchestrator falls through
+// to the stub generator when we return null. Any stray NEXT: line the
+// model still emits (despite the prompt) is dropped silently.
 function parseSectionsBlock(raw: string): DayAtomOutput | null {
   const lines = raw.split('\n')
-  const buf: { headline: string[]; why: string[]; next: string[]; other: string[] } = {
-    headline: [], why: [], next: [], other: [],
+  const buf: { headline: string[]; why: string[]; other: string[] } = {
+    headline: [], why: [], other: [],
   }
   let current: keyof typeof buf = 'other'
   for (const rawLine of lines) {
@@ -138,11 +129,10 @@ function parseSectionsBlock(raw: string): DayAtomOutput | null {
       if (inline) buf.why.push(inline)
       continue
     }
-    const nextMatch = /^next(?:\s*signal)?\s*[:\-—]\s*(.*)$/i.exec(line)
-    if (nextMatch) {
-      current = 'next'
-      const inline = nextMatch[1].trim()
-      if (inline) buf.next.push(inline)
+    // Drop any stray NEXT: (or "Next Signal:") section the model still
+    // emits — it's no longer part of the atom shape.
+    if (/^next(?:\s*signal)?\s*[:\-—]/i.test(line)) {
+      current = 'other'
       continue
     }
     buf[current].push(stripWrappers(line))
@@ -150,11 +140,9 @@ function parseSectionsBlock(raw: string): DayAtomOutput | null {
   const headline = stripWrappers(stripLabelPrefix(buf.headline.join(' ').replace(/\s+/g, ' ').trim()))
   if (!headline) return null
   const whyRaw = buf.why.join(' ').replace(/\s+/g, ' ').trim()
-  const nextRaw = buf.next.join(' ').replace(/\s+/g, ' ').trim()
   return {
     headline: truncateAtWord(headline, MAX_HEADLINE_CHARS),
     whyItMatters: truncateAtWord(stripWrappers(whyRaw), MAX_WHY_CHARS),
-    nextSignal: truncateAtWord(stripWrappers(nextRaw), MAX_NEXT_CHARS),
   }
 }
 
@@ -191,8 +179,8 @@ function buildUserPromptBlock(input: DayAtomContractInput): string {
 
 export const dayAtomContract = defineContractBlock({
   id: 'day-atom',
-  promptVersion: 1,
-  outputSchema: s.string({ description: 'HEADLINE / WHY / NEXT labeled sections' }),
+  promptVersion: 2,
+  outputSchema: s.string({ description: 'HEADLINE / WHY labeled sections' }),
   buildRequest: (input: DayAtomContractInput, ctx) => ({
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user' as const, content: buildUserPromptBlock(input) }],

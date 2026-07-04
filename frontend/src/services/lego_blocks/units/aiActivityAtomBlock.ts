@@ -28,8 +28,6 @@ export interface ProjectDayAtom {
   headline: string
   /** Why this day matters relative to the project's arc. Empty allowed. */
   whyItMatters: string
-  /** What to watch for or do next. Empty allowed. */
-  nextSignal: string
   /** Generator confidence 0..1; used to soften low-quality atoms in the UI. */
   confidence: number
   /** False while the day is in progress, true once frozen. */
@@ -110,7 +108,6 @@ export function parseProjectDayAtomMarkdownBlock(content: string): ProjectDayAto
     date,
     headline: toStringOrEmpty(parsed.headline),
     whyItMatters: toStringOrEmpty(parsed.whyItMatters),
-    nextSignal: toStringOrEmpty(parsed.nextSignal),
     confidence: clampConfidence(parsed.confidence),
     sealed: parsed.sealed === true,
     inputHash: toStringOrEmpty(parsed.inputHash),
@@ -132,7 +129,6 @@ export function stringifyProjectDayAtomMarkdownBlock(atom: ProjectDayAtom): stri
     generatedAt: atom.generatedAt,
     headline: atom.headline,
     whyItMatters: atom.whyItMatters,
-    nextSignal: atom.nextSignal,
   }
   const yamlStr = yaml.dump(frontmatter, {
     lineWidth: -1,
@@ -144,7 +140,6 @@ export function stringifyProjectDayAtomMarkdownBlock(atom: ProjectDayAtom): stri
   const bodyLines: string[] = []
   if (atom.headline) bodyLines.push(`# ${atom.headline}`, '')
   if (atom.whyItMatters) bodyLines.push('## Why it matters', atom.whyItMatters, '')
-  if (atom.nextSignal) bodyLines.push('## What to watch next', atom.nextSignal, '')
 
   const body = bodyLines.join('\n').trimEnd()
   return `---\n${yamlStr}\n---\n\n${body}\n`
@@ -175,7 +170,6 @@ export function parseProjectDayAtomJsonBlock(raw: string): ProjectDayAtom | null
     date,
     headline: toStringOrEmpty(parsed.headline),
     whyItMatters: toStringOrEmpty(parsed.whyItMatters),
-    nextSignal: toStringOrEmpty(parsed.nextSignal),
     confidence: clampConfidence(parsed.confidence),
     sealed: parsed.sealed === true,
     inputHash: toStringOrEmpty(parsed.inputHash),
