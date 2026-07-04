@@ -13,7 +13,7 @@ import ChainTranscriptSlideOverBlock from '@/components/lego_blocks/integrations
 import ReadingSessionEditModalBlock, {
   isReadingSessionEditableBlock,
 } from '@/components/lego_blocks/integrations/ReadingSessionEditModalBlock'
-import { useChainTitleBlock } from '@/components/lego_blocks/hooks/units/useChainTitleBlock'
+import { useChainDigestBlock } from '@/components/lego_blocks/hooks/units/useChainDigestBlock'
 
 interface AiActivityDayTableBlockProps {
   /** Title shown above the table (e.g. day or range label). */
@@ -441,11 +441,16 @@ function ChainTopicCellBlock({
   chain: ActivityChain
   isReconstructed: boolean
 }) {
-  const { display, isAi, loading } = useChainTitleBlock(chain)
+  const { title, summary, isAi, loading } = useChainDigestBlock(chain)
+  const tooltip = isAi
+    ? summary
+      ? `${title}\n\n${summary}\n\n(original: ${chain.topic})`
+      : `${title}\n\n(original: ${chain.topic})`
+    : chain.topic
   return (
     <td
       className="max-w-0 truncate px-3 py-1.5 text-foreground/70"
-      title={isAi ? `${display}\n\n(original: ${chain.topic})` : chain.topic}
+      title={tooltip}
     >
       {isReconstructed && (
         <span
@@ -455,7 +460,7 @@ function ChainTopicCellBlock({
           rebuilt
         </span>
       )}
-      <span className={cn(isAi && 'text-foreground/85')}>{display}</span>
+      <span className={cn(isAi && 'text-foreground/85')}>{title}</span>
       {loading && (
         <span className="ml-1 text-[9px] uppercase tracking-[0.08em] text-muted-foreground/60">
           …
@@ -469,7 +474,7 @@ function ChainTopicCellBlock({
 // label, with the original first-message snippet below for context. Keeps
 // the previous multi-session topic list intact.
 function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
-  const { display, isAi } = useChainTitleBlock(chain)
+  const { title, summary, isAi } = useChainDigestBlock(chain)
   const seen = new Set<string>([chain.topic])
   const extras =
     chain.sessions.length > 1
@@ -486,8 +491,16 @@ function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
         className="whitespace-pre-wrap text-foreground/85"
         style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
       >
-        {display}
+        {title}
       </div>
+      {summary && (
+        <div
+          className="whitespace-pre-wrap text-[11px] text-foreground/70"
+          style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+        >
+          {summary}
+        </div>
+      )}
       {isAi && (
         <div
           className="whitespace-pre-wrap pl-3 text-[10px] text-muted-foreground/70"

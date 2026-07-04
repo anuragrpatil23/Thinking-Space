@@ -1,3 +1,4 @@
+import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import {
   isValidAtomDateBlock,
   type ProjectDayAtom,
@@ -7,6 +8,10 @@ import {
   putProjectDayAtomBlock,
   listProjectDayAtomsInRangeBlock,
 } from '@/services/lego_blocks/integrations/aiActivityAtomStoreBlock'
+import {
+  ensureChainDigestOrch,
+  loadChainDigestOrch,
+} from '@/services/orchestrators/aiActivityChainDigestOrch'
 
 // Public surface for the project-day atom pipeline. Callers (This Week card,
 // scheduled sealing routines, future insight surfaces) go through here —
@@ -26,6 +31,15 @@ export interface AtomGenerationInputBlock {
    *  Lets us detect edits to a previously-seen session without
    *  re-parsing the transcript. Same order as sessionIds. */
   sessionHashes?: string[]
+  /** Per-chain digests (title + summary) covering this day's chains for the
+   *  project. Populated when the intelligence subsystem is available; empty
+   *  when it isn't (the generator degrades to session-id-count summaries). */
+  chainDigests?: Array<{
+    chainKey: string
+    title: string
+    summary: string
+    durationMs: number
+  }>
   /** Previous day's atom (headline only is fine) — anchors narrative flow
    *  so the generator can reference "yesterday you were…". */
   previousAtomAnchor?: {
@@ -86,25 +100,44 @@ export async function loadAtomsForRangeOrch(
 
 const STUB_MODEL_ID = 'ai-activity-atom:stub@v1'
 
-/** Placeholder generator — returns a mechanical summary so the pipeline
- *  is exercisable end-to-end. Real prompt/model call lands next phase. */
+/** Placeholder generator — composes chain-digest titles when available, or
+ *  falls back to a mechanical session-count summary. Real prompt/model call
+ *  for the day-atom itself lands next phase. */
 async function generateAtomStubBlock(
   input: AtomGenerationInputBlock,
   inputHash: string,
 ): Promise<ProjectDayAtom | null> {
   if (input.sessionIds.length === 0) return null
-  const count = input.sessionIds.length
-  const headline = `${count} AI ${count === 1 ? 'session' : 'sessions'} on ${input.date}`
-  const whyItMatters = input.previousAtomAnchor
-    ? `Follows on from ${input.previousAtomAnchor.date}: "${input.previousAtomAnchor.headline}".`
-    : ''
+
+  const digests = input.chainDigests ?? []
+  let headline: string
+  let whyItMatters = ''
+
+  if (digests.length > 0) {
+    // Rank by duration desc; use the top titles as the headline, first
+    // summary as the why-it-matters. Trivial composition, but at least
+    // renders real chain-level content instead of a session count.
+    const ranked = [...digests].sort((a, b) => b.durationMs - a.durationMs)
+    const topTitles = ranked.slice(0, 2).map(d => d.title).filter(Boolean)
+    headline = topTitles.length ? topTitles.join(' · ') : `${input.sessionIds.length} sessions on ${input.date}`
+    const firstSummary = ranked.find(d => d.summary)?.summary
+    if (firstSummary) whyItMatters = firstSummary
+  } else {
+    const count = input.sessionIds.length
+    headline = `${count} AI ${count === 1 ? 'session' : 'sessions'} on ${input.date}`
+  }
+
+  if (input.previousAtomAnchor && !whyItMatters) {
+    whyItMatters = `Follows on from ${input.previousAtomAnchor.date}: "${input.previousAtomAnchor.headline}".`
+  }
+
   return {
     projectId: input.projectId,
     date: input.date,
     headline,
     whyItMatters,
     nextSignal: '',
-    confidence: 0.2, // low — this is a mechanical placeholder, not an LLM
+    confidence: digests.length > 0 ? 0.5 : 0.2,
     sealed: isSealedDate(input.date),
     inputHash,
     generatedAt: new Date().toISOString(),
@@ -131,6 +164,10 @@ function computeInputHashBlock(input: AtomGenerationInputBlock): string {
     .map((id, i) => `${id}:${input.sessionHashes?.[i] ?? ''}`)
     .sort()
     .join('|')
+  const digestsPart = (input.chainDigests ?? [])
+    .map(d => `${d.chainKey}:${d.title}:${d.summary}`)
+    .sort()
+    .join('|')
   const anchor = input.previousAtomAnchor
     ? `${input.previousAtomAnchor.date}:${input.previousAtomAnchor.headline}`
     : ''
@@ -138,6 +175,7 @@ function computeInputHashBlock(input: AtomGenerationInputBlock): string {
     input.projectId,
     input.date,
     sessionsPart,
+    digestsPart,
     anchor,
     STUB_MODEL_ID,
   ].join('\x00')
@@ -146,4 +184,42 @@ function computeInputHashBlock(input: AtomGenerationInputBlock): string {
     hash = ((hash << 5) + hash + material.charCodeAt(i)) | 0
   }
   return (hash >>> 0).toString(36)
+}
+
+/**
+ * Build an atom-generation input from a project's chains for a single day.
+ * Runs the chain-digest orchestrator for each chain first — `ensure` when
+ * the intelligence subsystem is likely to succeed, `load` (read-only) for
+ * bulk range operations where blocking on model calls per chain is too
+ * expensive. The returned input carries whichever digests were resolvable.
+ */
+export async function buildAtomInputForDayOrch(
+  projectId: string,
+  date: string,
+  chains: ActivityChain[],
+  options: { generateMissing?: boolean; previousAtomAnchor?: AtomGenerationInputBlock['previousAtomAnchor'] } = {},
+): Promise<AtomGenerationInputBlock> {
+  const digests: NonNullable<AtomGenerationInputBlock['chainDigests']> = []
+  const sessionIds: string[] = []
+  for (const chain of chains) {
+    sessionIds.push(chain.key)
+    const result = options.generateMissing
+      ? await ensureChainDigestOrch(chain).catch(() => null)
+      : { digest: await loadChainDigestOrch(chain).catch(() => null), isAi: true }
+    const digest = result?.digest
+    if (!digest) continue
+    digests.push({
+      chainKey: digest.chainKey,
+      title: digest.title,
+      summary: digest.summary,
+      durationMs: digest.durationMs,
+    })
+  }
+  return {
+    projectId,
+    date,
+    sessionIds,
+    chainDigests: digests,
+    previousAtomAnchor: options.previousAtomAnchor,
+  }
 }
