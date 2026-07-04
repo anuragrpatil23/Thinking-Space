@@ -12,6 +12,13 @@ import {
   ensureChainDigestOrch,
   loadChainDigestOrch,
 } from '@/services/orchestrators/aiActivityChainDigestOrch'
+import { availability, runContract } from '@/services/orchestrators/intelligenceOrch'
+import { intelligenceCacheAvailableBlock } from '@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock'
+import {
+  dayAtomContract,
+  type DayAtomContractInput,
+  type DayAtomOutput,
+} from '@/services/lego_blocks/units/intelligence/contracts/dayAtomContractBlock'
 
 // Public surface for the project-day atom pipeline. Callers (This Week card,
 // scheduled sealing routines, future insight surfaces) go through here —
@@ -63,7 +70,11 @@ export async function ensureAtomForDayOrch(
   if (existing && existing.inputHash === nextHash && existing.sealed === isSealedDate(input.date)) {
     return existing
   }
-  const generated = await generateAtomStubBlock(input, nextHash)
+  // Try the AI contract first; fall through to the stub when the
+  // intelligence subsystem is unavailable or the contract discards output.
+  const generated =
+    (await generateAtomViaContractBlock(input, nextHash).catch(() => null)) ??
+    (await generateAtomStubBlock(input, nextHash))
   if (!generated) return existing ?? null
   await putProjectDayAtomBlock(generated)
   return generated
@@ -100,9 +111,55 @@ export async function loadAtomsForRangeOrch(
 
 const STUB_MODEL_ID = 'ai-activity-atom:stub@v1'
 
-/** Placeholder generator — composes chain-digest titles when available, or
- *  falls back to a mechanical session-count summary. Real prompt/model call
- *  for the day-atom itself lands next phase. */
+/** AI contract path — composes chain digests into a single-day atom via
+ *  the day-atom contract on whatever intelligence provider is configured.
+ *  Returns null when the subsystem is unavailable, the contract discards
+ *  output, or there are no chain digests to compose (empty input). The
+ *  caller falls through to the stub for null returns. */
+async function generateAtomViaContractBlock(
+  input: AtomGenerationInputBlock,
+  inputHash: string,
+): Promise<ProjectDayAtom | null> {
+  if (!input.chainDigests || input.chainDigests.length === 0) return null
+  if (!intelligenceCacheAvailableBlock()) return null
+  const av = await availability().catch(() => ({ available: false }))
+  if (!av.available) return null
+
+  const contractInput: DayAtomContractInput = {
+    projectId: input.projectId,
+    date: input.date,
+    chainDigests: input.chainDigests,
+    previousAtomAnchor: input.previousAtomAnchor,
+  }
+  const result = await runContract<DayAtomContractInput, typeof dayAtomContract.outputSchema>(
+    dayAtomContract,
+    contractInput,
+  )
+  if (!result.ok || !result.value) return null
+
+  const output = result.value as unknown as DayAtomOutput
+  // Confidence is a function of coverage: how many chains got real digests
+  // vs. how many sessions existed on the day. Half-covered days still
+  // render; fully-covered days get a clearer signal in the UI.
+  const digestCoverage = input.chainDigests.length / Math.max(1, input.sessionIds.length)
+  const confidence = Math.min(1, 0.5 + 0.5 * digestCoverage)
+  return {
+    projectId: input.projectId,
+    date: input.date,
+    headline: output.headline,
+    whyItMatters: output.whyItMatters,
+    nextSignal: output.nextSignal,
+    confidence,
+    sealed: isSealedDate(input.date),
+    inputHash,
+    generatedAt: new Date().toISOString(),
+    model: result.model ?? 'unknown',
+  }
+}
+
+/** Fallback generator — composes chain-digest titles when available, or
+ *  falls back to a mechanical session-count summary. Runs when the AI
+ *  contract path is unavailable or returns null. */
 async function generateAtomStubBlock(
   input: AtomGenerationInputBlock,
   inputHash: string,
@@ -177,6 +234,11 @@ function computeInputHashBlock(input: AtomGenerationInputBlock): string {
     sessionsPart,
     digestsPart,
     anchor,
+    // Bumping the contract's promptVersion invalidates every atom that
+    // depends on it — same policy as chainDigest. The stub-model tag is
+    // included as a stable suffix so switching the fallback shape also
+    // busts cache without touching the contract.
+    `${dayAtomContract.id}#v${dayAtomContract.promptVersion}`,
     STUB_MODEL_ID,
   ].join('\x00')
   let hash = 5381
