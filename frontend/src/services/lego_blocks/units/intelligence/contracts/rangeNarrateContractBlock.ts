@@ -70,25 +70,34 @@ const SYSTEM_PROMPT = [
   '  Sessions block  → SOURCE MATERIAL for the narration sentence — the',
   '                    only allowed source.',
   '',
-  'Exact bullet shape (fill only the trailing narration):',
+  'COUNT INVARIANT — the single most important rule:',
+  '  - You will receive exactly N ARCs. Emit exactly N bullets, plus',
+  '    ONE additional MISC bullet iff a MISC block is present.',
+  '  - N is given verbatim as "Expected output: N bullets" in the user',
+  '    message. Match it. If N=1, output 1 bullet (or 2 with MISC).',
+  '  - NEVER invent an extra bullet to "match a template". The template',
+  '    below is a per-item shape, not a sample count.',
   '',
-  '  N. **{theme_label}** — {session_count} sessions {date_span}, **~{duration}**.',
+  'TEMPLATE — apply this shape to EACH ARC you receive:',
+  '',
+  '  <index>. **{theme_label}** — {session_count} sessions {date_span}, **~{duration}**.',
   '     {ONE OR TWO SENTENCES drawing ONLY from the Sessions block above.',
   '      Name concrete files, features, companies, decisions from those',
   '      sessions. Use the work-voice — "Landed X", "Fixed Y", "Named Z".}',
   '',
-  'If a MISC block appears at the end, add ONE final bullet:',
+  'Number sequentially starting at 1. Bullet 1 = ARC 1. Bullet 2 = ARC 2.',
+  'Etc.',
   '',
-  '  N. **Also worked on:** {one short comma-separated line listing what\'s',
-  '                          in the MISC block — do not repeat arc content}.',
+  'MISC (append only if a MISC block is present):',
   '',
-  'If NO MISC block is present, do NOT emit an "Also worked on" bullet.',
-  'Stop after the last arc.',
+  '  <next-index>. **Also worked on:** {one short comma-separated line',
+  '                                     listing what\'s in the MISC block —',
+  '                                     do not repeat arc content}.',
   '',
   'HARD RULES:',
   '  - Copy theme_label, session_count, date_span, duration VERBATIM. Do',
   '    not paraphrase, translate, or replace with a session title.',
-  '  - Preserve arc order. Bullet 1 = ARC 1, bullet 2 = ARC 2, etc.',
+  '  - Preserve arc order.',
   '  - Narration for arc N draws ONLY from the Sessions block of arc N.',
   '    Never borrow from another arc or invent details.',
   '  - Never "the user" / "the assistant" / "you". Use work-voice.',
@@ -98,9 +107,15 @@ const SYSTEM_PROMPT = [
 
 function buildUserPromptBlock(input: RangeNarrateContractInput): string {
   const parts: string[] = []
+  const expectedBullets = input.arcs.length + (input.misc.length > 0 ? 1 : 0)
   parts.push(`Project: ${input.projectLabel?.trim() || input.projectId}`)
   parts.push(
     `Range: ${input.rangeStartDate} → ${input.rangeEndDate} · ${input.uniqueDays} day${input.uniqueDays === 1 ? '' : 's'} with activity · ${input.totalChains} chains · ~${input.totalDuration} total`,
+  )
+  parts.push(
+    `Expected output: ${expectedBullets} bullet${expectedBullets === 1 ? '' : 's'} — ` +
+      `one per ARC (${input.arcs.length})` +
+      (input.misc.length > 0 ? ` + one MISC bullet.` : `. NO MISC block present, do NOT emit a MISC bullet.`),
   )
   parts.push('')
 
@@ -169,7 +184,7 @@ function sanitizeBody(raw: string): string {
 
 export const rangeNarrateContract = defineContractBlock({
   id: 'range-summary-narrate',
-  promptVersion: 1,
+  promptVersion: 2,
   outputSchema: s.string({ description: 'Numbered-bullet range summary body' }),
   buildRequest: (input: RangeNarrateContractInput, ctx) => ({
     system: SYSTEM_PROMPT,

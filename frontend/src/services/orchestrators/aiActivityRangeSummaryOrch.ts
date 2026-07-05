@@ -1,6 +1,8 @@
 import {
   buildFallbackBodyBlock,
+  computeRangeContentFingerprintBlock,
   computeRangeInputHashBlock,
+  rangeSummaryTierRankBlock,
   type ProjectRangeSummary,
   type RangeSummaryPersistedProvider,
 } from '@/services/lego_blocks/units/aiActivityRangeSummaryBlock'
@@ -31,6 +33,26 @@ import {
   type RangeSummaryContractInput,
   type RangeSummaryOutput,
 } from '@/services/lego_blocks/units/intelligence/contracts/rangeSummaryContractBlock'
+import {
+  subunitComposeContract,
+  SUBUNIT_COMPOSE_PROMPT_VERSION,
+  type SubunitComposeContractInput,
+  type SubunitComposeOutput,
+  type SubunitInput,
+} from '@/services/lego_blocks/units/intelligence/contracts/subunitComposeContractBlock'
+import {
+  monthThemeComposeContract,
+  MONTH_THEME_COMPOSE_PROMPT_VERSION,
+  type MonthThemeComposeContractInput,
+  type MonthThemeComposeOutput,
+  type MonthThemeInput,
+} from '@/services/lego_blocks/units/intelligence/contracts/monthThemeComposeContractBlock'
+import {
+  decomposeRangeIntoSubunitsBlock,
+  monthPeriodContaining,
+  weekPeriodContaining,
+  type RangeSubunit,
+} from '@/services/lego_blocks/units/aiActivityPeriodBlock'
 
 // Public surface: `ensureRangeSummaryOrch(input)` returns a persisted
 // ProjectRangeSummary tagged with whichever path actually ran.
@@ -49,9 +71,9 @@ import {
 
 // Bump these when the corresponding prompt is meaningfully changed — the
 // range hash includes them so cached bodies invalidate.
-const LOCAL_PIPELINE_PROMPT_VERSION = 1
+const LOCAL_PIPELINE_PROMPT_VERSION = 2
 const CLAUDE_PIPELINE_PROMPT_VERSION = 1
-const FALLBACK_PROMPT_VERSION = 1
+const FALLBACK_PROMPT_VERSION = 2
 
 const MISC_MIN_FRAC = 0.05
 const MISC_MIN_MS = 10 * 60_000
@@ -109,6 +131,17 @@ export interface EnsureRangeSummaryInput {
 
 // ── Public entry ────────────────────────────────────────────────────────
 
+/** Target tier for a user-selected provider. Compared against a stored
+ *  body's tier rank to decide whether the stored body is "at least as
+ *  good" — in which case we reuse it even if the current selection differs.
+ *  Claude is the ceiling, so a stored claude-cli body outranks any local
+ *  or fallback selection. */
+function targetTierRank(provider: AiActivityRangeSummaryProvider): number {
+  if (provider === 'claude-cli') return 3
+  if (provider === 'local') return 2
+  return 1 // 'off' → fallback tier
+}
+
 export async function ensureRangeSummaryOrch(
   input: EnsureRangeSummaryInput,
 ): Promise<ProjectRangeSummary> {
@@ -119,11 +152,17 @@ export async function ensureRangeSummaryOrch(
       : provider === 'claude-cli'
         ? CLAUDE_PIPELINE_PROMPT_VERSION
         : FALLBACK_PROMPT_VERSION
+  const chainRefs = input.chains.map(c => ({
+    chainKey: c.chainKey,
+    date: c.date,
+    durationMs: c.durationMs,
+  }))
   const inputHash = computeRangeInputHashBlock({
-    chains: input.chains.map(c => ({ chainKey: c.chainKey, date: c.date, durationMs: c.durationMs })),
+    chains: chainRefs,
     promptVersion,
     provider,
   })
+  const contentFingerprint = computeRangeContentFingerprintBlock(chainRefs)
 
   if (!input.refresh) {
     const existing = await getProjectRangeSummaryBlock(
@@ -131,12 +170,30 @@ export async function ensureRangeSummaryOrch(
       input.rangeStartDate,
       input.rangeEndDate,
     )
-    if (existing && existing.inputHash === inputHash) return existing
+    if (existing) {
+      // Claude-precedence read: reuse the stored body when its chain set
+      // matches AND its tier is at least what the current selection would
+      // produce. This means a Claude body survives a later switch to
+      // local/off — we never stomp a higher tier with a lower one just
+      // because the setting changed. Manual refresh bypasses this.
+      const storedTier = rangeSummaryTierRankBlock(existing.provider)
+      const targetTier = targetTierRank(provider)
+      const contentMatches =
+        existing.contentFingerprint !== undefined &&
+        existing.contentFingerprint === contentFingerprint
+      if (contentMatches && storedTier >= targetTier) return existing
+      // Backward-compat: pre-fingerprint records still match on the full
+      // inputHash path, so a same-provider reload doesn't force a regen.
+      if (!existing.contentFingerprint && existing.inputHash === inputHash) {
+        return existing
+      }
+    }
   }
 
   const generated = await generateForProvider(provider, input)
-  await putProjectRangeSummaryBlock({ ...generated, inputHash })
-  return { ...generated, inputHash }
+  const persisted: ProjectRangeSummary = { ...generated, inputHash, contentFingerprint }
+  await putProjectRangeSummaryBlock(persisted)
+  return persisted
 }
 
 /** Read-only variant — returns whatever is currently persisted (or null),
@@ -336,4 +393,487 @@ async function generateClaudeOneShot(input: EnsureRangeSummaryInput): Promise<Pr
     provider: 'claude-cli' satisfies RangeSummaryPersistedProvider,
     model: (result.meta?.model as string) ?? result.model ?? 'claude-cli',
   }
+}
+
+// ── Decomposed range path (month → weeks → days) ───────────────────────
+//
+// Public entry: `ensureDecomposedRangeSummaryOrch(input)`. Any arbitrary
+// range is peeled into a chronological list of fixed subunits — whole
+// calendar months where possible, else whole ISO weeks, else single days.
+// Each subunit's summary is ensured recursively (months compose from
+// weeks; weeks compose from chain digests via the flat orch) and the top
+// body is composed from those subunit bodies via subunitComposeContract.
+// All intermediate summaries are persisted in the same store so a later
+// range that touches the same month/week reuses the cache.
+//
+// Precedence semantics from `ensureRangeSummaryOrch` propagate: at every
+// tier, if a Claude body exists for that subunit and the chain set is
+// unchanged, it's reused regardless of the current provider selection.
+
+function rangeIsWholeMonthBlock(startDate: string, endDate: string): boolean {
+  const m = monthPeriodContaining(startDate)
+  return m.startDate === startDate && m.endDate === endDate
+}
+function rangeIsWholeWeekBlock(startDate: string, endDate: string): boolean {
+  const w = weekPeriodContaining(startDate)
+  return w.startDate === startDate && w.endDate === endDate
+}
+
+function chainsInSubunitBlock(
+  chains: RangeSummaryDigestInput[],
+  subunit: RangeSubunit,
+): RangeSummaryDigestInput[] {
+  return chains.filter(c => c.date >= subunit.startDate && c.date <= subunit.endDate)
+}
+
+function subunitLabelBlock(subunit: RangeSubunit): string {
+  const parts = subunit.startDate.split('-')
+  const year = Number(parts[0])
+  const monthName = MONTH_SHORT[Number(parts[1]) - 1] ?? '?'
+  if (subunit.type === 'month') return `${monthName} ${year}`
+  if (subunit.type === 'week') return `Week of ${fmtDate(subunit.startDate)}`
+  return fmtDate(subunit.startDate)
+}
+
+/** Deterministic top-body composer used when no model provider is available
+ *  or the compose contract fails. Concatenates subunit bodies with a header
+ *  per subunit — no fabricated narrative, just a scannable stack. */
+function composeSubunitsFallbackBlock(
+  subunits: Array<{ subunit: RangeSubunit; summary: ProjectRangeSummary; label: string }>,
+): { body: string; provider: 'fallback-titles' | 'fallback-stub' } {
+  const nonEmpty = subunits.filter(s => s.summary.body.trim().length > 0)
+  if (nonEmpty.length === 0) {
+    return { body: '_No AI-assisted activity in this range._', provider: 'fallback-stub' }
+  }
+  const sections = nonEmpty.map((s, i) => {
+    const durLine = humanDuration(s.summary.totalDurationMs)
+    return `${i + 1}. **${s.label}** — ~${durLine}\n${s.summary.body}`
+  })
+  return { body: sections.join('\n\n'), provider: 'fallback-titles' }
+}
+
+export async function ensureDecomposedRangeSummaryOrch(
+  input: EnsureRangeSummaryInput,
+): Promise<ProjectRangeSummary> {
+  const provider = input.providerOverride ?? getAiActivityRangeSummaryProvider()
+
+  // Base cases: a single day or a whole ISO week is treated as a leaf and
+  // handed to the flat orch (chain-digest → narrate). Below the week tier
+  // there's nothing worth further decomposing.
+  if (input.rangeStartDate === input.rangeEndDate) {
+    return ensureRangeSummaryOrch(input)
+  }
+  if (rangeIsWholeWeekBlock(input.rangeStartDate, input.rangeEndDate)) {
+    return ensureRangeSummaryOrch(input)
+  }
+
+  // Whole calendar month with a model provider → theme-anchored path.
+  // Themes come with the actual day-of-month numbers touched, so the reader
+  // gets "4 days (23, 25, 28, 30)" instead of a vague "across Aug 23 → Aug 30".
+  // 'off' still uses the deterministic subunit-compose fallback below —
+  // clustering without a model would just group by title and defeat the
+  // whole point of the theme view.
+  if (
+    rangeIsWholeMonthBlock(input.rangeStartDate, input.rangeEndDate) &&
+    provider !== 'off'
+  ) {
+    return ensureMonthThemeSummaryOrch(input, provider)
+  }
+
+  // A whole calendar month gets peeled into weeks + edge days (never into
+  // "itself" — otherwise we'd recurse forever). Any other range goes
+  // through the full month-spine decomposition.
+  const allowMonthSubunits = !rangeIsWholeMonthBlock(input.rangeStartDate, input.rangeEndDate)
+  const subunits = decomposeRangeIntoSubunitsBlock(
+    input.rangeStartDate,
+    input.rangeEndDate,
+    { allowMonthSubunits },
+  )
+
+  // Ensure each subunit's summary. Month subunits recurse; week + day
+  // subunits go through the flat orch.
+  const perSubunit: Array<{ subunit: RangeSubunit; summary: ProjectRangeSummary; label: string }> = []
+  for (const sub of subunits) {
+    const subChains = chainsInSubunitBlock(input.chains, sub)
+    const subInput: EnsureRangeSummaryInput = {
+      projectId: input.projectId,
+      projectLabel: input.projectLabel,
+      rangeStartDate: sub.startDate,
+      rangeEndDate: sub.endDate,
+      chains: subChains,
+      providerOverride: input.providerOverride,
+      refresh: input.refresh,
+    }
+    const summary =
+      sub.type === 'month'
+        ? await ensureDecomposedRangeSummaryOrch(subInput)
+        : await ensureRangeSummaryOrch(subInput)
+    perSubunit.push({ subunit: sub, summary, label: subunitLabelBlock(sub) })
+  }
+
+  // Compose top body. If no subunits produced any body OR the provider is
+  // 'off', fall back to deterministic concatenation. Otherwise run the
+  // subunit compose contract.
+  const chainRefs = input.chains.map(c => ({
+    chainKey: c.chainKey,
+    date: c.date,
+    durationMs: c.durationMs,
+  }))
+  const contentFingerprint = computeRangeContentFingerprintBlock(chainRefs)
+  const inputHash = computeRangeInputHashBlock({
+    chains: chainRefs,
+    promptVersion: SUBUNIT_COMPOSE_PROMPT_VERSION,
+    provider,
+  })
+
+  // Reuse cached top body when possible.
+  if (!input.refresh) {
+    const existing = await getProjectRangeSummaryBlock(
+      input.projectId,
+      input.rangeStartDate,
+      input.rangeEndDate,
+    )
+    if (existing) {
+      const storedTier = rangeSummaryTierRankBlock(existing.provider)
+      const targetTier =
+        provider === 'claude-cli' ? 3 : provider === 'local' ? 2 : 1
+      const contentMatches =
+        existing.contentFingerprint !== undefined &&
+        existing.contentFingerprint === contentFingerprint
+      if (contentMatches && storedTier >= targetTier) return existing
+    }
+  }
+
+  const rangeTotalMs = totalDurationMs(input.chains)
+  const uniqueDays = new Set(input.chains.map(c => c.date)).size
+
+  let topBody = ''
+  let topProvider: RangeSummaryPersistedProvider = 'fallback-stub'
+  let topModel = ''
+
+  if (provider !== 'off' && perSubunit.some(s => s.summary.body.trim().length > 0)) {
+    const composeInput: SubunitComposeContractInput = {
+      projectId: input.projectId,
+      projectLabel: input.projectLabel,
+      rangeStartDate: input.rangeStartDate,
+      rangeEndDate: input.rangeEndDate,
+      totalChains: input.chains.length,
+      totalDuration: humanDuration(rangeTotalMs),
+      uniqueDays,
+      subunits: perSubunit.map<SubunitInput>(s => ({
+        kind: s.subunit.type,
+        label: s.label,
+        dateSpan: fmtDateSpan(s.subunit.startDate, s.subunit.endDate),
+        duration: humanDuration(s.summary.totalDurationMs),
+        chainCount: s.summary.chainKeys.length,
+        body: s.summary.body,
+      })),
+    }
+    const runOpts = provider === 'claude-cli' ? { provider: 'claude-cli' as const } : undefined
+    const composeResult = await runContract(subunitComposeContract, composeInput, runOpts)
+    if (composeResult.ok && composeResult.value) {
+      const composeValue = composeResult.value as SubunitComposeOutput
+      if (composeValue.body) {
+        topBody = composeValue.body
+        topProvider =
+          provider === 'claude-cli' ? 'claude-cli' : 'local-two-stage'
+        topModel = (composeResult.meta?.model as string) ?? composeResult.model ?? provider
+      }
+    }
+  }
+
+  if (!topBody) {
+    const fb = composeSubunitsFallbackBlock(perSubunit)
+    topBody = fb.body
+    topProvider = fb.provider
+    topModel = ''
+  }
+
+  const persisted: ProjectRangeSummary = {
+    ...baseSummary(input),
+    body: topBody,
+    provider: topProvider,
+    model: topModel,
+    inputHash,
+    contentFingerprint,
+  }
+  await putProjectRangeSummaryBlock(persisted)
+  return persisted
+}
+
+// ── Month theme path (whole calendar month, model-backed) ──────────────
+//
+// Runs when `ensureDecomposedRangeSummaryOrch` sees a whole-month input
+// with a live model provider selected. Structure:
+//
+//   1. Decompose the month into week + edge-day subunits and recursively
+//      ensure each subunit summary. Week bodies double as source material
+//      for the narrator so the day-anchored theme bullet still has prose
+//      depth.
+//   2. Run `rangeLabelContract` on the month's chains to cluster into
+//      themes. Same contract the local-two-stage arbitrary-range path
+//      already uses — reuses tuning + cache.
+//   3. Deterministically aggregate per-theme: day-of-month numbers
+//      (dedup + sort), total duration, session list. The narrator never
+//      touches these numbers, so days/duration can't be hallucinated.
+//   4. Collect the week bodies that overlap each theme's day set — those
+//      go into the narrator prompt as extra source material.
+//   5. Run `monthThemeComposeContract` to emit theme bullets with the
+//      exact days list inline: "4 days (23, 25, 28, 30)".
+//   6. On any model failure at stage 2 or 5, fall through to the
+//      deterministic subunit-compose body so the reader still sees
+//      something coherent instead of an empty summary.
+
+const MONTH_THEME_MISC_MIN_FRAC = 0.05
+const MONTH_THEME_MISC_MIN_MS = 15 * 60_000
+const MAX_MONTH_THEMES = 6
+
+function dayOfMonthBlock(iso: string): number {
+  const parts = iso.split('-')
+  return Number(parts[2]) || 0
+}
+
+async function ensureMonthThemeSummaryOrch(
+  input: EnsureRangeSummaryInput,
+  provider: Exclude<AiActivityRangeSummaryProvider, 'off'>,
+): Promise<ProjectRangeSummary> {
+  // Empty months short-circuit to the deterministic fallback — no reason
+  // to spend model calls when there's nothing to narrate.
+  if (input.chains.length === 0) return buildFallbackSummary(input)
+
+  // Precedence read: reuse a cached body (any tier ≥ what we'd produce
+  // now) with the same chain fingerprint.
+  const chainRefs = input.chains.map(c => ({
+    chainKey: c.chainKey,
+    date: c.date,
+    durationMs: c.durationMs,
+  }))
+  const contentFingerprint = computeRangeContentFingerprintBlock(chainRefs)
+  const inputHash = computeRangeInputHashBlock({
+    chains: chainRefs,
+    promptVersion: MONTH_THEME_COMPOSE_PROMPT_VERSION,
+    provider,
+  })
+  if (!input.refresh) {
+    const existing = await getProjectRangeSummaryBlock(
+      input.projectId,
+      input.rangeStartDate,
+      input.rangeEndDate,
+    )
+    if (existing) {
+      const storedTier = rangeSummaryTierRankBlock(existing.provider)
+      const targetTier = provider === 'claude-cli' ? 3 : 2
+      const contentMatches =
+        existing.contentFingerprint !== undefined &&
+        existing.contentFingerprint === contentFingerprint
+      if (contentMatches && storedTier >= targetTier) return existing
+    }
+  }
+
+  // Ensure week + edge-day subunit summaries. These are cached in the
+  // same store, so future views of any of these weeks hit the cache
+  // instead of re-running the model.
+  const subunits = decomposeRangeIntoSubunitsBlock(
+    input.rangeStartDate,
+    input.rangeEndDate,
+    { allowMonthSubunits: false },
+  )
+  const perSubunit: Array<{ subunit: RangeSubunit; summary: ProjectRangeSummary; label: string }> = []
+  for (const sub of subunits) {
+    const subChains = chainsInSubunitBlock(input.chains, sub)
+    const summary = await ensureRangeSummaryOrch({
+      projectId: input.projectId,
+      projectLabel: input.projectLabel,
+      rangeStartDate: sub.startDate,
+      rangeEndDate: sub.endDate,
+      chains: subChains,
+      providerOverride: input.providerOverride,
+      refresh: input.refresh,
+    })
+    perSubunit.push({ subunit: sub, summary, label: subunitLabelBlock(sub) })
+  }
+
+  const runOpts = provider === 'claude-cli' ? { provider: 'claude-cli' as const } : undefined
+
+  // Stage 1: label chains into themes.
+  const labelChains: RangeLabelChainInput[] = input.chains.map((c, i) => ({
+    chainKey: c.chainKey,
+    shortKey: `S${i + 1}`,
+    title: c.title,
+    firstBulletHint: firstBulletOfSummary(c.summary),
+  }))
+  const labelInput: RangeLabelContractInput = {
+    projectId: input.projectId,
+    projectLabel: input.projectLabel,
+    rangeStartDate: input.rangeStartDate,
+    rangeEndDate: input.rangeEndDate,
+    chains: labelChains,
+  }
+  const labelResult = await runContract(rangeLabelContract, labelInput, runOpts)
+  if (!labelResult.ok || !labelResult.value) {
+    return composeMonthFallbackBlock(input, perSubunit, contentFingerprint, inputHash)
+  }
+  const labelValue = labelResult.value as RangeLabelOutput
+
+  // Stage 2: deterministic clustering + per-theme aggregation.
+  const themeNameByShort = new Map<string, string>()
+  for (const c of labelChains) {
+    const themeIdx = labelValue.assignments[c.shortKey]
+    const name = themeIdx ? labelValue.themes[themeIdx - 1] : 'Misc'
+    themeNameByShort.set(c.shortKey, name || 'Misc')
+  }
+  interface Bucket {
+    label: string
+    chains: RangeSummaryDigestInput[]
+  }
+  const buckets = new Map<string, Bucket>()
+  input.chains.forEach((chain, i) => {
+    const short = `S${i + 1}`
+    const label = themeNameByShort.get(short) || 'Misc'
+    const key = label.toLowerCase().trim()
+    let b = buckets.get(key)
+    if (!b) {
+      b = { label, chains: [] }
+      buckets.set(key, b)
+    }
+    b.chains.push(chain)
+  })
+
+  const monthTotalMs = totalDurationMs(input.chains)
+  interface Candidate {
+    label: string
+    chains: RangeSummaryDigestInput[]
+    totalMs: number
+    days: number[]
+  }
+  const themeCandidates: Candidate[] = []
+  const miscCandidates: Candidate[] = []
+  for (const b of buckets.values()) {
+    const totalMs = b.chains.reduce((n, c) => n + c.durationMs, 0)
+    const frac = monthTotalMs > 0 ? totalMs / monthTotalMs : 0
+    const days = [...new Set(b.chains.map(c => dayOfMonthBlock(c.date)))]
+      .filter(d => d > 0)
+      .sort((a, b) => a - b)
+    const cand: Candidate = { label: b.label, chains: b.chains, totalMs, days }
+    const isMisc =
+      b.label.trim().toLowerCase() === 'misc' ||
+      totalMs < MONTH_THEME_MISC_MIN_MS ||
+      frac < MONTH_THEME_MISC_MIN_FRAC
+    if (isMisc) miscCandidates.push(cand)
+    else themeCandidates.push(cand)
+  }
+  themeCandidates.sort((a, b) => b.totalMs - a.totalMs)
+  if (themeCandidates.length > MAX_MONTH_THEMES) {
+    miscCandidates.push(...themeCandidates.splice(MAX_MONTH_THEMES))
+  }
+  if (themeCandidates.length === 0) {
+    return composeMonthFallbackBlock(input, perSubunit, contentFingerprint, inputHash)
+  }
+
+  // Collect week bodies that overlap with each theme's day set. A theme
+  // that spans two weeks brings both weeks' bodies as context material.
+  const weekBodiesForRange = (startDate: string, endDate: string): string[] => {
+    return perSubunit
+      .filter(s => s.subunit.type === 'week')
+      .filter(s => !(s.subunit.endDate < startDate || s.subunit.startDate > endDate))
+      .map(s => s.summary.body?.trim())
+      .filter((b): b is string => !!b && b.length > 0)
+  }
+
+  const themes: MonthThemeInput[] = themeCandidates.map(c => {
+    // Convert theme's day-of-month set back to ISO dates for the week
+    // overlap check — cheaper than caching per-chain dates twice.
+    const chainDates = [...new Set(c.chains.map(x => x.date))].sort()
+    const themeStart = chainDates[0]
+    const themeEnd = chainDates[chainDates.length - 1]
+    const sessions = [...c.chains]
+      .sort((a, b) => b.durationMs - a.durationMs)
+      .map(cn => ({
+        title: cn.title || '(untitled)',
+        date: cn.date,
+        durationLabel: humanDuration(cn.durationMs),
+        summary: cn.summary,
+      }))
+    return {
+      themeLabel: c.label,
+      days: c.days,
+      duration: humanDuration(c.totalMs),
+      chainCount: c.chains.length,
+      sessions,
+      relatedWeekBodies: weekBodiesForRange(themeStart, themeEnd),
+    }
+  })
+
+  const misc = miscCandidates
+    .flatMap(m => m.chains)
+    .sort((a, b) => b.durationMs - a.durationMs)
+    .map(c => ({
+      title: c.title || '(untitled)',
+      date: c.date,
+      duration: humanDuration(c.durationMs),
+    }))
+
+  // Human month label — used as the header line context. The narrator
+  // never rewrites this, but it hints that the numeric day list is
+  // relative to this month.
+  const monthLabel = (() => {
+    const parts = input.rangeStartDate.split('-')
+    const monthName = MONTH_SHORT[Number(parts[1]) - 1] ?? '?'
+    return `${monthName} ${Number(parts[0])}`
+  })()
+
+  const composeInput: MonthThemeComposeContractInput = {
+    projectId: input.projectId,
+    projectLabel: input.projectLabel,
+    monthStartDate: input.rangeStartDate,
+    monthEndDate: input.rangeEndDate,
+    monthLabel,
+    totalChains: input.chains.length,
+    totalDuration: humanDuration(monthTotalMs),
+    uniqueDays: new Set(input.chains.map(c => c.date)).size,
+    themes,
+    misc,
+  }
+
+  const composeResult = await runContract(monthThemeComposeContract, composeInput, runOpts)
+  if (!composeResult.ok || !composeResult.value) {
+    return composeMonthFallbackBlock(input, perSubunit, contentFingerprint, inputHash)
+  }
+  const composeValue = composeResult.value as MonthThemeComposeOutput
+  if (!composeValue.body) {
+    return composeMonthFallbackBlock(input, perSubunit, contentFingerprint, inputHash)
+  }
+
+  const persisted: ProjectRangeSummary = {
+    ...baseSummary(input),
+    body: composeValue.body,
+    provider: provider === 'claude-cli' ? 'claude-cli' : 'local-two-stage',
+    model: (composeResult.meta?.model as string) ?? composeResult.model ?? provider,
+    inputHash,
+    contentFingerprint,
+  }
+  await putProjectRangeSummaryBlock(persisted)
+  return persisted
+}
+
+/** Deterministic month-tier fallback used when the labeler or narrator
+ *  fails. Reuses the same subunit-body concatenation used by arbitrary
+ *  ranges — no themes, no day lists, but a coherent scan of the month. */
+async function composeMonthFallbackBlock(
+  input: EnsureRangeSummaryInput,
+  perSubunit: Array<{ subunit: RangeSubunit; summary: ProjectRangeSummary; label: string }>,
+  contentFingerprint: string,
+  inputHash: string,
+): Promise<ProjectRangeSummary> {
+  const fb = composeSubunitsFallbackBlock(perSubunit)
+  const persisted: ProjectRangeSummary = {
+    ...baseSummary(input),
+    body: fb.body,
+    provider: fb.provider,
+    model: '',
+    inputHash,
+    contentFingerprint,
+  }
+  await putProjectRangeSummaryBlock(persisted)
+  return persisted
 }

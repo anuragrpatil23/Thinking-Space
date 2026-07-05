@@ -42,6 +42,14 @@ const TELEGRAM_POLL_LABEL = 'com.thinkingspace.scheduler.telegram-poll';
 const TELEGRAM_POLL_INTERVAL_SECONDS = 30;
 
 const RUNNER_RELATIVE_PATH = path.join('scheduler', 'runner.mjs');
+// Sibling ESM modules that runner.mjs imports at load time. Must be copied
+// into the install dir alongside runner.mjs, otherwise the launchd-spawned
+// runner can't resolve them. Any change to any of these files counts as a
+// runner change for the "force bootstrap" decision below — the same reason
+// runner.mjs itself does.
+const RUNNER_SIBLING_MODULES = [
+  path.join('scheduler', 'claudeSessionCleanupBlock.mjs'),
+] as const;
 
 function getInstallDirBlock(): string {
   return path.join(app.getPath('home'), '.thinking-space', 'scheduler');
@@ -57,20 +65,26 @@ export function getInstalledRunnerPath(): string {
   return getInstalledRunnerPathBlock();
 }
 
-function getSourceRunnerPathBlock(): string {
+function resolveSourcePathBlock(relativePath: string): string {
   // Packaged: process.resourcesPath is .../Thinking Space.app/Contents/Resources/
   // Dev:      Resources path resolves to node_modules/electron/dist/.../Resources,
   //           which does NOT contain our bundled runner. Fall back to the repo.
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, RUNNER_RELATIVE_PATH);
+    return path.join(process.resourcesPath, relativePath);
   }
   // __dirname in dev is .../frontend/electron/build/src/lego_blocks
-  return path.resolve(__dirname, '..', '..', '..', 'resources', RUNNER_RELATIVE_PATH);
+  return path.resolve(__dirname, '..', '..', '..', 'resources', relativePath);
 }
 
-function copyRunnerIfChanged(): { path: string; changed: boolean } {
-  const src = getSourceRunnerPathBlock();
-  const dst = getInstalledRunnerPathBlock();
+function copyIfChanged(
+  relativePath: string,
+  installDir: string,
+): { path: string; changed: boolean } {
+  const src = resolveSourcePathBlock(relativePath);
+  // Preserve the sub-directory structure (`scheduler/foo.mjs`) so imports
+  // between the copied files resolve identically to how they resolve at
+  // source.
+  const dst = path.join(installDir, path.basename(relativePath));
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   const srcContent = fs.readFileSync(src, 'utf-8');
   let dstContent: string | null = null;
@@ -80,6 +94,18 @@ function copyRunnerIfChanged(): { path: string; changed: boolean } {
   fs.writeFileSync(tmp, srcContent, { encoding: 'utf-8', mode: 0o755 });
   fs.renameSync(tmp, dst);
   return { path: dst, changed: true };
+}
+
+function copyRunnerAndSiblingsIfChanged(): { path: string; changed: boolean } {
+  const installDir = getInstallDirBlock();
+  fs.mkdirSync(installDir, { recursive: true });
+  const runner = copyIfChanged(RUNNER_RELATIVE_PATH, installDir);
+  let anySiblingChanged = false;
+  for (const rel of RUNNER_SIBLING_MODULES) {
+    const res = copyIfChanged(rel, installDir);
+    if (res.changed) anySiblingChanged = true;
+  }
+  return { path: runner.path, changed: runner.changed || anySiblingChanged };
 }
 
 function buildContextBlock(): PlistBuildContextBlock {
@@ -171,7 +197,7 @@ async function provisionBuiltinAgent(
 }
 
 export async function provisionSchedulerBlock(): Promise<ProvisionResultBlock> {
-  const runner = copyRunnerIfChanged();
+  const runner = copyRunnerAndSiblingsIfChanged();
   const ctx = buildContextBlock();
 
   const heartbeat = await provisionBuiltinAgent(

@@ -191,8 +191,8 @@ export default function AiActivityDayTableBlock({
             <colgroup>
               <col style={{ width: '170px' }} />
               <col style={{ width: '90px' }} />
-              <col style={{ width: '180px' }} />
-              <col style={{ width: '70px' }} />
+              <col style={{ width: '130px' }} />
+              <col style={{ width: '54px' }} />
               <col />
             </colgroup>
             <thead>

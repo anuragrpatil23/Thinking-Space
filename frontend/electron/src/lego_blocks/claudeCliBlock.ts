@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 
 // Shell-out adapter for the Claude Code CLI (`claude -p`). Pro-plan users
 // already pay for Claude via subscription; hitting the API SDK on top of
@@ -14,6 +15,16 @@ import * as path from 'path';
 //   - No native tool calling / structured output. If the caller needs
 //     tools or a JSON schema they should stay on the SDK provider.
 //   - `--model` accepts aliases (haiku/sonnet/opus) or full model ids.
+//
+// Incognito: every invocation is captured by Claude Code as a JSONL under
+// `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`, and the user's
+// SessionEnd hook mirrors it into the vault at `ai_raw/raw/claude-code/`.
+// Because THIS caller is the AI-activity summarizer itself, letting those
+// traces stick around means the next summarizer run sees its own previous
+// invocations as new "activity" — recursive noise. We use
+// `--output-format json` to capture the session_id and, right after the
+// process exits, delete both the JSONL and the vault mirror via the shared
+// cleanup module (same one the scheduler runner uses for one-shot jobs).
 //
 // The `claude` binary is looked up on PATH, augmented with common install
 // locations so it resolves when the app is launched from Finder rather
@@ -54,7 +65,88 @@ function buildEnvBlock(): NodeJS.ProcessEnv {
 
   const existingPath = process.env.PATH ?? '';
   const merged = [...extraPaths, ...existingPath.split(':').filter(Boolean)].join(':');
-  return { ...process.env, PATH: merged, FORCE_COLOR: '0' };
+  // THINKSPC_INCOGNITO surfaces to any SessionEnd hook the user might wire
+  // up (e.g. render-session.sh); a hook that respects the flag can
+  // early-exit instead of writing the vault mirror. Even without the hook
+  // change we still nuke the mirror post-run — this flag is belt-and-braces.
+  return {
+    ...process.env,
+    PATH: merged,
+    FORCE_COLOR: '0',
+    THINKSPC_INCOGNITO: '1',
+  };
+}
+
+// Location of the shared cleanup module. Installed by schedulerProvisionBlock
+// on every launch — the same on-disk copy the scheduler's runner.mjs uses,
+// so this module and runner.mjs can never drift out of sync.
+function resolveCleanupModuleUrlBlock(): string {
+  const installed = path.join(
+    process.env.HOME ?? '',
+    '.thinking-space', 'scheduler', 'claudeSessionCleanupBlock.mjs',
+  );
+  return pathToFileURL(installed).href;
+}
+
+interface CleanupModuleBlock {
+  deleteClaudeSessionFilesBlock: (sessionId: string) => string[];
+}
+
+let cachedCleanupModule: Promise<CleanupModuleBlock | null> | null = null;
+async function loadCleanupModuleBlock(): Promise<CleanupModuleBlock | null> {
+  if (!cachedCleanupModule) {
+    cachedCleanupModule = (async () => {
+      try {
+        const mod = await import(resolveCleanupModuleUrlBlock());
+        if (typeof mod.deleteClaudeSessionFilesBlock !== 'function') return null;
+        return mod as CleanupModuleBlock;
+      } catch {
+        // Provisioning hasn't run yet (first launch) or the file was
+        // deleted. Cleanup silently degrades — the tradeoff is one stray
+        // session file, no functional breakage.
+        return null;
+      }
+    })();
+  }
+  return cachedCleanupModule;
+}
+
+/** Best-effort cleanup with a short retry to cover the race where the
+ *  SessionEnd hook writes the vault mirror moments after the child exits.
+ *  Two passes ~1s apart is enough for the hook to have flushed. */
+async function scheduleSessionCleanupBlock(sessionId: string): Promise<void> {
+  const mod = await loadCleanupModuleBlock();
+  if (!mod) return;
+  try { mod.deleteClaudeSessionFilesBlock(sessionId); } catch { /* best effort */ }
+  setTimeout(() => {
+    try { mod.deleteClaudeSessionFilesBlock(sessionId); } catch { /* best effort */ }
+  }, 1000);
+}
+
+interface ParsedClaudeResultBlock {
+  content: string;
+  sessionId: string | null;
+}
+
+/** Parse `claude -p --output-format json` stdout. The CLI returns a single
+ *  JSON envelope with at least `result` (assistant text) and `session_id`.
+ *  Defensive: falls back to raw stdout if the payload isn't parseable JSON,
+ *  so an unexpected CLI version doesn't break the summarizer path. */
+function parseClaudeJsonOutputBlock(stdout: string): ParsedClaudeResultBlock {
+  const trimmed = stdout.trim();
+  if (!trimmed) return { content: '', sessionId: null };
+  try {
+    const obj = JSON.parse(trimmed) as {
+      result?: unknown;
+      session_id?: unknown;
+      is_error?: unknown;
+    };
+    const content = typeof obj.result === 'string' ? obj.result : '';
+    const sessionId = typeof obj.session_id === 'string' ? obj.session_id : null;
+    return { content, sessionId };
+  } catch {
+    return { content: trimmed, sessionId: null };
+  }
 }
 
 const runningProcesses = new Map<string, ChildProcess>();
@@ -67,6 +159,10 @@ export async function invokeClaudeCliChatBlock(
   const args = ['-p'];
   if (request.model) args.push('--model', request.model);
   if (request.system) args.push('--system-prompt', request.system);
+  // json output gives us `session_id` + `result` in one buffered payload so
+  // we can (a) hand the assistant text back to the caller and (b) know
+  // which JSONL to nuke from ~/.claude/projects.
+  args.push('--output-format', 'json');
   args.push(request.userPrompt);
 
   return await new Promise<ClaudeCliChatResponseBlock>((resolve) => {
@@ -127,7 +223,12 @@ export async function invokeClaudeCliChatBlock(
         resolve({ ok: false, error: stderr.trim() || `exit ${code}`, latencyMs });
         return;
       }
-      resolve({ ok: true, content: trimmed, latencyMs });
+      const parsed = parseClaudeJsonOutputBlock(trimmed);
+      // Fire cleanup as soon as we know the session id — no need to await
+      // (the caller only cares about the response text). The retry inside
+      // scheduleSessionCleanupBlock covers the SessionEnd-hook race.
+      if (parsed.sessionId) void scheduleSessionCleanupBlock(parsed.sessionId);
+      resolve({ ok: true, content: parsed.content, latencyMs });
     });
 
     // Set the cancel hook after `on(close)` — otherwise a cancel that

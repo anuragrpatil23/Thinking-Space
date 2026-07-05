@@ -40,10 +40,40 @@ export interface ProjectRangeSummary {
   /** Sum of chain durations in ms — used by consumers to short-circuit
    *  "is this stale enough to regen" checks without rehydrating everything. */
   totalDurationMs: number
-  /** Same hash the orchestrator uses to decide invalidation. */
+  /** Full input hash (chains + provider + promptVersion). Retained so a
+   *  cached body can be re-verified against the exact prompt path it was
+   *  generated with. Reads that only care about content-level staleness use
+   *  `contentFingerprint` instead — see the orch. */
   inputHash: string
+  /** Chain-set-only fingerprint (chains + durations). Independent of which
+   *  provider produced the body, so a Claude-generated body can be read back
+   *  from a local-mode load without regenerating. Optional for records
+   *  written before this field existed — treat missing as "unknown", which
+   *  the orch handles by regenerating once. */
+  contentFingerprint?: string
   /** ISO timestamp the summary was produced. */
   generatedAt: string
+}
+
+/** Higher wins. Selected-provider precedence check uses these ranks: a
+ *  stored body is reused when its tier is >= the target tier for the
+ *  currently-selected provider. Claude is the ceiling, so once Claude has
+ *  run for a range, local/off loads keep serving that body until the chain
+ *  set changes. */
+export function rangeSummaryTierRankBlock(
+  provider: RangeSummaryPersistedProvider,
+): number {
+  switch (provider) {
+    case 'claude-cli':
+      return 3
+    case 'local-two-stage':
+      return 2
+    case 'fallback-titles':
+      return 1
+    case 'fallback-stub':
+    default:
+      return 0
+  }
 }
 
 export const AI_ACTIVITY_RANGE_SUMMARY_CACHE_TASK_ID = 'projectRangeSummary'
@@ -108,6 +138,20 @@ export function computeRangeInputHashBlock(parts: RangeInputHashParts): string {
   return hashStringBlock(`${parts.provider}#v${parts.promptVersion}#${chainPart}`)
 }
 
+/** Provider-independent fingerprint over just the chain set. Two range
+ *  summaries with the same fingerprint were composed from the same underlying
+ *  activity, regardless of which provider actually ran. Enables the
+ *  "Claude is the ceiling, never stomp it with local" precedence rule. */
+export function computeRangeContentFingerprintBlock(
+  chains: RangeSummaryChainRef[],
+): string {
+  const chainPart = [...chains]
+    .sort((a, b) => (a.chainKey < b.chainKey ? -1 : 1))
+    .map(c => `${c.chainKey}:${c.durationMs}:${c.date}`)
+    .join('|')
+  return hashStringBlock(`content#${chainPart}`)
+}
+
 // ── Deterministic fallback body ────────────────────────────────────────
 
 interface FallbackChain {
@@ -128,7 +172,10 @@ function formatDurationMinutes(ms: number): string {
 
 /** Build the "off / last-resort" body deterministically. Two tiers:
  *   - if we have chain titles → number them by duration desc so the user
- *     still gets a scannable ranked list.
+ *     still gets a scannable ranked list. Chains that share an identical
+ *     title (common when the digester assigns the same label to repeated
+ *     work in a day) are merged into one bullet with an "×N" count and
+ *     summed duration, so the list stays scannable.
  *   - if titles are absent → collapse to a message-count / duration stub,
  *     no fabricated content.
  *  The caller wraps this into a ProjectRangeSummary with the appropriate
@@ -146,10 +193,35 @@ export function buildFallbackBodyBlock(chains: FallbackChain[]): {
   const withTitles = chains.filter(c => c.title && c.title.trim().length > 0)
   const useTitles = withTitles.length >= Math.max(1, Math.floor(chains.length * 0.5))
   if (useTitles) {
-    const ranked = [...chains].sort((a, b) => b.durationMs - a.durationMs)
-    const lines = ranked.map((c, i) => {
-      const t = c.title?.trim() || '_(untitled chain)_'
-      return `${i + 1}. ${t} — ${c.date}, ${formatDurationMinutes(c.durationMs)}`
+    interface MergedEntry {
+      title: string
+      titleKey: string
+      count: number
+      totalMs: number
+      dates: Set<string>
+    }
+    const merged = new Map<string, MergedEntry>()
+    for (const c of chains) {
+      const rawTitle = c.title?.trim() || '_(untitled chain)_'
+      const titleKey = rawTitle.toLowerCase()
+      let entry = merged.get(titleKey)
+      if (!entry) {
+        entry = { title: rawTitle, titleKey, count: 0, totalMs: 0, dates: new Set() }
+        merged.set(titleKey, entry)
+      }
+      entry.count += 1
+      entry.totalMs += c.durationMs
+      entry.dates.add(c.date)
+    }
+    const ranked = [...merged.values()].sort((a, b) => b.totalMs - a.totalMs)
+    const lines = ranked.map((e, i) => {
+      const dates = [...e.dates].sort()
+      const dateLabel =
+        dates.length === 1
+          ? dates[0]
+          : `${dates[0]} → ${dates[dates.length - 1]}`
+      const countSuffix = e.count > 1 ? ` ×${e.count}` : ''
+      return `${i + 1}. ${e.title}${countSuffix} — ${dateLabel}, ${formatDurationMinutes(e.totalMs)}`
     })
     return { body: lines.join('\n'), provider: 'fallback-titles' }
   }
@@ -182,6 +254,9 @@ export function stringifyRangeSummaryMarkdownBlock(summary: ProjectRangeSummary)
     `totalDurationMs: ${summary.totalDurationMs}`,
     `chainCount: ${summary.chainKeys.length}`,
     `inputHash: ${summary.inputHash}`,
+    ...(summary.contentFingerprint
+      ? [`contentFingerprint: ${summary.contentFingerprint}`]
+      : []),
     `generatedAt: ${escapeYamlValue(summary.generatedAt)}`,
     '---',
     '',
@@ -227,6 +302,7 @@ export function parseRangeSummaryMarkdownBlock(raw: string): ProjectRangeSummary
     chainKeys: [],
     totalDurationMs: Number(fm.totalDurationMs) || 0,
     inputHash: fm.inputHash?.trim() ?? '',
+    contentFingerprint: fm.contentFingerprint?.trim() || undefined,
     generatedAt: unescapeYamlValue(fm.generatedAt ?? ''),
   }
 }
