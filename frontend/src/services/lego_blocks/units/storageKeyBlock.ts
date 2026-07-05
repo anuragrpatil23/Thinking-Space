@@ -46,6 +46,7 @@ export const STORAGE_KEYS = {
   aiActivityProjectMapping: 'ltm-ai-activity-project-mapping',
   aiActivityVaultSourcePrefixes: 'ltm-ai-activity-vault-source-prefixes',
   goodnotesReadingAnnotationGate: 'ltm-goodnotes-reading-annotation-gate',
+  goodnotesReadingEnabled: 'ltm-goodnotes-reading-enabled',
   aiActivityHomePostItEnabled: 'ltm-ai-activity-home-post-it-enabled',
   aiActivitySetMode: 'ltm-ai-activity-set-mode-enabled',
   aiActivityCalendarMode: 'ltm-ai-activity-calendar-mode-enabled',
@@ -156,6 +157,23 @@ export function getGoodnotesAnnotationGate(): boolean {
 
 export function setGoodnotesAnnotationGate(enabled: boolean): void {
   setLocalStorageItemBlock(STORAGE_KEYS.goodnotesReadingAnnotationGate, enabled ? 'true' : 'false')
+}
+
+/**
+ * Whether the GoodNotes harvester is allowed to run. Off by default — reading
+ * GoodNotes' container (`~/Library/Containers/com.goodnotesapp.x/…/fts.sqlite`)
+ * triggers macOS Sequoia's "would like to access data from other apps" TCC
+ * prompt on every launch until granted, and the grant is flaky across app
+ * rebuilds. Users who actually use GoodNotes opt in from Settings ▸ AI
+ * Activity ▸ Session sources; everyone else never touches another app's
+ * container.
+ */
+export function getGoodnotesReadingEnabled(): boolean {
+  return getLocalStorageItemBlock(STORAGE_KEYS.goodnotesReadingEnabled) === 'true'
+}
+
+export function setGoodnotesReadingEnabled(enabled: boolean): void {
+  setLocalStorageItemBlock(STORAGE_KEYS.goodnotesReadingEnabled, enabled ? 'true' : 'false')
 }
 
 /**

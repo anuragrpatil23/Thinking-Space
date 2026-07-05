@@ -4,7 +4,9 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import {
   getGoodnotesAnnotationGate,
+  getGoodnotesReadingEnabled,
   setGoodnotesAnnotationGate,
+  setGoodnotesReadingEnabled,
 } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   getVaultWriteAiActivityEnabled,
@@ -30,6 +32,7 @@ export default function AiActivitySessionSourcesSettingsBlock() {
   const [rootsUnavailable, setRootsUnavailable] = useState(false)
   const [prefixes, setPrefixes] = useState<string[]>(() => readVaultSessionPrefixesBlock())
   const [annotationGate, setAnnotationGate] = useState<boolean>(() => getGoodnotesAnnotationGate())
+  const [readingEnabled, setReadingEnabled] = useState<boolean>(() => getGoodnotesReadingEnabled())
   const vaultWritePrefsAvailable = isVaultWritePrefsAvailable()
   const [writeAiRaw, setWriteAiRaw] = useState<boolean | null>(null)
   const [writeAiActivity, setWriteAiActivity] = useState<boolean | null>(null)
@@ -38,6 +41,12 @@ export default function AiActivitySessionSourcesSettingsBlock() {
   const toggleAnnotationGate = (checked: boolean) => {
     setGoodnotesAnnotationGate(checked)
     setAnnotationGate(checked)
+    clearAiActivitySnapshot()
+  }
+
+  const toggleReadingEnabled = (checked: boolean) => {
+    setGoodnotesReadingEnabled(checked)
+    setReadingEnabled(checked)
     clearAiActivitySnapshot()
   }
 
@@ -219,6 +228,22 @@ export default function AiActivitySessionSourcesSettingsBlock() {
           <h3 className="text-sm font-medium text-foreground">Reading (GoodNotes)</h3>
           <label className="flex items-start justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
             <div className="min-w-0 space-y-0.5">
+              <div className="text-sm font-medium text-foreground">Harvest GoodNotes reading sessions</div>
+              <p className="text-xs text-muted-foreground">
+                Reads GoodNotes' local database to attribute reading time to specific documents.
+                Off by default because it touches another app's container and triggers macOS's
+                "access data from other apps" prompt. Turn on only if you use GoodNotes and want
+                the Reading pill populated.
+              </p>
+            </div>
+            <Switch
+              checked={readingEnabled}
+              onCheckedChange={toggleReadingEnabled}
+              aria-label="Harvest GoodNotes reading sessions"
+            />
+          </label>
+          <label className="flex items-start justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+            <div className="min-w-0 space-y-0.5">
               <div className="text-sm font-medium text-foreground">Only count annotated reading</div>
               <p className="text-xs text-muted-foreground">
                 Counts a GoodNotes session only when you actually marked up the document that day
@@ -230,6 +255,7 @@ export default function AiActivitySessionSourcesSettingsBlock() {
               checked={annotationGate}
               onCheckedChange={toggleAnnotationGate}
               aria-label="Only count annotated GoodNotes reading"
+              disabled={!readingEnabled}
             />
           </label>
         </div>

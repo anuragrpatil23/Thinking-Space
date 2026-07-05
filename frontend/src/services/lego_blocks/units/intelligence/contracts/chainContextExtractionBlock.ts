@@ -1,5 +1,9 @@
-import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import type {
+  ActivityChain,
+  ParsedSession,
+} from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { readNativeAiSession } from '@/services/lego_blocks/integrations/nativeAiSessionsBlock'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 
 // Shared chain-context extraction.
 //
@@ -189,9 +193,37 @@ export async function extractChainContextBlock(chain: ActivityChain): Promise<Ch
     .sort((a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso))
     .slice(0, 5)
 
+  // Cache vault-md reads across sittings that point at the same underlying
+  // file. Chat-export chains commonly have several `#wN` windows off one
+  // conversation file — one fetch, N slices.
+  const vaultMdCache = new Map<string, string | null>()
+
   let order = 0
   for (const s of ordered) {
     const cleanPath = s.path.replace(/#w\d+$/, '')
+
+    // Vault-md chat-export chains (ChatGPT / Grok). No native JSONL exists
+    // for these — the transcript lives in the markdown file at `cleanPath`.
+    // We parse `## User\n*ts*\nbody` / `## Assistant\n*ts*\nbody` blocks
+    // and clip to the sitting's time window so `#wN` slices don't bleed
+    // into each other.
+    if (s.source === 'chatgpt' || s.source === 'grok') {
+      let md = vaultMdCache.get(cleanPath) ?? null
+      if (!vaultMdCache.has(cleanPath)) {
+        try {
+          const fs = getVaultFS()
+          md = await fs.read(cleanPath)
+        } catch {
+          md = null
+        }
+        vaultMdCache.set(cleanPath, md)
+      }
+      if (!md) continue
+      const emitted = emitChatExportTurnsBlock(md, s, order, turns, meta)
+      order = emitted
+      continue
+    }
+
     if (!cleanPath.startsWith('native/')) continue
     const rest = cleanPath.slice('native/'.length)
     const slash = rest.indexOf('/')

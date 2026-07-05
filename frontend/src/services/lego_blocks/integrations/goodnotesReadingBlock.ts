@@ -17,7 +17,11 @@ import {
   parseGoodnotesReadingLog,
   type GoodnotesReadingRecord,
 } from '@/services/lego_blocks/units/goodnotesReadingParserBlock'
-import { getGoodnotesAnnotationGate, getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
+import {
+  getGoodnotesAnnotationGate,
+  getGoodnotesReadingEnabled,
+  getStoredVaultRoot,
+} from '@/services/lego_blocks/units/storageKeyBlock'
 
 const READING_LOG_PATH = 'ai-raw/raw/goodnotes/reading.jsonl'
 
@@ -83,12 +87,18 @@ export async function loadGoodnotesReadingSessions(fs: VaultFS): Promise<ParsedS
   const api = getApi()
   if (api) {
     const vaultRoot = getStoredVaultRoot() ?? ''
-    try {
-      const result = await api.goodnotesHarvest!(vaultRoot)
-      lastNeedsFullDiskAccess = result?.needsFullDiskAccess === true
-    } catch {
-      // Harvest failed (no GoodNotes, sqlite missing, etc.) — fall through and
-      // return whatever the durable log already holds.
+    // Opt-in gate. Harvesting reaches into GoodNotes' Library/Containers dir,
+    // which triggers macOS Sequoia's "access data from other apps" TCC prompt
+    // at launch. Users who don't use GoodNotes should never see it; users who
+    // do can flip the switch in Settings ▸ AI Activity ▸ Session sources.
+    if (getGoodnotesReadingEnabled()) {
+      try {
+        const result = await api.goodnotesHarvest!(vaultRoot)
+        lastNeedsFullDiskAccess = result?.needsFullDiskAccess === true
+      } catch {
+        // Harvest failed (no GoodNotes, sqlite missing, etc.) — fall through and
+        // return whatever the durable log already holds.
+      }
     }
     try {
       const records = (await api.goodnotesReadLog!(vaultRoot)) ?? []
