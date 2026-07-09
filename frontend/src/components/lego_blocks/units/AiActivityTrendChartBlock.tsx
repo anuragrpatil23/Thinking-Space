@@ -356,8 +356,11 @@ export default function AiActivityTrendChartBlock({
                 key={p.name}
                 dataKey={p.name}
                 stackId="1"
-                fill={getProjectColor(p.name).stroke}
-                fillOpacity={0.85}
+                // Soft palette tint (same token the heatmap cells + filled areas
+                // use) instead of the full-saturation stroke — reads as calm
+                // pastels over the cream canvas rather than bold blocks.
+                fill={getProjectColor(p.name).fill}
+                fillOpacity={1}
                 isAnimationActive
                 animationDuration={550}
                 animationEasing="ease-out"

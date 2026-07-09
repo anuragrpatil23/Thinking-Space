@@ -53,6 +53,7 @@ export const STORAGE_KEYS = {
   aiActivityAiTitlesEnabled: 'ltm-ai-activity-ai-titles-enabled',
   aiActivityRangeSummaryProvider: 'ltm-ai-activity-range-summary-provider',
   aiActivityRestDays: 'ltm-ai-activity-rest-days',
+  aiActivitySectionsOpen: 'ltm-ai-activity-sections-open',
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
   intelligenceDefaultProvider: 'ltm-intelligence-default-provider',
 } as const

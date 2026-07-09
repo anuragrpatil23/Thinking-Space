@@ -2,6 +2,11 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDays, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
+  STORAGE_KEYS,
+  getJsonStorageItem,
+  setJsonStorageItem,
+} from '@/services/lego_blocks/units/storageKeyBlock'
+import {
   useAiActivityBlock,
   AI_ACTIVITY_PRESETS,
   type AiActivityPreset,
@@ -25,12 +30,34 @@ import {
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 
-type ViewMode = 'heatmap' | 'trend' | 'totals'
+/** Which view produced the current drill selection. The detail (table + summary,
+ *  plus the day timeline for the heatmap) docks under the section that owns the
+ *  selection, so "the detail appears where you clicked" instead of a fixed
+ *  bottom slot. Only one selection is ever active, so only one section's detail
+ *  is open at a time. */
+type DrillSource = 'heatmap' | 'trend' | 'totals'
+
+type SectionKey = 'heatmap' | 'trend' | 'totals'
+
+const DEFAULT_SECTIONS_OPEN: Record<SectionKey, boolean> = {
+  heatmap: true,
+  trend: true,
+  totals: true,
+}
 
 /** Rolling presets tucked into the chevron menu instead of the pill row.
  *  Empty: every rolling preset (incl. 6m) lives on the pill strip; the menu is
  *  only calendar-relative ranges (this week, last week, this month) + custom. */
 const MENU_PRESET_IDS = new Set<AiActivityPreset>([])
+
+/** Local-calendar "today" as YYYY-MM-DD — the heatmap's default drill day. */
+function todayIso(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 
 function fmtDateShort(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, {
@@ -61,35 +88,28 @@ function topProjectByTime(chains: ActivityChain[]): string | null {
 
 export default function AiActivityPanelBlock() {
   const activity = useAiActivityBlock('90d')
-  const [view, setView] = useState<ViewMode>('heatmap')
+  // Default drill source is the heatmap (which defaults to today, below), so the
+  // panel opens already showing today's timeline + table under the calendar.
+  const [drillSource, setDrillSource] = useState<DrillSource>('heatmap')
+  const [sectionsOpen, setSectionsOpen] = useState<Record<SectionKey, boolean>>(() =>
+    getJsonStorageItem(STORAGE_KEYS.aiActivitySectionsOpen, DEFAULT_SECTIONS_OPEN),
+  )
+  const toggleSection = (key: SectionKey) => {
+    setSectionsOpen(prev => {
+      const next = { ...prev, [key]: !prev[key] }
+      setJsonStorageItem(STORAGE_KEYS.aiActivitySectionsOpen, next)
+      return next
+    })
+  }
   const [activeProject, setActiveProject] = useState<string | null>(null)
-  const [selectedDate, setSelectedDate] = useState<string | null>(() => {
+  const [selectedDate, setSelectedDate] = useState<string | null>(() =>
     // Default the heatmap drill-down to today so the panel opens already
     // showing "what I did with AI today" instead of an empty drill area.
-    const d = new Date()
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${y}-${m}-${day}`
-  })
+    todayIso(),
+  )
   const [selectedRange, setSelectedRange] = useState<{ startIso: string; endIso: string } | null>(
     null,
   )
-  // Totals match what the chips show: signal projects only, noise buckets
-  // ([auto-commit], [telegram]) excluded. This keeps "278 msgs" in the strip
-  // equal to the sum of msgs across visible chips for the current range.
-  const totals = useMemo(() => {
-    let msgs = 0
-    let chains = 0
-    let sessions = 0
-    for (const p of activity.projects) {
-      if (p.isNoise) continue
-      msgs += p.totalMsgs
-      chains += p.totalChains
-      sessions += p.totalSessions
-    }
-    return { msgs, chains, sessions }
-  }, [activity.projects])
 
   // Drive-by chains — a single user message in under 2 minutes — are real
   // sessions but read as background noise in the day's drill view. Filter them
@@ -177,16 +197,98 @@ export default function AiActivityPanelBlock() {
     )
   }, [activity.chains, activeProject])
 
-  const rangeDurationLabel = useMemo(() => {
-    const nonNoise = activity.chains.filter(
-      c => !(c.project.startsWith('[') && c.project.endsWith(']')),
-    )
-    return fmtDurationMsBlock(mergedDurationMsBlock(nonNoise))
-  }, [activity.chains])
-
   function clearDrill() {
     setSelectedDate(null)
     setSelectedRange(null)
+  }
+
+  // Selection setters that also record which view produced the selection, so the
+  // detail docks under that section. Passing null clears the drill entirely.
+  function drillToDate(date: string | null, source: DrillSource) {
+    if (!date) {
+      clearDrill()
+      return
+    }
+    setSelectedRange(null)
+    setSelectedDate(date)
+    setDrillSource(source)
+  }
+  function drillToRange(
+    range: { startIso: string; endIso: string } | null,
+    source: DrillSource,
+  ) {
+    if (!range) {
+      clearDrill()
+      return
+    }
+    setSelectedDate(null)
+    setSelectedRange(range)
+    setDrillSource(source)
+  }
+
+  // On any range/source change, re-anchor the drill to today's heatmap cell
+  // instead of clearing it — the panel should always land on "what I did with
+  // AI today," matching how it first opens. When today falls outside the new
+  // range (e.g. "last week" or a past custom range), anchor on the latest
+  // in-range day so the drill still points at something the heatmap shows.
+  function resetDrillToToday(range?: { startIso: string; endIso: string } | null) {
+    const t = todayIso()
+    let day = t
+    if (range && t > range.endIso) day = range.endIso
+    if (range && t < range.startIso) day = range.startIso
+    drillToDate(day, 'heatmap')
+  }
+
+  const drillActive = selectedDate != null || selectedRange != null
+
+  // The drill detail — timeline (heatmap/day only), range summary, and table.
+  // Returns JSX (not a component) so React keeps the table's scroll position
+  // stable across re-renders instead of remounting it.
+  function renderDrillDetail(withTimeline: boolean) {
+    return (
+      <div className="mt-4 space-y-3 border-t border-border/30 pt-3">
+        {withTimeline && selectedDate && drillChains.length > 0 && (
+          <AiActivityDayTimelineBlock
+            dateIso={selectedDate}
+            chains={drillChains}
+            highlightProject={activeProject}
+          />
+        )}
+        {/* Range summary appears above the table on every drill (single day or
+            multi-day). Uses the active project chip when the user has one
+            selected; otherwise focuses on the dominant project in the drill by
+            wall-clock time so a summary always renders. */}
+        {drillChains.length > 0 && (() => {
+          const focusProject = activeProject ?? topProjectByTime(drillChains)
+          if (!focusProject) return null
+          const scopedChains = activeProject
+            ? drillChains
+            : drillChains.filter(c => c.project === focusProject)
+          return (
+            <AiActivityRangeSummaryBlock
+              projectId={focusProject}
+              projectLabel={focusProject}
+              rangeStartDate={selectedDate ?? selectedRange?.startIso ?? ''}
+              rangeEndDate={selectedDate ?? selectedRange?.endIso ?? ''}
+              chains={scopedChains}
+            />
+          )
+        })()}
+        {/* Table is the only scrolling region — keeps the section header/chart
+            pinned so context stays visible while you scan a multi-day drill.
+            Wheel-capture stops the canvas from panning underneath while the
+            cursor is over an overflowing table. */}
+        <DrillTableScroll>
+          <AiActivityDayTableBlock
+            title={drillTitle}
+            chains={drillChains}
+            summary={drillSummary}
+            highlightProject={activeProject}
+            onReadingEdited={activity.refresh}
+          />
+        </DrillTableScroll>
+      </div>
+    )
   }
 
   return (
@@ -208,7 +310,7 @@ export default function AiActivityPanelBlock() {
             value={activity.sourceFilter}
             onChange={next => {
               activity.setSourceFilter(next)
-              clearDrill()
+              resetDrillToToday(activity.customRange)
             }}
             counts={activity.sourceCounts}
           />
@@ -217,7 +319,7 @@ export default function AiActivityPanelBlock() {
               value={activity.readingSource}
               onChange={next => {
                 activity.setReadingSource(next)
-                clearDrill()
+                resetDrillToToday(activity.customRange)
               }}
               counts={activity.readingCounts}
             />
@@ -227,30 +329,16 @@ export default function AiActivityPanelBlock() {
             customRange={activity.customRange}
             onChange={p => {
               activity.setPreset(p)
-              clearDrill()
+              // Preset pills are all rolling ranges ending today, so today is
+              // always in range — no clamp needed.
+              resetDrillToToday()
             }}
             onQuickRange={range => {
               activity.setCustomRange(range)
-              clearDrill()
+              resetDrillToToday(range)
             }}
           />
         </div>
-      </div>
-
-      {/* Totals strip */}
-      <div className="mt-2 flex items-baseline gap-4 text-xs text-muted-foreground">
-        <span>
-          <strong className="tabular-nums text-foreground/85">{totals.msgs.toLocaleString()}</strong> msgs
-        </span>
-        <span>
-          <strong className="tabular-nums text-foreground/85">{totals.chains.toLocaleString()}</strong> chains
-        </span>
-        <span>
-          <strong className="tabular-nums text-foreground/85">{totals.sessions.toLocaleString()}</strong> sessions
-        </span>
-        <span title="Merged wall-clock time across all non-noise chains in range">
-          <strong className="tabular-nums text-foreground/85">{rangeDurationLabel}</strong>
-        </span>
       </div>
 
       <div className="mt-3">
@@ -262,68 +350,77 @@ export default function AiActivityPanelBlock() {
         />
       </div>
 
+      {/* Project filter is global (applies to every view), so its clear-chip
+          lives with the chips rather than inside any one section. */}
+      {activeProject && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setActiveProject(null)}
+            className="rounded-full border border-border/40 bg-card/40 px-2 py-0.5 text-[10px] text-muted-foreground hover:border-border/70 hover:text-foreground"
+            title={`Total active time for ${activeProject} across the visible range`}
+          >
+            clear filter · {activeProject}
+            {activeProjectRangeDuration && activeProjectRangeDuration !== '—' && (
+              <span className="ml-1 tabular-nums text-foreground/70">
+                · {activeProjectRangeDuration}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
       {activity.error && (
         <div className="mt-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
           {activity.error}
         </div>
       )}
 
-      {/* Chart stays on top — heatmap or trend. Drill table appears below it
-          when a day or range is selected, never replacing the chart. */}
-      <div className="mt-3 space-y-3">
-        <div className="flex items-center gap-1">
-          <ViewToggle view={view} onChange={setView} />
-          {activeProject && (
-            <button
-              type="button"
-              onClick={() => setActiveProject(null)}
-              className="ml-2 rounded-full border border-border/40 bg-card/40 px-2 py-0.5 text-[10px] text-muted-foreground hover:border-border/70 hover:text-foreground"
-              title={`Total active time for ${activeProject} across the visible range`}
-            >
-              clear filter · {activeProject}
-              {activeProjectRangeDuration && activeProjectRangeDuration !== '—' && (
-                <span className="ml-1 tabular-nums text-foreground/70">
-                  · {activeProjectRangeDuration}
-                </span>
-              )}
-            </button>
-          )}
-          {/* Select-all-days lives on the same row as the view toggle, right-
-              aligned. Toggles: first click drills every day in the visible
-              range; second click clears back to whatever was drilled before
-              (today by default). */}
-          {(() => {
-            const rangeStart = activity.customRange?.startIso ?? activity.startIso
-            const rangeEnd = activity.customRange?.endIso ?? activity.endIso
-            const wholeRangeSelected =
-              selectedRange?.startIso === rangeStart &&
-              selectedRange?.endIso === rangeEnd
-            const label = activity.customRange?.label ?? activity.preset
-            return (
-              <button
-                type="button"
-                onClick={() => {
-                  if (wholeRangeSelected) {
-                    clearDrill()
-                  } else {
-                    setSelectedDate(null)
-                    setSelectedRange({ startIso: rangeStart, endIso: rangeEnd })
-                  }
-                }}
-                className={cn(
-                  'ml-auto rounded-full border px-2 py-0.5 text-[10px] transition-colors',
-                  wholeRangeSelected
-                    ? 'border-foreground/70 bg-foreground/10 text-foreground'
-                    : 'border-border/40 bg-card/40 text-muted-foreground hover:border-border/70 hover:text-foreground',
-                )}
-                title={wholeRangeSelected ? 'Clear the range drill' : `Drill on every day in ${label}`}
-              >
-                {wholeRangeSelected ? 'clear range' : 'select all days'}
-              </button>
-            )
-          })()}
-        </div>
-        {view === 'heatmap' ? (
+      {/* All three views stacked as collapsible sections (no more toggle). Each
+          section's drill detail docks under it — the detail appears where you
+          clicked. Only the heatmap carries the day timeline; trend + totals
+          only surface the range summary + table. */}
+      <div className="mt-10 space-y-14">
+        <PanelSection
+          title="Heatmap"
+          open={sectionsOpen.heatmap}
+          onToggle={() => toggleSection('heatmap')}
+          headerRight={
+            /* Select-all-days is a heatmap interaction: first click drills every
+               day in the visible range, second click clears back to today. */
+            (() => {
+              const rangeStart = activity.customRange?.startIso ?? activity.startIso
+              const rangeEnd = activity.customRange?.endIso ?? activity.endIso
+              const wholeRangeSelected =
+                drillSource === 'heatmap' &&
+                selectedRange?.startIso === rangeStart &&
+                selectedRange?.endIso === rangeEnd
+              const label = activity.customRange?.label ?? activity.preset
+              return (
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation()
+                    if (wholeRangeSelected) {
+                      clearDrill()
+                    } else {
+                      drillToRange({ startIso: rangeStart, endIso: rangeEnd }, 'heatmap')
+                    }
+                  }}
+                  className={cn(
+                    'rounded-full border px-2 py-0.5 text-[10px] transition-colors',
+                    wholeRangeSelected
+                      ? 'border-foreground/70 bg-foreground/10 text-foreground'
+                      : 'border-border/40 bg-card/40 text-muted-foreground hover:border-border/70 hover:text-foreground',
+                  )}
+                  title={wholeRangeSelected ? 'Clear the range drill' : `Drill on every day in ${label}`}
+                >
+                  {wholeRangeSelected ? 'clear range' : 'select all days'}
+                </button>
+              )
+            })()
+          }
+        >
           <AiActivityHeatmapBlock
             days={activity.days}
             loading={activity.loading}
@@ -331,82 +428,83 @@ export default function AiActivityPanelBlock() {
             endIso={activity.endIso}
             filterProject={activeProject}
             selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
+            onSelectDate={d => drillToDate(d, 'heatmap')}
             selectedRange={selectedRange}
-            onSelectRange={setSelectedRange}
+            onSelectRange={r => drillToRange(r, 'heatmap')}
           />
-        ) : view === 'totals' ? (
-          <Suspense fallback={null}>
-            <AiActivityAggregateBlock
-              chains={aggregateChains}
-              filterProject={activeProject}
-              onSelectRange={range => {
-                setSelectedDate(null)
-                setSelectedRange(range)
-              }}
-            />
-          </Suspense>
-        ) : (
+          {drillSource === 'heatmap' && drillActive && renderDrillDetail(true)}
+        </PanelSection>
+
+        <PanelSection
+          title="Trend"
+          open={sectionsOpen.trend}
+          onToggle={() => toggleSection('trend')}
+        >
           <Suspense fallback={null}>
             <AiActivityTrendChartBlock
               days={activity.days}
               chains={activity.chains}
               projects={activity.projects}
               filterProject={activeProject}
-              selectedDate={selectedDate}
-              onSelectDate={setSelectedDate}
+              selectedDate={drillSource === 'trend' ? selectedDate : null}
+              onSelectDate={d => drillToDate(d, 'trend')}
             />
           </Suspense>
-        )}
-      </div>
+          {drillSource === 'trend' && drillActive && renderDrillDetail(false)}
+        </PanelSection>
 
-      {(selectedDate || selectedRange) && (
-        <div className="mt-4 space-y-3 border-t border-border/30 pt-3">
-          {selectedDate && drillChains.length > 0 && (
-            <AiActivityDayTimelineBlock
-              dateIso={selectedDate}
-              chains={drillChains}
-              highlightProject={activeProject}
+        <PanelSection
+          title="Totals"
+          open={sectionsOpen.totals}
+          onToggle={() => toggleSection('totals')}
+        >
+          <Suspense fallback={null}>
+            <AiActivityAggregateBlock
+              chains={aggregateChains}
+              filterProject={activeProject}
+              onSelectRange={range => drillToRange(range, 'totals')}
             />
-          )}
-          {/* Range summary appears above the table on every drill (single
-              day or multi-day). Uses the active project chip when the user
-              has one selected; otherwise focuses on the dominant project in
-              the drill by wall-clock time so a summary always renders — the
-              deterministic fallback (Settings → Off) still shows a ranked
-              titles list, so the card is useful without any provider setup. */}
-          {drillChains.length > 0 && (() => {
-            const focusProject = activeProject ?? topProjectByTime(drillChains)
-            if (!focusProject) return null
-            const scopedChains = activeProject
-              ? drillChains
-              : drillChains.filter(c => c.project === focusProject)
-            return (
-              <AiActivityRangeSummaryBlock
-                projectId={focusProject}
-                projectLabel={focusProject}
-                rangeStartDate={selectedDate ?? selectedRange?.startIso ?? ''}
-                rangeEndDate={selectedDate ?? selectedRange?.endIso ?? ''}
-                chains={scopedChains}
-              />
-            )
-          })()}
-          {/* Table is the only scrolling region — keeps header/heatmap/timeline
-              pinned so context stays visible while you scan a "select all"
-              multi-day drill. Wheel-capture stops the canvas from panning
-              underneath while the cursor is over an overflowing table. */}
-          <DrillTableScroll>
-            <AiActivityDayTableBlock
-              title={drillTitle}
-              chains={drillChains}
-              summary={drillSummary}
-              highlightProject={activeProject}
-              onReadingEdited={activity.refresh}
-            />
-          </DrillTableScroll>
-        </div>
-      )}
+          </Suspense>
+          {drillSource === 'totals' && drillActive && renderDrillDetail(false)}
+        </PanelSection>
       </div>
+      </div>
+    </div>
+  )
+}
+
+/** Collapsible section wrapper for the three AI-activity views. Header is a
+ *  full-width toggle; an optional right-slot holds a section-scoped control
+ *  (e.g. the heatmap's "select all days"). Collapsed hides the whole body,
+ *  including any drill detail docked inside it. */
+function PanelSection({
+  title,
+  open,
+  onToggle,
+  headerRight,
+  children,
+}: {
+  title: string
+  open: boolean
+  onToggle: () => void
+  headerRight?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex flex-1 items-center gap-1.5 text-foreground/70 hover:text-foreground"
+          aria-expanded={open}
+        >
+          <ChevronDown className={cn('h-4 w-4 transition-transform', !open && '-rotate-90')} />
+          <span className="text-sm font-semibold tracking-tight">{title}</span>
+        </button>
+        {headerRight}
+      </div>
+      {open && <div className="mt-3">{children}</div>}
     </div>
   )
 }
@@ -848,38 +946,3 @@ function QuickRangeMenu({
   )
 }
 
-function ViewToggle({
-  view,
-  onChange,
-}: {
-  view: ViewMode
-  onChange: (v: ViewMode) => void
-}) {
-  const opts: Array<{ id: ViewMode; label: string }> = [
-    { id: 'heatmap', label: 'heatmap' },
-    { id: 'trend', label: 'trend' },
-    { id: 'totals', label: 'totals' },
-  ]
-  return (
-    <div className="flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 p-0.5">
-      {opts.map(o => {
-        const active = view === o.id
-        return (
-          <button
-            key={o.id}
-            type="button"
-            onClick={() => onChange(o.id)}
-            className={cn(
-              'rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] transition-all',
-              active
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-            )}
-          >
-            {o.label}
-          </button>
-        )
-      })}
-    </div>
-  )
-}

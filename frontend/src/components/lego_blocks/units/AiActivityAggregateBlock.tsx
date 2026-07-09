@@ -478,8 +478,10 @@ export default function AiActivityAggregateBlock({
                     key={s.project}
                     dataKey={s.project}
                     stackId="period"
-                    fill={getProjectColor(s.project).stroke}
-                    fillOpacity={0.85}
+                    // Soft palette tint (matches the heatmap cells + trend bars)
+                    // instead of full-saturation stroke — calmer, less busy.
+                    fill={getProjectColor(s.project).fill}
+                    fillOpacity={1}
                     isAnimationActive
                     animationDuration={450}
                     animationEasing="ease-out"

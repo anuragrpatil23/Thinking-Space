@@ -30,22 +30,23 @@ interface AnchorElementProps {
 const ANCHOR_ELEMENTS = {
   welcome: { w: 640, h: 200, offsetY: -540 },
   aiActivity: { w: 880, initialH: 620, offsetY: -380 },
-  thisWeek: { w: 880, initialH: 360, gap: 40 },
+  thisWeek: { w: 880, initialH: 700, gap: 40 },
   charts: { w: 880, h: 360, gap: 40 },
   today: { w: 880, h: 440, gap: 40 },
 } as const
 
 // Hard cap for intrinsic panels — beyond this the card scrolls internally
-// (and captures wheel from the canvas) instead of pushing the whole cascade
-// further down. Picked to match a typical laptop viewport with room to
-// breathe; tune here if the "select all days" drill produces very tall days.
-const INTRINSIC_MAX_HEIGHT = 1100
+// instead of pushing the whole cascade further down. Generous so normal weeks
+// never hit it; the This Week card's 700px *floor* (minHeight) is the value
+// that actually shapes its resting size.
+const INTRINSIC_MAX_HEIGHT = 2200
 
 function FloatingPanel({
   x,
   y,
   w,
   h,
+  minHeight,
   maxHeight,
   variant = 'panel',
   theme,
@@ -57,6 +58,9 @@ function FloatingPanel({
   w: number
   /** Omit for an intrinsic-height panel that grows with its content. */
   h?: number
+  /** Floor for an intrinsic panel — the card occupies at least this height even
+   *  when its content is shorter, then still grows past it as content spills. */
+  minHeight?: number
   /** Only meaningful for intrinsic panels: caps the outer height and turns on
    *  internal scroll when the content would spill past. When capped and the
    *  cursor is over the card, wheel events are captured so the card scrolls
@@ -129,6 +133,7 @@ function FloatingPanel({
         top: y,
         width: w,
         height: h,
+        minHeight,
         maxHeight,
         padding: isPanel ? 20 : 0,
         borderRadius: isPanel ? 14 : 0,
@@ -207,6 +212,12 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
     [],
   )
 
+  // Legacy home tiles (the "Activity" charts panel + "What you did today" file-
+  // activity panel) are hidden — the AI-Activity panel now covers this ground.
+  // Kept wired (imports, layout, components) behind this flag so they can be
+  // flipped back on without reconstructing anything.
+  const SHOW_SECONDARY_PANELS = false
+
   const w = 880
   const welcomeSpec = ANCHOR_ELEMENTS.welcome
   const aiSpec = ANCHOR_ELEMENTS.aiActivity
@@ -238,7 +249,10 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
     (bottom: number) => onContentBottomChange?.(bottom),
     [onContentBottomChange],
   )
-  useEffect(() => { notifyBottom(todayBottom) }, [todayBottom, notifyBottom])
+  // Canvas world height follows the last *visible* tile — This Week when the
+  // secondary panels are hidden, otherwise the Today panel at the cascade end.
+  const contentBottom = SHOW_SECONDARY_PANELS ? todayBottom : thisWeekBottom
+  useEffect(() => { notifyBottom(contentBottom) }, [contentBottom, notifyBottom])
 
   return (
     <div className={theme.isDark ? 'dark' : ''}>
@@ -282,21 +296,24 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
         </div>
       </FloatingPanel>
 
-      <FloatingPanel {...charts} theme={theme}>
-        <Suspense fallback={null}>
-          <DashboardChartsBlock
-            series={activity.series}
-            loading={activity.loading}
-            error={activity.error}
-            preset={activity.preset}
-            onPresetChange={activity.setPreset}
-            showDailyHighlights={showDailyHighlights}
-          />
-        </Suspense>
-      </FloatingPanel>
+      {SHOW_SECONDARY_PANELS && (
+        <FloatingPanel {...charts} theme={theme}>
+          <Suspense fallback={null}>
+            <DashboardChartsBlock
+              series={activity.series}
+              loading={activity.loading}
+              error={activity.error}
+              preset={activity.preset}
+              onPresetChange={activity.setPreset}
+              showDailyHighlights={showDailyHighlights}
+            />
+          </Suspense>
+        </FloatingPanel>
+      )}
 
       <FloatingPanel
         {...thisWeek}
+        minHeight={ANCHOR_ELEMENTS.thisWeek.initialH}
         maxHeight={INTRINSIC_MAX_HEIGHT}
         theme={theme}
         innerRef={thisWeekRef}
@@ -304,12 +321,14 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
         <ThisWeekDigestBlock />
       </FloatingPanel>
 
-      <FloatingPanel {...today} theme={theme}>
-        <TodayFileActivityOrch
-          highlights={activity.series?.highlights ?? null}
-          highlightsLoading={activity.loading}
-        />
-      </FloatingPanel>
+      {SHOW_SECONDARY_PANELS && (
+        <FloatingPanel {...today} theme={theme}>
+          <TodayFileActivityOrch
+            highlights={activity.series?.highlights ?? null}
+            highlightsLoading={activity.loading}
+          />
+        </FloatingPanel>
+      )}
 
       <FloatingPanel {...aiActivity} theme={theme} innerRef={aiActivityRef}>
         {/* The AI-Activity panel caps its own drill table internally, so
