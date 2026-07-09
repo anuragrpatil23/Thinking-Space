@@ -76,7 +76,10 @@
     "category": "public.app-category.productivity",
     "target": ["dmg", "pkg"],
     "icon": "assets/appIcon.png",
-    "hardenedRuntime": false
+    "hardenedRuntime": false,
+    "extendInfo": {
+      "UIDesignRequiresCompatibility": true
+    }
   },
   "pkg": {
     "scripts": "pkg-scripts",

@@ -251,6 +251,24 @@
     --ltm-shell-motion-tab-duration: var(--ltm-anim-fast);
   }
 
+  /* On the Electron desktop surface the BrowserWindow carries native sidebar
+   * vibrancy (see electron/src/setup.ts getWindowChromeOptions). The Finder
+   * look needs the material to stay nearly naked: exactly one thin tint layer
+   * over the blur. So the shell root gets a light wash, and chrome surfaces
+   * that sit directly on it (nav rail) drop their own opaque backing instead
+   * of stacking a second white layer. Overlay surfaces (drawers, command
+   * palette, FABs) float over content, not the blur — they keep full backing. */
+  .ltm-app-shell[data-ltm-surface='electron'] {
+    --ltm-shell-vibrancy-tint: hsl(var(--background) / 0.22);
+    background-color: var(--ltm-shell-vibrancy-tint);
+  }
+
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-nav-surface {
+    background: hsl(var(--card) / 0.18);
+    border-color: hsl(var(--border) / 0.35);
+    box-shadow: none;
+  }
+
   [data-ltm-theme='kraft'] .ltm-app-shell {
     --ltm-shell-surface-bg: #ece4d2;
     --ltm-shell-surface-muted-bg: #e3dac4;

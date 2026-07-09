@@ -438,8 +438,13 @@ export class ElectronCapacitorApp {
         frame: false,
         titleBarStyle: 'hidden' as const,
         roundedCorners: true,
-        transparent: true,
-        backgroundColor: '#00000000',
+        // Native NSVisualEffectView blur behind the window; the renderer keeps
+        // the shell chrome translucent so desktop content bleeds through like
+        // the Finder sidebar. `transparent: true` must NOT be set here — it
+        // suppresses the vibrancy view and leaves a static see-through window.
+        // Requires the transparent html/body/#root chain in App.tsx.
+        vibrancy: 'sidebar' as const,
+        visualEffectState: 'followWindow' as const,
         trafficLightPosition: MAC_TRAFFIC_LIGHT_POSITION,
       };
     }
