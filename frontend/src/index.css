@@ -252,21 +252,86 @@
   }
 
   /* On the Electron desktop surface the BrowserWindow carries native sidebar
-   * vibrancy (see electron/src/setup.ts getWindowChromeOptions). The Finder
-   * look needs the material to stay nearly naked: exactly one thin tint layer
-   * over the blur. So the shell root gets a light wash, and chrome surfaces
-   * that sit directly on it (nav rail) drop their own opaque backing instead
-   * of stacking a second white layer. Overlay surfaces (drawers, command
-   * palette, FABs) float over content, not the blur — they keep full backing. */
+   * vibrancy (see electron/src/setup.ts getWindowChromeOptions). Only the
+   * shell root — the outer chrome, gaps, and top bar — stays translucent so
+   * the native blur shows there. Work surfaces (nav rail, panels, content
+   * stage) go near-opaque: their default translucent tokens visually pass in
+   * dark mode (dark-on-dark reads solid) but wash out badly over a light
+   * blur, so both modes get explicit high-alpha backings here. */
   .ltm-app-shell[data-ltm-surface='electron'] {
     --ltm-shell-vibrancy-tint: hsl(var(--background) / 0.22);
     background-color: var(--ltm-shell-vibrancy-tint);
+    --ltm-shell-surface-bg: hsl(var(--card) / 0.94);
+    --ltm-shell-surface-muted-bg: hsl(var(--card) / 0.9);
+    --ltm-shell-stage-bg: hsl(var(--background) / 0.97);
+    /* Concentric corners: a panel corner nested `gap` inside the window
+     * corner looks right when its radius is the window radius minus that
+     * gap. The frameless window's radius was measured from a screenshot
+     * circle-fit at ~11px (Tahoe gives roundedCorners windows the classic
+     * small radius, not the large Liquid Glass one — remeasure if a macOS
+     * update changes it). Only the two window-adjacent bottom corners get
+     * this; all other panel corners keep the base design radius. */
+    --ltm-window-corner-radius: 11px;
+    --ltm-shell-window-corner-panel-radius: max(
+      calc(var(--ltm-window-corner-radius) - var(--ltm-shell-inset)),
+      3px
+    );
+    /* Inner-board corner radius. Decoupled from the window radius so the board
+     * can carry a softer, more generous round than the native window corner.
+     * The top corners float in flat window space and carry this freely; the
+     * two bottom corners sit at the window's own corners, so a value well
+     * above --ltm-window-corner-radius will bulge slightly past them. */
+    --ltm-board-corner-radius: 13px;
   }
 
-  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-nav-surface {
-    background: hsl(var(--card) / 0.18);
-    border-color: hsl(var(--border) / 0.35);
+  /* The inner board (nav rail + content stage) reads as one rounded panel
+   * whose corners all match the window's corner radius. Left corners belong
+   * to the rail when it's shown, otherwise to the stage (which is then the
+   * first child of the body stage); right corners always belong to the
+   * stage. */
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-nav-surface[data-ltm-nav-region='rail'] {
+    border-top-left-radius: var(--ltm-board-corner-radius);
+    border-bottom-left-radius: var(--ltm-board-corner-radius);
+  }
+
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-content-stage {
+    border-top-right-radius: var(--ltm-board-corner-radius);
+    border-bottom-right-radius: var(--ltm-board-corner-radius);
+  }
+
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-body-stage > .ltm-shell-content-stage:first-child {
+    border-top-left-radius: var(--ltm-board-corner-radius);
+    border-bottom-left-radius: var(--ltm-board-corner-radius);
+  }
+
+  /* Keep the container's own rounding (background + box-shadow) in step with
+   * its children. */
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-body-stage {
+    border-radius: var(--ltm-board-corner-radius);
+  }
+
+  /* Toolbar controls on the vibrant top chrome sit fully flush with the
+   * material — no fill, no outline, Finder-style; the hover tint below is
+   * the only interactive affordance. Scoped to the Electron surface —
+   * web/PWA keeps the solid capsules. The active tab pill intentionally
+   * keeps its opaque white styling as the one focal point on the chrome. */
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-top-chrome-capsule,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-shell-field-surface {
+    background: transparent;
+    border-color: transparent;
     box-shadow: none;
+  }
+
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-top-chrome-capsule:hover,
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-shell-field-surface:hover {
+    background: hsl(var(--foreground) / 0.12);
+  }
+
+  /* The sidebar-toggle button matches the panel surface below it, so it reads
+   * as an extension of the panel rather than a separate chip on the blur. */
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-sidebar-chrome-toggle {
+    background: var(--ltm-shell-stage-bg);
+    border-color: transparent;
   }
 
   [data-ltm-theme='kraft'] .ltm-app-shell {

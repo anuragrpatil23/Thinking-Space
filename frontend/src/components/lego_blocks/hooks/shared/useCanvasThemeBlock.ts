@@ -198,11 +198,21 @@ const NIGHT: CanvasThemeTokens = {
   edgeBlend: 'screen',
 }
 
-export function useCanvasThemeBlock(): CanvasThemeTokens {
+interface CanvasThemeOptions {
+  /** Time-of-day phases (golden/night backdrops) only make sense when the
+   * canvas backdrop is actually rendered behind the consumer. Inline surfaces
+   * on regular pages must pass false so a light-mode page doesn't flip to the
+   * dark night recipe after sunset — they follow the app color mode only. */
+  followPhase?: boolean
+}
+
+export function useCanvasThemeBlock(options: CanvasThemeOptions = {}): CanvasThemeTokens {
+  const { followPhase = true } = options
   const { colorModeId } = useUIThemeBlock()
   const phase = useTimeOfDayBlock()
   const nebulaGradient = nebulaForPhase(phase)
   if (colorModeId === 'dark') return { ...DARK, nebulaGradient }
+  if (!followPhase) return { ...DAY, nebulaGradient }
   if (phase === 'golden') return { ...GOLDEN, nebulaGradient }
   if (phase === 'night') return { ...NIGHT, nebulaGradient }
   return { ...DAY, nebulaGradient }

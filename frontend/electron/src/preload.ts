@@ -102,6 +102,8 @@ ipcRenderer.invoke('app:version:get').then((v: unknown) => {
 
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
+  setNativeColorMode: (mode: 'light' | 'dark' | 'system') =>
+    ipcRenderer.invoke('window:set-native-color-mode', mode),
   terminalSupported: isTerminalEnabledBlock(),
   versions: {
     app: appVersion,

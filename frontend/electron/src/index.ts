@@ -1,7 +1,7 @@
 import type { CapacitorElectronConfig } from '@capacitor-community/electron';
 import { getCapacitorElectronConfig, setupElectronDeepLinking } from '@capacitor-community/electron';
 import type { MenuItemConstructorOptions } from 'electron';
-import { app, BrowserWindow, dialog, ipcMain, Menu, MenuItem, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, MenuItem, nativeTheme, shell } from 'electron';
 import electronIsDev from 'electron-is-dev';
 import unhandled from 'electron-unhandled';
 import { autoUpdater } from 'electron-updater';
@@ -538,6 +538,14 @@ ipcMain.on('window:context:getSync', (event) => {
 
 ipcMain.handle('window:context:get', (event) => {
   return myCapacitorApp.getWindowContextForWebContents(event.sender);
+});
+
+// The macOS window vibrancy material follows nativeTheme, not the renderer's
+// CSS theme. The renderer reports its resolved scheme here so the native blur
+// renders light for light mode and dark for dark mode (uiThemeOrch calls this
+// whenever the app theme/color mode changes).
+ipcMain.handle('window:set-native-color-mode', (_event, mode: unknown) => {
+  nativeTheme.themeSource = mode === 'dark' ? 'dark' : mode === 'light' ? 'light' : 'system';
 });
 
 ipcMain.handle('debug:performance:get', async () => {

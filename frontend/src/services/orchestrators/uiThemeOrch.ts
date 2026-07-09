@@ -40,7 +40,21 @@ function isDarkScheme(theme: UIThemeId, colorMode: UIColorModeId): boolean {
   return colorMode === 'dark' || DARK_THEMES.has(theme)
 }
 
+// The Electron window's vibrancy material follows nativeTheme, not CSS, so
+// the resolved scheme must be mirrored to the main process or the native
+// blur stays in the system appearance (dark blur under a light app theme).
+// Optional cast instead of extending the global ElectronAPI declaration —
+// the method only exists when running in Electron.
+function syncNativeColorMode(isDark: boolean): void {
+  if (typeof window === 'undefined') return
+  const bridge = (window as unknown as {
+    electronAPI?: { setNativeColorMode?: (mode: 'light' | 'dark' | 'system') => Promise<void> }
+  }).electronAPI
+  void bridge?.setNativeColorMode?.(isDark ? 'dark' : 'light')?.catch?.(() => {})
+}
+
 function applySchemeClasses(documentRef: Document, isDark: boolean): void {
+  syncNativeColorMode(isDark)
   const root = documentRef.documentElement
   root.classList.toggle('dark', isDark)
   root.classList.toggle('theme-dark', isDark)

@@ -18,7 +18,7 @@ export interface SidebarChromeButtonBlockProps {
   wrap?: boolean
 }
 
-const BASE_BUTTON_CLASS = 'ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground'
+const BASE_BUTTON_CLASS = 'ltm-sidebar-chrome-toggle ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground'
 
 const VARIANT_CLASSES: Record<NonNullable<SidebarChromeButtonBlockProps['variant']>, string> = {
   default: 'border border-border/60 bg-background/85',

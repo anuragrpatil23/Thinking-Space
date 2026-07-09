@@ -6,17 +6,19 @@ import {
   ChevronDown,
   Compass,
   FileText,
-  FolderKanban,
   Loader2,
   Menu,
-  PlusSquare,
   RefreshCw,
-  Search,
   Settings as SettingsIcon,
-  Shapes,
   Sparkles,
   X,
 } from 'lucide-react'
+import {
+  MagnifyingGlass as PhosphorMagnifyingGlass,
+  NotePencil as PhosphorNotePencil,
+  TreeView as PhosphorTreeView,
+  type Icon as PhosphorIcon,
+} from '@phosphor-icons/react'
 import treeOfLifeLogo from './assets/tree-of-life-logo.jpg'
 import excalidrawLogo from './assets/excalidraw-logo.svg'
 // Core pages — eagerly loaded (used on every session)
@@ -48,6 +50,7 @@ const StewardQueueOrch = lazy(() => import('./components/orchestrators/StewardQu
 const OrganizerIntegrityOrch = lazy(() => import('./components/orchestrators/OrganizerIntegrityOrch'))
 import ToolsShellBlock, { isToolsShellRoute } from './components/lego_blocks/integrations/ToolsShellBlock'
 import ToolsLandingBlock from './components/lego_blocks/units/ui/ToolsLandingBlock'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/lego_blocks/units/ui/tooltip'
 import { FrozenRouteBlock } from './components/lego_blocks/units/FrozenRouteBlock'
 import RouteActivityProviderBlock from './components/lego_blocks/units/RouteActivityProviderBlock'
 import VaultSetup from './components/orchestrators/VaultSetupOrch'
@@ -181,12 +184,30 @@ import { folderPickerPluginBlock } from '@/services/lego_blocks/units/folderPick
 
 type NavIcon = ComponentType<{ className?: string }>
 
+// Nav icons stay Phosphor line glyphs in every state — the active pill's
+// color inversion alone marks selection.
+function phosphorNavIcon(Icon: PhosphorIcon): NavIcon {
+  return function PhosphorNavIcon({ className }: { className?: string }) {
+    return <Icon className={className} weight="regular" />
+  }
+}
+
+const NewNoteNavIcon = phosphorNavIcon(PhosphorNotePencil)
+const OrganizerNavIcon = phosphorNavIcon(PhosphorTreeView)
+const SearchNavIcon = phosphorNavIcon(PhosphorMagnifyingGlass)
+const ToolsNavIcon = ToolsShapesNavIcon
+
 interface NavItem {
   to: string
   label: string
   icon: NavIcon
+  /** Rail icon size override — defaults to the standard 17px; the f9/Webull
+   * mark reads smaller than the line glyphs so it keeps 18px. */
+  railIconClassName?: string
   activePaths?: string[]
 }
+
+const RAIL_ICON_CLASS = 'h-[17px] w-[17px]'
 
 interface CommandItem {
   to: string
@@ -276,12 +297,12 @@ const TOOLS_NAV_ACTIVE_PATHS: readonly string[] = [
 
 const PRIMARY_NAV_ITEMS: NavItem[] = [
   { to: '/thinking-space', label: 'Thinking Space', icon: Compass },
-  { to: '/new-thought', label: 'New Note', icon: PlusSquare },
-  { to: '/webull', label: 'Webull', icon: WebullNavIcon },
+  { to: '/new-thought', label: 'New Note', icon: NewNoteNavIcon },
+  { to: '/webull', label: 'Webull', icon: WebullNavIcon, railIconClassName: 'h-[18px] w-[18px]' },
   {
     to: '/thinking-organizer',
     label: 'Thinking Organizer',
-    icon: FolderKanban,
+    icon: OrganizerNavIcon,
     activePaths: ['/file-organizer'],
   },
 ]
@@ -289,7 +310,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
 const TOOLS_NAV_ITEM: NavItem = {
   to: '/tools',
   label: 'Tools',
-  icon: Shapes,
+  icon: ToolsNavIcon,
   activePaths: TOOLS_NAV_ACTIVE_PATHS as string[],
 }
 
@@ -310,6 +331,29 @@ function ExcalidrawPlusIcon({ className = 'h-4 w-4' }: { className?: string }) {
         WebkitMaskSize: 'contain',
       }}
     />
+  )
+}
+
+// Custom Shapes glyph for Tools — lucide's Shapes layout (triangle top,
+// square bottom-left, circle bottom-right) and stroke weight, but with a
+// true equilateral triangle (side 7.8, height 7.8 × √3⁄2 ≈ 6.75), which the
+// stock glyph doesn't have.
+function ToolsShapesNavIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="-1 -1 26 26"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinejoin="round"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3.2 L15.9 9.95 L8.1 9.95 Z" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <circle cx="17.5" cy="17.5" r="3.5" />
+    </svg>
   )
 }
 
@@ -2412,7 +2456,7 @@ function App() {
                 <button
                   type="button"
                   onClick={openDebugPanel}
-                  className="ltm-motion-fast relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                  className="ltm-top-chrome-capsule ltm-motion-fast relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
                   aria-label="Open debug console"
                   title="Debug console"
                 >
@@ -2428,7 +2472,7 @@ function App() {
                   type="button"
                   onClick={handleGlobalRefresh}
                   disabled={refreshRunning || needsVaultSetup}
-                  className={`ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background/85 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 ${
+                  className={`ltm-top-chrome-capsule ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background/85 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 ${
                     phoneMode ? 'w-8 px-0' : 'px-3'
                   }`}
                   aria-label="Refresh current workspace"
@@ -2445,7 +2489,7 @@ function App() {
                     updateSyncPanelAnchor()
                     setSyncPanelOpen(prev => !prev)
                   }}
-                  className={`ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background/85 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground ${
+                  className={`ltm-top-chrome-capsule ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background/85 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground ${
                     phoneMode ? 'w-8 px-0' : 'px-3'
                   }`}
                   aria-label="Toggle sync tools"
@@ -2461,6 +2505,7 @@ function App() {
           <div className="ltm-shell-body-stage">
             {!compactNav && (
               <aside className="ltm-shell-sidebar ltm-shell-nav-surface ltm-sidebar-collapsed hidden w-16 shrink-0 lg:block" data-ltm-nav-region="rail">
+                <TooltipProvider delayDuration={0}>
                 <div className="flex h-full flex-col px-2 py-3">
                 <div className="ltm-nav-scroll ltm-sidebar-nav-scroll min-h-0 flex-1 overflow-y-auto">
                   <div className="ltm-sidebar-nav-group space-y-1">
@@ -2468,16 +2513,19 @@ function App() {
                       const Icon = item.icon
                       const active = isNavItemActive(location.pathname, item)
                       return (
-                        <Link
-                          key={item.to}
-                          to={resolveWorkspaceNavigationRoute(item.to)}
-                          title={`${item.label}${shortcutHint(index + 1)}`}
-                          className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
-                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                          }`}
-                        >
-                          <Icon className="h-4 w-4" />
-                        </Link>
+                        <Tooltip key={item.to}>
+                          <TooltipTrigger asChild>
+                            <Link
+                              to={resolveWorkspaceNavigationRoute(item.to)}
+                              className={`ltm-motion-fast ltm-touch-row ltm-rail-item flex items-center justify-center rounded-lg px-2 py-2 transition-colors ${
+                                active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                              }`}
+                            >
+                              <Icon className={item.railIconClassName ?? RAIL_ICON_CLASS} />
+                            </Link>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">{`${item.label}${shortcutHint(index + 1)}`}</TooltipContent>
+                        </Tooltip>
                       )
                     })}
                   </div>
@@ -2487,15 +2535,19 @@ function App() {
                       const Icon = TOOLS_NAV_ITEM.icon
                       const active = isNavItemActive(location.pathname, TOOLS_NAV_ITEM)
                       return (
-                        <Link
-                          to={TOOLS_NAV_ITEM.to}
-                          title={`${TOOLS_NAV_ITEM.label}${shortcutHint(primaryNavItems.length + 1)}`}
-                          className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
-                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                          }`}
-                        >
-                          <Icon className="h-4 w-4" />
-                        </Link>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Link
+                              to={TOOLS_NAV_ITEM.to}
+                              className={`ltm-motion-fast ltm-touch-row ltm-rail-item flex items-center justify-center rounded-lg px-2 py-2 transition-colors ${
+                                active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                              }`}
+                            >
+                              <Icon className="h-[18px] w-[18px]" />
+                            </Link>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">{`${TOOLS_NAV_ITEM.label}${shortcutHint(primaryNavItems.length + 1)}`}</TooltipContent>
+                        </Tooltip>
                       )
                     })()}
                   </div>
@@ -2507,40 +2559,52 @@ function App() {
                       const Icon = item.icon
                       const active = isNavItemActive(location.pathname, item)
                       return (
-                        <Link
-                          key={item.to}
-                          to={item.to}
-                          title={item.label}
-                          className={`ltm-motion-fast ltm-touch-row flex items-center justify-center rounded-lg px-2 py-2 text-sm transition-colors ${
-                            active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                          }`}
-                        >
-                          <Icon className="h-4 w-4" />
-                        </Link>
+                        <Tooltip key={item.to}>
+                          <TooltipTrigger asChild>
+                            <Link
+                              to={item.to}
+                              className={`ltm-motion-fast ltm-touch-row ltm-rail-item flex items-center justify-center rounded-lg px-2 py-2 transition-colors ${
+                                active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                              }`}
+                            >
+                              <Icon className={item.railIconClassName ?? RAIL_ICON_CLASS} />
+                            </Link>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">{item.label}</TooltipContent>
+                        </Tooltip>
                       )
                     })}
-                    <button
-                      type="button"
-                      onClick={openCommandPalette}
-                      className="ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center justify-center rounded-lg px-2 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label="Open quick search"
-                      title="Search"
-                    >
-                      <Search className="h-4 w-4" />
-                    </button>
-                    <Link
-                      to="/"
-                      title={`Home${shortcutHint(0)}`}
-                      aria-label="Home"
-                      className="ltm-shell-logo ltm-motion-fast mt-2 inline-flex h-10 w-full items-center justify-center rounded-lg"
-                    >
-                      <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
-                        <AppBrandGlyph className="h-full w-full" />
-                      </span>
-                    </Link>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={openCommandPalette}
+                          className="ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row ltm-rail-item inline-flex w-full items-center justify-center rounded-lg px-2 py-2 text-muted-foreground transition-colors hover:text-foreground"
+                          aria-label="Open quick search"
+                        >
+                          <SearchNavIcon className={RAIL_ICON_CLASS} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">Search</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link
+                          to="/"
+                          aria-label="Home"
+                          className="ltm-shell-logo ltm-motion-fast mt-2 inline-flex h-10 w-full items-center justify-center rounded-lg"
+                        >
+                          <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
+                            <AppBrandGlyph className="h-full w-full" />
+                          </span>
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">{`Home${shortcutHint(0)}`}</TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
                 </div>
+                </TooltipProvider>
               </aside>
             )}
           <main
@@ -2876,7 +2940,7 @@ function App() {
                   className="ltm-shell-action ltm-motion-fast ltm-touch-row inline-flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
                   aria-label="Open quick search"
                 >
-                  <Search className="h-4 w-4" />
+                  <SearchNavIcon className="h-4 w-4" />
                   <span className="truncate">Search</span>
                 </button>
                 <button
