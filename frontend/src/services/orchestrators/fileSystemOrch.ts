@@ -1,5 +1,10 @@
 import type { FileStat } from '@/services/lego_blocks/units/typesBlock'
 import {
+  applyFolderMapBlock,
+  type FolderMapDisplay,
+  parseFolderMapBlock,
+} from '@/services/lego_blocks/units/folderMapBlock'
+import {
   getVaultFS,
   normalizeCapacitorStoredVaultRoot,
   type VaultEntry,
@@ -26,7 +31,99 @@ import { isCapacitorNative, isElectron } from './runtimeOrch'
 
 export interface FolderEntries {
   folders: string[]
+  /**
+   * File basenames in display order. When a `_map.md` is present, files are ordered
+   * by the map (mapped entries first, unmapped alphabetical after — per the "folder
+   * is truth" safety rule). Without a map, alphabetical.
+   */
   files: string[]
+  /**
+   * Present when the folder contains a `_map.md` — parsed sections + unmapped files,
+   * with map keys resolved to actual folder filenames (with extensions). Consumers
+   * that don't care about the map can ignore this and just render `files`.
+   */
+  map?: FolderEntriesMap
+}
+
+export interface FolderEntriesMapEntry {
+  /** Actual file basename in the folder (with extension), or the raw wikilink key if missing. */
+  file: string
+  description: string
+  missing?: boolean
+  duplicate?: boolean
+}
+
+export interface FolderEntriesMapSection {
+  title: string
+  entries: FolderEntriesMapEntry[]
+}
+
+export interface FolderEntriesMap {
+  sections: FolderEntriesMapSection[]
+  /** Unmapped file basenames (with extension), alphabetical. */
+  unmapped: string[]
+  /** Filename → description, for tooltip lookup. Excludes missing entries. */
+  descriptions: Record<string, string>
+}
+
+const FOLDER_MAP_FILENAME = '_map.md'
+
+function stripMdExtension(name: string): string {
+  return name.replace(/\.md$/i, '')
+}
+
+/**
+ * Resolve a parsed `_map.md` against the folder's actual files.
+ * Map keys are wikilink form (no extension); folder files include extensions.
+ * We match by extensionless basename, case-sensitive.
+ */
+function resolveFolderMapAgainstFiles(
+  mapSource: string,
+  fileNames: readonly string[],
+): { orderedFiles: string[]; map: FolderEntriesMap } {
+  const parsed = parseFolderMapBlock(mapSource)
+  const keyToFile = new Map<string, string>()
+  for (const name of fileNames) keyToFile.set(stripMdExtension(name), name)
+  const keys = [...keyToFile.keys()]
+  const display: FolderMapDisplay = applyFolderMapBlock(parsed, keys)
+
+  const orderedFiles: string[] = []
+  const seen = new Set<string>()
+  const sections: FolderEntriesMapSection[] = display.sections.map(section => ({
+    title: section.title,
+    entries: section.entries.map(entry => {
+      const file = keyToFile.get(entry.key)
+      if (file && !entry.duplicate && !seen.has(file)) {
+        orderedFiles.push(file)
+        seen.add(file)
+      }
+      return {
+        file: file ?? entry.key,
+        description: entry.description,
+        ...(entry.missing ? { missing: true as const } : {}),
+        ...(entry.duplicate ? { duplicate: true as const } : {}),
+      }
+    }),
+  }))
+
+  const unmapped: string[] = []
+  for (const key of display.unmapped) {
+    const file = keyToFile.get(key)
+    if (file && !seen.has(file)) {
+      orderedFiles.push(file)
+      unmapped.push(file)
+      seen.add(file)
+    }
+  }
+
+  const descriptions: Record<string, string> = {}
+  for (const section of sections) {
+    for (const entry of section.entries) {
+      if (!entry.missing && entry.description) descriptions[entry.file] = entry.description
+    }
+  }
+
+  return { orderedFiles, map: { sections, unmapped, descriptions } }
 }
 
 export type VaultPathKind = 'file' | 'folder' | 'missing'
@@ -685,10 +782,25 @@ export async function listFolderEntries(path: string): Promise<FolderEntries> {
   const fs = getVaultFS()
   try {
     const { folders, files } = await fs.list(path)
-    return {
-      folders: folders.filter(name => !name.startsWith('.')).sort(),
-      files: files.filter(name => !name.startsWith('.')).sort(),
+    const visibleFolders = folders.filter(name => !name.startsWith('.')).sort()
+    const visibleFiles = files.filter(name => !name.startsWith('.')).sort()
+
+    // No map → alphabetical, exactly like before. (Rule 2: degrade gracefully.)
+    if (!visibleFiles.includes(FOLDER_MAP_FILENAME)) {
+      return { folders: visibleFolders, files: visibleFiles }
     }
+
+    let mapSource = ''
+    try {
+      mapSource = await fs.read(path ? `${path}/${FOLDER_MAP_FILENAME}` : FOLDER_MAP_FILENAME)
+    } catch {
+      // Read failure → treat as no-map, don't reorder. Preserves rule 1 (folder is truth):
+      // every file still appears, alphabetical.
+      return { folders: visibleFolders, files: visibleFiles }
+    }
+
+    const { orderedFiles, map } = resolveFolderMapAgainstFiles(mapSource, visibleFiles)
+    return { folders: visibleFolders, files: orderedFiles, map }
   } catch {
     return { folders: [], files: [] }
   }

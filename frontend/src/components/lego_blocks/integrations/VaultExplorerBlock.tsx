@@ -72,9 +72,28 @@ import {
 import { writeSortOrdersBlock } from '@/services/lego_blocks/units/notebookOrderBlock'
 import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebookSidecarBlock'
 
+interface FolderMapEntryInfo {
+  file: string
+  description: string
+  missing?: boolean
+  duplicate?: boolean
+}
+
+interface FolderMapSectionInfo {
+  title: string
+  entries: FolderMapEntryInfo[]
+}
+
+interface FolderMapInfo {
+  sections: FolderMapSectionInfo[]
+  unmapped: string[]
+  descriptions: Record<string, string>
+}
+
 interface FolderEntries {
   folders: string[]
   files: string[]
+  map?: FolderMapInfo
 }
 
 interface NodeState extends FolderEntries {
@@ -82,6 +101,8 @@ interface NodeState extends FolderEntries {
   loading: boolean
   error: string | null
 }
+
+const FOLDER_MAP_FILENAME = '_map.md'
 
 type ExplorerPathKind = 'file' | 'folder'
 type ExplorerActionResult = void | boolean | string | Promise<void | boolean | string>
@@ -1072,10 +1093,77 @@ export default function VaultExplorerBlock({
         }
       })
 
-      visibleFiles.forEach(fileName => {
+      // Build a render plan that interleaves section headers, mapped files, and unmapped
+      // files. When no _map.md is present, plan is a flat list of files — identical to the
+      // pre-map behavior (Rule 2: degrade gracefully).
+      type FilePlanRow =
+        | { kind: 'header'; title: string; key: string }
+        | {
+            kind: 'file'
+            name: string
+            description?: string
+            missing?: boolean
+            unmapped?: boolean
+            pinned?: boolean
+          }
+
+      const plan: FilePlanRow[] = []
+      const map = node.map
+      const visibleFileSet = new Set(visibleFiles)
+      if (map) {
+        // Pin _map.md at the top with a distinct visual (rule from spec: "pinning is
+        // probably better than hiding — hiding things creates mystery").
+        if (visibleFileSet.has(FOLDER_MAP_FILENAME)) {
+          plan.push({ kind: 'file', name: FOLDER_MAP_FILENAME, pinned: true })
+        }
+        for (const section of map.sections) {
+          const rendered = section.entries.filter(
+            e => !e.missing && !e.duplicate && visibleFileSet.has(e.file),
+          )
+          if (rendered.length === 0) continue
+          if (section.title) plan.push({ kind: 'header', title: section.title, key: `sec-${section.title}` })
+          for (const entry of rendered) {
+            plan.push({
+              kind: 'file',
+              name: entry.file,
+              description: entry.description || undefined,
+            })
+          }
+        }
+        const unmappedVisible = map.unmapped.filter(
+          f => visibleFileSet.has(f) && f !== FOLDER_MAP_FILENAME,
+        )
+        if (unmappedVisible.length > 0) {
+          plan.push({ kind: 'header', title: 'Unmapped', key: 'sec-unmapped' })
+          for (const f of unmappedVisible) plan.push({ kind: 'file', name: f, unmapped: true })
+        }
+      } else {
+        for (const f of visibleFiles) plan.push({ kind: 'file', name: f })
+      }
+
+      plan.forEach(row => {
+        if (row.kind === 'header') {
+          rows.push(
+            <div
+              key={`hdr-${path}-${row.key}`}
+              className="ltm-explorer-row ltm-explorer-map-section-header px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80"
+              style={{ paddingLeft: `${26 + depth * 14}px` }}
+            >
+              {row.title}
+            </div>,
+          )
+          return
+        }
+
+        const fileName = row.name
         const filePath = joinPath(path, fileName)
-        const Icon = getFileIcon(fileName)
+        const Icon = row.pinned ? Info : getFileIcon(fileName)
         const isInlineEditing = inlineRename?.kind === 'file' && inlineRename.path === filePath
+        const isSelected = selectedFilePath === filePath
+        const description = row.description ?? node.map?.descriptions[fileName]
+        const tooltip = row.pinned
+          ? 'Reading map for this folder — controls the display order below.'
+          : description
 
         if (isInlineEditing) {
           rows.push(
@@ -1087,7 +1175,7 @@ export default function VaultExplorerBlock({
               )}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
               data-path={filePath}
-              data-selected={selectedFilePath === filePath ? 'true' : undefined}
+              data-selected={isSelected ? 'true' : undefined}
             >
               <Icon className="ltm-explorer-glyph ltm-explorer-file-icon h-3.5 w-3.5 shrink-0 text-white" />
               <input
@@ -1115,6 +1203,7 @@ export default function VaultExplorerBlock({
             <button
               key={`file-${filePath}`}
               type="button"
+              title={tooltip}
               draggable={canDragFiles}
               onDragStart={event => {
                 if (!canDragFiles) return
@@ -1134,7 +1223,7 @@ export default function VaultExplorerBlock({
                 void handleDropOnTarget(event, getParentPath(filePath), filePath)
               }) : undefined}
               onKeyDown={event => {
-                if (event.key === 'Enter' && selectedFilePath === filePath) {
+                if (event.key === 'Enter' && isSelected) {
                   event.preventDefault()
                   event.stopPropagation()
                   beginInlineRename(filePath, 'file')
@@ -1162,16 +1251,20 @@ export default function VaultExplorerBlock({
               ref={bindRowRef('file', filePath)}
               className={cn(
                 'ltm-explorer-row ltm-explorer-file-row ltm-touch-row group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/80 transition-colors hover:bg-muted/70',
-                selectedFilePath === filePath && 'border border-[#c73773]/95 bg-[#c73773] text-white hover:bg-[#c73773]',
+                isSelected && 'border border-[#c73773]/95 bg-[#c73773] text-white hover:bg-[#c73773]',
                 canDropOnRows && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
+                row.unmapped && !isSelected && 'opacity-60',
+                row.pinned && !isSelected && 'text-foreground/95',
               )}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
               data-path={filePath}
-              data-selected={selectedFilePath === filePath ? 'true' : undefined}
+              data-selected={isSelected ? 'true' : undefined}
+              data-map-unmapped={row.unmapped ? 'true' : undefined}
+              data-map-pinned={row.pinned ? 'true' : undefined}
             >
               <Icon className={cn(
                 'ltm-explorer-glyph ltm-explorer-file-icon h-3.5 w-3.5 shrink-0',
-                getFileIconColor(fileName, selectedFilePath === filePath),
+                row.pinned && !isSelected ? 'text-amber-500' : getFileIconColor(fileName, isSelected),
               )} />
               <span className="truncate">{fileName}</span>
             </button>,
