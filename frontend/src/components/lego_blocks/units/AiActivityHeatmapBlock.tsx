@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import type { ActivityDay } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { useWheelScrollCaptureBlock } from '@/components/lego_blocks/hooks/shared/useWheelScrollCaptureBlock'
+import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import {
   AI_ACTIVITY_CALENDAR_MODE_EVENT,
   AI_ACTIVITY_REST_DAYS_EVENT,
@@ -83,6 +84,7 @@ export default function AiActivityHeatmapBlock({
   selectedRange = null,
   onSelectRange,
 }: AiActivityHeatmapBlockProps) {
+  const { hostRef, isDark } = useDarkModeClassBlock()
   const [setMode, setSetMode] = useState<boolean>(() => getAiActivitySetMode())
   const [calendarMode, setCalendarMode] = useState<boolean>(() => getAiActivityCalendarMode())
   const [restDays, setRestDays] = useState<number[]>(() => getAiActivityRestDays())
@@ -172,15 +174,20 @@ export default function AiActivityHeatmapBlock({
           topProject = filterProject
         } else {
           msgs = d.totalMsgs
-          // Top project by chain msg count so the cell tint matches the
-          // chain-based drilldown table. Ignore noise buckets for tint only;
-          // chips still surface them elsewhere when they are useful.
-          let topMsgs = 0
-          for (const [name, n] of Object.entries(projectCounts)) {
+          // Tint by the project with the most *time* on the day (wall-clock
+          // duration), so "most worked on" reads as time spent, not raw message
+          // count — a long 4h session outranks a chattier but shorter one. Fall
+          // back to msg counts when duration is unavailable. Noise buckets are
+          // ignored for tint only; chips still surface them elsewhere.
+          const durations = d.byChainProjectDurationMs
+          const hasDuration = Object.keys(durations).length > 0
+          const ranking: Record<string, number> = hasDuration ? durations : projectCounts
+          let topScore = 0
+          for (const [name, score] of Object.entries(ranking)) {
             const isNoise = name.startsWith('[') && name.endsWith(']')
             if (isNoise) continue
-            if (n > topMsgs) {
-              topMsgs = n
+            if (score > topScore) {
+              topScore = score
               topProject = name
             }
           }
@@ -322,11 +329,13 @@ export default function AiActivityHeatmapBlock({
   function cellBackground(cell: CellModel): string {
     if (cell.intensity <= 0) return 'rgba(148,163,184,0.08)'
     const colorName = filterProject ?? cell.topProject ?? 'LTM'
-    const { stroke } = getProjectColor(colorName)
-    // Reuse the rgb(r,g,b) channels with a computed alpha.
+    const { stroke } = getProjectColor(colorName, isDark)
+    // Reuse the rgb(r,g,b) channels with a computed alpha. The dark ramp
+    // starts higher — low-alpha color over the night bg blends toward black
+    // and quiet days would otherwise vanish into the empty-cell grey.
     const m = stroke.match(/rgb\((\d+),(\d+),(\d+)\)/)
     if (!m) return stroke
-    const alpha = 0.18 + cell.intensity * 0.65
+    const alpha = isDark ? 0.32 + cell.intensity * 0.6 : 0.18 + cell.intensity * 0.65
     return `rgba(${m[1]},${m[2]},${m[3]},${alpha.toFixed(3)})`
   }
 
@@ -429,7 +438,7 @@ export default function AiActivityHeatmapBlock({
   }, [setMode, currentSetDates, cellPositions])
 
   return (
-    <div className="space-y-2">
+    <div ref={hostRef} className="space-y-2">
       {loading ? (
         <div className="h-32 w-full animate-pulse rounded-lg bg-muted/20" />
       ) : (

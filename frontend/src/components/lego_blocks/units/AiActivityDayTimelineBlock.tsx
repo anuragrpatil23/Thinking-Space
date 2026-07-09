@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { useWheelScrollCaptureBlock } from '@/components/lego_blocks/hooks/shared/useWheelScrollCaptureBlock'
+import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 
 interface AiActivityDayTimelineBlockProps {
   /** ISO day this timeline represents (anchor for the 00:00 baseline). */
@@ -55,6 +56,7 @@ export default function AiActivityDayTimelineBlock({
   chains,
   highlightProject = null,
 }: AiActivityDayTimelineBlockProps) {
+  const { hostRef, isDark } = useDarkModeClassBlock()
   const [hoverId, setHoverId] = useState<string | null>(null)
 
   const dayStartMs = useMemo(
@@ -234,7 +236,7 @@ export default function AiActivityDayTimelineBlock({
   }
 
   return (
-    <div className="relative">
+    <div ref={hostRef} className="relative">
     <div ref={scrollWrapRef} className="overflow-x-auto">
       <div className="relative" style={{ width: Math.max(widthPx, 320) }}>
         {/* Hour grid + pills */}
@@ -265,7 +267,7 @@ export default function AiActivityDayTimelineBlock({
           })}
 
           {placed.placed.map(({ key, pill, leftPx, widthPx, row }) => {
-            const color = getProjectColor(pill.project)
+            const color = getProjectColor(pill.project, isDark)
             const isHover = hoverId === key
             const isHighlighted = highlightProject != null && pill.project === highlightProject
             const isDimmed = highlightProject != null && !isHighlighted

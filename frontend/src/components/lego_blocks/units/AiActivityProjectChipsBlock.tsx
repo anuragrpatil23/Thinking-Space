@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import type { ActivityProject } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 
 interface AiActivityProjectChipsBlockProps {
   projects: ActivityProject[]
@@ -17,6 +18,7 @@ export default function AiActivityProjectChipsBlock({
   onSelect,
   hideNoise = true,
 }: AiActivityProjectChipsBlockProps) {
+  const { hostRef, isDark } = useDarkModeClassBlock()
   const visible = useMemo(
     () => (hideNoise ? projects.filter(p => !p.isNoise) : projects),
     [projects, hideNoise],
@@ -31,9 +33,9 @@ export default function AiActivityProjectChipsBlock({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 md:grid-cols-3 lg:grid-cols-4">
+    <div ref={hostRef} className="grid grid-cols-2 gap-x-3 gap-y-0.5 md:grid-cols-3 lg:grid-cols-4">
       {visible.map(p => {
-        const color = getProjectColor(p.name)
+        const color = getProjectColor(p.name, isDark)
         const active = activeProject === p.name
         return (
           <button

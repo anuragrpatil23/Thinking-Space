@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect, useState } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import {
   Bar,
   CartesianGrid,
@@ -22,6 +22,7 @@ import {
   mergedDurationMsBlock,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import {
   AI_ACTIVITY_REST_DAYS_EVENT,
   AI_ACTIVITY_SET_MODE_EVENT,
@@ -198,7 +199,9 @@ export default function AiActivityTrendChartBlock({
     [data, visibleProjects],
   )
 
-  const hostRef = useRef<HTMLDivElement | null>(null)
+  // Dark scope drives both the duration-pill text color and the dark palette
+  // variant for project series colors.
+  const { hostRef, isDark } = useDarkModeClassBlock()
   const [ready, setReady] = useState(false)
   useEffect(() => {
     const node = hostRef.current
@@ -208,24 +211,7 @@ export default function AiActivityTrendChartBlock({
     const obs = new ResizeObserver(tick)
     obs.observe(node)
     return () => obs.disconnect()
-  }, [])
-
-  // The duration pills are light SVG badges, so their text must darken in dark
-  // mode to stay readable. The app toggles a `.dark` class on the canvas
-  // wrapper (covering explicit dark + night phase), so detect from the host's
-  // ancestry and re-check on class changes.
-  const [isDark, setIsDark] = useState(false)
-  useEffect(() => {
-    const update = () => setIsDark(!!hostRef.current?.closest('.dark'))
-    update()
-    const obs = new MutationObserver(update)
-    obs.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-      subtree: true,
-    })
-    return () => obs.disconnect()
-  }, [])
+  }, [hostRef])
   const pillTextFill = isDark ? 'rgba(30,41,59,0.95)' : 'rgba(148,163,184,0.95)'
 
   return (
@@ -297,7 +283,7 @@ export default function AiActivityTrendChartBlock({
                     </div>
                     <div className="mt-1 space-y-0.5">
                       {rows.map(row => {
-                        const color = getProjectColor(String(row.dataKey))
+                        const color = getProjectColor(String(row.dataKey), isDark)
                         return (
                           <div key={String(row.dataKey)} className="flex items-baseline gap-2">
                             <span
@@ -358,8 +344,9 @@ export default function AiActivityTrendChartBlock({
                 stackId="1"
                 // Soft palette tint (same token the heatmap cells + filled areas
                 // use) instead of the full-saturation stroke — reads as calm
-                // pastels over the cream canvas rather than bold blocks.
-                fill={getProjectColor(p.name).fill}
+                // pastels over the cream canvas rather than bold blocks; the
+                // dark variant is richer so it doesn't muddy into the night bg.
+                fill={getProjectColor(p.name, isDark).fill}
                 fillOpacity={1}
                 isAnimationActive
                 animationDuration={550}

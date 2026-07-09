@@ -46,8 +46,12 @@
     --foreground: var(--ltm-theme-fg-hsl, 0 0% 95%);
     --card: var(--ltm-theme-card-hsl, 0 0% 12%);
     --card-foreground: var(--ltm-theme-fg-hsl, 0 0% 95%);
-    --primary: var(--ltm-theme-primary-hsl, 221 83% 53%);
-    --primary-foreground: var(--ltm-theme-primary-foreground-hsl, 0 0% 100%);
+    /* Neutral primary mirroring light mode (near-black there, near-white
+       here). The previous saturated blue (221 83% 53%) was a leftover shadcn
+       blue-theme default — light mode never had a colored accent, so dark
+       toggles/buttons glared blue against an otherwise neutral chrome. */
+    --primary: var(--ltm-theme-primary-hsl, 0 0% 95%);
+    --primary-foreground: var(--ltm-theme-primary-foreground-hsl, 0 0% 9%);
     --secondary: var(--ltm-theme-muted-hsl, 0 0% 15%);
     --secondary-foreground: var(--ltm-theme-fg-hsl, 0 0% 95%);
     --muted: var(--ltm-theme-muted-hsl, 0 0% 15%);
@@ -56,7 +60,7 @@
     --accent-foreground: var(--ltm-theme-fg-hsl, 0 0% 95%);
     --border: var(--ltm-theme-border-hsl, 0 0% 20%);
     --input: var(--ltm-theme-border-hsl, 0 0% 20%);
-    --ring: var(--ltm-theme-ring-hsl, 221 83% 53%);
+    --ring: var(--ltm-theme-ring-hsl, 0 0% 83%);
   }
 }
 

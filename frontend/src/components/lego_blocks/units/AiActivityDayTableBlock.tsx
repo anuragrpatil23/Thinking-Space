@@ -14,6 +14,7 @@ import ReadingSessionEditModalBlock, {
   isReadingSessionEditableBlock,
 } from '@/components/lego_blocks/integrations/ReadingSessionEditModalBlock'
 import { useChainDigestBlock } from '@/components/lego_blocks/hooks/units/useChainDigestBlock'
+import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 
 interface AiActivityDayTableBlockProps {
   /** Title shown above the table (e.g. day or range label). */
@@ -126,6 +127,7 @@ export default function AiActivityDayTableBlock({
   anchorDateIso = null,
   onReadingEdited,
 }: AiActivityDayTableBlockProps) {
+  const { hostRef, isDark } = useDarkModeClassBlock()
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [transcriptChain, setTranscriptChain] = useState<ActivityChain | null>(null)
   const [editingChain, setEditingChain] = useState<ActivityChain | null>(null)
@@ -164,7 +166,7 @@ export default function AiActivityDayTableBlock({
   }, [sorted])
 
   return (
-    <div className="space-y-2">
+    <div ref={hostRef} className="space-y-2">
       <div className="flex items-baseline justify-between gap-3">
         <div>
           <h4 className="text-sm font-semibold text-foreground">{title}</h4>
@@ -215,7 +217,7 @@ export default function AiActivityDayTableBlock({
                   const rowDate = isoDayLocal(c.startedIso)
                   const showDivider = rowDate !== lastDate
                   lastDate = rowDate
-                  const color = getProjectColor(c.project)
+                  const color = getProjectColor(c.project, isDark)
                   const isHighlighted = highlightProject != null && c.project === highlightProject
                   const isExpanded = expandedKey === c.key
                   const chainTokens = sumTokens(c.sessions.map(s => s.tokens))

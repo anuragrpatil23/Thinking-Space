@@ -28,13 +28,51 @@ export interface ProjectColorEntry {
   dot: string
 }
 
-function paletteEntry(r: number, g: number, b: number): ProjectColorEntry {
+// In light mode the fill is a 45% alpha layer over cream — the compositor
+// mixes in the light background and the eye sees an opaque pastel. Over a
+// near-black background ANY meaningful alpha mixes black in and turns the
+// color muddy, no matter how the base is pre-tuned. So dark mode doesn't use
+// alpha for fills at all: it emits an (effectively) opaque pastel-toned color
+// — desaturated and lightened in HSL — which is the same end state light mode
+// reaches via compositing. Two dark variants:
+//  - vivid (stroke/dot): lightness floor only, for legible small text/dots.
+//  - pastel (fill, near-opaque; chipBg keeps a soft alpha): s×0.7, l≥0.70.
+function paletteEntry(r: number, g: number, b: number, isDark: boolean): ProjectColorEntry {
+  if (isDark) {
+    const [h, s, l] = rgbToHsl(r, g, b)
+    const [vr, vg, vb] = hslToRgb(h, s, Math.max(l, 0.66))
+    const [dr, dg, db] = hslToRgb(h, s * 0.7, Math.max(l, 0.7))
+    return {
+      stroke: `rgb(${vr},${vg},${vb})`,
+      fill: `rgba(${dr},${dg},${db},0.95)`,
+      chipBg: `rgba(${dr},${dg},${db},0.22)`,
+      dot: `rgba(${vr},${vg},${vb},0.7)`,
+    }
+  }
   return {
     stroke: `rgb(${r},${g},${b})`,
     fill: `rgba(${r},${g},${b},0.45)`,
     chipBg: `rgba(${r},${g},${b},0.15)`,
     dot: `rgba(${r},${g},${b},0.6)`,
   }
+}
+
+/** RGB 0..255 → HSL (all channels 0..1). Inverse of hslToRgb below. */
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const rn = r / 255
+  const gn = g / 255
+  const bn = b / 255
+  const max = Math.max(rn, gn, bn)
+  const min = Math.min(rn, gn, bn)
+  const l = (max + min) / 2
+  if (max === min) return [0, 0, l]
+  const d = max - min
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+  let h: number
+  if (max === rn) h = (gn - bn) / d + (gn < bn ? 6 : 0)
+  else if (max === gn) h = (bn - rn) / d + 2
+  else h = (rn - gn) / d + 4
+  return [h / 6, s, l]
 }
 
 /** HSL (all channels 0..1) → [r,g,b] 0..255. Used to synthesize the extended
@@ -64,16 +102,16 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 // Hand-picked leading colors — calm, cool tones first (sky blue at slot 0 so
 // F9's forced preference lands on a recognizable blue). These keep the curated
 // feel for the first several projects; the rest of the palette is generated.
-const CURATED: ReadonlyArray<ProjectColorEntry> = [
-  paletteEntry(56, 189, 248), // sky
-  paletteEntry(52, 211, 153), // emerald
-  paletteEntry(167, 139, 250), // violet
-  paletteEntry(45, 212, 191), // teal
-  paletteEntry(129, 140, 248), // indigo
-  paletteEntry(251, 191, 36), // amber
-  paletteEntry(251, 146, 60), // orange
-  paletteEntry(251, 113, 133), // rose
-  paletteEntry(232, 121, 249), // fuchsia
+const CURATED_RGB: ReadonlyArray<[number, number, number]> = [
+  [56, 189, 248], // sky
+  [52, 211, 153], // emerald
+  [167, 139, 250], // violet
+  [45, 212, 191], // teal
+  [129, 140, 248], // indigo
+  [251, 191, 36], // amber
+  [251, 146, 60], // orange
+  [251, 113, 133], // rose
+  [232, 121, 249], // fuchsia
 ]
 
 // Total distinct colors available. Generated slots extend the curated set using
@@ -81,8 +119,8 @@ const CURATED: ReadonlyArray<ProjectColorEntry> = [
 // a small lightness cycle so nearby hues still read apart.
 const PALETTE_SIZE = 60
 
-const PALETTE: ReadonlyArray<ProjectColorEntry> = (() => {
-  const out: ProjectColorEntry[] = [...CURATED]
+function buildPalette(isDark: boolean): ReadonlyArray<ProjectColorEntry> {
+  const out: ProjectColorEntry[] = CURATED_RGB.map(([r, g, b]) => paletteEntry(r, g, b, isDark))
   const GOLDEN_ANGLE = 137.508
   // Offset the generated hues off the curated ones so they don't near-duplicate.
   let hue = 24
@@ -90,10 +128,13 @@ const PALETTE: ReadonlyArray<ProjectColorEntry> = (() => {
     hue = (hue + GOLDEN_ANGLE) % 360
     const lightness = 0.6 + (i % 3) * 0.06 // 0.60 / 0.66 / 0.72
     const [r, g, b] = hslToRgb(hue / 360, 0.68, lightness)
-    out.push(paletteEntry(r, g, b))
+    out.push(paletteEntry(r, g, b, isDark))
   }
   return out
-})()
+}
+
+const PALETTE: ReadonlyArray<ProjectColorEntry> = buildPalette(false)
+const DARK_PALETTE: ReadonlyArray<ProjectColorEntry> = buildPalette(true)
 
 // Forced color preferences by project name. F9 → slot 0 (sky blue) per user
 // request; still overridable in Settings. Extend here for any project that
@@ -105,22 +146,14 @@ const PREFERRED_SLOT: Record<string, number> = {
 // Warm clay/terracotta — distinct from the grey empty-cell background so an
 // unknown-project day actually shows up on the heatmap (previously it blended
 // in with empty cells because both were grey).
-const UNKNOWN_ENTRY: ProjectColorEntry = {
-  stroke: 'rgb(217,119,87)',
-  fill: 'rgba(217,119,87,0.45)',
-  chipBg: 'rgba(217,119,87,0.15)',
-  dot: 'rgba(217,119,87,0.6)',
-}
+const UNKNOWN_ENTRY: ProjectColorEntry = paletteEntry(217, 119, 87, false)
+const UNKNOWN_ENTRY_DARK: ProjectColorEntry = paletteEntry(217, 119, 87, true)
 
 // Dusty mauve — visible against the grey empty-cell background while still
 // reading as a "noise / background activity" bucket (auto-commits, telegram
 // pings, etc.). Previously a stone-grey that blended into empty cells.
-const NOISE_ENTRY: ProjectColorEntry = {
-  stroke: 'rgb(190,130,160)',
-  fill: 'rgba(190,130,160,0.40)',
-  chipBg: 'rgba(190,130,160,0.15)',
-  dot: 'rgba(190,130,160,0.55)',
-}
+const NOISE_ENTRY: ProjectColorEntry = paletteEntry(190, 130, 160, false)
+const NOISE_ENTRY_DARK: ProjectColorEntry = paletteEntry(190, 130, 160, true)
 
 /** Parse `#rrggbb` into [r,g,b]; returns null if not a 6-digit hex. */
 function hexToRgb(hex: string): [number, number, number] | null {
@@ -134,16 +167,10 @@ function hexToRgb(hex: string): [number, number, number] | null {
 
 /** Build a full ProjectColorEntry from a single hex, matching the opacity
  *  ramps used by the hand-picked palette so user colors read identically. */
-function entryFromHex(hex: string): ProjectColorEntry | null {
+function entryFromHex(hex: string, isDark: boolean): ProjectColorEntry | null {
   const rgb = hexToRgb(hex)
   if (!rgb) return null
-  const [r, g, b] = rgb
-  return {
-    stroke: `rgb(${r},${g},${b})`,
-    fill: `rgba(${r},${g},${b},0.45)`,
-    chipBg: `rgba(${r},${g},${b},0.15)`,
-    dot: `rgba(${r},${g},${b},0.6)`,
-  }
+  return paletteEntry(rgb[0], rgb[1], rgb[2], isDark)
 }
 
 function isBucketName(name: string): boolean {
@@ -201,19 +228,20 @@ export function registerProjectColors(namesBusiestFirst: readonly string[]): voi
   }
 }
 
-export function getProjectColor(name: string): ProjectColorEntry {
+export function getProjectColor(name: string, isDark = false): ProjectColorEntry {
   // User override wins over everything (including noise/unknown buckets).
   const override = resolveProjectColorOverrideBlock(name)
   if (override) {
-    const entry = entryFromHex(override)
+    const entry = entryFromHex(override, isDark)
     if (entry) return entry
   }
-  if (name.startsWith('[') && name.endsWith(']')) return NOISE_ENTRY
-  if (name === '<unknown>') return UNKNOWN_ENTRY
+  if (name.startsWith('[') && name.endsWith(']')) return isDark ? NOISE_ENTRY_DARK : NOISE_ENTRY
+  if (name === '<unknown>') return isDark ? UNKNOWN_ENTRY_DARK : UNKNOWN_ENTRY
+  const palette = isDark ? DARK_PALETTE : PALETTE
   // Registered projects use their distinct assigned slot; anything not in the
   // current active set (or asked for before registration) falls back to its
   // stable hash slot so it still gets a consistent color.
   const assigned = slotByName.get(name)
-  if (assigned != null) return PALETTE[assigned]
-  return PALETTE[hashSlot(name)]
+  if (assigned != null) return palette[assigned]
+  return palette[hashSlot(name)]
 }

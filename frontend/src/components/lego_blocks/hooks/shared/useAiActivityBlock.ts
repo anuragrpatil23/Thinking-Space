@@ -45,6 +45,10 @@ export interface ActivityDay {
   byProject: Record<string, number>
   /** Per-project chain message counts on this day, used by chain-based drill views. */
   byChainProject: Record<string, number>
+  /** Per-project chain wall-clock duration (ms) on this day. Drives the heatmap
+   *  tint so a day is colored by the project you spent the most *time* on, not
+   *  the one with the most messages. */
+  byChainProjectDurationMs: Record<string, number>
 }
 
 export interface ActivityProject {
@@ -467,6 +471,7 @@ export function useAiActivityBlock(
         totalChains: 0,
         byProject: {},
         byChainProject: {},
+        byChainProjectDurationMs: {},
       })
     }
     // Day-bucketing uses LOCAL calendar day, not UTC. The drill-down filter
@@ -489,6 +494,11 @@ export function useAiActivityBlock(
         day.totalChains += 1
         day.byChainProject[c.project] =
           (day.byChainProject[c.project] ?? 0) + c.msgCount
+        const durMs = Date.parse(c.endedIso) - Date.parse(c.startedIso)
+        if (Number.isFinite(durMs) && durMs > 0) {
+          day.byChainProjectDurationMs[c.project] =
+            (day.byChainProjectDurationMs[c.project] ?? 0) + durMs
+        }
       }
     }
     return dayList.map(d => map.get(d)!)

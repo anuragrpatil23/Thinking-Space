@@ -85,7 +85,8 @@ const DAY_VIGNETTE =
 const GOLDEN_VIGNETTE =
   'linear-gradient(to bottom, rgba(245,232,205,0.1) 0%, rgba(245,232,205,0) 30%, rgba(245,232,205,0) 70%, rgba(245,232,205,0.6) 100%)'
 
-// Explicit dark mode — always cosmic black, never changes with time.
+// Cosmic-black base recipe. Not returned directly anymore — NIGHT extends it
+// and is what both explicit dark mode and the light-mode night phase render.
 const DARK: CanvasThemeTokens = {
   isDark: true,
   outerBg: '#0a0a0c',
@@ -184,9 +185,9 @@ const GOLDEN: CanvasThemeTokens = {
   edgeBlend: 'multiply',
 }
 
-// Night phase inside *light* mode — subtle midnight blue.
-// Visually dark (so glass + text follow the dark recipe), but the bg is blue-tinted
-// rather than the cosmic black of explicit dark mode.
+// Midnight-blue night recipe — used for explicit dark mode AND the night phase
+// inside light mode. Glass + text follow the dark recipe; the bg is blue-tinted
+// because the starfield/nebula/aurora scene reads richer on it than on neutral black.
 const NIGHT: CanvasThemeTokens = {
   ...DARK,
   outerBg: '#10182e',
@@ -211,7 +212,7 @@ export function useCanvasThemeBlock(options: CanvasThemeOptions = {}): CanvasThe
   const { colorModeId } = useUIThemeBlock()
   const phase = useTimeOfDayBlock()
   const nebulaGradient = nebulaForPhase(phase)
-  if (colorModeId === 'dark') return { ...DARK, nebulaGradient }
+  if (colorModeId === 'dark') return { ...NIGHT, nebulaGradient }
   if (!followPhase) return { ...DAY, nebulaGradient }
   if (phase === 'golden') return { ...GOLDEN, nebulaGradient }
   if (phase === 'night') return { ...NIGHT, nebulaGradient }

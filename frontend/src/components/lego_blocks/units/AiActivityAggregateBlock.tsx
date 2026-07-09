@@ -23,6 +23,7 @@ import {
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { formatTokens, formatUsd } from '@/services/lego_blocks/units/aiPriceTableBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import {
   AI_ACTIVITY_SET_MODE_EVENT,
   getAiActivitySetMode,
@@ -120,6 +121,7 @@ export default function AiActivityAggregateBlock({
   filterProject = null,
   onSelectRange,
 }: AiActivityAggregateBlockProps) {
+  const { hostRef, isDark } = useDarkModeClassBlock()
   const [setMode, setSetMode] = useState<boolean>(() => getAiActivitySetMode())
   useEffect(() => {
     const onChange = () => setSetMode(getAiActivitySetMode())
@@ -247,7 +249,7 @@ export default function AiActivityAggregateBlock({
   const anyTokens = rows.some(r => r.hasTokens)
   const anyPartial = rows.some(r => r.chainsWithDuration < r.chains)
   const barColor = filterProject
-    ? getProjectColor(filterProject).stroke
+    ? getProjectColor(filterProject, isDark).stroke
     : 'rgba(148,163,184,0.9)'
 
   // Stacked bar graph: one bar per period, stacked by project, showing the
@@ -298,7 +300,7 @@ export default function AiActivityAggregateBlock({
   }, [display])
 
   return (
-    <div className="space-y-2">
+    <div ref={hostRef} className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 p-0.5 w-fit">
           {GRANULARITIES.map(g => {
@@ -451,7 +453,7 @@ export default function AiActivityAggregateBlock({
                           {entries.map(e => {
                             const key = String(e.dataKey)
                             const stroke =
-                              key === OTHER_KEY ? OTHER_COLOR : getProjectColor(key).stroke
+                              key === OTHER_KEY ? OTHER_COLOR : getProjectColor(key, isDark).stroke
                             return (
                               <div key={key} className="flex items-baseline gap-2">
                                 <span
@@ -480,7 +482,7 @@ export default function AiActivityAggregateBlock({
                     stackId="period"
                     // Soft palette tint (matches the heatmap cells + trend bars)
                     // instead of full-saturation stroke — calmer, less busy.
-                    fill={getProjectColor(s.project).fill}
+                    fill={getProjectColor(s.project, isDark).fill}
                     fillOpacity={1}
                     isAnimationActive
                     animationDuration={450}
@@ -503,7 +505,7 @@ export default function AiActivityAggregateBlock({
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pb-1 pt-1.5">
             {graph.top.map(s => {
-              const color = getProjectColor(s.project)
+              const color = getProjectColor(s.project, isDark)
               return (
                 <span
                   key={s.project}
@@ -646,7 +648,7 @@ export default function AiActivityAggregateBlock({
                       ) : (
                         <div className="space-y-2">
                           {expandedDigest.map(d => {
-                            const color = getProjectColor(d.project)
+                            const color = getProjectColor(d.project, isDark)
                             return (
                               <div key={d.project} className="space-y-0.5">
                                 <div className="flex items-baseline gap-2 text-[11px]">

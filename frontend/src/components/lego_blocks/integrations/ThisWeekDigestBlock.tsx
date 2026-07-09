@@ -7,6 +7,7 @@ import {
   projectDigestBlock,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import AiActivityRangeSummaryBlock from '@/components/lego_blocks/integrations/AiActivityRangeSummaryBlock'
 import { cn } from '@/lib/utils'
 import {
@@ -60,6 +61,7 @@ function isoLocalDate(ms: number): string {
 
 
 export default function ThisWeekDigestBlock() {
+  const { hostRef, isDark } = useDarkModeClassBlock()
   // 30d covers both the current week and the last two 3-day sets (max reach
   // back is ~6 days). The card filters down to its own window itself, so the
   // preset only needs to be wide enough.
@@ -244,7 +246,7 @@ export default function ThisWeekDigestBlock() {
   }, [])
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={hostRef} className="flex h-full min-h-0 flex-col">
       <div className="flex items-baseline justify-between gap-3">
         <div>
           {/* The individual section headers below already carry the window
@@ -327,7 +329,7 @@ export default function ThisWeekDigestBlock() {
                 ) : (
                   <div className="space-y-3">
                     {section.digest.map(d => {
-                      const color = getProjectColor(d.project)
+                      const color = getProjectColor(d.project, isDark)
                       // Chains in this window that belong to this project —
                       // the range-summary orchestrator consumes them directly.
                       const projectChains = section.rawChains.filter(c => c.project === d.project)

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 
 interface EpicTimelineStripBlockProps {
@@ -66,6 +67,7 @@ export default function EpicTimelineStripBlock({
   highlightProgramKey = null,
   watermarkLabel,
 }: EpicTimelineStripBlockProps) {
+  const { hostRef, isDark } = useDarkModeClassBlock()
   const [hoverId, setHoverId] = useState<string | null>(null)
 
   const prepared = useMemo<PreparedEpic[]>(() => {
@@ -242,7 +244,7 @@ export default function EpicTimelineStripBlock({
   const innerWidth = LEFT_LABEL_WIDTH + widthPx
 
   return (
-    <div className="relative">
+    <div ref={hostRef} className="relative">
       <div
         ref={scrollWrapRef}
         className="overflow-auto"
@@ -251,7 +253,7 @@ export default function EpicTimelineStripBlock({
         <div style={{ width: innerWidth }}>
           {clusters.map((cluster, idx) => {
             const programTitle = programTitleByKey?.[cluster.colorKey] ?? 'Unassigned'
-            const color = getProjectColor(cluster.colorKey)
+            const color = getProjectColor(cluster.colorKey, isDark)
             return (
               <div key={`cluster-${cluster.colorKey}`}>
                 {idx > 0 && <div style={{ height: PROGRAM_CLUSTER_GAP_PX }} />}
