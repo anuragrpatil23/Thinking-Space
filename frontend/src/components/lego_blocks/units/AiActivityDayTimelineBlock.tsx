@@ -203,8 +203,8 @@ export default function AiActivityDayTimelineBlock({
   // offscreen content. macOS overlay scrollbars hide the default affordance,
   // so without these the user has no idea more timeline exists to the right.
   const scrollWrapRef = useRef<HTMLDivElement | null>(null)
-  // Trackpad horizontal swipe over the timeline scrolls it in place instead of
-  // panning the canvas underneath (vertical swipes still pan the board).
+  // Trackpad scroll over the timeline scrolls it in place instead of panning the
+  // canvas underneath; releases to the canvas once scrolled to either end.
   useWheelScrollCaptureBlock(scrollWrapRef, 'x')
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)

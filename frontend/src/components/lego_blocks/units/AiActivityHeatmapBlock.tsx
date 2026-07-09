@@ -207,9 +207,10 @@ export default function AiActivityHeatmapBlock({
   // AI-Activity panel, and in set-mode where cells are ~1.75× wider so a
   // whole year no longer fits in the previously "always fits" 53-week band.
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
-  // Trackpad horizontal swipe over the grid scrolls it in place instead of
-  // panning the canvas underneath (vertical swipes still pan the board).
-  useWheelScrollCaptureBlock(scrollContainerRef, 'x')
+  // Trackpad scroll over the grid scrolls it in place instead of panning the
+  // canvas underneath. Gated on !loading because the scroll container is only
+  // rendered once loaded — the hook must (re)attach when it appears.
+  useWheelScrollCaptureBlock(scrollContainerRef, 'x', !loading)
   const [containerWidth, setContainerWidth] = useState(0)
   useEffect(() => {
     const el = scrollContainerRef.current
