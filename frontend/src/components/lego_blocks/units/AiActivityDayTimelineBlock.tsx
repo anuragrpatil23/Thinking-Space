@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { useWheelScrollCaptureBlock } from '@/components/lego_blocks/hooks/shared/useWheelScrollCaptureBlock'
 
 interface AiActivityDayTimelineBlockProps {
   /** ISO day this timeline represents (anchor for the 00:00 baseline). */
@@ -202,6 +203,9 @@ export default function AiActivityDayTimelineBlock({
   // offscreen content. macOS overlay scrollbars hide the default affordance,
   // so without these the user has no idea more timeline exists to the right.
   const scrollWrapRef = useRef<HTMLDivElement | null>(null)
+  // Trackpad horizontal swipe over the timeline scrolls it in place instead of
+  // panning the canvas underneath (vertical swipes still pan the board).
+  useWheelScrollCaptureBlock(scrollWrapRef, 'x')
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
 

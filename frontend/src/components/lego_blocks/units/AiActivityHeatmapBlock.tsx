@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ActivityDay } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { useWheelScrollCaptureBlock } from '@/components/lego_blocks/hooks/shared/useWheelScrollCaptureBlock'
 import {
   AI_ACTIVITY_CALENDAR_MODE_EVENT,
   AI_ACTIVITY_REST_DAYS_EVENT,
@@ -206,6 +207,9 @@ export default function AiActivityHeatmapBlock({
   // AI-Activity panel, and in set-mode where cells are ~1.75× wider so a
   // whole year no longer fits in the previously "always fits" 53-week band.
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  // Trackpad horizontal swipe over the grid scrolls it in place instead of
+  // panning the canvas underneath (vertical swipes still pan the board).
+  useWheelScrollCaptureBlock(scrollContainerRef, 'x')
   const [containerWidth, setContainerWidth] = useState(0)
   useEffect(() => {
     const el = scrollContainerRef.current
