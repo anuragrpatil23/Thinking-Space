@@ -9,7 +9,7 @@ import HomeAnchorTileBlock from '@/components/lego_blocks/integrations/HomeAncho
 import MoonSceneBlock from '@/components/lego_blocks/units/MoonSceneBlock'
 import { homeCanvasStorage } from '@/services/lego_blocks/integrations/homeCanvasStorageBlock'
 
-const DEFAULT_WORLD_HEIGHT = 3800
+const DEFAULT_WORLD_HEIGHT = 4500
 const CONTENT_BOTTOM_BREATHING = 320
 
 const ANCHOR_CENTER_X = 4500 / 2
