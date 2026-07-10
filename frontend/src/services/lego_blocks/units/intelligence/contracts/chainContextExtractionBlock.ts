@@ -173,6 +173,85 @@ function headTail(body: string, head: number, tail: number, above: number): {
   }
 }
 
+// ── chat-export (ChatGPT / Grok) markdown transcripts ────────────────────
+// No native JSONL exists for web chats — the transcript lives in the vault
+// markdown as `## User` / `## Assistant` blocks, each followed by a
+// `*YYYY-MM-DD HH:MM[ | model: …]*` timestamp line and then the body. We clip
+// to the sitting's [startedIso, endedIso] window so a conversation's several
+// `#wN` slices don't bleed into one another, then run the same per-role
+// filter + head/tail pipeline the native path uses.
+
+const CHAT_EXPORT_TURN_HEADER_RE =
+  /^## (User|Assistant)[ \t]*\r?\n\*(\d{4}-\d{2}-\d{2} \d{2}:\d{2})[^\n]*\*[ \t]*$/gm
+
+/**
+ * Parse a chat-export markdown transcript and append its in-window turns to
+ * `turns`, mutating `meta` as it goes. Returns the advanced `order` counter so
+ * the chain's global turn sequence stays continuous across sessions.
+ */
+function emitChatExportTurnsBlock(
+  md: string,
+  session: ParsedSession,
+  startOrder: number,
+  turns: ExtractedTurnBlock[],
+  meta: ChainContextMetaBlock,
+): number {
+  let order = startOrder
+
+  // Skip frontmatter so header offsets line up with the body.
+  let body = md
+  if (body.startsWith('---')) {
+    const fmEnd = body.indexOf('\n---', 3)
+    if (fmEnd !== -1) body = body.slice(fmEnd + 4)
+  }
+
+  const windowStart = Date.parse(session.startedIso)
+  const windowEnd = Date.parse(session.endedIso ?? session.startedIso)
+
+  const headers: Array<{
+    role: 'user' | 'assistant'
+    ts: number
+    headerStart: number
+    bodyStart: number
+  }> = []
+  CHAT_EXPORT_TURN_HEADER_RE.lastIndex = 0
+  for (let m = CHAT_EXPORT_TURN_HEADER_RE.exec(body); m; m = CHAT_EXPORT_TURN_HEADER_RE.exec(body)) {
+    headers.push({
+      role: m[1] === 'User' ? 'user' : 'assistant',
+      ts: Date.parse(m[2].replace(' ', 'T')),
+      headerStart: m.index,
+      bodyStart: m.index + m[0].length,
+    })
+  }
+
+  for (let i = 0; i < headers.length; i += 1) {
+    const cur = headers[i]
+    // Clip to this sitting's window (inclusive) so `#wN` slices stay separate.
+    if (Number.isFinite(cur.ts) && (cur.ts < windowStart || cur.ts > windowEnd)) continue
+    const next = headers[i + 1]
+    const text = body.slice(cur.bodyStart, next ? next.headerStart : body.length).trim()
+    if (!text) continue
+    if (CLEAR_CMD_RE.test(text)) meta.hadClear = true
+
+    order += 1
+    if (cur.role === 'user') {
+      const filtered = filterUserText(text)
+      if (!filtered) continue
+      const trimmed = headTail(filtered, USER_HEAD_CHARS, USER_TAIL_CHARS, USER_TRUNCATE_ABOVE)
+      if (trimmed.truncated) meta.hadTruncation = true
+      turns.push({ role: 'user', text: trimmed.text, order })
+    } else {
+      const filtered = filterAssistantText(text)
+      if (!filtered) continue
+      const trimmed = headTail(filtered, ASST_HEAD_CHARS, ASST_TAIL_CHARS, ASST_TRUNCATE_ABOVE)
+      if (trimmed.truncated) meta.hadTruncation = true
+      turns.push({ role: 'assistant', text: trimmed.text, order })
+    }
+  }
+
+  return order
+}
+
 // ── public API ───────────────────────────────────────────────────────────
 
 /**
