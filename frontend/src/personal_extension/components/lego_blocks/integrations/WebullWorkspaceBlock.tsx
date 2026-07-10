@@ -6,6 +6,7 @@ import {
   Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
 } from '@/personal_extension/services/lego_blocks/units/webullSidebarChromeBlock'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
+import { chipColorClassBlock, type ChipColorBlock } from '@/services/lego_blocks/units/chipColorBlock'
 import FileSelectionViewerBlock from '@/components/lego_blocks/integrations/FileSelectionViewerBlock'
 import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
@@ -658,10 +659,8 @@ function formatAccountDescriptorBlock(entry: WebullAccountLabelEntryBlock): stri
 // Pastel account chip colors: Roth IRA = bright amber, Individual Cash (and any other) = soft blue.
 function accountPillClassBlock(label: string | null): string {
   const base = 'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium'
-  const tone = label === 'Roth IRA'
-    ? 'bg-amber-300/25 text-amber-700 dark:text-amber-200'
-    : 'bg-sky-300/25 text-sky-700 dark:text-sky-200'
-  return `${base} ${tone}`
+  const color: ChipColorBlock = label === 'Roth IRA' ? 'amber' : 'sky'
+  return `${base} ${chipColorClassBlock(color)}`
 }
 
 function normalizePriorityFromUnknownBlock(value: unknown): NodePriority | null {

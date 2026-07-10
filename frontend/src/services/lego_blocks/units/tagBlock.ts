@@ -4,51 +4,56 @@ export function normalizeTagBlock(value: string): string {
 
 const TAG_COLOR_PALETTE_BLOCK = [
   {
-    solid: 'border-emerald-200/80 dark:border-emerald-500/45 bg-emerald-100/75 dark:bg-emerald-500/25 text-emerald-800 dark:text-emerald-200',
-    subtle: 'border-emerald-200/70 dark:border-emerald-500/40 bg-emerald-50/70 dark:bg-emerald-500/20 text-emerald-800/80 dark:text-emerald-200/80',
-    selected: 'border-emerald-300 dark:border-emerald-500/55 bg-emerald-100/80 dark:bg-emerald-500/30 text-emerald-800 dark:text-emerald-200',
-    unselected: 'border-emerald-200/80 dark:border-emerald-500/45 text-emerald-700/70 dark:text-emerald-300/70 hover:bg-emerald-50/60 dark:hover:bg-emerald-500/25',
+    solid: 'border-emerald-200/80 bg-emerald-100/75 text-emerald-800 dark:border-transparent dark:bg-[hsl(158_26%_31%)] dark:text-[hsl(158_62%_80%)]',
+    subtle: 'border-emerald-200/70 bg-emerald-50/70 text-emerald-800/80 dark:border-transparent dark:bg-[hsl(158_26%_27%)] dark:text-[hsl(158_62%_78%)]',
+    selected: 'border-emerald-300 bg-emerald-100/80 text-emerald-800 dark:border-transparent dark:bg-[hsl(158_26%_36%)] dark:text-[hsl(158_62%_82%)]',
+    unselected: 'border-emerald-200/80 text-emerald-700/70 dark:border-[hsl(158_20%_40%)] dark:text-[hsl(158_62%_66%)] hover:bg-emerald-50/60 dark:hover:bg-[hsl(158_24%_22%)]',
   },
   {
-    solid: 'border-sky-200/80 dark:border-sky-500/45 bg-sky-100/75 dark:bg-sky-500/25 text-sky-800 dark:text-sky-200',
-    subtle: 'border-sky-200/70 dark:border-sky-500/40 bg-sky-50/70 dark:bg-sky-500/20 text-sky-800/80 dark:text-sky-200/80',
-    selected: 'border-sky-300 dark:border-sky-500/55 bg-sky-100/80 dark:bg-sky-500/30 text-sky-800 dark:text-sky-200',
-    unselected: 'border-sky-200/80 dark:border-sky-500/45 text-sky-700/70 dark:text-sky-300/70 hover:bg-sky-50/60 dark:hover:bg-sky-500/25',
+    solid: 'border-sky-200/80 bg-sky-100/75 text-sky-800 dark:border-transparent dark:bg-[hsl(199_26%_31%)] dark:text-[hsl(199_62%_80%)]',
+    subtle: 'border-sky-200/70 bg-sky-50/70 text-sky-800/80 dark:border-transparent dark:bg-[hsl(199_26%_27%)] dark:text-[hsl(199_62%_78%)]',
+    selected: 'border-sky-300 bg-sky-100/80 text-sky-800 dark:border-transparent dark:bg-[hsl(199_26%_36%)] dark:text-[hsl(199_62%_82%)]',
+    unselected: 'border-sky-200/80 text-sky-700/70 dark:border-[hsl(199_20%_40%)] dark:text-[hsl(199_62%_66%)] hover:bg-sky-50/60 dark:hover:bg-[hsl(199_24%_22%)]',
   },
   {
-    solid: 'border-amber-200/80 dark:border-amber-500/45 bg-amber-100/75 dark:bg-amber-500/25 text-amber-800 dark:text-amber-200',
-    subtle: 'border-amber-200/70 dark:border-amber-500/40 bg-amber-50/70 dark:bg-amber-500/20 text-amber-800/80 dark:text-amber-200/80',
-    selected: 'border-amber-300 dark:border-amber-500/55 bg-amber-100/80 dark:bg-amber-500/30 text-amber-800 dark:text-amber-200',
-    unselected: 'border-amber-200/80 dark:border-amber-500/45 text-amber-700/70 dark:text-amber-300/70 hover:bg-amber-50/60 dark:hover:bg-amber-500/25',
+    solid: 'border-amber-200/80 bg-amber-100/75 text-amber-800 dark:border-transparent dark:bg-[hsl(40_30%_31%)] dark:text-[hsl(43_74%_80%)]',
+    subtle: 'border-amber-200/70 bg-amber-50/70 text-amber-800/80 dark:border-transparent dark:bg-[hsl(40_30%_27%)] dark:text-[hsl(43_74%_78%)]',
+    selected: 'border-amber-300 bg-amber-100/80 text-amber-800 dark:border-transparent dark:bg-[hsl(40_30%_36%)] dark:text-[hsl(43_74%_82%)]',
+    unselected: 'border-amber-200/80 text-amber-700/70 dark:border-[hsl(40_20%_40%)] dark:text-[hsl(43_74%_66%)] hover:bg-amber-50/60 dark:hover:bg-[hsl(40_24%_22%)]',
   },
   {
-    solid: 'border-rose-200/80 dark:border-rose-500/45 bg-rose-100/75 dark:bg-rose-500/25 text-rose-800 dark:text-rose-200',
-    subtle: 'border-rose-200/70 dark:border-rose-500/40 bg-rose-50/70 dark:bg-rose-500/20 text-rose-800/80 dark:text-rose-200/80',
-    selected: 'border-rose-300 dark:border-rose-500/55 bg-rose-100/80 dark:bg-rose-500/30 text-rose-800 dark:text-rose-200',
-    unselected: 'border-rose-200/80 dark:border-rose-500/45 text-rose-700/70 dark:text-rose-300/70 hover:bg-rose-50/60 dark:hover:bg-rose-500/25',
+    solid: 'border-rose-200/80 bg-rose-100/75 text-rose-800 dark:border-transparent dark:bg-[hsl(345_26%_31%)] dark:text-[hsl(345_62%_80%)]',
+    subtle: 'border-rose-200/70 bg-rose-50/70 text-rose-800/80 dark:border-transparent dark:bg-[hsl(345_26%_27%)] dark:text-[hsl(345_62%_78%)]',
+    selected: 'border-rose-300 bg-rose-100/80 text-rose-800 dark:border-transparent dark:bg-[hsl(345_26%_36%)] dark:text-[hsl(345_62%_82%)]',
+    unselected: 'border-rose-200/80 text-rose-700/70 dark:border-[hsl(345_20%_40%)] dark:text-[hsl(345_62%_66%)] hover:bg-rose-50/60 dark:hover:bg-[hsl(345_24%_22%)]',
   },
   {
-    solid: 'border-violet-200/80 dark:border-violet-500/45 bg-violet-100/75 dark:bg-violet-500/25 text-violet-800 dark:text-violet-200',
-    subtle: 'border-violet-200/70 dark:border-violet-500/40 bg-violet-50/70 dark:bg-violet-500/20 text-violet-800/80 dark:text-violet-200/80',
-    selected: 'border-violet-300 dark:border-violet-500/55 bg-violet-100/80 dark:bg-violet-500/30 text-violet-800 dark:text-violet-200',
-    unselected: 'border-violet-200/80 dark:border-violet-500/45 text-violet-700/70 dark:text-violet-300/70 hover:bg-violet-50/60 dark:hover:bg-violet-500/25',
+    solid: 'border-violet-200/80 bg-violet-100/75 text-violet-800 dark:border-transparent dark:bg-[hsl(262_26%_31%)] dark:text-[hsl(262_62%_80%)]',
+    subtle: 'border-violet-200/70 bg-violet-50/70 text-violet-800/80 dark:border-transparent dark:bg-[hsl(262_26%_27%)] dark:text-[hsl(262_62%_78%)]',
+    selected: 'border-violet-300 bg-violet-100/80 text-violet-800 dark:border-transparent dark:bg-[hsl(262_26%_36%)] dark:text-[hsl(262_62%_82%)]',
+    unselected: 'border-violet-200/80 text-violet-700/70 dark:border-[hsl(262_20%_40%)] dark:text-[hsl(262_62%_66%)] hover:bg-violet-50/60 dark:hover:bg-[hsl(262_24%_22%)]',
   },
   {
-    solid: 'border-cyan-200/80 dark:border-cyan-500/45 bg-cyan-100/75 dark:bg-cyan-500/25 text-cyan-800 dark:text-cyan-200',
-    subtle: 'border-cyan-200/70 dark:border-cyan-500/40 bg-cyan-50/70 dark:bg-cyan-500/20 text-cyan-800/80 dark:text-cyan-200/80',
-    selected: 'border-cyan-300 dark:border-cyan-500/55 bg-cyan-100/80 dark:bg-cyan-500/30 text-cyan-800 dark:text-cyan-200',
-    unselected: 'border-cyan-200/80 dark:border-cyan-500/45 text-cyan-700/70 dark:text-cyan-300/70 hover:bg-cyan-50/60 dark:hover:bg-cyan-500/25',
+    solid: 'border-cyan-200/80 bg-cyan-100/75 text-cyan-800 dark:border-transparent dark:bg-[hsl(189_26%_31%)] dark:text-[hsl(189_62%_80%)]',
+    subtle: 'border-cyan-200/70 bg-cyan-50/70 text-cyan-800/80 dark:border-transparent dark:bg-[hsl(189_26%_27%)] dark:text-[hsl(189_62%_78%)]',
+    selected: 'border-cyan-300 bg-cyan-100/80 text-cyan-800 dark:border-transparent dark:bg-[hsl(189_26%_36%)] dark:text-[hsl(189_62%_82%)]',
+    unselected: 'border-cyan-200/80 text-cyan-700/70 dark:border-[hsl(189_20%_40%)] dark:text-[hsl(189_62%_66%)] hover:bg-cyan-50/60 dark:hover:bg-[hsl(189_24%_22%)]',
   },
 ] as const
 
 export type TagColorVariantBlock = 'solid' | 'subtle' | 'selected' | 'unselected'
 export type TagColorPaletteEntryBlock = (typeof TAG_COLOR_PALETTE_BLOCK)[number]
 
-const TAG_COLOR_FALLBACK_BY_VARIANT: Record<TagColorVariantBlock, { bgAlpha: number; borderAlpha: number; textAlpha: number }> = {
-  solid: { bgAlpha: 0.2, borderAlpha: 0.46, textAlpha: 1 },
-  subtle: { bgAlpha: 0.1, borderAlpha: 0.34, textAlpha: 0.9 },
-  selected: { bgAlpha: 0.24, borderAlpha: 0.52, textAlpha: 1 },
-  unselected: { bgAlpha: 0.04, borderAlpha: 0.3, textAlpha: 0.82 },
+// Light-mode alphas only (dark uses opaque muted tones computed in
+// tagColorStyleBlock, matching CHIP_COLOR_CLASS_BLOCK's Notion/Linear look).
+const TAG_COLOR_FALLBACK_BY_VARIANT: Record<
+  TagColorVariantBlock,
+  { bgAlpha: number; borderAlpha: number; textAlpha: number }
+> = {
+  solid: { bgAlpha: 0.16, borderAlpha: 0.4, textAlpha: 1 },
+  subtle: { bgAlpha: 0.1, borderAlpha: 0.3, textAlpha: 0.9 },
+  selected: { bgAlpha: 0.22, borderAlpha: 0.5, textAlpha: 1 },
+  unselected: { bgAlpha: 0.04, borderAlpha: 0.28, textAlpha: 0.82 },
 }
 
 type RGB = { r: number; g: number; b: number }
@@ -158,12 +163,24 @@ function darkerTextColorBlock(rgb: RGB, alpha: number): string {
   return rgbaBlock(darker, alpha)
 }
 
-// Pins lightness so any user hex (even navy/black) stays visible on dark surfaces
-function toneAtLightnessBlock(rgb: RGB, lightness: number, satBoost = 1.08): RGB {
+// Muted "colored grey" tone: pins lightness and pulls saturation down into a
+// low band so even a punchy user hex lands as an opaque Notion/Linear-style
+// chip fill rather than a bright slab.
+function mutedToneBlock(rgb: RGB, lightness: number, satFloor = 16, satCap = 34): RGB {
   const hsl = rgbToHslBlock(rgb)
   return hslToRgbBlock({
     h: hsl.h,
-    s: Math.min(100, Math.max(45, hsl.s * satBoost)),
+    s: Math.min(satCap, Math.max(satFloor, hsl.s * 0.5)),
+    l: lightness,
+  })
+}
+
+// Bright same-hue accent for the label on top of the muted fill.
+function accentToneBlock(rgb: RGB, lightness: number): RGB {
+  const hsl = rgbToHslBlock(rgb)
+  return hslToRgbBlock({
+    h: hsl.h,
+    s: Math.min(88, Math.max(52, hsl.s)),
     l: lightness,
   })
 }
@@ -181,13 +198,21 @@ export function tagColorStyleBlock(
   if (!normalized) return undefined
   const rgb = parseHexRgbBlock(normalized)
   const tone = TAG_COLOR_FALLBACK_BY_VARIANT[variant]
-  const darkBase = toneAtLightnessBlock(rgb, 58)
-  const darkText = toneAtLightnessBlock(rgb, 80, 1.2)
+  // Dark chip = "opaque muted mid-dark": a fully-opaque, low-saturation, dark
+  // fill (a "colored grey") with a bright same-hue accent label and no border.
+  // `unselected` is a filter's OFF state, so it drops the fill and shows just a
+  // muted outline + dimmer text.
+  const isOff = variant === 'unselected'
+  const fillL = variant === 'selected' ? 36 : variant === 'subtle' ? 27 : 31
+  const darkFillRgb = mutedToneBlock(rgb, fillL)
+  const darkText = isOff ? accentToneBlock(rgb, 66) : accentToneBlock(rgb, 80)
+  const darkBg = isOff ? 'transparent' : rgbaBlock(darkFillRgb, 1)
+  const darkBorder = isOff ? rgbaBlock(mutedToneBlock(rgb, 46), 0.4) : 'transparent'
   // light-dark() resolves per-element from color-scheme, which uiThemeOrch
   // sets on the root — inline styles cannot use Tailwind dark: variants
   return {
-    backgroundColor: `light-dark(${rgbaBlock(rgb, tone.bgAlpha)}, ${rgbaBlock(darkBase, Math.min(0.34, tone.bgAlpha * 1.6))})`,
-    borderColor: `light-dark(${rgbaBlock(rgb, tone.borderAlpha)}, ${rgbaBlock(darkBase, Math.min(0.7, tone.borderAlpha * 1.25))})`,
+    backgroundColor: `light-dark(${rgbaBlock(rgb, tone.bgAlpha)}, ${darkBg})`,
+    borderColor: `light-dark(${rgbaBlock(rgb, tone.borderAlpha)}, ${darkBorder})`,
     color: `light-dark(${darkerTextColorBlock(rgb, tone.textAlpha)}, ${rgbaBlock(darkText, tone.textAlpha)})`,
   }
 }

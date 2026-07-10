@@ -6,6 +6,7 @@ import {
   buildPathSearchCandidatesBlock,
 } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
 import { copyTextToClipboard } from '@/components/lego_blocks/units/BacklogListDomainBlock'
+import { chipColorClassBlock } from '@/services/lego_blocks/units/chipColorBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import {
@@ -489,7 +490,7 @@ export default function PersonalToolsOrch() {
                           <td className={`px-3 py-3 align-top text-foreground ${rowBorderClassName}`}>
                             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                               {assigned && (
-                                <span className="rounded-full bg-emerald-100 dark:bg-emerald-500/30 px-2 py-1 font-medium text-emerald-700 dark:text-emerald-300">
+                                <span className={`rounded-full px-2 py-1 font-medium ${chipColorClassBlock('emerald')}`}>
                                   Assigned
                                 </span>
                               )}

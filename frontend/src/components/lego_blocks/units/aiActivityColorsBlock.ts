@@ -26,6 +26,10 @@ export interface ProjectColorEntry {
   chipBg: string
   /** Subtle muted dot (legend / inactive chip border). */
   dot: string
+  /** Text color for labels rendered ON TOP of `fill`. In dark mode `fill` is a
+   *  light pastel, so on-fill text must be dark to stay legible; the vivid
+   *  `stroke` (also light) would vanish against it. */
+  fillText: string
 }
 
 // In light mode the fill is a 45% alpha layer over cream — the compositor
@@ -42,11 +46,14 @@ function paletteEntry(r: number, g: number, b: number, isDark: boolean): Project
     const [h, s, l] = rgbToHsl(r, g, b)
     const [vr, vg, vb] = hslToRgb(h, s, Math.max(l, 0.66))
     const [dr, dg, db] = hslToRgb(h, s * 0.7, Math.max(l, 0.7))
+    // On-fill text: deep same-hue tone that reads against the light pastel fill.
+    const [tr, tg, tb] = hslToRgb(h, Math.min(1, s * 1.1), 0.16)
     return {
       stroke: `rgb(${vr},${vg},${vb})`,
       fill: `rgba(${dr},${dg},${db},0.95)`,
       chipBg: `rgba(${dr},${dg},${db},0.22)`,
       dot: `rgba(${vr},${vg},${vb},0.7)`,
+      fillText: `rgb(${tr},${tg},${tb})`,
     }
   }
   return {
@@ -54,6 +61,9 @@ function paletteEntry(r: number, g: number, b: number, isDark: boolean): Project
     fill: `rgba(${r},${g},${b},0.45)`,
     chipBg: `rgba(${r},${g},${b},0.15)`,
     dot: `rgba(${r},${g},${b},0.6)`,
+    // Light mode fill is a pale tint over cream, so the saturated stroke reads
+    // fine on top of it.
+    fillText: `rgb(${r},${g},${b})`,
   }
 }
 

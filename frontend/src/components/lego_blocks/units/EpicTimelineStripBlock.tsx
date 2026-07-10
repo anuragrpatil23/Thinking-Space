@@ -324,7 +324,7 @@ export default function EpicTimelineStripBlock({
                           {showInPillLabel && (
                             <span
                               className="block w-full truncate text-[10px] font-medium leading-none"
-                              style={{ color: color.stroke }}
+                              style={{ color: color.fillText }}
                             >
                               {prep.epic.title}
                             </span>
