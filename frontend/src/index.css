@@ -317,8 +317,7 @@
   /* Toolbar controls on the vibrant top chrome sit fully flush with the
    * material — no fill, no outline, Finder-style; the hover tint below is
    * the only interactive affordance. Scoped to the Electron surface —
-   * web/PWA keeps the solid capsules. The active tab pill intentionally
-   * keeps its opaque white styling as the one focal point on the chrome. */
+   * web/PWA keeps the solid capsules. */
   .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-top-chrome-capsule,
   .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-shell-field-surface {
     background: transparent;
@@ -336,6 +335,16 @@
   .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-sidebar-chrome-toggle {
     background: var(--ltm-shell-stage-bg);
     border-color: transparent;
+  }
+
+  /* The active tab pill matches the sidebar-chrome toggles (panel-surface
+   * grey) instead of opaque white — quieter on the vibrancy material, and
+   * theme-aware for free: --ltm-shell-stage-bg tracks --background in dark
+   * mode plus the kraft/ink overrides. Web/PWA keeps the white pill. */
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-item.ltm-tab-active {
+    background: var(--ltm-shell-stage-bg);
+    border-color: transparent;
+    color: hsl(var(--foreground));
   }
 
   [data-ltm-theme='kraft'] .ltm-app-shell {
@@ -970,6 +979,44 @@
   .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-nav-action:hover,
   .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-logo:hover {
     background: hsl(var(--accent) / 0.55);
+  }
+
+  /* Home (logo) active state — a nebula ring around the circular glyph
+   * instead of the heavy bg-foreground pill the line-icon rail items use:
+   * the brand mark is already high-contrast, so a thin multicolor ring
+   * marks "you are Home" and plays with the space theme. The ring is a
+   * conic gradient (violet / cyan / magenta, uneven stops on purpose —
+   * real nebulae aren't evenly banded) masked down to a 1px circle
+   * floating 2px off the 28px glyph; box-shadow can't gradient, hence the
+   * pseudo-element. No glow — the ring alone is the elegant little thing.
+   * Hues are intentionally hardcoded — the theme tokens are neutral, and
+   * the nebula is the accent. */
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-logo[aria-current='page'] {
+    position: relative;
+  }
+
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-logo[aria-current='page']::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 34px;
+    height: 34px;
+    transform: translate(-50%, -50%);
+    border-radius: 9999px;
+    pointer-events: none;
+    background: conic-gradient(
+      from 220deg,
+      hsl(262 80% 70% / 0.9) 0%,
+      hsl(199 90% 65% / 0.8) 18%,
+      hsl(220 85% 70% / 0.6) 34%,
+      hsl(262 80% 70% / 0.85) 52%,
+      hsl(320 75% 70% / 0.8) 68%,
+      hsl(285 80% 72% / 0.7) 84%,
+      hsl(262 80% 70% / 0.9) 100%
+    );
+    -webkit-mask: radial-gradient(closest-side, transparent 15.25px, #000 16px, #000 17px);
+    mask: radial-gradient(closest-side, transparent 15.25px, #000 16px, #000 17px);
   }
 
   .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-field-surface {

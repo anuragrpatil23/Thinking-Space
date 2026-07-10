@@ -2592,7 +2592,8 @@ function App() {
                         <Link
                           to="/"
                           aria-label="Home"
-                          className="ltm-shell-logo ltm-motion-fast mt-2 inline-flex h-10 w-full items-center justify-center rounded-lg"
+                          aria-current={location.pathname === '/' || location.pathname === '/home-canvas' ? 'page' : undefined}
+                          className="ltm-shell-logo ltm-motion-fast ltm-rail-item mt-2 inline-flex h-10 w-full items-center justify-center rounded-lg transition-colors"
                         >
                           <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
                             <AppBrandGlyph className="h-full w-full" />
