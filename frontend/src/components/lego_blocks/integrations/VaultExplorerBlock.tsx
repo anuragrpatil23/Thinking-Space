@@ -123,36 +123,53 @@ const FOLDER_MAP_FILENAME = '_map.md'
 
 const PINNED_MAP_TOOLTIP = 'Reading map for this folder — controls the display order below.'
 
+/** Frontmatter facts shown in a row's hover tooltip (structurally matches the
+ *  service's `FileTooltipMetaBlock`). */
+interface FileTooltipMeta {
+  summary?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+/** Compact date for the tooltip, e.g. "Jul 6, 2026". Returns null on unparseable. */
+function formatTooltipDate(value?: string): string | null {
+  if (!value) return null
+  const ms = Date.parse(value)
+  if (Number.isNaN(ms)) return null
+  return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
 const TOOLTIP_SHOW_DELAY_MS = 400
 const TOOLTIP_CURSOR_OFFSET = { x: 18, y: 32 }
 const TOOLTIP_VIEWPORT_PAD = 8
 
 /**
  * Hover tooltip for an explorer file row, anchored to the cursor (not the full-width
- * row, which would fling it far to the side). Combines two facts, both optional:
+ * row, which would fling it far to the side). Combines several facts, all optional:
  *  - `Summary:` — the file's own frontmatter `summary:` (what the page is about),
  *    resolved lazily on first hover.
  *  - `Why here:` — the `_map.md` line's ` — ` text (why the page sits at this
  *    position in the sequence), passed in synchronously via `mapDescription`.
- * A fixed `staticText` (the pinned `_map.md` row) overrides both. Renders nothing
- * when there's nothing to show, so files with neither get no tooltip.
+ *  - A tiny footer with the frontmatter created/updated dates for recency context.
+ * A fixed `staticText` (the pinned `_map.md` row) overrides all. Renders nothing
+ * when there's nothing to show, so files with none of these get no tooltip.
  */
 function ExplorerRowTooltip({
   filePath,
   staticText,
   mapDescription,
-  resolveSummary,
+  resolveMeta,
   children,
 }: {
   filePath: string
   staticText?: string
   mapDescription?: string
-  resolveSummary?: (path: string) => Promise<string | null>
+  resolveMeta?: (path: string) => Promise<FileTooltipMeta | null>
   children: ReactElement
 }) {
-  const [summary, setSummary] = useState<string | null>(null)
+  const [meta, setMeta] = useState<FileTooltipMeta | null>(null)
   // staticText rows and rows with no resolver never need a fetch.
-  const loadedRef = useRef<boolean>(staticText != null || !resolveSummary)
+  const loadedRef = useRef<boolean>(staticText != null || !resolveMeta)
   const [visible, setVisible] = useState(false)
   const [pos, setPos] = useState({ x: 0, y: 0 })
   const cursorRef = useRef({ x: 0, y: 0 })
@@ -167,12 +184,12 @@ function ExplorerRowTooltip({
   }
 
   const load = useCallback(() => {
-    if (loadedRef.current || !resolveSummary) return
+    if (loadedRef.current || !resolveMeta) return
     loadedRef.current = true
-    resolveSummary(filePath)
-      .then(setSummary)
-      .catch(() => setSummary(null))
-  }, [filePath, resolveSummary])
+    resolveMeta(filePath)
+      .then(setMeta)
+      .catch(() => setMeta(null))
+  }, [filePath, resolveMeta])
 
   const handleEnter = (event: React.MouseEvent) => {
     cursorRef.current = { x: event.clientX, y: event.clientY }
@@ -208,9 +225,15 @@ function ExplorerRowTooltip({
       tipRef.current.style.left = `${x}px`
       tipRef.current.style.top = `${y}px`
     }
-  }, [visible, pos, summary, mapDescription, staticText])
+  }, [visible, pos, meta, mapDescription, staticText])
 
-  const hasContent = staticText != null || !!summary || !!mapDescription
+  const summary = meta?.summary
+  const createdLabel = formatTooltipDate(meta?.createdAt)
+  const updatedLabel = formatTooltipDate(meta?.updatedAt)
+  // Only surface "Updated" when it's a real, distinct date from creation.
+  const showUpdated = !!updatedLabel && updatedLabel !== createdLabel
+  const hasDates = !!createdLabel || showUpdated
+  const hasContent = staticText != null || !!summary || !!mapDescription || hasDates
 
   const trigger = isValidElement(children)
     ? cloneElement(children as ReactElement<Record<string, unknown>>, {
@@ -255,6 +278,12 @@ function ExplorerRowTooltip({
                         Why here
                       </span>
                       <div className="mt-0.5 text-zinc-300">{mapDescription}</div>
+                    </div>
+                  ) : null}
+                  {hasDates ? (
+                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 pt-0.5 text-[10px] text-zinc-500">
+                      {createdLabel ? <span>Created {createdLabel}</span> : null}
+                      {showUpdated ? <span>Updated {updatedLabel}</span> : null}
                     </div>
                   ) : null}
                 </>
@@ -303,11 +332,12 @@ interface VaultExplorerBlockProps {
   onOpenInFinder?: (path: string) => ExplorerActionResult
   loadFileTags?: (path: string) => Promise<string[]>
   /**
-   * Resolve a file's frontmatter `summary:` for its hover tooltip. Called lazily on
-   * hover (per the map-files spec, tooltips show the page's own summary, not the map
-   * line). Return null → no tooltip. When omitted, file rows have no summary tooltip.
+   * Resolve a file's frontmatter facts (summary + created/updated) for its hover
+   * tooltip. Called lazily on hover (per the map-files spec, tooltips show the page's
+   * own summary, not the map line). Return null → no tooltip. When omitted, file rows
+   * have no frontmatter tooltip.
    */
-  loadFileSummary?: (path: string) => Promise<string | null>
+  loadFileMeta?: (path: string) => Promise<FileTooltipMeta | null>
   selectedPath?: string | null
   onSelectFile?: (path: string) => void
   onDropNode?: (nodeUuid: string, targetPath: string) => Promise<void>
@@ -422,7 +452,7 @@ export default function VaultExplorerBlock({
   onDeleteFolder,
   onOpenInFinder,
   loadFileTags,
-  loadFileSummary,
+  loadFileMeta,
   selectedPath = null,
   onSelectFile,
   onDropNode,
@@ -438,23 +468,22 @@ export default function VaultExplorerBlock({
 }: VaultExplorerBlockProps) {
   const storageKey = `${EXPLORER_PERSISTENCE_PREFIX}:${persistenceKey}`
 
-  // Per-session cache of file → frontmatter summary for hover tooltips. Populated
-  // lazily on first hover; null means "loaded, no summary" so we don't refetch.
-  const summaryCacheRef = useRef<Map<string, string | null>>(new Map())
-  const resolveFileSummary = useCallback(async (path: string): Promise<string | null> => {
-    if (!loadFileSummary) return null
-    const cache = summaryCacheRef.current
+  // Per-session cache of file → frontmatter tooltip facts. Populated lazily on first
+  // hover; null means "loaded, nothing to show" so we don't refetch.
+  const tooltipMetaCacheRef = useRef<Map<string, FileTooltipMeta | null>>(new Map())
+  const resolveFileMeta = useCallback(async (path: string): Promise<FileTooltipMeta | null> => {
+    if (!loadFileMeta) return null
+    const cache = tooltipMetaCacheRef.current
     if (cache.has(path)) return cache.get(path) ?? null
-    let value: string | null = null
+    let value: FileTooltipMeta | null = null
     try {
-      const raw = await loadFileSummary(path)
-      value = raw && raw.trim() ? raw.trim() : null
+      value = await loadFileMeta(path)
     } catch {
       value = null
     }
     cache.set(path, value)
     return value
-  }, [loadFileSummary])
+  }, [loadFileMeta])
   const initialPersistedState = useMemo(
     () => readPersistedExplorerState(storageKey),
     [storageKey],
@@ -1384,7 +1413,7 @@ export default function VaultExplorerBlock({
               filePath={filePath}
               staticText={row.pinned ? PINNED_MAP_TOOLTIP : undefined}
               mapDescription={row.pinned ? undefined : (row.description ?? node.map?.descriptions[fileName])}
-              resolveSummary={row.pinned ? undefined : resolveFileSummary}
+              resolveMeta={row.pinned ? undefined : resolveFileMeta}
             >
             <button
               type="button"
@@ -1477,7 +1506,7 @@ export default function VaultExplorerBlock({
       pathMatchesSearch,
       pathMatchesQuery,
       pendingRename,
-      resolveFileSummary,
+      resolveFileMeta,
       selectedFilePath,
       selectedFolderPath,
       toggleFolder,

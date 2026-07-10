@@ -1,5 +1,31 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { pruneRevisionHistoryBlock } from '@/services/lego_blocks/integrations/revisionRetentionBlock'
+import { splitFrontmatterDocumentBlock } from '@/services/lego_blocks/units/linkIndexBlock'
+
+/**
+ * Stamp `updated_at` into a note's YAML frontmatter so tooltips and downstream
+ * consumers reflect the real last-edit time. This is the shared chokepoint every
+ * in-app editor save flows through, so it's where "updated_at is automatic" lives.
+ *
+ * Only touches files that already have a frontmatter block — loose markdown is
+ * written untouched (its "updated" falls back to filesystem mtime in the tooltip).
+ * Surgical text edit: replaces an existing `updated_at:` line, else inserts it after
+ * `created_at:`, else before the closing fence — preserving the user's frontmatter
+ * formatting and key order rather than round-tripping through a YAML serializer.
+ */
+function stampUpdatedAtBlock(content: string, nowIso: string): string {
+  const { frontmatter, body } = splitFrontmatterDocumentBlock(content)
+  if (!frontmatter) return content
+  const line = `updated_at: "${nowIso}"`
+  if (/^updated_at:.*$/m.test(frontmatter)) {
+    return frontmatter.replace(/^updated_at:.*$/m, line) + body
+  }
+  if (/^created_at:.*$/m.test(frontmatter)) {
+    return frontmatter.replace(/^(created_at:.*)$/m, `$1\n${line}`) + body
+  }
+  const withLine = frontmatter.replace(/(\r?\n)(---\r?\n?)$/, `$1${line}$1$2`)
+  return withLine === frontmatter ? content : withLine + body
+}
 
 function hashContent(content: string): string {
   // FNV-1a 32-bit hash is fast and stable enough for local conflict detection.
@@ -205,8 +231,14 @@ export async function saveMarkdownDocument(params: {
     )
   }
 
+  // Auto-stamp updated_at, but only on a real content change (not open-and-close
+  // no-op saves) so the timestamp tracks edits, not opens.
+  const finalContent = currentContent !== params.content
+    ? stampUpdatedAtBlock(params.content, new Date().toISOString())
+    : params.content
+
   let revisionPath: string | null = null
-  if (currentContent !== params.content) {
+  if (currentContent !== finalContent) {
     revisionPath = buildRevisionPath(params.path)
     const revisionDir = revisionPath.includes('/')
       ? revisionPath.slice(0, revisionPath.lastIndexOf('/'))
@@ -227,17 +259,17 @@ export async function saveMarkdownDocument(params: {
     await fs.write(revisionPath, currentContent)
   }
 
-  await fs.write(params.path, params.content)
+  await fs.write(params.path, finalContent)
   if (revisionPath) {
     await pruneRevisionHistoryBlock(revisionPath).catch((error) => {
       console.warn('[markdownDocumentsOrch] Failed to prune revision history:', error)
     })
   }
   const savedStat = await fs.stat(params.path)
-  const savedHash = hashContent(params.content)
+  const savedHash = hashContent(finalContent)
   writeCacheEntry(params.path, {
     path: params.path,
-    content: params.content,
+    content: finalContent,
     mtime: savedStat.mtime,
     ctime: savedStat.ctime ?? savedStat.mtime,
     size: savedStat.size,

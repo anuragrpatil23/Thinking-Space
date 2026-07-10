@@ -19,7 +19,7 @@ import {
   isLikelyYamlPathScalarBlock,
   findYamlCommentStartIndexBlock,
 } from '@/services/lego_blocks/units/linkIndexBlock'
-import { parseNote } from '@/services/lego_blocks/units/yamlNoteBlock'
+import { resolveFrontmatterDatesBlock } from '@/services/lego_blocks/units/frontmatterDatesBlock'
 import {
   getBacklinksForPathPrefix,
   getAllFilePaths,
@@ -807,28 +807,68 @@ export async function listFolderEntries(path: string): Promise<FolderEntries> {
   }
 }
 
+/** Frontmatter facts surfaced in the explorer's hover tooltip. */
+export interface FileTooltipMetaBlock {
+  /** Frontmatter `summary:` — what the page is about. */
+  summary?: string
+  /** Frontmatter `created_at:` (ISO string as written). */
+  createdAt?: string
+  /** Frontmatter `updated_at:` (ISO string as written). */
+  updatedAt?: string
+}
+
 /**
- * Read a file's frontmatter `summary:` field for explorer hover tooltips.
+ * Read a file's frontmatter facts for the explorer hover tooltip: `summary:` plus
+ * `created_at:` / `updated_at:` for recency context.
  *
  * Per the map-files spec (revised 2026-07-10), the tooltip shows what a page is
  * *about* — a property of the page itself — not the `_map.md` line, which says why
  * the page sits at its position. Reading from frontmatter also gives tooltips to
  * unmapped files and files in folders without any `_map.md`.
  *
- * Returns the trimmed summary, or null when the file has none, isn't markdown, or
- * can't be read. Callers show no tooltip on null. Intentionally lazy: read one file
- * on hover rather than every file on folder expand.
+ * Returns null when the file isn't markdown, can't be read, or carries none of these
+ * fields — callers show no tooltip then. Intentionally lazy: read one file on hover
+ * rather than every file on folder expand.
  */
-export async function readFileFrontmatterSummary(path: string): Promise<string | null> {
+// Read a top-level scalar (e.g. `summary`) from raw frontmatter text. Handles
+// quoted and unquoted values; skips YAML block scalars (`|`/`>`).
+function readFrontmatterScalarBlock(frontmatter: string, key: string): string | undefined {
+  const m = new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, 'm').exec(frontmatter)
+  if (!m) return undefined
+  const raw = m[1].trim()
+  if (/^[|>][-+]?$/.test(raw)) return undefined
+  const unquoted = raw.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1').trim()
+  return unquoted || undefined
+}
+
+export async function readFileTooltipMeta(path: string): Promise<FileTooltipMetaBlock | null> {
   if (!/\.md$/i.test(path)) return null
   const fs = getVaultFS()
   try {
     const content = await fs.read(path)
-    const note = parseNote(content)
-    const summary = (note?.frontmatter as { summary?: unknown } | undefined)?.summary
-    if (typeof summary !== 'string') return null
-    const trimmed = summary.trim()
-    return trimmed ? trimmed : null
+    const { frontmatter } = splitFrontmatterDocumentBlock(content)
+    const summary = frontmatter ? readFrontmatterScalarBlock(frontmatter, 'summary') : undefined
+
+    // Prefer frontmatter created_at/updated_at; fall back to filesystem
+    // ctime (birthtime on desktop) / mtime so every file gets dates, even
+    // loose markdown authored outside the app.
+    let ctimeSeconds: number | null = null
+    let mtimeSeconds: number | null = null
+    try {
+      const stat = await fs.stat(path)
+      ctimeSeconds = stat.ctime ?? null
+      mtimeSeconds = stat.mtime ?? null
+    } catch {
+      // stat is best-effort; frontmatter dates alone are still useful.
+    }
+
+    const { created, updated } = resolveFrontmatterDatesBlock(content, { ctimeSeconds, mtimeSeconds })
+    const meta: FileTooltipMetaBlock = {
+      summary,
+      createdAt: created ? created.toISOString() : undefined,
+      updatedAt: updated ? updated.toISOString() : undefined,
+    }
+    return meta.summary || meta.createdAt || meta.updatedAt ? meta : null
   } catch {
     return null
   }

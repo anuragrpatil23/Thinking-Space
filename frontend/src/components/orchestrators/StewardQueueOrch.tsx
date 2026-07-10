@@ -5,7 +5,7 @@ import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplo
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 import type { AiTelemetryEvent } from '@/services/orchestrators/aiTelemetryOrch'
-import { listFolderEntries, readFileFrontmatterSummary } from '@/services/orchestrators/fileSystemOrch'
+import { listFolderEntries, readFileTooltipMeta } from '@/services/orchestrators/fileSystemOrch'
 import { getOrganizerNodeByPathOrch } from '@/services/orchestrators/organizerNodeLookupOrch'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import StewardProposalQueueBlock from '@/components/lego_blocks/integrations/StewardProposalQueueBlock'
@@ -267,7 +267,7 @@ export default function StewardQueueOrch() {
           <CardContent className="min-h-0 flex-1 p-0">
             <VaultExplorerBlock
               loadEntries={listFolderEntries}
-              loadFileSummary={readFileFrontmatterSummary}
+              loadFileMeta={readFileTooltipMeta}
               onOpenFile={() => {}}
               onSelectFile={setSelectedFilePath}
               title="Vault Files"
