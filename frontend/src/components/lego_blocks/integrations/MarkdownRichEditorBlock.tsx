@@ -482,8 +482,8 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   onRelatedThoughtOpenPathInNewTab,
 }, ref) {
   const { layout } = useUILayoutBlock()
-  const { colorModeId } = useUIThemeBlock()
-  const editorCanvasClassName = colorModeId === 'dark' ? 'bg-background' : 'bg-white'
+  const { resolvedColorMode } = useUIThemeBlock()
+  const editorCanvasClassName = resolvedColorMode === 'dark' ? 'bg-background' : 'bg-white'
   const isIphoneRuntime = useMemo(() => {
     const isIosPhoneSurface = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
     if (isIosPhoneSurface) return true
@@ -1475,7 +1475,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         <CodeMirror
           value={value}
           height="100%"
-          theme={colorModeId === 'dark' ? 'dark' : 'light'}
+          theme={resolvedColorMode === 'dark' ? 'dark' : 'light'}
           className={cn('h-full', editorCanvasClassName)}
           basicSetup={{
             lineNumbers: !isIphoneRuntime,

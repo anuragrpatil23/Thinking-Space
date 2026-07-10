@@ -1,5 +1,9 @@
 export type UIThemeId = 'classic' | 'kraft' | 'ink'
-export type UIColorModeId = 'light' | 'dark'
+/** Stored preference. `auto` is time-based (not OS-based): it renders like
+ * light by day and flips the whole app to dark at night. */
+export type UIColorModeId = 'light' | 'dark' | 'auto'
+/** Concrete scheme the app actually applies once `auto` is resolved. */
+export type UIResolvedColorMode = 'light' | 'dark'
 
 export interface UIThemeOptionBlock {
   id: UIThemeId
@@ -45,6 +49,11 @@ export const UI_COLOR_MODE_OPTIONS_BLOCK: readonly UIColorModeOptionBlock[] = Ob
     label: 'Dark',
     description: 'Low-light interface across the full app.',
   },
+  {
+    id: 'auto',
+    label: 'Auto',
+    description: 'Light by day; the whole app follows the canvas into dark at night.',
+  },
 ])
 
 const VALID_THEME_IDS = new Set<UIThemeId>(UI_THEME_OPTIONS_BLOCK.map(option => option.id))
@@ -66,4 +75,17 @@ export function isUIColorModeIdBlock(value: unknown): value is UIColorModeId {
 export function normalizeUIColorModeIdBlock(value: unknown): UIColorModeId {
   if (isUIColorModeIdBlock(value)) return value
   return DEFAULT_UI_COLOR_MODE_ID_BLOCK
+}
+
+/**
+ * Resolve a stored color-mode preference to the concrete scheme to apply.
+ * `auto` becomes dark only when the caller reports a dark time phase (see
+ * isDarkPhaseBlock in timeOfDayBlock); `light`/`dark` are honored as-is.
+ */
+export function resolveColorModeBlock(
+  preference: UIColorModeId,
+  isDarkPhase: boolean,
+): UIResolvedColorMode {
+  if (preference === 'auto') return isDarkPhase ? 'dark' : 'light'
+  return preference
 }

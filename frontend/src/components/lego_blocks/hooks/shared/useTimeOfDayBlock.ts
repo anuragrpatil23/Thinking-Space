@@ -1,22 +1,21 @@
 import { useEffect, useState } from 'react'
+import {
+  computeTimePhaseBlock,
+  isDarkPhaseBlock,
+  type CanvasTimePhase,
+} from '@/services/lego_blocks/units/timeOfDayBlock'
 
-export type CanvasTimePhase = 'day' | 'golden' | 'night'
-
-function computePhase(now: Date = new Date()): CanvasTimePhase {
-  const h = now.getHours()
-  if (h >= 5 && h < 17) return 'day'
-  if (h >= 17 && h < 20) return 'golden'
-  return 'night'
-}
+export type { CanvasTimePhase }
+export { isDarkPhaseBlock }
 
 const RECHECK_INTERVAL_MS = 60_000
 
 export function useTimeOfDayBlock(): CanvasTimePhase {
-  const [phase, setPhase] = useState<CanvasTimePhase>(() => computePhase())
+  const [phase, setPhase] = useState<CanvasTimePhase>(() => computeTimePhaseBlock())
 
   useEffect(() => {
     const id = setInterval(() => {
-      const next = computePhase()
+      const next = computeTimePhaseBlock()
       setPhase(prev => (prev === next ? prev : next))
     }, RECHECK_INTERVAL_MS)
     return () => clearInterval(id)

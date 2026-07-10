@@ -13,7 +13,7 @@ export default function Home() {
   const { profile } = useUserProfileBlock()
   const activity = useDashboardActivityBlock('30d')
   const theme = useCanvasThemeBlock()
-  const { colorModeId } = useUIThemeBlock()
+  const { resolvedColorMode } = useUIThemeBlock()
 
   // On Capacitor (iPhone) always honor the time-of-day backdrop so Home picks
   // up the same day/night hues the canvas uses. Elsewhere the dashboard cards
@@ -22,8 +22,8 @@ export default function Home() {
   // becomes unreadable. Fall back to a soft cream there.
   const backdropMatchesUI =
     isCapacitorNative() ||
-    (colorModeId === 'dark' && theme.isDark) ||
-    (colorModeId === 'light' && !theme.isDark)
+    (resolvedColorMode === 'dark' && theme.isDark) ||
+    (resolvedColorMode === 'light' && !theme.isDark)
   const bg = backdropMatchesUI ? theme.outerBg : '#f6efe0'
   const showStars = backdropMatchesUI && theme.showStars
   const showNebula = backdropMatchesUI && theme.showNebula
@@ -33,7 +33,7 @@ export default function Home() {
   // on Capacitor where we force the time-of-day bg), scope a `dark` class to
   // the Home subtree so card text + muted colors flip to readable dark-mode
   // values without affecting the rest of the app.
-  const scopeDark = theme.isDark && colorModeId !== 'dark'
+  const scopeDark = theme.isDark && resolvedColorMode !== 'dark'
 
   return (
     <div

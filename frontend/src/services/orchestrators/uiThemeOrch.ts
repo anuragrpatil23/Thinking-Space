@@ -3,9 +3,12 @@ import {
   DEFAULT_UI_THEME_ID_BLOCK,
   normalizeUIColorModeIdBlock,
   normalizeUIThemeIdBlock,
+  resolveColorModeBlock,
   type UIColorModeId,
+  type UIResolvedColorMode,
   type UIThemeId,
 } from '@/services/lego_blocks/units/uiThemeBlock'
+import { computeTimePhaseBlock, isDarkPhaseBlock } from '@/services/lego_blocks/units/timeOfDayBlock'
 import { STORAGE_KEYS, getStorageItem, setStorageItem } from './storageOrch'
 
 interface ApplyUIThemeOptions {
@@ -36,8 +39,13 @@ export function setStoredUIColorModeOrch(colorModeId: UIColorModeId): void {
 
 const DARK_THEMES: ReadonlySet<UIThemeId> = new Set<UIThemeId>(['ink'])
 
-function isDarkScheme(theme: UIThemeId, colorMode: UIColorModeId): boolean {
+function isDarkScheme(theme: UIThemeId, colorMode: UIResolvedColorMode): boolean {
   return colorMode === 'dark' || DARK_THEMES.has(theme)
+}
+
+/** Resolve a stored preference against the current wall-clock phase. */
+function resolveStoredColorMode(colorMode: UIColorModeId): UIResolvedColorMode {
+  return resolveColorModeBlock(colorMode, isDarkPhaseBlock(computeTimePhaseBlock()))
 }
 
 // The Electron window's vibrancy material follows nativeTheme, not CSS, so
@@ -77,26 +85,35 @@ export function applyUIThemeOrch(themeId: UIThemeId, options: ApplyUIThemeOption
     documentRef.body.setAttribute('data-ltm-theme', normalizedTheme)
   }
 
-  const currentColorMode = normalizeUIColorModeIdBlock(
-    documentRef.documentElement.getAttribute('data-ltm-color-mode'),
+  // The attribute always holds an already-resolved scheme (light/dark), so
+  // resolving here is a no-op for those and only guards a stray `auto`.
+  const currentColorMode = resolveStoredColorMode(
+    normalizeUIColorModeIdBlock(documentRef.documentElement.getAttribute('data-ltm-color-mode')),
   )
   applySchemeClasses(documentRef, isDarkScheme(normalizedTheme, currentColorMode))
 }
 
-export function applyUIColorModeOrch(colorModeId: UIColorModeId, options: ApplyUIThemeOptions = {}): void {
+/**
+ * Apply an already-resolved scheme. Callers own `auto` resolution (via the
+ * time phase) so this stays a pure DOM writer; the persisted preference —
+ * which may be `auto` — is written separately by setStoredUIColorModeOrch.
+ */
+export function applyResolvedColorModeOrch(
+  resolvedColorMode: UIResolvedColorMode,
+  options: ApplyUIThemeOptions = {},
+): void {
   const documentRef = resolveDocument(options.documentRef)
   if (!documentRef) return
 
-  const normalizedColorMode = normalizeUIColorModeIdBlock(colorModeId)
   const root = documentRef.documentElement
 
-  root.setAttribute('data-ltm-color-mode', normalizedColorMode)
+  root.setAttribute('data-ltm-color-mode', resolvedColorMode)
   if (documentRef.body) {
-    documentRef.body.setAttribute('data-ltm-color-mode', normalizedColorMode)
+    documentRef.body.setAttribute('data-ltm-color-mode', resolvedColorMode)
   }
 
   const currentTheme = normalizeUIThemeIdBlock(root.getAttribute('data-ltm-theme'))
-  applySchemeClasses(documentRef, isDarkScheme(currentTheme, normalizedColorMode))
+  applySchemeClasses(documentRef, isDarkScheme(currentTheme, resolvedColorMode))
 }
 
 export function initializeUIThemeOrch(options: ApplyUIThemeOptions = {}): UIThemeId {
@@ -107,10 +124,11 @@ export function initializeUIThemeOrch(options: ApplyUIThemeOptions = {}): UIThem
 
 export function initializeUIColorModeOrch(options: ApplyUIThemeOptions = {}): UIColorModeId {
   const storedColorMode = getStoredUIColorModeOrch() || DEFAULT_UI_COLOR_MODE_ID_BLOCK
-  applyUIColorModeOrch(storedColorMode, options)
+  applyResolvedColorModeOrch(resolveStoredColorMode(storedColorMode), options)
   return storedColorMode
 }
 
 export type { UIThemeId } from '@/services/lego_blocks/units/uiThemeBlock'
-export type { UIColorModeId } from '@/services/lego_blocks/units/uiThemeBlock'
+export type { UIColorModeId, UIResolvedColorMode } from '@/services/lego_blocks/units/uiThemeBlock'
+export { resolveColorModeBlock } from '@/services/lego_blocks/units/uiThemeBlock'
 export { UI_COLOR_MODE_OPTIONS_BLOCK, UI_THEME_OPTIONS_BLOCK } from '@/services/lego_blocks/units/uiThemeBlock'

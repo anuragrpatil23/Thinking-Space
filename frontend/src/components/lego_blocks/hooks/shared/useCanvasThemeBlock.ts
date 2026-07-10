@@ -67,9 +67,9 @@ const NIGHT_NEBULA = [
   'radial-gradient(800px 500px at 50% 100%, rgba(56,189,248,0.13), transparent 55%)',
 ].join(', ')
 
-function nebulaForPhase(phase: 'day' | 'golden' | 'night'): string {
+function nebulaForPhase(phase: 'day' | 'golden' | 'night' | 'late'): string {
   if (phase === 'golden') return GOLDEN_NEBULA
-  if (phase === 'night') return NIGHT_NEBULA
+  if (phase === 'night' || phase === 'late') return NIGHT_NEBULA
   return DAY_NEBULA
 }
 
@@ -209,12 +209,12 @@ interface CanvasThemeOptions {
 
 export function useCanvasThemeBlock(options: CanvasThemeOptions = {}): CanvasThemeTokens {
   const { followPhase = true } = options
-  const { colorModeId } = useUIThemeBlock()
+  const { resolvedColorMode } = useUIThemeBlock()
   const phase = useTimeOfDayBlock()
   const nebulaGradient = nebulaForPhase(phase)
-  if (colorModeId === 'dark') return { ...NIGHT, nebulaGradient }
+  if (resolvedColorMode === 'dark') return { ...NIGHT, nebulaGradient }
   if (!followPhase) return { ...DAY, nebulaGradient }
   if (phase === 'golden') return { ...GOLDEN, nebulaGradient }
-  if (phase === 'night') return { ...NIGHT, nebulaGradient }
+  if (phase === 'night' || phase === 'late') return { ...NIGHT, nebulaGradient }
   return { ...DAY, nebulaGradient }
 }

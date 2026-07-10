@@ -5,18 +5,25 @@ import {
   initializeUIColorModeOrch,
   setStoredUIColorModeOrch,
   initializeUIThemeOrch,
-  applyUIColorModeOrch,
+  applyResolvedColorModeOrch,
   setStoredUIThemeOrch,
   applyUIThemeOrch,
+  resolveColorModeBlock,
   type UIColorModeId,
+  type UIResolvedColorMode,
   type UIThemeId,
 } from '@/services/orchestrators/uiThemeOrch'
+import { isDarkPhaseBlock, useTimeOfDayBlock } from '@/components/lego_blocks/hooks/shared/useTimeOfDayBlock'
 
 interface UIThemeContextValue {
   themeId: UIThemeId
   setThemeId: (themeId: UIThemeId) => void
+  /** The user's stored preference — light, dark, or auto. Drives the picker. */
   colorModeId: UIColorModeId
   setColorModeId: (colorModeId: UIColorModeId) => void
+  /** The concrete scheme in effect right now (auto resolved by time of day).
+   * Everything that asks "is the app currently dark?" should read this. */
+  resolvedColorMode: UIResolvedColorMode
 }
 
 const defaultTheme = initializeUIThemeOrch()
@@ -27,11 +34,17 @@ const UIThemeContext = createContext<UIThemeContextValue>({
   setThemeId: () => {},
   colorModeId: defaultColorMode,
   setColorModeId: () => {},
+  resolvedColorMode: resolveColorModeBlock(defaultColorMode, false),
 })
 
 export function UIThemeProviderBlock({ children }: { children: ReactNode }) {
   const [themeId, setThemeIdState] = useState<UIThemeId>(defaultTheme)
   const [colorModeId, setColorModeIdState] = useState<UIColorModeId>(defaultColorMode)
+  const phase = useTimeOfDayBlock()
+
+  // `auto` tracks the wall clock, so the resolved scheme recomputes whenever
+  // the phase crosses the night boundary — flipping the whole app to dark.
+  const resolvedColorMode = resolveColorModeBlock(colorModeId, isDarkPhaseBlock(phase))
 
   const setThemeId = useCallback((nextTheme: UIThemeId) => {
     setThemeIdState(nextTheme)
@@ -46,10 +59,15 @@ export function UIThemeProviderBlock({ children }: { children: ReactNode }) {
     applyUIThemeOrch(themeId)
   }, [themeId])
 
+  // Persist the raw preference; apply the resolved scheme. Split so an `auto`
+  // day→night flip re-applies without rewriting storage.
   useEffect(() => {
     setStoredUIColorModeOrch(colorModeId)
-    applyUIColorModeOrch(colorModeId)
   }, [colorModeId])
+
+  useEffect(() => {
+    applyResolvedColorModeOrch(resolvedColorMode)
+  }, [resolvedColorMode])
 
   const value = useMemo(
     () => ({
@@ -57,8 +75,9 @@ export function UIThemeProviderBlock({ children }: { children: ReactNode }) {
       setThemeId,
       colorModeId,
       setColorModeId,
+      resolvedColorMode,
     }),
-    [colorModeId, setColorModeId, themeId, setThemeId],
+    [colorModeId, setColorModeId, themeId, setThemeId, resolvedColorMode],
   )
 
   return (
@@ -74,4 +93,4 @@ export function useUIThemeBlock(): UIThemeContextValue {
 
 export { UI_COLOR_MODE_OPTIONS_BLOCK }
 export { UI_THEME_OPTIONS_BLOCK }
-export type { UIColorModeId, UIThemeId }
+export type { UIColorModeId, UIResolvedColorMode, UIThemeId }
