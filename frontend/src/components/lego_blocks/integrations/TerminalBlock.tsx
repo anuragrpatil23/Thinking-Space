@@ -169,6 +169,31 @@ export default function TerminalBlock({ cwd, className = '', onExit, envPatch, i
       })
     }
 
+    // Drop a file/folder (from the vault explorer or another app) to type its
+    // path into the shell, like dragging from Finder into Terminal.
+    const shellQuotePath = (value: string) =>
+      /[^A-Za-z0-9_\-./~]/.test(value) ? `'${value.replace(/'/g, `'\\''`)}'` : value
+    const handleDragOver = (event: DragEvent) => {
+      if (!event.dataTransfer) return
+      const types = Array.from(event.dataTransfer.types)
+      if (!types.includes('text/plain') && !types.includes('Files')) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'copy'
+    }
+    const handleDrop = (event: DragEvent) => {
+      if (!event.dataTransfer || !terminalId) return
+      event.preventDefault()
+      const lines = event.dataTransfer.getData('text/plain')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
+      if (lines.length === 0) return
+      term.focus()
+      void api.terminalInput!(terminalId, `${lines.map(shellQuotePath).join(' ')} `)
+    }
+    container.addEventListener('dragover', handleDragOver)
+    container.addEventListener('drop', handleDrop)
+
     // Resize observer: refit when container dimensions change
     const resizeObserver = new ResizeObserver(() => {
       if (!terminalId) {
@@ -187,6 +212,8 @@ export default function TerminalBlock({ cwd, className = '', onExit, envPatch, i
 
     return () => {
       destroyed = true
+      container.removeEventListener('dragover', handleDragOver)
+      container.removeEventListener('drop', handleDrop)
       resizeObserver.disconnect()
       inputDisposable?.dispose()
       resizeDisposable?.dispose()

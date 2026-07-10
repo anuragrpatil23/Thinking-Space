@@ -1,4 +1,4 @@
-import { type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ComponentType, type DragEvent as ReactDragEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import excalidrawLogo from '@/assets/excalidraw-logo.svg'
 
 function ExcalidrawIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -71,6 +71,22 @@ import {
 } from '@/components/lego_blocks/units/ui/select'
 import { writeSortOrdersBlock } from '@/services/lego_blocks/units/notebookOrderBlock'
 import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebookSidecarBlock'
+import { getAbsolutePathForClipboardOrch } from '@/services/orchestrators/fileSystemOrch'
+
+// Internal drop targets read the explicit application/x-ltm-path types; text/plain
+// and text/uri-list carry the absolute path so dragging out of the app (Terminal,
+// editors, chat inputs) drops the full filesystem path, like dragging from Finder.
+function setPathDragDataBlock(event: ReactDragEvent, path: string, kind: 'file' | 'folder'): void {
+  event.dataTransfer.setData('application/x-ltm-path', `ltm-path:${path}`)
+  event.dataTransfer.setData('application/x-ltm-path-kind', kind)
+  event.dataTransfer.setData('text/ltm-file-path', path)
+  const absolute = getAbsolutePathForClipboardOrch(path)
+  event.dataTransfer.setData('text/plain', absolute ?? path)
+  if (absolute?.startsWith('/')) {
+    event.dataTransfer.setData('text/uri-list', `file://${encodeURI(absolute)}`)
+  }
+  event.dataTransfer.effectAllowed = 'copyMove'
+}
 
 interface FolderMapEntryInfo {
   file: string
@@ -997,11 +1013,7 @@ export default function VaultExplorerBlock({
               draggable={canDragFolders}
               onDragStart={event => {
                 if (!canDragFolders) return
-                event.dataTransfer.setData('application/x-ltm-path', `ltm-path:${folderPath}`)
-                event.dataTransfer.setData('application/x-ltm-path-kind', 'folder')
-                event.dataTransfer.setData('text/ltm-file-path', folderPath)
-                event.dataTransfer.setData('text/plain', folderPath)
-                event.dataTransfer.effectAllowed = 'move'
+                setPathDragDataBlock(event, folderPath, 'folder')
               }}
               onDragOver={canDropOnRows ? (event => {
                 void handleDragOverTarget(event, folderPath)
@@ -1207,11 +1219,7 @@ export default function VaultExplorerBlock({
               draggable={canDragFiles}
               onDragStart={event => {
                 if (!canDragFiles) return
-                event.dataTransfer.setData('application/x-ltm-path', `ltm-path:${filePath}`)
-                event.dataTransfer.setData('application/x-ltm-path-kind', 'file')
-                event.dataTransfer.setData('text/ltm-file-path', filePath)
-                event.dataTransfer.setData('text/plain', filePath)
-                event.dataTransfer.effectAllowed = 'move'
+                setPathDragDataBlock(event, filePath, 'file')
               }}
               onDragOver={canDropOnRows ? (event => {
                 void handleDragOverTarget(event, filePath)
