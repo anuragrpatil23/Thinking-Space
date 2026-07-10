@@ -347,6 +347,28 @@
     color: hsl(var(--foreground));
   }
 
+  /* Dark mode elevation. The base --ltm-shell-surface-shadow is a black drop
+   * shadow tuned for light chrome — too faint dark-on-dark, so the board
+   * loses the lift it has in light mode. Same shadow-only language, just
+   * deeper and higher-alpha so it still reads against the dark vibrancy.
+   * No light rim: a 1px white ring reads as a hard border, not elevation. */
+  .dark .ltm-app-shell[data-ltm-surface='electron'] {
+    --ltm-shell-surface-shadow:
+      0 16px 44px -18px rgb(0 0 0 / 0.9),
+      0 4px 18px -6px rgb(0 0 0 / 0.75);
+  }
+
+  /* The active pill lives inside the tab scroll track, whose overflow clip
+   * shears any wide shadow blur into a visible smudge with hard edges on the
+   * vibrancy material — so its shadow must stay tight (small blur, negative
+   * spread, downward bias) to fade out before hitting the clip boundary. */
+  .dark .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-tab-item.ltm-tab-active,
+  .dark .ltm-app-shell[data-ltm-surface='electron'] .ltm-shell-top-chrome .ltm-sidebar-chrome-toggle {
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.25),
+      0 2px 4px -2px rgb(0 0 0 / 0.3);
+  }
+
   [data-ltm-theme='kraft'] .ltm-app-shell {
     --ltm-shell-surface-bg: #ece4d2;
     --ltm-shell-surface-muted-bg: #e3dac4;
