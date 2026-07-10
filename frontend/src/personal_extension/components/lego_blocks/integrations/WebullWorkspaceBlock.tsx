@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, Building2, Clock, Eye, EyeOff, Layers, Wallet, type LucideIcon } from 'lucide-react'
+import { BookOpen, Building2, Clock, Eye, EyeOff, History, Layers, Wallet, type LucideIcon } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import {
   dispatchWebullSidebarChromeStateBlock,
@@ -15,6 +15,8 @@ import WebullStudyBlock from './WebullStudyBlock'
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import WebullF9CanvasOrch from '@/personal_extension/components/orchestrators/WebullF9CanvasOrch'
+import WebullF9SimCanvasOrch from '@/personal_extension/components/orchestrators/WebullF9SimCanvasOrch'
+import WebullSimBoardBlock from './WebullSimBoardBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -50,7 +52,7 @@ import type {
   WebullPositionSummaryBlock,
 } from '@/personal_extension/services/orchestrators/webullExecutionOrch'
 
-type WebullSubtabIdBlock = 'overall' | 'study'
+type WebullSubtabIdBlock = 'overall' | 'study' | 'sim'
 
 interface WebullSubtabBlock {
   id: WebullSubtabIdBlock
@@ -60,6 +62,7 @@ interface WebullSubtabBlock {
 const WEBULL_SUBTAB_ICONS: Record<WebullSubtabIdBlock, LucideIcon> = {
   overall: Wallet,
   study: BookOpen,
+  sim: History,
 }
 
 interface WebullLinkOptionBlock {
@@ -2211,23 +2214,39 @@ export default function WebullWorkspaceBlock({
     : ''
   const overallTabActive = !showCompanyView && activeSubtabId === 'overall'
   const studyTabActive = !showCompanyView && activeSubtabId === 'study'
+  const simTabActive = !showCompanyView && activeSubtabId === 'sim'
   const workspaceTitle = showCompanyView && selectedCompany
     ? `${selectedCompany.companyTicker} Positions`
-    : (studyTabActive ? 'Study' : 'Overall Positions')
+    : (studyTabActive ? 'Study' : simTabActive ? 'Sim' : 'Overall Positions')
   const workspaceDescription = showCompanyView && selectedCompany
     ? 'Company-specific position rows and overlay edits.'
     : (studyTabActive
       ? 'Company study records (watchlist + held) with live prices.'
-      : 'Canonical overall positions from Webull sync.')
+      : simTabActive
+        ? 'F9 practice reps across market history, plotted on a timeline.'
+        : 'Canonical overall positions from Webull sync.')
 
   return (
     <div className="ltm-webull-shell flex h-full min-h-0 w-full">
       {/* On iPhone, the desktop collapse state is ignored — list/detail mode
           is the sole authority. Sidebar always shows in list mode. */}
-      {((phoneListMode || !sideTabsCollapsed) && !phoneDetailMode) && (
-        <aside className={cn(
-          'ltm-webull-shell-nav bg-background/40 px-3 py-4 overflow-y-auto',
-          phoneListMode ? 'flex-1' : 'w-[220px] shrink-0 border-r border-border/60',
+      {!phoneDetailMode && (
+        <aside
+          className={cn(
+            'ltm-webull-shell-nav overflow-hidden',
+            phoneListMode
+              ? 'flex-1'
+              : cn(
+                  'shrink-0 transition-[width,opacity] duration-200 ease-out',
+                  sideTabsCollapsed ? 'w-0 opacity-0' : 'w-[220px] opacity-100',
+                ),
+          )}
+          aria-hidden={!phoneListMode && sideTabsCollapsed}
+        >
+        <div className={cn(
+          'h-full overflow-y-auto bg-background/40 px-3 py-4',
+          phoneListMode ? 'w-full' : 'w-[220px] border-r border-border/60',
+          !phoneListMode && sideTabsCollapsed && 'pointer-events-none',
         )}>
           <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Webull
@@ -2322,15 +2341,16 @@ export default function WebullWorkspaceBlock({
               Add Company
             </Button>
           </div>
+        </div>
         </aside>
       )}
 
-      {studyTabActive && isElectron && !showCompanyView ? (
+      {(studyTabActive || simTabActive) && isElectron && !showCompanyView ? (
         <div className={cn(
           'min-w-0 overflow-hidden',
           phoneListMode ? 'hidden' : 'flex-1',
         )}>
-          <WebullF9CanvasOrch />
+          {simTabActive ? <WebullF9SimCanvasOrch /> : <WebullF9CanvasOrch />}
         </div>
       ) : (
       <div className={cn(
@@ -2382,6 +2402,10 @@ export default function WebullWorkspaceBlock({
 
           {studyTabActive && !isElectron && (
             <WebullStudyBlock />
+          )}
+
+          {simTabActive && !isElectron && (
+            <WebullSimBoardBlock />
           )}
 
           {loading && (

@@ -8,7 +8,11 @@ import { openaiCompatProvider } from './providers/openaiCompatProviderBlock'
 import { anthropicProvider } from './providers/anthropicProviderBlock'
 import { claudeCliProvider } from './providers/claudeCliProviderBlock'
 import type { IntelligenceProvider } from './providers/providerInterfaceBlock'
-import type { ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
+import {
+  generationSourceForProviderBlock,
+  type GenerationSource,
+  type ProviderId,
+} from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 
 const PROVIDERS: Record<ProviderId, IntelligenceProvider> = {
   'openai-compat': openaiCompatProvider,
@@ -51,4 +55,12 @@ export function resolveProviderBlock(explicit?: ProviderId): IntelligenceProvide
     if (p.isConfigured()) return p
   }
   return preferred
+}
+
+/** The generation source a run *right now* would use — driven by the same
+ *  resolution `runContract` does (default provider, else first configured).
+ *  Records tag themselves with this so a later provider switch (e.g. local →
+ *  claude) can detect the mismatch and regenerate. */
+export function currentGenerationSourceBlock(): GenerationSource {
+  return generationSourceForProviderBlock(resolveProviderBlock().id)
 }

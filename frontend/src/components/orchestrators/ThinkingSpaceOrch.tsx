@@ -17,6 +17,7 @@ import {
   getAbsolutePathForClipboardOrch,
   getRelativePathForClipboardOrch,
   listFolderEntries,
+  readFileFrontmatterSummary,
   moveVaultPathOrch,
   openFileInNewTabOrch,
   openFileInNewWindowOrch,
@@ -955,6 +956,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
             onDeleteFolder={handleExplorerDeleteFolder}
             onOpenInFinder={handleExplorerOpenInFinder}
             loadFileTags={handleExplorerLoadFileTags}
+            loadFileSummary={readFileFrontmatterSummary}
             onMovePath={handleExplorerMovePath}
             onOpenFolderAsNotebook={openNotebookView}
             draggableFiles
@@ -1173,6 +1175,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
               <div className="min-h-0 flex-1">
                 <VaultExplorerBlock
                   loadEntries={listFolderEntries}
+                  loadFileSummary={readFileFrontmatterSummary}
                   selectedPath={inlinePath}
                   listenToGlobalSyncRefresh
                   onOpenFile={handleDrawerFileOpen}

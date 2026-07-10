@@ -29,6 +29,7 @@ import {
   mergedDurationMsBlock,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { purgeRuleBasedAtomsOnceOrch } from '@/services/orchestrators/aiActivityAtomOrch'
 
 /** Which view produced the current drill selection. The detail (table + summary,
  *  plus the day timeline for the heatmap) docks under the section that owns the
@@ -88,6 +89,11 @@ function topProjectByTime(chains: ActivityChain[]): string | null {
 
 export default function AiActivityPanelBlock() {
   const activity = useAiActivityBlock('90d')
+  // One-time cleanup of legacy rule-based stub atoms an old bug persisted.
+  // Self-gates via a localStorage flag, so this is a no-op after the first run.
+  useEffect(() => {
+    void purgeRuleBasedAtomsOnceOrch()
+  }, [])
   // Default drill source is the heatmap (which defaults to today, below), so the
   // panel opens already showing today's timeline + table under the calendar.
   const [drillSource, setDrillSource] = useState<DrillSource>('heatmap')

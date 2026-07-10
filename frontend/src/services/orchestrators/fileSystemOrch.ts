@@ -19,6 +19,7 @@ import {
   isLikelyYamlPathScalarBlock,
   findYamlCommentStartIndexBlock,
 } from '@/services/lego_blocks/units/linkIndexBlock'
+import { parseNote } from '@/services/lego_blocks/units/yamlNoteBlock'
 import {
   getBacklinksForPathPrefix,
   getAllFilePaths,
@@ -803,6 +804,33 @@ export async function listFolderEntries(path: string): Promise<FolderEntries> {
     return { folders: visibleFolders, files: orderedFiles, map }
   } catch {
     return { folders: [], files: [] }
+  }
+}
+
+/**
+ * Read a file's frontmatter `summary:` field for explorer hover tooltips.
+ *
+ * Per the map-files spec (revised 2026-07-10), the tooltip shows what a page is
+ * *about* — a property of the page itself — not the `_map.md` line, which says why
+ * the page sits at its position. Reading from frontmatter also gives tooltips to
+ * unmapped files and files in folders without any `_map.md`.
+ *
+ * Returns the trimmed summary, or null when the file has none, isn't markdown, or
+ * can't be read. Callers show no tooltip on null. Intentionally lazy: read one file
+ * on hover rather than every file on folder expand.
+ */
+export async function readFileFrontmatterSummary(path: string): Promise<string | null> {
+  if (!/\.md$/i.test(path)) return null
+  const fs = getVaultFS()
+  try {
+    const content = await fs.read(path)
+    const note = parseNote(content)
+    const summary = (note?.frontmatter as { summary?: unknown } | undefined)?.summary
+    if (typeof summary !== 'string') return null
+    const trimmed = summary.trim()
+    return trimmed ? trimmed : null
+  } catch {
+    return null
   }
 }
 

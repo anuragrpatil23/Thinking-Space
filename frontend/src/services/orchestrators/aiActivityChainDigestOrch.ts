@@ -14,6 +14,11 @@ import {
 } from '@/services/lego_blocks/units/intelligence/contracts/chainDigestContractBlock'
 import { availability, runContract } from '@/services/orchestrators/intelligenceOrch'
 import { intelligenceCacheAvailableBlock } from '@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock'
+import { currentGenerationSourceBlock } from '@/services/lego_blocks/integrations/intelligence/providerRegistryBlock'
+import {
+  generationSourceForProviderBlock,
+  generationSourceRankBlock,
+} from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 import { getAiActivityAiTitlesEnabled } from '@/services/lego_blocks/units/storageKeyBlock'
 
 // Public surface for per-chain digests. Wraps the intelligence contract with:
@@ -40,12 +45,31 @@ export async function loadChainDigestOrch(chain: ActivityChain): Promise<Project
  *     boot with a provider configured generates the real thing. */
 export async function ensureChainDigestOrch(
   chain: ActivityChain,
+  options: { refresh?: boolean } = {},
 ): Promise<{ digest: ProjectChainDigest; isAi: boolean } | null> {
   const parts = chainStorageParts(chain)
   if (!parts) return null
   const nextHash = computeChainInputHashBlock(chain)
   const existing = await getProjectChainDigestBlock(parts.projectId, parts.date, parts.chainKey)
-  if (existing && existing.inputHash === nextHash) {
+  // Fast path with tier precedence: reuse the stored digest when it's fresh AND
+  // at least as good as what the current selection would produce. So a Claude
+  // digest survives a switch to local (we never downgrade a better body we
+  // already have); switching *up* to Claude falls through and regenerates. The
+  // target tier drops to rule-based (0) when AI titles are off or the cache
+  // isn't available, so any stored AI digest is preferred over the deterministic
+  // fallback. Optimistic: we don't probe live availability here — if a fall-
+  // through regeneration can't run, the branches below return `existing`.
+  // `refresh` (explicit "regenerate" action) bypasses reuse entirely so the
+  // user can force the currently-selected provider to run, even a downgrade.
+  const currentSource = currentGenerationSourceBlock()
+  const aiActive = getAiActivityAiTitlesEnabled() && intelligenceCacheAvailableBlock()
+  const targetRank = aiActive ? generationSourceRankBlock(currentSource) : 0
+  if (
+    !options.refresh &&
+    existing &&
+    existing.inputHash === nextHash &&
+    generationSourceRankBlock(existing.generator) >= targetRank
+  ) {
     return { digest: existing, isAi: true }
   }
 
@@ -91,6 +115,7 @@ export async function ensureChainDigestOrch(
     inputHash: nextHash,
     generatedAt: new Date().toISOString(),
     model: (result.meta?.model as string) ?? 'unknown',
+    generator: generationSourceForProviderBlock(result.providerId),
   }
   await putProjectChainDigestBlock(digest)
   return { digest, isAi: true }
@@ -144,6 +169,10 @@ function buildFallbackDigest(
     inputHash,
     generatedAt: new Date().toISOString(),
     model: 'fallback:chain-topic',
+    // Rule-based fallback — deterministic, no model. Tagged so it's never
+    // mistaken for AI output and never persisted (see ensureChainDigestOrch:
+    // buildFallbackDigest results skip putProjectChainDigestBlock).
+    generator: 'rule-based',
   }
 }
 

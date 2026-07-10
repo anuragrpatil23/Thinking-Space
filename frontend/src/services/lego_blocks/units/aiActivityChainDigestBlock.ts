@@ -1,4 +1,8 @@
 import yaml from 'js-yaml'
+import {
+  parseGenerationSourceBlock,
+  type GenerationSource,
+} from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 
 // Durable per-chain digest — the AI-refined title + summary for one chain,
 // stored on disk instead of only in the intelligence cache. Rationale:
@@ -43,6 +47,11 @@ export interface ProjectChainDigest {
   generatedAt: string
   /** Provider/model identifier for re-run on model upgrades. */
   model: string
+  /** Which family produced this digest — 'local' | 'claude' | 'rule-based'.
+   *  Only 'local'/'claude' are ever persisted; 'rule-based' is display-only.
+   *  Drives regeneration when the selected provider switches families.
+   *  Empty string on legacy records written before this field existed. */
+  generator: GenerationSource | ''
 }
 
 const CURRENT_CHAIN_DIGEST_SCHEMA_VERSION = 1
@@ -130,6 +139,7 @@ export function parseProjectChainDigestMarkdownBlock(content: string): ProjectCh
     inputHash: toStringOrEmpty(parsed.inputHash),
     generatedAt: toIsoStringOrNow(parsed.generatedAt),
     model: toStringOrEmpty(parsed.model),
+    generator: parseGenerationSourceBlock(parsed.generator),
   }
 }
 
@@ -146,6 +156,7 @@ export function stringifyProjectChainDigestMarkdownBlock(digest: ProjectChainDig
     msgCount: digest.msgCount,
     durationMs: digest.durationMs,
     model: digest.model,
+    generator: digest.generator,
     inputHash: digest.inputHash,
     generatedAt: digest.generatedAt,
     title: digest.title,
@@ -200,5 +211,6 @@ export function parseProjectChainDigestJsonBlock(raw: string): ProjectChainDiges
     inputHash: toStringOrEmpty(parsed.inputHash),
     generatedAt: toIsoStringOrNow(parsed.generatedAt),
     model: toStringOrEmpty(parsed.model),
+    generator: parseGenerationSourceBlock(parsed.generator),
   }
 }

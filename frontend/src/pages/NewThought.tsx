@@ -994,8 +994,19 @@ function CreateTab() {
 
   return (
     <div className="ltm-newthought-shell flex h-full min-h-0 w-full">
-      {!leftPanelHidden && (
-        <aside className="w-[220px] shrink-0 border-r border-border/60 bg-background/40 px-3 py-4">
+      <aside
+        className={cn(
+          'shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-out',
+          leftPanelHidden ? 'w-0 opacity-0' : 'w-[220px] opacity-100',
+        )}
+        aria-hidden={leftPanelHidden}
+      >
+        <div
+          className={cn(
+            'h-full w-[220px] border-r border-border/60 bg-background/40 px-3 py-4',
+            leftPanelHidden && 'pointer-events-none',
+          )}
+        >
           <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             New Note
           </p>
@@ -1025,8 +1036,8 @@ function CreateTab() {
               )
             })}
           </nav>
-        </aside>
-      )}
+        </div>
+      </aside>
 
       <div className={cn(
         'relative min-w-0 flex-1',

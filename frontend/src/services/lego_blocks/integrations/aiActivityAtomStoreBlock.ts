@@ -3,6 +3,7 @@ import {
   AI_ACTIVITY_ATOM_CACHE_TASK_ID,
   atomCacheKeyBlock,
   atomVaultRelPathBlock,
+  isRuleBasedAtomBlock,
   parseProjectDayAtomJsonBlock,
   parseProjectDayAtomMarkdownBlock,
   stringifyProjectDayAtomJsonBlock,
@@ -10,6 +11,7 @@ import {
   type ProjectDayAtom,
 } from '@/services/lego_blocks/units/aiActivityAtomBlock'
 import {
+  clearIntelligenceCacheBlock,
   intelligenceCacheAvailableBlock,
   readIntelligenceCacheBlock,
   writeIntelligenceCacheBlock,
@@ -106,6 +108,65 @@ export async function getProjectDayAtomBlock(
 export async function putProjectDayAtomBlock(atom: ProjectDayAtom): Promise<void> {
   await writeAtomToCache(atom)
   await writeAtomToVault(atom)
+}
+
+/**
+ * One-time cleanup of the legacy bug where deterministic (rule-based) stub
+ * atoms were persisted alongside real AI output. Walks the vault mirror
+ * (`ai-activity/atoms/<projectId>/<date>.md`), deletes every file that parses
+ * to a rule-based atom, then drops the whole fast-path cache task dir.
+ *
+ * The cache is cleared wholesale rather than per-key because the sidecar has
+ * no list/selective-delete API — but that's safe: it's a rebuildable mirror,
+ * so surviving real atoms re-warm from the vault (or regenerate) on next read,
+ * while any stub cache entries we couldn't enumerate simply vanish.
+ *
+ * Idempotent and best-effort — safe to call again; unreadable/unparseable
+ * files are left untouched. The orchestrator gates it behind a run-once flag.
+ */
+export async function purgeRuleBasedAtomsFromStoreBlock(): Promise<{
+  scannedVaultFiles: number
+  deletedVaultFiles: number
+  clearedCache: boolean
+}> {
+  let scanned = 0
+  let deleted = 0
+  const fs = getVaultFS()
+  if (fs) {
+    try {
+      const root = 'ai-activity/atoms'
+      if (await fs.exists(root)) {
+        const { folders } = await fs.list(root)
+        for (const projectId of folders) {
+          const projectDir = `${root}/${projectId}`
+          let files: string[] = []
+          try {
+            files = (await fs.list(projectDir)).files
+          } catch {
+            continue
+          }
+          for (const file of files) {
+            if (!file.endsWith('.md')) continue
+            scanned++
+            const relPath = `${projectDir}/${file}`
+            try {
+              const atom = parseProjectDayAtomMarkdownBlock(await fs.read(relPath))
+              if (atom && isRuleBasedAtomBlock(atom)) {
+                await fs.delete(relPath)
+                deleted++
+              }
+            } catch {
+              // Unreadable or unparseable — leave it rather than risk data loss.
+            }
+          }
+        }
+      }
+    } catch {
+      // Best-effort — a listing failure shouldn't block app startup.
+    }
+  }
+  const clearedCache = await clearIntelligenceCacheBlock(AI_ACTIVITY_ATOM_CACHE_TASK_ID)
+  return { scannedVaultFiles: scanned, deletedVaultFiles: deleted, clearedCache }
 }
 
 /**

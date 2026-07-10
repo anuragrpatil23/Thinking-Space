@@ -56,6 +56,7 @@ export const STORAGE_KEYS = {
   aiActivitySectionsOpen: 'ltm-ai-activity-sections-open',
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
   intelligenceDefaultProvider: 'ltm-intelligence-default-provider',
+  aiActivityRuleBasedAtomsPurged: 'ltm-ai-activity-rule-based-atoms-purged',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]
@@ -255,6 +256,20 @@ export function setAiActivityAiTitlesEnabled(enabled: boolean): void {
 }
 
 export const AI_ACTIVITY_AI_TITLES_EVENT = 'thinkspc:ai-activity-ai-titles-changed'
+
+/**
+ * Run-once flag for the migration that purges legacy rule-based stub atoms
+ * (persisted by an old bug) from the store. Set after the purge completes so
+ * it never runs again on subsequent boots. Per-device — the vault-side delete
+ * is idempotent, so a second device running it once more is harmless.
+ */
+export function getAiActivityRuleBasedAtomsPurged(): boolean {
+  return getLocalStorageItemBlock(STORAGE_KEYS.aiActivityRuleBasedAtomsPurged) === 'true'
+}
+
+export function setAiActivityRuleBasedAtomsPurged(done: boolean): void {
+  setLocalStorageItemBlock(STORAGE_KEYS.aiActivityRuleBasedAtomsPurged, done ? 'true' : 'false')
+}
 
 /**
  * Provider choice for the range-summary pipeline. Independent of the chain-

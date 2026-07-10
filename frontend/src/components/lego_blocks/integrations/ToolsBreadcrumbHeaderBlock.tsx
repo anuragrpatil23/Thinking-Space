@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { Check } from 'lucide-react'
+import { Check, ChevronLeft } from 'lucide-react'
 import { getVisibleToolsSubtabs, TOOLS_SUBTABS } from '@/components/lego_blocks/units/toolsSubtabsBlock'
 
 interface ToolsBreadcrumbHeaderBlockProps {
@@ -62,6 +62,15 @@ export default function ToolsBreadcrumbHeaderBlock({ currentId }: ToolsBreadcrum
   return (
     <div className="mb-2 mt-4 px-4">
       <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        <button
+          type="button"
+          onClick={() => navigate('/tools')}
+          aria-label="Back to Tools"
+          title="Back to Tools"
+          className="ltm-motion-fast -ml-1 flex h-5 w-5 items-center justify-center rounded-full outline-none transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:outline-none"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
         <button
           ref={triggerRef}
           type="button"

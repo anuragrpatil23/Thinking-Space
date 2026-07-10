@@ -1,4 +1,5 @@
-import { type ComponentType, type DragEvent as ReactDragEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { cloneElement, type ComponentType, type DragEvent as ReactDragEvent, isValidElement, type ReactElement, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import excalidrawLogo from '@/assets/excalidraw-logo.svg'
 
 function ExcalidrawIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -120,6 +121,152 @@ interface NodeState extends FolderEntries {
 
 const FOLDER_MAP_FILENAME = '_map.md'
 
+const PINNED_MAP_TOOLTIP = 'Reading map for this folder — controls the display order below.'
+
+const TOOLTIP_SHOW_DELAY_MS = 400
+const TOOLTIP_CURSOR_OFFSET = { x: 18, y: 32 }
+const TOOLTIP_VIEWPORT_PAD = 8
+
+/**
+ * Hover tooltip for an explorer file row, anchored to the cursor (not the full-width
+ * row, which would fling it far to the side). Combines two facts, both optional:
+ *  - `Summary:` — the file's own frontmatter `summary:` (what the page is about),
+ *    resolved lazily on first hover.
+ *  - `Why here:` — the `_map.md` line's ` — ` text (why the page sits at this
+ *    position in the sequence), passed in synchronously via `mapDescription`.
+ * A fixed `staticText` (the pinned `_map.md` row) overrides both. Renders nothing
+ * when there's nothing to show, so files with neither get no tooltip.
+ */
+function ExplorerRowTooltip({
+  filePath,
+  staticText,
+  mapDescription,
+  resolveSummary,
+  children,
+}: {
+  filePath: string
+  staticText?: string
+  mapDescription?: string
+  resolveSummary?: (path: string) => Promise<string | null>
+  children: ReactElement
+}) {
+  const [summary, setSummary] = useState<string | null>(null)
+  // staticText rows and rows with no resolver never need a fetch.
+  const loadedRef = useRef<boolean>(staticText != null || !resolveSummary)
+  const [visible, setVisible] = useState(false)
+  const [pos, setPos] = useState({ x: 0, y: 0 })
+  const cursorRef = useRef({ x: 0, y: 0 })
+  const showTimerRef = useRef<number | null>(null)
+  const tipRef = useRef<HTMLDivElement>(null)
+
+  const clearShowTimer = () => {
+    if (showTimerRef.current != null) {
+      window.clearTimeout(showTimerRef.current)
+      showTimerRef.current = null
+    }
+  }
+
+  const load = useCallback(() => {
+    if (loadedRef.current || !resolveSummary) return
+    loadedRef.current = true
+    resolveSummary(filePath)
+      .then(setSummary)
+      .catch(() => setSummary(null))
+  }, [filePath, resolveSummary])
+
+  const handleEnter = (event: React.MouseEvent) => {
+    cursorRef.current = { x: event.clientX, y: event.clientY }
+    clearShowTimer()
+    showTimerRef.current = window.setTimeout(() => {
+      load()
+      setPos(cursorRef.current)
+      setVisible(true)
+    }, TOOLTIP_SHOW_DELAY_MS)
+  }
+  const handleMove = (event: React.MouseEvent) => {
+    cursorRef.current = { x: event.clientX, y: event.clientY }
+  }
+  const handleLeave = () => {
+    clearShowTimer()
+    setVisible(false)
+  }
+
+  useEffect(() => () => clearShowTimer(), [])
+
+  // Clamp into the viewport once measured, before paint (no flicker).
+  useLayoutEffect(() => {
+    if (!visible || !tipRef.current) return
+    const rect = tipRef.current.getBoundingClientRect()
+    const pad = TOOLTIP_VIEWPORT_PAD
+    let x = pos.x + TOOLTIP_CURSOR_OFFSET.x
+    let y = pos.y + TOOLTIP_CURSOR_OFFSET.y
+    if (x + rect.width > window.innerWidth - pad) x = pos.x - rect.width - TOOLTIP_CURSOR_OFFSET.x
+    if (x < pad) x = pad
+    if (y + rect.height > window.innerHeight - pad) y = pos.y - rect.height - TOOLTIP_CURSOR_OFFSET.y
+    if (y < pad) y = pad
+    if (x !== pos.x + TOOLTIP_CURSOR_OFFSET.x || y !== pos.y + TOOLTIP_CURSOR_OFFSET.y) {
+      tipRef.current.style.left = `${x}px`
+      tipRef.current.style.top = `${y}px`
+    }
+  }, [visible, pos, summary, mapDescription, staticText])
+
+  const hasContent = staticText != null || !!summary || !!mapDescription
+
+  const trigger = isValidElement(children)
+    ? cloneElement(children as ReactElement<Record<string, unknown>>, {
+        onMouseEnter: handleEnter,
+        onMouseMove: handleMove,
+        onMouseLeave: handleLeave,
+      })
+    : children
+
+  return (
+    <>
+      {trigger}
+      {visible && hasContent
+        ? createPortal(
+            <div
+              ref={tipRef}
+              role="tooltip"
+              className="pointer-events-none fixed z-[70] max-w-[340px] space-y-2 rounded-lg border border-white/10 bg-zinc-900/95 px-3 py-2.5 text-[12.5px] leading-relaxed text-zinc-100 shadow-xl shadow-black/40 backdrop-blur-sm"
+              style={{
+                left: pos.x + TOOLTIP_CURSOR_OFFSET.x,
+                top: pos.y + TOOLTIP_CURSOR_OFFSET.y,
+              }}
+            >
+              {staticText != null ? (
+                <div className="text-zinc-300">{staticText}</div>
+              ) : (
+                <>
+                  {summary ? (
+                    <div>
+                      <span className="font-semibold uppercase tracking-wide text-[10.5px] text-emerald-300">
+                        Summary
+                      </span>
+                      <div className="mt-0.5 text-zinc-100">{summary}</div>
+                    </div>
+                  ) : null}
+                  {summary && mapDescription ? (
+                    <div className="border-t border-white/10" />
+                  ) : null}
+                  {mapDescription ? (
+                    <div>
+                      <span className="font-semibold uppercase tracking-wide text-[10.5px] text-amber-300">
+                        Why here
+                      </span>
+                      <div className="mt-0.5 text-zinc-300">{mapDescription}</div>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  )
+}
+
 type ExplorerPathKind = 'file' | 'folder'
 type ExplorerActionResult = void | boolean | string | Promise<void | boolean | string>
 
@@ -155,6 +302,12 @@ interface VaultExplorerBlockProps {
   onDeleteFolder?: (path: string) => ExplorerActionResult
   onOpenInFinder?: (path: string) => ExplorerActionResult
   loadFileTags?: (path: string) => Promise<string[]>
+  /**
+   * Resolve a file's frontmatter `summary:` for its hover tooltip. Called lazily on
+   * hover (per the map-files spec, tooltips show the page's own summary, not the map
+   * line). Return null → no tooltip. When omitted, file rows have no summary tooltip.
+   */
+  loadFileSummary?: (path: string) => Promise<string | null>
   selectedPath?: string | null
   onSelectFile?: (path: string) => void
   onDropNode?: (nodeUuid: string, targetPath: string) => Promise<void>
@@ -269,6 +422,7 @@ export default function VaultExplorerBlock({
   onDeleteFolder,
   onOpenInFinder,
   loadFileTags,
+  loadFileSummary,
   selectedPath = null,
   onSelectFile,
   onDropNode,
@@ -283,6 +437,24 @@ export default function VaultExplorerBlock({
   belowToolbarSlot = null,
 }: VaultExplorerBlockProps) {
   const storageKey = `${EXPLORER_PERSISTENCE_PREFIX}:${persistenceKey}`
+
+  // Per-session cache of file → frontmatter summary for hover tooltips. Populated
+  // lazily on first hover; null means "loaded, no summary" so we don't refetch.
+  const summaryCacheRef = useRef<Map<string, string | null>>(new Map())
+  const resolveFileSummary = useCallback(async (path: string): Promise<string | null> => {
+    if (!loadFileSummary) return null
+    const cache = summaryCacheRef.current
+    if (cache.has(path)) return cache.get(path) ?? null
+    let value: string | null = null
+    try {
+      const raw = await loadFileSummary(path)
+      value = raw && raw.trim() ? raw.trim() : null
+    } catch {
+      value = null
+    }
+    cache.set(path, value)
+    return value
+  }, [loadFileSummary])
   const initialPersistedState = useMemo(
     () => readPersistedExplorerState(storageKey),
     [storageKey],
@@ -1172,11 +1344,6 @@ export default function VaultExplorerBlock({
         const Icon = row.pinned ? Info : getFileIcon(fileName)
         const isInlineEditing = inlineRename?.kind === 'file' && inlineRename.path === filePath
         const isSelected = selectedFilePath === filePath
-        const description = row.description ?? node.map?.descriptions[fileName]
-        const tooltip = row.pinned
-          ? 'Reading map for this folder — controls the display order below.'
-          : description
-
         if (isInlineEditing) {
           rows.push(
             <div
@@ -1212,10 +1379,15 @@ export default function VaultExplorerBlock({
           )
         } else {
           rows.push(
-            <button
+            <ExplorerRowTooltip
               key={`file-${filePath}`}
+              filePath={filePath}
+              staticText={row.pinned ? PINNED_MAP_TOOLTIP : undefined}
+              mapDescription={row.pinned ? undefined : (row.description ?? node.map?.descriptions[fileName])}
+              resolveSummary={row.pinned ? undefined : resolveFileSummary}
+            >
+            <button
               type="button"
-              title={tooltip}
               draggable={canDragFiles}
               onDragStart={event => {
                 if (!canDragFiles) return
@@ -1275,7 +1447,8 @@ export default function VaultExplorerBlock({
                 row.pinned && !isSelected ? 'text-amber-500' : getFileIconColor(fileName, isSelected),
               )} />
               <span className="truncate">{fileName}</span>
-            </button>,
+            </button>
+            </ExplorerRowTooltip>,
           )
         }
       })
@@ -1304,6 +1477,7 @@ export default function VaultExplorerBlock({
       pathMatchesSearch,
       pathMatchesQuery,
       pendingRename,
+      resolveFileSummary,
       selectedFilePath,
       selectedFolderPath,
       toggleFolder,

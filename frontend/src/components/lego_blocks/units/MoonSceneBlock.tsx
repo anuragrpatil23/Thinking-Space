@@ -14,7 +14,7 @@
  * pure CSS keyframes.
  */
 
-import { useTimeOfDayBlock } from '@/components/lego_blocks/hooks/shared/useTimeOfDayBlock'
+import { useTimeOfDayBlock, isDarkPhaseBlock } from '@/components/lego_blocks/hooks/shared/useTimeOfDayBlock'
 import { useMoonSceneMessagesBlock } from '@/components/lego_blocks/hooks/shared/useMoonSceneMessagesBlock'
 import { useMoonSceneIdleAnimationsBlock } from '@/components/lego_blocks/hooks/shared/useMoonSceneIdleAnimationsBlock'
 import type { MoonSceneAnimationBlock } from '@/services/lego_blocks/units/vaultUiPreferencesBlock'
@@ -466,6 +466,7 @@ function MessageOverlaysBlock({
 export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
   const phase = useTimeOfDayBlock()
   const dj = phase === 'late'
+  const darkBackdrop = isDarkPhaseBlock(phase)
   // One quote per calendar day, fixed for the whole day (see breakQuotesBlock).
   const breakQuote = quoteForDay()
   const activeMessages = useMoonSceneMessagesBlock()
@@ -849,58 +850,6 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
               <PixelSprite rows={noteRows(n.color)} px={3} />
             </div>
           ))}
-
-          {/* take-a-break daily quote — lifted up into the open canvas above
-              the disco ball so the two never overlap. Only the eyebrow pulses;
-              the quote itself stays steady so it reads cleanly. */}
-          <div
-            style={{
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              top: -54,
-              textAlign: 'center',
-              fontFamily: 'ui-monospace, monospace',
-            }}
-          >
-            <div
-              style={{
-                fontSize: 9,
-                letterSpacing: '0.24em',
-                textTransform: 'uppercase',
-                color: '#7dd3fc',
-                textShadow: '0 0 8px rgba(125,211,252,0.5)',
-                animation: 'moon-sign-pulse 2.4s ease-in-out infinite',
-              }}
-            >
-              ♪ take a break ♪
-            </div>
-            <div
-              style={{
-                maxWidth: 440,
-                margin: '6px auto 0',
-                fontSize: 11,
-                lineHeight: 1.5,
-                fontStyle: 'italic',
-                color: '#e2e8f0',
-                textShadow: '0 0 10px rgba(125,211,252,0.25)',
-              }}
-            >
-              {`“${breakQuote.text}”`}
-            </div>
-            {breakQuote.author && (
-              <div
-                style={{
-                  marginTop: 3,
-                  fontSize: 9,
-                  letterSpacing: '0.1em',
-                  color: '#94a3b8',
-                }}
-              >
-                {`— ${breakQuote.author}`}
-              </div>
-            )}
-          </div>
         </>
       ) : (
         /* flag by day */
@@ -916,6 +865,59 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           <PixelSprite rows={FLAG} px={4} />
         </div>
       )}
+
+      {/* daily reflection quote — shows in every phase, not just the late-night
+          DJ wind-down. Lifted up into the open canvas above the scene so it never
+          overlaps the sprites; only the eyebrow pulses so the quote reads steady.
+          Colors flip for the light (day/golden) vs dark (night/late) backdrop. */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: -54,
+          textAlign: 'center',
+          fontFamily: 'ui-monospace, monospace',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 9,
+            letterSpacing: '0.24em',
+            textTransform: 'uppercase',
+            color: darkBackdrop ? '#7dd3fc' : '#0369a1',
+            textShadow: darkBackdrop ? '0 0 8px rgba(125,211,252,0.5)' : 'none',
+            animation: 'moon-sign-pulse 2.4s ease-in-out infinite',
+          }}
+        >
+          {dj ? '♪ take a break ♪' : '✿ a little something ✿'}
+        </div>
+        <div
+          style={{
+            maxWidth: 440,
+            margin: '6px auto 0',
+            fontSize: 11,
+            lineHeight: 1.5,
+            fontStyle: 'italic',
+            color: darkBackdrop ? '#e2e8f0' : '#334155',
+            textShadow: darkBackdrop ? '0 0 10px rgba(125,211,252,0.25)' : 'none',
+          }}
+        >
+          {`“${breakQuote.text}”`}
+        </div>
+        {breakQuote.author && (
+          <div
+            style={{
+              marginTop: 3,
+              fontSize: 9,
+              letterSpacing: '0.1em',
+              color: darkBackdrop ? '#94a3b8' : '#64748b',
+            }}
+          >
+            {`— ${breakQuote.author}`}
+          </div>
+        )}
+      </div>
 
       {/* astronaut */}
       <div

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { cn } from '@/lib/utils'
 import { getVisibleToolsSubtabs } from '@/components/lego_blocks/units/toolsSubtabsBlock'
 import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
@@ -91,8 +92,26 @@ export default function ToolsShellBlock() {
     <div className="ltm-tools-shell flex h-full min-h-0 w-full">
       {/* On iPhone, the desktop collapse state is ignored — list/detail mode
           is the sole authority. Sidebar always shows in list mode. */}
-      {((phoneListMode || !sidebarCollapsed) && !phoneDetailMode) && (
-      <aside className={`ltm-tools-shell-nav border-border/60 bg-background/40 px-3 py-4 ${phoneListMode ? 'flex-1' : 'w-[220px] shrink-0 border-r'}`}>
+      {!phoneDetailMode && (
+      <aside
+        className={cn(
+          'ltm-tools-shell-nav overflow-hidden',
+          phoneListMode
+            ? 'flex-1'
+            : cn(
+                'shrink-0 transition-[width,opacity] duration-200 ease-out',
+                sidebarCollapsed ? 'w-0 opacity-0' : 'w-[220px] opacity-100',
+              ),
+        )}
+        aria-hidden={!phoneListMode && sidebarCollapsed}
+      >
+      <div
+        className={cn(
+          'h-full overflow-y-auto border-border/60 bg-background/40 px-3 py-4',
+          phoneListMode ? 'w-full' : 'w-[220px] border-r',
+          !phoneListMode && sidebarCollapsed && 'pointer-events-none',
+        )}
+      >
         <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           Tools
         </p>
@@ -117,6 +136,7 @@ export default function ToolsShellBlock() {
             )
           })}
         </nav>
+      </div>
       </aside>
       )}
       <div className={`ltm-tools-shell-content min-w-0 overflow-auto ${phoneListMode ? 'hidden' : 'flex-1'}`}>

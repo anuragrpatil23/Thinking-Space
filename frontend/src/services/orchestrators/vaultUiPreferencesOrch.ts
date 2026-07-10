@@ -151,6 +151,19 @@ export async function setWebullTabPreferencesOrch(
   })
 }
 
+export async function setWebullSimTabEnabledPreferenceOrch(
+  enabled: boolean,
+): Promise<VaultUiPreferencesBlock> {
+  return updateVaultUiPreferencesOrch({ webullSimTabEnabled: enabled })
+}
+
+export async function setWebullSimFolderPathPreferenceOrch(
+  path: string,
+): Promise<VaultUiPreferencesBlock> {
+  // Normalization (backslashes, stray slashes) happens in the preferences block.
+  return updateVaultUiPreferencesOrch({ webullSimFolderPath: path })
+}
+
 export async function setFileActivityIgnoredPathsOrch(
   paths: string[],
 ): Promise<VaultUiPreferencesBlock> {

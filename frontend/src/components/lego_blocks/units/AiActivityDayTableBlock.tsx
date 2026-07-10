@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
-import { Maximize2, Pencil } from 'lucide-react'
+import { Check, Copy, Maximize2, Pencil, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isReadingSource, type ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
@@ -14,6 +14,7 @@ import ReadingSessionEditModalBlock, {
   isReadingSessionEditableBlock,
 } from '@/components/lego_blocks/integrations/ReadingSessionEditModalBlock'
 import { useChainDigestBlock } from '@/components/lego_blocks/hooks/units/useChainDigestBlock'
+import AiActivitySourceChipBlock from '@/components/lego_blocks/units/AiActivitySourceChipBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 
 interface AiActivityDayTableBlockProps {
@@ -119,6 +120,70 @@ function modelSummaryLabel(chain: ActivityChain): string | null {
   return `${models.length} models`
 }
 
+/** Escape a value for a single Markdown table cell: collapse newlines and
+ *  escape pipes so the topic text can't break the column layout when pasted
+ *  into another AI or a test fixture. */
+function mdCell(value: string): string {
+  return value.replace(/\r?\n+/g, ' ').replace(/\|/g, '\\|').trim()
+}
+
+/** Serialize the entire drill-down table to a Markdown document so it can be
+ *  handed to another AI for analysis or dropped into a test. Includes the
+ *  token/cost/model detail that's otherwise hidden until a row is expanded, so
+ *  the copied text is the full picture, not just what's on screen. */
+function buildDrillDownMarkdown(
+  title: string,
+  summary: string | undefined,
+  chains: ActivityChain[],
+): string {
+  const lines: string[] = []
+  lines.push(`# ${title}`)
+  if (summary) lines.push('', summary)
+  lines.push('')
+  lines.push(
+    '| Start | End | Duration | Project | Source | Model | Msgs | Sessions | Fresh tokens | Cached tokens | Est. cost | Topic |',
+  )
+  lines.push(
+    '| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |',
+  )
+  let totalFresh = 0
+  let totalCached = 0
+  let totalCost = 0
+  let totalMsgs = 0
+  for (const c of chains) {
+    const tokens = sumTokens(c.sessions.map(s => s.tokens))
+    const hasTokens =
+      tokens.input + tokens.output + tokens.cacheRead + tokens.cacheCreation > 0
+    const fresh = tokens.input + tokens.output
+    const cached = tokens.cacheRead + tokens.cacheCreation
+    const cost = hasTokens ? estimateChainCostUsd(c) : 0
+    totalFresh += fresh
+    totalCached += cached
+    totalCost += cost
+    totalMsgs += c.msgCount
+    lines.push(
+      `| ${mdCell(fmtTime(c.startedIso))} | ${mdCell(fmtTime(c.endedIso))} | ${mdCell(
+        fmtDuration(c.startedIso, c.endedIso),
+      )} | ${mdCell(c.project)} | ${mdCell(c.source)} | ${mdCell(
+        modelSummaryLabel(c) ?? '—',
+      )} | ${c.msgCount} | ${c.sessions.length} | ${
+        hasTokens ? formatTokens(fresh) : '—'
+      } | ${hasTokens ? formatTokens(cached) : '—'} | ${
+        hasTokens ? formatUsd(cost) : '—'
+      } | ${mdCell(c.topic)} |`,
+    )
+  }
+  lines.push('')
+  lines.push(
+    `**Totals:** ${chains.length} chains · ${totalMsgs} msgs · ${formatTokens(
+      totalFresh,
+    )} fresh + ${formatTokens(totalCached)} cached tokens · ~${formatUsd(
+      totalCost,
+    )} est.`,
+  )
+  return lines.join('\n')
+}
+
 export default function AiActivityDayTableBlock({
   title,
   chains,
@@ -131,6 +196,7 @@ export default function AiActivityDayTableBlock({
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [transcriptChain, setTranscriptChain] = useState<ActivityChain | null>(null)
   const [editingChain, setEditingChain] = useState<ActivityChain | null>(null)
+  const [copied, setCopied] = useState(false)
 
   // Sort by start time, oldest first for chronological reading.
   const sorted = useMemo(
@@ -165,6 +231,18 @@ export default function AiActivityDayTableBlock({
     return { totalCostUsd, totalFreshTokens, totalCachedTokens, chainsWithTokens }
   }, [sorted])
 
+  const handleCopyTable = async () => {
+    try {
+      const md = buildDrillDownMarkdown(title, summary, sorted)
+      await navigator.clipboard.writeText(md)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      // Clipboard can be denied (permissions, insecure context) — fail quietly
+      // rather than throwing; the button just won't flip to "Copied".
+    }
+  }
+
   return (
     <div ref={hostRef} className="space-y-2">
       <div className="flex items-baseline justify-between gap-3">
@@ -174,6 +252,22 @@ export default function AiActivityDayTableBlock({
             <p className="text-[11px] text-muted-foreground/80">{summary}</p>
           )}
         </div>
+        {sorted.length > 0 && (
+          <button
+            type="button"
+            onClick={handleCopyTable}
+            className={cn(
+              'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors',
+              copied
+                ? 'border-foreground/70 bg-foreground/10 text-foreground'
+                : 'border-border/40 bg-card/40 text-muted-foreground hover:border-border/70 hover:text-foreground',
+            )}
+            title="Copy the whole drill-down table as Markdown (including hidden token/cost detail) so you can hand it to another AI or drop it into a test."
+          >
+            {copied ? <Check className="h-2.5 w-2.5" /> : <Copy className="h-2.5 w-2.5" />}
+            {copied ? 'Copied' : 'Copy table'}
+          </button>
+        )}
       </div>
       {sorted.length === 0 ? (
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-4 text-xs text-muted-foreground/70">
@@ -465,7 +559,7 @@ function ChainTopicCellBlock({
 // label, with the original first-message snippet below for context. Keeps
 // the previous multi-session topic list intact.
 function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
-  const { title, summary, isAi } = useChainDigestBlock(chain)
+  const { title, summary, isAi, loading, generator, refresh } = useChainDigestBlock(chain)
   const seen = new Set<string>([chain.topic])
   const extras =
     chain.sessions.length > 1
@@ -475,8 +569,24 @@ function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
       : []
   return (
     <div className="space-y-1">
-      <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70">
-        Topic
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/70">
+          Topic
+        </span>
+        <AiActivitySourceChipBlock generator={generator} />
+        <button
+          type="button"
+          onClick={e => {
+            e.stopPropagation()
+            refresh()
+          }}
+          disabled={loading}
+          className="ml-auto inline-flex items-center gap-1 rounded-full border border-border/40 bg-card/40 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:border-border/70 hover:text-foreground disabled:opacity-40"
+          title="Regenerate this title with the currently-selected provider (bypasses reuse — forces a re-run even if a higher-tier version is cached)"
+        >
+          <RefreshCw className={cn('h-2.5 w-2.5', loading && 'animate-spin')} />
+          regenerate
+        </button>
       </div>
       <div
         className="whitespace-pre-wrap text-foreground/85"

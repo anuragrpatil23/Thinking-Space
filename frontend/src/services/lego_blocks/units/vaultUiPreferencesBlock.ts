@@ -47,6 +47,14 @@ export interface VaultUiPreferencesBlock {
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
   webullTabLabel: string
   webullTabIconText: string
+  /** Gate for the experimental Webull → Sim subtab (F9 practice timeline). Off by default. */
+  webullSimTabEnabled: boolean
+  /**
+   * Vault-relative folder the Sim timeline reads (cases/, eras.yaml, bench.md).
+   * Blank means "derive a default beside the execution folder" (a sibling
+   * `F9-sim`, mirroring `F9-execution`).
+   */
+  webullSimFolderPath: string
   fileActivityIgnoredPaths: string[]
   schedulerTasks: VaultSchedulerTaskPreferenceBlock[]
   moonSceneMessages: MoonSceneMessagePreferenceBlock[]
@@ -88,6 +96,8 @@ export const DEFAULT_VAULT_UI_PREFERENCES_BLOCK: VaultUiPreferencesBlock = {
   explorerFolderColorRules: cloneExplorerFolderColorRulesBlock(DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK),
   webullTabLabel: 'Webull',
   webullTabIconText: '',
+  webullSimTabEnabled: false,
+  webullSimFolderPath: '',
   fileActivityIgnoredPaths: [],
   schedulerTasks: [],
   moonSceneMessages: [],
@@ -102,6 +112,8 @@ export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock 
     explorerFolderColorRules: cloneExplorerFolderColorRulesBlock(DEFAULT_VAULT_UI_PREFERENCES_BLOCK.explorerFolderColorRules),
     webullTabLabel: 'Webull',
     webullTabIconText: '',
+    webullSimTabEnabled: false,
+    webullSimFolderPath: '',
     fileActivityIgnoredPaths: [],
     schedulerTasks: [],
     moonSceneMessages: [],
@@ -230,6 +242,10 @@ export function normalizeVaultUiPreferencesBlock(value: unknown): VaultUiPrefere
     webullTabIconText: typeof record.webullTabIconText === 'string'
       ? record.webullTabIconText.trim()
       : '',
+    webullSimTabEnabled: typeof record.webullSimTabEnabled === 'boolean'
+      ? record.webullSimTabEnabled
+      : DEFAULT_VAULT_UI_PREFERENCES_BLOCK.webullSimTabEnabled,
+    webullSimFolderPath: normalizeFolderPathBlock(record.webullSimFolderPath),
     fileActivityIgnoredPaths: normalizeFileActivityIgnoredPathsBlock(record.fileActivityIgnoredPaths),
     schedulerTasks: normalizeSchedulerTasksPreferenceBlock(record.schedulerTasks),
     moonSceneMessages: normalizeMoonSceneMessagesPreferenceBlock(record.moonSceneMessages),

@@ -1,4 +1,5 @@
 import type { AiActivityRangeSummaryProvider } from './storageKeyBlock'
+import type { GenerationSource } from './intelligence/modelProfileBlock'
 
 // Data unit for a durable per-project range summary. Composes chain digests
 // (title + summary + duration) across a date window into the numbered-bullet
@@ -74,6 +75,18 @@ export function rangeSummaryTierRankBlock(
     default:
       return 0
   }
+}
+
+/** Collapse the range-summary's four-state provider onto the coarse
+ *  generation-source family used by the shared source chip, so the range card
+ *  and the drill-down render the same badge from one implementation. Both
+ *  fallback tiers read as rule-based — from the reader's view "no model ran". */
+export function rangeSummaryProviderToGenerationSourceBlock(
+  provider: RangeSummaryPersistedProvider,
+): GenerationSource {
+  if (provider === 'claude-cli') return 'claude'
+  if (provider === 'local-two-stage') return 'local'
+  return 'rule-based'
 }
 
 export const AI_ACTIVITY_RANGE_SUMMARY_CACHE_TASK_ID = 'projectRangeSummary'

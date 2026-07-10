@@ -1,5 +1,7 @@
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import {
+  ATOM_STUB_MODEL_ID,
+  isRuleBasedAtomBlock,
   isValidAtomDateBlock,
   type ProjectDayAtom,
 } from '@/services/lego_blocks/units/aiActivityAtomBlock'
@@ -7,6 +9,7 @@ import {
   getProjectDayAtomBlock,
   putProjectDayAtomBlock,
   listProjectDayAtomsInRangeBlock,
+  purgeRuleBasedAtomsFromStoreBlock,
 } from '@/services/lego_blocks/integrations/aiActivityAtomStoreBlock'
 import {
   ensureChainDigestOrch,
@@ -14,7 +17,16 @@ import {
 } from '@/services/orchestrators/aiActivityChainDigestOrch'
 import { availability, runContract } from '@/services/orchestrators/intelligenceOrch'
 import { intelligenceCacheAvailableBlock } from '@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock'
-import { getAiActivityAiTitlesEnabled } from '@/services/lego_blocks/units/storageKeyBlock'
+import { currentGenerationSourceBlock } from '@/services/lego_blocks/integrations/intelligence/providerRegistryBlock'
+import {
+  generationSourceForProviderBlock,
+  generationSourceRankBlock,
+} from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
+import {
+  getAiActivityAiTitlesEnabled,
+  getAiActivityRuleBasedAtomsPurged,
+  setAiActivityRuleBasedAtomsPurged,
+} from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   dayAtomContract,
   type DayAtomContractInput,
@@ -64,21 +76,51 @@ export interface AtomGenerationInputBlock {
  */
 export async function ensureAtomForDayOrch(
   input: AtomGenerationInputBlock,
+  options: { refresh?: boolean } = {},
 ): Promise<ProjectDayAtom | null> {
   if (!input.projectId || !isValidAtomDateBlock(input.date)) return null
   const nextHash = computeInputHashBlock(input)
   const existing = await getProjectDayAtomBlock(input.projectId, input.date)
-  if (existing && existing.inputHash === nextHash && existing.sealed === isSealedDate(input.date)) {
+  // Fast path with tier precedence (claude > local > rule-based): reuse the
+  // stored atom when it's fresh, correctly sealed, and at least as good as what
+  // the current selection would produce. A Claude atom survives a switch to
+  // local (never downgraded); switching *up* to Claude falls through and
+  // regenerates. Legacy persisted stubs rank as rule-based (0), so they're
+  // never treated as a valid hit once any real provider is selected. Target
+  // drops to 0 when AI is off/unavailable, so a stored AI atom beats a stub.
+  const currentSource = currentGenerationSourceBlock()
+  const aiActive = getAiActivityAiTitlesEnabled() && intelligenceCacheAvailableBlock()
+  const targetRank = aiActive ? generationSourceRankBlock(currentSource) : 0
+  if (
+    !options.refresh &&
+    existing &&
+    existing.inputHash === nextHash &&
+    existing.sealed === isSealedDate(input.date) &&
+    atomSourceRankBlock(existing) >= targetRank
+  ) {
     return existing
   }
-  // Try the AI contract first; fall through to the stub when the
-  // intelligence subsystem is unavailable or the contract discards output.
-  const generated =
-    (await generateAtomViaContractBlock(input, nextHash).catch(() => null)) ??
-    (await generateAtomStubBlock(input, nextHash))
-  if (!generated) return existing ?? null
-  await putProjectDayAtomBlock(generated)
-  return generated
+  // AI contract first. Only AI output is persisted — the rule-based stub is
+  // display-only (returned for the UI to render, never written to the store),
+  // so a later boot with a provider configured regenerates the real thing.
+  const contractAtom = await generateAtomViaContractBlock(input, nextHash).catch(() => null)
+  if (contractAtom) {
+    await putProjectDayAtomBlock(contractAtom)
+    return contractAtom
+  }
+  // No AI available. Prefer a previously-stored real atom over a fresh stub so
+  // we don't visibly downgrade a claude/local headline to a mechanical one.
+  if (existing && !isRuleBasedAtomBlock(existing)) return existing
+  return (await generateAtomStubBlock(input, nextHash)) ?? existing ?? null
+}
+
+/** Quality rank of a stored atom on the same ladder as `generationSourceRank`,
+ *  but with legacy detection: a stub persisted before the `generator` field
+ *  existed (identified by its model id) counts as rule-based (0) so it's never
+ *  reused ahead of real AI output. */
+function atomSourceRankBlock(atom: ProjectDayAtom): number {
+  if (isRuleBasedAtomBlock(atom)) return 0
+  return generationSourceRankBlock(atom.generator)
 }
 
 /** Convenience for the This Week / Set card: read a range of atoms for a
@@ -97,6 +139,32 @@ export async function ensureAtomsForRangeOrch(
   return out.sort((a, b) => (a.date < b.date ? -1 : 1))
 }
 
+// In-session guard so concurrent AI-Activity mounts don't each kick off the
+// vault scan. The localStorage flag guards across sessions; this promise
+// guards within one. Both are needed: the flag is only set *after* the async
+// purge finishes, so without the memo two callers could race past the flag.
+let purgeOncePromise: Promise<void> | null = null
+
+/**
+ * One-time migration: remove legacy rule-based stub atoms that an earlier bug
+ * persisted alongside real AI output. Idempotent and cheap after the first
+ * run (a single localStorage read). Callers fire this on their first mount;
+ * it self-gates so calling it on every mount is fine.
+ */
+export async function purgeRuleBasedAtomsOnceOrch(): Promise<void> {
+  if (getAiActivityRuleBasedAtomsPurged()) return
+  if (purgeOncePromise) return purgeOncePromise
+  purgeOncePromise = (async () => {
+    try {
+      await purgeRuleBasedAtomsFromStoreBlock()
+      setAiActivityRuleBasedAtomsPurged(true)
+    } catch {
+      // Leave the flag unset so a later boot retries — never block the UI.
+    }
+  })()
+  return purgeOncePromise
+}
+
 /** Read-only variant — no generation, just fetch what's already stored.
  *  Used by surfaces that render the historical timeline without wanting
  *  to trigger LLM calls (e.g. flipping through past weeks). */
@@ -109,8 +177,6 @@ export async function loadAtomsForRangeOrch(
 }
 
 // ── Internals ──────────────────────────────────────────────────────────
-
-const STUB_MODEL_ID = 'ai-activity-atom:stub@v1'
 
 /** AI contract path — composes chain digests into a single-day atom via
  *  the day-atom contract on whatever intelligence provider is configured.
@@ -157,6 +223,7 @@ async function generateAtomViaContractBlock(
     inputHash,
     generatedAt: new Date().toISOString(),
     model: result.model ?? 'unknown',
+    generator: generationSourceForProviderBlock(result.providerId),
   }
 }
 
@@ -200,7 +267,8 @@ async function generateAtomStubBlock(
     sealed: isSealedDate(input.date),
     inputHash,
     generatedAt: new Date().toISOString(),
-    model: STUB_MODEL_ID,
+    model: ATOM_STUB_MODEL_ID,
+    generator: 'rule-based',
   }
 }
 
@@ -241,7 +309,7 @@ function computeInputHashBlock(input: AtomGenerationInputBlock): string {
     // included as a stable suffix so switching the fallback shape also
     // busts cache without touching the contract.
     `${dayAtomContract.id}#v${dayAtomContract.promptVersion}`,
-    STUB_MODEL_ID,
+    ATOM_STUB_MODEL_ID,
   ].join('\x00')
   let hash = 5381
   for (let i = 0; i < material.length; i++) {

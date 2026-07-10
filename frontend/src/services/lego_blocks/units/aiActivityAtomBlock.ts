@@ -1,4 +1,8 @@
 import yaml from 'js-yaml'
+import {
+  parseGenerationSourceBlock,
+  type GenerationSource,
+} from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 
 // Rhythm-independent atom for the AI Activity intelligence layer.
 // One atom per (project, calendar day). Weeks and 3-day sets are derived by
@@ -38,9 +42,31 @@ export interface ProjectDayAtom {
   generatedAt: string
   /** Provider/model identifier so we can re-run on model upgrades. */
   model: string
+  /** Which family produced this atom — 'local' | 'claude' | 'rule-based'.
+   *  Only 'local'/'claude' are ever persisted; 'rule-based' stub atoms are
+   *  display-only. Drives regeneration when the selected provider switches
+   *  families. Empty string on legacy records written before this field. */
+  generator: GenerationSource | ''
 }
 
 const CURRENT_ATOM_SCHEMA_VERSION = 1
+
+/** Model id stamped on the deterministic (stub) atom generator. Lives here so
+ *  the generator, the rule-based predicate, and the store migration all agree
+ *  on the same string — a mismatch would let stub atoms masquerade as AI. */
+export const ATOM_STUB_MODEL_ID = 'ai-activity-atom:stub@v1'
+
+/** True when an atom is deterministic (stub / fallback) output rather than
+ *  real model work — either explicitly tagged via `generator`, or a legacy
+ *  record that predates the field but carries the stub / fallback model id.
+ *  Only rule-based atoms are eligible for purge + regeneration. */
+export function isRuleBasedAtomBlock(atom: ProjectDayAtom): boolean {
+  return (
+    atom.generator === 'rule-based' ||
+    atom.model === ATOM_STUB_MODEL_ID ||
+    atom.model.startsWith('fallback:')
+  )
+}
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -113,6 +139,7 @@ export function parseProjectDayAtomMarkdownBlock(content: string): ProjectDayAto
     inputHash: toStringOrEmpty(parsed.inputHash),
     generatedAt: toIsoStringOrNow(parsed.generatedAt),
     model: toStringOrEmpty(parsed.model),
+    generator: parseGenerationSourceBlock(parsed.generator),
   }
 }
 
@@ -125,6 +152,7 @@ export function stringifyProjectDayAtomMarkdownBlock(atom: ProjectDayAtom): stri
     sealed: atom.sealed,
     confidence: atom.confidence,
     model: atom.model,
+    generator: atom.generator,
     inputHash: atom.inputHash,
     generatedAt: atom.generatedAt,
     headline: atom.headline,
@@ -175,5 +203,6 @@ export function parseProjectDayAtomJsonBlock(raw: string): ProjectDayAtom | null
     inputHash: toStringOrEmpty(parsed.inputHash),
     generatedAt: toIsoStringOrNow(parsed.generatedAt),
     model: toStringOrEmpty(parsed.model),
+    generator: parseGenerationSourceBlock(parsed.generator),
   }
 }

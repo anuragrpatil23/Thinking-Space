@@ -35,6 +35,7 @@ import {
   readWebullCredentialStatusBlock,
   saveWebullCredentialsBlock,
 } from '@/personal_extension/services/lego_blocks/units/webullConfigBlock'
+import { deriveDefaultWebullSimRootBlock } from '@/personal_extension/services/orchestrators/webullSimOrch'
 import {
   clearGoogleDriveAuthOrch,
   connectGoogleDriveAuthOrch,
@@ -48,6 +49,8 @@ import {
   setMoonSceneIdleAnimationsEnabledOrch,
   setMoonSceneMessagesPreferenceOrch,
   setShowDailyHighlightsPreferenceOrch,
+  setWebullSimTabEnabledPreferenceOrch,
+  setWebullSimFolderPathPreferenceOrch,
   type ExplorerFolderColorPreferenceBlock,
   type ExplorerIconStyleBlock,
   type MoonSceneMessagePreferenceBlock,
@@ -256,6 +259,9 @@ export default function SettingsOrch({
   const [moonSceneMessagesDraft, setMoonSceneMessagesDraft] = useState<MoonSceneMessagePreferenceBlock[]>([])
   const [moonSceneMessagesDirty, setMoonSceneMessagesDirty] = useState(false)
   const [moonSceneIdleAnimationsEnabled, setMoonSceneIdleAnimationsEnabled] = useState(true)
+  const [webullSimTabEnabled, setWebullSimTabEnabled] = useState(false)
+  const [webullSimFolderPathInput, setWebullSimFolderPathInput] = useState('')
+  const [webullSavedSimFolderPath, setWebullSavedSimFolderPath] = useState('')
   useEffect(() => {
     let cancelled = false
     void readVaultUiPreferencesOrch()
@@ -265,6 +271,9 @@ export default function SettingsOrch({
         setMoonSceneMessagesSaved(prefs.moonSceneMessages)
         setMoonSceneMessagesDraft(prefs.moonSceneMessages)
         setMoonSceneIdleAnimationsEnabled(prefs.moonSceneIdleAnimationsEnabled)
+        setWebullSimTabEnabled(prefs.webullSimTabEnabled)
+        setWebullSimFolderPathInput(prefs.webullSimFolderPath)
+        setWebullSavedSimFolderPath(prefs.webullSimFolderPath)
       })
       .catch(() => {
         /* leave default */
@@ -278,6 +287,29 @@ export default function SettingsOrch({
     void setShowDailyHighlightsPreferenceOrch(next).catch(err => {
       console.warn('[settings] failed to persist showDailyHighlights:', err)
     })
+  }
+  const updateWebullSimTabEnabled = (next: boolean) => {
+    setWebullSimTabEnabled(next)
+    void setWebullSimTabEnabledPreferenceOrch(next).catch(err => {
+      console.warn('[settings] failed to persist webullSimTabEnabled:', err)
+    })
+  }
+  const onSaveWebullSimFolderPath = async () => {
+    setBusyAction('webull')
+    setError(null)
+    setMessage(null)
+    try {
+      const saved = await setWebullSimFolderPathPreferenceOrch(webullSimFolderPathInput)
+      setWebullSimFolderPathInput(saved.webullSimFolderPath)
+      setWebullSavedSimFolderPath(saved.webullSimFolderPath)
+      setMessage(saved.webullSimFolderPath
+        ? 'Sim folder path saved.'
+        : 'Sim folder path cleared. The Sim tab now uses the default sibling folder beside the execution folder.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save the Sim folder path.')
+    } finally {
+      setBusyAction(null)
+    }
   }
   const [schedulerSettingsDraft, setSchedulerSettingsDraft] = useState<SchedulerSettingsBlock>(() => schedulerSettings)
   const [schedulerDirty, setSchedulerDirty] = useState(false)
@@ -1760,6 +1792,55 @@ export default function SettingsOrch({
               >
                 {busyAction === 'webull' ? 'Saving...' : 'Save Tab Appearance'}
               </Button>
+            </div>
+            <div className="space-y-2 rounded-lg border border-border/60 p-3">
+              <h3 className="text-sm font-medium text-foreground">Experimental Subtabs</h3>
+              <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+                <div className="space-y-0.5">
+                  <div className="text-sm text-foreground">Sim subtab</div>
+                  <div className="text-xs text-muted-foreground">
+                    Adds a Sim timeline of F9 practice reps across market history, beside Study. Reads the
+                    f9-sim folder next to your execution folder. Applied on next visit to the Webull tab.
+                  </div>
+                </div>
+                <Switch
+                  checked={webullSimTabEnabled}
+                  onCheckedChange={updateWebullSimTabEnabled}
+                  aria-label="Enable the Webull Sim subtab"
+                />
+              </label>
+              <div className="space-y-2">
+                <label htmlFor="ltm-settings-webull-sim-folder" className="text-sm font-medium">
+                  Sim Folder Path
+                </label>
+                <input
+                  id="ltm-settings-webull-sim-folder"
+                  type="text"
+                  value={webullSimFolderPathInput}
+                  onChange={(event) => setWebullSimFolderPathInput(event.target.value)}
+                  placeholder={
+                    deriveDefaultWebullSimRootBlock(webullSavedExecutionFolderPath)
+                    || 'e.g. acceleration_core/F9/F9-sim'
+                  }
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Vault-relative folder holding the Sim data (<code>cases/</code>, <code>eras.yaml</code>, <code>bench.md</code>).
+                  {' '}
+                  {webullSavedSimFolderPath
+                    ? <>Current saved value: <span className="font-mono">{webullSavedSimFolderPath}</span>.</>
+                    : deriveDefaultWebullSimRootBlock(webullSavedExecutionFolderPath)
+                      ? <>Leave blank to use the default <span className="font-mono">{deriveDefaultWebullSimRootBlock(webullSavedExecutionFolderPath)}</span>.</>
+                      : <>Leave blank to use a <span className="font-mono">F9-sim</span> folder beside the execution folder.</>}
+                </p>
+                <Button
+                  type="button"
+                  onClick={() => { void onSaveWebullSimFolderPath() }}
+                  disabled={busyAction === 'webull'}
+                >
+                  {busyAction === 'webull' ? 'Saving...' : 'Save Sim Folder Path'}
+                </Button>
+              </div>
             </div>
             <div className="space-y-2 rounded-lg border border-border/60 p-3">
               <h3 className="text-sm font-medium text-foreground">Webull API Credentials</h3>

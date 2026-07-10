@@ -9,6 +9,49 @@
 
 export type ProviderId = 'openai-compat' | 'anthropic' | 'claude-cli'
 
+// Coarse label for *what kind of thing* produced a generated record (chain
+// digest, day atom). Deliberately provider-family-level, not model-level:
+//   - 'local'      → an on-device openai-compat server (mlx/LM Studio/Ollama…)
+//   - 'claude'     → Anthropic, via SDK or the claude CLI
+//   - 'rule-based' → the deterministic fallback/stub, no model involved
+// Persisted alongside each record so we can (a) refuse to save rule-based
+// output and (b) regenerate when the user switches the selected provider to a
+// different family. See `generationSourceForProviderBlock`.
+export type GenerationSource = 'local' | 'claude' | 'rule-based'
+
+/** Map a concrete provider id to its coarse generation source family. */
+export function generationSourceForProviderBlock(id: ProviderId): GenerationSource {
+  return id === 'openai-compat' ? 'local' : 'claude'
+}
+
+// Quality ladder for generated records: claude > local > rule-based. Used to
+// decide reuse-vs-regenerate: a stored record is kept whenever its rank is at
+// least the tier the current selection would produce, so switching to a
+// *lower* tier never stomps a better body we already have — the user has to
+// explicitly pick the higher tier to upgrade. Parallels the range-summary
+// pipeline's `rangeSummaryTierRankBlock`, just over the coarse source family.
+// Legacy records (generator '') are assumed local-tier so a later switch to
+// Claude still upgrades them, without a regeneration storm on same-tier reads.
+export function generationSourceRankBlock(source: GenerationSource | ''): number {
+  switch (source) {
+    case 'claude':
+      return 2
+    case 'local':
+      return 1
+    case 'rule-based':
+      return 0
+    default:
+      return 1
+  }
+}
+
+/** Coerce an unknown (parsed-JSON/YAML) value to a valid GenerationSource, or
+ *  '' when it's absent/unrecognized. Shared by every persisted record that
+ *  carries a `generator` field so the parse rule lives in exactly one place. */
+export function parseGenerationSourceBlock(value: unknown): GenerationSource | '' {
+  return value === 'local' || value === 'claude' || value === 'rule-based' ? value : ''
+}
+
 export interface ModelProfile {
   /** Human-readable family name for diagnostics UI. */
   family: string

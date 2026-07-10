@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import WebullWorkspaceBlock from '../lego_blocks/integrations/WebullWorkspaceBlock'
 import {
   fetchWebullOverallSnapshotOrch,
@@ -26,14 +26,19 @@ import {
 } from '../../services/orchestrators/webullExecutionOrch'
 import { readWebullCredentialStatusBlock } from '../../services/lego_blocks/units/webullConfigBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
+import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
 
-type WebullSubtabId = 'overall' | 'study'
+type WebullSubtabId = 'overall' | 'study' | 'sim'
 
-const Webull_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
+const Webull_BASE_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
   { id: 'study', label: 'Study' },
   { id: 'overall', label: 'Overall Positions' },
 ]
+
+// The Sim subtab is gated behind a Settings → Webull toggle. Inserted right
+// after Study (its sibling practice surface) when enabled.
+const Webull_SIM_SUBTAB: { id: WebullSubtabId; label: string } = { id: 'sim', label: 'Sim' }
 
 const WEBULL_AUTO_REFRESH_STALENESS_MS = 60_000
 
@@ -168,6 +173,7 @@ interface WebullOrchProps {
 export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
   const { openFile } = useMarkdownViewer()
   const [activeSubtabId, setActiveSubtabId] = useState<WebullSubtabId>('study')
+  const [simTabEnabled, setSimTabEnabled] = useState(false)
   const [snapshot, setSnapshot] = useState<WebullOverallSnapshotOrch | null>(null)
   const [executionOverview, setExecutionOverview] = useState<WebullExecutionOverviewBlock | null>(null)
   const [executionSync, setExecutionSync] = useState<SyncWebullExecutionResultBlock | null>(null)
@@ -184,6 +190,31 @@ export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
   const [hasConfig, setHasConfig] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const subtabs = useMemo(() => (
+    simTabEnabled
+      ? [Webull_BASE_SUBTABS[0], Webull_SIM_SUBTAB, Webull_BASE_SUBTABS[1]]
+      : Webull_BASE_SUBTABS
+  ), [simTabEnabled])
+
+  // Read the Sim-subtab gate from vault UI preferences. When it flips off while
+  // Sim is active, fall back to Study so the workspace never shows a dead tab.
+  useEffect(() => {
+    let cancelled = false
+    void readVaultUiPreferencesOrch()
+      .then((prefs) => {
+        if (cancelled) return
+        setSimTabEnabled(prefs.webullSimTabEnabled)
+        if (!prefs.webullSimTabEnabled) {
+          setActiveSubtabId((current) => (current === 'sim' ? 'study' : current))
+        }
+      })
+      .catch(() => { /* leave default (disabled) */ })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const executionRoot = executionOverview?.executionRoot?.trim()
     ? executionOverview.executionRoot
     : (executionSync?.executionRoot?.trim() ? executionSync.executionRoot : null)
@@ -532,7 +563,7 @@ export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
   return (
     <WebullWorkspaceBlock
       pageTitle={pageTitle}
-      subtabs={Webull_SUBTABS}
+      subtabs={subtabs}
       activeSubtabId={activeSubtabId}
       onSelectSubtab={setActiveSubtabId}
       hasConfig={hasConfig}

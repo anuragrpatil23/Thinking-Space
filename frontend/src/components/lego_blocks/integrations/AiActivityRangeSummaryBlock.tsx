@@ -3,8 +3,12 @@ import { RefreshCw, Loader2 } from 'lucide-react'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { loadChainDigestOrch } from '@/services/orchestrators/aiActivityChainDigestOrch'
 import { ensureRangeSummaryOrch } from '@/services/orchestrators/aiActivityRangeSummaryOrch'
-import type { ProjectRangeSummary } from '@/services/lego_blocks/units/aiActivityRangeSummaryBlock'
-import { cn } from '@/lib/utils'
+import {
+  rangeSummaryProviderToGenerationSourceBlock,
+  type ProjectRangeSummary,
+} from '@/services/lego_blocks/units/aiActivityRangeSummaryBlock'
+import LightMarkdownTextBlock from '@/components/lego_blocks/units/LightMarkdownTextBlock'
+import AiActivitySourceChipBlock from '@/components/lego_blocks/units/AiActivitySourceChipBlock'
 
 interface Props {
   projectId: string
@@ -27,22 +31,6 @@ function isoDayLocal(iso: string): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
-}
-
-function providerBadge(provider: ProjectRangeSummary['provider']): { label: string; className: string } {
-  // Small coloured text, no pill background — quiet source marker. "rules"
-  // covers both deterministic tiers (titles list + count stub) because from
-  // the reader's perspective the distinction is "no model ran" either way.
-  switch (provider) {
-    case 'claude-cli':
-      return { label: 'claude', className: 'text-orange-600 dark:text-orange-300' }
-    case 'local-two-stage':
-      return { label: 'local', className: 'text-emerald-600 dark:text-emerald-300' }
-    case 'fallback-titles':
-    case 'fallback-stub':
-    default:
-      return { label: 'rules based', className: 'text-muted-foreground' }
-  }
 }
 
 export default function AiActivityRangeSummaryBlock({
@@ -154,8 +142,6 @@ export default function AiActivityRangeSummaryBlock({
 
   if (chains.length === 0) return null
 
-  const badge = summary ? providerBadge(summary.provider) : null
-
   if (compact) {
     // Inline shape — no card frame, no heading, no per-project badge. The
     // parent (e.g. ThisWeekDigestBlock) shows a single provider badge at
@@ -170,9 +156,10 @@ export default function AiActivityRangeSummaryBlock({
           <p className="text-[11px] text-muted-foreground">Generating…</p>
         )}
         {!error && summary && (
-          <pre className="whitespace-pre-wrap break-words font-sans text-[11px] leading-relaxed text-muted-foreground">
-            {summary.body}
-          </pre>
+          <LightMarkdownTextBlock
+            text={summary.body}
+            className="text-[11px] leading-relaxed text-muted-foreground"
+          />
         )}
       </div>
     )
@@ -185,13 +172,11 @@ export default function AiActivityRangeSummaryBlock({
             refresh button stays top-right, keyed off the header row height. */}
         <div className="min-w-0 flex-1">
           <h4 className="text-sm font-semibold text-foreground">Range summary</h4>
-          {badge && (
-            <span
-              className={cn('block text-[9px] uppercase tracking-[0.08em]', badge.className)}
-              title={`Generated via ${summary?.provider}`}
-            >
-              {badge.label}
-            </span>
+          {summary && (
+            <AiActivitySourceChipBlock
+              generator={rangeSummaryProviderToGenerationSourceBlock(summary.provider)}
+              className="block"
+            />
           )}
         </div>
         <button
@@ -212,9 +197,10 @@ export default function AiActivityRangeSummaryBlock({
         <p className="text-xs text-muted-foreground">Generating summary…</p>
       )}
       {!error && summary && (
-        <pre className="whitespace-pre-wrap break-words font-sans text-[11px] leading-relaxed text-muted-foreground">
-          {summary.body}
-        </pre>
+        <LightMarkdownTextBlock
+          text={summary.body}
+          className="text-[11px] leading-relaxed text-muted-foreground"
+        />
       )}
     </div>
   )
