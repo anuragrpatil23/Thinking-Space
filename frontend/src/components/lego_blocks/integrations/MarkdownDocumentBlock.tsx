@@ -36,8 +36,11 @@ import {
   resolveWikilinkTargetOrch,
 } from '@/services/orchestrators/obsidianLinkOrch'
 import {
+  getAbsolutePathForClipboardOrch,
   getOpenInSystemLabelOrch,
+  getRelativePathForClipboardOrch,
   openFileInNewTabOrch,
+  openFileInNewWindowOrch,
   openVaultPathWithDefaultAppOrch,
   openVaultPathInSystemOrch,
   renameVaultPathOrch,
@@ -58,6 +61,8 @@ import NoteCanvasBlock from '@/components/lego_blocks/integrations/NoteCanvasBlo
 import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
 import { parseNoteCanvasBlock } from '@/services/lego_blocks/units/noteCanvasBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
+import OverflowMenuButtonBlock from '@/components/lego_blocks/units/ui/OverflowMenuButtonBlock'
+import { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import { resolveFrontmatterDatesBlock } from '@/services/lego_blocks/units/frontmatterDatesBlock'
 import { cn } from '@/lib/utils'
 import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/integrations/markdownUrlTransformBlock'
@@ -1266,6 +1271,57 @@ function MarkdownTextDocumentRuntimeBlock({
     })
   }, [canOpenInSystem, path])
 
+  const headerMenuEntries = useMemo<ContextMenuEntryBlock[]>(() => [
+    {
+      key: 'open-obsidian',
+      label: 'Open in Obsidian',
+      onClick: () => { window.location.assign(obsidianUrl) },
+    },
+    {
+      key: 'open-system',
+      label: `Open in ${openInSystemButtonLabel}`,
+      disabled: !canOpenInSystem,
+      onClick: handleOpenInSystem,
+    },
+    {
+      key: 'open-default-app',
+      label: 'Open With Default App',
+      disabled: !canOpenInSystem,
+      onClick: () => {
+        setNavigationError(null)
+        void openVaultPathWithDefaultAppOrch(path).catch((err) => {
+          setNavigationError(err instanceof Error ? err.message : 'Failed to open file in default app')
+        })
+      },
+    },
+    { key: 'sep-open', kind: 'separator' },
+    {
+      key: 'open-tab',
+      label: 'Open in New Tab',
+      onClick: () => { openFileInNewTabOrch(path) },
+    },
+    {
+      key: 'open-window',
+      label: 'Open in New Window',
+      onClick: () => { openFileInNewWindowOrch(path) },
+    },
+    { key: 'sep-copy', kind: 'separator' },
+    {
+      key: 'copy-abs',
+      label: 'Copy Absolute Path',
+      disabled: getAbsolutePathForClipboardOrch(path) === null,
+      onClick: () => {
+        const absolute = getAbsolutePathForClipboardOrch(path)
+        if (absolute) void navigator.clipboard.writeText(absolute)
+      },
+    },
+    {
+      key: 'copy-rel',
+      label: 'Copy Relative Path',
+      onClick: () => { void navigator.clipboard.writeText(getRelativePathForClipboardOrch(path)) },
+    },
+  ], [obsidianUrl, openInSystemButtonLabel, canOpenInSystem, handleOpenInSystem, path])
+
   if (!active) {
     return <div className={cn('h-full min-h-0 bg-card', className)} aria-hidden="true" />
   }
@@ -1467,30 +1523,7 @@ function MarkdownTextDocumentRuntimeBlock({
                   </>
                 )}
 
-                <a
-                  href={obsidianUrl}
-                  className={cn(
-                    'inline-flex items-center gap-1 border border-border font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
-                    isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2.5 py-1 text-xs',
-                  )}
-                  title="Open file in Obsidian"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Obsidian</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={handleOpenInSystem}
-                  disabled={!canOpenInSystem}
-                  className={cn(
-                    'inline-flex items-center gap-1 border border-border font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-muted-foreground',
-                    isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2.5 py-1 text-xs',
-                  )}
-                  title={canOpenInSystem ? `Open file in ${openInSystemButtonLabel}` : 'Open in system file manager is unavailable on web'}
-                >
-                  <FolderOpen className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{openInSystemButtonLabel}</span>
-                </button>
+                <OverflowMenuButtonBlock entries={headerMenuEntries} title="More actions" />
 
                 {showCloseButton && onClose && (
                   <button
