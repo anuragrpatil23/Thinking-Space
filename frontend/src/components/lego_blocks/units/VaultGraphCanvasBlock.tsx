@@ -23,8 +23,6 @@ export type VaultGraphEmphasis =
   | { mode: 'none' }
   /** AI-born notes whose last touch was also AI — not yet made human. */
   | { mode: 'unabsorbed' }
-  /** Notes AI touched inside a brushed time window. */
-  | { mode: 'window'; startMs: number; endMs: number }
   /** An explicit set of node ids — the AI-activity card's day/session lens. */
   | { mode: 'nodes'; ids: ReadonlySet<string> }
 
@@ -34,8 +32,6 @@ export function vaultGraphEmphasisMatch(emphasis: VaultGraphEmphasis, node: Vaul
       return true
     case 'unabsorbed':
       return node.aiBorn && node.aiTouchMs > 0
-    case 'window':
-      return node.aiTouchMs >= emphasis.startMs && node.aiTouchMs <= emphasis.endMs
     case 'nodes':
       return emphasis.ids.has(node.id)
   }
@@ -143,6 +139,9 @@ interface VaultGraphCanvasBlockProps {
    *  selection and never leave the graph; the parent routes ⌘ → side panel and
    *  ⌥ → explorer off the event's modifier keys. */
   onNodeClick: (node: VaultGraphNode, event: MouseEvent) => void
+  /** Clicking empty canvas — the parent uses it to clear the card session/day
+   *  lens (the in-canvas node selection is cleared here regardless). */
+  onBackgroundClick?: () => void
 }
 
 /** Width reserved on the right for the docked panel (panel width + gutters). */
@@ -159,6 +158,7 @@ export default function VaultGraphCanvasBlock({
   zoomTo,
   sidePanel,
   onNodeClick,
+  onBackgroundClick,
 }: VaultGraphCanvasBlockProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   // force-graph instance — untyped ref because the lib loads dynamically.
@@ -208,6 +208,8 @@ export default function VaultGraphCanvasBlock({
 
   const onNodeClickRef = useRef(onNodeClick)
   onNodeClickRef.current = onNodeClick
+  const onBackgroundClickRef = useRef(onBackgroundClick)
+  onBackgroundClickRef.current = onBackgroundClick
 
   const adjacency = useMemo(() => {
     const map = new Map<string, Set<string>>()
@@ -582,6 +584,8 @@ export default function VaultGraphCanvasBlock({
           }
         })
         .onBackgroundClick(() => {
+          // Let the parent clear the card session/day lens too.
+          onBackgroundClickRef.current?.()
           if (!view.selectedId) return
           view.selectedId = null
           view.selectedNeighbors = new Set()

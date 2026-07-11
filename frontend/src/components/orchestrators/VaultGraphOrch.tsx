@@ -1,7 +1,7 @@
 // 1) Imports
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, Flame, Info, RefreshCw, X } from 'lucide-react'
+import { Activity, Flame, Info, X } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import VaultGraphCanvasBlock, {
   VAULT_GRAPH_FALLBACK_COLOR,
@@ -13,6 +13,7 @@ import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColors
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
+import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import { selectGraphNodesForChainsBlock } from '@/services/lego_blocks/integrations/vaultGraphBlock'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import {
@@ -54,7 +55,6 @@ export default function VaultGraphOrch() {
   // these projects' nodes are shown (chips act as an include filter, not hide).
   const [focusedProjects, setFocusedProjects] = useState<ReadonlySet<string>>(new Set())
   const [unabsorbedLens, setUnabsorbedLens] = useState(false)
-  const [brush, setBrush] = useState<[number, number] | null>(null)
   const [cardOpen, setCardOpen] = useState(true)
   // Active day/session lens from the AI-activity card, plus a zoom request the
   // canvas consumes (session clicks re-frame the camera on the touched notes).
@@ -63,6 +63,9 @@ export default function VaultGraphOrch() {
   // Transient toast when a day/session click maps to no graph notes (e.g. the
   // session worked outside the vault), so a dead click isn't silent.
   const [notice, setNotice] = useState<string | null>(null)
+  // Bumped whenever the graph deselects, so the AI-activity card drops its
+  // session-row highlight in step with the graph.
+  const [deselectNonce, setDeselectNonce] = useState(0)
   const zoomNonce = useRef(0)
   const { hostRef, isDark } = useDarkModeClassBlock<HTMLDivElement>()
   const { openFile } = useMarkdownViewer()
@@ -84,16 +87,15 @@ export default function VaultGraphOrch() {
   }, [focusedProjects, data])
 
   // Precedence: the card lens (day/session) is the most explicit gesture, then
-  // the timeline brush, then the standing unabsorbed toggle. The setters below
-  // clear the others so only one is ever live — last gesture wins.
+  // the standing unabsorbed toggle. The setters below clear the other so only
+  // one is ever live — last gesture wins.
   const emphasis: VaultGraphEmphasis = useMemo(() => {
     // An empty node set must never become a lens — it would dim the whole graph
     // to nothing. A day/session that maps to no notes just shows the graph as-is.
     if (cardSelection && cardSelection.ids.size > 0) return { mode: 'nodes', ids: cardSelection.ids }
-    if (brush) return { mode: 'window', startMs: brush[0], endMs: brush[1] }
     if (unabsorbedLens) return { mode: 'unabsorbed' }
     return NO_EMPHASIS
-  }, [cardSelection, brush, unabsorbedLens])
+  }, [cardSelection, unabsorbedLens])
 
   const projectColors = useMemo(() => {
     const map = new Map<string, string>()
@@ -110,11 +112,6 @@ export default function VaultGraphOrch() {
 
   const visibleBirths = useMemo(
     () => visibleNodes.map(node => node.birthMs).sort((a, b) => a - b),
-    [visibleNodes],
-  )
-
-  const aiTouches = useMemo(
-    () => visibleNodes.filter(node => node.aiTouchMs > 0).map(node => node.aiTouchMs),
     [visibleNodes],
   )
 
@@ -169,6 +166,9 @@ export default function VaultGraphOrch() {
     fetchData(false)
   }, [fetchData])
 
+  // Rebuild on the top-chrome universal refresh instead of a dedicated button.
+  useEffect(() => addGlobalSyncRefreshListenerBlock(() => fetchData(true)), [fetchData])
+
   // Auto-dismiss the "no notes touched" toast a few seconds after it appears.
   useEffect(() => {
     if (!notice) return
@@ -216,11 +216,6 @@ export default function VaultGraphOrch() {
     setScrubMs(ms)
   }, [])
 
-  const handleBrush = useCallback((window: [number, number] | null) => {
-    if (window) setCardSelection(null)
-    setBrush(window)
-  }, [])
-
   // Day drill → highlight the notes that day's sessions touched (no camera
   // move). Passing an empty/inactive drill clears a day lens but leaves a
   // session lens alone (a session click doesn't change the drilled day).
@@ -238,7 +233,6 @@ export default function VaultGraphOrch() {
         clearDayLens()
         return
       }
-      setBrush(null)
       setUnabsorbedLens(false)
       setCardSelection({ ids: sel.ids, approximate: sel.approximate, label: meta.label, kind: 'day' })
     },
@@ -262,7 +256,6 @@ export default function VaultGraphOrch() {
         return
       }
       setNotice(null)
-      setBrush(null)
       setUnabsorbedLens(false)
       setCardSelection({
         ids: sel.ids,
@@ -275,6 +268,15 @@ export default function VaultGraphOrch() {
     },
     [data],
   )
+
+  // Clicking empty canvas clears the active session/day lens (and the stray
+  // toast), so a blank-area click deselects the session. Bumping the nonce tells
+  // the card to drop its session-row highlight too.
+  const handleClearCardSelection = useCallback(() => {
+    setCardSelection(null)
+    setNotice(null)
+    setDeselectNonce(n => n + 1)
+  }, [])
 
   // Only modifier clicks reach here (plain clicks select in-canvas): ⌘ opens the
   // note in the shared markdown side panel, ⌥ jumps to it in the explorer.
@@ -303,12 +305,6 @@ export default function VaultGraphOrch() {
   }, [fetchData])
 
   // 8) Render helpers
-  const brushLabel =
-    brush &&
-    `${new Date(brush[0]).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${new Date(
-      brush[1],
-    ).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
-
   // The AI-activity card, docked to the canvas's right edge as a fixed panel
   // (fills the docked column's height with its own scroll). Same chrome as
   // home's FloatingPanel (rounded 14 / border / shadow / solid bg / padding);
@@ -324,6 +320,7 @@ export default function VaultGraphOrch() {
           onSelectionChange={handleCardSelection}
           onSelectChain={handleCardSelectChain}
           initialDrillToday={false}
+          deselectNonce={deselectNonce}
         />
       </Suspense>
     </div>
@@ -350,7 +347,6 @@ export default function VaultGraphOrch() {
           <button
             type="button"
             onClick={() => {
-              setBrush(null)
               setCardSelection(null)
               setUnabsorbedLens(prev => !prev)
             }}
@@ -366,21 +362,10 @@ export default function VaultGraphOrch() {
             Unabsorbed
             <span className="font-mono tabular-nums opacity-70">{unabsorbedCount.toLocaleString()}</span>
           </button>
-          {brush && (
-            <button
-              type="button"
-              onClick={() => setBrush(null)}
-              className="flex items-center gap-1.5 rounded-full border border-[#FF9E3D]/60 bg-[#FF9E3D]/10 px-2.5 py-0.5 text-xs text-[#FF9E3D]"
-              title="Clear the brushed AI-activity window"
-            >
-              AI window · {brushLabel}
-              <X className="h-3 w-3" aria-hidden="true" />
-            </button>
-          )}
           {cardSelection && (
             <button
               type="button"
-              onClick={() => setCardSelection(null)}
+              onClick={handleClearCardSelection}
               className="flex max-w-[22rem] items-center gap-1.5 rounded-full border border-[#FF9E3D]/60 bg-[#FF9E3D]/10 px-2.5 py-0.5 text-xs text-[#FF9E3D]"
               title={
                 cardSelection.approximate
@@ -452,16 +437,6 @@ export default function VaultGraphOrch() {
             <Activity className="h-3 w-3" aria-hidden="true" />
             AI activity
           </button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-            onClick={handleRefresh}
-            disabled={loading}
-            aria-label="Rebuild graph"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
         </div>
       </div>
 
@@ -503,24 +478,22 @@ export default function VaultGraphOrch() {
             zoomTo={zoomReq}
             sidePanel={cardOpen ? activityCard : null}
             onNodeClick={handleNodeClick}
+            onBackgroundClick={handleClearCardSelection}
           />
         )}
       </div>
 
-      {/* Growth timeline + AI-activity brush lane */}
+      {/* Growth timeline scrubber */}
       {data && !error && (
         <div className="border-t border-border px-4 py-2">
           <VaultGraphTimelineBlock
             minMs={data.minBirthMs}
             maxMs={data.maxBirthMs}
             birthsMs={visibleBirths}
-            aiTouchesMs={aiTouches}
             scrubMs={effectiveScrubMs}
             playing={playing}
-            brush={brush}
             onScrub={handleScrub}
             onTogglePlay={handleTogglePlay}
-            onBrush={handleBrush}
           />
         </div>
       )}

@@ -104,6 +104,9 @@ export interface AiActivityGraphControls {
    *  false so it starts as a plain graph with nothing selected — the user drives
    *  it by clicking a day/session rather than landing on an auto-selection. */
   initialDrillToday?: boolean
+  /** Bumped by the graph when it deselects (e.g. a blank-canvas click), so the
+   *  card drops its session-row highlight and stays in sync with the graph. */
+  deselectNonce?: number
 }
 
 export default function AiActivityPanelBlock({
@@ -111,6 +114,7 @@ export default function AiActivityPanelBlock({
   onSelectChain,
   compact = false,
   initialDrillToday = true,
+  deselectNonce,
 }: AiActivityGraphControls = {}) {
   const activity = useAiActivityBlock('90d')
   // One-time cleanup of legacy rule-based stub atoms an old bug persisted.
@@ -286,6 +290,17 @@ export default function AiActivityPanelBlock({
   useEffect(() => {
     setSelectedChainKey(null)
   }, [selectedDate, selectedRange])
+  // Drop the row highlight when the graph deselects. Skip the mount run so we
+  // don't clobber anything on first render (and so the standalone view, which
+  // never bumps the nonce, is unaffected).
+  const firstDeselectRef = useRef(true)
+  useEffect(() => {
+    if (firstDeselectRef.current) {
+      firstDeselectRef.current = false
+      return
+    }
+    setSelectedChainKey(null)
+  }, [deselectNonce])
   // Push the current day/range drill up to the graph so it can highlight the
   // notes that day's sessions touched. drillChains is memoized, so this only
   // fires when the selection actually changes.

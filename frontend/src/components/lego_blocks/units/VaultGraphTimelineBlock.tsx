@@ -1,11 +1,8 @@
-// Timeline scrubber for the vault graph — two lanes on one canvas.
+// Growth timeline scrubber for the vault graph — a single lane.
 //
-// Bottom lane: weekly histogram of note births, doubling as the scrub track.
-// Weeks left of the playhead burn amber (already born); weeks right stay ash.
-// Top lane: ember bars of AI touch activity (notes whose last modification
-// fell in a vault AI session that week). Dragging on the top lane brushes a
-// time window — the graph lights the notes AI touched inside it — so the
-// activity chart is a control, not a decoration.
+// Weekly histogram of note births that doubles as the scrub track: weeks left
+// of the playhead burn amber (already born), weeks right stay ash. Drag or use
+// the arrow keys to move the playhead; the graph reveals notes as they're born.
 
 import { useEffect, useMemo, useRef } from 'react'
 import { Pause, Play } from 'lucide-react'
@@ -15,16 +12,6 @@ const WEEK_MS = 7 * 86_400_000
 const BORN_COLOR = '#E0A458'
 const UNBORN_COLOR = 'rgba(139, 147, 166, 0.28)'
 const PLAYHEAD_COLOR = 'rgba(224, 164, 88, 0.95)'
-const EMBER_COLOR = 'rgba(255, 158, 61, 0.75)'
-const EMBER_DIM_COLOR = 'rgba(255, 158, 61, 0.28)'
-const BRUSH_FILL = 'rgba(255, 158, 61, 0.10)'
-const BRUSH_EDGE = 'rgba(255, 158, 61, 0.85)'
-
-/** Top lane height (AI activity + brush) within the canvas, css px. */
-const AI_LANE_H = 18
-const LANE_GAP = 3
-/** Pointer drags under this many px count as a click (clears the brush). */
-const CLICK_SLOP_PX = 4
 
 function weeklyBins(minMs: number, maxMs: number, times: number[]) {
   const start = Math.floor(minMs / WEEK_MS) * WEEK_MS
@@ -42,34 +29,25 @@ interface VaultGraphTimelineBlockProps {
   maxMs: number
   /** Sorted birth timestamps (ms) of every visible-container note. */
   birthsMs: number[]
-  /** AI-touch timestamps (ms) of visible-container notes. */
-  aiTouchesMs: number[]
   scrubMs: number
   playing: boolean
-  /** Active AI-window brush, or null. */
-  brush: [number, number] | null
   onScrub: (ms: number) => void
   onTogglePlay: () => void
-  onBrush: (window: [number, number] | null) => void
 }
 
 export default function VaultGraphTimelineBlock({
   minMs,
   maxMs,
   birthsMs,
-  aiTouchesMs,
   scrubMs,
   playing,
-  brush,
   onScrub,
   onTogglePlay,
-  onBrush,
 }: VaultGraphTimelineBlockProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const pointerRef = useRef<{ mode: 'scrub' | 'brush'; startX: number; startMs: number } | null>(null)
+  const draggingRef = useRef(false)
 
   const birthBins = useMemo(() => weeklyBins(minMs, maxMs, birthsMs), [minMs, maxMs, birthsMs])
-  const aiBins = useMemo(() => weeklyBins(minMs, maxMs, aiTouchesMs), [minMs, maxMs, aiTouchesMs])
 
   const range = Math.max(1, maxMs - minMs)
   const msAtX = (x: number, width: number) =>
@@ -96,49 +74,25 @@ export default function VaultGraphTimelineBlock({
     const xOf = (ms: number) => ((ms - minMs) / range) * cssWidth
     const barWidth = Math.max(1, cssWidth / birthBins.count - 1)
 
-    // ── Top lane: AI touch activity ──
-    for (let i = 0; i < aiBins.count; i++) {
-      if (aiBins.heights[i] === 0) continue
-      const binStart = aiBins.start + i * WEEK_MS
-      const binEnd = binStart + WEEK_MS
-      const h = Math.max(1.5, Math.sqrt(aiBins.heights[i] / aiBins.max) * (AI_LANE_H - 2))
-      const inBrush = brush !== null && binEnd > brush[0] && binStart < brush[1]
-      ctx.fillStyle = brush === null || inBrush ? EMBER_COLOR : EMBER_DIM_COLOR
-      ctx.fillRect(xOf(binStart), AI_LANE_H - h, barWidth, h)
-    }
-
-    // ── Bottom lane: birth histogram / scrub track ──
-    const trackTop = AI_LANE_H + LANE_GAP
-    const trackHeight = cssHeight - trackTop
+    // Birth histogram / scrub track.
     for (let i = 0; i < birthBins.count; i++) {
       const binStart = birthBins.start + i * WEEK_MS
       // sqrt scale keeps big synthesis bursts from flattening quiet weeks.
-      const h = Math.max(1.5, Math.sqrt(birthBins.heights[i] / birthBins.max) * (trackHeight - 4))
+      const h = Math.max(1.5, Math.sqrt(birthBins.heights[i] / birthBins.max) * (cssHeight - 4))
       ctx.fillStyle = binStart <= scrubMs ? BORN_COLOR : UNBORN_COLOR
       ctx.globalAlpha = binStart <= scrubMs ? 0.85 : 1
       ctx.fillRect(xOf(binStart), cssHeight - h, barWidth, h)
     }
     ctx.globalAlpha = 1
 
-    // ── Brush window overlay across both lanes ──
-    if (brush !== null) {
-      const x0 = xOf(brush[0])
-      const x1 = xOf(brush[1])
-      ctx.fillStyle = BRUSH_FILL
-      ctx.fillRect(x0, 0, x1 - x0, cssHeight)
-      ctx.fillStyle = BRUSH_EDGE
-      ctx.fillRect(x0 - 0.5, 0, 1, cssHeight)
-      ctx.fillRect(x1 - 0.5, 0, 1, cssHeight)
-    }
-
-    // ── Playhead ──
+    // Playhead.
     const playheadX = xOf(scrubMs)
     ctx.fillStyle = PLAYHEAD_COLOR
-    ctx.fillRect(playheadX - 0.75, trackTop, 1.5, cssHeight - trackTop)
+    ctx.fillRect(playheadX - 0.75, 0, 1.5, cssHeight)
     ctx.beginPath()
-    ctx.arc(playheadX, trackTop + 3, 3, 0, 2 * Math.PI)
+    ctx.arc(playheadX, 3, 3, 0, 2 * Math.PI)
     ctx.fill()
-  }, [birthBins, aiBins, minMs, maxMs, range, scrubMs, brush])
+  }, [birthBins, minMs, maxMs, range, scrubMs])
 
   const scrubDateLabel = new Date(scrubMs).toLocaleDateString(undefined, {
     year: 'numeric',
@@ -159,53 +113,33 @@ export default function VaultGraphTimelineBlock({
       </Button>
 
       <div
-        className="relative h-[74px] min-w-0 flex-1 cursor-ew-resize touch-none select-none rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="relative h-[56px] min-w-0 flex-1 cursor-ew-resize touch-none select-none rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         role="slider"
         tabIndex={0}
-        aria-label="Vault growth timeline; top lane brushes an AI-activity window"
+        aria-label="Vault growth timeline"
         aria-valuemin={minMs}
         aria-valuemax={maxMs}
         aria-valuenow={scrubMs}
         aria-valuetext={scrubDateLabel}
         onPointerDown={e => {
           e.currentTarget.setPointerCapture(e.pointerId)
+          draggingRef.current = true
           const rect = e.currentTarget.getBoundingClientRect()
-          const x = e.clientX - rect.left
-          const y = e.clientY - rect.top
-          const ms = msAtX(x, rect.width)
-          if (y <= AI_LANE_H + LANE_GAP / 2) {
-            pointerRef.current = { mode: 'brush', startX: x, startMs: ms }
-          } else {
-            pointerRef.current = { mode: 'scrub', startX: x, startMs: ms }
-            onScrub(ms)
-          }
+          onScrub(msAtX(e.clientX - rect.left, rect.width))
         }}
         onPointerMove={e => {
-          const state = pointerRef.current
-          if (!state || e.buttons !== 1) return
+          if (!draggingRef.current || e.buttons !== 1) return
           const rect = e.currentTarget.getBoundingClientRect()
-          const x = e.clientX - rect.left
-          const ms = msAtX(x, rect.width)
-          if (state.mode === 'scrub') {
-            onScrub(ms)
-          } else {
-            onBrush(ms < state.startMs ? [ms, state.startMs] : [state.startMs, ms])
-          }
+          onScrub(msAtX(e.clientX - rect.left, rect.width))
         }}
-        onPointerUp={e => {
-          const state = pointerRef.current
-          pointerRef.current = null
-          if (!state || state.mode !== 'brush') return
-          const rect = e.currentTarget.getBoundingClientRect()
-          // A click (no real drag) on the AI lane clears the brush.
-          if (Math.abs(e.clientX - rect.left - state.startX) < CLICK_SLOP_PX) onBrush(null)
+        onPointerUp={() => {
+          draggingRef.current = false
         }}
         onKeyDown={e => {
           if (e.key === 'ArrowLeft') onScrub(Math.max(minMs, scrubMs - WEEK_MS))
           else if (e.key === 'ArrowRight') onScrub(Math.min(maxMs, scrubMs + WEEK_MS))
           else if (e.key === 'Home') onScrub(minMs)
           else if (e.key === 'End') onScrub(maxMs)
-          else if (e.key === 'Escape') onBrush(null)
           else if (e.key === ' ' || e.key === 'Enter') {
             e.preventDefault()
             onTogglePlay()
