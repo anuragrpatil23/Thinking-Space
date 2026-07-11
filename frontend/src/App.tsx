@@ -16,7 +16,6 @@ import {
 } from 'lucide-react'
 import {
   MagnifyingGlass as PhosphorMagnifyingGlass,
-  NotePencil as PhosphorNotePencil,
   TreeView as PhosphorTreeView,
   type Icon as PhosphorIcon,
 } from '@phosphor-icons/react'
@@ -194,7 +193,25 @@ function phosphorNavIcon(Icon: PhosphorIcon): NavIcon {
   }
 }
 
-const NewNoteNavIcon = phosphorNavIcon(PhosphorNotePencil)
+// Compose glyph — lucide's SquarePen pencil, but on a softer rounded square
+// (corner radius 5 instead of 2) to match the ChatGPT-style compose mark.
+function NewNoteNavIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3H8a5 5 0 0 0-5 5v8a5 5 0 0 0 5 5h8a5 5 0 0 0 5-5v-4" />
+      <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .505-.853z" />
+    </svg>
+  )
+}
 const OrganizerNavIcon = phosphorNavIcon(PhosphorTreeView)
 const SearchNavIcon = phosphorNavIcon(PhosphorMagnifyingGlass)
 const ToolsNavIcon = ToolsShapesNavIcon
@@ -377,7 +394,7 @@ function WebullNavIcon({ className = 'h-4 w-4' }: { className?: string }) {
 
 function WebullTextNavIcon({ text, className = 'h-4 w-4' }: { text: string; className?: string }) {
   return (
-    <span aria-hidden="true" className={`${className} inline-flex items-center justify-center text-[10px] font-semibold leading-none tracking-tight`}>
+    <span aria-hidden="true" className={`${className} inline-flex items-center justify-center text-[12px] font-medium leading-none tracking-tight`}>
       {text}
     </span>
   )
