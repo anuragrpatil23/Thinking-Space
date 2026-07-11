@@ -135,23 +135,18 @@ interface VaultGraphCanvasBlockProps {
   /** A camera fit request: zoom to the given node subset. `nonce` re-triggers
    *  the fit even when the ids are unchanged (re-clicking the same session). */
   zoomTo?: { ids: ReadonlySet<string>; nonce: number } | null
-  /** A DOM card that lives in graph-world space: it pans and zooms with the
-   *  graph exactly like the home-canvas panels, sliding off as you explore. */
-  worldCard?: ReactNode
+  /** A control panel docked to the right edge in screen space — fixed size,
+   *  independent scroll, never scales with the graph. The canvas is inset to
+   *  the left of it so the panel never overlaps the nodes. */
+  sidePanel?: ReactNode
   /** Fired only for modifier clicks (⌘ / ⌥). Plain clicks toggle the in-canvas
    *  selection and never leave the graph; the parent routes ⌘ → side panel and
    *  ⌥ → explorer off the event's modifier keys. */
   onNodeClick: (node: VaultGraphNode, event: MouseEvent) => void
 }
 
-/** Fraction of the card's natural (CSS px) size it opens at in the default
- *  fit-all view. <1 so a fit-everything graph and the card read proportional
- *  instead of the card ballooning over a tiny cluster; zooming in grows both. */
-const CARD_OPEN_SCALE = 0.42
-/** How far below the viewport bottom the card's bottom-right corner is pinned at
- *  open, so it sits low in the frame. It pans with the graph, so anything past
- *  the fold is just a pan away. */
-const CARD_OPEN_DROP_PX = 170
+/** Width reserved on the right for the docked panel (panel width + gutters). */
+const SIDE_PANEL_RESERVE = 468
 
 export default function VaultGraphCanvasBlock({
   data,
@@ -162,14 +157,10 @@ export default function VaultGraphCanvasBlock({
   playing,
   emphasis,
   zoomTo,
-  worldCard,
+  sidePanel,
   onNodeClick,
 }: VaultGraphCanvasBlockProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  // The world-anchored card + its anchor: a fixed graph-world point plus the
-  // reference zoom baseline, so its scale tracks the graph 1:1 from that point.
-  const worldCardRef = useRef<HTMLDivElement | null>(null)
-  const worldCardAnchorRef = useRef<{ x: number; y: number; baseK: number } | null>(null)
   // force-graph instance — untyped ref because the lib loads dynamically.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = useRef<any>(null)
@@ -265,44 +256,6 @@ export default function VaultGraphCanvasBlock({
       function pokeRedraw() {
         // Re-setting an accessor marks the scene dirty without touching data.
         graph.nodeVisibility(graph.nodeVisibility())
-      }
-
-      // ── World-anchored control card ──
-      // The anchor is a graph-world point tied to the card's BOTTOM-RIGHT corner
-      // plus a reference zoom (baseK). Each frame we map the point back to screen
-      // space and lay the card up-and-left of it, scaled by zoom/baseK — so it
-      // pans and zooms with the graph like a home-canvas panel and sits in the
-      // bottom-right corner rather than on top of the nodes. baseK is set ABOVE
-      // the fit zoom (see anchorWorldCard) so the card opens at CARD_OPEN_SCALE,
-      // proportional to a fit-everything graph instead of ballooning over it.
-      function syncWorldCard(kOverride?: number) {
-        const el = worldCardRef.current
-        const anchor = worldCardAnchorRef.current
-        if (!el || !anchor) return
-        const card = el.firstElementChild
-        const cw = card instanceof HTMLElement ? card.offsetWidth : 880
-        const ch = card instanceof HTMLElement ? card.offsetHeight : 640
-        const s = graph.graph2ScreenCoords(anchor.x, anchor.y)
-        const k = (kOverride ?? graph.zoom()) / anchor.baseK
-        el.style.transform = `translate(${s.x - cw * k}px, ${s.y - ch * k}px) scale(${k})`
-      }
-      function anchorWorldCard() {
-        const host = containerRef.current
-        if (!worldCardRef.current || !host) return
-        // Pin the card's bottom-right to the viewport's bottom-right corner, and
-        // set baseK = fitZoom / CARD_OPEN_SCALE so the card renders at
-        // CARD_OPEN_SCALE of its natural size at this default view.
-        const world = graph.screen2GraphCoords(
-          host.clientWidth - 20,
-          host.clientHeight - 20 + CARD_OPEN_DROP_PX,
-        )
-        worldCardAnchorRef.current = {
-          x: world.x,
-          y: world.y,
-          baseK: graph.zoom() / CARD_OPEN_SCALE,
-        }
-        worldCardRef.current.style.opacity = '1'
-        syncWorldCard()
       }
 
       // Ease the focus dim toward `target` (0 idle / 1 focused), redrawing
@@ -500,7 +453,11 @@ export default function VaultGraphCanvasBlock({
             haloScale = Math.min(haloScale, 1 - view.dimEase)
           }
 
-          if (node.heat > 0.04 && haloScale > 0.05) {
+          // AI-heat halo is an on-demand lens, not ambient chrome: at rest the
+          // graph is plain project colors. It lights up only under an active
+          // AI-activity selection (day/session/window/unabsorbed), so selecting
+          // sessions is what surfaces the AI-touch glow.
+          if (view.emphasis.mode !== 'none' && node.heat > 0.04 && haloScale > 0.05) {
             ctx.beginPath()
             ctx.arc(x, y, r * (1.8 + node.heat * 2.2), 0, 2 * Math.PI)
             ctx.fillStyle = `rgba(${EMBER}, ${(0.32 * node.heat * haloScale).toFixed(3)})`
@@ -580,9 +537,7 @@ export default function VaultGraphCanvasBlock({
         )
         .onRenderFramePost((ctx: CanvasRenderingContext2D, scale: number) => {
           drawLabels(ctx, scale)
-          syncWorldCard(scale)
         })
-        .onZoom(() => syncWorldCard())
         .onNodeHover((node: VaultGraphNode | null) => {
           view.hover = node
           if (node) {
@@ -645,7 +600,6 @@ export default function VaultGraphCanvasBlock({
             node.fy = node.y
           }
           graph.zoomToFit(600, 48)
-          setTimeout(anchorWorldCard, 640)
         })
 
       graph.d3Force('charge')?.strength(-38)
@@ -695,10 +649,7 @@ export default function VaultGraphCanvasBlock({
       graph.graphData({ nodes: data.nodes, links: data.links })
       if (prefrozen) {
         graph.cooldownTicks(0)
-        setTimeout(() => {
-          graph.zoomToFit(0, 48)
-          anchorWorldCard()
-        }, 0)
+        setTimeout(() => graph.zoomToFit(0, 48), 0)
       }
 
       graphRef.current = graph
@@ -778,16 +729,19 @@ export default function VaultGraphCanvasBlock({
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <div ref={containerRef} className="h-full w-full" />
-      {/* World-anchored control card — transform is driven imperatively each
-          frame by syncWorldCard so it tracks the graph's pan and zoom. */}
-      {worldCard && (
-        <div
-          ref={worldCardRef}
-          className="absolute left-0 top-0 origin-top-left opacity-0 [will-change:transform]"
-        >
-          {worldCard}
-        </div>
+      {/* Canvas is inset to the left of the docked panel so the graph fits into
+          the open space and the panel never overlaps the nodes. */}
+      <div
+        ref={containerRef}
+        className="absolute inset-y-0 left-0"
+        style={{ right: sidePanel ? SIDE_PANEL_RESERVE : 0 }}
+      />
+      {/* Control panel docked to the right edge in screen space — fixed width,
+          full height, its own scroll. Does not pan or zoom with the graph. */}
+      {sidePanel && (
+        <aside className="absolute inset-y-3 right-3 w-[440px] max-w-[calc(100%-1.5rem)]">
+          {sidePanel}
+        </aside>
       )}
       {/* Detail card: metadata for the hovered or selected note, off the canvas. */}
       {detailNode && (

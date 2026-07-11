@@ -100,12 +100,17 @@ export interface AiActivityGraphControls {
    *  graph — the heatmap + its day drill — and drop the Trend/Totals analysis
    *  sections so the card stays a small corner widget instead of a full panel. */
   compact?: boolean
+  /** Whether to open with today's cell drilled (default true). The graph passes
+   *  false so it starts as a plain graph with nothing selected — the user drives
+   *  it by clicking a day/session rather than landing on an auto-selection. */
+  initialDrillToday?: boolean
 }
 
 export default function AiActivityPanelBlock({
   onSelectionChange,
   onSelectChain,
   compact = false,
+  initialDrillToday = true,
 }: AiActivityGraphControls = {}) {
   const activity = useAiActivityBlock('90d')
   // One-time cleanup of legacy rule-based stub atoms an old bug persisted.
@@ -129,8 +134,9 @@ export default function AiActivityPanelBlock({
   const [activeProject, setActiveProject] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(() =>
     // Default the heatmap drill-down to today so the panel opens already
-    // showing "what I did with AI today" instead of an empty drill area.
-    todayIso(),
+    // showing "what I did with AI today" instead of an empty drill area. The
+    // graph opts out (initialDrillToday=false) so it starts as a plain graph.
+    initialDrillToday ? todayIso() : null,
   )
   const [selectedRange, setSelectedRange] = useState<{ startIso: string; endIso: string } | null>(
     null,
@@ -257,6 +263,13 @@ export default function AiActivityPanelBlock({
   // range (e.g. "last week" or a past custom range), anchor on the latest
   // in-range day so the drill still points at something the heatmap shows.
   function resetDrillToToday(range?: { startIso: string; endIso: string } | null) {
+    // When the panel opts out of an initial today-drill (the graph), a range
+    // change clears the drill rather than re-anchoring to today, so the graph
+    // stays plain until the user explicitly picks a day/session.
+    if (!initialDrillToday) {
+      drillToDate(null, 'heatmap')
+      return
+    }
     const t = todayIso()
     let day = t
     if (range && t > range.endIso) day = range.endIso

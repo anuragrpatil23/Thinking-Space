@@ -528,8 +528,11 @@ export default function AiActivityAggregateBlock({
           </div>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border/40 bg-card/40">
-          <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
+        <div className="overflow-x-auto rounded-lg border border-border/40 bg-card/40">
+          {/* min-width keeps the fixed columns from collapsing/clipping in a
+              narrow container (e.g. the docked graph panel) — it scrolls
+              horizontally instead; at full width w-full just fills. */}
+          <table className="w-full min-w-[440px] text-xs" style={{ tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: '130px' }} />
               <col />

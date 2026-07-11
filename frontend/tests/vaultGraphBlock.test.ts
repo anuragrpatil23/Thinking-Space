@@ -98,6 +98,21 @@ describe('selectGraphNodesForChainsBlock', () => {
     expect(sel.approximate).toBe(false)
   })
 
+  it('lights nothing (not the time window) when a chain has provenance but none in the vault', () => {
+    // A session that worked entirely outside the vault (a code repo). A note was
+    // AI-touched inside the chain's span, so the time-window fallback WOULD light
+    // it — but provenance tells us this session touched no vault notes, so it
+    // must stay dark and the selection must not be marked approximate.
+    const overlapping = graphNode('overlapping.md', Date.parse('2026-07-01T10:15:00Z'))
+    const sel = selectGraphNodesForChainsBlock(
+      [chain({ touchedPaths: ['/some/other/repo/code.ts', '/some/other/repo/main.rs'] })],
+      [overlapping],
+      ROOT,
+    )
+    expect([...sel.ids]).toEqual([])
+    expect(sel.approximate).toBe(false)
+  })
+
   it('falls back to the time window when a chain has no provenance', () => {
     const touchedNode = graphNode('touched.md', Date.parse('2026-07-01T10:15:00Z'))
     const sel = selectGraphNodesForChainsBlock(

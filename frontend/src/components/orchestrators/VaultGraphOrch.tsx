@@ -1,7 +1,7 @@
 // 1) Imports
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, Flame, RefreshCw, X } from 'lucide-react'
+import { Activity, Flame, Info, RefreshCw, X } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import VaultGraphCanvasBlock, {
   VAULT_GRAPH_FALLBACK_COLOR,
@@ -50,7 +50,9 @@ export default function VaultGraphOrch() {
   const [error, setError] = useState<string | null>(null)
   const [scrubMs, setScrubMs] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
-  const [hiddenProjects, setHiddenProjects] = useState<ReadonlySet<string>>(new Set())
+  // Projects the chips have isolated to. Empty = show everything; otherwise only
+  // these projects' nodes are shown (chips act as an include filter, not hide).
+  const [focusedProjects, setFocusedProjects] = useState<ReadonlySet<string>>(new Set())
   const [unabsorbedLens, setUnabsorbedLens] = useState(false)
   const [brush, setBrush] = useState<[number, number] | null>(null)
   const [cardOpen, setCardOpen] = useState(true)
@@ -58,6 +60,9 @@ export default function VaultGraphOrch() {
   // canvas consumes (session clicks re-frame the camera on the touched notes).
   const [cardSelection, setCardSelection] = useState<GraphCardSelection | null>(null)
   const [zoomReq, setZoomReq] = useState<{ ids: ReadonlySet<string>; nonce: number } | null>(null)
+  // Transient toast when a day/session click maps to no graph notes (e.g. the
+  // session worked outside the vault), so a dead click isn't silent.
+  const [notice, setNotice] = useState<string | null>(null)
   const zoomNonce = useRef(0)
   const { hostRef, isDark } = useDarkModeClassBlock<HTMLDivElement>()
   const { openFile } = useMarkdownViewer()
@@ -66,6 +71,17 @@ export default function VaultGraphOrch() {
 
   // 5) Derived data/selectors
   const effectiveScrubMs = scrubMs ?? data?.maxBirthMs ?? Date.now()
+
+  // The canvas still filters by a hidden set; derive it by inverting the chip
+  // isolation — every project not in focus is hidden (none, when focus empty).
+  const hiddenProjects = useMemo<ReadonlySet<string>>(() => {
+    if (focusedProjects.size === 0) return new Set()
+    const hidden = new Set<string>()
+    for (const project of data?.projects ?? []) {
+      if (!focusedProjects.has(project)) hidden.add(project)
+    }
+    return hidden
+  }, [focusedProjects, data])
 
   // Precedence: the card lens (day/session) is the most explicit gesture, then
   // the timeline brush, then the standing unabsorbed toggle. The setters below
@@ -153,6 +169,13 @@ export default function VaultGraphOrch() {
     fetchData(false)
   }, [fetchData])
 
+  // Auto-dismiss the "no notes touched" toast a few seconds after it appears.
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(null), 3600)
+    return () => clearTimeout(timer)
+  }, [notice])
+
   useEffect(() => {
     if (!playing || !data) return
     const range = Math.max(1, data.maxBirthMs - data.minBirthMs)
@@ -222,12 +245,23 @@ export default function VaultGraphOrch() {
     [data],
   )
 
-  // Session click → highlight the exact notes it touched and zoom to them.
+  // Session click → highlight the exact notes it touched and zoom to them. When
+  // it touched no vault notes (worked in a code repo, or a GC'd chat with no
+  // time-window match), surface a toast instead of a silent dead click.
   const handleCardSelectChain = useCallback(
     (chain: ActivityChain) => {
       if (!data) return
       const sel = selectGraphNodesForChainsBlock([chain], data.nodes, getStoredVaultRoot() ?? '')
-      if (sel.ids.size === 0) return // this session touched no notes in the graph
+      if (sel.ids.size === 0) {
+        const hadProvenance = (chain.touchedPaths?.length ?? 0) > 0
+        setNotice(
+          hadProvenance
+            ? 'This session worked outside the vault — no vault notes touched'
+            : 'No vault notes matched this session',
+        )
+        return
+      }
+      setNotice(null)
       setBrush(null)
       setUnabsorbedLens(false)
       setCardSelection({
@@ -256,7 +290,7 @@ export default function VaultGraphOrch() {
   )
 
   const handleToggleProject = useCallback((project: string) => {
-    setHiddenProjects(prev => {
+    setFocusedProjects(prev => {
       const next = new Set(prev)
       if (next.has(project)) next.delete(project)
       else next.add(project)
@@ -275,13 +309,12 @@ export default function VaultGraphOrch() {
       brush[1],
     ).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`
 
-  // The AI-activity card, handed to the canvas as a world-anchored element that
-  // pans/zooms with the graph like a home-canvas panel (it opens proportional to
-  // the fit view, not at full size). Same chrome as home's FloatingPanel
-  // (rounded 14 / border / shadow / solid bg / padding); you pan away to explore
-  // rather than closing it — the header pill toggles it off.
+  // The AI-activity card, docked to the canvas's right edge as a fixed panel
+  // (fills the docked column's height with its own scroll). Same chrome as
+  // home's FloatingPanel (rounded 14 / border / shadow / solid bg / padding);
+  // the header pill toggles it off.
   const activityCard = (
-    <div className="w-[880px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[14px] border border-border bg-background p-5 shadow-xl">
+    <div className="h-full w-full overflow-y-auto overflow-x-hidden rounded-[14px] border border-border bg-background p-5 shadow-xl">
       <Suspense
         fallback={
           <p className="animate-pulse text-sm text-muted-foreground">Loading AI activity…</p>
@@ -290,6 +323,7 @@ export default function VaultGraphOrch() {
         <AiActivityPanelBlock
           onSelectionChange={handleCardSelection}
           onSelectChain={handleCardSelectChain}
+          initialDrillToday={false}
         />
       </Suspense>
     </div>
@@ -301,7 +335,7 @@ export default function VaultGraphOrch() {
       {/* Header: identity, live counts, lenses, project legend */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-2">
         <div className="flex items-baseline gap-3">
-          <h1 className="text-sm font-semibold">Vault Graph</h1>
+          <h1 className="text-sm font-semibold">Thinking Space Graph</h1>
           {data && (
             <span className="font-mono text-xs tabular-nums text-muted-foreground">
               {emphasisCount !== null
@@ -365,16 +399,26 @@ export default function VaultGraphOrch() {
 
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           {data?.projects.map(project => {
-            const hidden = hiddenProjects.has(project)
+            const filtering = focusedProjects.size > 0
+            const focused = focusedProjects.has(project)
+            // Shown when nothing is isolated, or when this project is in focus.
+            const shown = !filtering || focused
             return (
               <button
                 key={project}
                 type="button"
                 onClick={() => handleToggleProject(project)}
-                aria-pressed={!hidden}
-                className={`flex items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-xs transition-opacity ${
-                  hidden ? 'opacity-35' : 'opacity-100'
-                } hover:opacity-80`}
+                aria-pressed={focused}
+                title={
+                  focused
+                    ? `Showing only ${project} — click to remove`
+                    : filtering
+                      ? `Add ${project} to the view`
+                      : `Show only ${project}`
+                }
+                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs transition-opacity ${
+                  focused ? 'border-foreground/50' : 'border-border'
+                } ${shown ? 'opacity-100' : 'opacity-35'} hover:opacity-80`}
               >
                 <span
                   aria-hidden="true"
@@ -421,10 +465,19 @@ export default function VaultGraphOrch() {
         </div>
       </div>
 
-      {/* Graph canvas; the AI-activity control card floats over it as a
-          world-anchored panel (pans/zooms with the graph), pinned to the
-          bottom-right and opening proportional to the fit view. */}
+      {/* Graph canvas; the AI-activity control card docks to the canvas's
+          right edge as a fixed panel, and the graph is inset to its left so
+          the two never overlap. */}
       <div className="relative min-h-0 flex-1">
+        {/* Toast for a session/day click that mapped to no graph notes. */}
+        {notice && (
+          <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2">
+            <div className="flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-md backdrop-blur">
+              <Info className="h-3.5 w-3.5 shrink-0 text-muted-foreground/80" aria-hidden="true" />
+              {notice}
+            </div>
+          </div>
+        )}
         {loading && !data && (
           <div className="absolute inset-0 flex items-center justify-center">
             <p className="animate-pulse text-sm text-muted-foreground">Mapping the vault…</p>
@@ -448,7 +501,7 @@ export default function VaultGraphOrch() {
             playing={playing}
             emphasis={emphasis}
             zoomTo={zoomReq}
-            worldCard={cardOpen ? activityCard : null}
+            sidePanel={cardOpen ? activityCard : null}
             onNodeClick={handleNodeClick}
           />
         )}

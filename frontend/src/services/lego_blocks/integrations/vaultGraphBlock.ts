@@ -145,15 +145,22 @@ export function selectGraphNodesForChainsBlock(
   const ids = new Set<string>()
   let approximate = false
   for (const chain of chains) {
-    const provenance = (chain.touchedPaths ?? [])
+    const touchedPaths = chain.touchedPaths ?? []
+    const provenance = touchedPaths
       .map(p => absPathToNodeId(p, vaultRoot))
       .filter((id): id is string => id !== null && nodeIds.has(id))
     if (provenance.length > 0) {
       for (const id of provenance) ids.add(id)
       continue
     }
-    // Fallback: attribute by time — notes whose last AI-touch fell inside the
-    // chain's (slack-padded) span.
+    // Has file-edit provenance, but none of it landed in the vault — the session
+    // worked entirely outside it (a code repo, etc). That's a KNOWN "touched no
+    // vault notes", not an unknown: contribute nothing and do NOT fall back to
+    // the time window (which would light unrelated notes that merely overlapped
+    // in time), and don't mark the selection approximate.
+    if (touchedPaths.length > 0) continue
+    // No provenance at all (chat session, GC'd transcript): attribute by time —
+    // notes whose last AI-touch fell inside the chain's (slack-padded) span.
     approximate = true
     const start = Date.parse(chain.startedIso) - SESSION_SLACK_MS
     const end = Date.parse(chain.endedIso) + SESSION_SLACK_MS

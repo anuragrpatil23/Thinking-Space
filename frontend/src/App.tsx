@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Settings as SettingsIcon,
   Sparkles,
+  Waypoints,
   X,
 } from 'lucide-react'
 import {
@@ -275,7 +276,6 @@ const TOOLS_NAV_ACTIVE_PATHS: readonly string[] = [
   '/ai/schedules',
   '/web',
   '/git-insights',
-  '/vault-graph',
   '/excalidraw-plus',
   '/excalidraw-plus/plugin',
   '/excalidraw-plus/format',
@@ -314,6 +314,14 @@ const TOOLS_NAV_ITEM: NavItem = {
   label: 'Tools',
   icon: ToolsNavIcon,
   activePaths: TOOLS_NAV_ACTIVE_PATHS as string[],
+}
+
+// Vault Graph is a primary destination (a place you explore), not a quick
+// utility — so it sits on the main rail right after Tools rather than inside it.
+const VAULT_GRAPH_NAV_ITEM: NavItem = {
+  to: '/vault-graph',
+  label: 'Thinking Space Graph',
+  icon: Waypoints,
 }
 
 function ExcalidrawPlusIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -1913,7 +1921,7 @@ function App() {
           navigate('/')
           return
         }
-        const railTab = [...primaryNavItems, TOOLS_NAV_ITEM][digit - 1]
+        const railTab = [...primaryNavItems, TOOLS_NAV_ITEM, VAULT_GRAPH_NAV_ITEM][digit - 1]
         if (railTab) {
           event.preventDefault()
           navigate(resolveWorkspaceNavigationRoute(railTab.to))
@@ -2552,6 +2560,25 @@ function App() {
                         </Tooltip>
                       )
                     })()}
+                    {(() => {
+                      const Icon = VAULT_GRAPH_NAV_ITEM.icon
+                      const active = isNavItemActive(location.pathname, VAULT_GRAPH_NAV_ITEM)
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Link
+                              to={VAULT_GRAPH_NAV_ITEM.to}
+                              className={`ltm-motion-fast ltm-touch-row ltm-rail-item flex items-center justify-center rounded-lg px-2 py-2 transition-colors ${
+                                active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                              }`}
+                            >
+                              <Icon className="h-[18px] w-[18px]" />
+                            </Link>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">{`${VAULT_GRAPH_NAV_ITEM.label}${shortcutHint(primaryNavItems.length + 2)}`}</TooltipContent>
+                        </Tooltip>
+                      )
+                    })()}
                   </div>
                 </div>
 
@@ -2733,6 +2760,9 @@ function App() {
                   <Route path="/ai/schedules/*" element={<Schedules />} />
                   <Route path="/chat" element={<Navigate to="/ai/chat" replace />} />
                   <Route path="/thinking-space" element={<ThinkingSpace />} />
+                  {/* Vault Graph is a top-level rail destination — standalone,
+                      outside the Tools shell so it carries no tools subtab bar. */}
+                  <Route path="/vault-graph" element={<VaultGraph />} />
                   <Route element={<ToolsShellBlock />}>
                     <Route path="/tools" element={<ToolsLandingBlock />} />
                     <Route path="/excalidraw-plus" element={<ExcalidrawPlus />}>
@@ -2748,7 +2778,6 @@ function App() {
                     <Route path="/personal-tools" element={<PersonalToolsPage />} />
                     <Route path="/personal-extension" element={<Navigate to="/personal-tools" replace />} />
                     <Route path="/git-insights" element={<GitInsights />} />
-                    <Route path="/vault-graph" element={<VaultGraph />} />
                     <Route path="/capabilities" element={<CapabilityDiscovery />} />
                     <Route
                       path="/extension-builder"
@@ -2905,6 +2934,22 @@ function App() {
                       >
                         <Icon className="h-4 w-4" />
                         <span className="truncate">{TOOLS_NAV_ITEM.label}</span>
+                      </Link>
+                    )
+                  })()}
+                  {(() => {
+                    const Icon = VAULT_GRAPH_NAV_ITEM.icon
+                    const active = isNavItemActive(location.pathname, VAULT_GRAPH_NAV_ITEM)
+                    return (
+                      <Link
+                        to={VAULT_GRAPH_NAV_ITEM.to}
+                        onClick={() => setDrawerOpen(false)}
+                        className={`ltm-motion-fast ltm-touch-row flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                          active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span className="truncate">{VAULT_GRAPH_NAV_ITEM.label}</span>
                       </Link>
                     )
                   })()}

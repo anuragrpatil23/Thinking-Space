@@ -1,5 +1,5 @@
 import { type ComponentType } from 'react'
-import { BadgeCheck, Bot, Boxes, GitBranch, Globe, Handshake, KeyRound, Terminal as TerminalIcon, Waypoints, Wrench } from 'lucide-react'
+import { BadgeCheck, Bot, Boxes, GitBranch, Globe, Handshake, KeyRound, Terminal as TerminalIcon, Wrench } from 'lucide-react'
 import excalidrawLogo from '@/assets/excalidraw-logo.svg'
 import { isExcalidrawPlusRoute } from '@/components/lego_blocks/units/ExcalidrawPlusRoutesBlock'
 import { isEmbeddedTerminalSupported } from '@/services/orchestrators/runtimeOrch'
@@ -60,14 +60,6 @@ export const TOOLS_SUBTABS: readonly ToolsSubtab[] = [
     to: '/git-insights',
     icon: GitBranch,
     isActive: (pathname) => pathname === '/git-insights',
-    routed: true,
-  },
-  {
-    id: 'vault-graph',
-    label: 'Graph',
-    to: '/vault-graph',
-    icon: Waypoints,
-    isActive: (pathname) => pathname === '/vault-graph',
     routed: true,
   },
   {
