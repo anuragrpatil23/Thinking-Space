@@ -39,6 +39,7 @@ const ExcalidrawPlugin = lazy(() => import('./pages/ExcalidrawPlugin'))
 const MindmapBuilder = lazy(() => import('./pages/MindmapBuilder'))
 const PdfToMarkdown = lazy(() => import('./pages/PdfToMarkdown'))
 const GitInsights = lazy(() => import('./pages/GitInsights'))
+const VaultGraph = lazy(() => import('./pages/VaultGraph'))
 const TranscriptCleaner = lazy(() => import('./pages/TranscriptCleaner'))
 const CapabilityDiscovery = lazy(() => import('./pages/CapabilityDiscovery'))
 const ExtensionBuilder = lazy(() => import('./pages/ExtensionBuilder'))
@@ -274,6 +275,7 @@ const TOOLS_NAV_ACTIVE_PATHS: readonly string[] = [
   '/ai/schedules',
   '/web',
   '/git-insights',
+  '/vault-graph',
   '/excalidraw-plus',
   '/excalidraw-plus/plugin',
   '/excalidraw-plus/format',
@@ -2746,6 +2748,7 @@ function App() {
                     <Route path="/personal-tools" element={<PersonalToolsPage />} />
                     <Route path="/personal-extension" element={<Navigate to="/personal-tools" replace />} />
                     <Route path="/git-insights" element={<GitInsights />} />
+                    <Route path="/vault-graph" element={<VaultGraph />} />
                     <Route path="/capabilities" element={<CapabilityDiscovery />} />
                     <Route
                       path="/extension-builder"

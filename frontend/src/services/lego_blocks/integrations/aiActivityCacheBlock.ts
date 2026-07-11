@@ -40,7 +40,9 @@ const CACHE_DIR = '.thinking-space'
 // conversations were producing multi-month "sessions"; re-parse to fix durations.
 // v15: chat exports now parse real per-message body timestamps into per-sitting
 // windows (`path#wN`) — frontmatter `updated` proved to be bulk-rewritten junk.
-const CACHE_VERSION = 15
+// v16: native Claude sessions now carry file-edit provenance (`touchedPaths`)
+// for the vault-graph session lens; reparse so cached rows pick it up.
+const CACHE_VERSION = 16
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000

@@ -66,6 +66,11 @@ export interface ParsedSession {
    *  Code's cleanup. Reconstructed sessions have prompt counts and a rough
    *  time window but no tokens, model, or assistant turns. */
   reconstructed?: boolean
+  /** Absolute paths of files the session wrote (Edit/Write/MultiEdit/
+   *  NotebookEdit tool calls). Powers the vault-graph session lens: the exact
+   *  notes a session touched, not a time-window guess. Native Claude sources
+   *  only; absent for chat/reading sources and pre-provenance cached rows. */
+  touchedPaths?: string[]
 }
 
 export interface SessionTokens {
@@ -93,6 +98,9 @@ export interface ActivityChain {
   /** First substantive topic across the chain's sessions. */
   topic: string
   sessions: ParsedSession[]
+  /** Union of every session's file-edit provenance (absolute paths). Absent
+   *  when no session in the chain carried edits. */
+  touchedPaths?: string[]
 }
 
 // Strict id form used by Claude Code transcripts (date + 8-char hex).
@@ -542,6 +550,14 @@ function makeChain(project: string, sessions: ParsedSession[]): ActivityChain {
   // native JSONL sources this is the last-event timestamp; for vault sources
   // we fall back to the start (no per-message data to work with).
   const lastEnded = last.endedIso ?? last.startedIso
+  // Union the sessions' file-edit provenance so the chain knows every note it
+  // wrote across its windows.
+  let touched: Set<string> | null = null
+  for (const s of sessions) {
+    if (!s.touchedPaths || s.touchedPaths.length === 0) continue
+    if (!touched) touched = new Set()
+    for (const p of s.touchedPaths) touched.add(p)
+  }
   return {
     key,
     project,
@@ -551,5 +567,6 @@ function makeChain(project: string, sessions: ParsedSession[]): ActivityChain {
     msgCount,
     topic: first.topic,
     sessions,
+    touchedPaths: touched ? Array.from(touched) : undefined,
   }
 }

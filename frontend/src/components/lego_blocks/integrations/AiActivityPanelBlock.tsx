@@ -87,7 +87,26 @@ function topProjectByTime(chains: ActivityChain[]): string | null {
   return best
 }
 
-export default function AiActivityPanelBlock() {
+/** Optional controller hooks that turn the panel into a driver for another
+ *  view (the vault graph). Both are undefined on the home canvas, where the
+ *  panel is fully self-contained. */
+export interface AiActivityGraphControls {
+  /** Fires whenever the day/range drill changes: the chains now in focus, plus
+   *  a label and whether a drill is active. Drives the graph day-highlight. */
+  onSelectionChange?: (chains: ActivityChain[], meta: { label: string; active: boolean }) => void
+  /** Fires when a session row is clicked. Drives the graph session-zoom. */
+  onSelectChain?: (chain: ActivityChain) => void
+  /** Compact control mode (vault graph): render only what's needed to drive the
+   *  graph — the heatmap + its day drill — and drop the Trend/Totals analysis
+   *  sections so the card stays a small corner widget instead of a full panel. */
+  compact?: boolean
+}
+
+export default function AiActivityPanelBlock({
+  onSelectionChange,
+  onSelectChain,
+  compact = false,
+}: AiActivityGraphControls = {}) {
   const activity = useAiActivityBlock('90d')
   // One-time cleanup of legacy rule-based stub atoms an old bug persisted.
   // Self-gates via a localStorage flag, so this is a no-op after the first run.
@@ -247,6 +266,24 @@ export default function AiActivityPanelBlock() {
 
   const drillActive = selectedDate != null || selectedRange != null
 
+  // ── Graph-controller wiring (no-op on the home canvas) ─────────────────────
+  // The session currently driving the graph lens; cleared whenever the drilled
+  // day/range changes so a stale row doesn't stay lit under a new day.
+  const [selectedChainKey, setSelectedChainKey] = useState<string | null>(null)
+  useEffect(() => {
+    setSelectedChainKey(null)
+  }, [selectedDate, selectedRange])
+  // Push the current day/range drill up to the graph so it can highlight the
+  // notes that day's sessions touched. drillChains is memoized, so this only
+  // fires when the selection actually changes.
+  useEffect(() => {
+    onSelectionChange?.(drillChains, { label: drillTitle, active: drillActive })
+  }, [drillChains, drillActive, drillTitle, onSelectionChange])
+  const handleSelectChain = (chain: ActivityChain) => {
+    setSelectedChainKey(chain.key)
+    onSelectChain?.(chain)
+  }
+
   // The drill detail — timeline (heatmap/day only), range summary, and table.
   // Returns JSX (not a component) so React keeps the table's scroll position
   // stable across re-renders instead of remounting it.
@@ -291,6 +328,8 @@ export default function AiActivityPanelBlock() {
             summary={drillSummary}
             highlightProject={activeProject}
             onReadingEdited={activity.refresh}
+            onSelectChain={onSelectChain ? handleSelectChain : undefined}
+            selectedChainKey={selectedChainKey}
           />
         </DrillTableScroll>
       </div>
@@ -386,7 +425,7 @@ export default function AiActivityPanelBlock() {
           section's drill detail docks under it — the detail appears where you
           clicked. Only the heatmap carries the day timeline; trend + totals
           only surface the range summary + table. */}
-      <div className="mt-10 space-y-14">
+      <div className={compact ? 'mt-4' : 'mt-10 space-y-14'}>
         <PanelSection
           title="Heatmap"
           open={sectionsOpen.heatmap}

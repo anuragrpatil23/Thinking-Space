@@ -33,6 +33,11 @@ interface AiActivityDayTableBlockProps {
   /** Called when a reading-session edit lands. Caller should refresh AI
    *  activity so the new times propagate to the timeline, totals, heatmap, etc. */
   onReadingEdited?: () => void
+  /** Controller mode (vault graph): clicking a row selects the chain so the
+   *  graph can zoom to the notes it touched, in addition to expanding it. */
+  onSelectChain?: (chain: ActivityChain) => void
+  /** Key of the chain currently selected as the graph lens (controller mode). */
+  selectedChainKey?: string | null
 }
 
 function fmtTime(iso: string): string {
@@ -191,6 +196,8 @@ export default function AiActivityDayTableBlock({
   highlightProject = null,
   anchorDateIso = null,
   onReadingEdited,
+  onSelectChain,
+  selectedChainKey = null,
 }: AiActivityDayTableBlockProps) {
   const { hostRef, isDark } = useDarkModeClassBlock()
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
@@ -314,6 +321,7 @@ export default function AiActivityDayTableBlock({
                   const color = getProjectColor(c.project, isDark)
                   const isHighlighted = highlightProject != null && c.project === highlightProject
                   const isExpanded = expandedKey === c.key
+                  const isSelected = selectedChainKey === c.key
                   const chainTokens = sumTokens(c.sessions.map(s => s.tokens))
                   const hasTokens =
                     chainTokens.input + chainTokens.output + chainTokens.cacheRead + chainTokens.cacheCreation > 0
@@ -342,8 +350,16 @@ export default function AiActivityDayTableBlock({
                       'hover:bg-foreground/[0.04]',
                       isExpanded && 'bg-foreground/[0.04]',
                     )}
-                    style={isHighlighted ? { background: color.chipBg } : undefined}
-                    onClick={() => setExpandedKey(prev => (prev === c.key ? null : c.key))}
+                    style={{
+                      ...(isHighlighted ? { background: color.chipBg } : undefined),
+                      // Ember left-rail marks the chain driving the graph lens.
+                      ...(isSelected ? { boxShadow: 'inset 3px 0 0 #FF9E3D' } : undefined),
+                    }}
+                    onClick={() => {
+                      onSelectChain?.(c)
+                      setExpandedKey(prev => (prev === c.key ? null : c.key))
+                    }}
+                    title={onSelectChain ? 'Zoom the graph to the notes this session touched' : undefined}
                   >
                     <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-foreground/80">
                       {fmtSpan(c.startedIso, c.endedIso)}

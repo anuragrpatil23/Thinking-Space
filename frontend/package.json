@@ -51,6 +51,7 @@
     "clsx": "^2.1.0",
     "dexie": "^4.3.0",
     "feedsmith": "^2.9.0",
+    "force-graph": "^1.51.4",
     "heic2any": "^0.0.4",
     "js-yaml": "^4.1.1",
     "katex": "^0.16.47",

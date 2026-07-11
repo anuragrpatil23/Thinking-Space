@@ -965,6 +965,101 @@ function status() {
   }, null, 2));
 }
 
+// ---------- incognito one-shot claude ----------
+
+// Read all of stdin as a UTF-8 string. Used to pass large prompts (a 12KB
+// git diff, say) without hitting argv length limits or shell-escaping hell.
+function readStdin() {
+  return new Promise((resolve) => {
+    let data = '';
+    if (process.stdin.isTTY) { resolve(''); return; }
+    process.stdin.setEncoding('utf-8');
+    process.stdin.on('data', (chunk) => { data += chunk; });
+    process.stdin.on('end', () => resolve(data));
+    process.stdin.on('error', () => resolve(data));
+  });
+}
+
+// Parse `claude -p --output-format json` stdout: a single JSON envelope with
+// `result` (assistant text) and `session_id`. Falls back to raw stdout if the
+// payload isn't parseable, so an unexpected CLI version still yields text.
+function parseClaudeJsonOutput(stdout) {
+  const trimmed = stdout.trim();
+  if (!trimmed) return { content: '', sessionId: null };
+  try {
+    const obj = JSON.parse(trimmed);
+    return {
+      content: typeof obj.result === 'string' ? obj.result : '',
+      sessionId: typeof obj.session_id === 'string' ? obj.session_id : null,
+    };
+  } catch {
+    return { content: trimmed, sessionId: null };
+  }
+}
+
+// One-shot incognito Claude call — the SAME recipe as the app's intelligence
+// claude-cli provider (frontend/electron/src/lego_blocks/claudeCliBlock.ts):
+// `--output-format json` to capture session_id, THINKSPC_INCOGNITO=1 so a
+// SessionEnd hook can early-exit, then a TWO-PASS cleanup (immediate + ~1.2s
+// later) to win the race against the hook writing the vault mirror. Any
+// scheduled job that needs generated text (commit messages, etc.) should
+// route through this instead of hand-rolling its own `claude -p` + cleanup.
+async function runClaudeIncognito({ model, system, prompt, timeoutMs = 60_000 }) {
+  const args = ['-p'];
+  if (model) args.push('--model', model);
+  if (system) args.push('--system-prompt', system);
+  args.push('--output-format', 'json');
+  args.push(prompt);
+
+  const started = Date.now();
+  const result = await new Promise((resolve) => {
+    let proc;
+    try {
+      proc = spawn(DEFAULT_CLAUDE_BINARY, args, {
+        env: { ...process.env, FORCE_COLOR: '0', THINKSPC_INCOGNITO: '1' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (err) {
+      resolve({ ok: false, error: `spawn failed: ${err.message}` });
+      return;
+    }
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; proc.kill('SIGTERM'); }, timeoutMs);
+    proc.stdout.on('data', (d) => { stdout += d.toString(); });
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('error', (err) => { clearTimeout(timer); resolve({ ok: false, error: err.message }); });
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      const trimmed = stdout.trim();
+      if (timedOut) { resolve({ ok: false, error: `timeout after ${timeoutMs}ms` }); return; }
+      if (/^Not logged in/i.test(trimmed) || /Please run \/login/i.test(trimmed)) {
+        resolve({ ok: false, error: 'not-logged-in' }); return;
+      }
+      if (code !== 0 && !trimmed) { resolve({ ok: false, error: stderr.trim() || `exit ${code}` }); return; }
+      resolve({ ok: true, ...parseClaudeJsonOutput(trimmed) });
+    });
+  });
+
+  // Two-pass incognito cleanup — mirrors claudeCliBlock's
+  // scheduleSessionCleanupBlock. The retry covers the window where the
+  // SessionEnd hook writes the vault mirror a beat after the child exits.
+  if (result.ok && result.sessionId) {
+    const nuke = () => {
+      try {
+        const removed = deleteClaudeSessionFilesBlock(result.sessionId);
+        logEvent({ kind: 'claude_session_cleanup', origin: 'incognito', sessionId: result.sessionId, removed });
+      } catch { /* best effort */ }
+    };
+    nuke();
+    await new Promise((r) => setTimeout(r, 1200));
+    nuke();
+  }
+
+  return { ...result, latencyMs: Date.now() - started };
+}
+
 // ---------- dispatch ----------
 
 async function main() {
@@ -1018,8 +1113,25 @@ async function main() {
       console.log(JSON.stringify({ ok: true, sessionId, removed }));
       process.exit(0);
     }
+    case 'claude-incognito': {
+      // One-shot incognito Claude for scheduled jobs. Prompt comes on stdin
+      // (large diffs), model/system via flags. Prints the assistant text to
+      // stdout and self-cleans the session (two-pass). Exit 1 on failure so
+      // callers can fall back to a static message.
+      //   ... | runner.mjs claude-incognito [--model haiku] [--system <s>]
+      const modelIdx = rest.indexOf('--model');
+      const model = modelIdx >= 0 && rest[modelIdx + 1] ? rest[modelIdx + 1] : 'haiku';
+      const systemIdx = rest.indexOf('--system');
+      const system = systemIdx >= 0 && rest[systemIdx + 1] ? rest[systemIdx + 1] : '';
+      const prompt = (await readStdin()).trim();
+      if (!prompt) { console.error('usage: <prompt on stdin> | runner.mjs claude-incognito [--model m] [--system s]'); process.exit(2); }
+      const r = await runClaudeIncognito({ model, system, prompt });
+      if (!r.ok) { console.error(r.error ?? 'claude-incognito failed'); process.exit(1); }
+      process.stdout.write(r.content ?? '');
+      process.exit(0);
+    }
     default:
-      console.error('usage: runner.mjs <run|stop|catchup-check|heartbeat-check|notify|status|telegram-poll|cleanup-session> [args]');
+      console.error('usage: runner.mjs <run|stop|catchup-check|heartbeat-check|notify|status|telegram-poll|cleanup-session|claude-incognito> [args]');
       process.exit(2);
   }
 }

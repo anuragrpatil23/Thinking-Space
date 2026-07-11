@@ -58,6 +58,42 @@ function flattenContent(content: unknown): string {
   return parts.join('\n')
 }
 
+/** Tool names whose `input.file_path` (or `notebook_path`) names a file the
+ *  session wrote — the file-edit provenance behind the vault-graph session
+ *  lens. Reads and other tools don't mutate notes, so they're ignored. */
+const FILE_EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+
+/** Resolve a tool-call path to absolute form. Claude Code writes absolute
+ *  `file_path`s in practice; the relative branch is belt-and-braces so a rare
+ *  relative path doesn't silently drop (it's joined against the session cwd). */
+function resolveEditPath(raw: string, cwd: string): string {
+  if (raw.startsWith('/') || /^[A-Za-z]:[\\/]/.test(raw)) return raw
+  if (cwd) return `${cwd.replace(/\/+$/, '')}/${raw.replace(/^\.\//, '')}`
+  return raw
+}
+
+/** Pull absolute file paths out of an assistant message's `tool_use` blocks —
+ *  only the mutating tools (Edit/Write/MultiEdit/NotebookEdit) count. Returns
+ *  [] for message bodies that carry no file edits. */
+function extractEditedPaths(content: unknown, cwd: string): string[] {
+  if (!Array.isArray(content)) return []
+  const out: string[] = []
+  for (const block of content) {
+    if (!block || typeof block !== 'object') continue
+    const b = block as Record<string, unknown>
+    if (b.type !== 'tool_use' || typeof b.name !== 'string') continue
+    if (!FILE_EDIT_TOOLS.has(b.name)) continue
+    const input = b.input as Record<string, unknown> | undefined
+    if (!input) continue
+    const raw =
+      (typeof input.file_path === 'string' && input.file_path) ||
+      (typeof input.notebook_path === 'string' && input.notebook_path) ||
+      ''
+    if (raw) out.push(resolveEditPath(raw, cwd))
+  }
+  return out
+}
+
 /** True if a user message body is just /clear, /export, etc. (slash command). */
 function isSlashCommand(body: string): { is: boolean; name?: string } {
   const m = /<command-name>([^<]+)<\/command-name>/.exec(body)
@@ -154,6 +190,10 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   }
   let codexTotals: SessionTokens | null = null
 
+  // File-edit provenance: (timestamp, absolute path) of every note the session
+  // wrote, so we can attribute exact vault notes to each window below.
+  const fileEdits: Array<{ ts: number; path: string }> = []
+
   const convEvents: ConvEvent[] = []
   const recordConv = (tsStr: string, isUser: boolean, body: string): void => {
     if (!tsStr) return
@@ -202,6 +242,13 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
             claudeTotals.cacheCreation1h =
               (claudeTotals.cacheCreation1h ?? 0) +
               numericField(cacheCreationDetail, 'ephemeral_1h_input_tokens')
+          }
+        }
+        const editPaths = extractEditedPaths(message?.content, cwd)
+        if (editPaths.length > 0) {
+          const editMs = Date.parse(ts)
+          if (Number.isFinite(editMs)) {
+            for (const p of editPaths) fileEdits.push({ ts: editMs, path: p })
           }
         }
         recordConv(ts, false, '')
@@ -360,6 +407,13 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
     const path = isFirst ? basePath : `${basePath}#w${idx}`
     const winSessionId = isFirst ? baseId : `${baseId}::w${idx}`
 
+    // Attribute edits to the window whose time span contains them.
+    const winStart = win[0].ts
+    const winEnd = win[win.length - 1].ts
+    const touchedPaths = Array.from(
+      new Set(fileEdits.filter(e => e.ts >= winStart && e.ts <= winEnd).map(e => e.path)),
+    )
+
     out.push({
       path,
       source: sourceTag,
@@ -374,6 +428,7 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       tokens: isFirst ? tokensForFirstWindow : undefined,
       model,
       sessionId: winSessionId,
+      touchedPaths: touchedPaths.length > 0 ? touchedPaths : undefined,
     } as ParsedSession & { sessionId?: string } as ParsedSession)
   })
 
