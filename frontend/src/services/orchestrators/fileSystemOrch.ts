@@ -23,8 +23,10 @@ import { resolveFrontmatterDatesBlock } from '@/services/lego_blocks/units/front
 import {
   getBacklinksForPathPrefix,
   getAllFilePaths,
+  getVaultFileIndexRecords,
   updateLinkTargets,
   updateLinkSourcePaths,
+  type VaultFileRecord,
 } from '@/services/lego_blocks/integrations/dbBlock'
 import { syncSingleFile } from './vaultSyncOrch'
 import { getStoredVaultRoot } from './storageOrch'
@@ -886,11 +888,28 @@ export async function listMarkdownEntries(): Promise<VaultEntry[]> {
  * on iPhone/iPad once the first sync has completed.
  */
 export async function listMarkdownPaths(): Promise<string[]> {
+  return (await listMarkdownFileIndexEntries()).map(e => e.path)
+}
+
+/**
+ * Complete markdown file list (path + mtime) from the Dexie `files` index —
+ * unlike the `nodes` table this includes files without YAML frontmatter, so
+ * search surfaces (command palette) see the whole vault. Falls back to the
+ * frontmattered-nodes path set (pre-index caches) and finally a vault walk.
+ */
+export async function listMarkdownFileIndexEntries(): Promise<VaultFileRecord[]> {
+  const indexed = await getVaultFileIndexRecords()
+  if (indexed.length > 0) return indexed
+
+  // Legacy cache populated before the files index existed — incomplete
+  // (frontmattered files only) but better than an empty palette until the
+  // next sync rebuilds the index.
   const cached = await getAllFilePaths()
-  if (cached.size > 0) return [...cached]
+  if (cached.size > 0) return [...cached].map(path => ({ path, mtime: 0, size: 0 }))
+
   const fs = getVaultFS()
   const entries = await fs.walkVault(['.md'])
-  return entries.map(e => e.path)
+  return entries.map(e => ({ path: e.path, mtime: e.mtime, size: e.size }))
 }
 
 export async function listVaultEntries(extensions: string[]): Promise<VaultEntry[]> {

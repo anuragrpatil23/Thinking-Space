@@ -90,7 +90,8 @@ import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigat
 import { isElectron, isEmbeddedTerminalSupported, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
 import { startVaultLiveRefresh } from './services/orchestrators/vaultLiveRefreshOrch'
-import { listMarkdownPaths } from './services/orchestrators/fileSystemOrch'
+import { listMarkdownFileIndexEntries } from './services/orchestrators/fileSystemOrch'
+import { recencyRankBoostBlock } from './services/lego_blocks/units/fuzzySearchBlock'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import {
   gitCommitAllOrch,
@@ -235,6 +236,8 @@ interface CommandItem {
   activePaths?: string[]
   keywords?: string
   description?: string
+  /** File mtime (epoch seconds) — recency boost for ranking file items. */
+  mtime?: number
 }
 
 interface SyncRunSummary {
@@ -1284,11 +1287,13 @@ function App() {
   const ensureCommandFilesLoaded = useCallback(async () => {
     if (needsVaultSetup) return
     if (Date.now() - commandFilesLastLoadedAt < 20_000) return
-    const paths = await listMarkdownPaths()
+    const entries = await listMarkdownFileIndexEntries()
+    // Recent-first so the empty-query palette surfaces what you touched last.
+    entries.sort((a, b) => (b.mtime || 0) - (a.mtime || 0))
     const seen = new Set<string>()
     const fileItems: CommandItem[] = []
-    for (const rawPath of paths) {
-      const path = rawPath.trim()
+    for (const entry of entries) {
+      const path = entry.path.trim()
       if (!path || seen.has(path)) continue
       seen.add(path)
       const fileName = path.split('/').pop() || path
@@ -1299,6 +1304,7 @@ function App() {
         description: path,
         group: 'Files',
         keywords: `file note markdown ${path}`,
+        mtime: entry.mtime || undefined,
       })
     }
     setCommandFileItems(fileItems)
@@ -3238,6 +3244,7 @@ function App() {
                     item.group,
                     item.keywords ?? '',
                   ]}
+                  getItemRankBoost={(item) => recencyRankBoostBlock(item.mtime)}
                   placeholder="Jump to a page or file..."
                   open
                   onEscapeKeyDown={closeCommandPalette}

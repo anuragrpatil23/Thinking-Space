@@ -29,9 +29,12 @@ import {
   getNodeCount,
   bulkUpsertLinks,
   replaceLinksForFile,
+  replaceVaultFileIndex,
+  upsertVaultFileIndexEntry,
   type NodeRecord,
   type NodeKeyConflictBlock,
   type LinkRecord,
+  type VaultFileRecord,
 } from '@/services/lego_blocks/integrations/dbBlock'
 import { extractLinksFromContentBlock } from '@/services/lego_blocks/units/linkIndexBlock'
 import { startActivity } from '@/services/lego_blocks/units/backgroundActivityBlock'
@@ -125,6 +128,14 @@ function normalizeEpochSeconds(value: number): number {
   return value > MAX_REASONABLE_EPOCH_SECONDS ? (value / 1000) : value
 }
 
+function toVaultFileRecords(entries: VaultEntry[]): VaultFileRecord[] {
+  return entries.map(e => ({
+    path: e.path,
+    mtime: normalizeEpochSeconds(e.mtime),
+    size: e.size,
+  }))
+}
+
 // ── Public API ──
 
 /**
@@ -169,6 +180,10 @@ export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promis
     })
     const candidatePaths = entries.map(e => e.path)
     setCachedFilePaths(new Set(candidatePaths))
+    // Refresh the complete file index from the full walk (allEntries, not the
+    // rootPath-scoped subset) — unlike `nodes`, this covers files without
+    // frontmatter, so path-completeness consumers (command palette) stay whole.
+    await replaceVaultFileIndex(toVaultFileRecords(allEntries))
     const parentKeyToPath = autoHealEnabled
       ? await buildParentKeyToPathIndex(vaultFs, entries, resolveMaxSyncFileSizeBytes(options))
       : undefined
@@ -274,6 +289,7 @@ export async function incrementalSync(
 
   const candidatePaths = allEntries.map(e => e.path)
   setCachedFilePaths(new Set(candidatePaths))
+  await replaceVaultFileIndex(toVaultFileRecords(allEntries))
 
   // Build a path -> cached updated_at map so syncEntries can skip files whose
   // content is unchanged even though the OS bumped their mtime (typical on
@@ -339,6 +355,16 @@ export async function syncSingleFile(
   try {
     const stat = await vaultFs.stat(filePath)
     if (stat.size > maxFileSizeBytes) return false
+
+    // Keep the file index current even for files the node cache will skip
+    // (no frontmatter) — the command palette must still find them.
+    if (filePath.toLowerCase().endsWith('.md')) {
+      void upsertVaultFileIndexEntry({
+        path: filePath,
+        mtime: normalizeEpochSeconds(stat.mtime),
+        size: stat.size,
+      }).catch(() => {})
+    }
 
     let content = await vaultFs.read(filePath)
     if (!hasFrontmatter(content)) return false

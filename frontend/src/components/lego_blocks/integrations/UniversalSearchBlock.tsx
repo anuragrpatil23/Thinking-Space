@@ -19,6 +19,8 @@ export interface UniversalSearchBlockProps<T> {
   getItemLabel: (item: T) => string
   getItemDescription?: (item: T) => string | undefined
   getItemSearchCandidates?: (item: T) => string[]
+  /** Optional additive rank boost (e.g. recency) — see rankFuzzyItemsBlock. */
+  getItemRankBoost?: (item: T) => number
   placeholder?: string
   limit?: number
   selectedItemKey?: string | null
@@ -59,6 +61,7 @@ export default function UniversalSearchBlock<T>({
   getItemLabel,
   getItemDescription,
   getItemSearchCandidates,
+  getItemRankBoost,
   placeholder = 'Search...',
   limit = 50,
   selectedItemKey = null,
@@ -109,6 +112,7 @@ export default function UniversalSearchBlock<T>({
       getItemLabel(item),
       getItemDescription?.(item) ?? '',
     ],
+    getBoost: getItemRankBoost,
   })
   const { filteredItems, highlightIndex, setHighlightIndex, selectItem } = search
 

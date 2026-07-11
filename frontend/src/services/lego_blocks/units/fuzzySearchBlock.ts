@@ -9,6 +9,29 @@ export interface RankFuzzyItemsBlockInput<T> {
   query: string
   getCandidates: (item: T) => string | string[]
   limit?: number
+  /**
+   * Optional additive score adjustment applied after text matching (e.g.
+   * recency). Only breaks ties between comparable text matches — keep the
+   * magnitude small relative to match scores (tens). Never resurrects
+   * non-matching items.
+   */
+  getBoost?: (item: T) => number
+}
+
+/**
+ * Additive rank boost for recently modified items. Tiered so a fresh file
+ * outranks a stale one on equal text match, without letting recency beat a
+ * clearly better match.
+ */
+export function recencyRankBoostBlock(mtimeEpochSeconds: number | undefined): number {
+  if (!mtimeEpochSeconds || !Number.isFinite(mtimeEpochSeconds)) return 0
+  const ageDays = (Date.now() / 1000 - mtimeEpochSeconds) / 86_400
+  if (ageDays < 0) return 0
+  if (ageDays <= 1) return 8
+  if (ageDays <= 7) return 5
+  if (ageDays <= 30) return 3
+  if (ageDays <= 90) return 1
+  return 0
 }
 
 function normalizeSearchText(text: string): string {
@@ -96,7 +119,8 @@ export function rankFuzzyItemsBlock<T>(
     }
 
     if (bestScore < 0) continue
-    ranked.push({ item, score: bestScore, matchedText: bestText })
+    const boost = input.getBoost ? input.getBoost(item) : 0
+    ranked.push({ item, score: bestScore + boost, matchedText: bestText })
   }
 
   ranked.sort((a, b) => {

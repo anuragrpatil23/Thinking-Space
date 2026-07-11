@@ -5,6 +5,8 @@ export interface UseUniversalSearchBlockOptions<T> {
   items: T[]
   query: string
   getCandidates: (item: T) => string | string[]
+  /** Optional additive rank boost (e.g. recency) — see rankFuzzyItemsBlock. */
+  getBoost?: (item: T) => number
   limit?: number
   onSelect: (item: T) => void
   allowCustomValue?: boolean
@@ -30,6 +32,7 @@ export function useUniversalSearchBlock<T>({
   items,
   query,
   getCandidates,
+  getBoost,
   limit = 50,
   onSelect,
   allowCustomValue,
@@ -45,9 +48,10 @@ export function useUniversalSearchBlock<T>({
       query: trimmed,
       limit,
       getCandidates,
+      getBoost,
     })
     return ranked.map(r => r.item)
-  }, [items, query, limit, getCandidates])
+  }, [items, query, limit, getCandidates, getBoost])
 
   useEffect(() => {
     if (filteredItems.length === 0) {

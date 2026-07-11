@@ -75,6 +75,18 @@ export interface LinkRecord {
   rawText: string
 }
 
+/**
+ * One row per markdown file the vault walk sees — regardless of whether the
+ * file has YAML frontmatter. The `nodes` table only holds frontmattered
+ * files, so path-completeness queries (command palette, wiki-link targets)
+ * must read this table instead.
+ */
+export interface VaultFileRecord {
+  path: string             // vault-relative path (primary key)
+  mtime: number            // epoch seconds from the vault walk
+  size: number
+}
+
 export interface NodeKeyConflictBlock {
   key: string
   uuid: string
@@ -93,6 +105,7 @@ export interface BulkUpsertNodesResultBlock {
 class ThinkingSpaceDB extends Dexie {
   nodes!: Table<NodeRecord>
   links!: Table<LinkRecord>
+  files!: Table<VaultFileRecord>
 
   constructor() {
     super('ThinkingSpaceDB')
@@ -111,6 +124,11 @@ class ThinkingSpaceDB extends Dexie {
     this.version(3).stores({
       nodes: '++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, taskStatus, owner, runId, sessionId, recordKind, *tags, *dependsOn, *blockedBy, *relatedNodes, *metadataKeys',
       links: '++id, sourceFilePath, targetFilePath, linkType',
+    })
+    this.version(4).stores({
+      nodes: '++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, taskStatus, owner, runId, sessionId, recordKind, *tags, *dependsOn, *blockedBy, *relatedNodes, *metadataKeys',
+      links: '++id, sourceFilePath, targetFilePath, linkType',
+      files: '&path, mtime',
     })
   }
 }
@@ -418,6 +436,46 @@ export async function getAllFilePaths(): Promise<Set<string>> {
   // Use filePath index to get keys directly — no need to load full records or sort
   const paths = await db.nodes.orderBy('filePath').uniqueKeys()
   return new Set(paths as string[])
+}
+
+// ── Vault file index (complete path list, frontmatter or not) ──
+
+/**
+ * Replace the whole vault file index with the current walk result.
+ * Called after full/incremental sync, both of which walk the entire vault,
+ * so a clear+bulkAdd inside one transaction is both correct and cheap.
+ */
+export async function replaceVaultFileIndex(records: VaultFileRecord[]): Promise<void> {
+  const db = getDb()
+  await db.transaction('rw', db.files, async () => {
+    await db.files.clear()
+    if (records.length > 0) await db.files.bulkAdd(records)
+  })
+}
+
+/** Upsert a single file into the index (e.g. after an in-app save). */
+export async function upsertVaultFileIndexEntry(record: VaultFileRecord): Promise<void> {
+  const db = getDb()
+  await db.files.put(record)
+}
+
+export async function deleteVaultFileIndexPaths(paths: string[]): Promise<void> {
+  if (paths.length === 0) return
+  const db = getDb()
+  await db.files.bulkDelete(paths)
+}
+
+/** Key-only read — fastest way to get every known vault file path. */
+export async function getVaultFileIndexPaths(): Promise<string[]> {
+  const db = getDb()
+  const keys = await db.files.orderBy('path').primaryKeys()
+  return keys as string[]
+}
+
+/** Full records (path + mtime) for ranking by recency. */
+export async function getVaultFileIndexRecords(): Promise<VaultFileRecord[]> {
+  const db = getDb()
+  return db.files.toArray()
 }
 
 /**
