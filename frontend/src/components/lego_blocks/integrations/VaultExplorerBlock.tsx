@@ -1318,6 +1318,7 @@ export default function VaultExplorerBlock({
             missing?: boolean
             unmapped?: boolean
             pinned?: boolean
+            index?: number
           }
 
       const plan: FilePlanRow[] = []
@@ -1329,19 +1330,21 @@ export default function VaultExplorerBlock({
         if (visibleFileSet.has(FOLDER_MAP_FILENAME)) {
           plan.push({ kind: 'file', name: FOLDER_MAP_FILENAME, pinned: true })
         }
+        // Numbering restarts at 1 under each section heading.
         for (const section of map.sections) {
           const rendered = section.entries.filter(
             e => !e.missing && !e.duplicate && visibleFileSet.has(e.file),
           )
           if (rendered.length === 0) continue
           if (section.title) plan.push({ kind: 'header', title: section.title, key: `sec-${section.title}` })
-          for (const entry of rendered) {
+          rendered.forEach((entry, idx) => {
             plan.push({
               kind: 'file',
               name: entry.file,
               description: entry.description || undefined,
+              index: idx + 1,
             })
-          }
+          })
         }
         const unmappedVisible = map.unmapped.filter(
           f => visibleFileSet.has(f) && f !== FOLDER_MAP_FILENAME,
@@ -1471,10 +1474,23 @@ export default function VaultExplorerBlock({
               data-map-unmapped={row.unmapped ? 'true' : undefined}
               data-map-pinned={row.pinned ? 'true' : undefined}
             >
-              <Icon className={cn(
-                'ltm-explorer-glyph ltm-explorer-file-icon h-3.5 w-3.5 shrink-0',
-                row.pinned && !isSelected ? 'text-amber-500' : getFileIconColor(fileName, isSelected),
-              )} />
+              {row.index != null ? (
+                <span
+                  className={cn(
+                    'ltm-explorer-file-index inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-[4px] px-[3px] text-[9px] font-semibold leading-none tabular-nums',
+                    isSelected
+                      ? 'bg-white/20 text-white'
+                      : 'bg-foreground/15 text-foreground/80',
+                  )}
+                >
+                  {row.index}
+                </span>
+              ) : (
+                <Icon className={cn(
+                  'ltm-explorer-glyph ltm-explorer-file-icon h-3.5 w-3.5 shrink-0',
+                  row.pinned && !isSelected ? 'text-amber-500' : getFileIconColor(fileName, isSelected),
+                )} />
+              )}
               <span className="truncate">{fileName}</span>
             </button>
             </ExplorerRowTooltip>,
