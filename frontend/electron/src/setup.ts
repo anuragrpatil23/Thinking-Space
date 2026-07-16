@@ -625,7 +625,12 @@ export class ElectronCapacitorApp {
       autoHideMenuBar: this.shouldHideNativeMenuBar(),
       ...this.getWindowChromeOptions(),
       webPreferences: {
-        nodeIntegration: true,
+        // Renderer talks to the main process exclusively through the
+        // contextBridge API exposed in preload.ts — it never touches Node
+        // directly. Keeping nodeIntegration off means a renderer-side script
+        // injection (e.g. via markdown/webview) can't reach `require`,
+        // `child_process`, or `process`. Do not flip this back on.
+        nodeIntegration: false,
         contextIsolation: true,
         preload: preloadPath,
         webviewTag: true,
@@ -704,7 +709,10 @@ export class ElectronCapacitorApp {
       autoHideMenuBar: this.shouldHideNativeMenuBar(),
       ...this.getWindowChromeOptions(),
       webPreferences: {
-        nodeIntegration: true,
+        // See createWindow(): the renderer uses only the contextBridge API, so
+        // Node integration stays off to shrink the blast radius of any
+        // renderer-side script injection. Do not flip this back on.
+        nodeIntegration: false,
         contextIsolation: true,
         preload: preloadPath,
         webviewTag: true,

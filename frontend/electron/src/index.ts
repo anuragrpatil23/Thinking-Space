@@ -1824,11 +1824,62 @@ ipcMain.handle('google:oauth:request', async (
   };
 });
 
+// Reject URLs that resolve to loopback, link-local (incl. the cloud metadata
+// endpoint 169.254.169.254), or private address space. These generic fetch
+// bridges exist to pull public resources (RSS feeds, CDN logos) past the
+// renderer's CSP/CORS — they must never become an SSRF pivot into the user's
+// LAN or a cloud instance's metadata service. Literal-IP hosts are checked
+// directly; hostname targets are blocked for the obvious internal names.
+function assertPublicFetchUrlBlock(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  const parsed = new URL(trimmed);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Only http/https URLs are allowed.');
+  }
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+
+  // Obvious internal hostnames.
+  if (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal')
+  ) {
+    throw new Error(`Refusing to fetch internal host: ${parsed.hostname}`);
+  }
+
+  // IPv4 literal → block loopback/link-local/private/CGNAT ranges.
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const [a, b] = ipv4.slice(1).map((n) => parseInt(n, 10));
+    const isPrivate =
+      a === 0 ||
+      a === 127 ||
+      a === 10 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      a >= 224;
+    if (isPrivate) {
+      throw new Error(`Refusing to fetch private/link-local address: ${parsed.hostname}`);
+    }
+  }
+
+  // IPv6 loopback / link-local / unique-local literals.
+  if (host === '::1' || host === '::' || host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd')) {
+    throw new Error(`Refusing to fetch internal IPv6 address: ${parsed.hostname}`);
+  }
+
+  return trimmed;
+}
+
 // -- Generic HTTP GET (for renderer-side fetch requests blocked by CSP) --
 ipcMain.handle('net:fetchText', async (_event, url: string): Promise<{ status: number; body: string }> => {
   if (typeof url !== 'string' || !/^https?:\/\//i.test(url.trim())) {
     throw new Error('net:fetchText requires an http/https URL');
   }
+  assertPublicFetchUrlBlock(url);
   const defaultHeaders = {
     'User-Agent': 'Mozilla/5.0 (compatible; ThinkingSpace/1.0)',
     'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
@@ -1841,7 +1892,14 @@ ipcMain.handle('net:fetchText', async (_event, url: string): Promise<{ status: n
         const location = res.headers.location;
         if ([301, 302, 303, 307, 308].includes(status) && location) {
           res.resume();
-          fetchTextOnce(new URL(location, targetUrl).toString()).then(resolve).catch(reject);
+          let nextUrl: string;
+          try {
+            nextUrl = assertPublicFetchUrlBlock(new URL(location, targetUrl).toString());
+          } catch (err) {
+            reject(err instanceof Error ? err : new Error(String(err)));
+            return;
+          }
+          fetchTextOnce(nextUrl).then(resolve).catch(reject);
           return;
         }
         const chunks: Buffer[] = [];
@@ -1872,6 +1930,7 @@ ipcMain.handle('net:fetchBytes', async (_event, url: string): Promise<{ status: 
   if (typeof url !== 'string' || !/^https?:\/\//i.test(url.trim())) {
     throw new Error('net:fetchBytes requires an http/https URL');
   }
+  assertPublicFetchUrlBlock(url);
   const defaultHeaders = {
     'User-Agent': 'Mozilla/5.0 (compatible; ThinkingSpace/1.0)',
     'Accept': 'image/png, image/svg+xml, image/*;q=0.8, */*;q=0.5',
@@ -1883,7 +1942,14 @@ ipcMain.handle('net:fetchBytes', async (_event, url: string): Promise<{ status: 
         const location = res.headers.location;
         if ([301, 302, 303, 307, 308].includes(status) && location) {
           res.resume();
-          fetchBytesOnce(new URL(location, targetUrl).toString()).then(resolve).catch(reject);
+          let nextUrl: string;
+          try {
+            nextUrl = assertPublicFetchUrlBlock(new URL(location, targetUrl).toString());
+          } catch (err) {
+            reject(err instanceof Error ? err : new Error(String(err)));
+            return;
+          }
+          fetchBytesOnce(nextUrl).then(resolve).catch(reject);
           return;
         }
         const chunks: Buffer[] = [];
@@ -2179,10 +2245,43 @@ ipcMain.handle('vault:openPath', async (_event, vaultRoot: string, relPath: stri
 });
 
 // -- Git command --
+// Only a fixed set of subcommands the app actually issues is allowed. This
+// stops a compromised/injected renderer from smuggling code-exec vectors
+// through the git CLI — e.g. `git clone ext::sh -c ...`, `git config`, or a
+// leading `-c protocol.ext.allow=always` / `--exec-path=...` that would make
+// git run an arbitrary program. spawn() runs without a shell, so there's no
+// shell metacharacter surface; this guards git's own dangerous features.
+const GIT_ALLOWED_SUBCOMMANDS_BLOCK = new Set([
+  'rev-parse',
+  'status',
+  'add',
+  'commit',
+  'push',
+  'pull',
+  'fetch',
+  'log',
+  'shortlog',
+  'diff',
+  'show',
+  'branch',
+  'remote',
+]);
+
 ipcMain.handle('vault:git', async (_event, vaultRoot: string, args: string[]) => {
   const cwd = assertAuthorizedVaultRootBlock(vaultRoot);
   if (!Array.isArray(args) || args.some((a) => typeof a !== 'string')) {
     throw new Error('vault:git requires an array of string arguments.');
+  }
+  // The subcommand is the first non-flag token. Reject anything before it
+  // (git's global `-c`/`--exec-path` etc. can inject config or a fake git
+  // binary) and reject subcommands outside the allowlist.
+  const subcommand = args.find((a) => !a.startsWith('-'));
+  const firstToken = args[0];
+  if (firstToken !== undefined && firstToken.startsWith('-')) {
+    throw new Error(`vault:git rejects leading git option "${firstToken}".`);
+  }
+  if (!subcommand || !GIT_ALLOWED_SUBCOMMANDS_BLOCK.has(subcommand)) {
+    throw new Error(`vault:git subcommand not allowed: ${subcommand ?? '<none>'}`);
   }
   return new Promise<string>((resolve, reject) => {
     const proc = spawn('git', args, { cwd });
