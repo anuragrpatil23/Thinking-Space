@@ -90,6 +90,16 @@ Next up:
   - Page/feature orchestration in orchestrator containers.
   - New major orchestrators follow `agents/TEMPLATES/ORCHESTRATOR_TEMPLATE.md`.
 
+## Security Contract (Enforced)
+Electron hardening that must not regress (renderer runs user markdown + arbitrary webviews, so the main process is the trust boundary):
+- **`nodeIntegration: false`** on every BrowserWindow (`electron/src/setup.ts`). The renderer reaches main only through the `preload.ts` contextBridge; it never needs Node. Do not flip this on.
+- **`contextIsolation: true`** stays on for every window.
+- **No inline scripts in `index.html`.** Production `script-src` omits `'unsafe-inline'` (dev-only for Vite HMR). Entry-time scripts go in `main.tsx`/unit blocks (e.g. `iphoneViewportBlock.ts`), never inline `<script>`. After touching HTML/CSP, verify `dist/index.html` has zero `<script>` (only the external module).
+- **Every vault-scoped IPC handler** validates the renderer `vaultRoot` via `assertAuthorizedVaultRootBlock`/`resolveInsideVaultBlock` (`vaultPathGuardBlock.ts`) — never trust a renderer path.
+- **`vault:git`** only runs an allowlisted set of subcommands and rejects leading git global options (`-c`, `--exec-path`); don't widen it to pass arbitrary args.
+- **Outbound network bridges** stay host/target-restricted: Webull + Google use host allowlists; `net:fetchText`/`net:fetchBytes` reject loopback/link-local/private targets (SSRF guard `assertPublicFetchUrlBlock`), including on redirects.
+- **Webview `connect-src`/CSP** and the webview permission allowlist (`setupWebviewSessionPermissions`) stay narrow; new outbound origins go through `cspWhitelistBlock.ts`, not a broadened template.
+
 ## Startup Performance Contract (Enforced)
 - Heavy vendors (Excalidraw, pdfjs/react-pdf, CodeMirror, recharts) must never be statically reachable from the app entry. They load through code-split boundaries:
   - `MarkdownDocumentLazyBlock` — the only way eager code may mount `MarkdownDocumentBlock` (pulls CodeMirror + pdfjs + Excalidraw + markdown/katex pipeline).

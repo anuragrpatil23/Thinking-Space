@@ -953,8 +953,11 @@ export function setupContentSecurityPolicy(
       directive('default-src', [scheme, 'data:']),
       directive('script-src', [
         scheme,
-        "'unsafe-inline'",
-        ...(isDev ? ["'unsafe-eval'"] : []),
+        // 'unsafe-inline' is dev-only: the Vite dev server injects an inline
+        // HMR bootstrap. The production bundle carries zero inline scripts
+        // (the iPhone viewport lock moved into main.tsx), so prod script-src
+        // is restricted to the app scheme — no inline execution allowed.
+        ...(isDev ? ["'unsafe-inline'", "'unsafe-eval'"] : []),
         "'wasm-unsafe-eval'",
       ]),
       directive('style-src', [scheme, "'unsafe-inline'"]),

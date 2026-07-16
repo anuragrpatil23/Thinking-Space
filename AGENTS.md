@@ -70,6 +70,15 @@ If sequence changes, update `DEVELOPMENT.md` first, then align active organizer 
 ## Architecture Reference
 Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 
+## Security Contract (Enforced)
+Electron hardening that must not regress (the renderer runs user markdown + arbitrary webviews; the main process is the trust boundary):
+- `nodeIntegration: false` + `contextIsolation: true` on every BrowserWindow (`electron/src/setup.ts`). The renderer reaches main only via the `preload.ts` contextBridge — never re-enable Node integration.
+- No inline scripts in `index.html`; production `script-src` omits `'unsafe-inline'` (dev-only for Vite HMR). Entry-time scripts live in `main.tsx`/unit blocks (e.g. `iphoneViewportBlock.ts`). Verify `dist/index.html` has zero inline `<script>` after HTML/CSP edits.
+- Every vault-scoped IPC handler validates `vaultRoot` via `assertAuthorizedVaultRootBlock`/`resolveInsideVaultBlock` (`vaultPathGuardBlock.ts`).
+- `vault:git` runs only allowlisted subcommands and rejects leading git global options (`-c`, `--exec-path`).
+- Outbound bridges stay target-restricted: Webull/Google host allowlists; `net:fetchText`/`net:fetchBytes` reject loopback/link-local/private targets (`assertPublicFetchUrlBlock`), including on redirects.
+- Webview CSP `connect-src` + permission allowlist stay narrow; new outbound origins go through `cspWhitelistBlock.ts`.
+
 ## Startup Performance Contract (Enforced)
 - Heavy vendors (Excalidraw, pdfjs/react-pdf, CodeMirror, recharts) must never be statically reachable from the app entry; they load through code-split boundaries (`MarkdownDocumentLazyBlock`, `MarkdownRichEditorLazyBlock`, per-consumer `lazy()` chart imports).
 - Do NOT add lazy-only vendors to `vite.config.ts` `manualChunks` — object-form manualChunks pulls those chunks back into the entry's static import graph.

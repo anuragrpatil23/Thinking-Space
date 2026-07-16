@@ -6,16 +6,9 @@
     <link rel="shortcut icon" type="image/png" href="/favicon-circle.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Thinking Space</title>
-    <script>
-      (function enforceIPhoneViewportNoZoom() {
-        var ua = navigator.userAgent || '';
-        var isIPhone = /iPhone/i.test(ua);
-        if (!isIPhone) return;
-        var meta = document.querySelector('meta[name="viewport"]');
-        if (!meta) return;
-        meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover');
-      })();
-    </script>
+    <!-- iPhone viewport lock moved to src/services/lego_blocks/units/iphoneViewportBlock.ts
+         (called from main.tsx) so the built HTML has no inline scripts and the
+         production CSP can omit script-src 'unsafe-inline'. -->
   </head>
   <body>
     <div id="root"></div>
