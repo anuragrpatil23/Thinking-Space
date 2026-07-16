@@ -64,7 +64,8 @@ If sequence changes, update `DEVELOPMENT.md` first, then align active organizer 
 9. AI local-first: Ollama (Electron) or WASM LLM (web/PWA).
 10. Extension platform rollout is feature-flagged (`extension_host_enabled`, `extension_builder_enabled`) and defaults to disabled until explicitly enabled.
 11. **Embedded Terminal**: xterm.js + node-pty (same stack as VS Code). `TerminalPage.tsx` mounts all tabs simultaneously (`visibility:hidden`) so shells survive tab switches. PTY routing uses `webContentsId` stored in `ptyManagerBlock.ts`.
-12. **Live Source Mode**: source code ships inside the DMG (`Resources/source/`), extracted to `userData/source/` on first launch. Power users can point at their own git repo. Vite dev server is spawned from `viteServerBlock.ts`; renderer switches to `http://127.0.0.1:{port}` without restart. Rebuild via `viteRebuildBlock.ts` → detached swap script replaces the running `.app` and relaunches.
+12. **Vault-scoped file access (macOS TCC contract)**: Electron main never trusts a renderer-supplied path. All vault/hierarchy/harvest IPC handlers validate `vaultRoot` through `frontend/electron/src/lego_blocks/vaultPathGuardBlock.ts` (authorized roots = persisted root, native folder-dialog pick, `vault:root:setPersisted`); relative paths are contained via `path.relative`. Terminal PTYs default to the vault root, not `$HOME`. Goal: the app only ever asks macOS for access to the user's vault folder.
+13. **Live Source Mode**: source code ships inside the DMG (`Resources/source/`), extracted to `userData/source/` on first launch. Power users can point at their own git repo. Vite dev server is spawned from `viteServerBlock.ts`; renderer switches to `http://127.0.0.1:{port}` without restart. Rebuild via `viteRebuildBlock.ts` → detached swap script replaces the running `.app` and relaunches.
 
 ## Architecture Reference
 Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`

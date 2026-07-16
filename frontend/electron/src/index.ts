@@ -41,6 +41,11 @@ import {
   writePersistedVaultRootBlock,
 } from './lego_blocks/vaultRootPersistenceBlock';
 import {
+  authorizeVaultRootBlock,
+  assertAuthorizedVaultRootBlock,
+  resolveInsideVaultBlock,
+} from './lego_blocks/vaultPathGuardBlock';
+import {
   readPersistedOpensourceAiBaseUrlBlock,
   writePersistedOpensourceAiBaseUrlBlock,
 } from './lego_blocks/opensourceAiBaseUrlPersistenceBlock';
@@ -708,7 +713,10 @@ ipcMain.handle('schedules:telegram-conv-status', async (_event, scheduleKey: str
 if (isTerminalEnabledBlock()) {
   ipcMain.handle('terminal:create', (event, opts: { cwd?: string; cols: number; rows: number; env?: Record<string, string> }) => {
     const id = getPtyManagerBlockModule().createPtyBlock({
-      cwd: opts.cwd,
+      // Default new terminals to the vault, not $HOME — shells starting in the
+      // home dir rack up Desktop/Documents/Downloads TCC prompts under the
+      // app's identity.
+      cwd: opts.cwd ?? readPersistedVaultRootBlock() ?? undefined,
       cols: opts.cols,
       rows: opts.rows,
       webContentsId: event.sender.id,
@@ -1502,11 +1510,7 @@ async function installOrUpdateExcalidrawPlugin(vaultRoot: string): Promise<Excal
 }
 
 function assertInsideVault(vaultRoot: string, targetPath: string): string {
-  const resolved = path.resolve(vaultRoot, targetPath);
-  if (!resolved.startsWith(path.resolve(vaultRoot))) {
-    throw new Error('Path traversal detected');
-  }
-  return resolved;
+  return resolveInsideVaultBlock(vaultRoot, targetPath);
 }
 
 // -- Capability adapter list --
@@ -1645,6 +1649,9 @@ ipcMain.handle('vault:selectFolder', async () => {
     title: 'Select your Obsidian vault folder',
   });
   if (result.canceled || result.filePaths.length === 0) return null;
+  // User picked this folder in a native dialog — that's the consent moment;
+  // authorize it so vault IPC works before the renderer persists it.
+  authorizeVaultRootBlock(result.filePaths[0]);
   return result.filePaths[0];
 });
 
@@ -1666,6 +1673,7 @@ ipcMain.handle('vault:root:setPersisted', async (_event, vaultRoot: string | nul
     throw new Error('Persisted vault root must be a string or null.');
   }
   writePersistedVaultRootBlock(vaultRoot);
+  authorizeVaultRootBlock(vaultRoot);
 });
 
 ipcMain.on('opensource-ai:base-url:getPersistedSync', (event) => {
@@ -1738,8 +1746,10 @@ ipcMain.handle('claudeCli:probe', async () => {
 });
 
 ipcMain.handle('vault:watch:start', async (_event, vaultRoot: string) => {
-  if (typeof vaultRoot !== 'string' || !vaultRoot.trim()) {
-    return { ok: false, error: 'vault:watch:start requires a vault root string.' };
+  try {
+    assertAuthorizedVaultRootBlock(vaultRoot);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
   // Rename the legacy snake_case `ai_raw/` dir to `ai-raw/` before any code
   // reads or writes it — idempotent, silent on failure.
@@ -1764,7 +1774,9 @@ ipcMain.handle('vault:watch:start', async (_event, vaultRoot: string) => {
 });
 
 ipcMain.handle('vault:watch:stop', async (_event, vaultRoot: string) => {
-  if (typeof vaultRoot !== 'string' || !vaultRoot.trim()) {
+  try {
+    assertAuthorizedVaultRootBlock(vaultRoot);
+  } catch {
     return { ok: true };
   }
   return stopVaultWatcherBlock(vaultRoot);
@@ -1968,7 +1980,7 @@ ipcMain.handle('vault:list', async (_event, vaultRoot: string, relPath: string) 
 ipcMain.handle('vault:walk', async (_event, vaultRoot: string, extensions: string[]) => {
   const extSet = new Set(extensions);
   const results: Array<{ path: string; size: number; mtime: number; ctime: number }> = [];
-  const rootResolved = path.resolve(vaultRoot);
+  const rootResolved = assertAuthorizedVaultRootBlock(vaultRoot);
 
   async function walk(dir: string) {
     let entries: fs.Dirent[];
@@ -2089,6 +2101,7 @@ ipcMain.handle('nativeAiSessions:readClaudeHistory', async () => {
 //    vault-write-prefs `writeAiRaw` flag — no-op when the user has opted
 //    out of raw-signal writes. --
 ipcMain.handle('appleScreenTime:harvest', async (_event, vaultRoot: string) => {
+  assertAuthorizedVaultRootBlock(vaultRoot);
   if (!resolveWriteAiRawEnabledBlock(vaultRoot)) return;
   return harvestAppleScreenTimeBlock(vaultRoot);
 });
@@ -2098,6 +2111,7 @@ ipcMain.handle('appleScreenTime:harvest', async (_event, vaultRoot: string) => {
 //    the Screen Time dump first so its source data is fresh. Same gate as
 //    the Screen Time handler — both produce files under `ai-raw/`. --
 ipcMain.handle('goodnotes:harvest', async (_event, vaultRoot: string) => {
+  assertAuthorizedVaultRootBlock(vaultRoot);
   if (!resolveWriteAiRawEnabledBlock(vaultRoot)) {
     return { added: 0, total: 0, unavailable: true };
   }
@@ -2107,14 +2121,14 @@ ipcMain.handle('goodnotes:harvest', async (_event, vaultRoot: string) => {
   return harvestGoodnotesReadingBlock(vaultRoot);
 });
 ipcMain.handle('goodnotes:readLog', async (_event, vaultRoot: string) => {
-  return readGoodnotesReadingLogBlock(vaultRoot);
+  return readGoodnotesReadingLogBlock(assertAuthorizedVaultRootBlock(vaultRoot));
 });
 ipcMain.handle('goodnotes:editRecord', async (
   _event,
   vaultRoot: string,
   input: GoodnotesEditInput,
 ) => {
-  return editGoodnotesReadingRecordBlock(vaultRoot, input);
+  return editGoodnotesReadingRecordBlock(assertAuthorizedVaultRootBlock(vaultRoot), input);
 });
 
 // -- Mkdir --
@@ -2166,8 +2180,12 @@ ipcMain.handle('vault:openPath', async (_event, vaultRoot: string, relPath: stri
 
 // -- Git command --
 ipcMain.handle('vault:git', async (_event, vaultRoot: string, args: string[]) => {
+  const cwd = assertAuthorizedVaultRootBlock(vaultRoot);
+  if (!Array.isArray(args) || args.some((a) => typeof a !== 'string')) {
+    throw new Error('vault:git requires an array of string arguments.');
+  }
   return new Promise<string>((resolve, reject) => {
-    const proc = spawn('git', args, { cwd: vaultRoot });
+    const proc = spawn('git', args, { cwd });
     let stdout = '';
     let stderr = '';
     proc.stdout.on('data', (data) => { stdout += data.toString(); });
@@ -2192,25 +2210,25 @@ ipcMain.handle('plugin:excalidraw:installLatest', async (_event, vaultRoot: stri
 
 // -- Hierarchy db status --
 ipcMain.handle('hierarchy:status', async (_event, vaultRoot: string) => {
-  return getHierarchyDbStatusOrch(vaultRoot);
+  return getHierarchyDbStatusOrch(assertAuthorizedVaultRootBlock(vaultRoot));
 });
 
 // -- Hierarchy db init --
 ipcMain.handle('hierarchy:init', async (_event, vaultRoot: string) => {
-  return initializeHierarchyDbOrch(vaultRoot);
+  return initializeHierarchyDbOrch(assertAuthorizedVaultRootBlock(vaultRoot));
 });
 
 // -- Hierarchy nodes list --
 ipcMain.handle(
   'hierarchy:nodes:list',
   async (_event, vaultRoot: string, params: { parent_id: string | null; type?: 'project' | 'epic' | 'idea' | null }) => {
-    return listHierarchyNodesOrch(vaultRoot, params);
+    return listHierarchyNodesOrch(assertAuthorizedVaultRootBlock(vaultRoot), params);
   },
 );
 
 // -- Hierarchy node get --
 ipcMain.handle('hierarchy:nodes:get', async (_event, vaultRoot: string, nodeId: string) => {
-  return getHierarchyNodeOrch(vaultRoot, nodeId);
+  return getHierarchyNodeOrch(assertAuthorizedVaultRootBlock(vaultRoot), nodeId);
 });
 
 // -- Hierarchy node create --
@@ -2221,7 +2239,7 @@ ipcMain.handle(
     vaultRoot: string,
     params: { type: 'project' | 'epic' | 'idea'; node_kind?: string | null; title: string; parent_id: string | null; slug?: string | null; sort_order: number },
   ) => {
-    return createHierarchyNodeOrch(vaultRoot, params);
+    return createHierarchyNodeOrch(assertAuthorizedVaultRootBlock(vaultRoot), params);
   },
 );
 
@@ -2233,7 +2251,7 @@ ipcMain.handle(
     vaultRoot: string,
     params: { node_id: string; type?: 'project' | 'epic' | 'idea' | null; node_kind?: string | null; title?: string | null; slug?: string | null; sort_order?: number | null },
   ) => {
-    return updateHierarchyNodeOrch(vaultRoot, params);
+    return updateHierarchyNodeOrch(assertAuthorizedVaultRootBlock(vaultRoot), params);
   },
 );
 
@@ -2245,20 +2263,20 @@ ipcMain.handle(
     vaultRoot: string,
     params: { node_id: string; new_parent_id: string | null; sort_order?: number | null },
   ) => {
-    return moveHierarchyNodeOrch(vaultRoot, params);
+    return moveHierarchyNodeOrch(assertAuthorizedVaultRootBlock(vaultRoot), params);
   },
 );
 
 // -- Hierarchy node delete --
 ipcMain.handle('hierarchy:nodes:delete', async (_event, vaultRoot: string, nodeId: string) => {
-  return deleteHierarchyNodeOrch(vaultRoot, nodeId);
+  return deleteHierarchyNodeOrch(assertAuthorizedVaultRootBlock(vaultRoot), nodeId);
 });
 
 // -- Hierarchy thought upsert --
 ipcMain.handle(
   'hierarchy:thoughts:upsert',
   async (_event, vaultRoot: string, params: { file_path: string; title?: string | null }) => {
-    return upsertHierarchyThoughtOrch(vaultRoot, params);
+    return upsertHierarchyThoughtOrch(assertAuthorizedVaultRootBlock(vaultRoot), params);
   },
 );
 
@@ -2266,7 +2284,7 @@ ipcMain.handle(
 ipcMain.handle(
   'hierarchy:thoughts:list',
   async (_event, vaultRoot: string, params: { unlinked_only: boolean; limit: number }) => {
-    return listHierarchyThoughtsOrch(vaultRoot, params);
+    return listHierarchyThoughtsOrch(assertAuthorizedVaultRootBlock(vaultRoot), params);
   },
 );
 
@@ -2274,7 +2292,7 @@ ipcMain.handle(
 ipcMain.handle(
   'hierarchy:thought-links:list',
   async (_event, vaultRoot: string, params: { thought_id?: string | null; node_id?: string | null }) => {
-    return listHierarchyThoughtLinksOrch(vaultRoot, params);
+    return listHierarchyThoughtLinksOrch(assertAuthorizedVaultRootBlock(vaultRoot), params);
   },
 );
 
@@ -2282,20 +2300,20 @@ ipcMain.handle(
 ipcMain.handle(
   'hierarchy:thought-links:create',
   async (_event, vaultRoot: string, params: { thought_id: string; node_id: string; link_kind?: string | null }) => {
-    return createHierarchyThoughtLinkOrch(vaultRoot, params);
+    return createHierarchyThoughtLinkOrch(assertAuthorizedVaultRootBlock(vaultRoot), params);
   },
 );
 
 // -- Hierarchy thought-link delete --
 ipcMain.handle('hierarchy:thought-links:delete', async (_event, vaultRoot: string, linkId: string) => {
-  return deleteHierarchyThoughtLinkOrch(vaultRoot, linkId);
+  return deleteHierarchyThoughtLinkOrch(assertAuthorizedVaultRootBlock(vaultRoot), linkId);
 });
 
 // -- Hierarchy edges list --
 ipcMain.handle(
   'hierarchy:edges:list',
   async (_event, vaultRoot: string, params: { from_node_id?: string | null; to_node_id?: string | null }) => {
-    return listHierarchyEdgesOrch(vaultRoot, params);
+    return listHierarchyEdgesOrch(assertAuthorizedVaultRootBlock(vaultRoot), params);
   },
 );
 
@@ -2303,18 +2321,18 @@ ipcMain.handle(
 ipcMain.handle(
   'hierarchy:edges:create',
   async (_event, vaultRoot: string, params: { from_node_id: string; to_node_id: string; edge_kind?: string | null }) => {
-    return createHierarchyEdgeOrch(vaultRoot, params);
+    return createHierarchyEdgeOrch(assertAuthorizedVaultRootBlock(vaultRoot), params);
   },
 );
 
 // -- Hierarchy edge delete --
 ipcMain.handle('hierarchy:edges:delete', async (_event, vaultRoot: string, edgeId: string) => {
-  return deleteHierarchyEdgeOrch(vaultRoot, edgeId);
+  return deleteHierarchyEdgeOrch(assertAuthorizedVaultRootBlock(vaultRoot), edgeId);
 });
 
 // -- Hierarchy path resolve --
 ipcMain.handle('hierarchy:path:resolve', async (_event, vaultRoot: string, requestedPath: string) => {
-  const resolved = resolveHierarchyPathOrch(vaultRoot, requestedPath);
+  const resolved = resolveHierarchyPathOrch(assertAuthorizedVaultRootBlock(vaultRoot), requestedPath);
   if (!resolved) {
     return {
       requested_path: requestedPath,

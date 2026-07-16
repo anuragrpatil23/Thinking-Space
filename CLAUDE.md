@@ -158,6 +158,7 @@ Model-agnostic layer for internal AI tasks (session titles, structured extracts,
 - To add a new intelligence task: define a Contract in `units/intelligence/contracts/<name>ContractBlock.ts`, call `runContract(contract, input)`. Do NOT open a new HTTP path or add another `sessionTitle`-style module.
 
 ## Key Electron Blocks (main process)
+- `frontend/electron/src/lego_blocks/vaultPathGuardBlock.ts` — authorization gate for renderer-supplied vault roots. Every vault/hierarchy/harvest IPC handler validates `vaultRoot` against main-anchored roots (persisted root, native `vault:selectFolder` pick, `vault:root:setPersisted`); `resolveInsideVaultBlock` adds traversal-safe containment via `path.relative` (not `startsWith`). New vault-scoped IPC handlers MUST call `assertAuthorizedVaultRootBlock`/`resolveInsideVaultBlock` — never trust a renderer path. This is also the macOS TCC story: the app only ever touches the user-chosen vault (terminal PTYs default to the vault root, not `$HOME`, for the same reason).
 - `frontend/electron/src/lego_blocks/sourceConfigBlock.ts` — read/write `userData/state/source-config.json` (mode, sourcePath, vitePort)
 - `frontend/electron/src/lego_blocks/viteServerBlock.ts` — spawn Vite dev server from source path, poll readiness (45s timeout)
 - `frontend/electron/src/lego_blocks/viteRebuildBlock.ts` — 5-step rebuild pipeline + detached swap script (`applyRebuildBlock`)
