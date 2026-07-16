@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Hardened Runtime entitlements required for notarization (mac.hardenedRuntime).
+    Kept intentionally minimal:
+      - allow-jit / allow-unsigned-executable-memory: V8 / Chromium JIT.
+      - disable-library-validation: the app loads node-pty's native .node module
+        and the Widevine CDM dylib from the system Chrome install (see
+        registerSystemWidevineCdm in index.ts). Both are third-party/unsigned by
+        our identity, so library validation must be relaxed or they fail to load
+        under the hardened runtime.
+      - allow-dyld-environment-variables: Electron sets DYLD vars for some
+        child/utility processes.
+    Do NOT add device.camera/microphone or network.server here unless a feature
+    actually needs them — every extra entitlement widens the attack surface and
+    the App Store / notarization review scope.
+  -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+</dict>
+</plist>

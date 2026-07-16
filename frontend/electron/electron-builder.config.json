@@ -76,10 +76,14 @@
     "category": "public.app-category.productivity",
     "target": ["dmg", "pkg"],
     "icon": "assets/appIcon.png",
-    "hardenedRuntime": false,
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "resources/entitlements.mac.plist",
+    "entitlementsInherit": "resources/entitlements.mac.plist",
     "extendInfo": {
       "UIDesignRequiresCompatibility": true
-    }
+    },
+    "notarize": false
   },
   "pkg": {
     "scripts": "pkg-scripts",
