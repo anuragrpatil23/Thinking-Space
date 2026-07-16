@@ -1,9 +1,33 @@
-require('./rt/electron-rt');
 //////////////////////////////
 // Expose vault filesystem and platform detection to renderer
 
 import { contextBridge, ipcRenderer } from 'electron';
-import { isTerminalEnabledBlock } from './lego_blocks/terminalSupportBlock';
+
+// Capacitor "electron" platform marker. The upstream
+// @capacitor-community/electron runtime (src/rt/electron-rt.ts) bridges native
+// plugin classes onto window.CapacitorCustomPlatform, but this app registers no
+// Capacitor plugins for Electron (rt/electron-plugins.js is empty) and drives
+// everything through the electronAPI bridge below. Inlining the marker keeps
+// the preload a single self-contained file with no relative require() calls,
+// which is what allows the renderer to run with sandbox: true. If Capacitor
+// electron plugins are ever added, restore the electron-rt require here behind a
+// preload bundler (esbuild) so those relative imports get inlined.
+contextBridge.exposeInMainWorld('CapacitorCustomPlatform', {
+  name: 'electron',
+  plugins: {},
+});
+
+// Resolved in the main process — a sandboxed preload can't read package.json or
+// process.env itself. Synchronous so `terminalSupported` is ready at exposure
+// time; defaults to enabled if the sync channel is somehow unavailable.
+function readTerminalSupportedSyncBlock(): boolean {
+  try {
+    return ipcRenderer.sendSync('terminal:enabled:getSync') !== false;
+  } catch {
+    return true;
+  }
+}
+const terminalSupportedBlock = readTerminalSupportedSyncBlock();
 
 interface ElectronWindowContextBlock {
   browserWindowId: number | null
@@ -104,7 +128,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
   setNativeColorMode: (mode: 'light' | 'dark' | 'system') =>
     ipcRenderer.invoke('window:set-native-color-mode', mode),
-  terminalSupported: isTerminalEnabledBlock(),
+  terminalSupported: terminalSupportedBlock,
   versions: {
     app: appVersion,
     electron: process.versions.electron,

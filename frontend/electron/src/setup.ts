@@ -632,6 +632,12 @@ export class ElectronCapacitorApp {
         // `child_process`, or `process`. Do not flip this back on.
         nodeIntegration: false,
         contextIsolation: true,
+        // OS-level renderer sandbox. The preload (build/src/preload.js) is a
+        // single self-contained file whose only require() is `electron`, so it
+        // runs under the sandbox; all privileged work stays in the main process
+        // behind the contextBridge IPC. Do not add relative/Node requires to the
+        // preload without a bundler, or this breaks.
+        sandbox: true,
         preload: preloadPath,
         webviewTag: true,
         spellcheck: true,
@@ -714,6 +720,9 @@ export class ElectronCapacitorApp {
         // renderer-side script injection. Do not flip this back on.
         nodeIntegration: false,
         contextIsolation: true,
+        // OS-level renderer sandbox — see createWindow() for the preload
+        // constraint that keeps this working.
+        sandbox: true,
         preload: preloadPath,
         webviewTag: true,
         spellcheck: true,

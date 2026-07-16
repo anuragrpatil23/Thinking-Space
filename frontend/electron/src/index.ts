@@ -541,6 +541,13 @@ ipcMain.on('window:context:getSync', (event) => {
   event.returnValue = myCapacitorApp.getWindowContextForWebContents(event.sender);
 });
 
+// Terminal-enabled flag, resolved in the main process. The preload used to
+// compute this itself, but a sandboxed renderer's preload can't read
+// package.json / process.env, so it asks main synchronously at preload time.
+ipcMain.on('terminal:enabled:getSync', (event) => {
+  event.returnValue = isTerminalEnabledBlock();
+});
+
 ipcMain.handle('window:context:get', (event) => {
   return myCapacitorApp.getWindowContextForWebContents(event.sender);
 });

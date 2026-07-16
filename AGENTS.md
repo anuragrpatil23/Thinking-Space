@@ -72,7 +72,7 @@ Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 
 ## Security Contract (Enforced)
 Electron hardening that must not regress (the renderer runs user markdown + arbitrary webviews; the main process is the trust boundary):
-- `nodeIntegration: false` + `contextIsolation: true` on every BrowserWindow (`electron/src/setup.ts`). The renderer reaches main only via the `preload.ts` contextBridge — never re-enable Node integration.
+- `nodeIntegration: false` + `contextIsolation: true` + `sandbox: true` on every BrowserWindow (`electron/src/setup.ts`). The renderer reaches main only via the `preload.ts` contextBridge — never re-enable Node integration. Sandbox requires the preload to stay a single self-contained file whose only `require()` is `electron` (Capacitor marker inlined; terminal flag via `terminal:enabled:getSync`); adding a relative/Node require to the preload needs a bundler or sandbox breaks.
 - No inline scripts in `index.html`; production `script-src` omits `'unsafe-inline'` (dev-only for Vite HMR). Entry-time scripts live in `main.tsx`/unit blocks (e.g. `iphoneViewportBlock.ts`). Verify `dist/index.html` has zero inline `<script>` after HTML/CSP edits.
 - Every vault-scoped IPC handler validates `vaultRoot` via `assertAuthorizedVaultRootBlock`/`resolveInsideVaultBlock` (`vaultPathGuardBlock.ts`).
 - `vault:git` runs only allowlisted subcommands and rejects leading git global options (`-c`, `--exec-path`).
