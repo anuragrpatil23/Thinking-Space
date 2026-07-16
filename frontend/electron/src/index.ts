@@ -2274,6 +2274,18 @@ const GIT_ALLOWED_SUBCOMMANDS_BLOCK = new Set([
   'remote',
 ]);
 
+// Flag/argument-level code-exec vectors that git exposes even inside allowed
+// subcommands. `--upload-pack`/`--receive-pack`/`--exec` let fetch/push/pull run
+// an arbitrary program as the "git server"; the `ext::`/`fd::` remote-helper
+// transports run a shell command as a remote URL. The app never uses any of
+// these, so reject them outright regardless of subcommand.
+const GIT_FORBIDDEN_ARG_PATTERNS_BLOCK: RegExp[] = [
+  /^--upload-pack(=|$)/,
+  /^--receive-pack(=|$)/,
+  /^--exec(=|$)/,
+  /(^|[^a-z])(ext|fd)::/i,
+];
+
 ipcMain.handle('vault:git', async (_event, vaultRoot: string, args: string[]) => {
   const cwd = assertAuthorizedVaultRootBlock(vaultRoot);
   if (!Array.isArray(args) || args.some((a) => typeof a !== 'string')) {
@@ -2289,6 +2301,11 @@ ipcMain.handle('vault:git', async (_event, vaultRoot: string, args: string[]) =>
   }
   if (!subcommand || !GIT_ALLOWED_SUBCOMMANDS_BLOCK.has(subcommand)) {
     throw new Error(`vault:git subcommand not allowed: ${subcommand ?? '<none>'}`);
+  }
+  for (const arg of args) {
+    if (GIT_FORBIDDEN_ARG_PATTERNS_BLOCK.some((pattern) => pattern.test(arg))) {
+      throw new Error(`vault:git rejects unsafe argument: ${arg}`);
+    }
   }
   return new Promise<string>((resolve, reject) => {
     const proc = spawn('git', args, { cwd });

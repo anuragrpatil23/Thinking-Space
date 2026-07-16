@@ -969,6 +969,13 @@ export function setupContentSecurityPolicy(
         ...(isDev ? ["'unsafe-inline'", "'unsafe-eval'"] : []),
         "'wasm-unsafe-eval'",
       ]),
+      // 'unsafe-inline' is required and accepted here: the renderer uses React
+      // inline style={{…}} props (75+ components) plus runtime style injection,
+      // which emit inline `style` attributes. CSP3 has no nonce/hash mechanism
+      // for style *attributes*, so this cannot be tightened without a full
+      // rewrite away from inline styles. Residual risk is low — script-src is
+      // locked (no inline JS) and connect-src/img-src limit exfiltration, so CSS
+      // injection can at most do limited UI redressing.
       directive('style-src', [scheme, "'unsafe-inline'"]),
       directive('img-src', [scheme, 'data:', 'blob:', 'https:']),
       directive('media-src', [scheme, 'data:', 'blob:', 'https:']),
