@@ -23,7 +23,7 @@ At some point I noticed I had stopped writing my own notes. Claude Code writes t
 
 Chat isn't the place for that — conversations scroll away, and a pile of transcripts isn't a knowledge base. Notes apps aren't the place either — they all assume the human is the one typing.
 
-So I built the place. Thinking Space points at the folder your AI writes into. You read what it wrote, see which notes each session touched, organize its output next to your own ideas, and hand it the next task. It doesn't replace your AI. It's the desk you both work at.
+So I built one. Thinking Space points at the folder your AI writes into. You read what it wrote, see which notes each session touched, organize its output next to your own ideas, and hand it the next task. It doesn't replace your AI. It's the desk you both work at.
 
 The trick is boring on purpose: plain Markdown files in a folder are the one thing both you and your AI can read and write natively. Agents already know how to work with files, and you own the files forever. No plugin API, no integrations to maintain, nothing to migrate off of — and it'll work with whatever agent exists next year.
 
@@ -58,13 +58,13 @@ Humans are beautiful.
 <p align="center">
   <img src="docs/screenshots/explorer-workspace.jpg" alt="Thinking Space explorer workspace" width="900" />
   <br />
-  <em>Markdown workspace with the local-first explorer and multi-tab desktop shell</em>
+  <em>The markdown workspace — file explorer and tabs</em>
 </p>
 
 <p align="center">
   <img src="docs/screenshots/organizer-workspace.jpg" alt="Thinking Space organizer workspace" width="900" />
   <br />
-  <em>Organizer view for structured thinking and hierarchical knowledge management</em>
+  <em>The organizer — the Programs → Epics → Ideas → Thoughts tree</em>
 </p>
 
 <details>
@@ -72,11 +72,11 @@ Humans are beautiful.
 
 ### 1. Point it at a folder
 
-Any folder — your existing notes vault, an iCloud directory, a fresh empty one. That folder is the whole data model: plain Markdown files with YAML frontmatter. If your AI already writes there (Claude Code project notes, session logs, research), everything below lights up on day one.
+Any folder — your existing notes vault, an iCloud directory, a fresh empty one. That folder is the whole data model: plain Markdown files with YAML frontmatter. If your AI already writes there (Claude Code project notes, session logs, research), everything below works immediately — it's all just reading the same files.
 
 ### 2. See what your AI did — AI Activity
 
-The dashboard I open every morning. Sessions, messages, and projects over time across Claude, Codex, ChatGPT, and Grok — read straight from the transcripts already on your machine, nothing to configure. Drill into any day, open any session, and see **which vault notes it actually touched**. There's also a reading tracker (GoodNotes) if you opt in.
+This is the view I open every morning. Sessions, messages, and projects over time across Claude, Codex, ChatGPT, and Grok — read straight from the transcripts already on your machine, nothing to configure. Drill into any day, open any session, and see **which vault notes it actually touched**. There's also a reading tracker (GoodNotes) if you opt in.
 
 ### 3. See where it worked — Vault Graph
 
@@ -92,7 +92,7 @@ A tree of Programs → Epics → Ideas → Thoughts, driven by YAML metadata rat
 
 ### 6. Let it change the app — fork + rebuild
 
-You run your agent wherever you already run it — Thinking Space doesn't care. But it can point at your own fork of its source, so when you want something the app doesn't do, your agent changes the code, and the new build is installed and running in under 30 seconds after the commit. The app you use becomes the app you (and your AI) shape.
+You run your agent wherever you already run it — Thinking Space doesn't care. But it can point at your own fork of its source, so when you want something the app doesn't do, your agent changes the code, and the new build is installed and running in under 30 seconds after the commit. The previous build is kept as a backup, so a bad change can't strand you.
 
 ### 7. Put them on a timer — Schedules
 
@@ -118,11 +118,11 @@ An infinite board with a pixel-art scene that greets you by name. Post-its, live
 
 **Just want to use the app?** Grab the [download](#download) above — no build needed.
 
-**Want to run or change it from source?** Don't do it by hand — point your agent at it. Paste this into Claude Code (or any coding agent):
+**Want to run or change it from source?** The easiest way is to hand it to your agent. Paste this into Claude Code (or any coding agent):
 
 > Clone https://github.com/anuragrpatil23/Thinking-Space, read docs/ARCHITECTURE.md and docs/CODEBASE-GUIDE.md, then run `./build.sh install` and `./build.sh dev` and tell me when it's up.
 
-That's genuinely the whole quick start. The repo carries its own onboarding docs ([ARCHITECTURE](docs/ARCHITECTURE.md) → [CODEBASE-GUIDE](docs/CODEBASE-GUIDE.md) → [PLAYBOOKS](docs/PLAYBOOKS.md)), so your agent arrives knowing where everything is and how changes are supposed to be made. If you're already running the app and want to modify it, there's a guided path for that too — your agent forks the repo for you and installs its own builds ([PLAYBOOKS §12](docs/PLAYBOOKS.md)).
+That's the whole quick start. The repo carries its own onboarding docs ([ARCHITECTURE](docs/ARCHITECTURE.md) → [CODEBASE-GUIDE](docs/CODEBASE-GUIDE.md) → [PLAYBOOKS](docs/PLAYBOOKS.md)), so your agent arrives knowing where everything is and how changes are supposed to be made. If you're already running the app and want to modify it, there's a guided path for that too — your agent forks the repo for you and installs its own builds ([PLAYBOOKS §12](docs/PLAYBOOKS.md)).
 
 <details>
 <summary><strong>Doing it by hand anyway</strong></summary>
@@ -174,7 +174,7 @@ The short version, because the details live in the docs:
 - **Your data is just files.** Markdown with YAML frontmatter, in your folder. The app keeps an IndexedDB cache for fast queries, but it's disposable — it can always be rebuilt from the files. There's no database and no server.
 - **Hierarchy lives in metadata** (`parent` fields in the frontmatter), not in folder structure — so you can organize your folders however you want and nothing breaks.
 - **The renderer is treated as untrusted.** It displays your notes and webviews, so it runs fully sandboxed; every file operation goes through the main process, which only ever touches the vault folder you chose. On macOS that means the app asks for permission to exactly one folder — yours — and nothing else.
-- **The code is organized so an AI can work on it.** Small reusable blocks + feature orchestrators, strict naming, and onboarding docs written for agents: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (the system map), [docs/CODEBASE-GUIDE.md](docs/CODEBASE-GUIDE.md) (where everything lives), [docs/PLAYBOOKS.md](docs/PLAYBOOKS.md) (step-by-step recipes for common changes). Point your agent at those three and it can ship a feature.
+- **The code is organized so an AI can work on it.** Small reusable blocks + feature orchestrators, strict naming, and onboarding docs written for agents: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (the system map), [docs/CODEBASE-GUIDE.md](docs/CODEBASE-GUIDE.md) (where everything lives), [docs/PLAYBOOKS.md](docs/PLAYBOOKS.md) (step-by-step recipes for common changes). An agent that reads those three knows where things go and how changes are supposed to be made.
 - **Agents get a tiny CLI** (`thinkspc`) to write schema-correct notes into your vault in one command — that's how their tasks, plans, and handoffs show up in the organizer.
 
 ---
