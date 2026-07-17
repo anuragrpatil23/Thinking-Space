@@ -19,40 +19,33 @@
 
 ## What Is This?
 
-Working with AI inverted something: the AI became the writer, and you became the editor. If you use Claude Code or any coding/chat agent seriously, most of your notes aren't typed by you anymore — session logs, research, plans, syntheses land in files an AI wrote. Your bottleneck isn't capturing thoughts. It's the **other half**: reading what got written, seeing what your AI actually did, connecting it to what you already think, and deciding what happens next.
+At some point I noticed I had stopped writing my own notes. Claude Code writes them now — session logs, research, plans, summaries — and they land as Markdown files in a folder. If you work with an AI seriously, you probably know the feeling: getting thoughts written down is no longer the problem. Keeping up with what got written is. Reading it, seeing what your AI actually did, connecting it to what you already think, deciding what happens next.
 
-Chat can't be that place — conversations evaporate, and transcripts aren't a knowledge base. Notes apps can't either — they're all built on the assumption that the human types.
+Chat isn't the place for that — conversations scroll away, and a pile of transcripts isn't a knowledge base. Notes apps aren't the place either — they all assume the human is the one typing.
 
-Thinking Space is the app for your half of the work. Point it at a folder of Markdown — the same folder your AI writes into — and it becomes the place where you **read** what your AI wrote, **see** exactly which notes each session touched, **organize** its output alongside your own ideas, and **hand it the next task**. It doesn't replace your AI. It's the desk you both work at.
+So I built the place. Thinking Space points at the folder your AI writes into. You read what it wrote, see which notes each session touched, organize its output next to your own ideas, and hand it the next task. It doesn't replace your AI. It's the desk you both work at.
 
-The mechanism is deliberately boring: **plain Markdown files in a folder are the only interface both you and your AI natively share.** Agents already know how to write files; you own them forever. No plugin API, no integration glue, no lock-in — and it works with whatever agent exists next year.
+The trick is boring on purpose: plain Markdown files in a folder are the one thing both you and your AI can read and write natively. Agents already know how to work with files, and you own the files forever. No plugin API, no integrations to maintain, nothing to migrate off of — and it'll work with whatever agent exists next year.
+
+What's inside:
 
 - A chill markdown viewer — point it at a folder and read your notes
 - An **AI Activity** dashboard that shows what you actually worked on with Claude, Codex, ChatGPT, Grok — down to which vault notes each session touched
-- A **vault graph** that maps your knowledge and lights up where your AI has been working
+- A **vault graph** that maps your notes and lights up where your AI has been working
 - A freeform **home canvas** — post-its, live vault notes, and web widgets on an infinite board
-- Run agents (including Claude Code) in the app's **embedded terminal** — and let them modify and rebuild the app itself
-- Works alongside Obsidian — no conflicts; your structure is yours
-- Local-first and portable (plain Markdown + YAML), no lock-in to one AI provider
+- An **embedded terminal** to run agents (including Claude Code) inside the app — they can even modify and rebuild the app itself, commit to running new build in under 30 seconds
+- Agents log their tasks, plans, and handoffs as plain notes in your vault, so their work sits right next to your own thinking
+- Works alongside Obsidian — no conflicts; your folder structure stays yours
+- Local-first, plain Markdown + YAML, no lock-in to one AI provider
 - iOS app that actually opens big vaults. Obsidian on my iPhone usually just spins forever — this one doesn't.
 
-Use an existing notes folder or start fresh (a cloud-synced folder keeps it on all your devices). Thinking Space is source-available: inspect the code, and shape the app to fit your workflow — with your AI doing the shaping — under the terms in [LICENSE](LICENSE).
+Use an existing notes folder or start a new one (a cloud-synced folder keeps it on all your devices). The code is source-available — read it, change it, have your AI change it for you ([LICENSE](LICENSE)).
 
 Humans are beautiful.
 
-### Core Pillars
-
-Thinking Space is built as three product pillars:
-
-**A thinking space for individuals — your half of the work.** Read, build, and organize thinking in a natural hierarchy: Programs, Epics, Ideas, and Thoughts. Everything is local-first, stored as plain Markdown files with YAML frontmatter, and fully portable.
-
-**A shared desk for you and your AI.** One workspace where AI-written notes render beautifully next to your own, with writing actions (grammar, clarity, structure, tone) where you write and AI chat where you think — across providers, local models included.
-
-**Mission control for your agents.** See what your AI actually did — sessions, per-note provenance, activity over time. Agents log their tasks, plans, and handoffs as plain notes in your vault, visible right next to your own thinking. Run them in the app's own terminal — and let them rebuild the app itself (commit to running the new build in under 30 seconds).
-
 ---
 
-## Product Demo
+## What It Looks Like
 
 <!-- Replace with an actual screen recording when available -->
 
@@ -247,4 +240,4 @@ AGPL-3.0 for non-commercial use. Commercial license required for any commercial 
 
 See [LICENSE](LICENSE) for full terms. For commercial licensing, contact the maintainer.
 
-Copyright (C) 2024-2026 Elie Habib. All rights reserved.
+Copyright (C) 2026 Anurag Patil. All rights reserved.
