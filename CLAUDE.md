@@ -85,7 +85,8 @@ Next up:
 8. Local-only extensions first; no early remote code execution.
 9. AI local-first: Ollama (Electron) or WASM LLM (web/PWA).
 10. Markdown file interaction uses one shared orchestrator/provider (`frontend/src/components/orchestrators/MarkdownViewerOrch.tsx`) for both view and edit; avoid page-specific editor overlays.
-11. Code architecture follows lego blocks + orchestrators:
+11. **Editor = one CM6 engine, decorations on top (locked 2026-07-17)**: no ProseMirror/Notion block model, ever — markdown+YAML on disk stay byte-identical; richer editing is CM6 decorations (Obsidian Live Preview model) in `MarkdownRichEditorBlock`. Units: `markdownInlineImageExtensionBlock` (inline image widgets, dimension-cached), `markdownSyntaxHidingExtensionBlock` (headings/emphasis/links styled, markers hidden, per-line reveal), `markdownTaskCheckboxExtensionBlock` (clickable checkboxes toggle the markdown, rendered hrs), `editorLanguageBlock` (extension→grammar routing; markdown decorations mount only for markdown files). Toggle: Settings → Theme → "Live preview while editing" (`livePreviewSyntaxHiding` in markdownEditorSettingsBlock, read per decoration pass). With it on, view-mode click-to-edit replaces the pencil for text docs (MarkdownDocumentBlock `clickToEditActive`). Remaining phases: tables-as-widgets, click-position→cursor mapping, per-profile decoration routing.
+12. Code architecture follows lego blocks + orchestrators:
   - Reusable primitives in components/hooks/services.
   - Page/feature orchestration in orchestrator containers.
   - New major orchestrators follow `agents/TEMPLATES/ORCHESTRATOR_TEMPLATE.md`.
