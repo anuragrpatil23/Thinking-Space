@@ -70,72 +70,45 @@ Humans are beautiful.
 <details>
 <summary><strong>Walkthrough</strong></summary>
 
-### 1. Connect a Folder
+### 1. Point it at a folder
 
-Point Thinking Space at any folder on your machine — an existing notes vault, an iCloud directory, or a fresh folder. That folder becomes your Thinking Space. Everything is stored as plain Markdown files with YAML frontmatter, so your data is always yours.
+Any folder — your existing notes vault, an iCloud directory, a fresh empty one. That folder is the whole data model: plain Markdown files with YAML frontmatter. If your AI already writes there (Claude Code project notes, session logs, research), everything below lights up on day one.
 
-### 2. Home Canvas
+### 2. See what your AI did — AI Activity
 
-After connecting, you land on a freeform **home canvas** — an infinite board with a pixel-art ambient scene that greets you by name. Drop **post-its**, pin **live vault notes**, and add **web widgets** with per-tile auto-refresh, then pan/zoom with a minimap. On desktop the canvas is the default home; it doubles as your at-a-glance dashboard.
+The dashboard I open every morning. Sessions, messages, and projects over time across Claude, Codex, ChatGPT, and Grok — read straight from the transcripts already on your machine, nothing to configure. Drill into any day, open any session, and see **which vault notes it actually touched**. There's also a reading tracker (GoodNotes) if you opt in.
 
-### 3. AI Activity
+### 3. See where it worked — Vault Graph
 
-A dashboard for what you actually worked on with AI — **sessions, messages, and projects over time** across Claude, Codex, ChatGPT, and Grok, plus a **Reading** source that tracks GoodNotes reading sessions. Filter by source and date range, see a this-week digest, and drill into any day's chains. Activity heatmap, duration trend, and totals views included.
+A force-directed map of your whole vault: notes, links between them, and an AI-activity lens that lights up the notes your AI has been working in. Pick a day and watch that day's touched notes glow; click a session and the graph zooms to what it changed. This is the "what has my AI been doing in here?" view.
 
-### 4. Thinking Space (Markdown Workspace)
+### 4. Read and write — the Markdown workspace
 
-The main workspace is a multi-document markdown editor with:
-- A **file explorer** sidebar with folder color coding and icon style options
-- **Tabbed editing** — open multiple documents side by side, tabs persist across sessions
-- **Conflict-safe saves** with mtime/hash checks so you never lose edits
-- **Obsidian wikilink** `[[navigation]]` — click through to linked notes
-- **Native LaTeX (KaTeX) and TikZ (TikZJax)** rendering for math and diagrams
-- **Ruled notebook** view and multiple reading layouts
-- **AI writing actions** — highlight text and get grammar, clarity, structure, or tone suggestions with diff preview
+Tabbed, multi-document reading and editing: file explorer, Obsidian-style `[[wikilinks]]`, LaTeX and TikZ rendering, a ruled notebook view, conflict-safe saves (mtime/hash — an agent and you editing the same vault won't stomp each other). Highlight any text for AI writing actions — grammar, clarity, structure, tone — with a diff preview before anything changes.
 
-### 5. New Note
+### 5. Organize the thinking — Thinking Organizer
 
-Capture a thought quickly with emotion tags, type classification, and optional AI assistance. Notes land in your vault as Markdown files with structured YAML frontmatter.
+A tree of Programs → Epics → Ideas → Thoughts, driven by YAML metadata rather than folder structure, so your folders stay however you like them. Drag to rearrange, reparent freely. This is also where agent work shows up: when an agent logs a task, plan, or handoff (they write plain notes via a small CLI), it appears here next to your own items.
 
-### 6. AI Chat
+### 6. Run the agents — embedded terminal
 
-Have a conversation with AI models directly inside the app:
-- **Multi-provider**: OpenAI, Anthropic Claude, local models (LM Studio / OpenAI-compatible), Codex CLI
-- **Streaming responses** with token/latency telemetry
-- **Per-scope defaults** — set different models for different tasks
+A real terminal (xterm.js + node-pty, the VS Code stack) inside the app. Multi-tab, shells survive page switches, starts in your vault. Run Claude Code right there — and because the app can point at your own fork of its source, your agent can modify Thinking Space itself and have the new build running in under 30 seconds.
 
-### 7. Thinking Organizer
+### 7. Put them on a timer — Schedules
 
-A hierarchical tree view of your knowledge base: **Programs > Epics > Ideas > Thoughts**. Drag-and-drop to rearrange, create new nodes, reparent items. Hierarchy lives in YAML metadata, not folder structure — so your folders can be organized however you want.
+Recurring agent runs via launchd — no server, fires whether the app is open or not. Default executor is Claude Code; watch runs through live log streaming and a transcript history. Optional Telegram loop so a scheduled agent can ask you something and get your answer from your phone.
 
-### 8. Built-in Browser & Web
+### 8. Start the day — Home Canvas
 
-An in-app web browser with:
-- **Bookmark management** with groups
-- **Google Docs and Sheets** integration via OAuth
-- **RSS feed reader** with retention controls, feed groups, and preset tags
+An infinite board with a pixel-art scene that greets you by name. Post-its, live vault notes, web widgets with auto-refresh. On desktop it's the default home — an at-a-glance dashboard you arrange yourself.
 
-### 9. Tools
+### 9. Everything else
 
-Navigation folds AI, Web, and the utilities below into a single **Tools** toolbox (jump to any side-rail tab with Cmd/Ctrl + number):
-- **Git Insights** — activity heatmap, weekly commit trends, contributor stats
-- **PDF to Markdown** — extract content with layout preservation
-- **Transcript Cleaner** — heading extraction and normalization
-- **Excalidraw++** — full drawing canvas with pen defaults, scene management, and highlighter
-- **Mindmap Builder** — convert hierarchical markdown into visual diagrams
-- **Password Manager** — cross-device passphrase-encrypted vault
-
-### 10. Schedules
-
-Schedule recurring agent runs with a launchd-direct runner — no always-on server. Create/edit schedules from a sidebar, default new ones to **Claude Code** execution, and watch them via **live log streaming**, a transcript history viewer, and a heartbeat file. Optional **Telegram** resume loop and ntfy failure alerts keep you in the loop when you step away.
-
-### 11. Embedded Terminal
-
-A full VS Code-style terminal (xterm.js + node-pty) as a first-class nav item. Multi-tab, shells stay alive when switching pages. Run Claude Code or any CLI tool directly inside the app.
-
-### 12. Settings
-
-Configure everything: theme, explorer appearance, schedules, AI providers, markdown editor behavior, Google Workspace auth, RSS feeds, cache, and vault switching. A **Developer** tab lets you toggle Live Source Mode and trigger the rebuild pipeline.
+- **New Note** — quick capture with emotion tags and type classification, lands as clean YAML-frontmatter Markdown
+- **AI Chat** — multi-provider (Anthropic, OpenAI, local models via LM Studio/OpenAI-compatible, Codex CLI), streaming, per-task model defaults
+- **Web** — built-in browser with bookmarks, Google Docs/Sheets via OAuth, and an RSS reader
+- **Tools** — Git insights, PDF→Markdown, transcript cleaner, Excalidraw drawing canvas, mindmap builder, an encrypted password manager
+- **Settings → Developer** — point the app at your fork of its own source and rebuild it from inside itself
 
 </details>
 
@@ -198,32 +171,23 @@ Opens at `http://localhost:5173` — pick a local folder as your vault and you'r
 
 ---
 
-## Architecture
+## How It's Built
 
-Thinking Space follows a **lego blocks + orchestrators** pattern:
+The short version, because the details live in the docs:
 
-- **Lego blocks** — small, reusable primitives (components, hooks, services)
-- **Orchestrators** — page/feature containers that compose blocks and manage state
-
-Data flows through:
-1. **Markdown files** with YAML frontmatter (source of truth, portable, git-friendly)
-2. **IndexedDB** cache for fast hierarchy queries (rebuildable from files)
-3. **Agent CLI** (`thinkspc`) so agents write schema-correct notes into your vault in one command
-
-Hierarchy lives in metadata (`parent` fields), not folder structure — organize your vault however you want.
-
-For detailed architecture docs, see:
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system map: processes, trust boundaries, data flow, subsystems
-- [DEVELOPMENT.md](DEVELOPMENT.md) — architecture contracts, storage strategy, implementation phases
-- [docs/ADR-004-YAML-Architecture.md](docs/ADR-004-YAML-Architecture.md) — full YAML schema
-- [docs/ADR-005-Agent-Capabilities.md](docs/ADR-005-Agent-Capabilities.md) — capability system
-- [AGENTS.md](AGENTS.md) — agent operating contract
+- **Your data is just files.** Markdown with YAML frontmatter, in your folder. The app keeps an IndexedDB cache for fast queries, but it's disposable — it can always be rebuilt from the files. There's no database and no server.
+- **Hierarchy lives in metadata** (`parent` fields in the frontmatter), not in folder structure — so you can organize your folders however you want and nothing breaks.
+- **The renderer is treated as untrusted.** It displays your notes and webviews, so it runs fully sandboxed; every file operation goes through the main process, which only ever touches the vault folder you chose. On macOS that means the app asks for permission to exactly one folder — yours — and nothing else.
+- **The code is organized so an AI can work on it.** Small reusable blocks + feature orchestrators, strict naming, and onboarding docs written for agents: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (the system map), [docs/CODEBASE-GUIDE.md](docs/CODEBASE-GUIDE.md) (where everything lives), [docs/PLAYBOOKS.md](docs/PLAYBOOKS.md) (step-by-step recipes for common changes). Point your agent at those three and it can ship a feature.
+- **Agents get a tiny CLI** (`thinkspc`) to write schema-correct notes into your vault in one command — that's how their tasks, plans, and handoffs show up in the organizer.
 
 ---
 
 ## Contributing
 
-Contributions are welcome! The codebase follows strict placement and naming conventions — see [DEVELOPMENT.md](DEVELOPMENT.md) and [AGENTS.md](AGENTS.md) before making changes.
+The intended way to change this app — whether for yourself or to contribute back — is to have your AI do it with you: fork the repo, point your agent at the three docs above, make the change, and open a PR. That's not a gimmick; it's how the app itself gets built (this README's commit history included).
+
+A small set of security-critical files (the sandbox, the vault path guard, the credential stores) carry warning headers and require maintainer review on PRs — everything else is fair game. Conventions are enforced by the docs, not tribal knowledge.
 
 ---
 
