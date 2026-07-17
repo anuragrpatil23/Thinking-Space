@@ -99,6 +99,59 @@ function normalizeWindowContextBlock(value: unknown): ElectronWindowContextBlock
   }
 }
 
+interface ElectronProfileSummaryBlock {
+  id: string
+  name: string
+  accentColor: string | null
+  isDefault: boolean
+  vaultRoot: string | null
+  webviewPartition: string
+  openWindowCount: number
+}
+
+const DEFAULT_PROFILE_SUMMARY_BLOCK: ElectronProfileSummaryBlock = {
+  id: 'default',
+  name: 'Main',
+  accentColor: null,
+  isDefault: true,
+  vaultRoot: null,
+  webviewPartition: 'persist:thinking-space-links',
+  openWindowCount: 1,
+}
+
+function normalizeProfileSummaryBlock(value: unknown): ElectronProfileSummaryBlock {
+  if (!value || typeof value !== 'object') return DEFAULT_PROFILE_SUMMARY_BLOCK
+  const record = value as Record<string, unknown>
+  const id = typeof record.id === 'string' && record.id.trim().length > 0
+    ? record.id.trim()
+    : DEFAULT_PROFILE_SUMMARY_BLOCK.id
+  return {
+    id,
+    name: typeof record.name === 'string' && record.name.trim().length > 0 ? record.name.trim() : 'Main',
+    accentColor: typeof record.accentColor === 'string' && record.accentColor.trim().length > 0
+      ? record.accentColor.trim()
+      : null,
+    isDefault: record.isDefault === undefined ? id === 'default' : Boolean(record.isDefault),
+    vaultRoot: typeof record.vaultRoot === 'string' && record.vaultRoot.trim().length > 0
+      ? record.vaultRoot.trim()
+      : null,
+    webviewPartition: typeof record.webviewPartition === 'string' && record.webviewPartition.trim().length > 0
+      ? record.webviewPartition.trim()
+      : DEFAULT_PROFILE_SUMMARY_BLOCK.webviewPartition,
+    openWindowCount: typeof record.openWindowCount === 'number' && Number.isFinite(record.openWindowCount)
+      ? record.openWindowCount
+      : 1,
+  }
+}
+
+function readProfileSummarySyncBlock(): ElectronProfileSummaryBlock {
+  try {
+    return normalizeProfileSummaryBlock(ipcRenderer.sendSync('profile:getSync'))
+  } catch {
+    return DEFAULT_PROFILE_SUMMARY_BLOCK
+  }
+}
+
 function readWindowContextSyncBlock(): ElectronWindowContextBlock {
   try {
     const value = ipcRenderer.sendSync('window:context:getSync')
@@ -113,6 +166,11 @@ function readWindowContextSyncBlock(): ElectronWindowContextBlock {
 let persistedVaultRootBlock: string | null = readPersistedVaultRootSyncBlock()
 let persistedOpensourceAiBaseUrlBlock: string | null = readPersistedOpensourceAiBaseUrlSyncBlock()
 let windowContextBlock: ElectronWindowContextBlock = readWindowContextSyncBlock()
+let profileSummaryBlock: ElectronProfileSummaryBlock = readProfileSummarySyncBlock()
+
+ipcRenderer.on('profile:changed', (_event, value: unknown) => {
+  profileSummaryBlock = normalizeProfileSummaryBlock(value)
+})
 
 function getPersistedVaultRootBlock(): string | null {
   // Return cached value — no additional sync IPC calls needed.
@@ -300,6 +358,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Window management
   newWindow: (route?: string) => ipcRenderer.invoke('window:new', route),
+
+  // Workspace profiles (Chrome-style: own vault, own window, own accent)
+  profileGet: (): ElectronProfileSummaryBlock => profileSummaryBlock,
+  onProfileChanged: (handler: (profile: ElectronProfileSummaryBlock) => void) => {
+    const channel = 'profile:changed'
+    const listener = (_: unknown, value: unknown) => {
+      profileSummaryBlock = normalizeProfileSummaryBlock(value)
+      handler(profileSummaryBlock)
+    }
+    ipcRenderer.on(channel, listener)
+    return () => { ipcRenderer.removeListener(channel, listener) }
+  },
+  profilesList: (): Promise<ElectronProfileSummaryBlock[]> =>
+    ipcRenderer.invoke('profiles:list'),
+  profilesCreate: (input: { name: string; vaultRoot: string; accentColor?: string | null }): Promise<ElectronProfileSummaryBlock> =>
+    ipcRenderer.invoke('profiles:create', input),
+  profilesUpdate: (input: { id: string; name?: string; accentColor?: string | null }): Promise<ElectronProfileSummaryBlock> =>
+    ipcRenderer.invoke('profiles:update', input),
+  profilesDelete: (profileId: string): Promise<void> =>
+    ipcRenderer.invoke('profiles:delete', profileId),
+  profilesOpenWindow: (profileId: string): Promise<void> =>
+    ipcRenderer.invoke('profiles:open-window', profileId),
   windowGetContext: (): ElectronWindowContextBlock => windowContextBlock,
   onWindowContext: (handler: (context: ElectronWindowContextBlock) => void) => {
     const channel = 'window:context-changed'

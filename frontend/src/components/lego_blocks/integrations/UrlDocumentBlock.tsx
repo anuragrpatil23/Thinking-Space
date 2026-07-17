@@ -34,8 +34,12 @@ import {
   probePasswordAutofillContextBlock,
 } from '@/services/lego_blocks/units/passwordAutofillWebviewBlock'
 import { cn } from '@/lib/utils'
+import { getCurrentWorkspaceProfileBlock } from '@/services/lego_blocks/units/profileContextBlock'
 
-const LINK_WEBVIEW_PARTITION = 'persist:thinking-space-links'
+// Per-profile web partition: the default profile keeps the historic partition
+// (existing logins survive), other profiles get their own cookie jar so e.g.
+// work and personal Gmail can stay signed in side by side.
+const LINK_WEBVIEW_PARTITION = getCurrentWorkspaceProfileBlock().webviewPartition
 const ELECTRON_WEBVIEW_UNLOAD_DELAY_MS = 3 * 60 * 60 * 1000
 type ElectronWebviewRefBlock = React.MutableRefObject<ElectronWebviewElementBlock | null>
 

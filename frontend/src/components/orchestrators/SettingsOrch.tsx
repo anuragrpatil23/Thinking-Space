@@ -6,6 +6,7 @@ import {
   SETTINGS_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
 } from '@/services/lego_blocks/units/settingsSidebarChromeBlock'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import { WorkspaceProfilesSettingsBlock } from '@/components/lego_blocks/integrations/WorkspaceProfilesSettingsBlock'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import AiSettingsOrch from '@/components/orchestrators/AiSettingsOrch'
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
@@ -113,7 +114,7 @@ import {
   setConsoleWarningsVisible,
 } from '@/services/lego_blocks/units/consoleNoiseFilterBlock'
 
-export type SettingsTabId = 'theme' | 'explorer' | 'moon_scene' | 'activity' | 'ai_activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer' | 'projects'
+export type SettingsTabId = 'workspace_profiles' | 'theme' | 'explorer' | 'moon_scene' | 'activity' | 'ai_activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer' | 'projects'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
@@ -178,6 +179,7 @@ const TAB_GROUPS: Array<{ heading: string; items: Array<{ id: SettingsTabWithPro
       { id: 'profile', label: 'Profile' },
       { id: 'projects', label: 'Projects' },
       { id: 'vault', label: 'Select Thinking Space' },
+      { id: 'workspace_profiles', label: 'Profiles' },
     ],
   },
   {
@@ -2036,6 +2038,8 @@ export default function SettingsOrch({
           </CardContent>
         </Card>
       )}
+
+      {activeTab === 'workspace_profiles' && <WorkspaceProfilesSettingsBlock />}
 
       {activeTab === 'about' && <AboutSection />}
 

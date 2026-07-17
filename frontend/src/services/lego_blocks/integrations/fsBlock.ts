@@ -201,6 +201,38 @@ interface ElectronAPI {
   vaultWatchStop?(vaultRoot: string): Promise<{ ok: boolean }>
   onVaultWatchEvent?(handler: (event: { kind: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir'; path: string }) => void): () => void
   newWindow?(route?: string): Promise<void>
+  /** Workspace profiles — Chrome-style per-window vault + accent identity. */
+  profileGet?(): {
+    id: string
+    name: string
+    accentColor: string | null
+    isDefault: boolean
+    vaultRoot: string | null
+    webviewPartition: string
+    openWindowCount: number
+  }
+  onProfileChanged?(handler: (profile: {
+    id: string
+    name: string
+    accentColor: string | null
+    isDefault: boolean
+    vaultRoot: string | null
+    webviewPartition: string
+    openWindowCount: number
+  }) => void): () => void
+  profilesList?(): Promise<Array<{
+    id: string
+    name: string
+    accentColor: string | null
+    isDefault: boolean
+    vaultRoot: string | null
+    webviewPartition: string
+    openWindowCount: number
+  }>>
+  profilesCreate?(input: { name: string; vaultRoot: string; accentColor?: string | null }): Promise<unknown>
+  profilesUpdate?(input: { id: string; name?: string; accentColor?: string | null }): Promise<unknown>
+  profilesDelete?(profileId: string): Promise<void>
+  profilesOpenWindow?(profileId: string): Promise<void>
   clearGpuCache?(): Promise<void>
   markdownEditorOnPasteAsTable?(handler: () => void): () => void
   sourceConfigGet?(): Promise<{ mode: string; sourcePath: string | null; vitePort: number; viteRunning: boolean }>

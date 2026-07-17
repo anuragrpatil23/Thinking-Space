@@ -83,6 +83,7 @@ import {
 import UniversalSearchBlock from './components/lego_blocks/integrations/UniversalSearchBlock'
 import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_blocks/integrations/universalSearchPresetBlock'
 import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useWorkspaceProfileBlock } from './components/lego_blocks/hooks/useWorkspaceProfileBlock'
 import { useChromeStateEventBlock } from './components/lego_blocks/hooks/shared/useChromeStateEventBlock'
 import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
 import { useNativePushNavigationBlock } from './components/lego_blocks/hooks/shared/useNativePushNavigationBlock'
@@ -465,6 +466,8 @@ function App() {
   const { layout } = useUILayoutBlock()
   const currentRoute = `${location.pathname}${location.search}${location.hash}`
   const terminalSupported = isEmbeddedTerminalSupported()
+  // Applies this window's profile accent to the shell (CSS var + data attr).
+  useWorkspaceProfileBlock()
 
   useEffect(() => startStallDetector(), [])
 

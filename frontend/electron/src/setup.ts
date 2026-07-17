@@ -18,7 +18,7 @@ import electronIsDev from 'electron-is-dev';
 import electronServe from 'electron-serve';
 import windowStateKeeper from 'electron-window-state';
 import { randomUUID } from 'crypto';
-import { existsSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import {
   buildUserAiOriginEntryBlock,
@@ -26,6 +26,12 @@ import {
   type CspBuildOptionsBlock,
   type CspDirective,
 } from './lego_blocks/cspWhitelistBlock';
+import {
+  DEFAULT_PROFILE_ID_BLOCK,
+  getProfileAppPartitionBlock,
+  getProfileBlock,
+  resolveProfileVaultRootBlock,
+} from './lego_blocks/profileRegistryBlock';
 
 // Define components for a watcher to detect when the webapp is changed so we can reload in Dev mode.
 const reloadWatcher = {
@@ -293,6 +299,7 @@ export function setupReloadWatcher(electronCapacitorApp: ElectronCapacitorApp): 
 export class ElectronCapacitorApp {
   private windows: BrowserWindow[] = [];
   private windowSessionIdById = new Map<number, string>();
+  private windowProfileIdById = new Map<number, string>();
   private mainWindowId: number | null = null;
   private backgroundAuthorityWindowId: number | null = null;
   private SplashScreen: CapacitorSplashScreen | null = null;
@@ -362,6 +369,38 @@ export class ElectronCapacitorApp {
     return this.customScheme;
   }
 
+  /** Profile id owning a renderer's window; 'default' for anything untracked. */
+  getProfileIdForWebContents(targetContents: WebContents): string {
+    const targetWindow = BrowserWindow.fromWebContents(targetContents);
+    if (!targetWindow) return DEFAULT_PROFILE_ID_BLOCK;
+    return this.windowProfileIdById.get(targetWindow.id) ?? DEFAULT_PROFILE_ID_BLOCK;
+  }
+
+  /** App windows whose profile operates on the given vault root — used to
+   *  route vault-scoped broadcast events (e.g. watcher changes) only to the
+   *  windows that own that vault, never across profiles. */
+  getWindowsForVaultRootBlock(vaultRoot: string): BrowserWindow[] {
+    const targetRoot = join(vaultRoot, '.');
+    const matches: BrowserWindow[] = [];
+    for (const win of this.windows) {
+      if (win.isDestroyed()) continue;
+      const profileId = this.windowProfileIdById.get(win.id) ?? DEFAULT_PROFILE_ID_BLOCK;
+      const profile = getProfileBlock(profileId);
+      const ownedRoot = profile ? resolveProfileVaultRootBlock(profile) : null;
+      if (ownedRoot && join(ownedRoot, '.') === targetRoot) matches.push(win);
+    }
+    return matches;
+  }
+
+  getOpenWindowCountForProfileBlock(profileId: string): number {
+    let count = 0;
+    for (const win of this.windows) {
+      if (win.isDestroyed()) continue;
+      if ((this.windowProfileIdById.get(win.id) ?? DEFAULT_PROFILE_ID_BLOCK) === profileId) count += 1;
+    }
+    return count;
+  }
+
   setLiveSourceUrl(url: string | null): void {
     this.liveSourceUrl = url;
   }
@@ -370,11 +409,15 @@ export class ElectronCapacitorApp {
     return this.liveSourceUrl;
   }
 
-  private registerAppWindowContextBlock(targetWindow: BrowserWindow, options: { isMainWindow: boolean }): void {
+  private registerAppWindowContextBlock(
+    targetWindow: BrowserWindow,
+    options: { isMainWindow: boolean; profileId?: string },
+  ): void {
     const sessionId = options.isMainWindow
       ? 'main-window'
       : `window-${randomUUID()}`;
     this.windowSessionIdById.set(targetWindow.id, sessionId);
+    this.windowProfileIdById.set(targetWindow.id, options.profileId ?? DEFAULT_PROFILE_ID_BLOCK);
     if (options.isMainWindow) {
       this.mainWindowId = targetWindow.id;
     }
@@ -388,6 +431,7 @@ export class ElectronCapacitorApp {
     const closingWindowId = targetWindow.id;
     this.windows = this.windows.filter((windowRef) => windowRef !== targetWindow);
     this.windowSessionIdById.delete(closingWindowId);
+    this.windowProfileIdById.delete(closingWindowId);
     if (this.mainWindowId === closingWindowId) {
       this.mainWindowId = null;
     }
@@ -596,7 +640,14 @@ export class ElectronCapacitorApp {
   }
 
   // Create a new window (used for multi-window support).
-  async createWindow(route?: string): Promise<BrowserWindow> {
+  // `profileId` selects which workspace profile the window belongs to; the
+  // default profile runs on the default session, others on their own partition.
+  async createWindow(route?: string, profileId?: string): Promise<BrowserWindow> {
+    const resolvedProfileId = profileId ?? DEFAULT_PROFILE_ID_BLOCK;
+    const profile = getProfileBlock(resolvedProfileId);
+    if (!profile) throw new Error('Profile not found.');
+    const partition = getProfileAppPartitionBlock(profile.id);
+    if (partition) prepareProfileAppSessionBlock(partition, this.customScheme);
     const icon = this.createAppIcon();
     const preloadPath = join(app.getAppPath(), 'build', 'src', 'preload.js');
     const winState = windowStateKeeper({
@@ -648,6 +699,7 @@ export class ElectronCapacitorApp {
         preload: preloadPath,
         webviewTag: true,
         spellcheck: true,
+        ...(partition ? { partition } : {}),
       },
     });
     winState.manage(newWindow);
@@ -663,7 +715,16 @@ export class ElectronCapacitorApp {
 
     // Track window and remove on close.
     this.windows.push(newWindow);
-    this.registerAppWindowContextBlock(newWindow, { isMainWindow: false });
+    this.registerAppWindowContextBlock(newWindow, { isMainWindow: false, profileId: profile.id });
+
+    // Non-default profile windows carry the profile name in the title so two
+    // otherwise-identical windows stay tellable-apart in Mission Control.
+    if (profile.id !== DEFAULT_PROFILE_ID_BLOCK) {
+      newWindow.webContents.on('page-title-updated', (event, title) => {
+        event.preventDefault();
+        newWindow.setTitle(title ? `${title} — ${profile.name}` : profile.name);
+      });
+    }
     newWindow.on('closed', () => {
       this.handleTrackedWindowClosedBlock(newWindow);
     });
@@ -898,12 +959,14 @@ export function setupWindowSwipeNavigation(win: BrowserWindow): void {
  * Create a popup BrowserWindow that shares the webview session so cookies
  * and auth carry over. Loads the URL directly — no nested webview needed.
  */
-function createWebviewPopupWindowBlock(url: string): void {
+function createWebviewPopupWindowBlock(url: string, openerSession?: Session): void {
   const popup = new BrowserWindow({
     width: 1100,
     height: 750,
     webPreferences: {
-      session: session.fromPartition(WEBVIEW_PARTITION),
+      // Use the opening webview's session so popups keep the cookies of the
+      // profile-specific web partition, not always the default one.
+      session: openerSession ?? session.fromPartition(WEBVIEW_PARTITION),
       spellcheck: true,
     },
   });
@@ -936,8 +999,9 @@ export function setupWebviewSessionPermissions(): void {
 
     // Deny Electron's automatic popup (which uses the wrong session) and
     // create our own BrowserWindow with the explicit webview session object.
+    const webviewSession = webContents.session;
     webContents.setWindowOpenHandler(({ url }) => {
-      setImmediate(() => createWebviewPopupWindowBlock(url));
+      setImmediate(() => createWebviewPopupWindowBlock(url, webviewSession));
       return { action: 'deny' };
     });
   });
@@ -993,18 +1057,76 @@ export function setupContentSecurityPolicy(
 
   const devCsp = buildCsp(true)
   const prodCsp = buildCsp(false)
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    if (!details.url.startsWith(`${customScheme}://`)) {
-      callback({ responseHeaders: details.responseHeaders });
-      return;
-    }
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [
-          electronIsDev ? devCsp : prodCsp,
-        ],
-      },
+  const applyToSession = (targetSession: Session): void => {
+    targetSession.webRequest.onHeadersReceived((details, callback) => {
+      if (!details.url.startsWith(`${customScheme}://`)) {
+        callback({ responseHeaders: details.responseHeaders });
+        return;
+      }
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [
+            electronIsDev ? devCsp : prodCsp,
+          ],
+        },
+      });
     });
+  };
+  applyToSession(session.defaultSession);
+  // Remember the applier so profile partition sessions created later get the
+  // exact same policy (prepareProfileAppSessionBlock below).
+  cspSessionApplierBlock = applyToSession;
+  for (const preparedSession of preparedProfileSessionsBlock) {
+    applyToSession(preparedSession);
+  }
+}
+
+// -- Per-profile app sessions --------------------------------------------------
+// Non-default profiles run the app in `persist:profile-<id>` partitions so each
+// profile gets its own IndexedDB/localStorage (Chrome-profile semantics). A
+// fresh partition session has neither the custom app scheme handler (electron-
+// serve registers it on the default session only) nor the CSP header rewriter,
+// so both must be applied before the first load or the window shows a blank
+// page / runs without CSP.
+
+let cspSessionApplierBlock: ((targetSession: Session) => void) | null = null;
+const preparedProfileSessionsBlock = new Set<Session>();
+
+function registerAppSchemeOnSessionBlock(targetSession: Session, customScheme: string): void {
+  const directory = join(app.getAppPath(), 'app');
+  const indexPath = join(directory, 'index.html');
+  // Same semantics as electron-serve: resolve inside the app directory, serve
+  // directories via their index.html, and fall back to the SPA index for
+  // unknown extension-less routes.
+  targetSession.protocol.registerFileProtocol(customScheme, (request, callback) => {
+    try {
+      const pathname = decodeURIComponent(new URL(request.url).pathname);
+      const requested = join(directory, pathname);
+      if (!requested.startsWith(directory)) {
+        callback({ path: indexPath });
+        return;
+      }
+      let resolved = indexPath;
+      try {
+        const stats = statSync(requested);
+        resolved = stats.isDirectory() ? join(requested, 'index.html') : requested;
+      } catch {
+        resolved = indexPath;
+      }
+      callback({ path: existsSync(resolved) ? resolved : indexPath });
+    } catch {
+      callback({ path: indexPath });
+    }
   });
+}
+
+/** Idempotently equip a profile partition session to serve the app securely. */
+export function prepareProfileAppSessionBlock(partition: string, customScheme: string): Session {
+  const targetSession = session.fromPartition(partition);
+  if (preparedProfileSessionsBlock.has(targetSession)) return targetSession;
+  preparedProfileSessionsBlock.add(targetSession);
+  registerAppSchemeOnSessionBlock(targetSession, customScheme);
+  cspSessionApplierBlock?.(targetSession);
+  return targetSession;
 }

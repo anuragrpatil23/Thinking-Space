@@ -8,7 +8,7 @@
 import type { CapacitorElectronConfig } from '@capacitor-community/electron';
 import { getCapacitorElectronConfig, setupElectronDeepLinking } from '@capacitor-community/electron';
 import type { MenuItemConstructorOptions } from 'electron';
-import { app, BrowserWindow, dialog, ipcMain, Menu, MenuItem, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, MenuItem, nativeTheme, session, shell } from 'electron';
 import electronIsDev from 'electron-is-dev';
 import unhandled from 'electron-unhandled';
 import { autoUpdater } from 'electron-updater';
@@ -43,15 +43,24 @@ import {
   saveWebullCredentialsBlock,
   type WebullStoredAccessTokenBlock,
 } from './lego_blocks/webullCredentialStoreBlock';
-import {
-  readPersistedVaultRootBlock,
-  writePersistedVaultRootBlock,
-} from './lego_blocks/vaultRootPersistenceBlock';
+import { readPersistedVaultRootBlock } from './lego_blocks/vaultRootPersistenceBlock';
 import {
   authorizeVaultRootBlock,
   assertAuthorizedVaultRootBlock,
   resolveInsideVaultBlock,
 } from './lego_blocks/vaultPathGuardBlock';
+import {
+  DEFAULT_PROFILE_ID_BLOCK,
+  createProfileBlock,
+  deleteProfileBlock,
+  getProfileAppPartitionBlock,
+  getProfileBlock,
+  getProfileWebviewPartitionBlock,
+  listProfilesBlock,
+  resolveProfileVaultRootBlock,
+  setProfileVaultRootBlock,
+  updateProfileBlock,
+} from './lego_blocks/profileRegistryBlock';
 import {
   readPersistedOpensourceAiBaseUrlBlock,
   writePersistedOpensourceAiBaseUrlBlock,
@@ -406,6 +415,12 @@ if (hasSingleInstanceLock) {
         readPersistedOpensourceAiBaseUrlBlock(),
       );
       setupWebviewSessionPermissions();
+      // Authorize every workspace profile's vault root at boot. profiles.json
+      // is main-owned state — the same trust anchor as the persisted root, so
+      // this widens nothing: a renderer still can't get an arbitrary path in.
+      for (const profileRecord of listProfilesBlock()) {
+        authorizeVaultRootBlock(resolveProfileVaultRootBlock(profileRecord));
+      }
       if (!electronIsDev) {
         const cliInstallResult = await ensureCliToolInstalledBlock();
         if (cliInstallResult.status === 'failed') {
@@ -546,8 +561,109 @@ app.on('activate', async function () {
 });
 
 // -- New window IPC --
-ipcMain.handle('window:new', async (_event, route?: string) => {
-  await myCapacitorApp.createWindow(route);
+ipcMain.handle('window:new', async (event, route?: string) => {
+  // A new window stays in the profile of the window that asked for it.
+  await myCapacitorApp.createWindow(route, myCapacitorApp.getProfileIdForWebContents(event.sender));
+});
+
+// -- Workspace profiles (Chrome-style: own vault, own window, own accent) --
+interface ProfileSummaryBlock {
+  id: string;
+  name: string;
+  accentColor: string | null;
+  isDefault: boolean;
+  vaultRoot: string | null;
+  webviewPartition: string;
+  openWindowCount: number;
+}
+
+function serializeProfileSummaryBlock(profileId: string): ProfileSummaryBlock | null {
+  const profile = getProfileBlock(profileId);
+  if (!profile) return null;
+  return {
+    id: profile.id,
+    name: profile.name,
+    accentColor: profile.accentColor,
+    isDefault: profile.id === DEFAULT_PROFILE_ID_BLOCK,
+    vaultRoot: resolveProfileVaultRootBlock(profile),
+    webviewPartition: getProfileWebviewPartitionBlock(profile.id),
+    openWindowCount: myCapacitorApp.getOpenWindowCountForProfileBlock(profile.id),
+  };
+}
+
+function broadcastProfileChangedBlock(profileId: string): void {
+  const profile = getProfileBlock(profileId);
+  if (!profile) return;
+  const vaultRoot = resolveProfileVaultRootBlock(profile);
+  if (!vaultRoot) return;
+  const summary = serializeProfileSummaryBlock(profileId);
+  for (const win of myCapacitorApp.getWindowsForVaultRootBlock(vaultRoot)) {
+    win.webContents.send('profile:changed', summary);
+  }
+}
+
+// Synchronous: the preload caches the window's profile identity at exposure
+// time (same pattern as vault:root:getPersistedSync).
+ipcMain.on('profile:getSync', (event) => {
+  event.returnValue = serializeProfileSummaryBlock(
+    myCapacitorApp.getProfileIdForWebContents(event.sender),
+  );
+});
+
+ipcMain.handle('profiles:list', async () => {
+  return listProfilesBlock()
+    .map((profile) => serializeProfileSummaryBlock(profile.id))
+    .filter((summary): summary is ProfileSummaryBlock => summary !== null);
+});
+
+ipcMain.handle('profiles:create', async (_event, input: { name: string; vaultRoot: string; accentColor?: string | null }) => {
+  if (!input || typeof input.name !== 'string' || typeof input.vaultRoot !== 'string') {
+    throw new Error('Profile name and vault folder are required.');
+  }
+  // The folder must have gone through the native picker (vault:selectFolder)
+  // in this session — that consent moment is what authorizes it. Never accept
+  // an arbitrary renderer-supplied path here.
+  assertAuthorizedVaultRootBlock(input.vaultRoot);
+  const record = createProfileBlock({
+    name: input.name,
+    vaultRoot: input.vaultRoot,
+    accentColor: input.accentColor ?? null,
+  });
+  return serializeProfileSummaryBlock(record.id);
+});
+
+ipcMain.handle('profiles:update', async (_event, input: { id: string; name?: string; accentColor?: string | null }) => {
+  if (!input || typeof input.id !== 'string') throw new Error('Profile id is required.');
+  const record = updateProfileBlock(input.id, { name: input.name, accentColor: input.accentColor });
+  broadcastProfileChangedBlock(record.id);
+  return serializeProfileSummaryBlock(record.id);
+});
+
+ipcMain.handle('profiles:delete', async (_event, profileId: string) => {
+  if (typeof profileId !== 'string') throw new Error('Profile id is required.');
+  if (myCapacitorApp.getOpenWindowCountForProfileBlock(profileId) > 0) {
+    throw new Error('Close this profile’s windows before deleting it.');
+  }
+  const appPartition = getProfileAppPartitionBlock(profileId);
+  const webviewPartition = getProfileWebviewPartitionBlock(profileId);
+  deleteProfileBlock(profileId);
+  // Purge the partitions' on-disk storage (IndexedDB, localStorage, cookies) —
+  // otherwise the orphaned data sits in userData forever.
+  if (appPartition) {
+    await session.fromPartition(appPartition).clearStorageData().catch(() => undefined);
+  }
+  await session.fromPartition(webviewPartition).clearStorageData().catch(() => undefined);
+});
+
+ipcMain.handle('profiles:open-window', async (_event, profileId: string) => {
+  if (typeof profileId !== 'string') throw new Error('Profile id is required.');
+  const profile = getProfileBlock(profileId);
+  if (!profile) throw new Error('Profile not found.');
+  const vaultRoot = resolveProfileVaultRootBlock(profile);
+  // Late authorization is safe here: profiles.json is main-process-owned
+  // state, the same trust anchor as the persisted vault root.
+  authorizeVaultRootBlock(vaultRoot);
+  await myCapacitorApp.createWindow(undefined, profileId);
 });
 
 ipcMain.on('window:context:getSync', (event) => {
@@ -1662,15 +1778,21 @@ ipcMain.on('app:version:getSync', (event) => {
 // Async version — avoids blocking the renderer
 ipcMain.handle('app:version:get', () => app.getVersion());
 
+// Answered per-window: each window belongs to a workspace profile, and its
+// renderer boots against that profile's vault root. The default profile keeps
+// reading the legacy vault-root.json, so single-profile installs see no change.
 ipcMain.on('vault:root:getPersistedSync', (event) => {
-  event.returnValue = readPersistedVaultRootBlock();
+  const profileId = myCapacitorApp.getProfileIdForWebContents(event.sender);
+  const profile = getProfileBlock(profileId);
+  event.returnValue = profile ? resolveProfileVaultRootBlock(profile) : readPersistedVaultRootBlock();
 });
 
-ipcMain.handle('vault:root:setPersisted', async (_event, vaultRoot: string | null) => {
+ipcMain.handle('vault:root:setPersisted', async (event, vaultRoot: string | null) => {
   if (vaultRoot !== null && typeof vaultRoot !== 'string') {
     throw new Error('Persisted vault root must be a string or null.');
   }
-  writePersistedVaultRootBlock(vaultRoot);
+  const profileId = myCapacitorApp.getProfileIdForWebContents(event.sender);
+  setProfileVaultRootBlock(profileId, vaultRoot);
   authorizeVaultRootBlock(vaultRoot);
 });
 
@@ -1762,9 +1884,11 @@ ipcMain.handle('vault:watch:start', async (_event, vaultRoot: string) => {
     void harvestAppleScreenTimeBlock(vaultRoot).catch(() => undefined);
   }
   return startVaultWatcherBlock(vaultRoot, {
-    onEvent: (_root, event) => {
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (win.isDestroyed()) continue;
+    onEvent: (root, event) => {
+      // Route only to windows whose profile owns this vault — with multiple
+      // profiles open, broadcasting would leak profile A's file events into
+      // profile B's renderer and trigger spurious resyncs there.
+      for (const win of myCapacitorApp.getWindowsForVaultRootBlock(root)) {
         win.webContents.send('vault:watch:event', event);
       }
     },
