@@ -1,6 +1,6 @@
 # Thinking Space
 
-> A local-first thinking workspace where humans and AI work together on personal knowledge.
+> **Your AI writes the notes. This is where you think with them.**
 
 [![License: AGPL-3.0 (non-commercial)](https://img.shields.io/badge/License-AGPL--3.0%20(non--commercial)-blue.svg)](LICENSE)
 [![Platform: Electron](https://img.shields.io/badge/Platform-Electron%20%7C%20Web%20%7C%20iOS-brightgreen)]()
@@ -19,26 +19,24 @@
 
 ## What Is This?
 
-Thinking Space helps you turn a folder of notes into a practical, compounding long-term memory.
+Working with AI inverted something: the AI became the writer, and you became the editor. If you use Claude Code or any coding/chat agent seriously, most of your notes aren't typed by you anymore — session logs, research, plans, syntheses land in files an AI wrote. Your bottleneck isn't capturing thoughts. It's the **other half**: reading what got written, seeing what your AI actually did, connecting it to what you already think, and deciding what happens next.
 
-Most note-taking tools force you into rigid plugin systems and disconnected AI workflows. Thinking Space is different — it's built from the ground up as three things at once:
+Chat can't be that place — conversations evaporate, and transcripts aren't a knowledge base. Notes apps can't either — they're all built on the assumption that the human types.
 
-Your notes folder is the source of truth, and Thinking Space is the helpful layer on top that makes creation, management, and use easier with AI of your choice.
+Thinking Space is the app for your half of the work. Point it at a folder of Markdown — the same folder your AI writes into — and it becomes the place where you **read** what your AI wrote, **see** exactly which notes each session touched, **organize** its output alongside your own ideas, and **hand it the next task**. It doesn't replace your AI. It's the desk you both work at.
 
-You can use an existing folder with your notes or create a new one. A cloud-synced folder is recommended so your notes are available across devices.
-
-Thinking Space does not impose a fixed way of thinking or organization. Your structure is yours. It provides useful tools out of the box and removes repetitive parts of knowledge-base work so you can focus on actual thinking.
-
-Thinking Space is source-available and designed to be extendable with AI. You can inspect the source code, add features, and shape the app to fit your workflow under the terms in [LICENSE](LICENSE).
+The mechanism is deliberately boring: **plain Markdown files in a folder are the only interface both you and your AI natively share.** Agents already know how to write files; you own them forever. No plugin API, no integration glue, no lock-in — and it works with whatever agent exists next year.
 
 - A chill markdown viewer — point it at a folder and read your notes
+- An **AI Activity** dashboard that shows what you actually worked on with Claude, Codex, ChatGPT, Grok — down to which vault notes each session touched
+- A **vault graph** that maps your knowledge and lights up where your AI has been working
 - A freeform **home canvas** — post-its, live vault notes, and web widgets on an infinite board
-- An **AI Activity** dashboard that shows what you actually worked on with Claude, Codex, ChatGPT, Grok — and what you've been reading
-- A small, extendable Electron app you can use as a home for the little tools you build for yourself
-- Works alongside Obsidian — no conflicts
-- Local-first and portable (plain Markdown + YAML)
-- No lock-in to one AI provider
+- Run agents (including Claude Code) in the app's **embedded terminal** — and let them modify and rebuild the app itself
+- Works alongside Obsidian — no conflicts; your structure is yours
+- Local-first and portable (plain Markdown + YAML), no lock-in to one AI provider
 - iOS app that actually opens big vaults. Obsidian on my iPhone usually just spins forever — this one doesn't.
+
+Use an existing notes folder or start fresh (a cloud-synced folder keeps it on all your devices). Thinking Space is source-available: inspect the code, and shape the app to fit your workflow — with your AI doing the shaping — under the terms in [LICENSE](LICENSE).
 
 Humans are beautiful.
 
@@ -46,11 +44,11 @@ Humans are beautiful.
 
 Thinking Space is built as three product pillars:
 
-**A thinking space for individuals.** Capture structured thoughts in a natural hierarchy: Programs, Epics, Ideas, and Thoughts. Everything is local-first, stored as plain Markdown files with YAML frontmatter, and fully portable.
+**A thinking space for individuals — your half of the work.** Read, build, and organize thinking in a natural hierarchy: Programs, Epics, Ideas, and Thoughts. Everything is local-first, stored as plain Markdown files with YAML frontmatter, and fully portable.
 
-**A place where humans and AI work together.** AI writing assistance lives directly in your workspace — grammar, clarity, structure, and tone actions right where you're writing. Chat with AI models, configure providers, and track usage with built-in telemetry.
+**A shared desk for you and your AI.** One workspace where AI-written notes render beautifully next to your own, with writing actions (grammar, clarity, structure, tone) where you write and AI chat where you think — across providers, local models included.
 
-**An AI agent management space.** Manage agent tasks, track runs and handoffs, and integrate AI output with your own thinking. A full capability system with 55+ typed operations, audit logging, and policy controls. Run AI agents (including Claude Code) inside the app's own terminal — and let them modify and rebuild the app itself.
+**Mission control for your agents.** See what your AI actually did — sessions, per-note provenance, activity over time. Agents log their tasks, plans, and handoffs as plain notes in your vault, visible right next to your own thinking. Run them in the app's own terminal — and let them rebuild the app itself (commit to running the new build in under 30 seconds).
 
 ---
 
@@ -217,11 +215,12 @@ Thinking Space follows a **lego blocks + orchestrators** pattern:
 Data flows through:
 1. **Markdown files** with YAML frontmatter (source of truth, portable, git-friendly)
 2. **IndexedDB** cache for fast hierarchy queries (rebuildable from files)
-3. **Capability system** for agent operations (55+ typed operations with policy/audit)
+3. **Agent CLI** (`thinkspc`) so agents write schema-correct notes into your vault in one command
 
 Hierarchy lives in metadata (`parent` fields), not folder structure — organize your vault however you want.
 
 For detailed architecture docs, see:
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system map: processes, trust boundaries, data flow, subsystems
 - [DEVELOPMENT.md](DEVELOPMENT.md) — architecture contracts, storage strategy, implementation phases
 - [docs/ADR-004-YAML-Architecture.md](docs/ADR-004-YAML-Architecture.md) — full YAML schema
 - [docs/ADR-005-Agent-Capabilities.md](docs/ADR-005-Agent-Capabilities.md) — capability system
