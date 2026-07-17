@@ -57,6 +57,7 @@ export const STORAGE_KEYS = {
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
   intelligenceDefaultProvider: 'ltm-intelligence-default-provider',
   aiActivityRuleBasedAtomsPurged: 'ltm-ai-activity-rule-based-atoms-purged',
+  navRailPrefs: 'ltm-nav-rail-prefs',
 } as const
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]

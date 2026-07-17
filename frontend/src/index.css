@@ -615,6 +615,38 @@
     overflow: hidden;
   }
 
+  /* iOS-style rail edit mode: press-and-hold entered, icons jiggle while
+     reorderable/hideable. Slight per-item phase offsets so the rail doesn't
+     wobble in lockstep — same trick as the iOS springboard. */
+  @keyframes ltm-rail-jiggle {
+    0% { transform: rotate(-2.6deg); }
+    50% { transform: rotate(2.6deg); }
+    100% { transform: rotate(-2.6deg); }
+  }
+
+  .ltm-rail-edit-mode .ltm-rail-manageable {
+    animation: ltm-rail-jiggle 0.3s ease-in-out infinite;
+    cursor: grab;
+  }
+
+  .ltm-rail-edit-mode .ltm-rail-manageable:nth-child(2n) {
+    animation-duration: 0.34s;
+    animation-delay: 0.06s;
+  }
+
+  .ltm-rail-edit-mode .ltm-rail-manageable:nth-child(3n) {
+    animation-duration: 0.28s;
+    animation-delay: 0.1s;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ltm-rail-edit-mode .ltm-rail-manageable {
+      animation: none;
+      outline: 1px dashed hsl(var(--muted-foreground) / 0.5);
+      outline-offset: 2px;
+    }
+  }
+
   /* Workspace-profile accent: windows of a non-default profile wash their
      whole nav rail in the profile's pastel, Chrome-profile style. The html-
      prefixed selector out-specifies the rail's later `background:` shorthand

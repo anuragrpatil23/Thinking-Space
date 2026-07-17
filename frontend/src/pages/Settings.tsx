@@ -54,6 +54,8 @@ export default function Settings({
               ? 'vault'
             : requestedTab === 'workspace_profiles'
               ? 'workspace_profiles'
+            : requestedTab === 'navigation'
+              ? 'navigation'
               : 'theme'
 
   return (

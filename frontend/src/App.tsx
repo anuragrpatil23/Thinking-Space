@@ -85,6 +85,14 @@ import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_b
 import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useWorkspaceProfileBlock } from './components/lego_blocks/hooks/useWorkspaceProfileBlock'
 import { ProfileSwitcherBlock } from './components/lego_blocks/integrations/ProfileSwitcherBlock'
+import {
+  applyNavRailPrefsBlock,
+  getNavRailPrefsBlock,
+  hideNavRailItemBlock,
+  NAV_RAIL_PREFS_EVENT,
+  reorderNavRailItemBlock,
+  type NavRailPrefsBlock,
+} from './services/lego_blocks/units/navRailPrefsBlock'
 import { useChromeStateEventBlock } from './components/lego_blocks/hooks/shared/useChromeStateEventBlock'
 import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
 import { useNativePushNavigationBlock } from './components/lego_blocks/hooks/shared/useNativePushNavigationBlock'
@@ -470,7 +478,53 @@ function App() {
   // Applies this window's profile accent to the shell (CSS var + data attr).
   useWorkspaceProfileBlock()
 
+  // Per-profile rail customization (order + hidden) with iOS-style jiggle edit
+  // mode: press-and-hold a rail icon to enter, drag to reorder, x to hide,
+  // Escape / click-away to finish.
+  const [navRailPrefs, setNavRailPrefs] = useState<NavRailPrefsBlock>(() => getNavRailPrefsBlock())
+  const [railEditMode, setRailEditMode] = useState(false)
+  const railLongPressTimerRef = useRef<number | null>(null)
+  const railDraggedIdRef = useRef<string | null>(null)
+
   useEffect(() => startStallDetector(), [])
+
+  useEffect(() => {
+    const listener = () => setNavRailPrefs(getNavRailPrefsBlock())
+    window.addEventListener(NAV_RAIL_PREFS_EVENT, listener)
+    return () => window.removeEventListener(NAV_RAIL_PREFS_EVENT, listener)
+  }, [])
+
+  useEffect(() => {
+    if (!railEditMode) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setRailEditMode(false)
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null
+      if (!target?.closest?.("[data-ltm-nav-region='rail']")) setRailEditMode(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [railEditMode])
+
+  const startRailLongPress = useCallback(() => {
+    if (railLongPressTimerRef.current !== null) window.clearTimeout(railLongPressTimerRef.current)
+    railLongPressTimerRef.current = window.setTimeout(() => {
+      railLongPressTimerRef.current = null
+      setRailEditMode(true)
+    }, 550)
+  }, [])
+
+  const cancelRailLongPress = useCallback(() => {
+    if (railLongPressTimerRef.current !== null) {
+      window.clearTimeout(railLongPressTimerRef.current)
+      railLongPressTimerRef.current = null
+    }
+  }, [])
 
   const featureFlags = getCapabilityFeatureFlags()
   const extensionBuilderEnabled = featureFlags.extension_host_enabled && featureFlags.extension_builder_enabled
@@ -633,12 +687,19 @@ function App() {
   }, [webullTabIconText])
 
   const primaryNavItems = useMemo(
-    () => PRIMARY_NAV_ITEMS.map(item =>
-      item.to === '/webull'
-        ? { ...item, label: webullTabLabel, icon: resolvedWebullIcon }
-        : item,
+    () => applyNavRailPrefsBlock(
+      PRIMARY_NAV_ITEMS.map(item =>
+        item.to === '/webull'
+          ? { ...item, label: webullTabLabel, icon: resolvedWebullIcon }
+          : item,
+      ),
+      navRailPrefs,
     ),
-    [webullTabLabel, resolvedWebullIcon],
+    [webullTabLabel, resolvedWebullIcon, navRailPrefs],
+  )
+  const toolsNavItems = useMemo(
+    () => applyNavRailPrefsBlock([TOOLS_NAV_ITEM, VAULT_GRAPH_NAV_ITEM], navRailPrefs),
+    [navRailPrefs],
   )
   const utilityNavItems = useMemo<NavItem[]>(
     () => [{ to: '/settings', label: 'Settings', icon: SettingsIcon }],
@@ -1948,7 +2009,7 @@ function App() {
           navigate('/')
           return
         }
-        const railTab = [...primaryNavItems, TOOLS_NAV_ITEM, VAULT_GRAPH_NAV_ITEM][digit - 1]
+        const railTab = [...primaryNavItems, ...toolsNavItems][digit - 1]
         if (railTab) {
           event.preventDefault()
           navigate(resolveWorkspaceNavigationRoute(railTab.to))
@@ -1962,7 +2023,7 @@ function App() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab, handleGlobalRefresh, navigate, primaryNavItems])
+  }, [activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab, handleGlobalRefresh, navigate, primaryNavItems, toolsNavItems])
 
   useNativeTopChromeBlock({
     enabled: useNativeTopChrome && !needsVaultSetup,
@@ -2535,7 +2596,7 @@ function App() {
           )}
           <div className="ltm-shell-body-stage">
             {!compactNav && (
-              <aside className="ltm-shell-sidebar ltm-shell-nav-surface ltm-sidebar-collapsed hidden w-16 shrink-0 lg:block" data-ltm-nav-region="rail">
+              <aside className={`ltm-shell-sidebar ltm-shell-nav-surface ltm-sidebar-collapsed hidden w-16 shrink-0 lg:block ${railEditMode ? 'ltm-rail-edit-mode' : ''}`} data-ltm-nav-region="rail">
                 <TooltipProvider delayDuration={0}>
                 <div className="flex h-full flex-col px-2 py-3">
                 <div className="ltm-nav-scroll ltm-sidebar-nav-scroll min-h-0 flex-1 overflow-y-auto">
@@ -2563,58 +2624,93 @@ function App() {
                           <TooltipTrigger asChild>
                             <Link
                               to={resolveWorkspaceNavigationRoute(item.to)}
-                              className={`ltm-motion-fast ltm-touch-row ltm-rail-item flex items-center justify-center rounded-lg px-2 py-2 transition-colors ${
+                              draggable={railEditMode}
+                              onPointerDown={startRailLongPress}
+                              onPointerUp={cancelRailLongPress}
+                              onPointerLeave={cancelRailLongPress}
+                              onClick={(event) => { if (railEditMode) event.preventDefault() }}
+                              onDragStart={() => { railDraggedIdRef.current = item.to }}
+                              onDragOver={(event) => { if (railEditMode) event.preventDefault() }}
+                              onDrop={(event) => {
+                                event.preventDefault()
+                                const dragged = railDraggedIdRef.current
+                                railDraggedIdRef.current = null
+                                if (dragged) reorderNavRailItemBlock(primaryNavItems.map(entry => entry.to), dragged, item.to)
+                              }}
+                              className={`ltm-motion-fast ltm-touch-row ltm-rail-item ltm-rail-manageable relative flex items-center justify-center rounded-lg px-2 py-2 transition-colors ${
                                 active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                               }`}
                             >
                               <Icon className={item.railIconClassName ?? RAIL_ICON_CLASS} />
+                              {railEditMode && (
+                                <button
+                                  type="button"
+                                  aria-label={`Hide ${item.label} from this profile`}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    hideNavRailItemBlock(item.to)
+                                  }}
+                                  className="absolute -left-0.5 -top-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-500 text-[10px] font-bold leading-none text-white shadow"
+                                >
+                                  ×
+                                </button>
+                              )}
                             </Link>
                           </TooltipTrigger>
-                          <TooltipContent side="right">{`${item.label}${shortcutHint(index + 1)}`}</TooltipContent>
+                          <TooltipContent side="right">{railEditMode ? 'Drag to reorder · × to hide · Esc to finish' : `${item.label}${shortcutHint(index + 1)}`}</TooltipContent>
                         </Tooltip>
                       )
                     })}
                   </div>
 
                   <div className="ltm-sidebar-nav-group space-y-1">
-                    {(() => {
-                      const Icon = TOOLS_NAV_ITEM.icon
-                      const active = isNavItemActive(location.pathname, TOOLS_NAV_ITEM)
+                    {toolsNavItems.map((item, index) => {
+                      const Icon = item.icon
+                      const active = isNavItemActive(location.pathname, item)
                       return (
-                        <Tooltip>
+                        <Tooltip key={item.to}>
                           <TooltipTrigger asChild>
                             <Link
-                              to={TOOLS_NAV_ITEM.to}
-                              className={`ltm-motion-fast ltm-touch-row ltm-rail-item flex items-center justify-center rounded-lg px-2 py-2 transition-colors ${
+                              to={item.to}
+                              draggable={railEditMode}
+                              onPointerDown={startRailLongPress}
+                              onPointerUp={cancelRailLongPress}
+                              onPointerLeave={cancelRailLongPress}
+                              onClick={(event) => { if (railEditMode) event.preventDefault() }}
+                              onDragStart={() => { railDraggedIdRef.current = item.to }}
+                              onDragOver={(event) => { if (railEditMode) event.preventDefault() }}
+                              onDrop={(event) => {
+                                event.preventDefault()
+                                const dragged = railDraggedIdRef.current
+                                railDraggedIdRef.current = null
+                                if (dragged) reorderNavRailItemBlock(toolsNavItems.map(entry => entry.to), dragged, item.to)
+                              }}
+                              className={`ltm-motion-fast ltm-touch-row ltm-rail-item ltm-rail-manageable relative flex items-center justify-center rounded-lg px-2 py-2 transition-colors ${
                                 active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                               }`}
                             >
                               <Icon className="h-[18px] w-[18px]" />
+                              {railEditMode && (
+                                <button
+                                  type="button"
+                                  aria-label={`Hide ${item.label} from this profile`}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    hideNavRailItemBlock(item.to)
+                                  }}
+                                  className="absolute -left-0.5 -top-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-500 text-[10px] font-bold leading-none text-white shadow"
+                                >
+                                  ×
+                                </button>
+                              )}
                             </Link>
                           </TooltipTrigger>
-                          <TooltipContent side="right">{`${TOOLS_NAV_ITEM.label}${shortcutHint(primaryNavItems.length + 1)}`}</TooltipContent>
+                          <TooltipContent side="right">{railEditMode ? 'Drag to reorder · × to hide · Esc to finish' : `${item.label}${shortcutHint(primaryNavItems.length + 1 + index)}`}</TooltipContent>
                         </Tooltip>
                       )
-                    })()}
-                    {(() => {
-                      const Icon = VAULT_GRAPH_NAV_ITEM.icon
-                      const active = isNavItemActive(location.pathname, VAULT_GRAPH_NAV_ITEM)
-                      return (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Link
-                              to={VAULT_GRAPH_NAV_ITEM.to}
-                              className={`ltm-motion-fast ltm-touch-row ltm-rail-item flex items-center justify-center rounded-lg px-2 py-2 transition-colors ${
-                                active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                              }`}
-                            >
-                              <Icon className="h-[18px] w-[18px]" />
-                            </Link>
-                          </TooltipTrigger>
-                          <TooltipContent side="right">{`${VAULT_GRAPH_NAV_ITEM.label}${shortcutHint(primaryNavItems.length + 2)}`}</TooltipContent>
-                        </Tooltip>
-                      )
-                    })()}
+                    })}
                   </div>
                 </div>
 
