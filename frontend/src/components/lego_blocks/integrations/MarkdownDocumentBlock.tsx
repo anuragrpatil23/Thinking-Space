@@ -481,12 +481,30 @@ function MarkdownTextDocumentRuntimeBlock({
   // Excalidraw/HTML docs keep the explicit pencil (their edit mode is heavier).
   const clickToEditActive = editorSettings.livePreviewSyntaxHiding && !isExcalidrawDoc && !isHtmlDocumentPathBlock(path)
 
+  const pendingEditCaretHintRef = useRef<{ before: string; after: string } | null>(null)
+
   const handleViewClickToEdit = (event: React.MouseEvent<HTMLElement>) => {
     if (!clickToEditActive || loading || !!error) return
     const target = event.target as HTMLElement
     if (target.closest('a,button,input,textarea,select,summary,[role="button"],img,video,audio')) return
     const selection = window.getSelection()
     if (selection && !selection.isCollapsed) return
+    // Capture the rendered text around the click so the editor can drop the
+    // caret at the same spot (best-effort snippet search in the source).
+    pendingEditCaretHintRef.current = null
+    const doc = event.currentTarget.ownerDocument as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null
+    }
+    const range = doc.caretRangeFromPoint?.(event.clientX, event.clientY)
+    const node = range?.startContainer
+    if (range && node && node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent ?? ''
+      const offset = range.startOffset
+      pendingEditCaretHintRef.current = {
+        before: text.slice(Math.max(0, offset - 24), offset),
+        after: text.slice(offset, offset + 32),
+      }
+    }
     startEditing()
   }
   const isHtmlDoc = isHtmlDocumentPathBlock(path)
@@ -1864,6 +1882,7 @@ function MarkdownTextDocumentRuntimeBlock({
           <div className={cn('space-y-4', isIosPhone && 'px-3 pb-[calc(var(--ltm-safe-bottom,0px)+0.4rem)]')}>
             <div data-ltm-edge-swipe-ignore="true">
               <MarkdownRichEditorBlock
+                initialCursorHint={pendingEditCaretHintRef.current}
                 value={displayDraft}
                 currentPath={path}
                 compactMobile={isIosPhone}

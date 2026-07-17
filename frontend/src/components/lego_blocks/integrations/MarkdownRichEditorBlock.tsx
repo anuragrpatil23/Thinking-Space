@@ -82,6 +82,9 @@ interface MarkdownRichEditorBlockProps {
   compactMobile?: boolean
   /** When true the toolbar is always visible (legacy behavior). When false a toggle button is shown. Default: false. */
   toolbarAlwaysVisible?: boolean
+  /** Rendered-text snippets around a view-mode click; used to place the caret
+   *  at the clicked spot when the editor mounts (best-effort text search). */
+  initialCursorHint?: { before: string; after: string } | null
   /** When false, hide formatting toolbar controls entirely (useful for non-markdown text editing). Default: true. */
   enableFormattingToolbar?: boolean
   /** Enables built-in AI assist controls in the editor toolbar and panel. Default: true. */
@@ -466,6 +469,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   placeholder = 'Write markdown...',
   compactMobile = false,
   toolbarAlwaysVisible = false,
+  initialCursorHint = null,
   enableFormattingToolbar = true,
   enableAiAssist = true,
   aiPanelOpen: controlledAiPanelOpen,
@@ -572,7 +576,10 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   })
 
   const aiPanelOpen = controlledAiPanelOpen ?? internalAiPanelOpen
-  const showToolbar = enableFormattingToolbar && (toolbarAlwaysVisible || toolbarOpen)
+  // In prose (live-preview) editing the pinned toolbar breaks the "same
+  // document, now editable" illusion — keep it behind its toggle instead.
+  const effectiveToolbarAlwaysVisible = toolbarAlwaysVisible && !proseEditing
+  const showToolbar = enableFormattingToolbar && (effectiveToolbarAlwaysVisible || toolbarOpen)
   const stewardFilePath = (aiStewardFilePath ?? currentPath ?? '').trim()
   const relatedSourceFilePath = (relatedThoughtsSourceFilePath ?? stewardFilePath).trim()
   const normalizedPath = currentPath.trim()
@@ -876,6 +883,17 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         overflowWrap: 'anywhere',
         wordBreak: 'break-word',
       },
+      // View mode collapses blank markdown lines into paragraph spacing; give
+      // empty editor lines a compressed height so the rhythm matches instead
+      // of every blank line costing a full text row.
+      ...(proseEditing
+        ? {
+            '.cm-line:has(> br:only-child)': {
+              lineHeight: '0.7',
+              minHeight: '0.7em',
+            },
+          }
+        : {}),
       '.cm-content': {
         minHeight: '100%',
         padding: proseEditing
@@ -892,7 +910,8 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         color: 'hsl(var(--muted-foreground))',
       },
       '.cm-cursor, .cm-dropCursor': {
-        borderLeftColor: 'hsl(var(--foreground))',
+        borderLeftColor: proseEditing ? 'hsl(var(--primary))' : 'hsl(var(--foreground))',
+        ...(proseEditing ? { borderLeftWidth: '2px' } : {}),
       },
       '.cm-lineNumbers .cm-gutterElement': {
         padding: '0 0.35rem 0 0',
@@ -1161,7 +1180,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   return (
     <div className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col', editorCanvasClassName, className)}>
       {/* Toolbar toggle button (only when not always visible) */}
-      {enableFormattingToolbar && !toolbarAlwaysVisible && (
+      {enableFormattingToolbar && !effectiveToolbarAlwaysVisible && (
         <div className="flex items-center justify-end gap-1 px-2 pt-1.5">
           {enableAiAssist && !showToolbar && (
             <button
@@ -1525,6 +1544,31 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
           extensions={extensions}
           onCreateEditor={(view) => {
             editorViewRef.current = view
+            const hint = initialCursorHint
+            if (hint && (hint.after || hint.before)) {
+              const source = view.state.doc.toString()
+              let anchor = -1
+              const tryFind = (needle: string): number => {
+                const trimmed = needle.trim()
+                if (trimmed.length < 3) return -1
+                return source.indexOf(trimmed)
+              }
+              anchor = tryFind(hint.after)
+              if (anchor < 0 && hint.after.trim().length >= 12) {
+                anchor = tryFind(hint.after.trim().slice(0, 12))
+              }
+              if (anchor < 0) {
+                const beforeIdx = tryFind(hint.before)
+                if (beforeIdx >= 0) anchor = beforeIdx + hint.before.trim().length
+              }
+              if (anchor >= 0) {
+                view.dispatch({
+                  selection: { anchor },
+                  effects: EditorView.scrollIntoView(anchor, { y: 'center' }),
+                })
+                view.focus()
+              }
+            }
             setCurrentCursorLine(view.state.doc.lineAt(view.state.selection.main.head).number)
           }}
           onChange={handleEditorChange}
