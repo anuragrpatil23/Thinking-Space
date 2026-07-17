@@ -6,6 +6,7 @@ import MarkdownDocumentBlock, { type MarkdownViewerMode } from '@/components/leg
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
+import { useSessionTelemetryBlock } from '@/components/lego_blocks/hooks/units/useSessionTelemetryBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
 import {
@@ -134,6 +135,8 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     ? readThinkingSpaceRouteParamBlock(routeOverride, FILE_QUERY_PARAM)
     : (searchParams.get(FILE_QUERY_PARAM)?.trim() || null)
   const { layout } = useUILayoutBlock()
+  // Latest-AI-session dots + count strip for the explorer trees.
+  const sessionTelemetry = useSessionTelemetryBlock()
   const [inlinePath, setInlinePath] = useState<string | null>(inlinePathFromRoute)
   const [mountedInlinePaths, setMountedInlinePaths] = useState<string[]>(
     () => (inlinePathFromRoute ? [inlinePathFromRoute] : []),
@@ -938,6 +941,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
           <VaultExplorerBlock
             loadEntries={listFolderEntries}
             selectedPath={ruledNotebookFilePath ?? inlinePath}
+            sessionTelemetry={sessionTelemetry}
             listenToGlobalSyncRefresh
             onOpenFile={handleExplorerOpenFile}
             onOpenFileAsRuledNotebook={openRuledNotebookView}
@@ -1177,6 +1181,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
                   loadEntries={listFolderEntries}
                   loadFileMeta={readFileTooltipMeta}
                   selectedPath={inlinePath}
+                  sessionTelemetry={sessionTelemetry}
                   listenToGlobalSyncRefresh
                   onOpenFile={handleDrawerFileOpen}
                   onCreateFolder={handleExplorerCreateFolder}

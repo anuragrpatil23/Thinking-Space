@@ -70,6 +70,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/lego_blocks/units/ui/select'
+import type { SessionTelemetry } from '@/services/orchestrators/sessionTelemetryOrch'
 import { writeSortOrdersBlock } from '@/services/lego_blocks/units/notebookOrderBlock'
 import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebookSidecarBlock'
 import { getAbsolutePathForClipboardOrch } from '@/services/orchestrators/fileSystemOrch'
@@ -350,6 +351,12 @@ interface VaultExplorerBlockProps {
   className?: string
   onOpenFolderAsNotebook?: (path: string) => void
   belowToolbarSlot?: ReactNode
+  /**
+   * Latest AI-session telemetry: dots the touched files/folders and shows a
+   * count strip above the tree. Ephemeral by design — the session's trail in
+   * AI Activity is the durable record. Omit/null → no telemetry chrome.
+   */
+  sessionTelemetry?: SessionTelemetry | null
 }
 
 function getFileIcon(name: string) {
@@ -465,6 +472,7 @@ export default function VaultExplorerBlock({
   onOpenFolderAsNotebook,
   className,
   belowToolbarSlot = null,
+  sessionTelemetry = null,
 }: VaultExplorerBlockProps) {
   const storageKey = `${EXPLORER_PERSISTENCE_PREFIX}:${persistenceKey}`
 
@@ -515,6 +523,8 @@ export default function VaultExplorerBlock({
   const [showInfoPanel, setShowInfoPanel] = useState(false)
   const [infoPanelTags, setInfoPanelTags] = useState<string[] | null>(null)
   const [infoPanelLoading, setInfoPanelLoading] = useState(false)
+  // Count-strip toggle: restrict the tree to the latest session's touched files.
+  const [telemetryFilterOn, setTelemetryFilterOn] = useState(false)
 
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const renameInputRef = useRef<HTMLInputElement | null>(null)
@@ -659,6 +669,28 @@ export default function VaultExplorerBlock({
     })
     return () => { cancelled = true }
   }, [showInfoPanel, activeFilePath, loadFileTags])
+
+  // Telemetry is session-scoped: when the session ages out (or a vault without
+  // activity loads), the filter must not keep hiding the whole tree.
+  useEffect(() => {
+    if (!sessionTelemetry) setTelemetryFilterOn(false)
+  }, [sessionTelemetry])
+
+  const toggleTelemetryFilter = useCallback(() => {
+    setTelemetryFilterOn(prev => {
+      const next = !prev
+      if (next && sessionTelemetry) {
+        // Expand every folder on the touched paths so the filtered tree shows
+        // the files immediately instead of a wall of collapsed folders.
+        setExpandedPaths(prevPaths => {
+          const set = new Set(prevPaths)
+          for (const folder of sessionTelemetry.folders) set.add(folder)
+          return set.size === prevPaths.length ? prevPaths : [...set]
+        })
+      }
+      return next
+    })
+  }, [sessionTelemetry])
 
   const normalizedQuery = query.trim().toLowerCase()
   const hasTitle = title.trim().length > 0
@@ -1143,16 +1175,21 @@ export default function VaultExplorerBlock({
       const node = getNode(path)
       const rows: JSX.Element[] = []
 
+      const telemetryFilterActive = telemetryFilterOn && sessionTelemetry !== null
+
       const visibleFolders = node.folders.filter(folderName => {
-        if (!normalizedQuery) return true
         const full = joinPath(path, folderName)
+        if (telemetryFilterActive && !sessionTelemetry.folders.has(full)) return false
+        if (!normalizedQuery) return true
         if (pathMatchesSearch(full)) return true
         return pathMatchesQuery(full, new Set())
       })
 
       const visibleFiles = node.files.filter(fileName => {
+        const full = joinPath(path, fileName)
+        if (telemetryFilterActive && !sessionTelemetry.files.has(full)) return false
         if (!normalizedQuery) return true
-        return pathMatchesSearch(joinPath(path, fileName))
+        return pathMatchesSearch(full)
       })
 
       visibleFolders.forEach(folderName => {
@@ -1269,6 +1306,13 @@ export default function VaultExplorerBlock({
                 <Folder className={cn('ltm-explorer-glyph ltm-explorer-folder-icon h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-foreground/85')} />
               )}
               <span className="truncate">{folderName}</span>
+              {sessionTelemetry?.folders.has(folderPath) && (
+                <span
+                  aria-hidden="true"
+                  title="Contains files touched by the latest AI session"
+                  className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500/70"
+                />
+              )}
               {folderNode.loading && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-muted-foreground" />}
             </button>,
           )
@@ -1492,6 +1536,21 @@ export default function VaultExplorerBlock({
                 )} />
               )}
               <span className="truncate">{fileName}</span>
+              {(() => {
+                const touch = sessionTelemetry?.files.get(filePath)
+                if (!touch) return null
+                return (
+                  <span
+                    aria-hidden="true"
+                    title={touch === 'created' ? 'Created by the latest AI session' : 'Edited by the latest AI session'}
+                    className={cn(
+                      'ml-auto h-1.5 w-1.5 shrink-0 rounded-full',
+                      touch === 'created' ? 'bg-emerald-500' : 'bg-amber-500',
+                      isSelected && 'ring-1 ring-white/60',
+                    )}
+                  />
+                )
+              })()}
             </button>
             </ExplorerRowTooltip>,
           )
@@ -1525,6 +1584,8 @@ export default function VaultExplorerBlock({
       resolveFileMeta,
       selectedFilePath,
       selectedFolderPath,
+      sessionTelemetry,
+      telemetryFilterOn,
       toggleFolder,
     ],
   )
@@ -1711,6 +1772,28 @@ export default function VaultExplorerBlock({
             )
           })()}
         </div>
+
+        {sessionTelemetry && sessionTelemetry.files.size > 0 && (
+          <button
+            type="button"
+            onClick={toggleTelemetryFilter}
+            title={`Latest AI session: ${sessionTelemetry.topic}\nClick to ${telemetryFilterOn ? 'show all files again' : 'show only the files it touched'}`}
+            className={cn(
+              'ltm-explorer-session-strip mt-2 flex w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors',
+              telemetryFilterOn
+                ? 'border-emerald-500/50 bg-emerald-500/10 text-foreground'
+                : 'border-border/50 bg-muted/30 text-muted-foreground hover:bg-muted/60',
+            )}
+          >
+            <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+            <span className="truncate tabular-nums">
+              This session: {sessionTelemetry.createdCount} created · {sessionTelemetry.editedCount} edited
+            </span>
+            {telemetryFilterOn && (
+              <span className="ml-auto shrink-0 text-emerald-600 dark:text-emerald-400">filtered</span>
+            )}
+          </button>
+        )}
 
         {showInfoPanel && loadFileTags && activeFilePath && (
           <div className="mt-1.5 min-h-[24px] rounded-md border border-border/60 bg-muted/40 px-2 py-1.5">

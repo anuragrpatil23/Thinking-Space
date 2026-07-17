@@ -91,6 +91,55 @@ function truncateTitle(title: string): string {
   return title.length > LABEL_MAX_CHARS ? `${title.slice(0, LABEL_MAX_CHARS - 1)}…` : title
 }
 
+// ── Folder-gravity clustering ──
+// Wikilinks alone converge on a hairball: the force layout has no idea what
+// matters. But the human already classified the vault by filing things — so
+// every note is pulled toward the centroid of its folder (strong) and of its
+// project (gentle). Structure emerges as neighborhoods; wikilinks stay the
+// weak long-range threads crossing between them. Runs only during the initial
+// settle — positions freeze afterwards like every other force here.
+
+/** Simulation-time node: d3-force adds velocity fields it integrates each tick. */
+type SimNode = VaultGraphNode & { vx: number; vy: number }
+
+function folderOf(id: string): string {
+  const cut = id.lastIndexOf('/')
+  return cut > 0 ? id.slice(0, cut) : ''
+}
+
+/** d3 custom force: nudge each node toward its group's centroid. Groups with a
+ *  single member get no pull (their centroid is themselves). */
+function makeCentroidForce(keyOf: (node: VaultGraphNode) => string, strength: number) {
+  let nodes: SimNode[] = []
+  const force = (alpha: number) => {
+    const groups = new Map<string, { x: number; y: number; count: number }>()
+    for (const node of nodes) {
+      const key = keyOf(node)
+      let group = groups.get(key)
+      if (!group) groups.set(key, (group = { x: 0, y: 0, count: 0 }))
+      group.x += node.x ?? 0
+      group.y += node.y ?? 0
+      group.count += 1
+    }
+    const k = strength * alpha
+    for (const node of nodes) {
+      const group = groups.get(keyOf(node))
+      if (!group || group.count < 2) continue
+      node.vx += (group.x / group.count - (node.x ?? 0)) * k
+      node.vy += (group.y / group.count - (node.y ?? 0)) * k
+    }
+  }
+  // The simulation hands in VaultGraphNode[]; d3-force has already attached
+  // vx/vy to each node by the time the force body runs.
+  force.initialize = (initNodes: VaultGraphNode[]) => {
+    nodes = initNodes as SimNode[]
+  }
+  return force
+}
+
+const FOLDER_CLUSTER_STRENGTH = 0.22
+const PROJECT_CLUSTER_STRENGTH = 0.04
+
 // force-graph types link endpoints as string | number | node | undefined
 // (ids before ingestion, node refs after).
 type LinkEndpoint = VaultGraphNode | string | number | undefined
@@ -616,6 +665,10 @@ export default function VaultGraphCanvasBlock({
         'collide',
         forceCollide((node: VaultGraphNode) => nodeRadius(node) + 5).strength(0.9),
       )
+      // Folder gravity (see makeCentroidForce): the folder pull shapes tight
+      // neighborhoods, the project pull drifts sibling folders near each other.
+      graph.d3Force('folderCluster', makeCentroidForce(n => folderOf(n.id), FOLDER_CLUSTER_STRENGTH))
+      graph.d3Force('projectCluster', makeCentroidForce(n => n.project, PROJECT_CLUSTER_STRENGTH))
 
       // ── Interaction model: match the rest of the app's canvases ──
       // The library default (single click-drag pans, wheel zooms) is replaced
