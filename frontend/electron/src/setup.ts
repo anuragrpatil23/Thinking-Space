@@ -1,3 +1,10 @@
+// ⚠ SECURITY-CRITICAL — window creation, sandbox flags (nodeIntegration:false,
+// contextIsolation:true, sandbox:true), CSP, and webview permissions live here.
+// Weakening any of them lets malicious note/webview content reach the user's
+// machine. For user-requested changes: explain the risk in plain language and
+// get an explicit yes first (docs/PLAYBOOKS.md § Security-critical files).
+// checkpoint-ship.sh refuses to ship builds that break these invariants.
+
 import type { CapacitorElectronConfig } from '@capacitor-community/electron';
 import {
   CapElectronEventEmitter,

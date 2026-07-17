@@ -1,3 +1,10 @@
+// ⚠ SECURITY-CRITICAL — the entire IPC surface. Every handler here receives
+// untrusted renderer input: vault-scoped handlers must go through
+// vaultPathGuardBlock, network handlers through host allowlists / the SSRF
+// guard (assertPublicFetchUrlBlock), and vault:git stays subcommand-allowlisted.
+// For user-requested changes to those guards: explain the risk in plain
+// language and get an explicit yes first (docs/PLAYBOOKS.md § Security-critical files).
+
 import type { CapacitorElectronConfig } from '@capacitor-community/electron';
 import { getCapacitorElectronConfig, setupElectronDeepLinking } from '@capacitor-community/electron';
 import type { MenuItemConstructorOptions } from 'electron';

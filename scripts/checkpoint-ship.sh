@@ -76,7 +76,21 @@ if pgrep -f "Thinking Space.app/Contents/MacOS" >/dev/null 2>&1; then
   done
 fi
 
-say "checkpoint $BRANCH@$HEAD_SHA  sign=[$SIGN_ID]  $([ $INSIDE_APP = 1 ] && echo 'inside-app (deferred swap)' || echo 'external terminal')"
+# ─── Security-contract checks (source-level; see docs/PLAYBOOKS.md) ─────────
+# A build that weakens these must not reach the user's machine, no matter what
+# the agent that produced it read or skipped.
+SETUP_TS="$FRONTEND_DIR/electron/src/setup.ts"
+PRELOAD_TS="$FRONTEND_DIR/electron/src/preload.ts"
+INDEX_TS="$FRONTEND_DIR/electron/src/index.ts"
+
+grep -q "nodeIntegration: false" "$SETUP_TS" || fail "security contract: nodeIntegration:false missing from setup.ts"
+grep -q "contextIsolation: true" "$SETUP_TS" || fail "security contract: contextIsolation:true missing from setup.ts"
+grep -q "sandbox: true" "$SETUP_TS"          || fail "security contract: sandbox:true missing from setup.ts"
+grep -q "vaultPathGuardBlock" "$INDEX_TS"    || fail "security contract: index.ts no longer wires vaultPathGuardBlock"
+BAD_PRELOAD_IMPORTS=$(grep -E "^import .* from|require\(['\"]" "$PRELOAD_TS" | grep -v "'electron'" || true)
+[ -z "$BAD_PRELOAD_IMPORTS" ] || fail "security contract: preload.ts imports beyond 'electron' (breaks sandbox): $BAD_PRELOAD_IMPORTS"
+
+say "checkpoint $BRANCH@$HEAD_SHA  sign=[$SIGN_ID]  $([ $INSIDE_APP = 1 ] && echo 'inside-app (deferred swap)' || echo 'external terminal')  security-contract ok"
 
 if [ "${1:-}" = "--dry" ]; then
   say "✓ preflight ok (dry run — no build)"
@@ -108,6 +122,10 @@ BAD_PRELOADS=$(grep -o 'modulepreload[^>]*href="[^"]*"' "$FRONTEND_DIR/dist/inde
   | grep -v "vendor-react\|vendor-dexie" || true)
 [ -z "$BAD_PRELOADS" ] || fail "startup contract violated — unexpected modulepreloads: $BAD_PRELOADS"
 
+# Security contract (built output): no inline <script> bodies in the entry HTML.
+INLINE_SCRIPTS=$(grep -Eo '<script[^>]*>' "$FRONTEND_DIR/dist/index.html" | grep -v 'src=' || true)
+[ -z "$INLINE_SCRIPTS" ] || fail "security contract: inline <script> found in dist/index.html"
+
 # Mark as a local build BEFORE signing (so the signature covers it) — the app
 # skips auto-update when this marker exists, otherwise the next official
 # release would silently overwrite this custom build.
@@ -137,6 +155,9 @@ rm -rf "$APP_DST"
 ditto "$APP_SRC" "$APP_DST"
 xattr -dr com.apple.quarantine "$APP_DST" 2>/dev/null || true
 open "$APP_DST"
+# Clean build artifacts once the install is done — the ~GB-scale unpacked
+# bundle has served its purpose and the backup lives in ~/.thinking-space.
+rm -rf "$FRONTEND_DIR/electron/dist"
 rm -f "$SWAP"
 EOF
 chmod +x "$SWAP"

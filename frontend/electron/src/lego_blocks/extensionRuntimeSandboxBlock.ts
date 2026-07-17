@@ -1,3 +1,8 @@
+// ⚠ SECURITY-CRITICAL — executes extension code in a vm sandbox. Widening the
+// sandbox surface (globals, modules, fs reach) is remote-code-execution risk.
+// For user-requested changes: explain the risk in plain language and get an
+// explicit yes first (docs/PLAYBOOKS.md § Security-critical files).
+
 import * as fsPromises from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vm from 'node:vm';

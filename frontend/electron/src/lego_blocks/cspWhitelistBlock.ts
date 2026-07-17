@@ -1,3 +1,7 @@
+// ⚠ SECURITY-CRITICAL — every origin added here is a host the renderer may
+// exfiltrate data to. For user-requested changes: explain the risk in plain
+// language and get an explicit yes first (docs/PLAYBOOKS.md § Security-critical files).
+//
 // Single registry of third-party origins permitted by the renderer's CSP.
 //
 // Adding a new outbound host (fetch, websocket, embed, iframe, etc.) should be a

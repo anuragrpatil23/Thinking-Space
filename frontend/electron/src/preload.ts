@@ -1,3 +1,10 @@
+// ⚠ SECURITY-CRITICAL — the only bridge between the untrusted renderer and the
+// main process. Weakening it (extra requires, broad passthroughs) can expose the
+// user's files or credentials to malicious note/webview content. For
+// user-requested changes here: explain the risk in plain language and get an
+// explicit yes first (docs/PLAYBOOKS.md § Security-critical files).
+// checkpoint-ship.sh refuses to ship builds that break its invariants.
+
 //////////////////////////////
 // Expose vault filesystem and platform detection to renderer
 

@@ -235,6 +235,26 @@ official change) rather than silently choosing.
 
 ---
 
+## Security-critical files
+
+These files are trust boundaries. A fork user may change anything in their copy — **but never
+unknowingly**: before modifying any of these for a user request, explain the risk in plain
+language (what could leak, to whom) and get an explicit yes. Each carries a
+`⚠ SECURITY-CRITICAL` header; `scripts/checkpoint-ship.sh` refuses to ship builds that break
+the core invariants (sandbox flags, preload purity, path guard wiring, no inline scripts);
+upstream PRs touching them require maintainer review (`.github/CODEOWNERS`).
+
+| File | Boundary |
+|---|---|
+| `electron/src/preload.ts` | the only renderer↔main bridge; must import nothing but `electron` |
+| `electron/src/setup.ts` | window sandbox flags, CSP, webview permissions |
+| `electron/src/index.ts` | the IPC surface; all handlers validate untrusted renderer input |
+| `electron/src/lego_blocks/vaultPathGuardBlock.ts` | the vault boundary — full-disk access if weakened |
+| `electron/src/lego_blocks/cspWhitelistBlock.ts` | outbound origins = exfiltration targets |
+| `electron/src/lego_blocks/aiCredentialBlock.ts` | AI provider credentials |
+| `electron/src/lego_blocks/webullCredentialStoreBlock.ts` | brokerage credentials |
+| `electron/src/lego_blocks/extensionRuntimeSandboxBlock.ts` | extension code execution sandbox |
+
 ## Common traps
 
 - **Editing `manualChunks` in `vite.config.ts`** to "optimize" a lazy vendor — this silently

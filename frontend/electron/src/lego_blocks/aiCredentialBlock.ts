@@ -1,3 +1,8 @@
+// ⚠ SECURITY-CRITICAL — reads the user's AI provider credentials (Keychain +
+// dotfiles). Never widen what gets exposed to the renderer beyond what the
+// feature needs. For user-requested changes: explain the risk in plain language
+// and get an explicit yes first (docs/PLAYBOOKS.md § Security-critical files).
+
 /**
  * AI credential reading for Electron main process.
  *

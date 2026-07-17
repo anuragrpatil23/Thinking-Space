@@ -1,3 +1,8 @@
+// ⚠ SECURITY-CRITICAL — the vault boundary. Weakening this file gives a
+// compromised renderer read/write access to the entire disk. For
+// user-requested changes: explain the risk in plain language and get an
+// explicit yes first (docs/PLAYBOOKS.md § Security-critical files).
+//
 // Central authorization gate for renderer-supplied vault roots.
 //
 // Every vault IPC handler receives `vaultRoot` from the renderer and, before

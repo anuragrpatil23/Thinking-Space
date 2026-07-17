@@ -1,3 +1,8 @@
+// ⚠ SECURITY-CRITICAL — stores brokerage credentials via safeStorage. Never log,
+// return, or transmit decrypted secrets beyond the signed-request path. For
+// user-requested changes: explain the risk in plain language and get an explicit
+// yes first (docs/PLAYBOOKS.md § Security-critical files).
+
 import { app, safeStorage } from 'electron';
 import * as fsPromises from 'fs/promises';
 import * as path from 'path';

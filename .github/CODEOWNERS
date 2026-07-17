@@ -1,0 +1,14 @@
+# Security-critical paths — PRs touching these require the maintainer's review.
+# Keep in sync with docs/PLAYBOOKS.md § Security-critical files and the
+# security-contract checks in scripts/checkpoint-ship.sh.
+
+/frontend/electron/src/preload.ts                                    @anuragrpatil23
+/frontend/electron/src/setup.ts                                      @anuragrpatil23
+/frontend/electron/src/index.ts                                      @anuragrpatil23
+/frontend/electron/src/lego_blocks/vaultPathGuardBlock.ts            @anuragrpatil23
+/frontend/electron/src/lego_blocks/cspWhitelistBlock.ts              @anuragrpatil23
+/frontend/electron/src/lego_blocks/aiCredentialBlock.ts              @anuragrpatil23
+/frontend/electron/src/lego_blocks/webullCredentialStoreBlock.ts     @anuragrpatil23
+/frontend/electron/src/lego_blocks/extensionRuntimeSandboxBlock.ts   @anuragrpatil23
+/scripts/checkpoint-ship.sh                                          @anuragrpatil23
+/.github/CODEOWNERS                                                  @anuragrpatil23
