@@ -1,7 +1,9 @@
 import { app } from 'electron';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
+import { execFileSync } from 'child_process';
 import { readPersistedVaultRootBlock, writePersistedVaultRootBlock } from './vaultRootPersistenceBlock';
 
 // Chrome-style workspace profiles: each profile is a vault root + a display
@@ -65,8 +67,34 @@ function normalizeVaultRootBlock(value: unknown): string | null {
   return trimmed.length > 0 ? path.resolve(trimmed) : null;
 }
 
+// "Anurag's Space" beats "Main" as the default identity. Resolved from the
+// macOS account's full name (first name), falling back to the login name,
+// then to plain "Main". Cached — the exec runs at most once per app run.
+let cachedDefaultProfileNameBlock: string | null = null;
+function resolveDefaultProfileNameBlock(): string {
+  if (cachedDefaultProfileNameBlock) return cachedDefaultProfileNameBlock;
+  let firstName = '';
+  try {
+    if (process.platform === 'darwin') {
+      const fullName = execFileSync('/usr/bin/id', ['-F'], { encoding: 'utf-8', timeout: 2000 }).trim();
+      firstName = fullName.split(/\s+/)[0] ?? '';
+    }
+  } catch {
+    // fall through to username
+  }
+  if (!firstName) {
+    try {
+      firstName = os.userInfo().username;
+    } catch {
+      firstName = '';
+    }
+  }
+  cachedDefaultProfileNameBlock = firstName ? `${firstName}'s Space` : 'Main';
+  return cachedDefaultProfileNameBlock;
+}
+
 function synthesizeDefaultProfileBlock(): ProfileRecordBlock {
-  return { id: DEFAULT_PROFILE_ID_BLOCK, name: 'Main', vaultRoot: null, accentColor: null, icon: null };
+  return { id: DEFAULT_PROFILE_ID_BLOCK, name: resolveDefaultProfileNameBlock(), vaultRoot: null, accentColor: null, icon: null };
 }
 
 function normalizeRecordBlock(value: unknown): ProfileRecordBlock | null {
@@ -77,9 +105,14 @@ function normalizeRecordBlock(value: unknown): ProfileRecordBlock | null {
   const isDefault = id === DEFAULT_PROFILE_ID_BLOCK;
   const vaultRoot = isDefault ? null : normalizeVaultRootBlock(record.vaultRoot);
   if (!isDefault && !vaultRoot) return null;
+  // A stored literal "Main" is the old synthesized default, not a user choice —
+  // upgrade it to the personalized name (renaming to anything else sticks).
+  const storedName = normalizeNameBlock(record.name);
   return {
     id,
-    name: normalizeNameBlock(record.name) ?? (isDefault ? 'Main' : 'Profile'),
+    name: (isDefault && (!storedName || storedName === 'Main'))
+      ? resolveDefaultProfileNameBlock()
+      : storedName ?? 'Profile',
     vaultRoot,
     accentColor: normalizeAccentColorBlock(record.accentColor),
     icon: normalizeIconBlock(record.icon),
