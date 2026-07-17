@@ -154,7 +154,11 @@ fi
 if [ $INSIDE_APP = 0 ] && pgrep -f "Thinking Space.app/Contents/MacOS" >/dev/null 2>&1; then
   say "quitting running app..."
   pkill -9 -f "Thinking Space.app/Contents/MacOS" || true
-  sleep 3
+  # Poll instead of a fixed sleep — usually gone in <1s.
+  for _ in $(seq 1 30); do
+    pgrep -f "Thinking Space.app/Contents/MacOS" >/dev/null 2>&1 || break
+    sleep 0.2
+  done
 fi
 
 say "building (unpacked .app; log: $LOG)"
@@ -203,7 +207,10 @@ cat >"$SWAP" <<EOF
 set -e
 exec >>"$LOG" 2>&1
 pkill -9 -f "Thinking Space.app/Contents/MacOS" || true
-sleep 3
+for _ in \$(seq 1 30); do
+  pgrep -f "Thinking Space.app/Contents/MacOS" >/dev/null 2>&1 || break
+  sleep 0.2
+done
 if [ -d "$APP_DST" ]; then
   mkdir -p "$BACKUP_DIR"
   rm -rf "$BACKUP_DIR/Thinking Space.app"
