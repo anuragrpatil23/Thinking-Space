@@ -181,6 +181,9 @@ export default function AiActivitySessionSourcesSettingsBlock() {
         {vaultWritePrefsAvailable && (
           <div className="space-y-2 border-t border-border/60 pt-4">
             <h3 className="text-sm font-medium text-foreground">Vault writes</h3>
+            <p className="text-xs text-muted-foreground/70">
+              These toggles apply to this profile's vault only — each profile decides for itself.
+            </p>
             <label className="flex items-start justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
               <div className="min-w-0 space-y-0.5">
                 <div className="text-sm font-medium text-foreground">
@@ -190,8 +193,8 @@ export default function AiActivitySessionSourcesSettingsBlock() {
                   Lets Thinking Space mirror macOS Screen Time streams and GoodNotes reading
                   sessions into per-day JSONLs under your vault's <span className="font-mono">ai-raw/raw/</span>
                   {' '}folder. Needed so activity history survives the macOS 28-day cliff and so the
-                  Reading pill has data. Off by default for new installs; existing vaults that already
-                  contain <span className="font-mono">ai-raw/</span> keep it on. Requires Full Disk Access.
+                  Reading pill has data. Off by default for new vaults; a vault that already
+                  contains <span className="font-mono">ai-raw/</span> keeps it on. Requires Full Disk Access.
                 </p>
               </div>
               <Switch
@@ -207,11 +210,14 @@ export default function AiActivitySessionSourcesSettingsBlock() {
                   Mirror AI-derived digests to <span className="font-mono text-xs">ai-activity/</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Writes durable per-day project digests (headline, why-it-matters, what's next) as
-                  browsable markdown notes under <span className="font-mono">ai-activity/atoms/</span>.
-                  Digests are always cached locally for the This Week / Set card; enabling this makes
-                  them a permanent record in the vault so you can page through them like any note.
-                  Off by default; syncs across devices via the vault.
+                  AI Activity works without this — it reads your AI tools' own session logs and
+                  caches digests on this Mac. Turning it on additionally writes per-day project
+                  digests as browsable markdown under <span className="font-mono">ai-activity/atoms/</span>,
+                  which buys you two things: a durable record (most AI harnesses delete session
+                  logs after ~30 days — Claude Code's <span className="font-mono">cleanupPeriodDays</span> defaults
+                  to 30 — so older history can't be rebuilt from logs alone; alternatively, raise
+                  that retention window) and cross-device history (the vault syncs, the local cache
+                  doesn't, so another machine resumes the same timeline). Off by default.
                 </p>
               </div>
               <Switch

@@ -499,21 +499,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Vault write prefs — gate for the raw-signal harvesters that dump under
-  // `ai-raw/` (Apple Screen Time, GoodNotes reading log). Opt-in for new
-  // users; existing installs with an `ai-raw/` directory auto-migrate on.
-  // Pass the current vaultRoot so the main process can run the one-shot
-  // migration probe when no explicit value has been stored yet.
+  // `ai-raw/` (Apple Screen Time, GoodNotes reading log). Keyed per vault
+  // root (one vault per profile), so both getters and setters carry the
+  // current vaultRoot. ai-raw auto-migrates on for vaults that already
+  // contain the directory; ai-activity is strictly opt-in.
   vaultWritesAiRawGetPersisted: (vaultRoot: string | null): Promise<boolean> =>
     ipcRenderer.invoke('vaultWrites:aiRaw:getPersisted', vaultRoot ?? undefined),
-  vaultWritesAiRawSetPersisted: (enabled: boolean): Promise<void> =>
-    ipcRenderer.invoke('vaultWrites:aiRaw:setPersisted', enabled),
+  vaultWritesAiRawSetPersisted: (enabled: boolean, vaultRoot: string | null): Promise<void> =>
+    ipcRenderer.invoke('vaultWrites:aiRaw:setPersisted', enabled, vaultRoot ?? undefined),
   // Sibling toggle for the AI-derived project-day atoms mirror. Same shape
   // as the ai-raw pair; kept separate so users can enable durable digests
   // without also opting into raw-signal writes.
   vaultWritesAiActivityGetPersisted: (vaultRoot: string | null): Promise<boolean> =>
     ipcRenderer.invoke('vaultWrites:aiActivity:getPersisted', vaultRoot ?? undefined),
-  vaultWritesAiActivitySetPersisted: (enabled: boolean): Promise<void> =>
-    ipcRenderer.invoke('vaultWrites:aiActivity:setPersisted', enabled),
+  vaultWritesAiActivitySetPersisted: (enabled: boolean, vaultRoot: string | null): Promise<void> =>
+    ipcRenderer.invoke('vaultWrites:aiActivity:setPersisted', enabled, vaultRoot ?? undefined),
 
   // Claude CLI intelligence provider — shells out to `claude -p` in the
   // main process. Reuses the OAuth login the interactive Claude Code CLI

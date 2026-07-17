@@ -66,8 +66,7 @@ import {
   writePersistedOpensourceAiBaseUrlBlock,
 } from './lego_blocks/opensourceAiBaseUrlPersistenceBlock';
 import {
-  readPersistedVaultWritePrefsBlock,
-  writePersistedVaultWritePrefsBlock,
+  writeVaultWritePrefForVaultBlock,
   resolveWriteAiRawEnabledBlock,
   resolveWriteAiActivityEnabledBlock,
   migrateLegacyAiRawDirBlock,
@@ -1810,41 +1809,45 @@ ipcMain.handle('opensource-ai:base-url:setPersisted', async (_event, baseUrl: st
   writePersistedOpensourceAiBaseUrlBlock(baseUrl);
 });
 
-// -- Vault write prefs (gates raw-signal harvests writing under `ai-raw/`) --
-// Async getter — the settings UI reads this on mount, not on the critical
+// -- Vault write prefs (gate what the app may write into a vault) --
+// Async getters — the settings UI reads these on mount, not on the critical
 // startup path, so no need for the sync-preload dance the vault-root uses.
-// `vaultRoot` is optional and only used for the first-launch migration
-// (existing `ai-raw/` or legacy `ai_raw/` → keep on for backwards compat).
+// Prefs are keyed per vault root (one vault per profile), so each profile's
+// toggle only governs its own vault. `ai-raw` runs a one-time per-vault
+// migration (existing `ai-raw/`/`ai_raw/` dir → keep harvesting);
+// `ai-activity` is strictly opt-in with no migration. Setters validate the
+// vault root against the main-anchored authorization set like every other
+// vault-scoped handler.
 ipcMain.handle('vaultWrites:aiRaw:getPersisted', async (_event, vaultRoot?: string) => {
-  const stored = readPersistedVaultWritePrefsBlock();
-  if (stored.writeAiRaw !== null) return stored.writeAiRaw;
-  if (typeof vaultRoot === 'string' && vaultRoot.trim().length > 0) {
-    return resolveWriteAiRawEnabledBlock(vaultRoot);
-  }
-  return false;
+  if (typeof vaultRoot !== 'string' || vaultRoot.trim().length === 0) return false;
+  return resolveWriteAiRawEnabledBlock(vaultRoot);
 });
 
-ipcMain.handle('vaultWrites:aiRaw:setPersisted', async (_event, enabled: boolean) => {
+ipcMain.handle('vaultWrites:aiRaw:setPersisted', async (_event, enabled: boolean, vaultRoot?: string) => {
   if (typeof enabled !== 'boolean') {
     throw new Error('vaultWrites:aiRaw:setPersisted requires a boolean.');
   }
-  writePersistedVaultWritePrefsBlock({ writeAiRaw: enabled });
+  if (typeof vaultRoot !== 'string' || vaultRoot.trim().length === 0) {
+    throw new Error('vaultWrites:aiRaw:setPersisted requires a vault root.');
+  }
+  assertAuthorizedVaultRootBlock(vaultRoot);
+  writeVaultWritePrefForVaultBlock(vaultRoot, { writeAiRaw: enabled });
 });
 
 ipcMain.handle('vaultWrites:aiActivity:getPersisted', async (_event, vaultRoot?: string) => {
-  const stored = readPersistedVaultWritePrefsBlock();
-  if (stored.writeAiActivity !== null) return stored.writeAiActivity;
-  if (typeof vaultRoot === 'string' && vaultRoot.trim().length > 0) {
-    return resolveWriteAiActivityEnabledBlock(vaultRoot);
-  }
-  return false;
+  if (typeof vaultRoot !== 'string' || vaultRoot.trim().length === 0) return false;
+  return resolveWriteAiActivityEnabledBlock(vaultRoot);
 });
 
-ipcMain.handle('vaultWrites:aiActivity:setPersisted', async (_event, enabled: boolean) => {
+ipcMain.handle('vaultWrites:aiActivity:setPersisted', async (_event, enabled: boolean, vaultRoot?: string) => {
   if (typeof enabled !== 'boolean') {
     throw new Error('vaultWrites:aiActivity:setPersisted requires a boolean.');
   }
-  writePersistedVaultWritePrefsBlock({ writeAiActivity: enabled });
+  if (typeof vaultRoot !== 'string' || vaultRoot.trim().length === 0) {
+    throw new Error('vaultWrites:aiActivity:setPersisted requires a vault root.');
+  }
+  assertAuthorizedVaultRootBlock(vaultRoot);
+  writeVaultWritePrefForVaultBlock(vaultRoot, { writeAiActivity: enabled });
 });
 
 // -- Claude CLI intelligence provider — shells out to `claude -p` so Pro-plan

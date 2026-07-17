@@ -1,9 +1,11 @@
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 
 // User preferences for what Thinking Space is allowed to write into the
-// user's vault. Currently a single toggle — `writeAiRaw` — that gates the
-// raw-signal harvesters (Apple Screen Time mirror, GoodNotes reading log).
-// The main process is the source of truth (userData/state/vault-write-prefs.json)
+// user's vault: `writeAiRaw` gates the raw-signal harvesters (Apple Screen
+// Time mirror, GoodNotes reading log), `writeAiActivity` the AI-digest
+// mirror. Prefs are keyed per vault root in main-process persistence
+// (userData/state/vault-write-prefs.json) — one vault per profile, so this
+// window's stored vault root scopes every call. Main is the source of truth
 // because the electron startup path fires the harvesters before the renderer
 // has mounted; this module is a thin async facade over the IPC bridge.
 //
@@ -36,7 +38,7 @@ export async function getVaultWriteAiRawEnabled(): Promise<boolean> {
 export async function setVaultWriteAiRawEnabled(enabled: boolean): Promise<void> {
   const api = getBridge()
   if (!api) return
-  await api.vaultWritesAiRawSetPersisted!(enabled)
+  await api.vaultWritesAiRawSetPersisted!(enabled, getStoredVaultRoot())
 }
 
 export async function getVaultWriteAiActivityEnabled(): Promise<boolean> {
@@ -52,5 +54,5 @@ export async function getVaultWriteAiActivityEnabled(): Promise<boolean> {
 export async function setVaultWriteAiActivityEnabled(enabled: boolean): Promise<void> {
   const api = getBridge()
   if (!api || typeof api.vaultWritesAiActivitySetPersisted !== 'function') return
-  await api.vaultWritesAiActivitySetPersisted!(enabled)
+  await api.vaultWritesAiActivitySetPersisted!(enabled, getStoredVaultRoot())
 }
