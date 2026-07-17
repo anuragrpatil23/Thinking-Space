@@ -140,6 +140,82 @@ function makeCentroidForce(keyOf: (node: VaultGraphNode) => string, strength: nu
 const FOLDER_CLUSTER_STRENGTH = 0.22
 const PROJECT_CLUSTER_STRENGTH = 0.04
 
+// ── Cluster regions: soft glow + name for the big folder neighborhoods ──
+// Only clusters that earn it get chrome: at least REGION_MIN_MEMBERS notes,
+// capped at the REGION_MAX_COUNT largest — labeling every folder would bury
+// the map in noise. Glows draw under the nodes (pre-render pass); labels fade
+// as you zoom in and node labels take over, and both recede under hover
+// focus / lens emphasis so they never compete with active inspection.
+const REGION_MIN_MEMBERS = 5
+const REGION_MAX_COUNT = 14
+/** Region labels start fading past this zoom; nodes' own labels take over. */
+const REGION_LABEL_ZOOM_FADE_START = 1.4
+
+interface ClusterRegionDef {
+  label: string
+  members: VaultGraphNode[]
+  /** Dominant project among members — tints the glow with the legend color. */
+  project: string
+}
+
+/** Per-frame resolved geometry of a drawn region (visible members only). */
+interface ClusterRegionFrame {
+  cx: number
+  cy: number
+  r: number
+  label: string
+  project: string
+}
+
+/** Pick the folder clusters worth marking. Leaf names label them; a leaf that
+ *  appears twice among the picks gets its parent segment for disambiguation. */
+function buildClusterRegionDefs(nodes: VaultGraphNode[]): ClusterRegionDef[] {
+  const byFolder = new Map<string, VaultGraphNode[]>()
+  for (const node of nodes) {
+    const key = folderOf(node.id)
+    if (!key) continue // loose root files are not a neighborhood
+    const members = byFolder.get(key)
+    if (members) members.push(node)
+    else byFolder.set(key, [node])
+  }
+  const picked = [...byFolder.entries()]
+    .filter(([, members]) => members.length >= REGION_MIN_MEMBERS)
+    .sort((a, b) => b[1].length - a[1].length)
+    .slice(0, REGION_MAX_COUNT)
+
+  const leafCounts = new Map<string, number>()
+  for (const [key] of picked) {
+    const leaf = key.slice(key.lastIndexOf('/') + 1)
+    leafCounts.set(leaf, (leafCounts.get(leaf) ?? 0) + 1)
+  }
+
+  return picked.map(([key, members]) => {
+    const segs = key.split('/')
+    const leaf = segs[segs.length - 1]
+    const label =
+      (leafCounts.get(leaf) ?? 0) > 1 && segs.length > 1 ? `${segs[segs.length - 2]} / ${leaf}` : leaf
+    const projectCounts = new Map<string, number>()
+    for (const m of members) projectCounts.set(m.project, (projectCounts.get(m.project) ?? 0) + 1)
+    let project = members[0].project
+    let bestCount = 0
+    for (const [p, count] of projectCounts) {
+      if (count > bestCount) {
+        project = p
+        bestCount = count
+      }
+    }
+    return { label, members, project }
+  })
+}
+
+/** Project colors arrive as hex strings; the gradients need channels. */
+function hexToRgbChannels(hex: string): { r: number; g: number; b: number } {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return { r: 138, g: 147, b: 166 } // VAULT_GRAPH_FALLBACK_COLOR
+  const v = parseInt(m[1], 16)
+  return { r: (v >> 16) & 0xff, g: (v >> 8) & 0xff, b: v & 0xff }
+}
+
 // force-graph types link endpoints as string | number | node | undefined
 // (ids before ingestion, node refs after).
 type LinkEndpoint = VaultGraphNode | string | number | undefined
@@ -336,6 +412,65 @@ export default function VaultGraphCanvasBlock({
 
       const lerp = (from: number, to: number) => from + (to - from) * view.dimEase
 
+      // ── Pre-render pass: soft cluster glows under the nodes ──
+      // Geometry is recomputed per frame from visible members (scrub/filter
+      // aware); membership itself is fixed, so this is one pass over the
+      // clustered nodes. frameRegions carries the results to the label pass.
+      const clusterRegions = buildClusterRegionDefs(data.nodes)
+      const frameRegions: ClusterRegionFrame[] = []
+      function drawRegions(ctx: CanvasRenderingContext2D) {
+        frameRegions.length = 0
+        if (clusterRegions.length === 0) return
+        // Regions are ambient chrome: recede under hover focus and lenses.
+        const fade = (1 - view.dimEase * 0.75) * (view.emphasis.mode === 'none' ? 1 : 0.4)
+        if (fade < 0.05) return
+        for (const region of clusterRegions) {
+          let sx = 0
+          let sy = 0
+          let n = 0
+          for (const m of region.members) {
+            if (!nodeVisible(m)) continue
+            sx += m.x ?? 0
+            sy += m.y ?? 0
+            n += 1
+          }
+          if (n < 4) continue // scrubbed/filtered down to nothing — no blob
+          const cx = sx / n
+          const cy = sy / n
+          let sd = 0
+          for (const m of region.members) {
+            if (!nodeVisible(m)) continue
+            const dx = (m.x ?? 0) - cx
+            const dy = (m.y ?? 0) - cy
+            sd += dx * dx + dy * dy
+          }
+          const r = Math.max(26, Math.sqrt(sd / n) * 1.8 + 14)
+          const { r: cr, g: cg, b: cb } = hexToRgbChannels(
+            view.colors.get(region.project) ?? VAULT_GRAPH_FALLBACK_COLOR,
+          )
+          const base = (view.isDark ? 0.09 : 0.07) * fade
+          const glow = ctx.createRadialGradient(cx, cy, r * 0.12, cx, cy, r)
+          glow.addColorStop(0, `rgba(${cr},${cg},${cb},${base.toFixed(3)})`)
+          glow.addColorStop(0.65, `rgba(${cr},${cg},${cb},${(base * 0.55).toFixed(3)})`)
+          glow.addColorStop(1, `rgba(${cr},${cg},${cb},0)`)
+          ctx.beginPath()
+          ctx.arc(cx, cy, r, 0, 2 * Math.PI)
+          ctx.fillStyle = glow
+          ctx.fill()
+          // Faint top-left sheen — the soft-3D read without any real chrome.
+          const hx = cx - r * 0.3
+          const hy = cy - r * 0.35
+          const sheen = ctx.createRadialGradient(hx, hy, 0, hx, hy, r * 0.75)
+          sheen.addColorStop(0, `rgba(255,255,255,${((view.isDark ? 0.045 : 0.14) * fade).toFixed(3)})`)
+          sheen.addColorStop(1, 'rgba(255,255,255,0)')
+          ctx.beginPath()
+          ctx.arc(cx, cy, r, 0, 2 * Math.PI)
+          ctx.fillStyle = sheen
+          ctx.fill()
+          frameRegions.push({ cx, cy, r, label: region.label, project: region.project })
+        }
+      }
+
       // ── Post-render label pass with greedy collision rejection ──
       const placedRects: LabelRect[] = []
       function tryPlaceLabel(
@@ -398,6 +533,51 @@ export default function VaultGraphCanvasBlock({
           (n.y ?? 0) < br.y + margin
 
         const nodes = graph.graphData().nodes as VaultGraphNode[]
+
+        // Region names first: they claim their rects so node labels route
+        // around them. Small caps with light tracking, fading out as you zoom
+        // in and note labels take over — map-style, not UI-style.
+        if (frameRegions.length > 0 && view.dimEase < 0.95) {
+          const zoomFade =
+            scale <= REGION_LABEL_ZOOM_FADE_START
+              ? 1
+              : Math.max(0.2, 1 - (scale - REGION_LABEL_ZOOM_FADE_START) / 2.2)
+          const regionAlpha =
+            0.55 * zoomFade * (1 - view.dimEase) * (view.emphasis.mode === 'none' ? 1 : 0.45)
+          if (regionAlpha > 0.04) {
+            const trackedCtx = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
+            const canTrack = 'letterSpacing' in trackedCtx
+            if (canTrack) trackedCtx.letterSpacing = `${(1.5 / scale).toFixed(2)}px`
+            for (const region of frameRegions) {
+              const fontSize = 11.5 / scale
+              ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, sans-serif`
+              const text = region.label.toUpperCase()
+              const width = ctx.measureText(text).width
+              const x = region.cx
+              const y = region.cy - region.r - fontSize - 3 / scale
+              const pad = 3 / scale
+              const rect: LabelRect = {
+                x0: x - width / 2 - pad,
+                y0: y - pad,
+                x1: x + width / 2 + pad,
+                y1: y + fontSize + pad,
+              }
+              if (rect.x1 < tl.x || rect.x0 > br.x || rect.y1 < tl.y || rect.y0 > br.y) continue
+              placedRects.push(rect)
+              ctx.textAlign = 'center'
+              ctx.textBaseline = 'top'
+              ctx.globalAlpha = regionAlpha
+              ctx.strokeStyle = view.isDark ? LABEL_OUTLINE_DARK : LABEL_OUTLINE_LIGHT
+              ctx.lineWidth = 3 / scale
+              ctx.lineJoin = 'round'
+              ctx.strokeText(text, x, y)
+              ctx.fillStyle = view.isDark ? LABEL_FILL_DARK : LABEL_FILL_LIGHT
+              ctx.fillText(text, x, y)
+              ctx.globalAlpha = 1
+            }
+            if (canTrack) trackedCtx.letterSpacing = '0px'
+          }
+        }
 
         if (view.focusId !== null && view.dimEase > 0.05) {
           const focusNode = nodes.find(n => n.id === view.focusId)
@@ -586,6 +766,9 @@ export default function VaultGraphCanvasBlock({
             ctx.fill()
           },
         )
+        .onRenderFramePre((ctx: CanvasRenderingContext2D) => {
+          drawRegions(ctx)
+        })
         .onRenderFramePost((ctx: CanvasRenderingContext2D, scale: number) => {
           drawLabels(ctx, scale)
         })
