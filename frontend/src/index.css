@@ -1005,14 +1005,14 @@
   }
 
   .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-nav-action,
-  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-logo {
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-shell-logo {
     background: transparent;
     border-color: transparent;
     box-shadow: none;
   }
 
   .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-nav-action:hover,
-  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-logo:hover {
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-shell-logo:hover {
     background: hsl(var(--accent) / 0.55);
   }
 
@@ -1026,11 +1026,11 @@
    * pseudo-element. No glow — the ring alone is the elegant little thing.
    * Hues are intentionally hardcoded — the theme tokens are neutral, and
    * the nebula is the accent. */
-  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-logo[aria-current='page'] {
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-shell-logo[aria-current='page'] {
     position: relative;
   }
 
-  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-logo[aria-current='page']::before {
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-shell-logo[aria-current='page']::before {
     content: '';
     position: absolute;
     left: 50%;
