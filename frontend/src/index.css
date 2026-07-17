@@ -615,17 +615,18 @@
     overflow: hidden;
   }
 
-  /* Workspace-profile accent: windows of a non-default profile tint their
-     sidebar so you can tell profiles apart at a glance (Chrome-profile
-     semantics). Set via --ltm-profile-accent by useWorkspaceProfileBlock. */
-  [data-ltm-profile-accent='true'] .ltm-shell-nav-surface,
-  [data-ltm-profile-accent='true'] .ltm-shell-drawer-surface {
+  /* Workspace-profile accent: windows of a non-default profile wash their
+     whole nav rail in the profile's pastel, Chrome-profile style. The html-
+     prefixed selector out-specifies the rail's later `background:` shorthand
+     (which would otherwise reset background-image on desktop). Set via
+     --ltm-profile-accent by useWorkspaceProfileBlock. */
+  html[data-ltm-profile-accent='true'] .ltm-shell-nav-surface,
+  html[data-ltm-profile-accent='true'] .ltm-shell-drawer-surface {
     background-image: linear-gradient(
-      to right,
-      color-mix(in srgb, var(--ltm-profile-accent) 22%, transparent),
-      color-mix(in srgb, var(--ltm-profile-accent) 8%, transparent)
+      to bottom,
+      color-mix(in srgb, var(--ltm-profile-accent) 52%, transparent),
+      color-mix(in srgb, var(--ltm-profile-accent) 30%, transparent)
     );
-    box-shadow: inset 3px 0 0 0 var(--ltm-profile-accent);
   }
 
   @media (min-width: 1024px) {

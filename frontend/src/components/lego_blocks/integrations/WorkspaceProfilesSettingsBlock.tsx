@@ -12,8 +12,9 @@ import {
   type WorkspaceProfileBlock,
 } from '@/services/lego_blocks/units/profileContextBlock'
 
-// Chrome-inspired accent palette; '' = no accent.
-const ACCENT_CHOICES_BLOCK = ['', '#4c8bf5', '#e8710a', '#0b8043', '#8e24aa', '#d93025', '#f6bf26', '#00acc1']
+// Pastel accent palette — soft, papery hues in the Thinking Space register
+// (sky, lavender, sage, blush, peach, butter, mist); '' = no accent.
+const ACCENT_CHOICES_BLOCK = ['', '#a7c7e7', '#c3b1e1', '#b5c9a8', '#f2b8c6', '#f5c6a5', '#f3e1a9', '#a8dadc']
 
 // macOS-style preset avatar glyphs; '' = use the profile name's initial.
 const ICON_CHOICES_BLOCK = ['', '\uD83C\uDF33', '\uD83C\uDFE0', '\uD83D\uDCBC', '\uD83D\uDE80', '\uD83D\uDCDA', '\uD83E\uDDE0', '\uD83C\uDFA8', '\u26A1', '\uD83C\uDF0A', '\uD83C\uDF19', '\uD83C\uDF40']
