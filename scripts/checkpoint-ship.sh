@@ -77,6 +77,7 @@ ensure_local_cert() {
       -addext "keyUsage=critical,digitalSignature" \
       -addext "extendedKeyUsage=critical,codeSigning" \
       && /usr/bin/openssl pkcs12 -export -inkey cs.key -in cs.crt -out cs.p12 -passout pass:tspass \
+           -name "$LOCAL_CERT" \
       && security import cs.p12 -k "$HOME/Library/Keychains/login.keychain-db" -P tspass -T /usr/bin/codesign -A
   ) >>"$LOG" 2>&1 || { rm -rf "$certdir"; return 1; }
   rm -rf "$certdir"
@@ -143,6 +144,11 @@ if [ $INSIDE_APP = 0 ] && pgrep -f "Thinking Space.app/Contents/MacOS" >/dev/nul
 fi
 
 say "building (unpacked .app; log: $LOG)"
+# Stop electron-builder from auto-discovering keychain identities during pack —
+# its signing path isn't on the key's access list and pops a scary keychain
+# password dialog. We sign explicitly below with /usr/bin/codesign, which IS
+# pre-authorized on the key (security import -T).
+export CSC_IDENTITY_AUTO_DISCOVERY=false
 if ! ./build.sh electron:pack >"$LOG" 2>&1; then
   fail "build failed"
 fi
@@ -167,6 +173,9 @@ INLINE_SCRIPTS=$(grep -Eo '<script[^>]*>' "$FRONTEND_DIR/dist/index.html" | grep
 printf '%s %s\n' "$HEAD_SHA" "$STAMP" > "$APP_SRC/Contents/Resources/local-build"
 
 say "signing"
+if [ "$SIGN_ID" = "$LOCAL_CERT" ]; then
+  say "(if your Mac asks about the signing key, click 'Always Allow' — it's this app's own local key, created on this machine)"
+fi
 codesign --deep --force --sign "$SIGN_ID" "$APP_SRC" >>"$LOG" 2>&1 || fail "codesign failed"
 
 # ─── Install (detached swap — survives our own death if we live in the app) ──
