@@ -862,7 +862,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         maxWidth: '100%',
         overflow: 'hidden',
         color: 'hsl(var(--foreground))',
-        caretColor: 'hsl(var(--foreground))',
+        caretColor: proseEditing ? 'hsl(var(--primary))' : 'hsl(var(--foreground))',
       },
       '.cm-scroller': {
         height: '100%',
@@ -907,7 +907,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         color: 'hsl(var(--muted-foreground))',
       },
       '.cm-cursor, .cm-dropCursor': {
-        borderLeftColor: 'hsl(var(--foreground))',
+        borderLeftColor: proseEditing ? 'hsl(var(--primary))' : 'hsl(var(--foreground))',
       },
       '.cm-lineNumbers .cm-gutterElement': {
         padding: '0 0.35rem 0 0',

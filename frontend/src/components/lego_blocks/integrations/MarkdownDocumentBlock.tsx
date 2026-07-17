@@ -1114,6 +1114,15 @@ function MarkdownTextDocumentRuntimeBlock({
     return savePromise
   }, [baseHash, baseMtime, content, draft, isExcalidrawDoc, onSaved, path])
 
+  // Done = flush the draft (no-op when clean) and return to the document.
+  const finishEditing = async () => {
+    if (baseMtime === null) return
+    setSaving(true)
+    const didSave = await saveMarkdownDraft('manual')
+    setSaving(false)
+    if (didSave) cancelEditing()
+  }
+
   const handleSave = async () => {
     if (baseMtime === null) return
     if (!isExcalidrawDoc) {
@@ -1477,37 +1486,48 @@ function MarkdownTextDocumentRuntimeBlock({
 
                 {isEditing && !isExcalidrawDoc && (
                   <>
+                    {/* Editing badge — live save state; click toggles auto-save. */}
                     <button
                       type="button"
                       onClick={() => setAutoSaveEnabled(v => !v)}
                       className={cn(
-                        'font-medium transition-colors',
+                        'inline-flex items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground',
                         isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2 py-1 text-xs',
-                        autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                       )}
-                      title="Toggle auto save"
+                      title={autoSaveEnabled ? 'Auto-save is on — click to switch to manual saving' : 'Auto-save is off — click to turn it on'}
                     >
-                      {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
+                      <span
+                        className={cn(
+                          'h-1.5 w-1.5 rounded-full',
+                          (saving || autoSaving)
+                            ? 'animate-pulse bg-amber-500'
+                            : autoSaveEnabled
+                              ? 'bg-emerald-500'
+                              : 'bg-muted-foreground/50',
+                        )}
+                      />
+                      {(saving || autoSaving) ? 'Saving…' : autoSaveEnabled ? 'Editing' : 'Editing · manual'}
                     </button>
-                    <button
-                      type="button"
-                      onClick={cancelEditing}
-                      className={cn(
-                        'border border-border font-medium hover:bg-muted',
-                        isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2.5 py-1 text-xs',
-                      )}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { void handleSave() }}
-                      disabled={saving || baseMtime === null}
-                      className={saveButtonClassName}
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                      {saveButtonLabel}
-                    </button>
+                    {autoSaveEnabled ? (
+                      <button
+                        type="button"
+                        onClick={() => { void finishEditing() }}
+                        disabled={saving || baseMtime === null}
+                        className={saveButtonClassName}
+                      >
+                        Done
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { void handleSave() }}
+                        disabled={saving || baseMtime === null}
+                        className={saveButtonClassName}
+                      >
+                        <Save className="h-3.5 w-3.5" />
+                        {saveButtonLabel}
+                      </button>
+                    )}
                   </>
                 )}
 
@@ -1558,12 +1578,21 @@ function MarkdownTextDocumentRuntimeBlock({
 
                 {showCloseButton && onClose && (
                   <button
-                    onClick={onClose}
+                    onClick={() => {
+                      // While editing, ✕ means "leave editing", not "close the
+                      // document" — one exit affordance instead of a separate
+                      // Cancel button.
+                      if (isEditing) {
+                        cancelEditing()
+                        return
+                      }
+                      onClose()
+                    }}
                     className={cn(
                       'transition-colors hover:bg-muted',
                       isIosPhone ? 'rounded-md p-1.5' : 'rounded-lg p-1.5',
                     )}
-                    title="Close"
+                    title={isEditing ? 'Stop editing' : 'Close'}
                   >
                     <X className="h-4 w-4" />
                   </button>
