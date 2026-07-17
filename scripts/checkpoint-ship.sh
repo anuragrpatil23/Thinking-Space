@@ -53,14 +53,49 @@ fi
 # Signing identity: env override > self-signed local cert > Apple Development
 # > ad-hoc (keychain-backed features like safeStorage won't persist across
 # ad-hoc builds; see docs/BUILD-macOS-LOCAL.md).
+LOCAL_CERT="Thinking Space Local Signing"
+
+has_local_cert() {
+  # No -v: an untrusted self-signed cert still signs fine (trust is only
+  # needed to VERIFY), and -v may omit it.
+  security find-identity -p codesigning 2>/dev/null | grep -q "$LOCAL_CERT"
+}
+
+# Auto-generate the stable self-signed signing cert (recipe from
+# docs/BUILD-macOS-LOCAL.md §B). Stable identity = safeStorage/Keychain data
+# survives rebuilds — Apple Development certs expire yearly and ad-hoc changes
+# every build. Uses stock /usr/bin/openssl (LibreSSL: no -legacy flag needed).
+ensure_local_cert() {
+  has_local_cert && return 0
+  local certdir
+  certdir="$(mktemp -d "$TMP_DIR/cert-XXXXXX")"
+  (
+    cd "$certdir"
+    /usr/bin/openssl req -x509 -newkey rsa:2048 -keyout cs.key -out cs.crt -days 3650 -nodes \
+      -subj "/CN=$LOCAL_CERT" \
+      -addext "basicConstraints=critical,CA:false" \
+      -addext "keyUsage=critical,digitalSignature" \
+      -addext "extendedKeyUsage=critical,codeSigning" \
+      && /usr/bin/openssl pkcs12 -export -inkey cs.key -in cs.crt -out cs.p12 -passout pass:tspass \
+      && security import cs.p12 -k "$HOME/Library/Keychains/login.keychain-db" -P tspass -T /usr/bin/codesign -A
+  ) >>"$LOG" 2>&1 || { rm -rf "$certdir"; return 1; }
+  rm -rf "$certdir"
+  has_local_cert
+}
+
 SIGN_ID="${TS_SIGN_IDENTITY:-}"
 if [ -z "$SIGN_ID" ]; then
-  if security find-identity -p codesigning -v 2>/dev/null | grep -q "Thinking Space Local Signing"; then
-    SIGN_ID="Thinking Space Local Signing"
+  if has_local_cert; then
+    SIGN_ID="$LOCAL_CERT"
+  elif ensure_local_cert; then
+    SIGN_ID="$LOCAL_CERT"
+    say "generated self-signed cert '$LOCAL_CERT' (10y) — first codesign may pop a Keychain dialog: click 'Always Allow'"
+    say "note: if the previous build used a different identity, saved secure credentials reset once (safeStorage is signature-bound)"
   elif security find-identity -p codesigning -v 2>/dev/null | grep -q "Apple Development"; then
     SIGN_ID="$(security find-identity -p codesigning -v | grep "Apple Development" | head -1 | sed 's/.*"\(.*\)"/\1/')"
   else
     SIGN_ID="-"
+    say "warning: ad-hoc signing — Keychain-backed features (saved credentials) won't persist across rebuilds"
   fi
 fi
 
@@ -151,10 +186,19 @@ if [ -d "$APP_DST" ]; then
   rm -rf "$BACKUP_DIR/Thinking Space.app"
   ditto "$APP_DST" "$BACKUP_DIR/Thinking Space.app"
 fi
-rm -rf "$APP_DST"
-ditto "$APP_SRC" "$APP_DST"
-xattr -dr com.apple.quarantine "$APP_DST" 2>/dev/null || true
-open "$APP_DST"
+# macOS App Management can block scripted writes into /Applications on some
+# machines ("Operation not permitted") — fall back to ~/Applications, which
+# runs identically (docs/BUILD-macOS-LOCAL.md §4).
+TARGET="$APP_DST"
+if ! { rm -rf "$APP_DST" && ditto "$APP_SRC" "$APP_DST"; }; then
+  echo "install to $APP_DST blocked (App Management TCC) — falling back to ~/Applications"
+  TARGET="\$HOME/Applications/Thinking Space.app"
+  mkdir -p "\$HOME/Applications"
+  rm -rf "\$TARGET"
+  ditto "$APP_SRC" "\$TARGET"
+fi
+xattr -dr com.apple.quarantine "\$TARGET" 2>/dev/null || true
+open "\$TARGET"
 # Clean build artifacts once the install is done — the ~GB-scale unpacked
 # bundle has served its purpose and the backup lives in ~/.thinking-space.
 rm -rf "$FRONTEND_DIR/electron/dist"
