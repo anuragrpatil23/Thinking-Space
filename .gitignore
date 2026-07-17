@@ -41,3 +41,9 @@ test-fixtures/vault/.*/
 
 # Bundled Node runtime for thinkspc CLI (rebuilt locally, do not commit)
 frontend/electron/src/cli/bin/
+
+# Vault-state artifacts written when a workspace profile points at this repo
+# folder as its Thinking Space (test profiles); never part of the codebase.
+/.thinking-space/
+/ai-activity/
+/ai-raw/

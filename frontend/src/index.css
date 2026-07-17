@@ -615,6 +615,22 @@
     overflow: hidden;
   }
 
+  /* Whole-window wash: a much lighter breath of the profile pastel over the
+     shell root, so the window itself carries the identity, not just the rail.
+     On Electron this mixes into the translucent vibrancy tint (native blur
+     shows through, now hued); elsewhere it's a faint gradient overlay. */
+  html[data-ltm-profile-accent='true'] .ltm-app-shell {
+    background-image: linear-gradient(
+      to bottom right,
+      color-mix(in srgb, var(--ltm-profile-accent) 10%, transparent),
+      color-mix(in srgb, var(--ltm-profile-accent) 4%, transparent)
+    );
+  }
+
+  html[data-ltm-profile-accent='true'] .ltm-app-shell[data-ltm-surface='electron'] {
+    background-color: color-mix(in srgb, var(--ltm-profile-accent) 16%, hsl(var(--background) / 0.22));
+  }
+
   /* iOS-style rail edit mode: press-and-hold entered, icons jiggle while
      reorderable/hideable. Slight per-item phase offsets so the rail doesn't
      wobble in lockstep — same trick as the iOS springboard. */
@@ -1044,9 +1060,30 @@
     box-shadow: none;
   }
 
-  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-nav-action:hover,
-  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-shell-logo:hover {
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-sidebar-actions .ltm-shell-nav-action:hover {
     background: hsl(var(--accent) / 0.55);
+  }
+
+  /* Home glyph hover: no background cast (the active state is a ring, so a
+     filled hover reads as a different affordance) — a quiet grey ring in the
+     same geometry as the nebula ring instead. The higher-specificity
+     [aria-current='page'] rules below win while Home is active. */
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-shell-logo:hover {
+    background: transparent;
+    position: relative;
+  }
+
+  .ltm-shell-nav-surface[data-ltm-nav-region='rail'] .ltm-shell-logo:hover::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 34px;
+    height: 34px;
+    transform: translate(-50%, -50%);
+    border-radius: 9999px;
+    border: 1px solid hsl(var(--muted-foreground) / 0.45);
+    pointer-events: none;
   }
 
   /* Home (logo) active state — a nebula ring around the circular glyph
