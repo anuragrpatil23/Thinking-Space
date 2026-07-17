@@ -65,7 +65,7 @@ Current status (v2.5):
 - Phase 0–5: DONE
 - Agent Capability Transport: DONE
 - EPIC-3 (Extension Platform): DONE
-- Embedded Terminal (xterm.js + node-pty): DONE
+- Embedded Terminal (xterm.js + node-pty): DONE — but **slated for removal** (decided 2026-07-16: overkill; users run agents in their own terminal). Do not build new features on it; it is no longer advertised in the README.
 - Live Source Mode + Rebuild Pipeline: DONE
 - Notebook workspace upgrades: DONE
 - Native iPhone shell/chrome work: DONE

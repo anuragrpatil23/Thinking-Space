@@ -33,7 +33,7 @@ What's inside:
 - An **AI Activity** dashboard that shows what you actually worked on with Claude, Codex, ChatGPT, Grok — down to which vault notes each session touched
 - A **vault graph** that maps your notes and lights up where your AI has been working
 - A freeform **home canvas** — post-its, live vault notes, and web widgets on an infinite board
-- An **embedded terminal** to run agents (including Claude Code) inside the app — they can even modify and rebuild the app itself, commit to running new build in under 30 seconds
+- Your agent can **modify and rebuild the app itself** — point it at your own fork of the source, and it goes from commit to running the new build in under 30 seconds
 - Agents log their tasks, plans, and handoffs as plain notes in your vault, so their work sits right next to your own thinking
 - Works alongside Obsidian — no conflicts; your folder structure stays yours
 - Local-first, plain Markdown + YAML, no lock-in to one AI provider
@@ -90,9 +90,9 @@ Tabbed, multi-document reading and editing: file explorer, Obsidian-style `[[wik
 
 A tree of Programs → Epics → Ideas → Thoughts, driven by YAML metadata rather than folder structure, so your folders stay however you like them. Drag to rearrange, reparent freely. This is also where agent work shows up: when an agent logs a task, plan, or handoff (they write plain notes via a small CLI), it appears here next to your own items.
 
-### 6. Run the agents — embedded terminal
+### 6. Let it change the app — fork + rebuild
 
-A real terminal (xterm.js + node-pty, the VS Code stack) inside the app. Multi-tab, shells survive page switches, starts in your vault. Run Claude Code right there — and because the app can point at your own fork of its source, your agent can modify Thinking Space itself and have the new build running in under 30 seconds.
+You run your agent wherever you already run it — Thinking Space doesn't care. But it can point at your own fork of its source, so when you want something the app doesn't do, your agent changes the code, and the new build is installed and running in under 30 seconds after the commit. The app you use becomes the app you (and your AI) shape.
 
 ### 7. Put them on a timer — Schedules
 
@@ -142,7 +142,7 @@ cd Thinking-Space
 | `./build.sh web` | Build web/PWA bundle |
 | `./build.sh electron` | Build & launch Electron app |
 | `./build.sh mac` / `win` / `linux` | Package installers per platform |
-| `./build.sh win-lite` | Windows x64 without embedded terminal |
+| `./build.sh win-lite` | Windows x64 lite build |
 | `./build.sh ios` | Build for iOS + open Xcode |
 | `./build.sh typecheck` / `test` | Type check / run tests |
 | `./build.sh clean` | Remove build artifacts |
@@ -163,7 +163,6 @@ cd Thinking-Space
 | AI | OpenAI, Anthropic, Open Source AI (LM Studio/OpenAI-compatible local), Codex CLI |
 | Drawing | Excalidraw |
 | Editor | CodeMirror |
-| Terminal | xterm.js (`@xterm/xterm`) + node-pty (same stack as VS Code) |
 | Backend | FastAPI + Python (optional, thin proxy) |
 
 ---
@@ -182,7 +181,7 @@ The short version, because the details live in the docs:
 
 ## Contributing
 
-The intended way to change this app — whether for yourself or to contribute back — is to have your AI do it with you: fork the repo, point your agent at the three docs above, make the change, and open a PR. That's not a gimmick; it's how the app itself gets built (this README's commit history included).
+The intended way to change this app — whether for yourself or to contribute back — is to have your AI do it with you: fork the repo, point your agent at the three docs above, make the change, and open a PR. That's how this repo gets built day to day anyway — most commits here were written by an agent.
 
 A small set of security-critical files (the sandbox, the vault path guard, the credential stores) carry warning headers and require maintainer review on PRs — everything else is fair game. Conventions are enforced by the docs, not tribal knowledge.
 
