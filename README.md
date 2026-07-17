@@ -116,41 +116,38 @@ An infinite board with a pixel-art scene that greets you by name. Post-its, live
 
 ## Quick Start
 
-### Prerequisites
+**Just want to use the app?** Grab the [download](#download) above — no build needed.
 
-- [Node.js](https://nodejs.org/) v18+
-- npm (comes with Node.js)
+**Want to run or change it from source?** Don't do it by hand — point your agent at it. Paste this into Claude Code (or any coding agent):
 
-### Using the build script
+> Clone https://github.com/anuragrpatil23/Thinking-Space, read docs/ARCHITECTURE.md and docs/CODEBASE-GUIDE.md, then run `./build.sh install` and `./build.sh dev` and tell me when it's up.
+
+That's genuinely the whole quick start. The repo carries its own onboarding docs ([ARCHITECTURE](docs/ARCHITECTURE.md) → [CODEBASE-GUIDE](docs/CODEBASE-GUIDE.md) → [PLAYBOOKS](docs/PLAYBOOKS.md)), so your agent arrives knowing where everything is and how changes are supposed to be made. If you're already running the app and want to modify it, there's a guided path for that too — your agent forks the repo for you and installs its own builds ([PLAYBOOKS §12](docs/PLAYBOOKS.md)).
+
+<details>
+<summary><strong>Doing it by hand anyway</strong></summary>
+
+Prerequisites: [Node.js](https://nodejs.org/) ≥ 22 (the Capacitor CLI requires it) and npm.
 
 ```bash
 git clone https://github.com/anuragrpatil23/Thinking-Space.git
 cd Thinking-Space
-
-# Install everything
-./build.sh install
-
-# Start the dev server
-./build.sh dev
+./build.sh install   # install everything
+./build.sh dev       # dev server at http://localhost:5173
 ```
-
-Opens at `http://localhost:5173` — pick a local folder as your vault and you're in.
-
-### Other build commands
 
 | Command | What it does |
 |---|---|
 | `./build.sh dev` | Start Vite dev server |
 | `./build.sh web` | Build web/PWA bundle |
 | `./build.sh electron` | Build & launch Electron app |
-| `./build.sh mac` | Package macOS `.dmg` |
-| `./build.sh win` | Package Windows installer |
-| `./build.sh win-lite` | Package Windows x64 installer without embedded terminal |
-| `./build.sh linux` | Package Linux `.AppImage` |
+| `./build.sh mac` / `win` / `linux` | Package installers per platform |
+| `./build.sh win-lite` | Windows x64 without embedded terminal |
 | `./build.sh ios` | Build for iOS + open Xcode |
-| `./build.sh backend` | Start FastAPI backend (optional) |
-| `./build.sh test` | Run frontend tests |
+| `./build.sh typecheck` / `test` | Type check / run tests |
 | `./build.sh clean` | Remove build artifacts |
+
+</details>
 
 ---
 
