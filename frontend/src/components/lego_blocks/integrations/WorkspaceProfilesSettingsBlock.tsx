@@ -88,6 +88,8 @@ export function WorkspaceProfilesSettingsBlock() {
   const [newVaultRoot, setNewVaultRoot] = useState<string | null>(null)
   const [newAccent, setNewAccent] = useState<string | null>(ACCENT_CHOICES_BLOCK[1])
   const [newIcon, setNewIcon] = useState<string | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
 
   const refresh = useCallback(async () => {
     try {
@@ -153,6 +155,19 @@ export function WorkspaceProfilesSettingsBlock() {
     }
   }, [refresh])
 
+  const commitRename = useCallback(async (profileId: string) => {
+    const name = renameDraft.trim()
+    setRenamingId(null)
+    if (!name) return
+    setError(null)
+    try {
+      await updateWorkspaceProfileBlock({ id: profileId, name })
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }, [refresh, renameDraft])
+
   const remove = useCallback(async (profile: WorkspaceProfileBlock) => {
     setError(null)
     setNotice(null)
@@ -211,7 +226,32 @@ export function WorkspaceProfilesSettingsBlock() {
               </span>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-foreground">
-                  {profile.name}
+                  {renamingId === profile.id ? (
+                    <input
+                      type="text"
+                      autoFocus
+                      value={renameDraft}
+                      onChange={(event) => setRenameDraft(event.target.value)}
+                      onBlur={() => void commitRename(profile.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') void commitRename(profile.id)
+                        if (event.key === 'Escape') setRenamingId(null)
+                      }}
+                      className="h-7 w-44 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      title="Rename profile"
+                      onClick={() => {
+                        setRenamingId(profile.id)
+                        setRenameDraft(profile.name)
+                      }}
+                      className="rounded px-1 -mx-1 text-left hover:bg-accent"
+                    >
+                      {profile.name}
+                    </button>
+                  )}
                   {profile.id === currentProfile.id && (
                     <span className="ml-2 text-xs text-muted-foreground">(this window)</span>
                   )}
