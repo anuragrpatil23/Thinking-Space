@@ -119,9 +119,12 @@ if pgrep -f "Thinking Space.app/Contents/MacOS" >/dev/null 2>&1; then
   # If our own ancestry includes the app, we're in its embedded terminal.
   p=$$
   while [ "$p" -gt 1 ]; do
-    if ps -o command= -p "$p" 2>/dev/null | grep -q "Thinking Space.app/Contents/MacOS"; then
-      INSIDE_APP=1; break
-    fi
+    # comm= is the executable path only — command= would also match argument
+    # text, so a shell whose command line merely MENTIONS the app path (e.g.
+    # this script invoked in a compound command) would false-positive.
+    case "$(ps -o comm= -p "$p" 2>/dev/null)" in
+      *"Thinking Space.app/Contents/MacOS/"*) INSIDE_APP=1; break ;;
+    esac
     p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ' || echo 1)"
   done
 fi
