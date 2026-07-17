@@ -59,6 +59,10 @@ import MarkdownTableOfContentsBlock from '@/components/lego_blocks/integrations/
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import NoteCanvasBlock from '@/components/lego_blocks/integrations/NoteCanvasBlock'
 import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/lego_blocks/units/ui/tooltip'
+import { resolveEditorLanguageBlock } from '@/components/lego_blocks/units/editorLanguageBlock'
+import CodeDocumentViewBlock from '@/components/lego_blocks/integrations/CodeDocumentViewBlock'
+import { useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
 import { parseNoteCanvasBlock } from '@/services/lego_blocks/units/noteCanvasBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
 import OverflowMenuButtonBlock from '@/components/lego_blocks/units/ui/OverflowMenuButtonBlock'
@@ -260,6 +264,7 @@ function MarkdownTextDocumentRuntimeBlock({
   topBarHidden: topBarHiddenProp,
 }: MarkdownDocumentBlockProps) {
   const { layout } = useUILayoutBlock()
+  const { resolvedColorMode } = useUIThemeBlock()
   const isIosSurface = layout.surface === 'capacitor-ios'
   const isElectronSurface = layout.surface === 'electron'
   const isIosPhone = isIosSurface && layout.mode === 'phone'
@@ -477,26 +482,25 @@ function MarkdownTextDocumentRuntimeBlock({
   ), [])
 
   const isEditing = mode === 'edit'
-  // Live preview makes the view/edit split mostly ceremonial for text docs:
-  // clicking the document body starts editing, so the pencil disappears.
-  // Excalidraw/HTML docs keep the explicit pencil (their edit mode is heavier).
-  // Touch surfaces (iPad/iPhone) never get tap-to-edit — a tap is how you
-  // scroll and read. There the pencil stays and long-press enters editing.
-  const isCoarsePointer = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches
+  // Live preview makes the view/edit split mostly ceremonial for text docs.
+  // Entering editing is a long-press on EVERY surface (mouse and touch alike):
+  // a plain click stays reading, holding ~450ms drops you into the editor at
+  // the press point. Uniform "hold to edit" kills accidental-edit clicks on
+  // desktop/Electron and matches the touch gesture, while the pencil stays as
+  // the discoverable primary. Excalidraw/HTML docs keep explicit edit only.
   const livePreviewTextDoc = editorSettings.livePreviewSyntaxHiding && !isExcalidrawDoc && !isHtmlDocumentPathBlock(path)
-  const clickToEditActive = livePreviewTextDoc && !isCoarsePointer
-  const longPressToEditActive = livePreviewTextDoc && isCoarsePointer
+  const longPressToEditActive = livePreviewTextDoc
 
   const pendingEditCaretHintRef = useRef<{ before: string; after: string } | null>(null)
-  const touchEditTimerRef = useRef<number | null>(null)
-  const touchEditStartRef = useRef<{ x: number; y: number } | null>(null)
+  const longPressTimerRef = useRef<number | null>(null)
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null)
 
-  const clearTouchEditTimer = () => {
-    if (touchEditTimerRef.current !== null) {
-      window.clearTimeout(touchEditTimerRef.current)
-      touchEditTimerRef.current = null
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
     }
-    touchEditStartRef.current = null
+    longPressStartRef.current = null
   }
 
   const captureCaretHintAtPoint = (ownerDocument: Document, x: number, y: number) => {
@@ -516,44 +520,38 @@ function MarkdownTextDocumentRuntimeBlock({
     }
   }
 
-  const handleViewTouchStart = (event: React.TouchEvent<HTMLElement>) => {
+  const handleViewPointerDown = (event: React.PointerEvent<HTMLElement>) => {
     if (!longPressToEditActive || loading || !!error) return
-    const touch = event.touches[0]
-    if (!touch || event.touches.length > 1) return
+    // Primary button / touch / pen only — never right-click or secondary.
+    if (event.button !== 0) return
     const target = event.target as HTMLElement
     if (target.closest('a,button,input,textarea,select,summary,[role="button"],img,video,audio')) return
     const ownerDocument = event.currentTarget.ownerDocument
-    const { clientX, clientY } = touch
-    touchEditStartRef.current = { x: clientX, y: clientY }
-    touchEditTimerRef.current = window.setTimeout(() => {
-      touchEditTimerRef.current = null
+    const { clientX, clientY } = event
+    longPressStartRef.current = { x: clientX, y: clientY }
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null
+      // If the hold turned into a text selection, respect that — don't hijack.
+      const selection = ownerDocument.getSelection?.()
+      if (selection && !selection.isCollapsed) { longPressStartRef.current = null; return }
       captureCaretHintAtPoint(ownerDocument, clientX, clientY)
       startEditing()
-    }, 500)
+    }, 450)
   }
 
-  const handleViewTouchMove = (event: React.TouchEvent<HTMLElement>) => {
-    const start = touchEditStartRef.current
-    const touch = event.touches[0]
-    if (!start || !touch) return
-    // Any real movement means scrolling, not a long-press.
-    if (Math.abs(touch.clientX - start.x) > 10 || Math.abs(touch.clientY - start.y) > 10) {
-      clearTouchEditTimer()
+  const handleViewPointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    const start = longPressStartRef.current
+    if (!start) return
+    // Any real movement means scrolling or selecting, not a long-press.
+    if (Math.abs(event.clientX - start.x) > 10 || Math.abs(event.clientY - start.y) > 10) {
+      clearLongPressTimer()
     }
   }
-
-  const handleViewClickToEdit = (event: React.MouseEvent<HTMLElement>) => {
-    if (!clickToEditActive || loading || !!error) return
-    const target = event.target as HTMLElement
-    if (target.closest('a,button,input,textarea,select,summary,[role="button"],img,video,audio')) return
-    const selection = window.getSelection()
-    if (selection && !selection.isCollapsed) return
-    // Capture the rendered text around the click so the editor can drop the
-    // caret at the same spot (best-effort snippet search in the source).
-    captureCaretHintAtPoint(event.currentTarget.ownerDocument, event.clientX, event.clientY)
-    startEditing()
-  }
   const isHtmlDoc = isHtmlDocumentPathBlock(path)
+  // Code files (.ts/.py/.json/…) are read/edited as code, never as markdown —
+  // the prose renderer wraps comments/imports as paragraphs. In view mode they
+  // get a read-only syntax-highlighted CM6 surface instead of ReactMarkdown.
+  const isCodeDoc = !isExcalidrawDoc && !isHtmlDoc && resolveEditorLanguageBlock(path).kind === 'code'
   const supportsMindmap = !isExcalidrawDoc
     && !isHtmlDoc
     && /\.md$/i.test(path)
@@ -1519,15 +1517,35 @@ function MarkdownTextDocumentRuntimeBlock({
                   />
                 )}
 
-                {!isEditing && !clickToEditActive && (
-                  <button
-                    onClick={() => startEditing()}
-                    disabled={loading || !!error}
-                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Edit file"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
+                {!isEditing && (
+                  longPressToEditActive ? (
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => startEditing()}
+                            disabled={loading || !!error}
+                            className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label="Edit file"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-[15rem] text-center leading-snug">
+                          Click to edit — or press &amp; hold anywhere on the page to edit right where you tap.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <button
+                      onClick={() => startEditing()}
+                      disabled={loading || !!error}
+                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Edit file"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  )
                 )}
 
                 {isEditing && !isExcalidrawDoc && (
@@ -1765,7 +1783,20 @@ function MarkdownTextDocumentRuntimeBlock({
             </div>
           )}
 
-          {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && viewSurface === 'canvas' && (
+          {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && isCodeDoc && (
+            <div
+              className={cn(isIosPhone ? 'px-2 py-3' : 'px-4 py-5')}
+              onPointerDown={handleViewPointerDown}
+              onPointerMove={handleViewPointerMove}
+              onPointerUp={clearLongPressTimer}
+              onPointerCancel={clearLongPressTimer}
+              onPointerLeave={clearLongPressTimer}
+            >
+              <CodeDocumentViewBlock content={content} path={path} colorMode={resolvedColorMode === 'dark' ? 'dark' : 'light'} />
+            </div>
+          )}
+
+          {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && !isCodeDoc && viewSurface === 'canvas' && (
             <div className="flex h-full min-h-[60vh] flex-col">
               {canvasSaveError && (
                 <div className="border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
@@ -1782,7 +1813,7 @@ function MarkdownTextDocumentRuntimeBlock({
             </div>
           )}
 
-          {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && viewSurface === 'doc' && (
+          {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && !isCodeDoc && viewSurface === 'doc' && (
             <div>
               <div
                 className="sticky z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2"
@@ -1816,12 +1847,12 @@ function MarkdownTextDocumentRuntimeBlock({
               />
 
               <div
-                className={cn('space-y-2', isIosPhone ? 'px-5 py-5' : 'px-8 py-7', clickToEditActive && 'cursor-text')}
-                onClick={handleViewClickToEdit}
-                onTouchStart={handleViewTouchStart}
-                onTouchMove={handleViewTouchMove}
-                onTouchEnd={clearTouchEditTimer}
-                onTouchCancel={clearTouchEditTimer}
+                className={cn('space-y-2', isIosPhone ? 'px-5 py-5' : 'px-8 py-7')}
+                onPointerDown={handleViewPointerDown}
+                onPointerMove={handleViewPointerMove}
+                onPointerUp={clearLongPressTimer}
+                onPointerCancel={clearLongPressTimer}
+                onPointerLeave={clearLongPressTimer}
               >
                 {pendingFullRender && (
                   <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
