@@ -168,8 +168,15 @@ roughly 15–30 minutes and a few GB of disk; after that, each change ships in ~
 that in plain words.
 
 Then, fully agent-driven. The user's ONLY actions are: create the GitHub account, type the short
-code GitHub shows into the browser window, and click "Install" if macOS asks about developer
-tools. Everything else is yours — don't ask the user where to put things.
+code GitHub shows into the browser window, click "Install" if macOS asks about developer tools,
+and — possibly once, during the first build — approve a macOS window that mentions "codesign"
+or a key. Everything else is yours — don't ask the user where to put things.
+
+Pre-explain that codesign window BEFORE the first build, in these terms (never say "signing
+key", "certificate", or "keychain" unprompted): *"Your Mac may show a window asking for your
+password and mentioning 'codesign'. That's your Mac double-checking that the app may use its
+own ID — which was just created on your computer, for this app only. Type your Mac password and
+click 'Always Allow'. It doesn't give access to anything else, and it won't ask again."*
 
 **Step 0 — toolchain bootstrap (check each; install only what's missing):**
 

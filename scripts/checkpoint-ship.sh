@@ -90,8 +90,8 @@ if [ -z "$SIGN_ID" ]; then
     SIGN_ID="$LOCAL_CERT"
   elif ensure_local_cert; then
     SIGN_ID="$LOCAL_CERT"
-    say "generated self-signed cert '$LOCAL_CERT' (10y) — first codesign may pop a Keychain dialog: click 'Always Allow'"
-    say "note: if the previous build used a different identity, saved secure credentials reset once (safeStorage is signature-bound)"
+    say "created this app's personal ID ('$LOCAL_CERT') — macOS uses it to recognize the app across rebuilds, so securely saved passwords keep working"
+    say "note: passwords the app had saved securely will need re-entering once (the app's ID just changed)"
   elif security find-identity -p codesigning -v 2>/dev/null | grep -q "Apple Development"; then
     SIGN_ID="$(security find-identity -p codesigning -v | grep "Apple Development" | head -1 | sed 's/.*"\(.*\)"/\1/')"
   else
@@ -174,7 +174,7 @@ printf '%s %s\n' "$HEAD_SHA" "$STAMP" > "$APP_SRC/Contents/Resources/local-build
 
 say "signing"
 if [ "$SIGN_ID" = "$LOCAL_CERT" ]; then
-  say "(if your Mac asks about the signing key, click 'Always Allow' — it's this app's own local key, created on this machine)"
+  say "(if your Mac shows a window mentioning 'codesign' or a key: it is double-checking that the app may use its own ID, which was created on this computer a moment ago. Type your Mac login password and click 'Always Allow'. Nothing else on your computer is being accessed.)"
 fi
 codesign --deep --force --sign "$SIGN_ID" "$APP_SRC" >>"$LOG" 2>&1 || fail "codesign failed"
 
