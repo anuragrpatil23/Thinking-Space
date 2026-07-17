@@ -54,6 +54,7 @@ import {
   SelectValue,
 } from '@/components/lego_blocks/units/ui/select'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
+import { createMarkdownInlineImageExtensionBlock } from '@/components/lego_blocks/units/markdownInlineImageExtensionBlock'
 import {
   deriveWikilinkLabelBlock,
   type WikilinkSuggestionBlock,
@@ -1048,6 +1049,12 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         },
       }),
       keymap.of([]),
+      // Live-preview phase 1: image embeds render inline; cursor on the line
+      // reveals the raw syntax. Reads the note path via ref so the extension
+      // survives path changes without a rebuild.
+      createMarkdownInlineImageExtensionBlock({
+        getCurrentPath: () => currentPathRef.current ?? null,
+      }),
     ]
     return nextExtensions
   }, [compactMobile, inlineDiffDecorations, inlineDiffRender, placeholder])
