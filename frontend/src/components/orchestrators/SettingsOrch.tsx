@@ -1126,6 +1126,42 @@ export default function SettingsOrch({
                   aria-label="Live preview while editing"
                 />
               </label>
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+                <div className="space-y-0.5">
+                  <div className="text-sm text-foreground">Document font</div>
+                  <div className="text-xs text-muted-foreground">
+                    Applies to reading and editing alike — Mono recreates the typewriter feel.
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={markdownEditorSettings.documentFontFamily}
+                    onChange={(event) => updateMarkdownEditorSettings({
+                      ...markdownEditorSettings,
+                      documentFontFamily: event.target.value as MarkdownEditorSettingsBlock['documentFontFamily'],
+                    })}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
+                    aria-label="Document font family"
+                  >
+                    <option value="sans">Sans</option>
+                    <option value="serif">Serif</option>
+                    <option value="mono">Mono</option>
+                  </select>
+                  <input
+                    type="number"
+                    min={12}
+                    max={24}
+                    value={markdownEditorSettings.documentFontSizePx}
+                    onChange={(event) => updateMarkdownEditorSettings({
+                      ...markdownEditorSettings,
+                      documentFontSizePx: Number(event.target.value),
+                    })}
+                    className="h-8 w-16 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
+                    aria-label="Document font size in pixels"
+                  />
+                  <span className="text-xs text-muted-foreground">px</span>
+                </div>
+              </div>
             </div>
             <div className="space-y-2 border-t border-border/50 pt-4">
               <h3 className="text-sm font-medium text-foreground">Home dashboard</h3>

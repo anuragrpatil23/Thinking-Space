@@ -57,7 +57,8 @@ import { createMarkdownInlineImageExtensionBlock } from '@/components/lego_block
 import { createMarkdownSyntaxHidingExtensionBlock } from '@/components/lego_blocks/units/markdownSyntaxHidingExtensionBlock'
 import { createMarkdownTaskCheckboxExtensionBlock } from '@/components/lego_blocks/units/markdownTaskCheckboxExtensionBlock'
 import { resolveEditorLanguageBlock } from '@/components/lego_blocks/units/editorLanguageBlock'
-import { readMarkdownEditorSettingsBlock } from '@/services/lego_blocks/integrations/markdownEditorSettingsBlock'
+import { findEditorLinkAtColumnBlock } from '@/components/lego_blocks/units/markdownEditorLinkClickBlock'
+import { DOCUMENT_FONT_STACKS_BLOCK, readMarkdownEditorSettingsBlock } from '@/services/lego_blocks/integrations/markdownEditorSettingsBlock'
 import {
   deriveWikilinkLabelBlock,
   type WikilinkSuggestionBlock,
@@ -85,6 +86,10 @@ interface MarkdownRichEditorBlockProps {
   /** Rendered-text snippets around a view-mode click; used to place the caret
    *  at the clicked spot when the editor mounts (best-effort text search). */
   initialCursorHint?: { before: string; after: string } | null
+  /** ⌘/Ctrl-click on a link in the editor: wikilinks/relative paths resolve
+   *  through this; external URLs open in the default browser. Shift adds
+   *  open-in-new-tab. */
+  onOpenWikilink?: (target: string, openInNewTab: boolean) => void
   /** When false, hide formatting toolbar controls entirely (useful for non-markdown text editing). Default: true. */
   enableFormattingToolbar?: boolean
   /** Enables built-in AI assist controls in the editor toolbar and panel. Default: true. */
@@ -470,6 +475,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   compactMobile = false,
   toolbarAlwaysVisible = false,
   initialCursorHint = null,
+  onOpenWikilink,
   enableFormattingToolbar = true,
   enableAiAssist = true,
   aiPanelOpen: controlledAiPanelOpen,
@@ -509,6 +515,8 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   const proseEditing = editorLanguage.kind === 'markdown'
     && readMarkdownEditorSettingsBlock().livePreviewSyntaxHiding
   const handleImagePasteRef = useRef<((file: File, view: EditorView) => Promise<void>) | null>(null)
+  const onOpenWikilinkRef = useRef(onOpenWikilink)
+  useEffect(() => { onOpenWikilinkRef.current = onOpenWikilink }, [onOpenWikilink])
   handleImagePasteRef.current = async (file: File, view: EditorView) => {
     const path = currentPathRef.current
     if (!path) return
@@ -871,9 +879,9 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         overflowX: 'hidden',
         backgroundColor: 'transparent',
         fontFamily: proseEditing
-          ? 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+          ? DOCUMENT_FONT_STACKS_BLOCK[readMarkdownEditorSettingsBlock().documentFontFamily]
           : 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        ...(proseEditing ? { fontSize: '1rem' } : {}),
+        ...(proseEditing ? { fontSize: `${readMarkdownEditorSettingsBlock().documentFontSizePx}px` } : {}),
         lineHeight: proseEditing ? '1.75' : '1.6',
       },
       '.cm-line': {
@@ -1053,6 +1061,25 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         setWikilinkPickerOpen(true)
       }),
       EditorView.domEventHandlers({
+        mousedown(event, view) {
+          // ⌘/Ctrl-click follows links (view-mode parity); plain click keeps
+          // placing the cursor. Claiming the event also suppresses CM's
+          // add-multicursor default for that click.
+          if (!(event.metaKey || event.ctrlKey)) return false
+          const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
+          if (pos == null) return false
+          const line = view.state.doc.lineAt(pos)
+          const hit = findEditorLinkAtColumnBlock(line.text, pos - line.from)
+          if (!hit) return false
+          event.preventDefault()
+          if (hit.kind === 'external') {
+            if (window.electronAPI?.openExternal) void window.electronAPI.openExternal(hit.target)
+            else window.open(hit.target, '_blank', 'noopener')
+          } else {
+            onOpenWikilinkRef.current?.(hit.target, event.shiftKey)
+          }
+          return true
+        },
         paste(event, view) {
           const items = event.clipboardData?.items
           if (!items) return false
