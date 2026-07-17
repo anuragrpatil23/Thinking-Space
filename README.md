@@ -31,15 +31,16 @@ The trick is boring on purpose: plain files in a folder — Markdown at the core
 
 So what's inside is the toolset for that loop — see what got built, keep it, pick it back up — plus a way to add any tool that turns out to be missing:
 
-- An **AI Activity** dashboard that shows what you actually worked on with Claude, Codex, ChatGPT, Grok — down to which vault notes each session touched
-- A **vault graph** that maps your notes and lights up where your AI has been working
-- A chill markdown viewer — point it at a folder and read your notes
-- A freeform **home canvas** — post-its, live vault notes, and web widgets on an infinite board
-- Agents log their tasks, plans, and handoffs as plain notes in your vault, so their work sits right next to your own thinking
-- And when a tool you need doesn't exist yet, your agent can **modify and rebuild the app itself** — point it at your own fork of the source, and it goes from commit to running the new build in under 30 seconds
-- Works alongside Obsidian — no conflicts; your folder structure stays yours
-- Local-first, plain Markdown + YAML, no lock-in to one AI provider
-- iOS app that actually opens big vaults. Obsidian on my iPhone usually just spins forever — this one doesn't.
+- **AI Activity** — what you actually worked on with Claude, Codex, ChatGPT, and Grok, read straight from the transcripts already on your machine, down to which vault notes each session touched
+- **Vault graph** — a live map of your notes and the links between them, with a lens that lights up where your AI has been working
+- **Document workspace** — tabbed reading and editing for whatever lands in the folder: Markdown with `[[wikilinks]]` and LaTeX, but also the HTML reports, PDFs, images, CSVs, and Excalidraw drawings your AI produces. Conflict-safe saves mean you and an agent can edit the same vault without stomping each other, and highlighting any text gets you AI writing actions with a diff preview. And it's properly multi-window: every new window is a full workspace, not a pop-out — spread the vault across as many screens as you have
+- **Thinking Organizer** — a Programs → Epics → Ideas → Thoughts tree driven by YAML metadata, so your folder structure stays whatever you want it to be
+- **Home canvas** — an infinite board of post-its, live vault notes, and web widgets; the at-a-glance start of the day
+- **Agent trail** — agents log their tasks, plans, and handoffs as plain notes in your vault (via a one-command CLI), so their work sits right next to your own thinking
+- **Schedules** — recurring agent runs that fire whether the app is open or not, with live logs and an optional Telegram loop so a scheduled agent can reach you on your phone
+- **Fork + rebuild** — when a tool you need doesn't exist yet, your agent changes the app's own source and the new build is installed and running in under 30 seconds, previous build kept as a backup
+
+And the foundation under all of it: local-first, plain Markdown + YAML, no lock-in to any AI provider. Works alongside Obsidian without conflicts. There's an iOS app, and it actually opens big vaults — Obsidian on my iPhone usually just spins forever; this one doesn't.
 
 Use an existing notes folder or start a new one (a cloud-synced folder keeps it on all your devices). The code is source-available — read it, change it, have your AI change it for you ([LICENSE](LICENSE)).
 
@@ -82,9 +83,9 @@ This is the view I open every morning. Sessions, messages, and projects over tim
 
 A force-directed map of your whole vault: notes, links between them, and an AI-activity lens that lights up the notes your AI has been working in. Pick a day and watch that day's touched notes glow; click a session and the graph zooms to what it changed. This is the "what has my AI been doing in here?" view.
 
-### 4. Read and write — the Markdown workspace
+### 4. Read and write — the document workspace
 
-Tabbed, multi-document reading and editing: file explorer, Obsidian-style `[[wikilinks]]`, LaTeX and TikZ rendering, a ruled notebook view, conflict-safe saves (mtime/hash — an agent and you editing the same vault won't stomp each other). Highlight any text for AI writing actions — grammar, clarity, structure, tone — with a diff preview before anything changes.
+Tabbed, multi-document reading and editing for whatever your AI leaves in the folder — Markdown, HTML reports, PDFs, images, CSVs, Excalidraw drawings. For Markdown: Obsidian-style `[[wikilinks]]`, LaTeX and TikZ rendering, a ruled notebook view, and conflict-safe saves (mtime/hash — an agent and you editing the same vault won't stomp each other). Highlight any text for AI writing actions — grammar, clarity, structure, tone — with a diff preview before anything changes. It's also properly multi-window: every new window is a complete workspace onto the same vault, so reference material can live on one screen while you write on another.
 
 ### 5. Organize the thinking — Thinking Organizer
 
