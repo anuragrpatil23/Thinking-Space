@@ -1109,6 +1109,23 @@ export default function SettingsOrch({
                   aria-label="Preserve new lines in view mode"
                 />
               </label>
+              <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+                <div className="space-y-0.5">
+                  <div className="text-sm text-foreground">Live preview while editing</div>
+                  <div className="text-xs text-muted-foreground">
+                    Headings, bold, and links render as a document; the line under your cursor shows its raw
+                    markdown. Turn off for the plain typewriter feel — the file on disk is identical either way.
+                  </div>
+                </div>
+                <Switch
+                  checked={markdownEditorSettings.livePreviewSyntaxHiding}
+                  onCheckedChange={(checked) => updateMarkdownEditorSettings({
+                    ...markdownEditorSettings,
+                    livePreviewSyntaxHiding: checked,
+                  })}
+                  aria-label="Live preview while editing"
+                />
+              </label>
             </div>
             <div className="space-y-2 border-t border-border/50 pt-4">
               <h3 className="text-sm font-medium text-foreground">Home dashboard</h3>

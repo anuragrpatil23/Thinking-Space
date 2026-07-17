@@ -3,11 +3,15 @@ import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services
 export interface MarkdownEditorSettingsBlock {
   preserveSpacesInViewMode: boolean
   preserveNewlinesInViewMode: boolean
+  /** Live preview: hide markdown syntax markers on non-cursor lines and style
+   *  headings/emphasis/links in the editor. Off = the raw IA-writer feel. */
+  livePreviewSyntaxHiding: boolean
 }
 
 const DEFAULT_MARKDOWN_EDITOR_SETTINGS_BLOCK: MarkdownEditorSettingsBlock = {
   preserveSpacesInViewMode: true,
   preserveNewlinesInViewMode: true,
+  livePreviewSyntaxHiding: true,
 }
 
 function sanitizeMarkdownEditorSettingsBlock(
@@ -16,6 +20,7 @@ function sanitizeMarkdownEditorSettingsBlock(
   return {
     preserveSpacesInViewMode: value?.preserveSpacesInViewMode ?? true,
     preserveNewlinesInViewMode: value?.preserveNewlinesInViewMode ?? true,
+    livePreviewSyntaxHiding: value?.livePreviewSyntaxHiding ?? true,
   }
 }
 

@@ -55,6 +55,8 @@ import {
 } from '@/components/lego_blocks/units/ui/select'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import { createMarkdownInlineImageExtensionBlock } from '@/components/lego_blocks/units/markdownInlineImageExtensionBlock'
+import { createMarkdownSyntaxHidingExtensionBlock } from '@/components/lego_blocks/units/markdownSyntaxHidingExtensionBlock'
+import { readMarkdownEditorSettingsBlock } from '@/services/lego_blocks/integrations/markdownEditorSettingsBlock'
 import {
   deriveWikilinkLabelBlock,
   type WikilinkSuggestionBlock,
@@ -1054,6 +1056,12 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
       // survives path changes without a rebuild.
       createMarkdownInlineImageExtensionBlock({
         getCurrentPath: () => currentPathRef.current ?? null,
+      }),
+      // Live-preview phase 2: document-like styling + per-line syntax reveal.
+      // The flag is read per decoration pass, so the Settings toggle applies
+      // to open editors on their next interaction without a remount.
+      createMarkdownSyntaxHidingExtensionBlock({
+        isEnabled: () => readMarkdownEditorSettingsBlock().livePreviewSyntaxHiding,
       }),
     ]
     return nextExtensions
