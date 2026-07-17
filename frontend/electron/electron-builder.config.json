@@ -30,33 +30,6 @@
       "from": "resources/cli",
       "to": "cli",
       "filter": ["**/*"]
-    },
-    {
-      "from": "../",
-      "to": "source",
-      "filter": [
-        "package.json",
-        "package-lock.json",
-        "vite.config.ts",
-        "tsconfig.json",
-        "tsconfig.node.json",
-        "index.html",
-        "src/**",
-        "public/**",
-        "scripts/**",
-        "electron/package.json",
-        "electron/package-lock.json",
-        "electron/tsconfig.json",
-        "electron/capacitor.config.ts",
-        "electron/src/**",
-        "electron/assets/**",
-        "electron/resources/**",
-        "electron/electron-builder.config.json",
-        "!**/node_modules/**",
-        "!electron/dist/**",
-        "!electron/build/**",
-        "!electron/app/**"
-      ]
     }
   ],
   "publish": {

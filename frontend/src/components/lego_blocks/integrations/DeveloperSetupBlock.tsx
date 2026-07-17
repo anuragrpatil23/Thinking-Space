@@ -251,8 +251,8 @@ export default function DeveloperSetupBlock() {
         </summary>
         <div className="border-t border-border/50 px-3 py-3 space-y-2">
           <p className="text-xs text-muted-foreground">
-            By default the app uses the copy bundled inside it. You can point it at your own git
-            repo instead — useful if you want version control over your changes.
+            Point this at your own copy of the Thinking Space code (a GitHub fork you or your AI
+            assistant cloned). Your changes stay version-controlled and survive app updates.
           </p>
           <p className="text-xs text-muted-foreground">
             Claude must edit this exact folder for live changes to appear.

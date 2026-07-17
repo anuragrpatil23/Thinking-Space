@@ -123,6 +123,7 @@ import {
 } from './lego_blocks/goodnotesReadingBlock';
 import { harvestAppleScreenTimeBlock } from './lego_blocks/appleScreenTimeDumperBlock';
 import { startHeartbeatBlock, stopHeartbeatBlock } from './lego_blocks/heartbeatBlock';
+import { notifyIfOfficialReleaseAheadBlock } from './lego_blocks/localBuildUpdateNoticeBlock';
 import {
   notifyNtfyBlock,
   readNotificationsConfigBlock,
@@ -398,9 +399,6 @@ if (hasSingleInstanceLock) {
         readPersistedOpensourceAiBaseUrlBlock(),
       );
       setupWebviewSessionPermissions();
-      // Phase 5: If no source path is configured yet and bundled source exists,
-      // extract it to a writable userData location for regular users.
-      await ensureDefaultSourcePathBlock();
       if (!electronIsDev) {
         const cliInstallResult = await ensureCliToolInstalledBlock();
         if (cliInstallResult.status === 'failed') {
@@ -480,10 +478,18 @@ if (hasSingleInstanceLock) {
       await myCapacitorApp.init();
       configureAppIconMenu();
       // Check for updates if we are in a packaged app (skip in dev or if no valid publish config).
-      if (!electronIsDev) {
+      // Local/self-built apps (checkpoint-ship.sh, fork builds) carry a `local-build` marker in
+      // Resources — never auto-update those, or the official release would silently overwrite
+      // the user's custom build.
+      const isLocalBuild = fs.existsSync(path.join(process.resourcesPath, 'local-build'));
+      if (!electronIsDev && !isLocalBuild) {
         autoUpdater.checkForUpdatesAndNotify().catch(() => {
           // Silently ignore update check failures (e.g. no releases published yet)
         });
+      } else if (isLocalBuild) {
+        // Custom builds still deserve to KNOW a new official release exists —
+        // their upgrade path is fork-merge + rebuild, not the DMG.
+        void notifyIfOfficialReleaseAheadBlock().catch(() => undefined);
       }
     } catch (error) {
       console.error('[electron] Failed to start Thinking Space:', error);
@@ -859,28 +865,6 @@ ipcMain.handle('source:install:deps', async (event) => {
     return { ok: false, error: message };
   }
 });
-
-// =====================================================================
-// Phase 5: Bundled Source Extraction
-// =====================================================================
-
-async function ensureDefaultSourcePathBlock(): Promise<void> {
-  const config = readSourceConfigBlock();
-  if (config.sourcePath) return; // already configured — power user or previously set
-
-  // Check if bundled source was included in the app package
-  const bundledSource = path.join(process.resourcesPath, 'source');
-  if (!fs.existsSync(path.join(bundledSource, 'package.json'))) return;
-
-  // Copy to a writable userData location so the user can npm install and modify
-  const userDataSource = path.join(app.getPath('userData'), 'source');
-  if (!fs.existsSync(path.join(userDataSource, 'package.json'))) {
-    await fsPromises.cp(bundledSource, userDataSource, { recursive: true });
-  }
-
-  // Record the path (mode stays 'locked' — user opts in by enabling live-source)
-  writeSourceConfigBlock({ sourcePath: userDataSource });
-}
 
 // -- CLI install IPC --
 ipcMain.handle('cli:install', async () => {

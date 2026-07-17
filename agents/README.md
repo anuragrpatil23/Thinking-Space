@@ -5,6 +5,9 @@ Purpose: enable parallel agents to execute without repeatedly re-reading the who
 ## Files to Use
 - `AGENTS.md`: non-negotiable product/architecture contract for all implementation work
 - `CLAUDE.md`: Claude-native project file (must stay consistent with `AGENTS.md`)
+- `docs/ARCHITECTURE.md`: system map — processes, trust boundaries, data flow, subsystems
+- `docs/CODEBASE-GUIDE.md`: repo layout, lego-block/orchestrator conventions, how to find code
+- `docs/PLAYBOOKS.md`: recipes for common changes + verify/ship checklist
 - `README.md`: roadmap and epic order source of truth
 - `docs/ADR-005-Agent-Capabilities.md`: capability contract and operational controls
 - `docs/ADR-006-Agent-Workspace-Schema.md`: organizer workspace schema + operation fields
@@ -17,9 +20,10 @@ Active operations source of truth:
 
 ## Startup Sequence (Every New Agent)
 1. Read `AGENTS.md` (or `CLAUDE.md` for Claude — it's auto-loaded and covers the same ground)
-2. Check active tasks: `./ltm organizer.nodes.search --query "status active" --limit 10`
-3. Claim a task and start working
-4. Read additional docs only when the task requires it (see "Files to Use" above)
+2. New to the codebase? Read `docs/ARCHITECTURE.md` → `docs/CODEBASE-GUIDE.md`; open `docs/PLAYBOOKS.md` for the kind of change you're making
+3. Check active tasks: `./thinkspc organizer.nodes.search --query "status active" --limit 10`
+4. Claim a task and start working
+5. Read additional docs only when the task requires it (see "Files to Use" above)
 
 ## Mandatory Tool Pattern
 1. Run active task lifecycle only in organizer workspace.

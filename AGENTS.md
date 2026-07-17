@@ -65,10 +65,11 @@ If sequence changes, update `DEVELOPMENT.md` first, then align active organizer 
 10. Extension platform rollout is feature-flagged (`extension_host_enabled`, `extension_builder_enabled`) and defaults to disabled until explicitly enabled.
 11. **Embedded Terminal**: xterm.js + node-pty (same stack as VS Code). `TerminalPage.tsx` mounts all tabs simultaneously (`visibility:hidden`) so shells survive tab switches. PTY routing uses `webContentsId` stored in `ptyManagerBlock.ts`.
 12. **Vault-scoped file access (macOS TCC contract)**: Electron main never trusts a renderer-supplied path. All vault/hierarchy/harvest IPC handlers validate `vaultRoot` through `frontend/electron/src/lego_blocks/vaultPathGuardBlock.ts` (authorized roots = persisted root, native folder-dialog pick, `vault:root:setPersisted`); relative paths are contained via `path.relative`. Terminal PTYs default to the vault root, not `$HOME`. Goal: the app only ever asks macOS for access to the user's vault folder.
-13. **Live Source Mode**: source code ships inside the DMG (`Resources/source/`), extracted to `userData/source/` on first launch. Power users can point at their own git repo. Vite dev server is spawned from `viteServerBlock.ts`; renderer switches to `http://127.0.0.1:{port}` without restart. Rebuild via `viteRebuildBlock.ts` → detached swap script replaces the running `.app` and relaunches.
+13. **Live Source Mode (fork-based)**: user modifications live in the user's own GitHub fork, cloned locally and set as `sourcePath` (Settings → Developer). The app does NOT ship or extract its own source — the shipped-source-editing model was removed 2026-07 (changes were untracked, unbacked-up, and clobbered by updates). Vite dev server is spawned from `viteServerBlock.ts`; renderer switches to `http://127.0.0.1:{port}` without restart. Rebuild via `viteRebuildBlock.ts` → detached swap script replaces the running `.app` and relaunches. Fork onboarding script (plain-language, zero-jargon): `docs/PLAYBOOKS.md` §12.
 
 ## Architecture Reference
-Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
+- Onboarding docs (read when new to an area): `docs/ARCHITECTURE.md` (system map) → `docs/CODEBASE-GUIDE.md` (where code lives) → `docs/PLAYBOOKS.md` (change recipes + verify/ship checklist). Index: `docs/README.md`.
+- Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 
 ## Security Contract (Enforced)
 Electron hardening that must not regress (the renderer runs user markdown + arbitrary webviews; the main process is the trust boundary):
@@ -83,6 +84,9 @@ Electron hardening that must not regress (the renderer runs user markdown + arbi
 - Heavy vendors (Excalidraw, pdfjs/react-pdf, CodeMirror, recharts) must never be statically reachable from the app entry; they load through code-split boundaries (`MarkdownDocumentLazyBlock`, `MarkdownRichEditorLazyBlock`, per-consumer `lazy()` chart imports).
 - Do NOT add lazy-only vendors to `vite.config.ts` `manualChunks` — object-form manualChunks pulls those chunks back into the entry's static import graph.
 - After changing imports, verify `dist/index.html` modulepreloads only `vendor-react` + `vendor-dexie`. Startup JS budget: ≤ 2.4 MB.
+
+## Major Checkpoint Ritual (Ship It)
+A "major checkpoint" = a user-visible feature or fix is complete and verified, not every commit. Ritual: commit (template) → push → `./scripts/checkpoint-ship.sh` in the background (~2–3 min; builds unpacked .app, checks the startup-perf contract, signs, detached-swaps `/Applications/Thinking Space.app`). Read its ~4-line stdout summary; full log lands in `~/.thinking-space/logs/`. The script refuses dirty/unpushed trees — commit first, never bypass. DMGs remain a separate deliberate release step.
 
 ## Architecture Guardrails
 - Keep markdown files with YAML frontmatter as portable source-of-truth content.

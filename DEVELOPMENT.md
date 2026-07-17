@@ -2,6 +2,16 @@
 
 Internal development documentation for Thinking Space. For an overview of the project, see [README.md](README.md).
 
+## Documentation Map (start here)
+
+New to the codebase? Read in this order:
+
+1. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system map: processes, trust boundaries, data flow, subsystems.
+2. [docs/CODEBASE-GUIDE.md](docs/CODEBASE-GUIDE.md) — repo layout, lego-block/orchestrator conventions, how to find things.
+3. [docs/PLAYBOOKS.md](docs/PLAYBOOKS.md) — step-by-step recipes for common changes + the verify/ship checklist.
+
+`CLAUDE.md` / `AGENTS.md` remain the enforced contracts; this file owns phases/milestones and the agent operations pattern. Full docs index: [docs/README.md](docs/README.md).
+
 ## Table of Contents
 
 - [Runtime Architecture](#runtime-architecture)
@@ -211,7 +221,7 @@ Completed: extension manifest parser/validator + compatibility contract, extensi
 Completed: `ptyManagerBlock.ts` (node-pty PTY lifecycle, per-window cleanup), `TerminalBlock.tsx` (xterm.js renderer with VS Code dark theme, FitAddon, WebLinksAddon, ResizeObserver auto-fit), `TerminalPage.tsx` (multi-tab terminal — all tabs stay mounted with `visibility:hidden` so shells keep running), Terminal nav item in `App.tsx`. Electron IPC channels: `terminal:create`, `terminal:input`, `terminal:resize`, `terminal:kill`, `terminal:data`, `terminal:exit`. Defaults working directory to configured source path.
 
 ### Live Source Mode — Done
-Completed: `sourceConfigBlock.ts` (reads/writes `userData/state/source-config.json`; mode: `live-source` | `locked`, sourcePath, vitePort), `viteServerBlock.ts` (spawns Vite dev server from source path, polls readiness with 45s timeout), `viteRebuildBlock.ts` (5-step pipeline: npm install → Vite build → cap sync → electron npm install+build → electron-builder `--dir`; `applyRebuildBlock()` writes detached bash swap script that sleeps 3s, moves new `.app` into place, relaunches). Settings → Developer tab (`LiveSourceSettingsBlock.tsx`, `AppRebuildBlock.tsx`). Source code bundled in DMG `Resources/source/` and extracted to writable `userData/source/` on first launch.
+Completed: `sourceConfigBlock.ts` (reads/writes `userData/state/source-config.json`; mode: `live-source` | `locked`, sourcePath, vitePort), `viteServerBlock.ts` (spawns Vite dev server from source path, polls readiness with 45s timeout), `viteRebuildBlock.ts` (5-step pipeline: npm install → Vite build → cap sync → electron npm install+build → electron-builder `--dir`; `applyRebuildBlock()` writes detached bash swap script that sleeps 3s, moves new `.app` into place, relaunches). Settings → Developer tab (`LiveSourceSettingsBlock.tsx`, `AppRebuildBlock.tsx`). Note (2026-07): the original ship-source-in-DMG + extract-to-`userData/source/` model was removed — user modifications now live in the user's own GitHub fork, cloned locally and set as `sourcePath` (see `docs/PLAYBOOKS.md` §12).
 
 ### Future Work
 - **EPIC-5: AI Actions Everywhere** — Shared text action component for all text surfaces, Summarize/Cleanup/Related actions with preview-before-apply

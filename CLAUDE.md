@@ -110,7 +110,8 @@ Electron hardening that must not regress (renderer runs user markdown + arbitrar
 - Verify after touching imports: `BUILD_TARGET=electron npx vite build`, then check `dist/index.html` modulepreload list — it must contain only `vendor-react` and `vendor-dexie`. Startup JS payload budget: ≤ 2.4 MB (was 5.24 MB before 2026-07 startup-perf pass, −56%).
 
 ## Architecture Reference
-Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
+- Onboarding docs (read when new to an area): `docs/ARCHITECTURE.md` (system map) → `docs/CODEBASE-GUIDE.md` (where code lives) → `docs/PLAYBOOKS.md` (change recipes + verify/ship checklist). Index: `docs/README.md`.
+- Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
 
 ## Frontend Architecture Contract (Enforced)
 - Small reusable UI primitives must live in `frontend/src/components/lego_blocks/units/*`.
@@ -175,16 +176,25 @@ Model-agnostic layer for internal AI tasks (session titles, structured extracts,
 - `frontend/electron/src/lego_blocks/viteRebuildBlock.ts` — 5-step rebuild pipeline + detached swap script (`applyRebuildBlock`)
 - `frontend/electron/src/lego_blocks/ptyManagerBlock.ts` — node-pty PTY lifecycle, IPC routing by `webContentsId`, per-window cleanup
 - `frontend/electron/src/lego_blocks/intelligenceCacheStoreBlock.ts` — sidecar JSON cache for intelligence outputs; also cleans up the legacy `session-titles/` dir on startup.
+- `frontend/electron/src/lego_blocks/localBuildUpdateNoticeBlock.ts` — update story for custom builds: apps with the `local-build` marker (written by `scripts/checkpoint-ship.sh`) skip electron-updater (official DMG would erase user modifications) and instead get a native notification when a newer official release exists; their upgrade path is fork-merge + rebuild (PLAYBOOKS §12 Step 5).
 
 ## Startup Sequence (Claude Sessions)
 1. `CLAUDE.md` is auto-loaded — contains architecture, contracts, and locked decisions.
 2. Check active tasks: `./thinkspc organizer.nodes.search --query "status active" --limit 10`
 3. Read additional docs only when the task requires it:
+   - `docs/ARCHITECTURE.md` / `docs/CODEBASE-GUIDE.md` / `docs/PLAYBOOKS.md` — when new to an area: system map, code layout, change recipes
    - `README.md` — for product overview and quick start
    - `DEVELOPMENT.md` — for architecture contracts, phases, and internal dev docs
    - `docs/ADR-005-Agent-Capabilities.md` — when modifying the capability system
    - `docs/ADR-006-Agent-Workspace-Schema.md` — when modifying workspace schema fields
    - `agents/README.md` — for multi-agent handoff protocol
+
+## Major Checkpoint Ritual (Ship It)
+A "major checkpoint" = a user-visible feature or fix is complete and verified (typecheck/tests pass), not every commit. At a major checkpoint:
+1. Commit (per `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`) and push.
+2. Run `./scripts/checkpoint-ship.sh` (in the background — takes ~2–3 min). It builds the unpacked .app, verifies the startup-perf contract, signs, and swaps `/Applications/Thinking Space.app` in place (detached swap, so it also works from the app's own embedded terminal). Full output goes to `~/.thinking-space/logs/`; stdout is a ~4-line summary — read that, not the log, unless it failed.
+3. The script refuses dirty/unpushed trees by design — don't work around that; commit first.
+DMG creation stays a separate deliberate release step; checkpoints install the app directly.
 
 ## Multi-Agent Discipline
 - Use organizer tool as source of truth for active operations (tasks, plans, handoffs).
