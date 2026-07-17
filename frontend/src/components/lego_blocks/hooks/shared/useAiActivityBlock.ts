@@ -17,6 +17,7 @@ import {
   subscribeAiActivityMappingBlock,
 } from '@/services/lego_blocks/units/aiActivityMappingBlock'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
+import { mergedDurationMsBlock } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { registerProjectColors } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 // Local preset list — the shared DashboardRangePreset is tuned for the file
 // dashboard above and doesn't include the 6m midpoint that's useful for
@@ -54,6 +55,8 @@ export interface ActivityDay {
 export interface ActivityProject {
   name: string
   totalMsgs: number
+  /** Merged active wall-clock time across the range (overlaps collapsed). */
+  totalMs: number
   totalChains: number
   totalSessions: number
   /** Msgs per day across the visible range, in chronological order. */
@@ -515,6 +518,7 @@ export function useAiActivityBlock(
       const next: ActivityProject = {
         name: key,
         totalMsgs: 0,
+        totalMs: 0,
         totalChains: 0,
         totalSessions: 0,
         sparkline: new Array(dayList.length).fill(0),
@@ -531,14 +535,24 @@ export function useAiActivityBlock(
       const p = ensureProject(s.project)
       p.totalSessions += 1
     }
+    const chainsByProject = new Map<string, ActivityChain[]>()
     for (const c of chains) {
       const p = ensureProject(c.project)
       p.totalMsgs += c.msgCount
       p.totalChains += 1
       const idx = dayIndex.get(isoDayLocal(new Date(c.startedIso)))
       if (idx != null) p.sparkline[idx] += c.msgCount
+      const list = chainsByProject.get(c.project)
+      if (list) list.push(c)
+      else chainsByProject.set(c.project, [c])
     }
-    const sorted = [...accum.values()].sort((a, b) => b.totalMsgs - a.totalMsgs)
+    // Merged active time per project (overlaps collapsed) — the same semantics
+    // the drill totals use, so the chip time and the drill totals agree.
+    for (const [project, projectChains] of chainsByProject) {
+      ensureProject(project).totalMs = mergedDurationMsBlock(projectChains)
+    }
+    // Rank by time spent — that's the number the chips now surface.
+    const sorted = [...accum.values()].sort((a, b) => b.totalMs - a.totalMs)
     // Register the visible set (busiest first) so every project gets a distinct
     // color and, on a hash collision, the busier project keeps its preferred
     // color. Done during the hook's render, before children paint, so charts

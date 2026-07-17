@@ -16,7 +16,7 @@ import {
   type ReadingSourceFilter,
 } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import AiActivityHeatmapBlock from '@/components/lego_blocks/units/AiActivityHeatmapBlock'
-import AiActivityRangeSummaryBlock from '@/components/lego_blocks/integrations/AiActivityRangeSummaryBlock'
+import AiActivityDrillProjectTotalsBlock from '@/components/lego_blocks/units/AiActivityDrillProjectTotalsBlock'
 import AiActivityProjectChipsBlock from '@/components/lego_blocks/units/AiActivityProjectChipsBlock'
 // Code-split boundaries: these two pull recharts; keep it out of the startup bundle.
 const AiActivityTrendChartBlock = lazy(() => import('@/components/lego_blocks/units/AiActivityTrendChartBlock'))
@@ -71,22 +71,6 @@ function fmtDateShort(iso: string): string {
 /** Pick the project with the most wall-clock time in the drill so the
  *  range-summary card has a sensible focus when no chip is selected.
  *  Ignores noise buckets ([auto-commit], [telegram], etc). */
-function topProjectByTime(chains: ActivityChain[]): string | null {
-  const totals = new Map<string, number>()
-  for (const c of chains) {
-    if (c.project.startsWith('[') && c.project.endsWith(']')) continue
-    const dur = Date.parse(c.endedIso) - Date.parse(c.startedIso)
-    if (!Number.isFinite(dur)) continue
-    totals.set(c.project, (totals.get(c.project) ?? 0) + dur)
-  }
-  let best: string | null = null
-  let bestMs = -1
-  for (const [proj, ms] of totals) {
-    if (ms > bestMs) { best = proj; bestMs = ms }
-  }
-  return best
-}
-
 /** Optional controller hooks that turn the panel into a driver for another
  *  view (the vault graph). Both are undefined on the home canvas, where the
  *  panel is fully self-contained. */
@@ -330,26 +314,16 @@ export default function AiActivityPanelBlock({
             highlightProject={activeProject}
           />
         )}
-        {/* Range summary appears above the table on every drill (single day or
-            multi-day). Uses the active project chip when the user has one
-            selected; otherwise focuses on the dominant project in the drill by
-            wall-clock time so a summary always renders. */}
-        {drillChains.length > 0 && (() => {
-          const focusProject = activeProject ?? topProjectByTime(drillChains)
-          if (!focusProject) return null
-          const scopedChains = activeProject
-            ? drillChains
-            : drillChains.filter(c => c.project === focusProject)
-          return (
-            <AiActivityRangeSummaryBlock
-              projectId={focusProject}
-              projectLabel={focusProject}
-              rangeStartDate={selectedDate ?? selectedRange?.startIso ?? ''}
-              rangeEndDate={selectedDate ?? selectedRange?.endIso ?? ''}
-              chains={scopedChains}
-            />
-          )
-        })()}
+        {/* Per-project time totals for the drill — the compact, at-a-glance
+            replacement for the AI range summary. The table below is the
+            granular session breakdown; clicking a project filters to it. */}
+        {drillChains.length > 0 && (
+          <AiActivityDrillProjectTotalsBlock
+            chains={drillChains}
+            activeProject={activeProject}
+            onSelectProject={setActiveProject}
+          />
+        )}
         {/* Table is the only scrolling region — keeps the section header/chart
             pinned so context stays visible while you scan a multi-day drill.
             Wheel-capture stops the canvas from panning underneath while the

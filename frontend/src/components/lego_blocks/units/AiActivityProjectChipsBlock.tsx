@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import type { ActivityProject } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
+import { fmtDurationMsBlock } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 
 interface AiActivityProjectChipsBlockProps {
   projects: ActivityProject[]
@@ -48,7 +49,7 @@ export default function AiActivityProjectChipsBlock({
               active && 'border-border/60 bg-card/60',
             )}
             style={{ background: active ? color.chipBg : undefined }}
-            title={`${p.name} · ${p.totalSessions} sessions · ${p.totalChains} chains`}
+            title={`${p.name} · ${fmtDurationMsBlock(p.totalMs)} · ${p.totalSessions} sessions · ${p.totalMsgs.toLocaleString()} msgs`}
           >
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full"
@@ -62,7 +63,7 @@ export default function AiActivityProjectChipsBlock({
               {p.name}
             </span>
             <span className="shrink-0 tabular-nums text-foreground/60">
-              {p.totalMsgs.toLocaleString()}
+              {fmtDurationMsBlock(p.totalMs)}
             </span>
           </button>
         )
