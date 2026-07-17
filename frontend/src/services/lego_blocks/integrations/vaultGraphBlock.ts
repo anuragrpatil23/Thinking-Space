@@ -7,6 +7,10 @@ import type { VaultEntry } from '@/services/lego_blocks/integrations/fsBlock'
 import type { LinkRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import type { ActivityChain, ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
 
+/** The subset of the Dexie link record the graph needs — code-import edges
+ *  supply the same shape without touching Dexie. */
+export type GraphLinkInput = Pick<LinkRecord, 'sourceFilePath' | 'targetFilePath'>
+
 export interface VaultGraphNode {
   /** Vault-relative file path — stable node identity. */
   id: string
@@ -77,6 +81,8 @@ function rawProjectOf(path: string): string {
 }
 
 function titleOf(path: string): string {
+  // Notes drop the .md; code files keep their extension — `App.tsx` and
+  // `App.css` in the same folder must stay distinguishable.
   const base = path.slice(path.lastIndexOf('/') + 1)
   return base.endsWith('.md') ? base.slice(0, -3) : base
 }
@@ -111,10 +117,10 @@ export function buildVaultSessionWindowsBlock(
 }
 
 /** Strip the vault root off an absolute file-edit path, yielding the vault-
- *  relative `.md` node id — or null when the path is outside the vault or not
- *  a markdown note (code files a session edited in a non-vault repo, etc). */
+ *  relative node id — or null when the path is outside the vault. No extension
+ *  filter: the caller's node-membership check decides what counts, which lets
+ *  the same provenance mapping serve notes and code graphs. */
 function absPathToNodeId(absPath: string, vaultRoot: string): string | null {
-  if (!absPath.endsWith('.md')) return null
   const root = vaultRoot.replace(/\/+$/, '')
   if (root && absPath.startsWith(`${root}/`)) return absPath.slice(root.length + 1)
   return null
@@ -187,23 +193,27 @@ function inAnyWindow(windows: Array<[number, number]>, t: number): boolean {
 
 export function buildVaultGraphBlock(input: {
   entries: VaultEntry[]
-  links: LinkRecord[]
+  links: GraphLinkInput[]
   births: Map<string, number>
   sessions: ParsedSession[]
   vaultFolderName: string
   nowMs: number
+  /** Extensions that become nodes. Defaults to markdown notes; the code graph
+   *  passes CODE_GRAPH_NODE_EXTENSIONS. */
+  nodeExtensions?: string[]
   /** Canonical project mapping (the AI activity card's rules); identity when
    *  absent so the block stays pure and testable. */
   resolveProject?: (rawProject: string, path: string) => string
 }): VaultGraphData {
   const { entries, links, births, sessions, vaultFolderName, nowMs } = input
   const resolveProject = input.resolveProject ?? ((raw: string) => raw)
+  const nodeExtensions = input.nodeExtensions ?? ['.md']
 
   const windows = buildVaultSessionWindowsBlock(sessions, vaultFolderName)
 
   const nodeByPath = new Map<string, VaultGraphNode>()
   for (const entry of entries) {
-    if (!entry.path.endsWith('.md') || isExcluded(entry.path)) continue
+    if (!nodeExtensions.some(ext => entry.path.endsWith(ext)) || isExcluded(entry.path)) continue
     const mtimeMs = entry.mtime * 1000
     const ctimeMs = entry.ctime > 0 ? entry.ctime * 1000 : mtimeMs
     const birthMs = births.get(entry.path) ?? ctimeMs

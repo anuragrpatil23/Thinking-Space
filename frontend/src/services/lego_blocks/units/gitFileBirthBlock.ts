@@ -9,7 +9,11 @@
 // Desktop-only (uses the vault:git IPC). Callers fall back to fs ctime when
 // this returns an empty map.
 
-export async function loadGitFileBirthsBlock(vaultRoot: string): Promise<Map<string, number>> {
+export async function loadGitFileBirthsBlock(
+  vaultRoot: string,
+  /** Git pathspecs to limit the scan; empty array = the whole tree (code graph). */
+  pathspecs: string[] = ['*.md'],
+): Promise<Map<string, number>> {
   const births = new Map<string, number>()
   const git = window.electronAPI?.git
   if (!git) return births
@@ -22,8 +26,7 @@ export async function loadGitFileBirthsBlock(vaultRoot: string): Promise<Map<str
     '--diff-filter=A',
     '--name-only',
     '--format=%x01%ct',
-    '--',
-    '*.md',
+    ...(pathspecs.length > 0 ? ['--', ...pathspecs] : []),
   ])
 
   let currentMs = 0

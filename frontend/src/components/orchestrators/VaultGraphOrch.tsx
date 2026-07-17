@@ -337,7 +337,7 @@ export default function VaultGraphOrch() {
             <span className="font-mono text-xs tabular-nums text-muted-foreground">
               {emphasisCount !== null
                 ? `${emphasisCount.toLocaleString()} lit`
-                : `${bornCount.toLocaleString()} / ${visibleBirths.length.toLocaleString()} notes · ${data.links.length.toLocaleString()} links`}
+                : `${bornCount.toLocaleString()} / ${visibleBirths.length.toLocaleString()} files · ${data.links.length.toLocaleString()} links`}
             </span>
           )}
         </div>
