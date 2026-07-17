@@ -334,7 +334,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
         {/* The AI-Activity panel caps its own drill table internally, so
             the outer card grows only through header+heatmap+timeline — the
             table scrolls in place instead of the whole card scrolling. */}
-        <AiActivityPanelBlock enableGraphPeek />
+        <AiActivityPanelBlock enableGraphPeek enableManualSessions />
       </FloatingPanel>
     </div>
   )

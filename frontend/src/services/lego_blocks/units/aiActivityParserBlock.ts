@@ -15,6 +15,13 @@ export type ActivitySource =
   | 'memorized'
   | 'reading-md'
   | 'reading-draw'
+  /** User-authored time blocks logged by hand ("painting 4h") — not AI, not
+   *  reading. Durable in ai-activity/manual-sessions.jsonl. */
+  | 'manual'
+
+export function isManualSource(source: ActivitySource): boolean {
+  return source === 'manual'
+}
 
 /** Sources that represent reading/memorization rather than AI chat sessions.
  *  These all roll up under the single "Reading" source pill and are filtered
@@ -429,7 +436,7 @@ export function inheritUnknownSessions(sessions: ParsedSession[]): ParsedSession
     // Web-chat (ChatGPT/Grok) and reading/memorization (GoodNotes, memorized,
     // markdown, excalidraw) sessions bucket under their own labels — those must
     // never bleed onto a nearby unknown coding session via temporal inheritance.
-    if (s.source === 'chatgpt' || s.source === 'grok' || isReadingSource(s.source)) continue
+    if (s.source === 'chatgpt' || s.source === 'grok' || isReadingSource(s.source) || isManualSource(s.source)) continue
     if (isInheritable(s.project)) {
       anchors.push({ t: Date.parse(s.startedIso), project: s.project })
     }

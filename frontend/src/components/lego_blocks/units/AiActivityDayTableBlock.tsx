@@ -1,7 +1,10 @@
 import { Fragment, Suspense, lazy, useMemo, useState } from 'react'
-import { Check, Copy, Maximize2, Pencil, RefreshCw, Share2 } from 'lucide-react'
+import { Check, Copy, Maximize2, Pencil, Plus, RefreshCw, Share2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { isReadingSource, type ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { isReadingSource, isManualSource, type ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { getManualSession } from '@/services/lego_blocks/integrations/manualSessionBlock'
+import type { ManualSessionRecord } from '@/services/lego_blocks/units/manualSessionParserBlock'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import {
   estimateCostUsd,
@@ -21,6 +24,9 @@ import { loadVaultGraph } from '@/services/orchestrators/vaultGraphOrch'
 
 const SessionGraphSlideOverBlock = lazy(
   () => import('@/components/lego_blocks/integrations/SessionGraphSlideOverBlock'),
+)
+const ManualSessionEditModalBlock = lazy(
+  () => import('@/components/lego_blocks/integrations/ManualSessionEditModalBlock'),
 )
 
 /** Warm the shared graph snapshot on peek-intent (row hover) so the first open
@@ -54,6 +60,15 @@ interface AiActivityDayTableBlockProps {
    *  right-click → "Show in graph" opens a slideover with the session's files
    *  lit and zoomed. Off by default so the graph page keeps its inline lens. */
   enableGraphPeek?: boolean
+  /** When set, a "+ Log session" button appears in the header and manual rows
+   *  are editable. undefined = feature not wired here; false = wired but the
+   *  writeAiActivity opt-in is off (button disabled with a nudge). */
+  manualSessionsEnabled?: boolean
+  /** Existing project labels for the manual-session combobox (noise excluded). */
+  knownProjects?: string[]
+  /** Called after a manual session is created/edited/deleted so the caller
+   *  refreshes AI activity. */
+  onManualChanged?: () => void
 }
 
 function fmtTime(iso: string): string {
@@ -215,6 +230,9 @@ export default function AiActivityDayTableBlock({
   onSelectChain,
   selectedChainKey = null,
   enableGraphPeek = false,
+  manualSessionsEnabled,
+  knownProjects = [],
+  onManualChanged,
 }: AiActivityDayTableBlockProps) {
   const { hostRef, isDark } = useDarkModeClassBlock()
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
@@ -222,6 +240,18 @@ export default function AiActivityDayTableBlock({
   const [editingChain, setEditingChain] = useState<ActivityChain | null>(null)
   const [peekChain, setPeekChain] = useState<ActivityChain | null>(null)
   const [rowMenu, setRowMenu] = useState<{ chain: ActivityChain; x: number; y: number } | null>(null)
+  const [manualModal, setManualModal] = useState<
+    { mode: 'create' } | { mode: 'edit'; record: ManualSessionRecord } | null
+  >(null)
+
+  // A manual chain carries the record key on its (single) session; the note
+  // isn't on the chain, so load the full record before opening the editor.
+  const openManualEdit = async (chain: ActivityChain) => {
+    const key = chain.sessions[0]?.sessionId
+    if (!key) return
+    const record = await getManualSession(getVaultFS(), key)
+    if (record) setManualModal({ mode: 'edit', record })
+  }
   const [copied, setCopied] = useState(false)
 
   // Sort by start time, oldest first for chronological reading.
@@ -278,22 +308,43 @@ export default function AiActivityDayTableBlock({
             <p className="text-[11px] text-muted-foreground/80">{summary}</p>
           )}
         </div>
-        {sorted.length > 0 && (
-          <button
-            type="button"
-            onClick={handleCopyTable}
-            className={cn(
-              'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors',
-              copied
-                ? 'border-foreground/70 bg-foreground/10 text-foreground'
-                : 'border-border/40 bg-card/40 text-muted-foreground hover:border-border/70 hover:text-foreground',
-            )}
-            title="Copy the whole drill-down table as Markdown (including hidden token/cost detail) so you can hand it to another AI or drop it into a test."
-          >
-            {copied ? <Check className="h-2.5 w-2.5" /> : <Copy className="h-2.5 w-2.5" />}
-            {copied ? 'Copied' : 'Copy table'}
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {manualSessionsEnabled !== undefined && (
+            <button
+              type="button"
+              onClick={() => manualSessionsEnabled && setManualModal({ mode: 'create' })}
+              disabled={!manualSessionsEnabled}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors',
+                manualSessionsEnabled
+                  ? 'border-border/40 bg-card/40 text-muted-foreground hover:border-border/70 hover:text-foreground'
+                  : 'cursor-not-allowed border-border/30 bg-card/20 text-muted-foreground/50',
+              )}
+              title={manualSessionsEnabled
+                ? 'Log a session by hand (e.g. "painting 4h") — it shows on the timeline and totals.'
+                : 'Enable vault-backed AI Activity in Settings → AI to log sessions by hand.'}
+            >
+              <Plus className="h-2.5 w-2.5" />
+              Log session
+            </button>
+          )}
+          {sorted.length > 0 && (
+            <button
+              type="button"
+              onClick={handleCopyTable}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors',
+                copied
+                  ? 'border-foreground/70 bg-foreground/10 text-foreground'
+                  : 'border-border/40 bg-card/40 text-muted-foreground hover:border-border/70 hover:text-foreground',
+              )}
+              title="Copy the whole drill-down table as Markdown (including hidden token/cost detail) so you can hand it to another AI or drop it into a test."
+            >
+              {copied ? <Check className="h-2.5 w-2.5" /> : <Copy className="h-2.5 w-2.5" />}
+              {copied ? 'Copied' : 'Copy table'}
+            </button>
+          )}
+        </div>
       </div>
       {sorted.length === 0 ? (
         <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-4 text-xs text-muted-foreground/70">
@@ -351,6 +402,7 @@ export default function AiActivityDayTableBlock({
                   // excalidraw) have no transcript and no tokens — they're
                   // document/practice sessions, not conversations.
                   const isReading = isReadingSource(c.source)
+                  const isManual = isManualSource(c.source)
                   return (
                     <Fragment key={c.key}>
                       {showDivider && (
@@ -377,7 +429,7 @@ export default function AiActivityDayTableBlock({
                     onClick={(e) => {
                       // Peek mode: ⌘/Ctrl-click opens the graph slideover for
                       // this session instead of expanding the row.
-                      if (enableGraphPeek && (e.metaKey || e.ctrlKey)) {
+                      if (enableGraphPeek && !isManual && (e.metaKey || e.ctrlKey)) {
                         e.preventDefault()
                         setPeekChain(c)
                         return
@@ -385,11 +437,11 @@ export default function AiActivityDayTableBlock({
                       onSelectChain?.(c)
                       setExpandedKey(prev => (prev === c.key ? null : c.key))
                     }}
-                    onContextMenu={enableGraphPeek ? (e) => {
+                    onContextMenu={enableGraphPeek && !isManual ? (e) => {
                       e.preventDefault()
                       setRowMenu({ chain: c, x: e.clientX, y: e.clientY })
                     } : undefined}
-                    onMouseEnter={enableGraphPeek ? warmVaultGraph : undefined}
+                    onMouseEnter={enableGraphPeek && !isManual ? warmVaultGraph : undefined}
                     title={
                       onSelectChain
                         ? 'Zoom the graph to the notes this session touched'
@@ -411,7 +463,7 @@ export default function AiActivityDayTableBlock({
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/80">
-                      {c.msgCount}
+                      {isManual ? <span className="text-muted-foreground/50">—</span> : c.msgCount}
                     </td>
                     <ChainTopicCellBlock chain={c} isReconstructed={isReconstructed} />
                   </tr>
@@ -470,6 +522,10 @@ export default function AiActivityDayTableBlock({
                           <span className="text-muted-foreground/60">
                             Web chat ({c.source}) — providers don't expose token usage in exports.
                           </span>
+                        ) : isManual ? (
+                          <span className="text-muted-foreground/60">
+                            {c.topic && c.topic !== c.project ? `${c.topic} — ` : ''}a session you logged by hand.
+                          </span>
                         ) : isReading ? (
                           <span className="text-muted-foreground/60">
                             {c.source === 'goodnotes'
@@ -487,7 +543,7 @@ export default function AiActivityDayTableBlock({
                         )}
                         {(enableGraphPeek || (!isReconstructed && !isReading)) && (
                         <div className="flex flex-wrap items-center gap-2 pt-1">
-                          {!isReconstructed && !isReading && (
+                          {!isReconstructed && !isReading && !isManual && (
                           <button
                             type="button"
                             onClick={e => {
@@ -500,7 +556,21 @@ export default function AiActivityDayTableBlock({
                             Show entire chain
                           </button>
                           )}
-                          {enableGraphPeek && (
+                          {isManual && manualSessionsEnabled && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation()
+                              void openManualEdit(c)
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-card/60 px-2.5 py-1 text-[11px] text-foreground/80 transition-colors hover:border-border/80 hover:bg-card/80 hover:text-foreground"
+                            title="Edit or delete this logged session"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            Edit session
+                          </button>
+                          )}
+                          {enableGraphPeek && !isManual && (
                           <button
                             type="button"
                             onClick={e => {
@@ -591,6 +661,17 @@ export default function AiActivityDayTableBlock({
       {peekChain && (
         <Suspense fallback={null}>
           <SessionGraphSlideOverBlock chain={peekChain} onClose={() => setPeekChain(null)} />
+        </Suspense>
+      )}
+      {manualModal && (
+        <Suspense fallback={null}>
+          <ManualSessionEditModalBlock
+            record={manualModal.mode === 'edit' ? manualModal.record : null}
+            knownProjects={knownProjects}
+            defaultDateIso={anchorDateIso}
+            onClose={() => setManualModal(null)}
+            onSaved={() => { onManualChanged?.() }}
+          />
         </Suspense>
       )}
       {editingChain && (

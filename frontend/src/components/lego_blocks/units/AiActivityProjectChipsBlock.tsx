@@ -5,6 +5,15 @@ import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColors
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { fmtDurationMsBlock } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 
+const HOUR_MS = 3_600_000
+/** Coarse duration for the project list — this is a 90-day overview, so exact
+ *  minutes ("85h 55m") just add noise. Round to whole hours with a ~; keep the
+ *  precise value for sub-hour projects (rounding those to ~0h loses them). */
+function fmtCoarseDurationBlock(ms: number): string {
+  if (ms < HOUR_MS) return fmtDurationMsBlock(ms)
+  return `~${Math.round(ms / HOUR_MS)}h`
+}
+
 interface AiActivityProjectChipsBlockProps {
   projects: ActivityProject[]
   activeProject: string | null
@@ -63,7 +72,7 @@ export default function AiActivityProjectChipsBlock({
               {p.name}
             </span>
             <span className="shrink-0 tabular-nums text-foreground/60">
-              {fmtDurationMsBlock(p.totalMs)}
+              {fmtCoarseDurationBlock(p.totalMs)}
             </span>
           </button>
         )

@@ -3,8 +3,6 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
-  LabelList,
-  Line,
   ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
@@ -25,9 +23,7 @@ import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColors
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import {
   AI_ACTIVITY_REST_DAYS_EVENT,
-  AI_ACTIVITY_SET_MODE_EVENT,
   getAiActivityRestDays,
-  getAiActivitySetMode,
 } from '@/services/lego_blocks/units/storageKeyBlock'
 
 interface AiActivityTrendChartBlockProps {
@@ -75,19 +71,13 @@ export default function AiActivityTrendChartBlock({
   selectedDate = null,
   onSelectDate,
 }: AiActivityTrendChartBlockProps) {
-  const [setMode, setSetMode] = useState<boolean>(() => getAiActivitySetMode())
   const [restDays, setRestDays] = useState<number[]>(() => getAiActivityRestDays())
   useEffect(() => {
-    const onSetMode = () => setSetMode(getAiActivitySetMode())
     const onRestDays = () => setRestDays(getAiActivityRestDays())
-    window.addEventListener(AI_ACTIVITY_SET_MODE_EVENT, onSetMode)
     window.addEventListener(AI_ACTIVITY_REST_DAYS_EVENT, onRestDays)
-    window.addEventListener('storage', onSetMode)
     window.addEventListener('storage', onRestDays)
     return () => {
-      window.removeEventListener(AI_ACTIVITY_SET_MODE_EVENT, onSetMode)
       window.removeEventListener(AI_ACTIVITY_REST_DAYS_EVENT, onRestDays)
-      window.removeEventListener('storage', onSetMode)
       window.removeEventListener('storage', onRestDays)
     }
   }, [])
@@ -109,21 +99,6 @@ export default function AiActivityTrendChartBlock({
     }
     return out
   }, [restDays])
-
-  // Current set's [startIso, endIso] — shaded on the chart when set-mode is on
-  // so today's 3-day window reads as a soft band across the day bars.
-  const currentSetRange = useMemo(() => {
-    const now = new Date()
-    const day = now.getDate()
-    const setNumber = Math.floor((day - 1) / 3) + 1
-    const startDay = 3 * (setNumber - 1) + 1
-    const monthLen = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-    const endDay = Math.min(3 * setNumber, monthLen)
-    return {
-      startIso: isoDayLocal(new Date(now.getFullYear(), now.getMonth(), startDay)),
-      endIso: isoDayLocal(new Date(now.getFullYear(), now.getMonth(), endDay)),
-    }
-  }, [])
 
   const visibleProjects = useMemo(() => {
     let list = projects
@@ -212,7 +187,6 @@ export default function AiActivityTrendChartBlock({
     obs.observe(node)
     return () => obs.disconnect()
   }, [hostRef])
-  const pillTextFill = isDark ? 'rgba(30,41,59,0.95)' : 'rgba(148,163,184,0.95)'
 
   return (
     <div ref={hostRef} className="h-44 min-w-0">
@@ -226,7 +200,7 @@ export default function AiActivityTrendChartBlock({
         >
           <ComposedChart
             data={dataWithAnchor}
-            margin={{ top: 18, right: 4, bottom: 0, left: -22 }}
+            margin={{ top: 8, right: 4, bottom: 0, left: 0 }}
             onClick={evt => {
               if (!onSelectDate) return
               // Recharts passes the active payload's row in `activeLabel`. Toggle:
@@ -314,17 +288,6 @@ export default function AiActivityTrendChartBlock({
                 ifOverflow="extendDomain"
               />
             )}
-            {setMode && (
-              <ReferenceArea
-                x1={currentSetRange.startIso}
-                x2={currentSetRange.endIso}
-                fill="rgba(148,163,184,0.16)"
-                fillOpacity={1}
-                stroke="rgba(148,163,184,0.5)"
-                strokeOpacity={0.6}
-                ifOverflow="hidden"
-              />
-            )}
             {restDayIsos.map(iso => (
               <ReferenceArea
                 key={`rest-${iso}`}
@@ -353,69 +316,6 @@ export default function AiActivityTrendChartBlock({
                 animationEasing="ease-out"
               />
             ))}
-            {/* Per-day total-duration labels — plotted as an invisible line
-                that follows each day's stacked peak, with a LabelList rendering
-                a small pill above each point. Days with 0 duration are
-                suppressed. */}
-            <Line
-              type="monotone"
-              dataKey="__topAnchor"
-              stroke="transparent"
-              dot={false}
-              isAnimationActive={false}
-              activeDot={false}
-              legendType="none"
-            >
-              <LabelList
-                dataKey="__dayDurMs"
-                position="top"
-                content={(props) => {
-                  const { x, y, value } = props as {
-                    x?: number
-                    y?: number
-                    value?: number | string
-                  }
-                  const ms = typeof value === 'number' ? value : 0
-                  if (ms <= 0 || x == null || y == null) return null
-                  // Pill badge: small rounded rect with the duration inside.
-                  // Width grows with text length so '12h' and '45m' both look
-                  // balanced.
-                  const text = fmtDurationMsBlock(ms)
-                  const charW = 5.5
-                  const padX = 4
-                  const w = Math.max(14, text.length * charW + padX * 2)
-                  const h = 13
-                  const cx = x
-                  const top = y - h - 2
-                  return (
-                    <g>
-                      <rect
-                        x={cx - w / 2}
-                        y={top}
-                        width={w}
-                        height={h}
-                        rx={h / 2}
-                        ry={h / 2}
-                        fill="rgba(241,245,249,0.92)"
-                        stroke="rgba(148,163,184,0.25)"
-                        strokeWidth={0.5}
-                      />
-                      <text
-                        x={cx}
-                        y={top + h / 2 + 3}
-                        textAnchor="middle"
-                        fontSize={9}
-                        fontWeight={500}
-                        fill={pillTextFill}
-                        style={{ fontVariantNumeric: 'tabular-nums' }}
-                      >
-                        {text}
-                      </text>
-                    </g>
-                  )
-                }}
-              />
-            </Line>
           </ComposedChart>
         </ResponsiveContainer>
       )}

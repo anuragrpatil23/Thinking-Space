@@ -28,6 +28,7 @@ import { readVaultSessionPrefixesBlock } from '@/services/lego_blocks/units/aiAc
 import { loadGoodnotesReadingSessions } from '@/services/lego_blocks/integrations/goodnotesReadingBlock'
 import { loadMemorizedSessions } from '@/services/lego_blocks/integrations/memorizedReadingBlock'
 import { loadThinkingspaceReadingSessions } from '@/services/lego_blocks/integrations/thinkingspaceReadingBlock'
+import { loadManualSessions } from '@/services/lego_blocks/integrations/manualSessionBlock'
 
 const CACHE_PATH = '.thinking-space/ai-activity-cache.json'
 const CACHE_DIR = '.thinking-space'
@@ -42,7 +43,7 @@ const CACHE_DIR = '.thinking-space'
 // windows (`path#wN`) — frontmatter `updated` proved to be bulk-rewritten junk.
 // v16: native Claude sessions now carry file-edit provenance (`touchedPaths`)
 // for the vault-graph session lens; reparse so cached rows pick it up.
-const CACHE_VERSION = 16
+const CACHE_VERSION = 17
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000
@@ -319,6 +320,10 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
   // NOT written to cache.json — read fresh each load, unique ids survive dedup.
   const thinkingspaceReadingSessions = await loadThinkingspaceReadingSessions(fs).catch(() => [])
 
+  // ── 4e. User-authored manual sessions (ai-activity/manual-sessions.jsonl). ───
+  // Hand-logged time blocks ("painting 4h"); durable, uuid-keyed, read fresh.
+  const manualSessions = await loadManualSessions(fs).catch(() => [])
+
   // ── 5. Dedupe before returning to consumers. ────────────────────────────────
   // For each session id (full UUID for native, 8-char short id for vault),
   // prefer the richer native record when both exist — it has explicit cwd,
@@ -332,6 +337,7 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
     ...goodnotesSessions,
     ...memorizedSessions,
     ...thinkingspaceReadingSessions,
+    ...manualSessions,
   ]
   const coveredFullIds = new Set<string>()
   const coveredShortIds = new Set<string>()

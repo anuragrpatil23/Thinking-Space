@@ -30,6 +30,7 @@ import {
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { purgeRuleBasedAtomsOnceOrch } from '@/services/orchestrators/aiActivityAtomOrch'
+import { getVaultWriteAiActivityEnabled } from '@/services/lego_blocks/units/vaultWritePrefsBlock'
 
 /** Which view produced the current drill selection. The detail (table + summary,
  *  plus the day timeline for the heatmap) docks under the section that owns the
@@ -95,6 +96,10 @@ export interface AiActivityGraphControls {
    *  graph via ⌘-click / right-click → "Show in graph". Off in graph-controller
    *  mode, where the graph is already on screen and driven inline. */
   enableGraphPeek?: boolean
+  /** Standalone card: show the "+ Log session" affordance for hand-logged time
+   *  blocks. Actual write ability is further gated by the writeAiActivity
+   *  opt-in (the button disables + nudges when it's off). */
+  enableManualSessions?: boolean
 }
 
 export default function AiActivityPanelBlock({
@@ -104,6 +109,7 @@ export default function AiActivityPanelBlock({
   initialDrillToday = true,
   deselectNonce,
   enableGraphPeek = false,
+  enableManualSessions = false,
 }: AiActivityGraphControls = {}) {
   const activity = useAiActivityBlock('90d')
   // One-time cleanup of legacy rule-based stub atoms an old bug persisted.
@@ -111,6 +117,20 @@ export default function AiActivityPanelBlock({
   useEffect(() => {
     void purgeRuleBasedAtomsOnceOrch()
   }, [])
+  // Whether hand-logged sessions can be written — gated by the writeAiActivity
+  // opt-in (manual sessions live in the vault ai-activity/ mirror). Re-checked
+  // after a manual change so enabling it in Settings reflects without a reload.
+  const [writeAiActivityEnabled, setWriteAiActivityEnabled] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void getVaultWriteAiActivityEnabled().then(v => { if (!cancelled) setWriteAiActivityEnabled(v) })
+    return () => { cancelled = true }
+  }, [activity.chains])
+  // Real project labels for the manual-session combobox (noise/unknown excluded).
+  const knownProjects = useMemo(
+    () => activity.projects.filter(p => !p.isNoise && !p.isUnknown).map(p => p.name),
+    [activity.projects],
+  )
   // Default drill source is the heatmap (which defaults to today, below), so the
   // panel opens already showing today's timeline + table under the calendar.
   const [drillSource, setDrillSource] = useState<DrillSource>('heatmap')
@@ -338,6 +358,9 @@ export default function AiActivityPanelBlock({
             onSelectChain={onSelectChain ? handleSelectChain : undefined}
             selectedChainKey={selectedChainKey}
             enableGraphPeek={enableGraphPeek}
+            manualSessionsEnabled={enableManualSessions ? writeAiActivityEnabled : undefined}
+            knownProjects={knownProjects}
+            onManualChanged={activity.refresh}
           />
         </DrillTableScroll>
       </div>
