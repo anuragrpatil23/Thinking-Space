@@ -1,5 +1,5 @@
-import { Fragment, useMemo, useState } from 'react'
-import { Check, Copy, Maximize2, Pencil, RefreshCw } from 'lucide-react'
+import { Fragment, Suspense, lazy, useMemo, useState } from 'react'
+import { Check, Copy, Maximize2, Pencil, RefreshCw, Share2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isReadingSource, type ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
@@ -16,6 +16,18 @@ import ReadingSessionEditModalBlock, {
 import { useChainDigestBlock } from '@/components/lego_blocks/hooks/units/useChainDigestBlock'
 import AiActivitySourceChipBlock from '@/components/lego_blocks/units/AiActivitySourceChipBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
+import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
+import { loadVaultGraph } from '@/services/orchestrators/vaultGraphOrch'
+
+const SessionGraphSlideOverBlock = lazy(
+  () => import('@/components/lego_blocks/integrations/SessionGraphSlideOverBlock'),
+)
+
+/** Warm the shared graph snapshot on peek-intent (row hover) so the first open
+ *  is instant; loadVaultGraph dedupes in-flight + reuses its 5-min snapshot. */
+function warmVaultGraph() {
+  void loadVaultGraph().catch(() => {})
+}
 
 interface AiActivityDayTableBlockProps {
   /** Title shown above the table (e.g. day or range label). */
@@ -38,6 +50,10 @@ interface AiActivityDayTableBlockProps {
   onSelectChain?: (chain: ActivityChain) => void
   /** Key of the chain currently selected as the graph lens (controller mode). */
   selectedChainKey?: string | null
+  /** Peek mode (home AI-activity card, not the graph page): ⌘-click a row or
+   *  right-click → "Show in graph" opens a slideover with the session's files
+   *  lit and zoomed. Off by default so the graph page keeps its inline lens. */
+  enableGraphPeek?: boolean
 }
 
 function fmtTime(iso: string): string {
@@ -198,11 +214,14 @@ export default function AiActivityDayTableBlock({
   onReadingEdited,
   onSelectChain,
   selectedChainKey = null,
+  enableGraphPeek = false,
 }: AiActivityDayTableBlockProps) {
   const { hostRef, isDark } = useDarkModeClassBlock()
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [transcriptChain, setTranscriptChain] = useState<ActivityChain | null>(null)
   const [editingChain, setEditingChain] = useState<ActivityChain | null>(null)
+  const [peekChain, setPeekChain] = useState<ActivityChain | null>(null)
+  const [rowMenu, setRowMenu] = useState<{ chain: ActivityChain; x: number; y: number } | null>(null)
   const [copied, setCopied] = useState(false)
 
   // Sort by start time, oldest first for chronological reading.
@@ -355,11 +374,29 @@ export default function AiActivityDayTableBlock({
                       // Ember left-rail marks the chain driving the graph lens.
                       ...(isSelected ? { boxShadow: 'inset 3px 0 0 #FF9E3D' } : undefined),
                     }}
-                    onClick={() => {
+                    onClick={(e) => {
+                      // Peek mode: ⌘/Ctrl-click opens the graph slideover for
+                      // this session instead of expanding the row.
+                      if (enableGraphPeek && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault()
+                        setPeekChain(c)
+                        return
+                      }
                       onSelectChain?.(c)
                       setExpandedKey(prev => (prev === c.key ? null : c.key))
                     }}
-                    title={onSelectChain ? 'Zoom the graph to the notes this session touched' : undefined}
+                    onContextMenu={enableGraphPeek ? (e) => {
+                      e.preventDefault()
+                      setRowMenu({ chain: c, x: e.clientX, y: e.clientY })
+                    } : undefined}
+                    onMouseEnter={enableGraphPeek ? warmVaultGraph : undefined}
+                    title={
+                      onSelectChain
+                        ? 'Zoom the graph to the notes this session touched'
+                        : enableGraphPeek
+                          ? '⌘-click to open in graph · right-click for more'
+                          : undefined
+                    }
                   >
                     <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-foreground/80">
                       {fmtSpan(c.startedIso, c.endedIso)}
@@ -448,8 +485,9 @@ export default function AiActivityDayTableBlock({
                             No token data — this chain came from the vault markdown source only.
                           </span>
                         )}
-                        {!isReconstructed && !isReading && (
-                        <div className="pt-1">
+                        {(enableGraphPeek || (!isReconstructed && !isReading)) && (
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          {!isReconstructed && !isReading && (
                           <button
                             type="button"
                             onClick={e => {
@@ -461,6 +499,22 @@ export default function AiActivityDayTableBlock({
                             <Maximize2 className="h-3 w-3" />
                             Show entire chain
                           </button>
+                          )}
+                          {enableGraphPeek && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation()
+                              setPeekChain(c)
+                            }}
+                            onMouseEnter={warmVaultGraph}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-card/60 px-2.5 py-1 text-[11px] text-foreground/80 transition-colors hover:border-border/80 hover:bg-card/80 hover:text-foreground"
+                            title="Open the vault graph zoomed to this session's files"
+                          >
+                            <Share2 className="h-3 w-3" />
+                            Show in graph
+                          </button>
+                          )}
                         </div>
                         )}
                         {isReading && isReadingSessionEditableBlock(c.source) && (
@@ -516,6 +570,29 @@ export default function AiActivityDayTableBlock({
         </div>
       )}
       <ChainTranscriptSlideOverBlock chain={transcriptChain} onClose={() => setTranscriptChain(null)} />
+      {rowMenu && (
+        <ContextMenuBlock
+          position={{ x: rowMenu.x, y: rowMenu.y }}
+          onClose={() => setRowMenu(null)}
+          entries={([
+            {
+              key: 'show-in-graph',
+              label: 'Show in graph',
+              onClick: () => { setPeekChain(rowMenu.chain); setRowMenu(null) },
+            },
+            !isReadingSource(rowMenu.chain.source) && {
+              key: 'open-transcript',
+              label: 'Open transcript',
+              onClick: () => { setTranscriptChain(rowMenu.chain); setRowMenu(null) },
+            },
+          ].filter(Boolean)) as ContextMenuEntryBlock[]}
+        />
+      )}
+      {peekChain && (
+        <Suspense fallback={null}>
+          <SessionGraphSlideOverBlock chain={peekChain} onClose={() => setPeekChain(null)} />
+        </Suspense>
+      )}
       {editingChain && (
         <ReadingSessionEditModalBlock
           chain={editingChain}

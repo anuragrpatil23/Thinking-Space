@@ -25,6 +25,9 @@ export default function CodeDocumentViewBlock({ content, path, colorMode, classN
     editorLanguage.extension,
     EditorView.editable.of(false),
     EditorState.readOnly.of(true),
+    // Wrap long lines (VS Code word-wrap) so imports/comments never truncate in
+    // the reading view, which has no horizontal scroll affordance.
+    EditorView.lineWrapping,
     EditorView.theme({
       '&': {
         backgroundColor: 'transparent',
@@ -33,7 +36,8 @@ export default function CodeDocumentViewBlock({ content, path, colorMode, classN
       '.cm-scroller': {
         backgroundColor: 'transparent',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        lineHeight: '1.6',
+        fontSize: '13px',
+        lineHeight: '1.5',
       },
       '.cm-gutters': {
         backgroundColor: 'transparent',

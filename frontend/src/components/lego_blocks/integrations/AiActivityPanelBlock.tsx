@@ -107,6 +107,10 @@ export interface AiActivityGraphControls {
   /** Bumped by the graph when it deselects (e.g. a blank-canvas click), so the
    *  card drops its session-row highlight and stays in sync with the graph. */
   deselectNonce?: number
+  /** Standalone card (home, not the graph page): let session rows peek into the
+   *  graph via ⌘-click / right-click → "Show in graph". Off in graph-controller
+   *  mode, where the graph is already on screen and driven inline. */
+  enableGraphPeek?: boolean
 }
 
 export default function AiActivityPanelBlock({
@@ -115,6 +119,7 @@ export default function AiActivityPanelBlock({
   compact = false,
   initialDrillToday = true,
   deselectNonce,
+  enableGraphPeek = false,
 }: AiActivityGraphControls = {}) {
   const activity = useAiActivityBlock('90d')
   // One-time cleanup of legacy rule-based stub atoms an old bug persisted.
@@ -358,6 +363,7 @@ export default function AiActivityPanelBlock({
             onReadingEdited={activity.refresh}
             onSelectChain={onSelectChain ? handleSelectChain : undefined}
             selectedChainKey={selectedChainKey}
+            enableGraphPeek={enableGraphPeek}
           />
         </DrillTableScroll>
       </div>

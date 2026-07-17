@@ -881,8 +881,8 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         fontFamily: proseEditing
           ? DOCUMENT_FONT_STACKS_BLOCK[readMarkdownEditorSettingsBlock().documentFontFamily]
           : 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        ...(proseEditing ? { fontSize: `${readMarkdownEditorSettingsBlock().documentFontSizePx}px` } : {}),
-        lineHeight: proseEditing ? '1.75' : '1.6',
+        fontSize: proseEditing ? `${readMarkdownEditorSettingsBlock().documentFontSizePx}px` : '13px',
+        lineHeight: proseEditing ? '1.75' : '1.5',
       },
       '.cm-line': {
         overflowWrap: 'anywhere',
