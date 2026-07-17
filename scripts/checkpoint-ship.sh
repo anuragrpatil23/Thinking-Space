@@ -81,7 +81,21 @@ ensure_local_cert() {
       && security import cs.p12 -k "$HOME/Library/Keychains/login.keychain-db" -P tspass -T /usr/bin/codesign -A
   ) >>"$LOG" 2>&1 || { rm -rf "$certdir"; return 1; }
   rm -rf "$certdir"
-  has_local_cert
+  has_local_cert || return 1
+  # Best-effort partition-list fix (macOS restricts imported keys to certain
+  # tool classes; this is what makes codesign prompt for the keychain
+  # password). Works silently when the login keychain has a blank password;
+  # otherwise the warm-up sign below absorbs the single one-time prompt.
+  security set-key-partition-list -S apple-tool:,apple: -s \
+    -k "" "$HOME/Library/Keychains/login.keychain-db" >>"$LOG" 2>&1 || true
+  # Warm-up sign: force any one-time keychain approval to happen HERE, on one
+  # small file with our explanation on screen — never as a storm of prompts
+  # while codesign --deep walks ~15 nested binaries later.
+  say "(your Mac may now show ONE window asking for your password and mentioning 'codesign' — it is double-checking that the app may use its own ID, created on this computer a moment ago. Type your Mac password and click 'Always Allow'. It won't ask again.)"
+  cp /bin/ls "$TMP_DIR/codesign-warmup" 2>/dev/null || return 0
+  codesign --force --sign "$LOCAL_CERT" "$TMP_DIR/codesign-warmup" >>"$LOG" 2>&1 || true
+  rm -f "$TMP_DIR/codesign-warmup"
+  return 0
 }
 
 SIGN_ID="${TS_SIGN_IDENTITY:-}"
