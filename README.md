@@ -41,8 +41,6 @@ What's inside:
 
 Use an existing notes folder or start a new one (a cloud-synced folder keeps it on all your devices). The code is source-available — read it, change it, have your AI change it for you ([LICENSE](LICENSE)).
 
-Humans are beautiful.
-
 ---
 
 ## What It Looks Like
