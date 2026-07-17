@@ -265,6 +265,37 @@ function rectsOverlap(a: LabelRect, b: LabelRect): boolean {
   return a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0
 }
 
+/** Region labels widen out of hand ("F9 / THOUGHTS, PREDICTIONS, LAUNCHES AND
+ *  POSTMORTEM") and smear across neighbors. Greedy word-wrap to a max width
+ *  (caller passes it in world units); a single over-long word stays on its own
+ *  line rather than getting chopped. Assumes ctx.font / letterSpacing are set. */
+function wrapLabelLines(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): { lines: string[]; width: number } {
+  const words = text.split(' ').filter(Boolean)
+  const lines: string[] = []
+  let current = ''
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word
+    if (current && ctx.measureText(candidate).width > maxWidth) {
+      lines.push(current)
+      current = word
+    } else {
+      current = candidate
+    }
+  }
+  if (current) lines.push(current)
+  let width = 0
+  for (const line of lines) width = Math.max(width, ctx.measureText(line).width)
+  return { lines: lines.length ? lines : [text], width }
+}
+
+/** Longest a region label line may run before wrapping, in screen px (converted
+ *  to world units per-frame so wrapping is stable across zoom). */
+const REGION_LABEL_MAX_WIDTH_PX = 200
+
 interface VaultGraphCanvasBlockProps {
   data: VaultGraphData
   /** Notes born after this instant are hidden. */
@@ -577,19 +608,22 @@ export default function VaultGraphCanvasBlock({
             const trackedCtx = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
             const canTrack = 'letterSpacing' in trackedCtx
             if (canTrack) trackedCtx.letterSpacing = `${(1.5 / scale).toFixed(2)}px`
+            const fontSize = 11.5 / scale
+            const lineHeight = fontSize * 1.18
+            const maxWidth = REGION_LABEL_MAX_WIDTH_PX / scale
             for (const region of frameRegions) {
-              const fontSize = 11.5 / scale
               ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, sans-serif`
-              const text = region.label.toUpperCase()
-              const width = ctx.measureText(text).width
+              const { lines, width } = wrapLabelLines(ctx, region.label.toUpperCase(), maxWidth)
+              const blockH = lines.length * lineHeight
               const x = region.cx
-              const y = region.cy - region.r - fontSize - 3 / scale
+              // Stack sits above the blob; the last line lands just over its rim.
+              const topY = region.cy - region.r - 3 / scale - blockH
               const pad = 3 / scale
               const rect: LabelRect = {
                 x0: x - width / 2 - pad,
-                y0: y - pad,
+                y0: topY - pad,
                 x1: x + width / 2 + pad,
-                y1: y + fontSize + pad,
+                y1: topY + blockH + pad,
               }
               if (rect.x1 < tl.x || rect.x0 > br.x || rect.y1 < tl.y || rect.y0 > br.y) continue
               placedRects.push(rect)
@@ -599,9 +633,12 @@ export default function VaultGraphCanvasBlock({
               ctx.strokeStyle = view.isDark ? LABEL_OUTLINE_DARK : LABEL_OUTLINE_LIGHT
               ctx.lineWidth = 3 / scale
               ctx.lineJoin = 'round'
-              ctx.strokeText(text, x, y)
               ctx.fillStyle = view.isDark ? LABEL_REGION_FILL_DARK : LABEL_REGION_FILL_LIGHT
-              ctx.fillText(text, x, y)
+              for (let i = 0; i < lines.length; i += 1) {
+                const ly = topY + i * lineHeight
+                ctx.strokeText(lines[i], x, ly)
+                ctx.fillText(lines[i], x, ly)
+              }
               ctx.globalAlpha = 1
             }
             if (canTrack) trackedCtx.letterSpacing = '0px'
