@@ -576,10 +576,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   })
 
   const aiPanelOpen = controlledAiPanelOpen ?? internalAiPanelOpen
-  // In prose (live-preview) editing the pinned toolbar breaks the "same
-  // document, now editable" illusion — keep it behind its toggle instead.
-  const effectiveToolbarAlwaysVisible = toolbarAlwaysVisible && !proseEditing
-  const showToolbar = enableFormattingToolbar && (effectiveToolbarAlwaysVisible || toolbarOpen)
+  const showToolbar = enableFormattingToolbar && (toolbarAlwaysVisible || toolbarOpen)
   const stewardFilePath = (aiStewardFilePath ?? currentPath ?? '').trim()
   const relatedSourceFilePath = (relatedThoughtsSourceFilePath ?? stewardFilePath).trim()
   const normalizedPath = currentPath.trim()
@@ -910,8 +907,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         color: 'hsl(var(--muted-foreground))',
       },
       '.cm-cursor, .cm-dropCursor': {
-        borderLeftColor: proseEditing ? 'hsl(var(--primary))' : 'hsl(var(--foreground))',
-        ...(proseEditing ? { borderLeftWidth: '2px' } : {}),
+        borderLeftColor: 'hsl(var(--foreground))',
       },
       '.cm-lineNumbers .cm-gutterElement': {
         padding: '0 0.35rem 0 0',
@@ -1180,7 +1176,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   return (
     <div className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col', editorCanvasClassName, className)}>
       {/* Toolbar toggle button (only when not always visible) */}
-      {enableFormattingToolbar && !effectiveToolbarAlwaysVisible && (
+      {enableFormattingToolbar && !toolbarAlwaysVisible && (
         <div className="flex items-center justify-end gap-1 px-2 pt-1.5">
           {enableAiAssist && !showToolbar && (
             <button
