@@ -1,7 +1,9 @@
 import { spawn, type ChildProcess } from 'child_process';
+import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
+import { readPersistedVaultRootBlock } from './vaultRootPersistenceBlock';
 
 // Shell-out adapter for the Claude Code CLI (`claude -p`). Pro-plan users
 // already pay for Claude via subscription; hitting the API SDK on top of
@@ -53,6 +55,19 @@ const DEFAULT_CLAUDE_BINARY = '/opt/homebrew/bin/claude';
 function resolveClaudeBinaryBlock(): string {
   if (fs.existsSync(DEFAULT_CLAUDE_BINARY)) return DEFAULT_CLAUDE_BINARY;
   return 'claude'; // PATH-resolved fallback.
+}
+
+// Children of a GUI app inherit its cwd — `/` when launched from Finder.
+// Claude Code treats its cwd as the project dir (lists it, runs git in it),
+// and every folder a child touches is billed to the APP's macOS permission
+// identity (TCC). Running from `/` or `$HOME` is what produced the
+// Desktop/Documents/Downloads/Network-Volumes permission prompts. Pin all
+// CLI children to the vault — the one folder the user already granted.
+// (Same reason terminal PTYs default to the vault; see index.ts.)
+function resolveChildCwdBlock(): string {
+  const vaultRoot = readPersistedVaultRootBlock();
+  if (vaultRoot && fs.existsSync(vaultRoot)) return vaultRoot;
+  return app.getPath('userData');
 }
 
 function buildEnvBlock(): NodeJS.ProcessEnv {
@@ -169,6 +184,7 @@ export async function invokeClaudeCliChatBlock(
     let proc: ChildProcess;
     try {
       proc = spawn(resolveClaudeBinaryBlock(), args, {
+        cwd: resolveChildCwdBlock(),
         env: buildEnvBlock(),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -260,6 +276,7 @@ export async function probeClaudeCliBlock(): Promise<{ available: boolean; versi
   }
   return await new Promise((resolve) => {
     const proc = spawn(resolveClaudeBinaryBlock(), ['--version'], {
+      cwd: resolveChildCwdBlock(),
       env: buildEnvBlock(),
       stdio: ['ignore', 'pipe', 'pipe'],
     });

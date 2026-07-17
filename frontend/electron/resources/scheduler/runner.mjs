@@ -241,12 +241,30 @@ function readSpec(key) {
   return readJsonOr(path, null);
 }
 
+// Schedules without an explicit cwd used to inherit the runner's cwd — `/`
+// under launchd. Children (claude especially) treat cwd as their project dir
+// and roam from there, and macOS bills every folder they touch to the APP's
+// permission identity (the runner is the app binary run as node). That is
+// what produced the Desktop/Documents/Downloads/Network-Volumes permission
+// prompts attributed to Thinking Space. Default to the vault — the one
+// folder the user already granted — falling back to ~/.thinking-space.
+function defaultExecutionCwd() {
+  try {
+    const raw = readFileSync(join(USERDATA, 'state', 'vault-root.json'), 'utf-8');
+    const vaultRoot = JSON.parse(raw)?.vaultRoot;
+    if (typeof vaultRoot === 'string' && vaultRoot.trim() && existsSync(vaultRoot)) {
+      return vaultRoot;
+    }
+  } catch { /* fall through */ }
+  return join(HOME, '.thinking-space');
+}
+
 function resolveSpawn(execution) {
   if (execution.kind === 'shell') {
     return {
       command: execution.command,
       args: execution.args ?? [],
-      cwd: execution.cwd ?? undefined,
+      cwd: execution.cwd ?? defaultExecutionCwd(),
       env: { ...process.env, ...(execution.env ?? {}) },
     };
   }
@@ -268,7 +286,7 @@ function resolveSpawn(execution) {
     return {
       command: execution.claudeBinary ?? DEFAULT_CLAUDE_BINARY,
       args,
-      cwd: execution.cwd,
+      cwd: execution.cwd ?? defaultExecutionCwd(),
       env: { ...process.env, ...(execution.env ?? {}) },
     };
   }

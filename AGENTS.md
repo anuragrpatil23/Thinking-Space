@@ -79,6 +79,7 @@ Electron hardening that must not regress (the renderer runs user markdown + arbi
 - `vault:git` runs only allowlisted subcommands and rejects leading git global options (`-c`, `--exec-path`).
 - Outbound bridges stay target-restricted: Webull/Google host allowlists; `net:fetchText`/`net:fetchBytes` reject loopback/link-local/private targets (`assertPublicFetchUrlBlock`), including on redirects.
 - Webview CSP `connect-src` + permission allowlist stay narrow; new outbound origins go through `cspWhitelistBlock.ts`.
+- Every child process runs with `cwd` pinned to the vault root (fallback userData / `~/.thinking-space`) — never the app's inherited cwd (`/`) or `$HOME`. Children's file access is TCC-attributed to the app; unpinned children caused the Desktop/Documents/Downloads/Network-Volumes prompt storm (fixed 2026-07-17: `claudeCliBlock.resolveChildCwdBlock`, `runner.mjs defaultExecutionCwd`; PTYs already pinned). The app's TCC prompt budget is one: the vault folder.
 
 ## Startup Performance Contract (Enforced)
 - Heavy vendors (Excalidraw, pdfjs/react-pdf, CodeMirror, recharts) must never be statically reachable from the app entry; they load through code-split boundaries (`MarkdownDocumentLazyBlock`, `MarkdownRichEditorLazyBlock`, per-consumer `lazy()` chart imports).
