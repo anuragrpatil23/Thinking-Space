@@ -1,6 +1,5 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
-import { markdown } from '@codemirror/lang-markdown'
 import { redo, undo } from '@codemirror/commands'
 import { EditorState, type Extension } from '@codemirror/state'
 import { Decoration, EditorView, WidgetType, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
@@ -56,6 +55,8 @@ import {
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import { createMarkdownInlineImageExtensionBlock } from '@/components/lego_blocks/units/markdownInlineImageExtensionBlock'
 import { createMarkdownSyntaxHidingExtensionBlock } from '@/components/lego_blocks/units/markdownSyntaxHidingExtensionBlock'
+import { createMarkdownTaskCheckboxExtensionBlock } from '@/components/lego_blocks/units/markdownTaskCheckboxExtensionBlock'
+import { resolveEditorLanguageBlock } from '@/components/lego_blocks/units/editorLanguageBlock'
 import { readMarkdownEditorSettingsBlock } from '@/services/lego_blocks/integrations/markdownEditorSettingsBlock'
 import {
   deriveWikilinkLabelBlock,
@@ -496,6 +497,9 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   const editorViewRef = useRef<EditorView | null>(null)
   const currentPathRef = useRef(currentPath)
   useEffect(() => { currentPathRef.current = currentPath }, [currentPath])
+  // One editor engine, per-file-type grammar: markdown files get the markdown
+  // grammar + live-preview decorations, code files get real highlighting.
+  const editorLanguage = useMemo(() => resolveEditorLanguageBlock(currentPath), [currentPath])
   const handleImagePasteRef = useRef<((file: File, view: EditorView) => Promise<void>) | null>(null)
   handleImagePasteRef.current = async (file: File, view: EditorView) => {
     const path = currentPathRef.current
@@ -1005,7 +1009,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
     })
 
     const nextExtensions: Extension[] = [
-      markdown(),
+      editorLanguage.extension,
       EditorView.lineWrapping,
       cmPlaceholder(placeholder),
       uiTheme,
@@ -1051,21 +1055,25 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         },
       }),
       keymap.of([]),
-      // Live-preview phase 1: image embeds render inline; cursor on the line
-      // reveals the raw syntax. Reads the note path via ref so the extension
-      // survives path changes without a rebuild.
-      createMarkdownInlineImageExtensionBlock({
-        getCurrentPath: () => currentPathRef.current ?? null,
-      }),
-      // Live-preview phase 2: document-like styling + per-line syntax reveal.
-      // The flag is read per decoration pass, so the Settings toggle applies
-      // to open editors on their next interaction without a remount.
-      createMarkdownSyntaxHidingExtensionBlock({
-        isEnabled: () => readMarkdownEditorSettingsBlock().livePreviewSyntaxHiding,
-      }),
+      // Live-preview decorations — markdown files only; code files get their
+      // grammar without markdown rendering on top. Flags are read per
+      // decoration pass, so the Settings toggle applies without a remount.
+      ...(editorLanguage.kind === 'markdown'
+        ? [
+            createMarkdownInlineImageExtensionBlock({
+              getCurrentPath: () => currentPathRef.current ?? null,
+            }),
+            createMarkdownSyntaxHidingExtensionBlock({
+              isEnabled: () => readMarkdownEditorSettingsBlock().livePreviewSyntaxHiding,
+            }),
+            createMarkdownTaskCheckboxExtensionBlock({
+              isEnabled: () => readMarkdownEditorSettingsBlock().livePreviewSyntaxHiding,
+            }),
+          ]
+        : []),
     ]
     return nextExtensions
-  }, [compactMobile, inlineDiffDecorations, inlineDiffRender, placeholder])
+  }, [compactMobile, editorLanguage, inlineDiffDecorations, inlineDiffRender, placeholder])
 
   const applyPatch = (patchFactory: (text: string, from: number, to: number) => { value: string; start: number; end: number }) => {
     const view = editorViewRef.current

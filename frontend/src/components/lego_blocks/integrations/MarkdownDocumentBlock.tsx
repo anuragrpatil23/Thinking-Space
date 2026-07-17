@@ -476,6 +476,19 @@ function MarkdownTextDocumentRuntimeBlock({
   ), [])
 
   const isEditing = mode === 'edit'
+  // Live preview makes the view/edit split mostly ceremonial for text docs:
+  // clicking the document body starts editing, so the pencil disappears.
+  // Excalidraw/HTML docs keep the explicit pencil (their edit mode is heavier).
+  const clickToEditActive = editorSettings.livePreviewSyntaxHiding && !isExcalidrawDoc && !isHtmlDocumentPathBlock(path)
+
+  const handleViewClickToEdit = (event: React.MouseEvent<HTMLElement>) => {
+    if (!clickToEditActive || loading || !!error) return
+    const target = event.target as HTMLElement
+    if (target.closest('a,button,input,textarea,select,summary,[role="button"],img,video,audio')) return
+    const selection = window.getSelection()
+    if (selection && !selection.isCollapsed) return
+    startEditing()
+  }
   const isHtmlDoc = isHtmlDocumentPathBlock(path)
   const supportsMindmap = !isExcalidrawDoc
     && !isHtmlDoc
@@ -1433,7 +1446,7 @@ function MarkdownTextDocumentRuntimeBlock({
                   />
                 )}
 
-                {!isEditing && (
+                {!isEditing && !clickToEditActive && (
                   <button
                     onClick={() => startEditing()}
                     disabled={loading || !!error}
@@ -1714,7 +1727,10 @@ function MarkdownTextDocumentRuntimeBlock({
                 open={supportsMindmap && viewMindmapPanelOpen}
               />
 
-              <div className={cn('space-y-2', isIosPhone ? 'px-5 py-5' : 'px-8 py-7')}>
+              <div
+                className={cn('space-y-2', isIosPhone ? 'px-5 py-5' : 'px-8 py-7', clickToEditActive && 'cursor-text')}
+                onClick={handleViewClickToEdit}
+              >
                 {pendingFullRender && (
                   <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                     Rendering full document...
