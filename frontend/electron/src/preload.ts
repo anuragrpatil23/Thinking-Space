@@ -103,6 +103,7 @@ interface ElectronProfileSummaryBlock {
   id: string
   name: string
   accentColor: string | null
+  icon: string | null
   isDefault: boolean
   vaultRoot: string | null
   webviewPartition: string
@@ -113,6 +114,7 @@ const DEFAULT_PROFILE_SUMMARY_BLOCK: ElectronProfileSummaryBlock = {
   id: 'default',
   name: 'Main',
   accentColor: null,
+  icon: null,
   isDefault: true,
   vaultRoot: null,
   webviewPartition: 'persist:thinking-space-links',
@@ -130,6 +132,9 @@ function normalizeProfileSummaryBlock(value: unknown): ElectronProfileSummaryBlo
     name: typeof record.name === 'string' && record.name.trim().length > 0 ? record.name.trim() : 'Main',
     accentColor: typeof record.accentColor === 'string' && record.accentColor.trim().length > 0
       ? record.accentColor.trim()
+      : null,
+    icon: typeof record.icon === 'string' && record.icon.trim().length > 0
+      ? record.icon.trim()
       : null,
     isDefault: record.isDefault === undefined ? id === 'default' : Boolean(record.isDefault),
     vaultRoot: typeof record.vaultRoot === 'string' && record.vaultRoot.trim().length > 0
@@ -372,9 +377,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   profilesList: (): Promise<ElectronProfileSummaryBlock[]> =>
     ipcRenderer.invoke('profiles:list'),
-  profilesCreate: (input: { name: string; vaultRoot: string; accentColor?: string | null }): Promise<ElectronProfileSummaryBlock> =>
+  profilesCreate: (input: { name: string; vaultRoot: string; accentColor?: string | null; icon?: string | null }): Promise<ElectronProfileSummaryBlock> =>
     ipcRenderer.invoke('profiles:create', input),
-  profilesUpdate: (input: { id: string; name?: string; accentColor?: string | null }): Promise<ElectronProfileSummaryBlock> =>
+  profilesUpdate: (input: { id: string; name?: string; accentColor?: string | null; icon?: string | null }): Promise<ElectronProfileSummaryBlock> =>
     ipcRenderer.invoke('profiles:update', input),
   profilesDelete: (profileId: string): Promise<void> =>
     ipcRenderer.invoke('profiles:delete', profileId),

@@ -52,6 +52,8 @@ export default function Settings({
             ? 'cache'
             : requestedTab === 'vault'
               ? 'vault'
+            : requestedTab === 'workspace_profiles'
+              ? 'workspace_profiles'
               : 'theme'
 
   return (

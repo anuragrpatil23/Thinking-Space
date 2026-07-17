@@ -21,6 +21,8 @@ export interface ProfileRecordBlock {
   vaultRoot: string | null;
   /** CSS color for the window's sidebar accent; null = no accent. */
   accentColor: string | null;
+  /** Short avatar glyph (emoji from the preset picker); null = initial of name. */
+  icon: string | null;
 }
 
 interface ProfilesFilePayloadBlock {
@@ -48,6 +50,15 @@ function normalizeAccentColorBlock(value: unknown): string | null {
   return trimmed;
 }
 
+function normalizeIconBlock(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  // A single emoji (possibly multi-code-unit) from the preset picker. Rendered
+  // as text content only, but keep it short and free of markup characters.
+  if (trimmed.length === 0 || trimmed.length > 8 || /[<>&"'`]/.test(trimmed)) return null;
+  return trimmed;
+}
+
 function normalizeVaultRootBlock(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -55,7 +66,7 @@ function normalizeVaultRootBlock(value: unknown): string | null {
 }
 
 function synthesizeDefaultProfileBlock(): ProfileRecordBlock {
-  return { id: DEFAULT_PROFILE_ID_BLOCK, name: 'Main', vaultRoot: null, accentColor: null };
+  return { id: DEFAULT_PROFILE_ID_BLOCK, name: 'Main', vaultRoot: null, accentColor: null, icon: null };
 }
 
 function normalizeRecordBlock(value: unknown): ProfileRecordBlock | null {
@@ -71,6 +82,7 @@ function normalizeRecordBlock(value: unknown): ProfileRecordBlock | null {
     name: normalizeNameBlock(record.name) ?? (isDefault ? 'Main' : 'Profile'),
     vaultRoot,
     accentColor: normalizeAccentColorBlock(record.accentColor),
+    icon: normalizeIconBlock(record.icon),
   };
 }
 
@@ -149,6 +161,7 @@ export function createProfileBlock(input: {
   name: string;
   vaultRoot: string;
   accentColor?: string | null;
+  icon?: string | null;
 }): ProfileRecordBlock {
   const name = normalizeNameBlock(input.name);
   const vaultRoot = normalizeVaultRootBlock(input.vaultRoot);
@@ -160,6 +173,7 @@ export function createProfileBlock(input: {
     name,
     vaultRoot,
     accentColor: normalizeAccentColorBlock(input.accentColor) ?? null,
+    icon: normalizeIconBlock(input.icon) ?? null,
   };
   writeProfilesFileBlock([...listProfilesBlock(), record]);
   return record;
@@ -167,7 +181,7 @@ export function createProfileBlock(input: {
 
 export function updateProfileBlock(
   profileId: string,
-  patch: { name?: string; accentColor?: string | null; vaultRoot?: string },
+  patch: { name?: string; accentColor?: string | null; icon?: string | null; vaultRoot?: string },
 ): ProfileRecordBlock {
   const profiles = listProfilesBlock();
   const index = profiles.findIndex((p) => p.id === profileId);
@@ -181,6 +195,9 @@ export function updateProfileBlock(
   }
   if (patch.accentColor !== undefined) {
     next.accentColor = normalizeAccentColorBlock(patch.accentColor);
+  }
+  if (patch.icon !== undefined) {
+    next.icon = normalizeIconBlock(patch.icon);
   }
   if (patch.vaultRoot !== undefined && profileId !== DEFAULT_PROFILE_ID_BLOCK) {
     const vaultRoot = normalizeVaultRootBlock(patch.vaultRoot);

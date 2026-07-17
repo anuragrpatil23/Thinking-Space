@@ -6,6 +6,7 @@ export interface WorkspaceProfileBlock {
   id: string
   name: string
   accentColor: string | null
+  icon: string | null
   isDefault: boolean
   vaultRoot: string | null
   webviewPartition: string
@@ -16,6 +17,7 @@ const DEFAULT_WORKSPACE_PROFILE_BLOCK: WorkspaceProfileBlock = {
   id: 'default',
   name: 'Main',
   accentColor: null,
+  icon: null,
   isDefault: true,
   vaultRoot: null,
   webviewPartition: 'persist:thinking-space-links',
@@ -27,8 +29,8 @@ interface ProfileElectronBridgeBlock {
   profileGet?: () => WorkspaceProfileBlock
   onProfileChanged?: (handler: (profile: WorkspaceProfileBlock) => void) => () => void
   profilesList?: () => Promise<WorkspaceProfileBlock[]>
-  profilesCreate?: (input: { name: string; vaultRoot: string; accentColor?: string | null }) => Promise<WorkspaceProfileBlock>
-  profilesUpdate?: (input: { id: string; name?: string; accentColor?: string | null }) => Promise<WorkspaceProfileBlock>
+  profilesCreate?: (input: { name: string; vaultRoot: string; accentColor?: string | null; icon?: string | null }) => Promise<WorkspaceProfileBlock>
+  profilesUpdate?: (input: { id: string; name?: string; accentColor?: string | null; icon?: string | null }) => Promise<WorkspaceProfileBlock>
   profilesDelete?: (profileId: string) => Promise<void>
   profilesOpenWindow?: (profileId: string) => Promise<void>
 }
@@ -67,6 +69,7 @@ export async function createWorkspaceProfileBlock(input: {
   name: string
   vaultRoot: string
   accentColor?: string | null
+  icon?: string | null
 }): Promise<WorkspaceProfileBlock> {
   const bridge = getProfileBridgeBlock()
   if (!bridge?.profilesCreate) throw new Error('Profiles need the desktop app.')
@@ -77,6 +80,7 @@ export async function updateWorkspaceProfileBlock(input: {
   id: string
   name?: string
   accentColor?: string | null
+  icon?: string | null
 }): Promise<WorkspaceProfileBlock> {
   const bridge = getProfileBridgeBlock()
   if (!bridge?.profilesUpdate) throw new Error('Profiles need the desktop app.')

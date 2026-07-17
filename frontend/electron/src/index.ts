@@ -571,6 +571,7 @@ interface ProfileSummaryBlock {
   id: string;
   name: string;
   accentColor: string | null;
+  icon: string | null;
   isDefault: boolean;
   vaultRoot: string | null;
   webviewPartition: string;
@@ -584,6 +585,7 @@ function serializeProfileSummaryBlock(profileId: string): ProfileSummaryBlock | 
     id: profile.id,
     name: profile.name,
     accentColor: profile.accentColor,
+    icon: profile.icon,
     isDefault: profile.id === DEFAULT_PROFILE_ID_BLOCK,
     vaultRoot: resolveProfileVaultRootBlock(profile),
     webviewPartition: getProfileWebviewPartitionBlock(profile.id),
@@ -616,7 +618,7 @@ ipcMain.handle('profiles:list', async () => {
     .filter((summary): summary is ProfileSummaryBlock => summary !== null);
 });
 
-ipcMain.handle('profiles:create', async (_event, input: { name: string; vaultRoot: string; accentColor?: string | null }) => {
+ipcMain.handle('profiles:create', async (_event, input: { name: string; vaultRoot: string; accentColor?: string | null; icon?: string | null }) => {
   if (!input || typeof input.name !== 'string' || typeof input.vaultRoot !== 'string') {
     throw new Error('Profile name and vault folder are required.');
   }
@@ -628,13 +630,14 @@ ipcMain.handle('profiles:create', async (_event, input: { name: string; vaultRoo
     name: input.name,
     vaultRoot: input.vaultRoot,
     accentColor: input.accentColor ?? null,
+    icon: input.icon ?? null,
   });
   return serializeProfileSummaryBlock(record.id);
 });
 
-ipcMain.handle('profiles:update', async (_event, input: { id: string; name?: string; accentColor?: string | null }) => {
+ipcMain.handle('profiles:update', async (_event, input: { id: string; name?: string; accentColor?: string | null; icon?: string | null }) => {
   if (!input || typeof input.id !== 'string') throw new Error('Profile id is required.');
-  const record = updateProfileBlock(input.id, { name: input.name, accentColor: input.accentColor });
+  const record = updateProfileBlock(input.id, { name: input.name, accentColor: input.accentColor, icon: input.icon });
   broadcastProfileChangedBlock(record.id);
   return serializeProfileSummaryBlock(record.id);
 });

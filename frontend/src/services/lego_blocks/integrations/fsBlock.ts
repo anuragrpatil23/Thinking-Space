@@ -206,6 +206,7 @@ interface ElectronAPI {
     id: string
     name: string
     accentColor: string | null
+    icon: string | null
     isDefault: boolean
     vaultRoot: string | null
     webviewPartition: string
@@ -215,6 +216,7 @@ interface ElectronAPI {
     id: string
     name: string
     accentColor: string | null
+    icon: string | null
     isDefault: boolean
     vaultRoot: string | null
     webviewPartition: string
@@ -224,13 +226,14 @@ interface ElectronAPI {
     id: string
     name: string
     accentColor: string | null
+    icon: string | null
     isDefault: boolean
     vaultRoot: string | null
     webviewPartition: string
     openWindowCount: number
   }>>
-  profilesCreate?(input: { name: string; vaultRoot: string; accentColor?: string | null }): Promise<unknown>
-  profilesUpdate?(input: { id: string; name?: string; accentColor?: string | null }): Promise<unknown>
+  profilesCreate?(input: { name: string; vaultRoot: string; accentColor?: string | null; icon?: string | null }): Promise<unknown>
+  profilesUpdate?(input: { id: string; name?: string; accentColor?: string | null; icon?: string | null }): Promise<unknown>
   profilesDelete?(profileId: string): Promise<void>
   profilesOpenWindow?(profileId: string): Promise<void>
   clearGpuCache?(): Promise<void>

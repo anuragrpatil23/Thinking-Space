@@ -3,7 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { createPortal } from 'react-dom'
 import {
   Bug,
-  ChevronDown,
+  MoreHorizontal,
   Compass,
   FileText,
   Loader2,
@@ -84,6 +84,7 @@ import UniversalSearchBlock from './components/lego_blocks/integrations/Universa
 import { UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK } from './components/lego_blocks/integrations/universalSearchPresetBlock'
 import { useUILayoutBlock } from './components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useWorkspaceProfileBlock } from './components/lego_blocks/hooks/useWorkspaceProfileBlock'
+import { ProfileSwitcherBlock } from './components/lego_blocks/integrations/ProfileSwitcherBlock'
 import { useChromeStateEventBlock } from './components/lego_blocks/hooks/shared/useChromeStateEventBlock'
 import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
 import { useNativePushNavigationBlock } from './components/lego_blocks/hooks/shared/useNativePushNavigationBlock'
@@ -2488,20 +2489,14 @@ function App() {
               }}
             >
               <div ref={syncToolsRef} className="inline-flex items-center gap-2">
-                {/* Debug console toggle */}
                 <button
                   type="button"
-                  onClick={openDebugPanel}
-                  className="ltm-top-chrome-capsule ltm-motion-fast relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
-                  aria-label="Open debug console"
-                  title="Debug console"
+                  onClick={openCommandPalette}
+                  className="ltm-top-chrome-capsule ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="Open quick search"
+                  title={`Search (${isMacPlatform ? '\u2318K' : 'Ctrl+K'})`}
                 >
-                  <Bug className="h-3.5 w-3.5" />
-                  {debugUnreadCount > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold text-white">
-                      {debugUnreadCount > 99 ? '99+' : debugUnreadCount}
-                    </span>
-                  )}
+                  <SearchNavIcon className="h-3.5 w-3.5" />
                 </button>
 
                 <button
@@ -2525,14 +2520,14 @@ function App() {
                     updateSyncPanelAnchor()
                     setSyncPanelOpen(prev => !prev)
                   }}
-                  className={`ltm-top-chrome-capsule ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background/85 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground ${
-                    phoneMode ? 'w-8 px-0' : 'px-3'
-                  }`}
-                  aria-label="Toggle sync tools"
-                  title="Toggle sync tools"
+                  className="ltm-top-chrome-capsule ltm-motion-fast relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="More tools"
+                  title="More tools"
                 >
-                  {!phoneMode && <span className="hidden lg:inline">Sync Tools</span>}
-                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${syncPanelOpen ? 'rotate-180' : ''}`} />
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                  {debugUnreadCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500" />
+                  )}
                 </button>
               </div>
             </div>
@@ -2545,6 +2540,21 @@ function App() {
                 <div className="flex h-full flex-col px-2 py-3">
                 <div className="ltm-nav-scroll ltm-sidebar-nav-scroll min-h-0 flex-1 overflow-y-auto">
                   <div className="ltm-sidebar-nav-group space-y-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link
+                          to="/"
+                          aria-label="Home"
+                          aria-current={location.pathname === '/' || location.pathname === '/home-canvas' ? 'page' : undefined}
+                          className="ltm-shell-logo ltm-motion-fast ltm-rail-item mb-1 inline-flex h-10 w-full items-center justify-center rounded-lg transition-colors"
+                        >
+                          <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
+                            <AppBrandGlyph className="h-full w-full" />
+                          </span>
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">{`Home${shortcutHint(0)}`}</TooltipContent>
+                    </Tooltip>
                     {primaryNavItems.map((item, index) => {
                       const Icon = item.icon
                       const active = isNavItemActive(location.pathname, item)
@@ -2629,34 +2639,9 @@ function App() {
                         </Tooltip>
                       )
                     })}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={openCommandPalette}
-                          className="ltm-shell-action ltm-shell-nav-action ltm-motion-fast ltm-touch-row ltm-rail-item inline-flex w-full items-center justify-center rounded-lg px-2 py-2 text-muted-foreground transition-colors hover:text-foreground"
-                          aria-label="Open quick search"
-                        >
-                          <SearchNavIcon className={RAIL_ICON_CLASS} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">Search</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Link
-                          to="/"
-                          aria-label="Home"
-                          aria-current={location.pathname === '/' || location.pathname === '/home-canvas' ? 'page' : undefined}
-                          className="ltm-shell-logo ltm-motion-fast ltm-rail-item mt-2 inline-flex h-10 w-full items-center justify-center rounded-lg transition-colors"
-                        >
-                          <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
-                            <AppBrandGlyph className="h-full w-full" />
-                          </span>
-                        </Link>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">{`Home${shortcutHint(0)}`}</TooltipContent>
-                    </Tooltip>
+                    <div className="mt-2">
+                      <ProfileSwitcherBlock />
+                    </div>
                   </div>
                 </div>
                 </div>
@@ -3048,7 +3033,7 @@ function App() {
             mixBlendMode: 'normal',
           }}
         >
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">Sync Tools</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">Sync</p>
           <div className="mt-3 space-y-3">
             <div className="space-y-2">
               <Button
@@ -3171,6 +3156,30 @@ function App() {
                   </p>
                 )}
               </div>
+            </div>
+
+            <div className="my-1 h-px bg-slate-200" />
+
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">Developer</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50"
+                onClick={() => {
+                  setSyncPanelOpen(false)
+                  openDebugPanel()
+                }}
+              >
+                <Bug className="mr-1.5 h-3.5 w-3.5" />
+                Debug Console
+                {debugUnreadCount > 0 && (
+                  <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                    {debugUnreadCount > 99 ? '99+' : debugUnreadCount}
+                  </span>
+                )}
+              </Button>
             </div>
 
             {(() => {
