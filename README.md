@@ -19,22 +19,24 @@
 
 ## What Is This?
 
-At some point I noticed I had stopped writing my own notes. Claude Code writes them now — session logs, research, plans, summaries — and they land as Markdown files in a folder. If you work with an AI seriously, you probably know the feeling: getting thoughts written down is no longer the problem. Keeping up with what got written is. Reading it, seeing what your AI actually did, connecting it to what you already think, deciding what happens next.
+At some point I noticed I had stopped writing my own notes. Claude Code writes them now — session logs, research, plans, summaries, the occasional HTML report or diagram — and they all land as files in a folder. If you work with an AI seriously, you probably know the feeling: producing the words got cheap. The AI writes faster than you can absorb. The slow part now — the part that actually gates what you can do next — is understanding what got written: reading it, seeing what your AI actually did, connecting it to what you already think, deciding what happens next.
 
-Chat isn't the place for that — conversations scroll away, and a pile of transcripts isn't a knowledge base. Notes apps aren't the place either — they all assume the human is the one typing.
+And understanding has a second problem: it doesn't keep. You work something out forty minutes into a session, close the tab, and it's gone — next time, you and the AI both start over from zero. Chat isn't built to hold it; conversations scroll away, and a pile of transcripts isn't a knowledge base. Notes apps aren't built for it either — they all assume the human is the one typing.
 
-So I built one. Thinking Space points at the folder your AI writes into. You read what it wrote, see which notes each session touched, organize its output next to your own ideas, and hand it the next task. It doesn't replace your AI. It's the desk you both work at.
+So I built the thing that was missing. Thinking Space points at the folder your AI writes into. You read what it wrote, see which notes each session touched, organize its output next to your own ideas, and hand it the next task. Because everything the two of you work out lives in that folder — the notes, the decisions, the trail of which session touched what — the next session picks up where the last one actually ended, instead of starting over. That cuts both ways: you stop re-reading old ground, and the AI stops re-deriving it — an agent that opens the trail starts already knowing what was decided, so it spends its context on the new problem instead of reconstructing the old one. Understanding stops being something you rebuild and starts being something you accumulate. It doesn't replace your AI. It's the desk you both work at, and the desk keeps everything on it.
 
-The trick is boring on purpose: plain Markdown files in a folder are the one thing both you and your AI can read and write natively. Agents already know how to work with files, and you own the files forever. No plugin API, no integrations to maintain, nothing to migrate off of — and it'll work with whatever agent exists next year.
+The trick is boring on purpose: plain files in a folder — Markdown at the core — are the one thing both you and your AI can read and write natively. Agents already know how to work with files, and you own the files forever — and "forever" is not a figure of speech here: plain text is the one format that has outlived every app that ever wrote it, and a text file saved today will still open on whatever computers look like a hundred years from now. No plugin API, no integrations to maintain, nothing to migrate off of — it'll work with whatever agent exists next year, and it'll still be readable long after this app is gone.
 
-What's inside:
+**Understanding is built in the session, thinking it through with your AI. Thinking Space is what keeps it — so the next session starts smarter, for both of you.**
 
-- A chill markdown viewer — point it at a folder and read your notes
+So what's inside is the toolset for that loop — see what got built, keep it, pick it back up — plus a way to add any tool that turns out to be missing:
+
 - An **AI Activity** dashboard that shows what you actually worked on with Claude, Codex, ChatGPT, Grok — down to which vault notes each session touched
 - A **vault graph** that maps your notes and lights up where your AI has been working
+- A chill markdown viewer — point it at a folder and read your notes
 - A freeform **home canvas** — post-its, live vault notes, and web widgets on an infinite board
-- Your agent can **modify and rebuild the app itself** — point it at your own fork of the source, and it goes from commit to running the new build in under 30 seconds
 - Agents log their tasks, plans, and handoffs as plain notes in your vault, so their work sits right next to your own thinking
+- And when a tool you need doesn't exist yet, your agent can **modify and rebuild the app itself** — point it at your own fork of the source, and it goes from commit to running the new build in under 30 seconds
 - Works alongside Obsidian — no conflicts; your folder structure stays yours
 - Local-first, plain Markdown + YAML, no lock-in to one AI provider
 - iOS app that actually opens big vaults. Obsidian on my iPhone usually just spins forever — this one doesn't.
