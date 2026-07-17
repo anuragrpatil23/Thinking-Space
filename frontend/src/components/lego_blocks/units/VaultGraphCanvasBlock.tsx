@@ -63,6 +63,11 @@ const LABEL_OUTLINE_DARK = 'rgba(14, 16, 20, 0.9)'
 const LABEL_FILL_LIGHT = 'rgba(71, 78, 92, 1)'
 const LABEL_FOCUS_FILL_LIGHT = 'rgba(17, 21, 28, 1)'
 const LABEL_OUTLINE_LIGHT = 'rgba(250, 251, 253, 0.92)'
+// Region names sit under low alpha (map-style, they fade as you zoom in), so on
+// a near-black canvas the standard node fill reads muddy. They get a brighter
+// dedicated fill so the small-caps stay legible at their reduced opacity.
+const LABEL_REGION_FILL_DARK = 'rgba(232, 237, 246, 1)'
+const LABEL_REGION_FILL_LIGHT = LABEL_FILL_LIGHT
 
 /** Node radius in graph-world units — grows with degree, capped so hubs don't
  *  blot out the map. */
@@ -102,9 +107,32 @@ function truncateTitle(title: string): string {
 /** Simulation-time node: d3-force adds velocity fields it integrates each tick. */
 type SimNode = VaultGraphNode & { vx: number; vy: number }
 
-function folderOf(id: string): string {
-  const cut = id.lastIndexOf('/')
-  return cut > 0 ? id.slice(0, cut) : ''
+// Container roots hold projects one segment down (mirrors vaultGraphBlock's
+// rawProjectOf) — kept local so the grouping math doesn't couple the canvas to
+// the data block. A project therefore spans 2 leading segments inside a
+// container, 1 otherwise.
+const CONTAINER_ROOTS = new Set(['acceleration_core', 'lifeblood_systems', 'operations'])
+
+function projectSegDepth(segs: string[]): number {
+  return CONTAINER_ROOTS.has(segs[0]) && segs.length >= 3 ? 2 : 1
+}
+
+/** The neighborhood a note belongs to: its project's top-level folder — one
+ *  level shallower than the deepest folder, so `thinking-organizer/{epics,
+ *  thoughts}` reads as one "thinking-organizer" region instead of splintering.
+ *  The key keeps the full project prefix, so every project's templated
+ *  "AI Synthesis" folder stays a distinct cluster (they never fuse by name);
+ *  `folder` is that top-level folder, '' when the note sits in the project root. */
+function regionGroupOf(id: string): { key: string; folder: string } {
+  const segs = id.split('/')
+  const pd = projectSegDepth(segs)
+  // note directly under the project root — no sub-folder to name
+  if (segs.length <= pd + 1) return { key: segs.slice(0, pd).join('/'), folder: '' }
+  return { key: segs.slice(0, pd + 1).join('/'), folder: segs[pd] }
+}
+
+function regionKeyOf(id: string): string {
+  return regionGroupOf(id).key
 }
 
 /** d3 custom force: nudge each node toward its group's centroid. Groups with a
@@ -167,33 +195,25 @@ interface ClusterRegionFrame {
   project: string
 }
 
-/** Pick the folder clusters worth marking. Leaf names label them; a leaf that
- *  appears twice among the picks gets its parent segment for disambiguation. */
+/** Pick the neighborhoods worth marking (project top-level folders, see
+ *  regionGroupOf). Labels pair project with folder — "sfdl / thoughts",
+ *  "sfai / AI Synthesis" — so templated folders read against the project they
+ *  belong to; a note-in-project-root cluster is labeled by the project alone. */
 function buildClusterRegionDefs(nodes: VaultGraphNode[]): ClusterRegionDef[] {
-  const byFolder = new Map<string, VaultGraphNode[]>()
+  const byRegion = new Map<string, { members: VaultGraphNode[]; folder: string }>()
   for (const node of nodes) {
-    const key = folderOf(node.id)
+    const { key, folder } = regionGroupOf(node.id)
     if (!key) continue // loose root files are not a neighborhood
-    const members = byFolder.get(key)
-    if (members) members.push(node)
-    else byFolder.set(key, [node])
+    const region = byRegion.get(key)
+    if (region) region.members.push(node)
+    else byRegion.set(key, { members: [node], folder })
   }
-  const picked = [...byFolder.entries()]
-    .filter(([, members]) => members.length >= REGION_MIN_MEMBERS)
-    .sort((a, b) => b[1].length - a[1].length)
+  const picked = [...byRegion.values()]
+    .filter(r => r.members.length >= REGION_MIN_MEMBERS)
+    .sort((a, b) => b.members.length - a.members.length)
     .slice(0, REGION_MAX_COUNT)
 
-  const leafCounts = new Map<string, number>()
-  for (const [key] of picked) {
-    const leaf = key.slice(key.lastIndexOf('/') + 1)
-    leafCounts.set(leaf, (leafCounts.get(leaf) ?? 0) + 1)
-  }
-
-  return picked.map(([key, members]) => {
-    const segs = key.split('/')
-    const leaf = segs[segs.length - 1]
-    const label =
-      (leafCounts.get(leaf) ?? 0) > 1 && segs.length > 1 ? `${segs[segs.length - 2]} / ${leaf}` : leaf
+  return picked.map(({ members, folder }) => {
     const projectCounts = new Map<string, number>()
     for (const m of members) projectCounts.set(m.project, (projectCounts.get(m.project) ?? 0) + 1)
     let project = members[0].project
@@ -204,6 +224,11 @@ function buildClusterRegionDefs(nodes: VaultGraphNode[]): ClusterRegionDef[] {
         bestCount = count
       }
     }
+    // Pair project with folder ("sfdl / thoughts"); drop the folder when it just
+    // restates the project (a project whose canonical name is its own folder,
+    // e.g. kai-workspace/F9 → "F9") so the label never reads "F9 / F9".
+    const label =
+      folder && folder.toLowerCase() !== project.toLowerCase() ? `${project} / ${folder}` : project
     return { label, members, project }
   })
 }
@@ -542,8 +567,12 @@ export default function VaultGraphCanvasBlock({
             scale <= REGION_LABEL_ZOOM_FADE_START
               ? 1
               : Math.max(0.2, 1 - (scale - REGION_LABEL_ZOOM_FADE_START) / 2.2)
+          // Dark canvas needs more punch than the light one to read at all.
           const regionAlpha =
-            0.55 * zoomFade * (1 - view.dimEase) * (view.emphasis.mode === 'none' ? 1 : 0.45)
+            (view.isDark ? 0.72 : 0.55) *
+            zoomFade *
+            (1 - view.dimEase) *
+            (view.emphasis.mode === 'none' ? 1 : 0.45)
           if (regionAlpha > 0.04) {
             const trackedCtx = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
             const canTrack = 'letterSpacing' in trackedCtx
@@ -571,7 +600,7 @@ export default function VaultGraphCanvasBlock({
               ctx.lineWidth = 3 / scale
               ctx.lineJoin = 'round'
               ctx.strokeText(text, x, y)
-              ctx.fillStyle = view.isDark ? LABEL_FILL_DARK : LABEL_FILL_LIGHT
+              ctx.fillStyle = view.isDark ? LABEL_REGION_FILL_DARK : LABEL_REGION_FILL_LIGHT
               ctx.fillText(text, x, y)
               ctx.globalAlpha = 1
             }
@@ -850,7 +879,9 @@ export default function VaultGraphCanvasBlock({
       )
       // Folder gravity (see makeCentroidForce): the folder pull shapes tight
       // neighborhoods, the project pull drifts sibling folders near each other.
-      graph.d3Force('folderCluster', makeCentroidForce(n => folderOf(n.id), FOLDER_CLUSTER_STRENGTH))
+      // Keyed on the region grouping (project top-level folder), so a blob's
+      // shape matches its label instead of splintering one level too deep.
+      graph.d3Force('folderCluster', makeCentroidForce(n => regionKeyOf(n.id), FOLDER_CLUSTER_STRENGTH))
       graph.d3Force('projectCluster', makeCentroidForce(n => n.project, PROJECT_CLUSTER_STRENGTH))
 
       // ── Interaction model: match the rest of the app's canvases ──
