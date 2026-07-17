@@ -500,6 +500,10 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   // One editor engine, per-file-type grammar: markdown files get the markdown
   // grammar + live-preview decorations, code files get real highlighting.
   const editorLanguage = useMemo(() => resolveEditorLanguageBlock(currentPath), [currentPath])
+  // Live-preview markdown should LOOK like the document, not a code editor:
+  // prose font + view-mode spacing, no gutters. Code files keep the editor feel.
+  const proseEditing = editorLanguage.kind === 'markdown'
+    && readMarkdownEditorSettingsBlock().livePreviewSyntaxHiding
   const handleImagePasteRef = useRef<((file: File, view: EditorView) => Promise<void>) | null>(null)
   handleImagePasteRef.current = async (file: File, view: EditorView) => {
     const path = currentPathRef.current
@@ -862,8 +866,11 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         overflowY: 'auto',
         overflowX: 'hidden',
         backgroundColor: 'transparent',
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        lineHeight: '1.6',
+        fontFamily: proseEditing
+          ? 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+          : 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        ...(proseEditing ? { fontSize: '1rem' } : {}),
+        lineHeight: proseEditing ? '1.75' : '1.6',
       },
       '.cm-line': {
         overflowWrap: 'anywhere',
@@ -871,7 +878,9 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
       },
       '.cm-content': {
         minHeight: '100%',
-        padding: compactMobile ? '0.6rem 0.6rem 0.6rem 0.45rem' : '0.75rem 0.75rem 0.75rem 0.5rem',
+        padding: proseEditing
+          ? (compactMobile ? '1.25rem 1.25rem' : '1.75rem 2rem')
+          : (compactMobile ? '0.6rem 0.6rem 0.6rem 0.45rem' : '0.75rem 0.75rem 0.75rem 0.5rem'),
         whiteSpace: 'pre-wrap',
       },
       '.cm-gutters': {
@@ -1073,7 +1082,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         : []),
     ]
     return nextExtensions
-  }, [compactMobile, editorLanguage, inlineDiffDecorations, inlineDiffRender, placeholder])
+  }, [compactMobile, editorLanguage, proseEditing, inlineDiffDecorations, inlineDiffRender, placeholder])
 
   const applyPatch = (patchFactory: (text: string, from: number, to: number) => { value: string; start: number; end: number }) => {
     const view = editorViewRef.current
@@ -1501,10 +1510,10 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
           theme={resolvedColorMode === 'dark' ? 'dark' : 'light'}
           className={cn('h-full', editorCanvasClassName)}
           basicSetup={{
-            lineNumbers: !isIphoneRuntime,
+            lineNumbers: !isIphoneRuntime && !proseEditing,
             highlightActiveLine: false,
             highlightActiveLineGutter: false,
-            foldGutter: !isIphoneRuntime,
+            foldGutter: !isIphoneRuntime && !proseEditing,
             dropCursor: false,
             allowMultipleSelections: true,
             indentOnInput: true,
