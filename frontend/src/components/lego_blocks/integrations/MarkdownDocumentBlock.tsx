@@ -1508,16 +1508,7 @@ function MarkdownTextDocumentRuntimeBlock({
                       />
                       {(saving || autoSaving) ? 'Saving…' : autoSaveEnabled ? 'Editing' : 'Editing · manual'}
                     </button>
-                    {autoSaveEnabled ? (
-                      <button
-                        type="button"
-                        onClick={() => { void finishEditing() }}
-                        disabled={saving || baseMtime === null}
-                        className={saveButtonClassName}
-                      >
-                        Done
-                      </button>
-                    ) : (
+                    {!autoSaveEnabled && (
                       <button
                         type="button"
                         onClick={() => { void handleSave() }}
@@ -1583,7 +1574,11 @@ function MarkdownTextDocumentRuntimeBlock({
                       // document" — one exit affordance instead of a separate
                       // Cancel button.
                       if (isEditing) {
-                        cancelEditing()
+                        if (autoSaveEnabled && !isExcalidrawDoc) {
+                          void finishEditing()
+                        } else {
+                          cancelEditing()
+                        }
                         return
                       }
                       onClose()
