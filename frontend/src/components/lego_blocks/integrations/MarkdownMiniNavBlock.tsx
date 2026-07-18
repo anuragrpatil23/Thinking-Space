@@ -355,21 +355,7 @@ export default function MarkdownMiniNavBlock({
 
   // Non-intrusive gating: no rail on short documents or docs without structure.
   const scrollable = scrollHeight > clientHeight * 1.5
-  // [DIAGNOSTIC] when the rail would hide, show a bright marker with the metrics
-  // instead of null, to distinguish "not mounting" from "gated/invisible".
-  if (!scrollable || headingMarks.length === 0) {
-    return (
-      <div className={cn('select-none', className)}>
-        <div className="flex h-full w-5 flex-col items-center justify-start gap-1 rounded bg-red-500 py-1 text-[8px] font-bold text-white">
-          <span>{headingMarks.length}h</span>
-          <span>{scrollable ? 'S' : 'x'}</span>
-          <span>{Math.round(scrollHeight)}</span>
-          <span>{Math.round(clientHeight)}</span>
-          <span>{container ? 'C' : '0'}</span>
-        </div>
-      </div>
-    )
-  }
+  if (!scrollable || headingMarks.length === 0) return null
 
   const engaged = hovering || dragging || scrollActive
   const peeking = hovering || dragging
@@ -382,8 +368,8 @@ export default function MarkdownMiniNavBlock({
     >
       <div
         className={cn(
-          'relative h-full bg-blue-500/30 transition-opacity duration-300', // [DIAGNOSTIC] bg tint
-          engaged ? 'opacity-100' : 'opacity-100', // [DIAGNOSTIC] force full opacity
+          'relative h-full transition-opacity duration-300',
+          engaged ? 'opacity-100' : 'opacity-30',
         )}
       >
         {aiTouch && (

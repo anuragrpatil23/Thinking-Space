@@ -631,7 +631,11 @@ function MarkdownTextDocumentRuntimeBlock({
       : 'bg-transparent',
   )
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc && !isHtmlDoc
-  const showMiniNavRail = !layout.isCapacitorNative && !isHtmlDoc // [DIAGNOSTIC] dropped desktop gate
+  // Exclude only true mobile Capacitor surfaces — NOT Electron. Capacitor's
+  // isNativePlatform() returns true on Electron, so `!isCapacitorNative` wrongly
+  // hid the rail there; gate on the resolved surface (which is 'electron' first).
+  const isMobileNativeSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
+  const showMiniNavRail = layout.mode === 'desktop' && !isMobileNativeSurface && !isHtmlDoc
   const sessionTelemetry = useSessionTelemetryBlock(showMiniNavRail)
   const miniNavAiTouch = useMemo(() => {
     if (!sessionTelemetry) return null
@@ -1483,10 +1487,6 @@ function MarkdownTextDocumentRuntimeBlock({
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
       <div className="relative min-h-0 flex-1">
-        {/* [DIAGNOSTIC] gate values for the mini-nav rail */}
-        <div className="pointer-events-none absolute right-0 top-0 z-[60] bg-red-600 px-1 py-0.5 text-[9px] font-bold leading-tight text-white">
-          {`ld:${loading?1:0} er:${error?1:0} c:${content!==null?1:0} ex:${isExcalidrawDoc?1:0} pfr:${pendingFullRender?1:0} rail:${showMiniNavRail?1:0} vs:${viewSurface}`}
-        </div>
         {findOpen && findEligible && (
           <div className="absolute right-3 top-3 z-50">
             <DocumentFindBarBlock find={find} onClose={() => setFindOpen(false)} />
@@ -2172,9 +2172,9 @@ function MarkdownTextDocumentRuntimeBlock({
 
         </div>
 
-        {!loading && !error && content !== null && !isExcalidrawDoc && !pendingFullRender && showMiniNavRail && (
+        {!loading && !error && content !== null && !isExcalidrawDoc && showMiniNavRail && (
           <MarkdownMiniNavBlock
-            content={isEditing ? displayDraft : viewMarkdown}
+            content={isEditing ? displayDraft : displayContent}
             container={scrollContainerEl}
             useRenderedHeadings={!isEditing}
             renderRootSelector="[data-markdown-nav-root]"
