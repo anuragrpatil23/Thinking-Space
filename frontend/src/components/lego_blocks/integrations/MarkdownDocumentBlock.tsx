@@ -2166,7 +2166,7 @@ function MarkdownTextDocumentRuntimeBlock({
             useRenderedHeadings={!isEditing}
             renderRootSelector="[data-markdown-nav-root]"
             aiTouch={miniNavAiTouch}
-            className="fixed right-4 top-1/2 z-30 h-[42vh] max-h-[480px] min-h-[180px] -translate-y-1/2"
+            className="absolute right-4 top-1/2 z-30 h-[42vh] max-h-[480px] min-h-[180px] -translate-y-1/2"
           />
         )}
       </div>

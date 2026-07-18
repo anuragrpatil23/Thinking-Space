@@ -91,7 +91,7 @@ export default function MarkdownTableOfContentsBlock({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-40 mt-2 w-[min(30rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border/70 bg-white shadow-2xl">
+        <div className="absolute left-0 top-full z-40 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border/70 bg-card shadow-2xl">
           <div className="border-b border-border/50 px-3 py-2.5">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
