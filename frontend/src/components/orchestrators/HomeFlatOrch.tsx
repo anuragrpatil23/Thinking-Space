@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import Starfield from '@/components/lego_blocks/units/StarfieldBlock'
+import MoonSceneBlock from '@/components/lego_blocks/units/MoonSceneBlock'
 import HomeWelcomeBlock from '@/components/lego_blocks/integrations/HomeWelcomeBlock'
 import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
 import ThisWeekDigestBlock from '@/components/lego_blocks/integrations/ThisWeekDigestBlock'
@@ -18,6 +19,53 @@ import type { CanvasThemeTokens } from '@/components/lego_blocks/hooks/shared/us
  *
  * Frame split: Electron gets the spatial canvas; everything else gets this.
  */
+// The moon scene (astronaut + Clawd) is authored at a fixed 520×240 for canvas
+// world-space. In the flat frame we drop it into normal flow and scale it down
+// to fit narrow (iPhone) widths, centered, purely decorative. It carries the
+// daily quote itself — same as the canvas — so the welcome block leaves its
+// quote off here.
+const SCENE_W = 520
+const SCENE_H = 240
+function AnimatedScene() {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [scale, setScale] = useState(1)
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const update = () => setScale(Math.min(1, el.clientWidth / SCENE_W))
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return (
+    <div
+      ref={ref}
+      aria-hidden
+      style={{
+        width: '100%',
+        height: SCENE_H * scale,
+        overflow: 'hidden',
+        display: 'flex',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          width: SCENE_W,
+          height: SCENE_H,
+          flex: '0 0 auto',
+          transform: `scale(${scale})`,
+          transformOrigin: 'top center',
+        }}
+      >
+        <MoonSceneBlock x={0} y={0} />
+      </div>
+    </div>
+  )
+}
+
 function FlatPanel({ theme, children }: { theme: CanvasThemeTokens; children: ReactNode }) {
   return (
     <div
@@ -67,7 +115,10 @@ export default function HomeFlatOrch() {
 
       <div className="relative z-10 ltm-page-shell ltm-shell-medium pt-10 pb-6 sm:pt-16 sm:pb-10 md:pt-24 md:pb-16">
         <header className="mx-auto max-w-3xl">
-          <HomeWelcomeBlock showQuote theme={theme} />
+          <AnimatedScene />
+          <div className="mt-6">
+            <HomeWelcomeBlock theme={theme} />
+          </div>
         </header>
 
         <div className="mt-10 space-y-6 sm:mt-12">
