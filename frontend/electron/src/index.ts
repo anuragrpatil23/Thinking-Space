@@ -69,7 +69,7 @@ import {
   writeVaultWritePrefForVaultBlock,
   resolveWriteAiRawEnabledBlock,
   resolveWriteAiActivityEnabledBlock,
-  migrateLegacyAiRawDirBlock,
+  migrateAiRawIntoAiActivityBlock,
 } from './lego_blocks/vaultWritePrefsPersistenceBlock';
 import {
   invokeClaudeCliChatBlock,
@@ -687,8 +687,34 @@ ipcMain.handle('window:context:get', (event) => {
 // CSS theme. The renderer reports its resolved scheme here so the native blur
 // renders light for light mode and dark for dark mode (uiThemeOrch calls this
 // whenever the app theme/color mode changes).
-ipcMain.handle('window:set-native-color-mode', (_event, mode: unknown) => {
-  nativeTheme.themeSource = mode === 'dark' ? 'dark' : mode === 'light' ? 'light' : 'system';
+//
+// `nativeTheme.themeSource` is app-global, but each profile window can pick its
+// own color mode (theme is per-profile via partitioned localStorage). So we
+// remember every window's reported mode and only drive the global themeSource
+// from the *focused* window — otherwise a background profile window loading its
+// (different) theme would flip the vibrancy of the window the user is actually
+// looking at. Re-applying on focus restores each window's own mode as it comes
+// forward.
+const nativeColorModeByWindowIdBlock = new Map<number, 'light' | 'dark' | 'system'>();
+
+ipcMain.handle('window:set-native-color-mode', (event, mode: unknown) => {
+  const normalized = mode === 'dark' ? 'dark' : mode === 'light' ? 'light' : 'system';
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) {
+    nativeTheme.themeSource = normalized;
+    return;
+  }
+  const isFirstReport = !nativeColorModeByWindowIdBlock.has(win.id);
+  nativeColorModeByWindowIdBlock.set(win.id, normalized);
+  if (isFirstReport) {
+    win.on('focus', () => {
+      nativeTheme.themeSource = nativeColorModeByWindowIdBlock.get(win.id) ?? 'system';
+    });
+    win.on('closed', () => nativeColorModeByWindowIdBlock.delete(win.id));
+  }
+  if (win.isFocused()) {
+    nativeTheme.themeSource = normalized;
+  }
 });
 
 ipcMain.handle('debug:performance:get', async () => {
@@ -1813,9 +1839,9 @@ ipcMain.handle('opensource-ai:base-url:setPersisted', async (_event, baseUrl: st
 // Async getters — the settings UI reads these on mount, not on the critical
 // startup path, so no need for the sync-preload dance the vault-root uses.
 // Prefs are keyed per vault root (one vault per profile), so each profile's
-// toggle only governs its own vault. `ai-raw` runs a one-time per-vault
-// migration (existing `ai-raw/`/`ai_raw/` dir → keep harvesting);
-// `ai-activity` is strictly opt-in with no migration. Setters validate the
+// toggle only governs its own vault. `aiRaw` runs a one-time per-vault
+// migration (existing harvested-raw dir → keep harvesting); the AI-derived
+// digests mirror is strictly opt-in with no migration. Setters validate the
 // vault root against the main-anchored authorization set like every other
 // vault-scoped handler.
 ipcMain.handle('vaultWrites:aiRaw:getPersisted', async (_event, vaultRoot?: string) => {
@@ -1877,15 +1903,16 @@ ipcMain.handle('vault:watch:start', async (_event, vaultRoot: string) => {
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
-  // Rename the legacy snake_case `ai_raw/` dir to `ai-raw/` before any code
-  // reads or writes it — idempotent, silent on failure.
-  migrateLegacyAiRawDirBlock(vaultRoot);
+  // Fold legacy `ai-raw/` / `ai_raw/` harvested-raw dirs into the unified
+  // `ai-activity/raw/` tree before any code reads or writes it — idempotent,
+  // silent on failure.
+  migrateAiRawIntoAiActivityBlock(vaultRoot);
   // App-launch trigger for the Apple Screen Time mirror — the renderer
   // starts the vault watcher once on boot, so this is the natural place to
   // top up the per-day JSONLs without waiting for the AI Activity panel to
   // open. Fire-and-forget; FDA denial / unavailability is harmless.
   // Gated by the vault-write-prefs `writeAiRaw` flag (opt-in for new users,
-  // auto-migrated to on for users whose vault already contains `ai-raw/`).
+  // auto-migrated to on for vaults that already hold harvested raw signals).
   if (resolveWriteAiRawEnabledBlock(vaultRoot)) {
     void harvestAppleScreenTimeBlock(vaultRoot).catch(() => undefined);
   }
@@ -2290,7 +2317,7 @@ ipcMain.handle('nativeAiSessions:readClaudeHistory', async () => {
 });
 
 // -- Apple Screen Time dump (mirrors knowledgeC.db streams into per-day
-//    JSONLs under ai-raw/raw/apple_screen_time/ so we keep history past the
+//    JSONLs under ai-activity/raw-sessions/apple_screen_time/ so we keep history past the
 //    macOS 28-day cliff). Requires Full Disk Access. Gated by the
 //    vault-write-prefs `writeAiRaw` flag — no-op when the user has opted
 //    out of raw-signal writes. --
@@ -2303,7 +2330,8 @@ ipcMain.handle('appleScreenTime:harvest', async (_event, vaultRoot: string) => {
 // -- GoodNotes reading activity (attributes app_usage focus events to docs
 //    via fts.sqlite; writes only to the vault's durable reading log). Runs
 //    the Screen Time dump first so its source data is fresh. Same gate as
-//    the Screen Time handler — both produce files under `ai-raw/`. --
+//    the Screen Time handler — both produce files under
+//    `ai-activity/raw-sessions/`. --
 ipcMain.handle('goodnotes:harvest', async (_event, vaultRoot: string) => {
   assertAuthorizedVaultRootBlock(vaultRoot);
   if (!resolveWriteAiRawEnabledBlock(vaultRoot)) {

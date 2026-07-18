@@ -56,3 +56,17 @@ export async function setVaultWriteAiActivityEnabled(enabled: boolean): Promise<
   if (!api || typeof api.vaultWritesAiActivitySetPersisted !== 'function') return
   await api.vaultWritesAiActivitySetPersisted!(enabled, getStoredVaultRoot())
 }
+
+// True when the vault accepts *any* AI-Activity write — either the raw-signal
+// harvesters (`writeAiRaw`) or the AI-derived digests mirror (`writeAiActivity`)
+// is on. This is the gate for hand-logged manual sessions: they're first-party
+// authored durable data that lives in the same `ai-activity/` folder, so they
+// ride the folder's write permission generally rather than being stuck behind
+// the digests-mirror opt-in specifically.
+export async function getVaultWriteAiActivityAnyEnabled(): Promise<boolean> {
+  const [raw, digests] = await Promise.all([
+    getVaultWriteAiRawEnabled(),
+    getVaultWriteAiActivityEnabled(),
+  ])
+  return raw || digests
+}

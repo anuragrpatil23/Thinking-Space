@@ -8,7 +8,7 @@
 //
 // On non-Electron clients (iPhone/web) the IPC isn't present, but the
 // durable log lives in the vault and syncs — so we read and parse
-// `ai-raw/raw/goodnotes/reading.jsonl` straight through VaultFS. Either
+// `ai-activity/raw-sessions/goodnotes/reading.jsonl` straight through VaultFS. Either
 // way the caller gets the same ParsedSession[] tagged source:'goodnotes'.
 
 import type { VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
@@ -23,7 +23,7 @@ import {
   getStoredVaultRoot,
 } from '@/services/lego_blocks/units/storageKeyBlock'
 
-const READING_LOG_PATH = 'ai-raw/raw/goodnotes/reading.jsonl'
+const READING_LOG_PATH = 'ai-activity/raw-sessions/goodnotes/reading.jsonl'
 
 interface GoodnotesApi {
   goodnotesHarvest?: (

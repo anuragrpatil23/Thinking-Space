@@ -13,19 +13,27 @@ import * as path from 'path';
 // profile). The file keeps the legacy top-level fields untouched so older
 // builds still parse it, but current code only reads/writes `vaults`.
 //
-// `writeAiRaw` gates the harvesters that dump raw signals under `ai-raw/` in
-// the vault (Apple Screen Time mirror, GoodNotes reading log). `null` means
-// this vault has never made a choice — first read runs a one-time per-vault
-// migration: if the vault already contains `ai-raw/` (or the legacy `ai_raw/`)
-// we set `true` (existing installs keep harvesting — turning it off silently
-// would lose data past the macOS 28-day cliff), otherwise `false`.
+// Both sub-trees now live under one `ai-activity/` folder in the vault:
+// harvested raw signals go to `ai-activity/raw-sessions/…`, AI-derived digests
+// to `ai-activity/{atoms,chains,ranges}`, hand-logged sessions to
+// `ai-activity/manual-sessions.jsonl`. The two opt-ins stay distinct because
+// they carry different data-protection semantics (below).
+//
+// `writeAiRaw` gates the harvesters that dump raw signals under
+// `ai-activity/raw-sessions/` (Apple Screen Time mirror, GoodNotes reading
+// log). `null` means this vault has never made a choice — first read runs a
+// one-time per-vault migration: if the vault already holds harvested raw (the
+// new `ai-activity/raw-sessions/` dir, or the legacy `ai-raw/` / `ai_raw/`
+// dirs) we set
+// `true` (existing installs keep harvesting — turning it off silently would
+// lose data past the macOS 28-day cliff), otherwise `false`.
 //
 // `writeAiActivity` gates the AI-derived digests mirror at
-// `<vaultRoot>/ai-activity/…`. Strictly opt-in — no dir-exists migration:
-// the mirror is a derived, rebuildable backup (the sidecar cache is the hot
-// path), and the pre-per-vault bug left stray `ai-activity/` dirs in fresh
-// profile vaults, so "dir exists" is not evidence of intent. Default off;
-// reads from an existing dir keep working either way.
+// `<vaultRoot>/ai-activity/{atoms,chains,ranges}`. Strictly opt-in — no
+// dir-exists migration: the mirror is a derived, rebuildable backup (the
+// sidecar cache is the hot path), and the pre-per-vault bug left stray
+// `ai-activity/` dirs in fresh profile vaults, so "dir exists" is not evidence
+// of intent. Default off; reads from an existing dir keep working either way.
 
 interface VaultWritePrefEntryBlock {
   writeAiRaw: boolean | null;
@@ -144,7 +152,8 @@ export function resolveWriteAiRawEnabledBlock(vaultRoot: string): boolean {
   const entry = readPersistedVaultWritePrefsBlock().vaults[vaultPrefKeyBlock(vaultRoot)];
   if (entry && entry.writeAiRaw !== null) return entry.writeAiRaw;
   const existed =
-    fs.existsSync(path.join(vaultRoot, 'ai-raw'))
+    fs.existsSync(path.join(vaultRoot, 'ai-activity', 'raw-sessions'))
+    || fs.existsSync(path.join(vaultRoot, 'ai-raw'))
     || fs.existsSync(path.join(vaultRoot, 'ai_raw'));
   const migrated = writeVaultWritePrefForVaultBlock(vaultRoot, { writeAiRaw: existed });
   return migrated.writeAiRaw === true;
@@ -159,22 +168,66 @@ export function resolveWriteAiActivityEnabledBlock(vaultRoot: string): boolean {
   return entry?.writeAiActivity === true;
 }
 
-// One-shot rename of the legacy snake_case `ai_raw/` vault dir to the
-// kebab-case `ai-raw/` we now write everywhere. Idempotent — no-op if the
-// legacy path is absent or the new path already exists. Called from the
-// vault watcher startup path before any harvester runs so downstream code
-// sees a single canonical directory. Silent on failure: the vault sits on
-// iCloud for some users and a rename can lose to a sync intercept; we
-// simply leave things as-is and try again next launch.
-export function migrateLegacyAiRawDirBlock(vaultRoot: string): void {
-  if (typeof vaultRoot !== 'string' || vaultRoot.trim().length === 0) return;
-  const legacy = path.join(vaultRoot, 'ai_raw');
-  const current = path.join(vaultRoot, 'ai-raw');
+// Move a directory's contents into another, never clobbering an existing
+// destination file (the legacy copy is left in place if a name collides, so
+// no harvested data is ever overwritten). Recurses into subdirs and removes
+// now-empty source dirs. Best-effort — any failure leaves the source intact
+// for the next boot to retry.
+function moveDirContentsBlock(srcDir: string, dstDir: string): void {
+  fs.mkdirSync(dstDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const src = path.join(srcDir, entry.name);
+    const dst = path.join(dstDir, entry.name);
+    try {
+      if (entry.isDirectory()) {
+        moveDirContentsBlock(src, dst);
+      } else if (!fs.existsSync(dst)) {
+        fs.renameSync(src, dst);
+      }
+    } catch {
+      // Leave this entry for the next boot; keep migrating the rest.
+    }
+  }
   try {
-    if (!fs.existsSync(legacy)) return;
-    if (fs.existsSync(current)) return;
-    fs.renameSync(legacy, current);
+    fs.rmdirSync(srcDir);
   } catch {
-    // Ignore — will retry on next boot.
+    // Non-empty (a collision kept a legacy copy) or sync-locked — fine.
+  }
+}
+
+// One-shot fold of the legacy harvested-raw dirs (`ai-raw/`, and the even
+// older snake_case `ai_raw/`) into the unified `ai-activity/raw-sessions/`
+// tree we now write everywhere. Both legacy layouts nested everything under
+// `<dir>/raw/`, so we lift `<dir>/raw` up to `ai-activity/raw-sessions`.
+// Idempotent — no-op once the legacy dirs are gone. Called from the vault
+// watcher startup path before any harvester runs so downstream code sees a
+// single canonical directory. Silent on failure: the vault sits on iCloud for
+// some users and a rename can lose to a sync intercept; we leave things as-is
+// and try again next launch.
+export function migrateAiRawIntoAiActivityBlock(vaultRoot: string): void {
+  if (typeof vaultRoot !== 'string' || vaultRoot.trim().length === 0) return;
+  const targetRaw = path.join(vaultRoot, 'ai-activity', 'raw-sessions');
+  for (const legacyName of ['ai-raw', 'ai_raw']) {
+    const legacyRoot = path.join(vaultRoot, legacyName);
+    const legacyRaw = path.join(legacyRoot, 'raw');
+    try {
+      if (!fs.existsSync(legacyRaw)) continue;
+      if (!fs.existsSync(targetRaw)) {
+        // Fast path: no merge needed — hoist the whole raw/ dir in one rename.
+        fs.mkdirSync(path.join(vaultRoot, 'ai-activity'), { recursive: true });
+        fs.renameSync(legacyRaw, targetRaw);
+      } else {
+        moveDirContentsBlock(legacyRaw, targetRaw);
+      }
+      // Drop the now-empty legacy parent so it stops tripping the existence
+      // checks (and stops looking like a live dir in the vault).
+      try {
+        fs.rmdirSync(legacyRoot);
+      } catch {
+        // Still holds something (a collision or a stray file) — leave it.
+      }
+    } catch {
+      // Ignore — will retry on next boot.
+    }
   }
 }

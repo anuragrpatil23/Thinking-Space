@@ -329,9 +329,9 @@ interface ElectronAPI {
   // so setupContentSecurityPolicy can allow this origin in connect-src next launch.
   opensourceAiBaseUrlSetPersisted?(baseUrl: string | null): Promise<void>
   // Vault write prefs — gates the raw-signal harvesters (Apple Screen Time,
-  // GoodNotes reading log) that dump under `ai-raw/` and the ai-activity
-  // digests mirror. Keyed per vault root (one vault per profile), so every
-  // call carries the current vaultRoot.
+  // GoodNotes reading log) that dump under `ai-activity/raw-sessions/` and the
+  // `ai-activity/` digests mirror. Keyed per vault root (one vault per
+  // profile), so every call carries the current vaultRoot.
   vaultWritesAiRawGetPersisted?(vaultRoot: string | null): Promise<boolean>
   vaultWritesAiRawSetPersisted?(enabled: boolean, vaultRoot: string | null): Promise<void>
   vaultWritesAiActivityGetPersisted?(vaultRoot: string | null): Promise<boolean>

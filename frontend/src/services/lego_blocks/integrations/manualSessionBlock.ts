@@ -1,9 +1,11 @@
 // Durable store + loader for user-authored manual sessions. The log lives in
-// the vault under ai-activity/ (the durable AI-activity home, gated by the
-// writeAiActivity opt-in) — NOT ai-raw/, which is for harvested telemetry. A
-// manual session is first-party authored data, so it rides the same opt-in the
-// AI-activity mirror uses: writes require writeAiActivity; reads are best-effort
-// (show whatever is already in the vault even if the user later toggled off).
+// the vault at ai-activity/manual-sessions.jsonl (the durable AI-activity home)
+// — alongside the harvested raw under ai-activity/raw-sessions/ and the derived
+// digests, all in one folder now. A manual session is first-party authored
+// data, so writes ride the folder's general write permission (either the
+// raw-signal or the digests-mirror opt-in — see getVaultWriteAiActivityAnyEnabled),
+// NOT the digests-mirror opt-in specifically. Reads are best-effort (show
+// whatever is already in the vault even if the user later toggled off).
 
 import type { VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import type { ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
@@ -11,7 +13,7 @@ import {
   parseManualSessionLog,
   type ManualSessionRecord,
 } from '@/services/lego_blocks/units/manualSessionParserBlock'
-import { getVaultWriteAiActivityEnabled } from '@/services/lego_blocks/units/vaultWritePrefsBlock'
+import { getVaultWriteAiActivityAnyEnabled } from '@/services/lego_blocks/units/vaultWritePrefsBlock'
 
 const MANUAL_DIR = 'ai-activity'
 const MANUAL_LOG_PATH = `${MANUAL_DIR}/manual-sessions.jsonl`
@@ -59,10 +61,10 @@ async function writeAll(fs: VaultFS, records: ManualSessionRecord[]): Promise<vo
   await fs.write(MANUAL_LOG_PATH, body ? `${body}\n` : '')
 }
 
-/** Create one manual session. Requires the writeAiActivity opt-in; returns
- *  false (no-op) when it's off so callers can nudge the user to enable it. */
+/** Create one manual session. Requires any AI-Activity vault-write opt-in;
+ *  returns false (no-op) when both are off so callers can nudge the user. */
 export async function appendManualSession(fs: VaultFS, record: ManualSessionRecord): Promise<boolean> {
-  if (!(await getVaultWriteAiActivityEnabled())) return false
+  if (!(await getVaultWriteAiActivityAnyEnabled())) return false
   let ok = false
   _writeChain = _writeChain.then(async () => {
     try {
@@ -84,7 +86,7 @@ export async function editManualSession(
   fs: VaultFS,
   input: Pick<ManualSessionRecord, 'key' | 'project' | 'topic' | 'startMs' | 'endMs'> & { note?: string },
 ): Promise<boolean> {
-  if (!(await getVaultWriteAiActivityEnabled())) return false
+  if (!(await getVaultWriteAiActivityAnyEnabled())) return false
   let ok = false
   _writeChain = _writeChain.then(async () => {
     try {
@@ -113,7 +115,7 @@ export async function editManualSession(
 
 /** Delete a manual session by key. */
 export async function deleteManualSession(fs: VaultFS, key: string): Promise<boolean> {
-  if (!(await getVaultWriteAiActivityEnabled())) return false
+  if (!(await getVaultWriteAiActivityAnyEnabled())) return false
   let ok = false
   _writeChain = _writeChain.then(async () => {
     try {

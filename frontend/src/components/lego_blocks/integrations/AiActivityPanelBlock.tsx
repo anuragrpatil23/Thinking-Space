@@ -30,7 +30,7 @@ import {
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { purgeRuleBasedAtomsOnceOrch } from '@/services/orchestrators/aiActivityAtomOrch'
-import { getVaultWriteAiActivityEnabled } from '@/services/lego_blocks/units/vaultWritePrefsBlock'
+import { getVaultWriteAiActivityAnyEnabled } from '@/services/lego_blocks/units/vaultWritePrefsBlock'
 
 /** Which view produced the current drill selection. The detail (table + summary,
  *  plus the day timeline for the heatmap) docks under the section that owns the
@@ -97,8 +97,8 @@ export interface AiActivityGraphControls {
    *  mode, where the graph is already on screen and driven inline. */
   enableGraphPeek?: boolean
   /** Standalone card: show the "+ Log session" affordance for hand-logged time
-   *  blocks. Actual write ability is further gated by the writeAiActivity
-   *  opt-in (the button disables + nudges when it's off). */
+   *  blocks. Actual write ability is further gated by any AI-Activity vault-write
+   *  opt-in (the button disables + nudges when both are off). */
   enableManualSessions?: boolean
 }
 
@@ -117,13 +117,15 @@ export default function AiActivityPanelBlock({
   useEffect(() => {
     void purgeRuleBasedAtomsOnceOrch()
   }, [])
-  // Whether hand-logged sessions can be written — gated by the writeAiActivity
-  // opt-in (manual sessions live in the vault ai-activity/ mirror). Re-checked
-  // after a manual change so enabling it in Settings reflects without a reload.
-  const [writeAiActivityEnabled, setWriteAiActivityEnabled] = useState(false)
+  // Whether hand-logged sessions can be written — gated by any AI-Activity
+  // vault-write opt-in (manual sessions live in the vault ai-activity/ folder,
+  // so they ride its general write permission, not the digests-mirror toggle
+  // specifically). Re-checked after a change so enabling it in Settings
+  // reflects without a reload.
+  const [manualWriteEnabled, setManualWriteEnabled] = useState(false)
   useEffect(() => {
     let cancelled = false
-    void getVaultWriteAiActivityEnabled().then(v => { if (!cancelled) setWriteAiActivityEnabled(v) })
+    void getVaultWriteAiActivityAnyEnabled().then(v => { if (!cancelled) setManualWriteEnabled(v) })
     return () => { cancelled = true }
   }, [activity.chains])
   // Real project labels for the manual-session combobox (noise/unknown excluded).
@@ -358,7 +360,7 @@ export default function AiActivityPanelBlock({
             onSelectChain={onSelectChain ? handleSelectChain : undefined}
             selectedChainKey={selectedChainKey}
             enableGraphPeek={enableGraphPeek}
-            manualSessionsEnabled={enableManualSessions ? writeAiActivityEnabled : undefined}
+            manualSessionsEnabled={enableManualSessions ? manualWriteEnabled : undefined}
             knownProjects={knownProjects}
             onManualChanged={activity.refresh}
           />

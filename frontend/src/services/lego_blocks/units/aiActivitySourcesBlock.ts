@@ -7,10 +7,10 @@
 import { getJsonStorageItem, setJsonStorageItem, STORAGE_KEYS } from '@/services/lego_blocks/units/storageKeyBlock'
 
 export const DEFAULT_VAULT_SESSION_PREFIXES = [
-  'ai-raw/raw/claude-code/',
-  'ai-raw/raw/codex/',
-  'ai-raw/raw/chatgpt/',
-  'ai-raw/raw/grok/',
+  'ai-activity/raw-sessions/claude-code/',
+  'ai-activity/raw-sessions/codex/',
+  'ai-activity/raw-sessions/chatgpt/',
+  'ai-activity/raw-sessions/grok/',
 ]
 
 function sanitizePrefixes(raw: unknown): string[] | null {
@@ -20,9 +20,11 @@ function sanitizePrefixes(raw: unknown): string[] | null {
     if (typeof item !== 'string') continue
     let p = item.trim().replace(/^\/+/, '')
     if (!p) continue
-    // Migrate any stored `ai_raw/…` prefix from before the kebab-case rename;
-    // the vault dir gets renamed at watcher startup so old paths won't resolve.
-    if (p.startsWith('ai_raw/')) p = `ai-raw/${p.slice('ai_raw/'.length)}`
+    // Migrate stored prefixes from the pre-merge layouts — the vault dirs get
+    // folded into `ai-activity/raw-sessions/` at watcher startup, so old paths
+    // (`ai_raw/raw/…`, `ai-raw/raw/…`) would no longer resolve.
+    if (p.startsWith('ai_raw/raw/')) p = `ai-activity/raw-sessions/${p.slice('ai_raw/raw/'.length)}`
+    else if (p.startsWith('ai-raw/raw/')) p = `ai-activity/raw-sessions/${p.slice('ai-raw/raw/'.length)}`
     if (!p.endsWith('/')) p += '/'
     if (!out.includes(p)) out.push(p)
   }

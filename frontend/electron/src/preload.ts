@@ -499,16 +499,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Vault write prefs — gate for the raw-signal harvesters that dump under
-  // `ai-raw/` (Apple Screen Time, GoodNotes reading log). Keyed per vault
-  // root (one vault per profile), so both getters and setters carry the
-  // current vaultRoot. ai-raw auto-migrates on for vaults that already
-  // contain the directory; ai-activity is strictly opt-in.
+  // `ai-activity/raw-sessions/` (Apple Screen Time, GoodNotes reading log).
+  // Keyed per vault root (one vault per profile), so both getters and setters
+  // carry the current vaultRoot. aiRaw auto-migrates on for vaults that
+  // already hold harvested raw; the digests mirror is strictly opt-in.
   vaultWritesAiRawGetPersisted: (vaultRoot: string | null): Promise<boolean> =>
     ipcRenderer.invoke('vaultWrites:aiRaw:getPersisted', vaultRoot ?? undefined),
   vaultWritesAiRawSetPersisted: (enabled: boolean, vaultRoot: string | null): Promise<void> =>
     ipcRenderer.invoke('vaultWrites:aiRaw:setPersisted', enabled, vaultRoot ?? undefined),
   // Sibling toggle for the AI-derived project-day atoms mirror. Same shape
-  // as the ai-raw pair; kept separate so users can enable durable digests
+  // as the raw-signal pair; kept separate so users can enable durable digests
   // without also opting into raw-signal writes.
   vaultWritesAiActivityGetPersisted: (vaultRoot: string | null): Promise<boolean> =>
     ipcRenderer.invoke('vaultWrites:aiActivity:getPersisted', vaultRoot ?? undefined),

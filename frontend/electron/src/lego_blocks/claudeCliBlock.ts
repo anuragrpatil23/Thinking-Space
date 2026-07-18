@@ -20,7 +20,7 @@ import { readPersistedVaultRootBlock } from './vaultRootPersistenceBlock';
 //
 // Incognito: every invocation is captured by Claude Code as a JSONL under
 // `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`, and the user's
-// SessionEnd hook mirrors it into the vault at `ai_raw/raw/claude-code/`.
+// SessionEnd hook mirrors it into the vault at `ai-activity/raw-sessions/claude-code/`.
 // Because THIS caller is the AI-activity summarizer itself, letting those
 // traces stick around means the next summarizer run sees its own previous
 // invocations as new "activity" — recursive noise. We use

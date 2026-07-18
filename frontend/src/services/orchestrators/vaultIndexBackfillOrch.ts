@@ -33,7 +33,7 @@ export interface VaultUuidBackfillResult {
 
 // Paths we never stamp: harvested AI transcripts and TS-internal state. These
 // aren't user notes and shouldn't grow a uuid.
-const EXCLUDED_PREFIXES = ['ai-raw/', 'ai_raw/', '.thinking-space/', '.thinkingspace/', '.obsidian/']
+const EXCLUDED_PREFIXES = ['ai-activity/', 'ai-raw/', 'ai_raw/', '.thinking-space/', '.thinkingspace/', '.obsidian/']
 
 function isExcluded(path: string): boolean {
   return EXCLUDED_PREFIXES.some(prefix => path.startsWith(prefix))

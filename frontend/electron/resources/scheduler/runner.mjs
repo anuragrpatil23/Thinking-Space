@@ -42,7 +42,7 @@ const TELEGRAM_CONVS_DIR = join(TELEGRAM_STATE_DIR, 'conversations');
 const TELEGRAM_LONG_POLL_TIMEOUT_S = 25;
 const TELEGRAM_REPLY_CLAUDE_TIMEOUT_MS = 5 * 60 * 1000;
 // Session cleanup (JSONL under ~/.claude/projects + vault mirror under
-// ai_raw/raw/claude-code) is delegated to claudeSessionCleanupBlock.mjs.
+// ai-activity/raw-sessions/claude-code) is delegated to claudeSessionCleanupBlock.mjs.
 // Same module is dynamic-imported by the Electron main-process claude-cli
 // provider so the summarizer's own invocations also leave no trace.
 

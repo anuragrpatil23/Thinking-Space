@@ -18,7 +18,10 @@ export interface UIColorModeOptionBlock {
 }
 
 export const DEFAULT_UI_THEME_ID_BLOCK: UIThemeId = 'classic'
-export const DEFAULT_UI_COLOR_MODE_ID_BLOCK: UIColorModeId = 'light'
+// New profiles come up in auto (follows the canvas day/night) rather than a
+// hard light — a fresh profile window shouldn't force itself bright regardless
+// of the system appearance or the time of day.
+export const DEFAULT_UI_COLOR_MODE_ID_BLOCK: UIColorModeId = 'auto'
 
 export const UI_THEME_OPTIONS_BLOCK: readonly UIThemeOptionBlock[] = Object.freeze([
   {

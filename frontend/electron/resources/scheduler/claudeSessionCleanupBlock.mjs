@@ -20,7 +20,7 @@
 //
 //   - The vault-side render dropped by the user's SessionEnd hook
 //     (`~/.claude/hooks/render-session.sh`) at
-//     `<vault>/ai_raw/raw/claude-code/YYYY-MM-DD_<sid8>[_slug].md`.
+//     `<vault>/ai-activity/raw-sessions/claude-code/YYYY-MM-DD_<sid8>[_slug].md`.
 //     We match on the 8-char short id prefix so the date and slug parts
 //     don't need to be known.
 //
@@ -42,7 +42,7 @@ export const CLAUDE_PROJECTS_DIR = join(HOME, '.claude', 'projects');
 export const VAULT_CLAUDE_SESSIONS_DIR = join(
   HOME,
   'Library', 'Mobile Documents', 'iCloud~md~obsidian', 'Documents',
-  'Long-Term-Memory-iCloud', 'ai_raw', 'raw', 'claude-code',
+  'Long-Term-Memory-iCloud', 'ai-activity', 'raw-sessions', 'claude-code',
 );
 
 /**

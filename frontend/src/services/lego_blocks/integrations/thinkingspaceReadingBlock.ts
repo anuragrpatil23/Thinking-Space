@@ -11,7 +11,7 @@ import {
   type ThinkingspaceReadingRecord,
 } from '@/services/lego_blocks/units/thinkingspaceReadingParserBlock'
 
-const READING_DIR = 'ai-raw/raw/thinkingspace'
+const READING_DIR = 'ai-activity/raw-sessions/thinkingspace'
 const READING_LOG_PATH = `${READING_DIR}/reading.jsonl`
 
 function parseLogText(text: string): ThinkingspaceReadingRecord[] {
