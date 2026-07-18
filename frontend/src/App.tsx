@@ -2658,21 +2658,23 @@ function App() {
                                 active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                               }`}
                             >
-                              <Icon className={item.railIconClassName ?? RAIL_ICON_CLASS} />
-                              {railEditMode && (
-                                <button
-                                  type="button"
-                                  aria-label={`Hide ${item.label} from this profile`}
-                                  onClick={(event) => {
-                                    event.preventDefault()
-                                    event.stopPropagation()
-                                    hideNavRailItemBlock(item.to)
-                                  }}
-                                  className="absolute -left-1 -top-1 z-10 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-neutral-700 text-[11px] font-bold leading-none text-white shadow-md ring-2 ring-[hsl(var(--background))]"
-                                >
-                                  ×
-                                </button>
-                              )}
+                              <span className="relative inline-flex">
+                                <Icon className={item.railIconClassName ?? RAIL_ICON_CLASS} />
+                                {railEditMode && (
+                                  <button
+                                    type="button"
+                                    aria-label={`Hide ${item.label} from this profile`}
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      hideNavRailItemBlock(item.to)
+                                    }}
+                                    className="absolute -right-2.5 -top-2.5 z-10 flex h-[17px] w-[17px] items-center justify-center rounded-full bg-neutral-700 text-[11px] font-bold leading-none text-white shadow-md ring-2 ring-[hsl(var(--background))]"
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </span>
                             </Link>
                           </TooltipTrigger>
                           <TooltipContent side="right">{railEditMode ? 'Drag to reorder · × to hide · click away to finish' : `${item.label}${shortcutHint(index + 1)}`}</TooltipContent>
@@ -2707,21 +2709,23 @@ function App() {
                                 active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                               }`}
                             >
-                              <Icon className="h-[18px] w-[18px]" />
-                              {railEditMode && (
-                                <button
-                                  type="button"
-                                  aria-label={`Hide ${item.label} from this profile`}
-                                  onClick={(event) => {
-                                    event.preventDefault()
-                                    event.stopPropagation()
-                                    hideNavRailItemBlock(item.to)
-                                  }}
-                                  className="absolute -left-1 -top-1 z-10 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-neutral-700 text-[11px] font-bold leading-none text-white shadow-md ring-2 ring-[hsl(var(--background))]"
-                                >
-                                  ×
-                                </button>
-                              )}
+                              <span className="relative inline-flex">
+                                <Icon className="h-[18px] w-[18px]" />
+                                {railEditMode && (
+                                  <button
+                                    type="button"
+                                    aria-label={`Hide ${item.label} from this profile`}
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      hideNavRailItemBlock(item.to)
+                                    }}
+                                    className="absolute -right-2.5 -top-2.5 z-10 flex h-[17px] w-[17px] items-center justify-center rounded-full bg-neutral-700 text-[11px] font-bold leading-none text-white shadow-md ring-2 ring-[hsl(var(--background))]"
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </span>
                             </Link>
                           </TooltipTrigger>
                           <TooltipContent side="right">{railEditMode ? 'Drag to reorder · × to hide · click away to finish' : `${item.label}${shortcutHint(primaryNavItems.length + 1 + index)}`}</TooltipContent>
