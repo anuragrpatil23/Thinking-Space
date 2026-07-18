@@ -99,6 +99,15 @@ export default function AiActivityTrendChartBlock({
     return out
   }, [restDays])
 
+  // First-of-month ISO dates present in the window — passive calendar
+  // orientation on a multi-month view. Rendered as a faint solid gridline,
+  // deliberately distinct from the amber dashed rest-day lines (structure vs
+  // signal). `date` is `YYYY-MM-DD`, so the 1st is just the `-01` suffix.
+  const monthStartIsos = useMemo(
+    () => days.map(d => d.date).filter(date => date.endsWith('-01')),
+    [days],
+  )
+
   const visibleProjects = useMemo(() => {
     let list = projects
     if (hideNoise) list = list.filter(p => !p.isNoise)
@@ -287,6 +296,15 @@ export default function AiActivityTrendChartBlock({
                 ifOverflow="extendDomain"
               />
             )}
+            {monthStartIsos.map(iso => (
+              <ReferenceLine
+                key={`month-${iso}`}
+                x={iso}
+                stroke="rgba(148,163,184,0.18)"
+                strokeWidth={1}
+                ifOverflow="extendDomain"
+              />
+            ))}
             {restDayIsos.map(iso => (
               <ReferenceLine
                 key={`rest-${iso}`}
