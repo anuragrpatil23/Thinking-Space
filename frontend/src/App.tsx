@@ -2778,7 +2778,6 @@ function App() {
                   onDrop={dropHomeRailAt('bottom')}
                 >
                   <div className="ltm-sidebar-actions-group space-y-1">
-                    {navRailPrefs.homePosition === 'bottom' && renderHomeRailItem()}
                     {utilityNavItems.map((item) => {
                       const Icon = item.icon
                       const active = isNavItemActive(location.pathname, item)
@@ -2801,6 +2800,7 @@ function App() {
                     <div className="mt-2">
                       <ProfileSwitcherBlock />
                     </div>
+                    {navRailPrefs.homePosition === 'bottom' && renderHomeRailItem()}
                   </div>
                 </div>
                 </div>
