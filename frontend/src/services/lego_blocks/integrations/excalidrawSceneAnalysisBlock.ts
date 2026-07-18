@@ -54,6 +54,32 @@ export interface SceneElementRect {
   centerX: number
   centerY: number
   type: string
+  strokeColor: string | null
+  backgroundColor: string | null
+}
+
+/**
+ * Uniform-scale (letterbox) projection of scene bounds into a fixed minimap
+ * box, so tall/wide scenes keep their true aspect ratio instead of stretching.
+ * world → box: x' = (wx - minX) * scale + offsetX
+ */
+export interface MiniMapProjection {
+  scale: number
+  offsetX: number
+  offsetY: number
+}
+
+export function computeMiniMapProjection(
+  bounds: MiniMapBounds,
+  boxWidth: number,
+  boxHeight: number,
+): MiniMapProjection {
+  const scale = Math.min(boxWidth / bounds.width, boxHeight / bounds.height)
+  return {
+    scale,
+    offsetX: (boxWidth - bounds.width * scale) / 2,
+    offsetY: (boxHeight - bounds.height * scale) / 2,
+  }
 }
 
 export interface ExcalidrawPerfEvent {
@@ -97,7 +123,22 @@ export function readSceneElementRect(item: unknown): SceneElementRect | null {
   const width = Math.max(right - left, 1)
   const height = Math.max(bottom - top, 1)
 
-  return { left, top, width, height, centerX: left + width / 2, centerY: top + height / 2, type }
+  const strokeColorRaw = typeof element.strokeColor === 'string' ? element.strokeColor : null
+  const backgroundColorRaw = typeof element.backgroundColor === 'string' ? element.backgroundColor : null
+  const strokeColor = strokeColorRaw && strokeColorRaw !== 'transparent' ? strokeColorRaw : null
+  const backgroundColor = backgroundColorRaw && backgroundColorRaw !== 'transparent' ? backgroundColorRaw : null
+
+  return {
+    left,
+    top,
+    width,
+    height,
+    centerX: left + width / 2,
+    centerY: top + height / 2,
+    type,
+    strokeColor,
+    backgroundColor,
+  }
 }
 
 export function readMiniMapSceneElementRect(item: unknown): SceneElementRect | null {

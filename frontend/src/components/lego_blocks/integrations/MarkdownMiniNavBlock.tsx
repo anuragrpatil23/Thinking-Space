@@ -1,4 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { cn } from '@/lib/utils'
+import { assignSectionOutlineLabelsBlock } from '@/services/lego_blocks/units/outlineCounterBlock'
+import DocumentOutlinePanelBlock, {
+  type DocumentOutlineRowBlock,
+} from '@/components/lego_blocks/units/DocumentOutlinePanelBlock'
+
+/** Latest-AI-session provenance for the open file (file-level — the pipeline
+ *  has no line ranges). Colors mirror the explorer's telemetry dots. */
+export interface MiniNavAiTouch {
+  kind: 'created' | 'edited'
+  topic: string
+}
 
 interface MarkdownMiniNavBlockProps {
   content: string
@@ -6,14 +18,20 @@ interface MarkdownMiniNavBlockProps {
   className?: string
   useRenderedHeadings?: boolean
   renderRootSelector?: string
+  aiTouch?: MiniNavAiTouch | null
 }
 
 interface HeadingMark {
   level: number
   ratio: number
+  text: string
 }
 
 type ScrollTargetMode = 'container' | 'page'
+
+const MAX_TICKS = 120
+const MAX_PANEL_ROWS = 80
+const IDLE_FADE_DELAY_MS = 1200
 
 function extractHeadingMarks(markdown: string): HeadingMark[] {
   const lines = markdown.split('\n')
@@ -22,28 +40,85 @@ function extractHeadingMarks(markdown: string): HeadingMark[] {
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i]
-    const m = line.match(/^(#{1,6})\s+/)
+    const m = line.match(/^(#{1,6})\s+(.*)/)
     if (!m) continue
     marks.push({
       level: m[1].length,
       ratio: i / total,
+      text: m[2].trim(),
     })
   }
   return marks
 }
 
+function tickWidthForLevel(level: number): number {
+  if (level <= 1) return 14
+  if (level === 2) return 9
+  return 5
+}
+
+/**
+ * Structure rail for long markdown documents. Deliberately NOT a scrollbar —
+ * the native one stays; this is a quiet column of heading ticks beside it.
+ * The tick for the section currently in view is highlighted; hovering opens a
+ * solid outline panel (rows, not floating pills — always readable over any
+ * content) with click-to-jump; the tick track itself is click/drag scrubbable.
+ */
 export default function MarkdownMiniNavBlock({
   content,
   container,
   className,
   useRenderedHeadings = true,
   renderRootSelector,
+  aiTouch = null,
 }: MarkdownMiniNavBlockProps) {
   const [scrollTop, setScrollTop] = useState(0)
   const [scrollHeight, setScrollHeight] = useState(1)
   const [clientHeight, setClientHeight] = useState(1)
   const fallbackHeadingMarks = useMemo(() => extractHeadingMarks(content), [content])
   const [headingMarks, setHeadingMarks] = useState<HeadingMark[]>(fallbackHeadingMarks)
+
+  const trackRef = useRef<HTMLDivElement | null>(null)
+  const [hovering, setHovering] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const [scrollActive, setScrollActive] = useState(false)
+  const scrollIdleTimerRef = useRef<number | null>(null)
+  const hoverLeaveTimerRef = useRef<number | null>(null)
+  const dragMovedRef = useRef(false)
+  const dragStartYRef = useRef(0)
+
+  const pulseScrollActivity = useCallback(() => {
+    setScrollActive(true)
+    if (scrollIdleTimerRef.current !== null) window.clearTimeout(scrollIdleTimerRef.current)
+    scrollIdleTimerRef.current = window.setTimeout(() => {
+      scrollIdleTimerRef.current = null
+      setScrollActive(false)
+    }, IDLE_FADE_DELAY_MS)
+  }, [])
+
+  useEffect(() => () => {
+    if (scrollIdleTimerRef.current !== null) window.clearTimeout(scrollIdleTimerRef.current)
+  }, [])
+
+  // Hover-intent: keep the panel open while the pointer crosses the gap
+  // between the track and the panel.
+  const handleHoverEnter = useCallback(() => {
+    if (hoverLeaveTimerRef.current !== null) {
+      window.clearTimeout(hoverLeaveTimerRef.current)
+      hoverLeaveTimerRef.current = null
+    }
+    setHovering(true)
+  }, [])
+  const handleHoverLeave = useCallback(() => {
+    if (hoverLeaveTimerRef.current !== null) window.clearTimeout(hoverLeaveTimerRef.current)
+    hoverLeaveTimerRef.current = window.setTimeout(() => {
+      hoverLeaveTimerRef.current = null
+      setHovering(false)
+    }, 250)
+  }, [])
+  useEffect(() => () => {
+    if (hoverLeaveTimerRef.current !== null) window.clearTimeout(hoverLeaveTimerRef.current)
+  }, [])
 
   const readPageMetrics = useCallback((): { top: number; height: number; viewportHeight: number } => {
     if (typeof document === 'undefined' || typeof window === 'undefined') {
@@ -90,7 +165,7 @@ export default function MarkdownMiniNavBlock({
         ? headingRect.top - containerRect.top + container.scrollTop
         : headingRect.top + pageMetrics.top
       const ratio = Math.max(0, Math.min(1, offsetTop / maxScroll))
-      marks.push({ level, ratio })
+      marks.push({ level, ratio, text: (heading.textContent ?? '').trim() })
     }
 
     return marks.length > 0 ? marks : fallbackHeadingMarks
@@ -131,6 +206,7 @@ export default function MarkdownMiniNavBlock({
     const handleContainerScroll = () => {
       if (readScrollTargetMode() !== 'container' || !container) return
       setScrollTop(container.scrollTop)
+      pulseScrollActivity()
     }
     container?.addEventListener('scroll', handleContainerScroll, { passive: true })
 
@@ -138,6 +214,7 @@ export default function MarkdownMiniNavBlock({
       if (readScrollTargetMode() !== 'page') return
       const page = readPageMetrics()
       setScrollTop(page.top)
+      pulseScrollActivity()
     }
     window.addEventListener('scroll', handleWindowScroll, { passive: true })
 
@@ -172,21 +249,17 @@ export default function MarkdownMiniNavBlock({
       ro.disconnect()
       mo.disconnect()
     }
-  }, [container, fallbackHeadingMarks, readPageMetrics, readScrollTargetMode, resolveRenderedHeadingMarks])
+  }, [container, fallbackHeadingMarks, pulseScrollActivity, readPageMetrics, readScrollTargetMode, resolveRenderedHeadingMarks])
 
-  const trackHeight = 112
   const maxScroll = Math.max(scrollHeight - clientHeight, 1)
-  const viewportRatio = Math.min(clientHeight / scrollHeight, 1)
-  const viewportHeight = Math.max(viewportRatio * trackHeight, 16)
-  const viewportTop = (scrollTop / maxScroll) * (trackHeight - viewportHeight)
 
-  const scrollToRatio = (ratio: number) => {
+  const scrollToRatio = useCallback((ratio: number, behavior: ScrollBehavior = 'smooth') => {
     const clamped = Math.max(0, Math.min(1, ratio))
     const mode = readScrollTargetMode()
     if (mode === 'container' && container) {
       container.scrollTo({
-        top: clamped * maxScroll,
-        behavior: 'smooth',
+        top: clamped * Math.max(container.scrollHeight - container.clientHeight, 1),
+        behavior,
       })
       return
     }
@@ -195,42 +268,173 @@ export default function MarkdownMiniNavBlock({
     const pageMaxScroll = Math.max(page.height - page.viewportHeight, 1)
     window.scrollTo({
       top: clamped * pageMaxScroll,
-      behavior: 'smooth',
+      behavior,
     })
-  }
+  }, [container, readPageMetrics, readScrollTargetMode])
+
+  // Jump so the heading lands about a third down the viewport — near-center
+  // reads better than pinning the section title to the top edge.
+  const scrollToHeading = useCallback((ratio: number) => {
+    const clamped = Math.max(0, Math.min(1, ratio))
+    const mode = readScrollTargetMode()
+    if (mode === 'container' && container) {
+      const max = Math.max(container.scrollHeight - container.clientHeight, 1)
+      const top = Math.max(0, Math.min(max, clamped * max - container.clientHeight / 3))
+      container.scrollTo({ top, behavior: 'smooth' })
+      return
+    }
+    const page = readPageMetrics()
+    const max = Math.max(page.height - page.viewportHeight, 1)
+    const top = Math.max(0, Math.min(max, clamped * max - page.viewportHeight / 3))
+    window.scrollTo({ top, behavior: 'smooth' })
+  }, [container, readPageMetrics, readScrollTargetMode])
+
+  const ratioFromPointer = useCallback((clientY: number): number => {
+    const rect = trackRef.current?.getBoundingClientRect()
+    if (!rect) return 0
+    return Math.max(0, Math.min(1, (clientY - rect.top) / Math.max(rect.height, 1)))
+  }, [])
+
+  const handleTrackPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragMovedRef.current = false
+    dragStartYRef.current = e.clientY
+    setDragging(true)
+  }, [])
+
+  const handleTrackPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return
+    if (!dragMovedRef.current && Math.abs(e.clientY - dragStartYRef.current) < 3) return
+    dragMovedRef.current = true
+    scrollToRatio(ratioFromPointer(e.clientY), 'auto')
+  }, [dragging, ratioFromPointer, scrollToRatio])
+
+  const handleTrackPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return
+    setDragging(false)
+    if (!dragMovedRef.current) {
+      scrollToRatio(ratioFromPointer(e.clientY), 'smooth')
+    }
+  }, [dragging, ratioFromPointer, scrollToRatio])
+
+  const ticks = useMemo(() => headingMarks.slice(0, MAX_TICKS), [headingMarks])
+
+  // Judge "current section" at the same one-third reading line that
+  // click-to-jump lands headings on, so the highlight matches where you land.
+  const readingLineRatio = (scrollTop + clientHeight / 3) / maxScroll
+  const activeMarkIndex = useMemo(() => {
+    let active = -1
+    for (let i = 0; i < headingMarks.length; i += 1) {
+      if (headingMarks[i].ratio <= readingLineRatio + 0.005) active = i
+      else break
+    }
+    return active
+  }, [readingLineRatio, headingMarks])
+
+  const panelRows = useMemo<DocumentOutlineRowBlock[]>(() => {
+    const marks = headingMarks.slice(0, MAX_PANEL_ROWS)
+    const { titleIndex, labels } = assignSectionOutlineLabelsBlock(marks.map((m) => m.level))
+    return marks.map((mark, i) => ({
+      key: `row-${i}-${mark.text}`,
+      label: labels[i],
+      text: mark.text,
+      level: mark.level,
+      isTitle: i === titleIndex,
+      active: i === activeMarkIndex,
+      onSelect: i === titleIndex
+        ? () => scrollToRatio(0, 'smooth')
+        : () => scrollToHeading(mark.ratio),
+    }))
+  }, [activeMarkIndex, headingMarks, scrollToHeading, scrollToRatio])
+
+  // Non-intrusive gating: no rail on short documents or docs without structure.
+  const scrollable = scrollHeight > clientHeight * 1.5
+  if (!scrollable || headingMarks.length === 0) return null
+
+  const engaged = hovering || dragging || scrollActive
+  const peeking = hovering || dragging
 
   return (
     <div
-      className={className ?? 'absolute right-3 top-3 z-20 select-none rounded-lg border border-border/70 bg-background/90 p-1 shadow-sm backdrop-blur'}
-      title="Mini map"
+      className={cn('select-none', className)}
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse') handleHoverEnter() }}
+      onPointerLeave={handleHoverLeave}
     >
       <div
-        className="relative h-28 w-8 cursor-pointer rounded bg-muted/40"
-        onClick={(e) => {
-          const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
-          const ratio = (e.clientY - rect.top) / Math.max(rect.height, 1)
-          scrollToRatio(ratio)
-        }}
+        className={cn(
+          'relative h-full transition-opacity duration-300',
+          engaged ? 'opacity-100' : 'opacity-30',
+        )}
       >
-        {headingMarks.map((mark, i) => (
+        {aiTouch && (
           <div
-            key={`${mark.level}-${mark.ratio}-${i}`}
-            className="absolute left-0.5 rounded bg-primary/50"
+            className={cn(
+              'pointer-events-none absolute -top-3 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full',
+              aiTouch.kind === 'created' ? 'bg-emerald-500' : 'bg-amber-500',
+            )}
             style={{
-              top: `${mark.ratio * 100}%`,
-              height: 2,
-              width: `${Math.max(20 - mark.level * 2, 8)}px`,
+              boxShadow: aiTouch.kind === 'created'
+                ? '0 0 8px 1px rgba(16, 185, 129, 0.55)'
+                : '0 0 8px 1px rgba(245, 158, 11, 0.55)',
             }}
+            title={`AI ${aiTouch.kind} this file — ${aiTouch.topic}`}
           />
-        ))}
+        )}
+
+        {peeking && (
+          <div className="absolute right-full top-0 mr-2 flex max-h-full flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl">
+            {aiTouch && (
+              <div
+                className={cn(
+                  'flex shrink-0 items-center gap-1.5 border-b border-border/60 px-2.5 py-1.5 text-[10px] font-medium',
+                  aiTouch.kind === 'created' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400',
+                )}
+              >
+                <span
+                  className={cn(
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
+                    aiTouch.kind === 'created' ? 'bg-emerald-500' : 'bg-amber-500',
+                  )}
+                />
+                <span className="truncate">AI {aiTouch.kind} · {aiTouch.topic}</span>
+              </div>
+            )}
+            <DocumentOutlinePanelBlock rows={panelRows} size="compact" />
+          </div>
+        )}
 
         <div
-          className="absolute left-0 right-0 rounded border border-primary/70 bg-primary/20"
-          style={{
-            top: `${viewportTop}px`,
-            height: `${viewportHeight}px`,
-          }}
-        />
+          ref={trackRef}
+          onPointerDown={handleTrackPointerDown}
+          onPointerMove={handleTrackPointerMove}
+          onPointerUp={handleTrackPointerUp}
+          onPointerCancel={() => setDragging(false)}
+          className="relative h-full w-4 cursor-pointer touch-none"
+          aria-hidden="true"
+        >
+          {ticks.map((mark, i) => (
+            <div
+              key={`tick-${mark.level}-${i}`}
+              className={cn(
+                'pointer-events-none absolute right-0.5 rounded-full transition-colors duration-200',
+                i === activeMarkIndex
+                  ? 'bg-primary/80'
+                  : mark.level <= 1
+                    ? 'bg-muted-foreground/50'
+                    : mark.level === 2
+                      ? 'bg-muted-foreground/35'
+                      : 'bg-muted-foreground/25',
+              )}
+              style={{
+                top: `${mark.ratio * 100}%`,
+                height: 2,
+                width: tickWidthForLevel(mark.level) + (i === activeMarkIndex ? 2 : 0),
+              }}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )

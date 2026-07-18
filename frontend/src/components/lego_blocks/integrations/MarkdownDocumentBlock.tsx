@@ -101,6 +101,7 @@ import {
 import { readMemorizedSessions } from '@/services/lego_blocks/units/memorizedSessionsBlock'
 import DocumentFindBarBlock from '@/components/lego_blocks/integrations/DocumentFindBarBlock'
 import { useInDocumentFindBlock } from '@/components/lego_blocks/hooks/units/useInDocumentFindBlock'
+import { useSessionTelemetryBlock } from '@/components/lego_blocks/hooks/units/useSessionTelemetryBlock'
 import { isTableDocumentPathBlock } from '@/services/lego_blocks/units/tableDocumentPathBlock'
 import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocumentPathBlock'
 import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
@@ -622,6 +623,13 @@ function MarkdownTextDocumentRuntimeBlock({
   )
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc && !isHtmlDoc
   const showMiniNavRail = layout.mode === 'desktop' && !layout.isCapacitorNative && !isHtmlDoc
+  const sessionTelemetry = useSessionTelemetryBlock(showMiniNavRail)
+  const miniNavAiTouch = useMemo(() => {
+    if (!sessionTelemetry) return null
+    const rel = path.replace(/^\.?\//, '')
+    const kind = sessionTelemetry.files.get(rel) ?? sessionTelemetry.files.get(path)
+    return kind ? { kind, topic: sessionTelemetry.topic } : null
+  }, [path, sessionTelemetry])
   const displayContent = useMemo(
     () => {
       if (content === null) return ''
@@ -2145,7 +2153,8 @@ function MarkdownTextDocumentRuntimeBlock({
             container={contentScrollRef.current}
             useRenderedHeadings={!isEditing}
             renderRootSelector="[data-markdown-nav-root]"
-            className="fixed right-3 top-32 z-30 select-none rounded-lg border border-border/70 bg-background/90 p-1 shadow-sm backdrop-blur"
+            aiTouch={miniNavAiTouch}
+            className="fixed right-4 top-1/2 z-30 h-[42vh] max-h-[480px] min-h-[180px] -translate-y-1/2"
           />
         )}
       </div>

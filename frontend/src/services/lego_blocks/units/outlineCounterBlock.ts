@@ -7,7 +7,8 @@
      h1 → uppercase Roman (I, II, III)
      h2 → Arabic           (1, 2, 3)
      h3 → lowercase alpha  (a, b, c)
-     h4+ → Arabic fallback
+     h4 → lowercase Roman  (i, ii, iii)
+     h5+ → Arabic fallback
 */
 
 export function toRomanNumeralBlock(value: number): string {
@@ -46,6 +47,8 @@ export function formatOutlineCounterBlock(value: number, level: number): string 
       return String(value)
     case 3:
       return toAlphabeticIndexBlock(value)
+    case 4:
+      return toRomanNumeralBlock(value)
     default:
       return String(value)
   }
@@ -62,4 +65,23 @@ export function assignOutlineLabelsBlock(levels: number[]): string[] {
     for (let i = level + 1; i < counters.length; i += 1) counters[i] = 0
     return formatOutlineCounterBlock(counters[level], level)
   })
+}
+
+export interface SectionOutlineLabelsBlock {
+  /** Index of the document-title heading (unnumbered), or null if none. */
+  titleIndex: number | null
+  /** Aligned to the input; '' at the title index. */
+  labels: string[]
+}
+
+/* Title-aware variant: a document whose first heading is its only h1 uses
+   that h1 as the file title, not a section — it gets no outline label and
+   doesn't consume a counter. Docs with several h1s number all of them. */
+export function assignSectionOutlineLabelsBlock(levels: number[]): SectionOutlineLabelsBlock {
+  const soloLeadingH1 =
+    levels.length > 0 && levels[0] === 1 && levels.filter((level) => level === 1).length === 1
+  if (!soloLeadingH1) {
+    return { titleIndex: null, labels: assignOutlineLabelsBlock(levels) }
+  }
+  return { titleIndex: 0, labels: ['', ...assignOutlineLabelsBlock(levels.slice(1))] }
 }

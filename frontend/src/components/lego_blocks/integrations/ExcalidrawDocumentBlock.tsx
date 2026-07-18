@@ -46,6 +46,7 @@ import {
   MINIMAP_MAX_RECTS,
   analyzeScene,
   computeMiniMapBounds,
+  computeMiniMapProjection,
   parseSceneWithCache,
   pushGlobalExcalidrawPerfEvent,
   readMiniMapSceneElementRect,
@@ -74,7 +75,11 @@ import {
 } from '@/services/lego_blocks/integrations/excalidrawViewportBlock'
 import { Palette } from 'lucide-react'
 import ExcalidrawPenPaletteBlock from '@/components/lego_blocks/integrations/ExcalidrawPenPaletteBlock'
-import ExcalidrawMiniMapBlock, { type MiniMapRect } from '@/components/lego_blocks/integrations/ExcalidrawMiniMapBlock'
+import ExcalidrawMiniMapBlock, {
+  MINIMAP_BOX_HEIGHT,
+  MINIMAP_BOX_WIDTH,
+  type MiniMapRect,
+} from '@/components/lego_blocks/integrations/ExcalidrawMiniMapBlock'
 import { cn } from '@/lib/utils'
 
 declare global {
@@ -432,6 +437,7 @@ export default function ExcalidrawDocumentBlock({
 
   const miniMapRects = useMemo<MiniMapRect[]>(() => {
     if (!miniMapBounds || elementsForMiniMap.length === 0) return []
+    const projection = computeMiniMapProjection(miniMapBounds, MINIMAP_BOX_WIDTH, MINIMAP_BOX_HEIGHT)
     const rects: MiniMapRect[] = []
     const step = Math.max(1, Math.ceil(elementsForMiniMap.length / MINIMAP_MAX_RECTS))
     for (let index = 0; index < elementsForMiniMap.length; index += step) {
@@ -439,10 +445,11 @@ export default function ExcalidrawDocumentBlock({
       if (!rect) continue
       rects.push({
         key: `nav-${index}`,
-        x: ((rect.left - miniMapBounds.minX) / miniMapBounds.width) * 100,
-        y: ((rect.top - miniMapBounds.minY) / miniMapBounds.height) * 72,
-        width: Math.max((rect.width / miniMapBounds.width) * 100, 0.5),
-        height: Math.max((rect.height / miniMapBounds.height) * 72, 0.5),
+        x: (rect.left - miniMapBounds.minX) * projection.scale + projection.offsetX,
+        y: (rect.top - miniMapBounds.minY) * projection.scale + projection.offsetY,
+        width: Math.max(rect.width * projection.scale, 0.5),
+        height: Math.max(rect.height * projection.scale, 0.5),
+        color: rect.backgroundColor ?? rect.strokeColor,
       })
     }
     return rects
