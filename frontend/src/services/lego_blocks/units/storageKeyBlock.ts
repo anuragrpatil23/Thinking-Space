@@ -18,6 +18,7 @@ export const STORAGE_KEYS = {
   appShellActiveTabId: 'ltm-app-shell-active-tab-id',
   appTheme: 'ltm-app-theme',
   appColorMode: 'ltm-app-color-mode',
+  appSelectionColor: 'ltm-app-selection-color',
   thinkingSpaceExplorerCollapsed: 'ltm-thinking-space-explorer-collapsed',
   thinkingSpaceExplorerWidthPx: 'ltm-thinking-space-explorer-width-px',
   capabilityFeatureFlags: 'ltm-capability-feature-flags',

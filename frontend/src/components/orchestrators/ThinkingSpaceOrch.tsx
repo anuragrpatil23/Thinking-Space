@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PanelLeftClose, FileText, Rss as RssIcon } from 'lucide-react'
 import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplorerBlock'
@@ -16,7 +16,6 @@ import {
   deleteVaultPathOrch,
   duplicateFileOrch,
   getAbsolutePathForClipboardOrch,
-  getRelativePathForClipboardOrch,
   listFolderEntries,
   readFileTooltipMeta,
   moveVaultPathOrch,
@@ -54,6 +53,11 @@ import RuledNotebookDocumentBlock from '@/components/lego_blocks/integrations/Ru
 import type { RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import type { UILayoutState } from '@/services/lego_blocks/units/uiLayoutBlock'
 import NotebookViewOrch from '@/components/orchestrators/NotebookViewOrch'
+import type { PathGraphTarget } from '@/components/lego_blocks/integrations/PathGraphSlideOverBlock'
+
+// Lazy — pulls VaultGraphCanvasBlock (which dynamically imports force-graph),
+// so the graph never enters the eager Thinking Space chunk.
+const PathGraphSlideOverBlock = lazy(() => import('@/components/lego_blocks/integrations/PathGraphSlideOverBlock'))
 
 function dispatchFileOpRefresh(): void {
   dispatchGlobalSyncRefreshBlock({
@@ -145,6 +149,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     () => (inlinePathFromRoute ? { [inlinePathFromRoute]: 'view' } : {}),
   )
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
+  const [graphPeekTarget, setGraphPeekTarget] = useState<PathGraphTarget | null>(null)
   const [rssPanelOpen, setRssPanelOpen] = useState(false)
   const [browserUrl, setBrowserUrl] = useState<string | null>(null)
   const [rssActiveArticle, setRssActiveArticle] = useState<{
@@ -552,9 +557,10 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     })
   }, [isIosSurface, phonePushDetail])
 
-  const handleExplorerCopyRelativePath = useCallback(async (path: string): Promise<boolean> => {
-    return copyToClipboard(getRelativePathForClipboardOrch(path))
-  }, [copyToClipboard])
+  const handleExplorerShowInGraph = useCallback((path: string, kind: 'file' | 'folder') => {
+    const normalized = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    setGraphPeekTarget({ path: normalized, kind })
+  }, [])
 
   const handleExplorerCopyAbsolutePath = useCallback(async (path: string): Promise<boolean> => {
     const absolute = getAbsolutePathForClipboardOrch(path)
@@ -915,6 +921,21 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
       RSS Feeds
     </button>
   )
+  // Icon-only variant that lives inline in the explorer top toolbar (desktop).
+  const rssExplorerToolbarButton = (
+    <button
+      type="button"
+      title="RSS Feeds"
+      aria-label="RSS Feeds"
+      onClick={() => setRssPanelOpen(prev => { if (prev) setRssActiveArticle(null); return !prev })}
+      className={cn(
+        'ltm-touch-target flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
+        rssPanelOpen ? 'bg-muted text-foreground' : 'hover:bg-muted hover:text-foreground',
+      )}
+    >
+      <RssIcon className="h-4 w-4" />
+    </button>
+  )
   const useTopRssExplorerToggle = isIPhoneIosSurface
 
   const inlineExplorerContent = useMemo(() => (
@@ -950,7 +971,6 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
             onCreateCsvFile={handleExplorerCreateCsvFile}
             onCreateDrawing={handleExplorerCreateDrawing}
             onCreateLink={handleExplorerCreateLink}
-            onCopyRelativePath={handleExplorerCopyRelativePath}
             onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
             onOpenInNewTab={handleExplorerOpenInNewTab}
             onOpenInNewWindow={handleExplorerOpenInNewWindow}
@@ -963,6 +983,8 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
             loadFileMeta={readFileTooltipMeta}
             onMovePath={handleExplorerMovePath}
             onOpenFolderAsNotebook={openNotebookView}
+            onShowInGraph={handleExplorerShowInGraph}
+            toolbarActionsSlot={!useTopRssExplorerToggle ? rssExplorerToolbarButton : null}
             draggableFiles
             draggableFolders
             title=""
@@ -971,11 +993,11 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
       )}
       {!useTopRssExplorerToggle ? (
         <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
-          {rssExplorerToggleButton}
+          <div className="h-7" aria-hidden="true" />
         </div>
       ) : null}
     </>
-  ), [handleExplorerCreateCsvFile, inlinePath, openRuledNotebookView, rssExplorerToggleButton, rssPanelOpen, ruledNotebookFilePath, setInlinePathAndSyncUrl, useTopRssExplorerToggle])
+  ), [handleExplorerCreateCsvFile, handleExplorerShowInGraph, inlinePath, openRuledNotebookView, rssExplorerToggleButton, rssExplorerToolbarButton, rssPanelOpen, ruledNotebookFilePath, setInlinePathAndSyncUrl, useTopRssExplorerToggle])
 
   const inlineDocumentContent = useMemo(() => {
     if (mountedInlinePaths.length === 0) return null
@@ -992,6 +1014,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
           initialMode={inlineInitialModeByPath[path] ?? 'view'}
           onOpenPath={handleInlineOpenPath}
           onOpenPathForEdit={handleInlineOpenPathForEdit}
+          onOpenAsNotebook={openRuledNotebookView}
           onClose={handleInlineDocumentClose}
           showCloseButton
           className="h-full min-h-0"
@@ -1003,6 +1026,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     handleInlineDocumentClose,
     handleInlineOpenPath,
     handleInlineOpenPathForEdit,
+    openRuledNotebookView,
     inlineDocHeaderHidden,
     inlineInitialModeByPath,
     inlinePath,
@@ -1189,7 +1213,6 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
                   onCreateCsvFile={handleExplorerCreateCsvFile}
                   onCreateDrawing={handleExplorerCreateDrawing}
                   onCreateLink={handleExplorerCreateLink}
-                  onCopyRelativePath={handleExplorerCopyRelativePath}
                   onCopyAbsolutePath={handleExplorerCopyAbsolutePath}
                   onOpenInNewTab={handleExplorerOpenInNewTab}
                   onOpenInNewWindow={handleExplorerOpenInNewWindow}
@@ -1199,6 +1222,8 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
                   onDeleteFolder={handleExplorerDeleteFolder}
                   onOpenInFinder={handleExplorerOpenInFinder}
                   onMovePath={handleExplorerMovePath}
+                  onShowInGraph={handleExplorerShowInGraph}
+                  toolbarActionsSlot={!useTopRssExplorerToggle ? rssExplorerToolbarButton : null}
                   draggableFiles
                   draggableFolders
                   title=""
@@ -1207,7 +1232,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
             )}
             {!useTopRssExplorerToggle ? (
               <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
-                {rssExplorerToggleButton}
+                <div className="h-7" aria-hidden="true" />
               </div>
             ) : null}
           </aside>
@@ -1218,6 +1243,11 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
           onSubmit={(url) => { linkPromptResolveRef.current?.(url); linkPromptResolveRef.current = null }}
           onCancel={() => { linkPromptResolveRef.current?.(null); linkPromptResolveRef.current = null }}
         />
+      )}
+      {graphPeekTarget && (
+        <Suspense fallback={null}>
+          <PathGraphSlideOverBlock target={graphPeekTarget} onClose={() => setGraphPeekTarget(null)} />
+        </Suspense>
       )}
     </div>
   )

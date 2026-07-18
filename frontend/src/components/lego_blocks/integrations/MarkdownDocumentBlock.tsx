@@ -15,7 +15,7 @@ import {
   markdownMathRemarkPluginsBlock,
 } from '@/services/lego_blocks/integrations/markdownMathPluginsBlock'
 import TikzDiagramBlock from '@/components/lego_blocks/units/TikzDiagramBlock'
-import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow, List, LayoutDashboard } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow, List, LayoutDashboard, BookOpenText } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -99,6 +99,8 @@ import {
   yieldToNextFrame,
 } from '@/components/lego_blocks/units/MarkdownDocumentContentBlock'
 import { readMemorizedSessions } from '@/services/lego_blocks/units/memorizedSessionsBlock'
+import DocumentFindBarBlock from '@/components/lego_blocks/integrations/DocumentFindBarBlock'
+import { useInDocumentFindBlock } from '@/components/lego_blocks/hooks/units/useInDocumentFindBlock'
 import { isTableDocumentPathBlock } from '@/services/lego_blocks/units/tableDocumentPathBlock'
 import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocumentPathBlock'
 import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
@@ -130,6 +132,7 @@ interface MarkdownDocumentBlockProps {
   onSaved?: (result: { output_path: string; revision_path: string | null }) => void
   onOpenPath?: (path: string) => void
   onOpenPathForEdit?: (path: string) => void
+  onOpenAsNotebook?: (path: string) => void
   onClose?: () => void
   showCloseButton?: boolean
   className?: string
@@ -258,6 +261,7 @@ function MarkdownTextDocumentRuntimeBlock({
   onSaved,
   onOpenPath,
   onOpenPathForEdit,
+  onOpenAsNotebook,
   onClose,
   showCloseButton = false,
   className,
@@ -306,6 +310,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const isExcalidrawDoc = isExcalidrawPathBlock(path)
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
+  const [findOpen, setFindOpen] = useState(false)
   const lastScrollTopRef = useRef(0)
   const [isHeaderHidden, setIsHeaderHidden] = useState(false)
   const [headerHeight, setHeaderHeight] = useState(0)
@@ -558,6 +563,22 @@ function MarkdownTextDocumentRuntimeBlock({
     && !/\.excalidraw\.md$/i.test(path)
   const effectiveTopBarHidden = topBarHiddenProp !== undefined ? topBarHiddenProp : topBarHiddenInViewMode
   const hideTopBarInView = !isEditing && effectiveTopBarHidden
+
+  // In-document find (Cmd/Ctrl+F) for the rendered reading view. Edit mode has
+  // CodeMirror's own find, so we only intercept the shortcut in view mode.
+  const findEligible = active && !isEditing && !isExcalidrawDoc && !isHtmlDoc && !isCodeDoc
+  const find = useInDocumentFindBlock(contentScrollRef, { active: findOpen && findEligible })
+  useEffect(() => {
+    if (!findEligible) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && (event.key === 'f' || event.key === 'F')) {
+        event.preventDefault()
+        setFindOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [findEligible])
 
   useEffect(() => {
     const el = chromeContainerRef.current
@@ -1054,6 +1075,7 @@ function MarkdownTextDocumentRuntimeBlock({
 
   const startEditing = () => {
     if (loading || error) return
+    setFindOpen(false)
     if (isExcalidrawDoc) {
       preserveExcalidrawCrashMarkerOnUnmountRef.current = true
       markExcalidrawCrashStageBlock(path, 'edit_requested')
@@ -1166,6 +1188,22 @@ function MarkdownTextDocumentRuntimeBlock({
     setSaving(false)
     if (didSave) cancelEditing()
   }
+
+  // Escape leaves editing (flushes the draft first, so no work is lost). We
+  // defer to any handler that already consumed the key — notably CodeMirror's
+  // own Escape that closes its find panel (marks the event defaultPrevented).
+  const finishEditingRef = useRef(finishEditing)
+  finishEditingRef.current = finishEditing
+  useEffect(() => {
+    if (!active || mode !== 'edit' || isExcalidrawDoc) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return
+      event.preventDefault()
+      void finishEditingRef.current()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [active, mode, isExcalidrawDoc])
 
   const handleSave = async () => {
     if (baseMtime === null) return
@@ -1416,6 +1454,11 @@ function MarkdownTextDocumentRuntimeBlock({
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
       <div className="relative min-h-0 flex-1">
+        {findOpen && findEligible && (
+          <div className="absolute right-3 top-3 z-50">
+            <DocumentFindBarBlock find={find} onClose={() => setFindOpen(false)} />
+          </div>
+        )}
         <div
           ref={contentScrollRef}
           onScroll={(e) => {
@@ -1515,6 +1558,18 @@ function MarkdownTextDocumentRuntimeBlock({
                       { value: 'canvas', label: 'Canvas', icon: LayoutDashboard, title: 'Canvas view' },
                     ]}
                   />
+                )}
+
+                {!isEditing && onOpenAsNotebook && path.toLowerCase().endsWith('.md') && !isExcalidrawDoc && (
+                  <button
+                    onClick={() => onOpenAsNotebook(path)}
+                    disabled={loading || !!error}
+                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Notebook view"
+                    aria-label="Notebook view"
+                  >
+                    <BookOpenText className="h-4 w-4" />
+                  </button>
                 )}
 
                 {!isEditing && (

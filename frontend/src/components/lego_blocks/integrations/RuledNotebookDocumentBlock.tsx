@@ -718,7 +718,7 @@ export default function RuledNotebookDocumentBlock({
       <div className={cn('flex h-full items-center justify-center', className)}>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Loading ruled notebook…</span>
+          <span>Loading notebook…</span>
         </div>
       </div>
     )
@@ -741,7 +741,7 @@ export default function RuledNotebookDocumentBlock({
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               <BookOpenText className="h-4 w-4" />
-              <span>Ruled Notebook</span>
+              <span>Notebook view</span>
             </div>
             <h2 className="truncate pt-1 text-base font-semibold text-foreground">{pageTitle}</h2>
           </div>
@@ -778,7 +778,7 @@ export default function RuledNotebookDocumentBlock({
               <List className="h-4 w-4" />
             </Button>
             {onClose ? (
-              <Button variant="ghost" size="icon" onClick={onClose} title="Close ruled notebook">
+              <Button variant="ghost" size="icon" onClick={onClose} title="Close notebook view">
                 <X className="h-4 w-4" />
               </Button>
             ) : null}

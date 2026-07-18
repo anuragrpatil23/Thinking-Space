@@ -178,6 +178,51 @@ export function selectGraphNodesForChainsBlock(
   return { ids, approximate }
 }
 
+export interface PathGraphSelection {
+  /** Node ids to light in the graph. */
+  ids: Set<string>
+  /** The focal node (the note itself), when the target is a file that exists
+   *  in the graph — lets the UI zoom/center on it. */
+  focusId: string | null
+  /** True when nothing in the graph matched the target path. */
+  empty: boolean
+}
+
+/**
+ * Select graph nodes to light for an explorer "Show in graph":
+ *  - a file lights the note itself plus every note directly linked to it
+ *    (wikilink / import edges, either direction);
+ *  - a folder lights every note that lives under it.
+ * `targetPath` is vault-relative (same identity space as node ids).
+ */
+export function selectGraphNodesForPathBlock(
+  targetPath: string,
+  kind: 'file' | 'folder',
+  nodes: VaultGraphNode[],
+  links: VaultGraphLink[],
+): PathGraphSelection {
+  const nodeIds = new Set(nodes.map(n => n.id))
+  const ids = new Set<string>()
+
+  if (kind === 'folder') {
+    const prefix = targetPath === '' ? '' : `${targetPath.replace(/\/+$/, '')}/`
+    for (const id of nodeIds) {
+      if (prefix === '' || id.startsWith(prefix)) ids.add(id)
+    }
+    return { ids, focusId: null, empty: ids.size === 0 }
+  }
+
+  const focusId = nodeIds.has(targetPath) ? targetPath : null
+  if (focusId) {
+    ids.add(focusId)
+    for (const link of links) {
+      if (link.source === focusId && nodeIds.has(link.target)) ids.add(link.target)
+      else if (link.target === focusId && nodeIds.has(link.source)) ids.add(link.source)
+    }
+  }
+  return { ids, focusId, empty: ids.size === 0 }
+}
+
 function inAnyWindow(windows: Array<[number, number]>, t: number): boolean {
   let lo = 0
   let hi = windows.length - 1

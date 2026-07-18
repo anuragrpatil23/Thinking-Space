@@ -33,6 +33,37 @@ export function getStoredUIColorModeOrch(): UIColorModeId {
   return normalizeUIColorModeIdBlock(getStorageItem(STORAGE_KEYS.appColorMode))
 }
 
+// Empty string / null means "use the browser default selection color".
+export function getStoredSelectionColorOrch(): string {
+  return getStorageItem(STORAGE_KEYS.appSelectionColor) ?? ''
+}
+
+export function setStoredSelectionColorOrch(color: string): void {
+  setStorageItem(STORAGE_KEYS.appSelectionColor, color)
+}
+
+/**
+ * Drive the `::selection` background via a CSS custom property. When the color
+ * is empty we remove the var entirely so the `::selection` rule's declaration
+ * becomes invalid and the browser falls back to its native highlight.
+ */
+export function applySelectionColorOrch(color: string, options: ApplyUIThemeOptions = {}): void {
+  const documentRef = resolveDocument(options.documentRef)
+  if (!documentRef) return
+  const root = documentRef.documentElement
+  if (color) {
+    root.style.setProperty('--ltm-selection-color', color)
+  } else {
+    root.style.removeProperty('--ltm-selection-color')
+  }
+}
+
+export function initializeSelectionColorOrch(options: ApplyUIThemeOptions = {}): string {
+  const stored = getStoredSelectionColorOrch()
+  applySelectionColorOrch(stored, options)
+  return stored
+}
+
 export function setStoredUIColorModeOrch(colorModeId: UIColorModeId): void {
   setStorageItem(STORAGE_KEYS.appColorMode, colorModeId)
 }

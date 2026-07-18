@@ -387,6 +387,12 @@ export default function VaultGraphCanvasBlock({
   viewRef.current.emphasis = emphasis
   viewRef.current.flashWindowMs = Math.max(86_400_000, (data.maxBirthMs - data.minBirthMs) * 0.02)
 
+  // Latest zoom target, read by onEngineStop / the prefrozen path so a subset
+  // fit that was requested before the (async-created) graph settled still wins
+  // over the default "fit everything" framing.
+  const zoomToRef = useRef(zoomTo)
+  zoomToRef.current = zoomTo
+
   const onNodeClickRef = useRef(onNodeClick)
   onNodeClickRef.current = onNodeClick
   const onBackgroundClickRef = useRef(onBackgroundClick)
@@ -901,7 +907,13 @@ export default function VaultGraphCanvasBlock({
             node.fx = node.x
             node.fy = node.y
           }
-          graph.zoomToFit(600, 48)
+          const pendingZoom = zoomToRef.current
+          if (pendingZoom && pendingZoom.ids.size > 0) {
+            const ids = pendingZoom.ids
+            graph.zoomToFit(600, 80, (node: VaultGraphNode) => ids.has(node.id))
+          } else {
+            graph.zoomToFit(600, 48)
+          }
         })
 
       graph.d3Force('charge')?.strength(-38)
@@ -957,7 +969,15 @@ export default function VaultGraphCanvasBlock({
       graph.graphData({ nodes: data.nodes, links: data.links })
       if (prefrozen) {
         graph.cooldownTicks(0)
-        setTimeout(() => graph.zoomToFit(0, 48), 0)
+        setTimeout(() => {
+          const pendingZoom = zoomToRef.current
+          if (pendingZoom && pendingZoom.ids.size > 0) {
+            const ids = pendingZoom.ids
+            graph.zoomToFit(0, 80, (node: VaultGraphNode) => ids.has(node.id))
+          } else {
+            graph.zoomToFit(0, 48)
+          }
+        }, 0)
       }
 
       graphRef.current = graph

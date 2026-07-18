@@ -253,7 +253,7 @@ export default function SettingsOrch({
   onWebullTabPreferencesChange,
 }: SettingsOrchProps) {
   const { profile, loading: profileLoading, saveProfile, reloadProfile } = useUserProfileBlock()
-  const { colorModeId, setColorModeId, themeId, setThemeId } = useUIThemeBlock()
+  const { colorModeId, setColorModeId, themeId, setThemeId, selectionColor, setSelectionColor } = useUIThemeBlock()
   const [activeTab, setActiveTab] = useState<SettingsTabWithProfileId>(initialTab)
   const [markdownEditorSettings, setMarkdownEditorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
@@ -1074,6 +1074,32 @@ export default function SettingsOrch({
               </select>
               <p className="text-xs text-muted-foreground">
                 {UI_COLOR_MODE_OPTIONS_BLOCK.find((option) => option.id === colorModeId)?.description}
+              </p>
+            </div>
+            <div className="space-y-2 border-t border-border/50 pt-4">
+              <div className="text-sm font-medium">Selection color</div>
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  type="color"
+                  aria-label="Selection color"
+                  value={selectionColor || '#3390ff'}
+                  onChange={(event) => setSelectionColor(event.target.value)}
+                  className="h-9 w-14 cursor-pointer rounded-md border border-input bg-background p-1"
+                />
+                <span className="text-sm text-muted-foreground">
+                  {selectionColor ? selectionColor : 'System default'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectionColor('')}
+                  disabled={!selectionColor}
+                  className="rounded-md border border-input px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Reset to default
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The highlight color when you select text anywhere in the app.
               </p>
             </div>
             <div className="space-y-2 border-t border-border/50 pt-4">

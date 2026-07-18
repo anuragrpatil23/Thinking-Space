@@ -323,7 +323,6 @@ interface VaultExplorerBlockProps {
   onCreateDrawing?: (parentPath: string) => ExplorerActionResult
   onCreateLink?: (parentPath: string) => ExplorerActionResult
   onCopyAbsolutePath?: (path: string) => ExplorerActionResult
-  onCopyRelativePath?: (path: string) => ExplorerActionResult
   onOpenInNewTab?: (path: string) => ExplorerActionResult
   onOpenInNewWindow?: (path: string) => ExplorerActionResult
   onDuplicateFile?: (path: string) => ExplorerActionResult
@@ -350,7 +349,13 @@ interface VaultExplorerBlockProps {
   listenToGlobalSyncRefresh?: boolean
   className?: string
   onOpenFolderAsNotebook?: (path: string) => void
+  /** Open the vault graph lensed to a note (+ its linked neighbors) or to every
+   *  note under a folder. */
+  onShowInGraph?: (path: string, kind: 'file' | 'folder') => void
   belowToolbarSlot?: ReactNode
+  /** Extra action(s) rendered inline in the top toolbar row, alongside the
+   *  New Folder/File/Drawing buttons (e.g. the RSS Feeds toggle). */
+  toolbarActionsSlot?: ReactNode
   /**
    * Latest AI-session telemetry: dots the touched files/folders and shows a
    * count strip above the tree. Ephemeral by design — the session's trail in
@@ -450,7 +455,6 @@ export default function VaultExplorerBlock({
   onCreateDrawing,
   onCreateLink,
   onCopyAbsolutePath,
-  onCopyRelativePath,
   onOpenInNewTab,
   onOpenInNewWindow,
   onDuplicateFile,
@@ -470,8 +474,10 @@ export default function VaultExplorerBlock({
   persistenceKey = 'global',
   listenToGlobalSyncRefresh = false,
   onOpenFolderAsNotebook,
+  onShowInGraph,
   className,
   belowToolbarSlot = null,
+  toolbarActionsSlot = null,
   sessionTelemetry = null,
 }: VaultExplorerBlockProps) {
   const storageKey = `${EXPLORER_PERSISTENCE_PREFIX}:${persistenceKey}`
@@ -1744,6 +1750,7 @@ export default function VaultExplorerBlock({
                   disabled={!onCreateDrawing}
                   onClick={() => { void runContextAction(onCreateDrawing ? () => onCreateDrawing(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) }}
                 />
+                {toolbarActionsSlot}
                 <div className="ml-auto flex items-center gap-1">
                   <Select value={viewMode} onValueChange={(value) => setViewMode(value as ExplorerViewModeBlock)}>
                     <SelectTrigger
@@ -1850,20 +1857,21 @@ export default function VaultExplorerBlock({
           { key: 'new-csv', label: 'New CSV File', disabled: !onCreateCsvFile, onClick: () => { void runContextAction(onCreateCsvFile ? () => onCreateCsvFile(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) } },
           { key: 'new-drawing', label: 'New Drawing', disabled: !onCreateDrawing, onClick: () => { void runContextAction(onCreateDrawing ? () => onCreateDrawing(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) } },
           { key: 'add-link', label: 'Add Link Here', disabled: !onCreateLink, onClick: () => { void runContextAction(onCreateLink ? () => onCreateLink(parentPath) : undefined, { refreshPath: parentPath }) } },
-          { key: 'copy-abs', label: 'Copy Absolute Path', disabled: !onCopyAbsolutePath, onClick: () => { void runContextAction(onCopyAbsolutePath ? () => onCopyAbsolutePath(filePath) : undefined) } },
-          { key: 'copy-rel', label: 'Copy Relative Path', disabled: !onCopyRelativePath, onClick: () => { void runContextAction(onCopyRelativePath ? () => onCopyRelativePath(filePath) : undefined) } },
+          { key: 'copy-path', label: 'Copy Path', disabled: !onCopyAbsolutePath, onClick: () => { void runContextAction(onCopyAbsolutePath ? () => onCopyAbsolutePath(filePath) : undefined) } },
           { key: 'rename', label: 'Rename', disabled: !onRenamePath, onClick: () => { beginInlineRename(filePath, contextMenu.kind) } },
           ...(showFileActions ? [
             { key: 'sep1', kind: 'separator' as const },
             { key: 'open-tab', label: 'Open in New Tab', disabled: !onOpenInNewTab, onClick: () => { void runContextAction(onOpenInNewTab ? () => onOpenInNewTab(filePath) : undefined) } },
             { key: 'open-win', label: 'Open in New Window', disabled: !onOpenInNewWindow, onClick: () => { void runContextAction(onOpenInNewWindow ? () => onOpenInNewWindow(filePath) : undefined) } },
-            { key: 'open-ruled-notebook', label: 'Open This Page as Ruled Notebook', disabled: !onOpenFileAsRuledNotebook || !canOpenFileAsRuledNotebook, onClick: () => { if (onOpenFileAsRuledNotebook && canOpenFileAsRuledNotebook) onOpenFileAsRuledNotebook(filePath) } },
+            { key: 'open-ruled-notebook', label: 'Notebook view', disabled: !onOpenFileAsRuledNotebook || !canOpenFileAsRuledNotebook, onClick: () => { if (onOpenFileAsRuledNotebook && canOpenFileAsRuledNotebook) onOpenFileAsRuledNotebook(filePath) } },
+            { key: 'show-in-graph', label: 'Show in graph', disabled: !onShowInGraph, onClick: () => { if (onShowInGraph) onShowInGraph(filePath, 'file') } },
             { key: 'duplicate', label: 'Duplicate', disabled: !onDuplicateFile, onClick: () => { void runContextAction(onDuplicateFile ? () => onDuplicateFile(filePath) : undefined, { refreshPath: parentPath }) } },
             { key: 'delete-file', label: 'Delete', disabled: !onDeleteFile, destructive: true, onClick: () => { void runContextAction(onDeleteFile ? () => onDeleteFile(filePath) : undefined, { refreshPath: parentPath }) } },
             { key: 'finder-file', label: 'Open in Finder', disabled: !onOpenInFinder, onClick: () => { void runContextAction(onOpenInFinder ? () => onOpenInFinder(filePath) : undefined) } },
           ] : [
             { key: 'sep1', kind: 'separator' as const },
             { key: 'open-notebook', label: 'Open as Notebook', disabled: !onOpenFolderAsNotebook, onClick: () => { if (onOpenFolderAsNotebook) onOpenFolderAsNotebook(filePath) } },
+            { key: 'show-in-graph', label: 'Show in graph', disabled: !onShowInGraph, onClick: () => { if (onShowInGraph) onShowInGraph(filePath, 'folder') } },
             { key: 'delete-folder', label: 'Delete Folder', disabled: !onDeleteFolder, destructive: true, onClick: () => { void runContextAction(onDeleteFolder ? () => onDeleteFolder(filePath) : undefined, { refreshPath: getParentPath(filePath) }) } },
             { key: 'finder-folder', label: 'Open in Finder', disabled: !onOpenInFinder, onClick: () => { void runContextAction(onOpenInFinder ? () => onOpenInFinder(filePath) : undefined) } },
           ]),

@@ -104,6 +104,25 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* User-customizable text selection color (Settings → Theme). When
+     --ltm-selection-color is unset the background-color declaration is invalid,
+     so the browser falls back to its native selection highlight. */
+  ::selection {
+    background-color: var(--ltm-selection-color);
+  }
+  ::-moz-selection {
+    background-color: var(--ltm-selection-color);
+  }
+
+  /* In-document find (Cmd/Ctrl+F) — CSS Custom Highlight API matches. */
+  ::highlight(ltm-find) {
+    background-color: rgba(250, 204, 21, 0.4);
+  }
+  ::highlight(ltm-find-current) {
+    background-color: rgba(249, 115, 22, 0.75);
+    color: #ffffff;
+  }
+
   #root {
     position: fixed;
     inset: 0;

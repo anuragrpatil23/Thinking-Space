@@ -8,6 +8,9 @@ import {
   applyResolvedColorModeOrch,
   setStoredUIThemeOrch,
   applyUIThemeOrch,
+  initializeSelectionColorOrch,
+  setStoredSelectionColorOrch,
+  applySelectionColorOrch,
   resolveColorModeBlock,
   type UIColorModeId,
   type UIResolvedColorMode,
@@ -24,10 +27,14 @@ interface UIThemeContextValue {
   /** The concrete scheme in effect right now (auto resolved by time of day).
    * Everything that asks "is the app currently dark?" should read this. */
   resolvedColorMode: UIResolvedColorMode
+  /** Text-selection highlight color. Empty string = browser default. */
+  selectionColor: string
+  setSelectionColor: (color: string) => void
 }
 
 const defaultTheme = initializeUIThemeOrch()
 const defaultColorMode = initializeUIColorModeOrch()
+const defaultSelectionColor = initializeSelectionColorOrch()
 
 const UIThemeContext = createContext<UIThemeContextValue>({
   themeId: defaultTheme,
@@ -35,11 +42,14 @@ const UIThemeContext = createContext<UIThemeContextValue>({
   colorModeId: defaultColorMode,
   setColorModeId: () => {},
   resolvedColorMode: resolveColorModeBlock(defaultColorMode, false),
+  selectionColor: defaultSelectionColor,
+  setSelectionColor: () => {},
 })
 
 export function UIThemeProviderBlock({ children }: { children: ReactNode }) {
   const [themeId, setThemeIdState] = useState<UIThemeId>(defaultTheme)
   const [colorModeId, setColorModeIdState] = useState<UIColorModeId>(defaultColorMode)
+  const [selectionColor, setSelectionColorState] = useState<string>(defaultSelectionColor)
   const phase = useTimeOfDayBlock()
 
   // `auto` tracks the wall clock, so the resolved scheme recomputes whenever
@@ -52,6 +62,12 @@ export function UIThemeProviderBlock({ children }: { children: ReactNode }) {
 
   const setColorModeId = useCallback((nextColorMode: UIColorModeId) => {
     setColorModeIdState(nextColorMode)
+  }, [])
+
+  const setSelectionColor = useCallback((nextColor: string) => {
+    setSelectionColorState(nextColor)
+    setStoredSelectionColorOrch(nextColor)
+    applySelectionColorOrch(nextColor)
   }, [])
 
   useEffect(() => {
@@ -76,8 +92,10 @@ export function UIThemeProviderBlock({ children }: { children: ReactNode }) {
       colorModeId,
       setColorModeId,
       resolvedColorMode,
+      selectionColor,
+      setSelectionColor,
     }),
-    [colorModeId, setColorModeId, themeId, setThemeId, resolvedColorMode],
+    [colorModeId, setColorModeId, themeId, setThemeId, resolvedColorMode, selectionColor, setSelectionColor],
   )
 
   return (
