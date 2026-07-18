@@ -366,7 +366,7 @@ export default function MarkdownMiniNavBlock({
       // opens without pinpointing the thin tick track — the visual rail stays
       // pinned to the right edge (track is right-aligned inside), only the
       // hit-zone grows. The panel anchors to the track, so it's unaffected.
-      className={cn('select-none pl-12', className)}
+      className={cn('select-none pl-8', className)}
       onPointerEnter={(e) => { if (e.pointerType === 'mouse') handleHoverEnter() }}
       onPointerLeave={handleHoverLeave}
     >
