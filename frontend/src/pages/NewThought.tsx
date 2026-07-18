@@ -25,6 +25,7 @@ import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrc
 import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
 import {
   getThoughtForEdit,
@@ -120,6 +121,17 @@ function readJsonStorage<T>(key: string, fallback: T): T {
     return JSON.parse(raw) as T
   } catch {
     return fallback
+  }
+}
+
+// True only when the user has never explicitly chosen a left-panel state, so
+// we can pick a surface-appropriate default (hidden on phones) without ever
+// overriding a stored preference.
+function hasStoredPreference(key: string): boolean {
+  try {
+    return localStorage.getItem(key) !== null
+  } catch {
+    return false
   }
 }
 
@@ -232,6 +244,7 @@ interface TargetFileState {
 }
 
 function CreateTab() {
+  const { layout } = useUILayoutBlock()
   const [tab, setTab] = useState<Tab>('create')
   const [pickerDefaultPath, setPickerDefaultPath] = useState<string[]>(DEFAULT_BASE_PATH)
   const [pickerVersion, setPickerVersion] = useState(0)
@@ -298,9 +311,15 @@ function CreateTab() {
   const contentRef = useRef('')
   const loadedBaseContentRef = useRef('')
   useEffect(() => { contentRef.current = content }, [content])
-  const [leftPanelHidden, setLeftPanelHidden] = useState(
-    () => readJsonStorage<boolean>(LEFT_PANEL_HIDDEN_KEY, false),
-  )
+  // Default the destination sidebar hidden on phones (it eats most of the
+  // narrow viewport in the New Note tab) but shown on larger surfaces — unless
+  // the user has already made an explicit choice, which always wins.
+  const [leftPanelHidden, setLeftPanelHidden] = useState(() => {
+    if (hasStoredPreference(LEFT_PANEL_HIDDEN_KEY)) {
+      return readJsonStorage<boolean>(LEFT_PANEL_HIDDEN_KEY, false)
+    }
+    return layout.mode === 'phone'
+  })
 
   const triggerSaveFeedback = useCallback(() => {
     if (saveFeedbackTimeoutRef.current !== null) {

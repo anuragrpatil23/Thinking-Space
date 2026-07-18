@@ -204,14 +204,31 @@ private struct NativeTopDrawerSectionCardView: View {
     }
 }
 
-// MARK: - Top Chrome (minimal status bar cover)
+// MARK: - Top Chrome (adaptive status-bar scrim)
 
+/// Instagram-style status-bar treatment: fully transparent while the content is
+/// at the top of its scroll (so the page bleeds edge-to-edge under the clock),
+/// then fades in a frosted blur + hairline once content scrolls up underneath —
+/// keeping the status glyphs and any content that slides under it legible.
+/// Driven by `isTopBarCollapsed`, which the web sets true once the active
+/// surface has scrolled down past its threshold (see App.tsx native chrome
+/// scroll handler).
 struct TopChromeView: View {
     @ObservedObject var state: TopChromeState
 
     var body: some View {
-        Rectangle()
-            .fill(.ultraThinMaterial)
+        ZStack(alignment: .bottom) {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .opacity(state.isTopBarCollapsed ? 1 : 0)
+
+            // Hairline seam under the frosted bar, only while frosted.
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 0.5)
+                .opacity(state.isTopBarCollapsed ? 1 : 0)
+        }
+        .animation(.easeInOut(duration: 0.24), value: state.isTopBarCollapsed)
     }
 }
 
@@ -343,12 +360,9 @@ struct BottomChromeView: View {
         // driven entirely by the list/detail mode on iPhone.
         HStack(spacing: 8) {
             drawerToggleButton
+            morphingBottomPill
             if state.isBottomBarCollapsed {
-                collapsedBottomPill
                 Spacer(minLength: 0)
-            } else {
-                expandedBottomPill
-                    .frame(maxWidth: .infinity)
             }
             toolsMenuButton
                 .padding(6)
@@ -359,7 +373,7 @@ struct BottomChromeView: View {
         .padding(.horizontal, NativeChromeMetrics.outerHorizontalPadding)
         .padding(.top, 4)
         .padding(.bottom, NativeChromeMetrics.bottomChromeBottomPadding)
-        .animation(.easeInOut(duration: 0.28), value: state.isBottomBarCollapsed)
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: state.isBottomBarCollapsed)
     }
 
     // MARK: - More menu (search + tools combined)
@@ -481,69 +495,63 @@ struct BottomChromeView: View {
 
     // MARK: - Tab controls
 
-    private var tabSwitcherButton: some View {
-        Button(action: { tabSwitcherPresented = true }) {
-            HStack(spacing: 9) {
-                tabCountBadge
-                    .frame(width: 24, height: 20)
-
-                Text(activeTabLabel)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: NativeChromeMetrics.floatingControlHeight)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Tab switcher")
+    private var activeTabLabel: String {
+        state.tabs.first(where: { $0.active })?.label ?? "Tabs"
     }
 
-    private var expandedBottomPill: some View {
-        HStack(spacing: 2) {
-            tabSwitcherButton
+    /// A single pill that continuously morphs between the expanded state
+    /// (full-width tab switcher + create button) and the collapsed state (a
+    /// content-hugging "Tabs" chip). Keeping it one view tree — rather than
+    /// swapping two separate pills — lets the parent's spring animation
+    /// interpolate the capsule width, badge size, label and padding smoothly
+    /// instead of cross-fading between two layouts.
+    private var morphingBottomPill: some View {
+        let collapsed = state.isBottomBarCollapsed
+        return HStack(spacing: 2) {
+            Button(action: {
+                if collapsed {
+                    onExpandTap()
+                } else {
+                    tabSwitcherPresented = true
+                }
+            }) {
+                HStack(spacing: 9) {
+                    tabCountBadge
+                        .frame(width: collapsed ? 20 : 24, height: collapsed ? 18 : 20)
 
-            bottomBarIconButton(
-                systemName: "plus",
-                action: onCreateTap,
-                accessibilityLabel: "Create note",
-                enabled: true
-            )
+                    Text(collapsed ? "Tabs" : activeTabLabel)
+                        .font(.system(size: collapsed ? 14 : 15, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .frame(maxWidth: collapsed ? nil : .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, collapsed ? 13 : 18)
+                .frame(maxWidth: collapsed ? nil : .infinity, alignment: .leading)
+                .frame(height: NativeChromeMetrics.floatingControlHeight)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(collapsed ? "Expand tab controls" : "Tab switcher")
+
+            if !collapsed {
+                bottomBarIconButton(
+                    systemName: "plus",
+                    action: onCreateTap,
+                    accessibilityLabel: "Create note",
+                    enabled: true
+                )
+                .transition(.scale(scale: 0.6).combined(with: .opacity))
+            }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 6)
+        .frame(maxWidth: collapsed ? nil : .infinity)
         .background {
             floatingChromeCapsule()
         }
         .sheet(isPresented: $tabSwitcherPresented) {
             tabSwitcherSheet
         }
-    }
-
-    private var activeTabLabel: String {
-        state.tabs.first(where: { $0.active })?.label ?? "Tabs"
-    }
-
-    private var collapsedBottomPill: some View {
-        Button(action: onExpandTap) {
-            HStack(spacing: 8) {
-                tabCountBadge
-                    .frame(width: 20, height: 18)
-
-                Text("Tabs")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.primary)
-            }
-            .padding(.horizontal, 13)
-            .frame(height: NativeChromeMetrics.floatingCollapsedControlHeight)
-            .background {
-                floatingChromeCapsule()
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Expand tab controls")
     }
 
     @ViewBuilder

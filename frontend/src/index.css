@@ -1222,6 +1222,17 @@
       border-radius: 0;
     }
 
+    /* The native shell no longer reserves an opaque band above the web view —
+       content now fills to the top edge and slides under the status bar (the
+       adaptive TopChromeView frosts as it does). So the scroll container itself
+       owns the initial top inset: a safe-area-sized gap that keeps first-paint
+       content clear of the clock at rest, then scrolls away underneath the
+       frosting bar. Edge-bleed pages (Home backdrop) opt out — they deliberately
+       run their canvas under the status bar. */
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-app-main:not(:has(.ltm-page-edge-bleed)) {
+      padding-top: var(--ltm-safe-top);
+    }
+
     /* When a page wants its backdrop to bleed to the screen edges (e.g. the
        time-of-day Home backdrop on iPhone), the small inset + 1px border
        around the content stage shows as a thin pale frame. Kill both when

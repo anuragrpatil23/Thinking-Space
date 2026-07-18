@@ -1,11 +1,16 @@
 import SwiftUI
 
-/// Source of an icon: either an SF Symbol or an image from the asset catalog.
-/// Asset icons render with rounded corners (app-icon style); SF Symbols
-/// render as monochrome glyphs.
+/// Source of an icon:
+///   - `system`:   an SF Symbol, rendered as a monochrome glyph.
+///   - `asset`:    a full-color image rendered app-icon style (rounded corners,
+///                 full bleed) — used for the colorful tree-of-life Home mark.
+///   - `template`: a monochrome vector asset (the real lucide/phosphor glyphs
+///                 bundled from the web nav) rendered as a tintable template so
+///                 the drawer is pixel-identical to the Electron rail.
 enum RailIcon: Equatable {
     case system(String)
     case asset(String)
+    case template(String)
 }
 
 /// `id` is the canonical route path — same value the React side sends as
@@ -35,19 +40,23 @@ final class RailState: ObservableObject {
     /// `nativeTopDrawerActiveNavItemId` in App.tsx, which funnels all tool
     /// sub-routes to `/tools`.
     ///
-    /// Keep order AND icons matched to the React nav. SF Symbol ↔ lucide map:
-    ///   Thinking Space   safari               ↔ Compass
-    ///   New Note         plus.square          ↔ PlusSquare
-    ///   Webull           chart.line.uptrend…  ↔ WebullNavIcon (user-renamable)
-    ///   Thinking Organizer rectangle.3.group  ↔ FolderKanban
-    ///   Tools            square.on.circle     ↔ Shapes
+    /// Keep order AND icons matched to the React nav. The glyphs below are the
+    /// EXACT lucide/phosphor icons the Electron rail uses, bundled as template
+    /// vector assets (see Assets.xcassets/Rail*Icon.imageset) so the two shells
+    /// render identical marks. Source of truth: PRIMARY_NAV_ITEMS in App.tsx.
+    ///   Home             RailHomeIcon      (tree-of-life, full color)
+    ///   Thinking Space   RailExplorerIcon  ↔ lucide Compass
+    ///   New Note         RailNewNoteIcon   ↔ NewNoteNavIcon (rounded SquarePen)
+    ///   Webull           chart.line…       ↔ WebullNavIcon (user-renamable; SF)
+    ///   Thinking Organizer RailOrganizerIcon ↔ phosphor TreeView
+    ///   Tools            RailToolsIcon     ↔ ToolsShapesNavIcon (Shapes)
     static let defaultTabs: [RailTab] = [
         RailTab(id: "/",                   title: "Home",               icon: .asset("RailHomeIcon"),                  activePaths: []),
-        RailTab(id: "/thinking-space",     title: "Thinking Space Explorer", icon: .system("safari"),                  activePaths: []),
-        RailTab(id: "/new-thought",        title: "New Note",           icon: .system("plus.square"),                  activePaths: []),
+        RailTab(id: "/thinking-space",     title: "Thinking Space Explorer", icon: .template("RailExplorerIcon"),      activePaths: []),
+        RailTab(id: "/new-thought",        title: "New Note",           icon: .template("RailNewNoteIcon"),            activePaths: []),
         RailTab(id: "/webull",             title: "Webull",             icon: .system("chart.line.uptrend.xyaxis"),    activePaths: []),
-        RailTab(id: "/thinking-organizer", title: "Thinking Organizer", icon: .system("rectangle.3.group"),            activePaths: ["/file-organizer"]),
-        RailTab(id: "/tools",              title: "Tools",              icon: .system("square.on.circle"),             activePaths: [
+        RailTab(id: "/thinking-organizer", title: "Thinking Organizer", icon: .template("RailOrganizerIcon"),          activePaths: ["/file-organizer"]),
+        RailTab(id: "/tools",              title: "Tools",              icon: .template("RailToolsIcon"),              activePaths: [
             "/ai/chat", "/ai/schedules", "/web", "/git-insights",
             "/excalidraw-plus", "/capabilities", "/extension-builder",
             "/terminal", "/password-manager", "/personal-tools", "/personal-extension",
@@ -146,6 +155,15 @@ private struct RailRow: View {
         case .system(let name):
             Image(systemName: name)
                 .font(.system(size: 18, weight: .regular))
+                .foregroundColor(isSelected ? .primary : Color(white: 0.35))
+        case .template(let name):
+            // The bundled lucide/phosphor vector, tinted to match SF Symbol
+            // rows: near-black when selected, muted grey otherwise.
+            Image(name)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 21, height: 21)
                 .foregroundColor(isSelected ? .primary : Color(white: 0.35))
         case .asset(let name):
             // Render the asset like a mini app icon: full bleed with the

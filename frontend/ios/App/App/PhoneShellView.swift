@@ -20,7 +20,13 @@ struct PhoneShellView: View {
             let progress = chromeState.drawerProgress
             let visibleDrawerHeight = max(0, progress * revealHeight)
             let contentCornerRadius = phoneShellContentCornerRadius * progress
-            let topOverlayReservedHeight: CGFloat = chromeState.isVisible ? max(52, safeTop + 8) : 0
+            // Instagram model: the web content fills all the way to the top edge
+            // and slides under the status bar. The web owns its own top inset via
+            // `--ltm-safe-top` (env(safe-area-inset-top)) on non-bleed pages, and
+            // edge-bleed pages (Home) deliberately let their backdrop run under
+            // the clock. The native TopChromeView is now just an adaptive scrim,
+            // not a reserved opaque band — so nothing is reserved here.
+            let topOverlayReservedHeight: CGFloat = 0
             let contentPanelShape = RoundedRectangle(cornerRadius: contentCornerRadius, style: .continuous)
 
             ZStack(alignment: .top) {
