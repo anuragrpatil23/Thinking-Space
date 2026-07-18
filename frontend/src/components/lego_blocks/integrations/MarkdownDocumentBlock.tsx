@@ -311,15 +311,6 @@ function MarkdownTextDocumentRuntimeBlock({
   const isExcalidrawDoc = isExcalidrawPathBlock(path)
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
-  // Mirror the scroll element into state so consumers that need the actual
-  // node (the mini-nav rail) re-render once it attaches — a ref alone never
-  // triggers that, which left the rail reading window-scroll metrics and
-  // hiding itself where the body doesn't scroll (Electron).
-  const [scrollContainerEl, setScrollContainerEl] = useState<HTMLDivElement | null>(null)
-  const attachContentScrollRef = useCallback((node: HTMLDivElement | null) => {
-    contentScrollRef.current = node
-    setScrollContainerEl(node)
-  }, [])
   const [findOpen, setFindOpen] = useState(false)
   const lastScrollTopRef = useRef(0)
   const [isHeaderHidden, setIsHeaderHidden] = useState(false)
@@ -1493,7 +1484,7 @@ function MarkdownTextDocumentRuntimeBlock({
           </div>
         )}
         <div
-          ref={attachContentScrollRef}
+          ref={contentScrollRef}
           onScroll={(e) => {
             const top = (e.target as HTMLDivElement).scrollTop
             const prev = lastScrollTopRef.current
@@ -2172,14 +2163,14 @@ function MarkdownTextDocumentRuntimeBlock({
 
         </div>
 
-        {!loading && !error && content !== null && !isExcalidrawDoc && showMiniNavRail && (
+        {!loading && !error && content !== null && !isExcalidrawDoc && !pendingFullRender && showMiniNavRail && (
           <MarkdownMiniNavBlock
-            content={isEditing ? displayDraft : displayContent}
-            container={scrollContainerEl}
+            content={isEditing ? displayDraft : viewMarkdown}
+            container={contentScrollRef.current}
             useRenderedHeadings={!isEditing}
             renderRootSelector="[data-markdown-nav-root]"
             aiTouch={miniNavAiTouch}
-            className="absolute right-4 top-1/2 z-30 h-[42vh] max-h-[480px] min-h-[180px] -translate-y-1/2"
+            className="fixed right-4 top-1/2 z-30 h-[42vh] max-h-[480px] min-h-[180px] -translate-y-1/2"
           />
         )}
       </div>
