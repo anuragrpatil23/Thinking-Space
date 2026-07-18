@@ -4,7 +4,11 @@ export interface PersistedExplorerState {
   expandedPaths?: string[]
   selectedFolderPath?: string | null
   selectedFilePath?: string | null
-  viewMode?: 'tree' | 'list' | 'grid'
+  // 'list' is legacy (the old Numbered list view) — read for migration to
+  // 'compact', never written anymore.
+  viewMode?: 'tree' | 'compact' | 'grid' | 'list'
+  /** Per-folder file numbering toggle, only meaningful in compact mode. */
+  compactNumbering?: boolean
 }
 
 export type ExplorerPathKindBlock = 'file' | 'folder'

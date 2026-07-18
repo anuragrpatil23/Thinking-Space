@@ -32,10 +32,11 @@ import {
   Info,
   Link,
   Link2,
+  ListOrdered,
   Loader2,
 } from 'lucide-react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
-import NotebookTocBlock, { type NotebookTocViewMode } from '@/components/lego_blocks/integrations/NotebookTocBlock'
+import NotebookTocBlock from '@/components/lego_blocks/integrations/NotebookTocBlock'
 import {
   buildPathSearchCandidatesBlock,
   UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK,
@@ -311,7 +312,15 @@ interface InlineRenameState {
   value: string
 }
 
-type ExplorerViewModeBlock = 'tree' | NotebookTocViewMode
+type ExplorerViewModeBlock = 'tree' | 'compact' | 'grid'
+
+// The legacy 'list' (Numbered list) view is subsumed by compact mode; migrate
+// any persisted 'list' to 'compact'.
+function normalizeExplorerViewMode(value: PersistedExplorerState['viewMode']): ExplorerViewModeBlock {
+  if (value === 'list' || value === 'compact') return 'compact'
+  if (value === 'grid') return 'grid'
+  return 'tree'
+}
 
 interface VaultExplorerBlockProps {
   loadEntries: (path: string) => Promise<FolderEntries>
@@ -517,9 +526,12 @@ export default function VaultExplorerBlock({
       : null),
   )
   const [viewMode, setViewMode] = useState<ExplorerViewModeBlock>(
-    () => (initialPersistedState?.viewMode === 'list' || initialPersistedState?.viewMode === 'grid'
-      ? initialPersistedState.viewMode
-      : 'tree'),
+    () => normalizeExplorerViewMode(initialPersistedState?.viewMode),
+  )
+  // Per-folder file numbering in compact mode (the "Numbered list" behavior,
+  // inline in the tree). Off by default.
+  const [compactNumbering, setCompactNumbering] = useState<boolean>(
+    () => initialPersistedState?.compactNumbering === true,
   )
   const [query, setQuery] = useState('')
   const [dropOverPath, setDropOverPath] = useState<string | null>(null)
@@ -613,11 +625,8 @@ export default function VaultExplorerBlock({
     setSelectedFilePath(
       typeof persisted?.selectedFilePath === 'string' ? persisted.selectedFilePath : null,
     )
-    setViewMode(
-      persisted?.viewMode === 'list' || persisted?.viewMode === 'grid'
-        ? persisted.viewMode
-        : 'tree',
-    )
+    setViewMode(normalizeExplorerViewMode(persisted?.viewMode))
+    setCompactNumbering(persisted?.compactNumbering === true)
     setNodes({})
     void loadPath('', true)
   }, [loadPath, storageKey])
@@ -646,12 +655,13 @@ export default function VaultExplorerBlock({
         selectedFolderPath,
         selectedFilePath,
         viewMode,
+        compactNumbering,
       }
       window.localStorage.setItem(storageKey, JSON.stringify(payload))
     } catch {
       // Ignore persistence failures; explorer should still work in-memory.
     }
-  }, [expandedPaths, selectedFilePath, selectedFolderPath, storageKey, viewMode])
+  }, [compactNumbering, expandedPaths, selectedFilePath, selectedFolderPath, storageKey, viewMode])
 
   const activeFilePath = selectedFilePath ?? selectedPath ?? null
 
@@ -1407,6 +1417,16 @@ export default function VaultExplorerBlock({
         for (const f of visibleFiles) plan.push({ kind: 'file', name: f })
       }
 
+      // Compact-mode numbering toggle: number every file in this folder 1..n
+      // (restarting per folder), overriding any _map section indices so the
+      // whole tree is numbered, not just mapped folders.
+      if (compactNumbering) {
+        let counter = 0
+        for (const row of plan) {
+          if (row.kind === 'file' && !row.pinned) row.index = ++counter
+        }
+      }
+
       plan.forEach(row => {
         if (row.kind === 'header') {
           rows.push(
@@ -1573,6 +1593,7 @@ export default function VaultExplorerBlock({
       canDropOnRows,
       cancelInlineRename,
       commitInlineRename,
+      compactNumbering,
       dropOverPath,
       getNode,
       handleDragOverTarget,
@@ -1621,13 +1642,13 @@ export default function VaultExplorerBlock({
   }, [normalizedQuery, renderPath, rootNode.loaded, rootNode.loading])
 
   const notebookContent = useMemo(() => {
-    if (viewMode === 'tree') return null
+    if (viewMode !== 'grid') return null
     if (filteredNotebookEntries.length === 0) {
       return (
         <div className="px-3 py-4 text-sm text-muted-foreground">
           {normalizedQuery
             ? 'No matching files in the expanded folders.'
-            : 'Expand one or more folders to use notebook list or grid view.'}
+            : 'Expand one or more folders to use grid view.'}
         </div>
       )
     }
@@ -1643,7 +1664,7 @@ export default function VaultExplorerBlock({
         onToggleFolder={toggleFolder}
         onOpenFile={onOpenFile}
         onReorderFiles={handleNotebookReorderFiles}
-        viewMode={viewMode}
+        viewMode="grid"
         onViewModeChange={() => {}}
         totalPages={countNotebookPages(filteredNotebookEntries)}
         showHeader={false}
@@ -1670,7 +1691,7 @@ export default function VaultExplorerBlock({
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
-      <div className="ltm-vault-explorer-search-wrap px-3 py-2">
+      <div className={cn('ltm-vault-explorer-search-wrap px-3', viewMode === 'compact' ? 'py-1.5' : 'py-2')}>
         {hasTitle && (
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -1693,7 +1714,7 @@ export default function VaultExplorerBlock({
           />
         </div>
 
-        <div className="mt-2 flex items-center gap-1 px-1">
+        <div className={cn('flex items-center gap-1 px-1', viewMode === 'compact' ? 'mt-1' : 'mt-2')}>
           {(() => {
             const parentPath = selectedFolderPath ?? (selectedFilePath ? getParentPath(selectedFilePath) : '')
             const ToolbarBtn = ({
@@ -1758,15 +1779,23 @@ export default function VaultExplorerBlock({
                       title="Explorer view"
                     >
                       <SelectValue aria-label={viewMode}>
-                        {viewMode === 'tree' ? 'Tree view' : viewMode === 'list' ? 'Numbered list' : 'Grid view'}
+                        {viewMode === 'tree' ? 'Tree view' : viewMode === 'compact' ? 'Compact view' : 'Grid view'}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="tree">Tree view</SelectItem>
-                      <SelectItem value="list">Numbered list</SelectItem>
+                      <SelectItem value="compact">Compact view</SelectItem>
                       <SelectItem value="grid">Grid view</SelectItem>
                     </SelectContent>
                   </Select>
+                  {viewMode === 'compact' && (
+                    <ToolbarBtn
+                      icon={ListOrdered}
+                      label={compactNumbering ? 'Hide numbers' : 'Number files (per folder)'}
+                      active={compactNumbering}
+                      onClick={() => setCompactNumbering(prev => !prev)}
+                    />
+                  )}
                   <ToolbarBtn
                     icon={Info}
                     label="File info"
@@ -1827,11 +1856,44 @@ export default function VaultExplorerBlock({
         ) : null}
       </div>
 
+      {viewMode === 'compact' && activeFilePath && (() => {
+        const parent = getParentPath(activeFilePath)
+        if (!parent) return null
+        const segments = parent.split('/')
+        return (
+          <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border/40 px-2 py-1 text-[11px] text-muted-foreground [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {segments.map((segment, index) => {
+              const segmentPath = segments.slice(0, index + 1).join('/')
+              return (
+                <span key={segmentPath} className="flex shrink-0 items-center gap-0.5">
+                  {index > 0 && <ChevronRight className="h-3 w-3 shrink-0 opacity-40" />}
+                  <button
+                    type="button"
+                    className="shrink-0 truncate rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
+                    onClick={() => {
+                      setSelectedFolderPath(segmentPath)
+                      setExpandedPaths(prev => {
+                        const set = new Set(prev)
+                        for (let depth = 0; depth < segments.length; depth += 1) {
+                          set.add(segments.slice(0, depth + 1).join('/'))
+                        }
+                        return [...set]
+                      })
+                    }}
+                  >
+                    {segment}
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       <div
         className={cn(
           'min-h-0 flex-1 overflow-auto px-1.5 py-2',
-          viewMode !== 'tree' && 'px-0 py-0',
+          viewMode === 'grid' && 'px-0 py-0',
           canDropOnRows && dropOverPath === '' && 'ring-2 ring-blue-500/60 bg-blue-500/5',
         )}
         onDragOver={canDropOnRows ? (event) => {
@@ -1844,7 +1906,13 @@ export default function VaultExplorerBlock({
           void handleDropOnTarget(event, '')
         } : undefined}
       >
-        {viewMode === 'tree' ? treeContent : notebookContent}
+        {viewMode === 'grid'
+          ? notebookContent
+          : (
+            <div className={cn(viewMode === 'compact' && 'ltm-explorer-compact')}>
+              {treeContent}
+            </div>
+          )}
       </div>
       {contextMenu && (() => {
         const parentPath = contextMenu.kind === 'folder' ? contextMenu.path : getParentPath(contextMenu.path)

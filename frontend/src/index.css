@@ -800,6 +800,35 @@
     color: rgb(203 201 201);
   }
 
+  /* Compact explorer view: denser rows + subtle vertical indent guides, drawn
+     as a repeating background so no per-row markup is needed. Guides sit at the
+     folder chevron centers (8px base padding + 14px per depth + ~7px to the
+     glyph center). */
+  .ltm-explorer-compact {
+    --ltm-explorer-guide: rgba(128, 128, 128, 0.16);
+    background-image: repeating-linear-gradient(
+      to right,
+      var(--ltm-explorer-guide) 0,
+      var(--ltm-explorer-guide) 1px,
+      transparent 1px,
+      transparent 14px
+    );
+    background-position: 15px 0;
+  }
+  .dark .ltm-explorer-compact {
+    --ltm-explorer-guide: rgba(180, 180, 180, 0.12);
+  }
+  .ltm-explorer-compact .ltm-explorer-row {
+    padding-top: 0.14rem;
+    padding-bottom: 0.14rem;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+  .ltm-explorer-compact .ltm-explorer-map-section-header {
+    padding-top: 0.1rem;
+    padding-bottom: 0.1rem;
+  }
+
   .ltm-thinking-space-shell .ltm-thinking-space-document-stage {
     border-left: 0;
     border-radius: calc(var(--ltm-shell-main-panel-radius) - 0.22rem);
