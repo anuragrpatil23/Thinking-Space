@@ -1905,6 +1905,78 @@ body.ltm-ruled-notebook-active .excalidraw .layer-ui__wrapper {
   margin-bottom: 0 !important;
 }
 
+/* ---------------------------------------------------------------------------
+   Dark mode — a warm "midnight notebook": dark aged-paper sheets, light ink,
+   dimmed blue rules + red margin. Redefines the shell's paper/ink vars and
+   overrides the hardcoded light colors that don't flow through those vars.
+   --------------------------------------------------------------------------- */
+.dark .ltm-ruled-notebook-shell {
+  --ltm-ruled-paper: #211e18;
+  --ltm-ruled-paper-back: #1b1813;
+  --ltm-ruled-ink: #e7e0cf;
+  --ltm-ruled-line: rgba(138, 166, 214, 0.16);
+  --ltm-ruled-margin: rgba(210, 118, 118, 0.40);
+  background:
+    radial-gradient(circle at top, rgba(46, 50, 60, 0.55), rgba(18, 20, 26, 0.85)),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0));
+}
+
+.dark .ltm-ruled-notebook-page-frame {
+  background: linear-gradient(180deg, var(--ltm-ruled-paper) 0%, #26231c 100%);
+  box-shadow:
+    0 22px 50px rgba(0, 0, 0, 0.5),
+    0 6px 14px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 1px rgba(200, 180, 130, 0.06);
+}
+.dark .ltm-ruled-notebook-page-left {
+  background: linear-gradient(180deg, var(--ltm-ruled-paper-back) 0%, #201d17 100%);
+}
+
+.dark .ltm-ruled-notebook-content h1,
+.dark .ltm-ruled-notebook-content h2,
+.dark .ltm-ruled-notebook-content h3,
+.dark .ltm-ruled-notebook-content h4,
+.dark .ltm-ruled-notebook-content h5,
+.dark .ltm-ruled-notebook-content h6 { color: #f1ead7; }
+.dark .ltm-ruled-notebook-content strong { color: #faf4e2; }
+.dark .ltm-ruled-notebook-content blockquote {
+  color: #cdbf9f;
+  border-left-color: rgba(180, 192, 224, 0.32);
+}
+.dark .ltm-ruled-notebook-content a { color: #9db6e6; }
+.dark .ltm-ruled-notebook-content code { background: rgba(180, 200, 240, 0.10); }
+.dark .ltm-ruled-notebook-content pre { background: rgba(180, 200, 240, 0.08); }
+.dark .ltm-ruled-notebook-content hr { border-top-color: rgba(180, 192, 224, 0.42); }
+
+.dark .ltm-ruled-notebook-page-meta,
+.dark .ltm-ruled-notebook-footer { color: rgba(224, 214, 184, 0.42); }
+.dark .ltm-ruled-notebook-margin-date { color: rgba(206, 172, 112, 0.8); }
+
+/* Peek strip behind the current sheet. */
+.dark .ltm-ruled-notebook-page-peek {
+  background: linear-gradient(90deg, rgba(27, 24, 19, 0.9), rgba(38, 35, 28, 0.95));
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(200, 180, 130, 0.08);
+}
+
+/* Table of contents drawer. */
+.dark .ltm-ruled-notebook-toc-panel {
+  background: linear-gradient(180deg, #211e18 0%, #1a1712 100%);
+  border-left-color: rgba(200, 180, 130, 0.16);
+  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.5);
+}
+.dark .ltm-ruled-notebook-toc-header { border-bottom-color: rgba(200, 180, 130, 0.12); }
+.dark .ltm-ruled-notebook-toc-item { color: #d8cdb4; }
+.dark .ltm-ruled-notebook-toc-item:hover { background: rgba(200, 180, 130, 0.08); }
+.dark .ltm-ruled-notebook-toc-item-active {
+  background: rgba(200, 160, 90, 0.16);
+  color: #f1ead7;
+}
+.dark .ltm-ruled-notebook-toc-item-label { color: rgba(206, 172, 112, 0.85); }
+.dark .ltm-ruled-notebook-toc-item-active .ltm-ruled-notebook-toc-item-label { color: #e6b876; }
+.dark .ltm-ruled-notebook-toc-item-page { color: rgba(200, 196, 176, 0.6); }
+
 @media (max-width: 768px) {
   .ltm-ruled-notebook-shell {
     --ltm-ruled-line-height: 26px;
