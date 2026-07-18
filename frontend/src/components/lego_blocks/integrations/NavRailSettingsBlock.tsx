@@ -9,6 +9,7 @@ import {
   NAV_RAIL_MANAGEABLE_ITEMS_BLOCK,
   NAV_RAIL_PREFS_EVENT,
   resetNavRailPrefsBlock,
+  setNavRailHomePositionBlock,
   setNavRailItemHiddenBlock,
   type NavRailPrefsBlock,
 } from '@/services/lego_blocks/units/navRailPrefsBlock'
@@ -36,7 +37,7 @@ export function NavRailSettingsBlock({ webullLabel }: { webullLabel?: string }) 
     // toggled back on from where they'd reappear.
     const orderedVisible = applyNavRailPrefsBlock(
       groupItems.map((item) => ({ to: item.id })),
-      { order: prefs.order, hidden: [] },
+      { order: prefs.order, hidden: [], homePosition: prefs.homePosition },
     ).map((entry) => entry.to)
     return (
       <div className="space-y-1">
@@ -96,6 +97,30 @@ export function NavRailSettingsBlock({ webullLabel }: { webullLabel?: string }) 
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Home Glyph</p>
+          <div className="flex items-center gap-2 rounded-md border border-border px-2 py-1.5">
+            <span className="min-w-0 flex-1 truncate text-sm text-foreground">Home position</span>
+            <Button
+              type="button"
+              variant={prefs.homePosition !== 'bottom' ? 'default' : 'ghost'}
+              size="sm"
+              aria-pressed={prefs.homePosition !== 'bottom'}
+              onClick={() => setNavRailHomePositionBlock('top')}
+            >
+              Top
+            </Button>
+            <Button
+              type="button"
+              variant={prefs.homePosition === 'bottom' ? 'default' : 'ghost'}
+              size="sm"
+              aria-pressed={prefs.homePosition === 'bottom'}
+              onClick={() => setNavRailHomePositionBlock('bottom')}
+            >
+              Bottom
+            </Button>
+          </div>
+        </div>
         {renderGroup('primary', 'Main Rail')}
         {renderGroup('tools', 'Tools Group')}
         <Button type="button" variant="outline" size="sm" onClick={resetNavRailPrefsBlock}>

@@ -91,6 +91,7 @@ import {
   hideNavRailItemBlock,
   NAV_RAIL_PREFS_EVENT,
   reorderNavRailItemBlock,
+  setNavRailHomePositionBlock,
   type NavRailPrefsBlock,
 } from './services/lego_blocks/units/navRailPrefsBlock'
 import { useChromeStateEventBlock } from './components/lego_blocks/hooks/shared/useChromeStateEventBlock'
@@ -532,6 +533,24 @@ function App() {
     }
   }, [])
 
+  // Home can be dragged between the top of the rail and the bottom corner.
+  // The two group containers (top nav scroll + bottom actions) are drop zones;
+  // they only react when the dragged item is Home ('/'), so normal item
+  // reorder drops pass through untouched. The ref is cleared on dragEnd (not in
+  // item onDrop) so the bubbled container handler can still read it.
+  const allowHomeRailDrop = useCallback((event: React.DragEvent) => {
+    if (railDraggedIdRef.current === '/') event.preventDefault()
+  }, [])
+  const dropHomeRailAt = useCallback(
+    (position: 'top' | 'bottom') => (event: React.DragEvent) => {
+      if (railDraggedIdRef.current !== '/') return
+      event.preventDefault()
+      setNavRailHomePositionBlock(position)
+    },
+    [],
+  )
+  const clearRailDraggedId = useCallback(() => { railDraggedIdRef.current = null }, [])
+
   const featureFlags = getCapabilityFeatureFlags()
   const extensionBuilderEnabled = featureFlags.extension_host_enabled && featureFlags.extension_builder_enabled
   const gitSyncToolsSupported = useMemo(() => isGitSyncToolsSupportedOrch(), [])
@@ -675,6 +694,34 @@ function App() {
   const isMacPlatform = typeof navigator !== 'undefined'
     && /(Mac|iPhone|iPad|iPod)/i.test(navigator.platform || navigator.userAgent || '')
   const shortcutHint = (digit: number) => (isMacPlatform ? ` (⌘${digit})` : ` (Ctrl+${digit})`)
+
+  // Home glyph as a rail item — draggable in jiggle-edit mode so it can anchor
+  // at the top of the rail or the bottom corner (default). Rendered in exactly
+  // one of the two slots depending on navRailPrefs.homePosition.
+  const renderHomeRailItem = () => (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          to="/"
+          aria-label="Home"
+          aria-current={location.pathname === '/' || location.pathname === '/home-canvas' ? 'page' : undefined}
+          draggable={railEditMode}
+          onPointerDown={startRailLongPress}
+          onPointerUp={cancelRailLongPress}
+          onPointerLeave={cancelRailLongPress}
+          onClick={(event) => { if (railEditMode) event.preventDefault() }}
+          onDragStart={() => { railDraggedIdRef.current = '/' }}
+          onDragEnd={clearRailDraggedId}
+          className={`ltm-shell-logo ltm-motion-fast ltm-rail-item ltm-rail-manageable inline-flex h-10 w-full items-center justify-center rounded-lg transition-colors`}
+        >
+          <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
+            <AppBrandGlyph className="h-full w-full" />
+          </span>
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent side="right">{railEditMode ? 'Drag to the top or bottom · click away to finish' : `Home${shortcutHint(0)}`}</TooltipContent>
+    </Tooltip>
+  )
   // Keep the explorer collapse button in the same left-cluster position as every
   // other surface's chrome button (was previously right-aligned off Electron
   // desktop, which made it jump position on web/PWA). Capacitor still uses its
@@ -2616,23 +2663,13 @@ function App() {
               >
                 <TooltipProvider delayDuration={0}>
                 <div className="flex h-full flex-col px-2 py-3">
-                <div className="ltm-nav-scroll ltm-sidebar-nav-scroll min-h-0 flex-1 overflow-y-auto">
+                <div
+                  className="ltm-nav-scroll ltm-sidebar-nav-scroll min-h-0 flex-1 overflow-y-auto"
+                  onDragOver={allowHomeRailDrop}
+                  onDrop={dropHomeRailAt('top')}
+                >
                   <div className="ltm-sidebar-nav-group space-y-1">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Link
-                          to="/"
-                          aria-label="Home"
-                          aria-current={location.pathname === '/' || location.pathname === '/home-canvas' ? 'page' : undefined}
-                          className="ltm-shell-logo ltm-motion-fast ltm-rail-item mb-1 inline-flex h-10 w-full items-center justify-center rounded-lg transition-colors"
-                        >
-                          <span className="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-full">
-                            <AppBrandGlyph className="h-full w-full" />
-                          </span>
-                        </Link>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">{`Home${shortcutHint(0)}`}</TooltipContent>
-                    </Tooltip>
+                    {navRailPrefs.homePosition !== 'bottom' && renderHomeRailItem()}
                     {primaryNavItems.map((item, index) => {
                       const Icon = item.icon
                       const active = isNavItemActive(location.pathname, item)
@@ -2647,12 +2684,12 @@ function App() {
                               onPointerLeave={cancelRailLongPress}
                               onClick={(event) => { if (railEditMode) event.preventDefault() }}
                               onDragStart={() => { railDraggedIdRef.current = item.to }}
+                              onDragEnd={clearRailDraggedId}
                               onDragOver={(event) => { if (railEditMode) event.preventDefault() }}
                               onDrop={(event) => {
                                 event.preventDefault()
                                 const dragged = railDraggedIdRef.current
-                                railDraggedIdRef.current = null
-                                if (dragged) reorderNavRailItemBlock(primaryNavItems.map(entry => entry.to), dragged, item.to)
+                                if (dragged && dragged !== '/') reorderNavRailItemBlock(primaryNavItems.map(entry => entry.to), dragged, item.to)
                               }}
                               className={`ltm-motion-fast ltm-touch-row ltm-rail-item ltm-rail-manageable relative flex items-center justify-center rounded-lg px-2 py-2 transition-colors ${
                                 active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -2698,12 +2735,12 @@ function App() {
                               onPointerLeave={cancelRailLongPress}
                               onClick={(event) => { if (railEditMode) event.preventDefault() }}
                               onDragStart={() => { railDraggedIdRef.current = item.to }}
+                              onDragEnd={clearRailDraggedId}
                               onDragOver={(event) => { if (railEditMode) event.preventDefault() }}
                               onDrop={(event) => {
                                 event.preventDefault()
                                 const dragged = railDraggedIdRef.current
-                                railDraggedIdRef.current = null
-                                if (dragged) reorderNavRailItemBlock(toolsNavItems.map(entry => entry.to), dragged, item.to)
+                                if (dragged && dragged !== '/') reorderNavRailItemBlock(toolsNavItems.map(entry => entry.to), dragged, item.to)
                               }}
                               className={`ltm-motion-fast ltm-touch-row ltm-rail-item ltm-rail-manageable relative flex items-center justify-center rounded-lg px-2 py-2 transition-colors ${
                                 active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -2735,8 +2772,13 @@ function App() {
                   </div>
                 </div>
 
-                <div className="ltm-sidebar-actions">
+                <div
+                  className="ltm-sidebar-actions"
+                  onDragOver={allowHomeRailDrop}
+                  onDrop={dropHomeRailAt('bottom')}
+                >
                   <div className="ltm-sidebar-actions-group space-y-1">
+                    {navRailPrefs.homePosition === 'bottom' && renderHomeRailItem()}
                     {utilityNavItems.map((item) => {
                       const Icon = item.icon
                       const active = isNavItemActive(location.pathname, item)

@@ -9,17 +9,24 @@ import { getJsonStorageItem, setJsonStorageItem, STORAGE_KEYS } from './storageK
 // routable and listed in the ⌘K command palette, so you can never strand
 // yourself. Keyboard shortcuts (⌘1…n) follow the visible order, like Chrome.
 
+/** Where the Home glyph anchors on the rail. Default 'bottom' (the bottom
+ *  corner, above the profile switcher); users can drag it up to the top in
+ *  jiggle-edit mode. */
+export type NavRailHomePosition = 'top' | 'bottom'
+
 export interface NavRailPrefsBlock {
   /** Item ids (route paths) in desired display order; unknown ids ignored,
    *  unlisted items keep their default relative order after the listed ones. */
   order: string[]
   /** Item ids hidden from the rail. */
   hidden: string[]
+  /** Home glyph anchor — top (default) or bottom corner. */
+  homePosition: NavRailHomePosition
 }
 
 export const NAV_RAIL_PREFS_EVENT = 'thinkspc:nav-rail-prefs-changed'
 
-const EMPTY_PREFS_BLOCK: NavRailPrefsBlock = { order: [], hidden: [] }
+const EMPTY_PREFS_BLOCK: NavRailPrefsBlock = { order: [], hidden: [], homePosition: 'bottom' }
 
 /** Rail items the user may reorder/hide. Labels mirror the nav constants in
  *  App.tsx (the Webull label is user-customizable; pass the live label where
@@ -39,7 +46,8 @@ function sanitizePrefsBlock(value: unknown): NavRailPrefsBlock {
   const record = value as Partial<NavRailPrefsBlock>
   const clean = (list: unknown): string[] =>
     Array.isArray(list) ? [...new Set(list.filter((entry): entry is string => typeof entry === 'string'))] : []
-  return { order: clean(record.order), hidden: clean(record.hidden) }
+  const homePosition: NavRailHomePosition = record.homePosition === 'top' ? 'top' : 'bottom'
+  return { order: clean(record.order), hidden: clean(record.hidden), homePosition }
 }
 
 export function getNavRailPrefsBlock(): NavRailPrefsBlock {
@@ -72,6 +80,13 @@ export function setNavRailItemHiddenBlock(id: string, hidden: boolean): void {
       ? [...new Set([...prefs.hidden, id])]
       : prefs.hidden.filter((entry) => entry !== id),
   })
+}
+
+/** Anchor the Home glyph to the top of the rail or the bottom corner. */
+export function setNavRailHomePositionBlock(position: NavRailHomePosition): void {
+  const prefs = getNavRailPrefsBlock()
+  if (prefs.homePosition === position) return
+  setNavRailPrefsBlock({ ...prefs, homePosition: position })
 }
 
 /** Move an item one slot up/down within its group's default+custom order.
