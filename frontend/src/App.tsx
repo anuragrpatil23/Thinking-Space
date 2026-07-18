@@ -485,6 +485,9 @@ function App() {
   const [railEditMode, setRailEditMode] = useState(false)
   const railLongPressTimerRef = useRef<number | null>(null)
   const railDraggedIdRef = useRef<string | null>(null)
+  // The click that fires when the long-press releases must not immediately
+  // exit the edit mode it just entered.
+  const suppressRailExitClickRef = useRef(false)
 
   useEffect(() => startStallDetector(), [])
 
@@ -516,6 +519,9 @@ function App() {
     railLongPressTimerRef.current = window.setTimeout(() => {
       railLongPressTimerRef.current = null
       setRailEditMode(true)
+      // Ignore the click that this same press produces on release.
+      suppressRailExitClickRef.current = true
+      window.setTimeout(() => { suppressRailExitClickRef.current = false }, 500)
     }, 550)
   }, [])
 
@@ -2596,7 +2602,18 @@ function App() {
           )}
           <div className="ltm-shell-body-stage">
             {!compactNav && (
-              <aside className={`ltm-shell-sidebar ltm-shell-nav-surface ltm-sidebar-collapsed hidden w-16 shrink-0 lg:block ${railEditMode ? 'ltm-rail-edit-mode' : ''}`} data-ltm-nav-region="rail">
+              <aside
+                className={`ltm-shell-sidebar ltm-shell-nav-surface ltm-sidebar-collapsed hidden w-16 shrink-0 lg:block ${railEditMode ? 'ltm-rail-edit-mode' : ''}`}
+                data-ltm-nav-region="rail"
+                onClick={() => {
+                  // Click anywhere in the rail finishes edit mode — except the
+                  // × hide buttons (they stopPropagation) and the press that
+                  // just entered it (suppressed above).
+                  if (!railEditMode) return
+                  if (suppressRailExitClickRef.current) { suppressRailExitClickRef.current = false; return }
+                  setRailEditMode(false)
+                }}
+              >
                 <TooltipProvider delayDuration={0}>
                 <div className="flex h-full flex-col px-2 py-3">
                 <div className="ltm-nav-scroll ltm-sidebar-nav-scroll min-h-0 flex-1 overflow-y-auto">
@@ -2651,14 +2668,14 @@ function App() {
                                     event.stopPropagation()
                                     hideNavRailItemBlock(item.to)
                                   }}
-                                  className="absolute -left-0.5 -top-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-500 text-[10px] font-bold leading-none text-white shadow"
+                                  className="absolute -left-1 -top-1 z-10 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-neutral-700 text-[11px] font-bold leading-none text-white shadow-md ring-2 ring-[hsl(var(--background))]"
                                 >
                                   ×
                                 </button>
                               )}
                             </Link>
                           </TooltipTrigger>
-                          <TooltipContent side="right">{railEditMode ? 'Drag to reorder · × to hide · Esc to finish' : `${item.label}${shortcutHint(index + 1)}`}</TooltipContent>
+                          <TooltipContent side="right">{railEditMode ? 'Drag to reorder · × to hide · click away to finish' : `${item.label}${shortcutHint(index + 1)}`}</TooltipContent>
                         </Tooltip>
                       )
                     })}
@@ -2700,14 +2717,14 @@ function App() {
                                     event.stopPropagation()
                                     hideNavRailItemBlock(item.to)
                                   }}
-                                  className="absolute -left-0.5 -top-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-500 text-[10px] font-bold leading-none text-white shadow"
+                                  className="absolute -left-1 -top-1 z-10 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-neutral-700 text-[11px] font-bold leading-none text-white shadow-md ring-2 ring-[hsl(var(--background))]"
                                 >
                                   ×
                                 </button>
                               )}
                             </Link>
                           </TooltipTrigger>
-                          <TooltipContent side="right">{railEditMode ? 'Drag to reorder · × to hide · Esc to finish' : `${item.label}${shortcutHint(primaryNavItems.length + 1 + index)}`}</TooltipContent>
+                          <TooltipContent side="right">{railEditMode ? 'Drag to reorder · × to hide · click away to finish' : `${item.label}${shortcutHint(primaryNavItems.length + 1 + index)}`}</TooltipContent>
                         </Tooltip>
                       )
                     })}

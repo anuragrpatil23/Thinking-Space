@@ -47,3 +47,9 @@ frontend/electron/src/cli/bin/
 /.thinking-space/
 /ai-activity/
 /ai-raw/
+
+# BEGIN Thinking Space managed exclusions
+# Auto-managed by Thinking Space — edit through the app, not by hand.
+/ai-activity/
+/ai-raw/
+# END Thinking Space managed exclusions

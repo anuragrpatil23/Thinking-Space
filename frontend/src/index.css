@@ -662,6 +662,9 @@
   .ltm-rail-edit-mode .ltm-rail-manageable {
     animation: ltm-rail-jiggle 0.3s ease-in-out infinite;
     cursor: grab;
+    /* Breathing room so the corner × badges don't collide with neighbors. */
+    margin-top: 0.55rem;
+    margin-bottom: 0.55rem;
   }
 
   .ltm-rail-edit-mode .ltm-rail-manageable:nth-child(2n) {
@@ -693,6 +696,18 @@
       to bottom,
       color-mix(in srgb, var(--ltm-profile-accent) 52%, transparent),
       color-mix(in srgb, var(--ltm-profile-accent) 30%, transparent)
+    );
+  }
+
+  /* In dark mode the pastel accent at those weights washes the rail nearly
+     white. Tint a dark base with the accent instead of laying a translucent
+     pastel over it, so the rail keeps the profile hue but stays dark. */
+  html.dark[data-ltm-profile-accent='true'] .ltm-shell-nav-surface,
+  html.dark[data-ltm-profile-accent='true'] .ltm-shell-drawer-surface {
+    background-image: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--ltm-profile-accent) 30%, hsl(var(--background))),
+      color-mix(in srgb, var(--ltm-profile-accent) 16%, hsl(var(--background)))
     );
   }
 
