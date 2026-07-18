@@ -631,7 +631,7 @@ function MarkdownTextDocumentRuntimeBlock({
       : 'bg-transparent',
   )
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc && !isHtmlDoc
-  const showMiniNavRail = layout.mode === 'desktop' && !layout.isCapacitorNative && !isHtmlDoc
+  const showMiniNavRail = !layout.isCapacitorNative && !isHtmlDoc // [DIAGNOSTIC] dropped desktop gate
   const sessionTelemetry = useSessionTelemetryBlock(showMiniNavRail)
   const miniNavAiTouch = useMemo(() => {
     if (!sessionTelemetry) return null
