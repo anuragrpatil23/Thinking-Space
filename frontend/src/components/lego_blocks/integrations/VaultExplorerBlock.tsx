@@ -1,4 +1,4 @@
-import { cloneElement, type ComponentType, type DragEvent as ReactDragEvent, isValidElement, type ReactElement, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { cloneElement, type ComponentType, type DragEvent as ReactDragEvent, forwardRef, isValidElement, type ReactElement, type ReactNode, type Ref, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import excalidrawLogo from '@/assets/excalidraw-logo.svg'
 
@@ -376,6 +376,11 @@ interface VaultExplorerBlockProps {
   sessionTelemetry?: SessionTelemetry | null
 }
 
+/** Imperative handle so an external footer (the vault bar) can reset the tree. */
+export interface VaultExplorerHandle {
+  collapseAll: () => void
+}
+
 function getFileIcon(name: string) {
   const lower = name.toLowerCase()
   if (isExcalidrawPathBlock(lower)) return ExcalidrawIcon
@@ -457,7 +462,7 @@ function buildNotebookEntriesFromLoadedNodes(
   return buildFolderEntries('', 0)
 }
 
-export default function VaultExplorerBlock({
+function VaultExplorerBlockInner({
   loadEntries,
   onOpenFile,
   onOpenFileAsRuledNotebook,
@@ -491,7 +496,7 @@ export default function VaultExplorerBlock({
   belowToolbarSlot = null,
   toolbarActionsSlot = null,
   sessionTelemetry = null,
-}: VaultExplorerBlockProps) {
+}: VaultExplorerBlockProps, ref: Ref<VaultExplorerHandle>) {
   const storageKey = `${EXPLORER_PERSISTENCE_PREFIX}:${persistenceKey}`
 
   // Per-session cache of file → frontmatter tooltip facts. Populated lazily on first
@@ -815,6 +820,18 @@ export default function VaultExplorerBlock({
     setPendingRename(null)
     void loadPath('', true)
   }, [loadPath])
+
+  // Collapse every folder back to the root and clear selection. Keeps loaded
+  // nodes cached (unlike refreshRoot) so re-expanding is instant — it's a view
+  // reset, not a reload. Wired to the vault footer.
+  const collapseAll = useCallback(() => {
+    setExpandedPaths([''])
+    setSelectedFolderPath(null)
+    setSelectedFilePath(null)
+    setPendingRename(null)
+  }, [])
+
+  useImperativeHandle(ref, () => ({ collapseAll }), [collapseAll])
 
   useEffect(() => {
     if (!listenToGlobalSyncRefresh) return undefined
@@ -1522,7 +1539,7 @@ export default function VaultExplorerBlock({
             <div
               key={`file-${filePath}`}
               className={cn(
-                'ltm-explorer-row ltm-explorer-file-row flex w-full items-center gap-2 rounded-md border border-blue-600 bg-blue-600 px-2 py-1.5 text-[13px] text-white',
+                'ltm-explorer-row ltm-explorer-file-row flex w-full items-center gap-2 rounded-md border border-[var(--ltm-explorer-selected-color,#c73773)] bg-[var(--ltm-explorer-selected-color,#c73773)] px-2 py-1.5 text-[13px] text-white',
                 canDropOnRows && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/10 dark:bg-blue-500/20',
               )}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
@@ -1604,7 +1621,7 @@ export default function VaultExplorerBlock({
               ref={bindRowRef('file', filePath)}
               className={cn(
                 'ltm-explorer-row ltm-explorer-file-row ltm-touch-row group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/80 transition-colors hover:bg-muted/70',
-                isSelected && 'border border-blue-600 bg-blue-600 text-white hover:bg-blue-600',
+                isSelected && 'border border-[var(--ltm-explorer-selected-color,#c73773)] bg-[var(--ltm-explorer-selected-color,#c73773)] text-white hover:bg-[var(--ltm-explorer-selected-color,#c73773)]',
                 canDropOnRows && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
                 row.unmapped && !isSelected && 'opacity-60',
                 row.pinned && !isSelected && 'text-foreground/95',
@@ -2056,3 +2073,6 @@ export default function VaultExplorerBlock({
     </div>
   )
 }
+
+const VaultExplorerBlock = forwardRef(VaultExplorerBlockInner)
+export default VaultExplorerBlock

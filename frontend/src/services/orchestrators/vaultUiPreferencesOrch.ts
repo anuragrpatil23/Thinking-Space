@@ -2,6 +2,7 @@ import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   createDefaultVaultUiPreferencesBlock,
   DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK,
+  DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK,
   normalizeExplorerFolderColorPreferencesBlock,
   normalizeExplorerIconStyleBlock,
   normalizeMoonSceneMessagesPreferenceBlock,
@@ -31,7 +32,7 @@ export type {
   NewThoughtQuickDestinationPreferenceBlock,
   VaultUiPreferencesBlock,
 }
-export { DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK }
+export { DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK, DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK }
 
 async function ensurePreferencesDirOrch(): Promise<void> {
   const fs = getVaultFS()
@@ -139,6 +140,13 @@ export async function setExplorerFolderColorPreferencesOrch(
   return updateVaultUiPreferencesOrch({
     explorerFolderColorRules: normalizeExplorerFolderColorPreferencesBlock(rules),
   })
+}
+
+export async function setExplorerSelectedColorPreferenceOrch(
+  color: string,
+): Promise<VaultUiPreferencesBlock> {
+  // Blank/invalid falls back to the default in normalizeVaultUiPreferencesBlock.
+  return updateVaultUiPreferencesOrch({ explorerSelectedColor: color })
 }
 
 export async function setWebullTabPreferencesOrch(

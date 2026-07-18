@@ -45,6 +45,9 @@ export interface VaultUiPreferencesBlock {
   explorerIconStyle: ExplorerIconStyleBlock
   newThoughtQuickDestinations: NewThoughtQuickDestinationPreferenceBlock[]
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
+  /** Background/border color of the selected file row in the explorer (and the
+   *  RSS feed list). Hex string; defaults to the app's magenta. */
+  explorerSelectedColor: string
   webullTabLabel: string
   webullTabIconText: string
   /** Gate for the experimental Webull → Sim subtab (F9 practice timeline). Off by default. */
@@ -67,6 +70,9 @@ export interface VaultUiPreferencesBlock {
    *  most users won't have. */
   showDailyHighlights: boolean
 }
+
+/** Original hardcoded selected-row highlight; the default when unset. */
+export const DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK = '#c73773'
 
 export const DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK: ExplorerFolderColorPreferenceBlock[] = [
   { id: 'explorer-color-acceleration-core', folderPath: 'acceleration_core', color: '#1491d4', includeDescendants: false },
@@ -94,6 +100,7 @@ export const DEFAULT_VAULT_UI_PREFERENCES_BLOCK: VaultUiPreferencesBlock = {
   explorerIconStyle: 'outline',
   newThoughtQuickDestinations: [],
   explorerFolderColorRules: cloneExplorerFolderColorRulesBlock(DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK),
+  explorerSelectedColor: DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK,
   webullTabLabel: 'Webull',
   webullTabIconText: '',
   webullSimTabEnabled: false,
@@ -110,6 +117,7 @@ export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock 
     explorerIconStyle: DEFAULT_VAULT_UI_PREFERENCES_BLOCK.explorerIconStyle,
     newThoughtQuickDestinations: [],
     explorerFolderColorRules: cloneExplorerFolderColorRulesBlock(DEFAULT_VAULT_UI_PREFERENCES_BLOCK.explorerFolderColorRules),
+    explorerSelectedColor: DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK,
     webullTabLabel: 'Webull',
     webullTabIconText: '',
     webullSimTabEnabled: false,
@@ -236,6 +244,7 @@ export function normalizeVaultUiPreferencesBlock(value: unknown): VaultUiPrefere
     explorerIconStyle: normalizeExplorerIconStyleBlock(record.explorerIconStyle),
     newThoughtQuickDestinations: normalizeNewThoughtQuickDestinationsBlock(record.newThoughtQuickDestinations),
     explorerFolderColorRules: normalizedExplorerFolderColorRules,
+    explorerSelectedColor: normalizeHexColorBlock(record.explorerSelectedColor) || DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK,
     webullTabLabel: typeof record.webullTabLabel === 'string' && record.webullTabLabel.trim()
       ? record.webullTabLabel.trim()
       : 'Webull',

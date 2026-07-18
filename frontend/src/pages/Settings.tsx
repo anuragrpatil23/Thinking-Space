@@ -11,6 +11,8 @@ interface SettingsPageProps {
   onExplorerIconStyleChange: (nextStyle: ExplorerIconStyleBlock) => void
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
   onExplorerFolderColorRulesChange: (nextRules: ExplorerFolderColorPreferenceBlock[]) => Promise<void> | void
+  explorerSelectedColor: string
+  onExplorerSelectedColorChange: (nextColor: string) => void
   schedulerSettings: SchedulerSettingsBlock
   onSchedulerSettingsChange: (nextSettings: SchedulerSettingsBlock) => Promise<void> | void
   onRequestVaultSwitch: () => void
@@ -24,6 +26,8 @@ export default function Settings({
   onExplorerIconStyleChange,
   explorerFolderColorRules,
   onExplorerFolderColorRulesChange,
+  explorerSelectedColor,
+  onExplorerSelectedColorChange,
   schedulerSettings,
   onSchedulerSettingsChange,
   onRequestVaultSwitch,
@@ -65,6 +69,8 @@ export default function Settings({
         onExplorerIconStyleChange={onExplorerIconStyleChange}
         explorerFolderColorRules={explorerFolderColorRules}
         onExplorerFolderColorRulesChange={onExplorerFolderColorRulesChange}
+        explorerSelectedColor={explorerSelectedColor}
+        onExplorerSelectedColorChange={onExplorerSelectedColorChange}
         schedulerSettings={schedulerSettings}
         onSchedulerSettingsChange={onSchedulerSettingsChange}
         onRequestVaultSwitch={onRequestVaultSwitch}

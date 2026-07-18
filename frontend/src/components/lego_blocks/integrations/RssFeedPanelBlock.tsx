@@ -761,7 +761,7 @@ function FeedItemRow({
         'flex w-full items-start gap-2 border-b border-border/40 px-3 py-3 text-left text-xs transition-colors duration-200',
         deleteMode && isPendingDelete && 'border-destructive/30 bg-destructive/10 hover:bg-destructive/15',
         deleteMode && !isPendingDelete && 'opacity-40',
-        !deleteMode && isSelected && 'border-blue-600 bg-blue-600 text-white hover:bg-blue-600',
+        !deleteMode && isSelected && 'border-[var(--ltm-explorer-selected-color,#c73773)] bg-[var(--ltm-explorer-selected-color,#c73773)] text-white hover:bg-[var(--ltm-explorer-selected-color,#c73773)]',
         !deleteMode && !isSelected && 'hover:bg-muted/40',
         !deleteMode && !isSelected && item.read && 'opacity-55',
       )}

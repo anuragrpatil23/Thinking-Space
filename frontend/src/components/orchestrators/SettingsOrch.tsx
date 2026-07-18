@@ -47,6 +47,7 @@ import {
 } from '@/services/orchestrators/googleDriveAuthOrch'
 import {
   DEFAULT_EXPLORER_FOLDER_COLOR_PRESET_BLOCK,
+  DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK,
   readVaultUiPreferencesOrch,
   setMoonSceneIdleAnimationsEnabledOrch,
   setMoonSceneMessagesPreferenceOrch,
@@ -123,6 +124,8 @@ interface SettingsOrchProps {
   onExplorerIconStyleChange: (nextStyle: ExplorerIconStyleBlock) => void
   explorerFolderColorRules: ExplorerFolderColorPreferenceBlock[]
   onExplorerFolderColorRulesChange: (nextRules: ExplorerFolderColorPreferenceBlock[]) => Promise<void> | void
+  explorerSelectedColor: string
+  onExplorerSelectedColorChange: (nextColor: string) => void
   schedulerSettings: SchedulerSettingsBlock
   onSchedulerSettingsChange: (nextSettings: SchedulerSettingsBlock) => Promise<void> | void
   onRequestVaultSwitch: () => void
@@ -244,6 +247,8 @@ export default function SettingsOrch({
   onExplorerIconStyleChange,
   explorerFolderColorRules,
   onExplorerFolderColorRulesChange,
+  explorerSelectedColor,
+  onExplorerSelectedColorChange,
   schedulerSettings,
   onSchedulerSettingsChange,
   onRequestVaultSwitch,
@@ -1208,6 +1213,31 @@ export default function SettingsOrch({
                 <option value="outline">Outline</option>
                 <option value="filled">Filled</option>
               </select>
+            </div>
+
+            <div className="space-y-2 border-t border-border/60 pt-3">
+              <div className="text-sm font-medium">Selected item color</div>
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  type="color"
+                  aria-label="Selected item color"
+                  value={explorerSelectedColor || DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK}
+                  onChange={(event) => onExplorerSelectedColorChange(event.target.value)}
+                  className="h-9 w-14 cursor-pointer rounded-md border border-input bg-background p-1"
+                />
+                <span className="text-sm text-muted-foreground">{explorerSelectedColor}</span>
+                <button
+                  type="button"
+                  onClick={() => onExplorerSelectedColorChange(DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK)}
+                  disabled={explorerSelectedColor.toLowerCase() === DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK}
+                  className="rounded-md border border-input px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Reset to default
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The highlight color for the selected file in the explorer (and the RSS feed list).
+              </p>
             </div>
 
             <div className="space-y-2 border-t border-border/60 pt-3">

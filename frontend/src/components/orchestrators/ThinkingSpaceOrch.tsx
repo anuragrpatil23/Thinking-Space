@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PanelLeftClose, FileText, Rss as RssIcon } from 'lucide-react'
-import VaultExplorerBlock from '@/components/lego_blocks/integrations/VaultExplorerBlock'
+import VaultExplorerBlock, { type VaultExplorerHandle } from '@/components/lego_blocks/integrations/VaultExplorerBlock'
 import MarkdownDocumentBlock, { type MarkdownViewerMode } from '@/components/lego_blocks/integrations/MarkdownDocumentLazyBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
@@ -134,6 +134,52 @@ interface ThinkingSpaceOrchProps {
   routeOverride?: string
 }
 
+/** The last path segment of an absolute vault root, for the vault footer label. */
+function getVaultDisplayName(root: string): string {
+  const segments = root.replace(/[\\/]+$/, '').split(/[\\/]+/)
+  return segments[segments.length - 1] || root
+}
+
+/**
+ * The bottom bar under the explorer tree. Shows the current vault's name (no
+ * icon); hovering reveals the full path + hint, clicking collapses the whole
+ * tree. Falls back to an empty spacer when there's no vault root, so the bar's
+ * reserved height is preserved.
+ */
+function VaultFooterBar({ vaultRoot, onCollapse }: { vaultRoot: string | null; onCollapse: () => void }) {
+  if (!vaultRoot) {
+    return (
+      <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
+        <div className="h-7" aria-hidden="true" />
+      </div>
+    )
+  }
+  const name = getVaultDisplayName(vaultRoot)
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={onCollapse}
+            aria-label={`${name} — collapse all folders`}
+            className="flex h-11 w-full shrink-0 items-center border-t border-border/50 px-4 text-left text-xs text-muted-foreground/80 transition-colors hover:bg-muted/50 hover:text-foreground"
+          >
+            <span className="truncate font-medium tracking-wide">{name}</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs">
+          <div className="space-y-0.5">
+            <div className="font-medium">Your Thinking Space folder: {name}</div>
+            <div className="break-all text-[11px] text-muted-foreground">{vaultRoot}</div>
+            <div className="pt-0.5 text-[11px] text-muted-foreground">Click to collapse all folders</div>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchProps) {
   const [searchParams, setSearchParams] = useSearchParams()
   const inlinePathFromRoute = routeOverride !== undefined
@@ -172,6 +218,10 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   const linkPromptResolveRef = useRef<((url: string | null) => void) | null>(null)
   const [isExplorerResizing, setIsExplorerResizing] = useState(false)
   const [explorerCollapsed, setExplorerCollapsed] = useState(false)
+  // This window's vault root (per-profile). Read once — a profile/vault switch
+  // reloads the window — and shown as an unintrusive footer below the explorer.
+  const [vaultRootPath] = useState<string | null>(() => getStorageItem(STORAGE_KEYS.vaultRoot))
+  const explorerHandleRef = useRef<VaultExplorerHandle>(null)
   const [inlineDocHeaderHidden, setInlineDocHeaderHidden] = useState(false)
   const [explorerWidthPx, setExplorerWidthPx] = useState(() => {
     const raw = getStorageItem(STORAGE_KEYS.thinkingSpaceExplorerWidthPx)
@@ -389,6 +439,10 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
       }
     })()
   }, [isIPhoneIosSurface])
+
+  const handleExplorerCollapseAll = useCallback(() => {
+    explorerHandleRef.current?.collapseAll()
+  }, [])
 
   const handleExplorerOpenFile = useCallback((path: string) => {
     if (isCapacitorNative() && isIPhoneIosSurface) {
@@ -967,6 +1021,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
       ) : (
         <div className="min-h-0 flex-1">
           <VaultExplorerBlock
+            ref={explorerHandleRef}
             loadEntries={listFolderEntries}
             selectedPath={ruledNotebookFilePath ?? inlinePath}
             sessionTelemetry={sessionTelemetry}
@@ -999,12 +1054,10 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
         </div>
       )}
       {!useTopRssExplorerToggle ? (
-        <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
-          <div className="h-7" aria-hidden="true" />
-        </div>
+        <VaultFooterBar vaultRoot={vaultRootPath} onCollapse={handleExplorerCollapseAll} />
       ) : null}
     </>
-  ), [handleExplorerCreateCsvFile, handleExplorerShowInGraph, inlinePath, openRuledNotebookView, rssExplorerToggleButton, rssExplorerToolbarButton, rssPanelOpen, ruledNotebookFilePath, setInlinePathAndSyncUrl, useTopRssExplorerToggle])
+  ), [handleExplorerCollapseAll, handleExplorerCreateCsvFile, handleExplorerShowInGraph, inlinePath, openRuledNotebookView, rssExplorerToggleButton, rssExplorerToolbarButton, rssPanelOpen, ruledNotebookFilePath, setInlinePathAndSyncUrl, useTopRssExplorerToggle, vaultRootPath])
 
   const inlineDocumentContent = useMemo(() => {
     if (mountedInlinePaths.length === 0) return null
@@ -1209,6 +1262,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
             ) : (
               <div className="min-h-0 flex-1">
                 <VaultExplorerBlock
+                  ref={explorerHandleRef}
                   loadEntries={listFolderEntries}
                   loadFileMeta={readFileTooltipMeta}
                   selectedPath={inlinePath}
@@ -1238,9 +1292,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
               </div>
             )}
             {!useTopRssExplorerToggle ? (
-              <div className="shrink-0 border-t border-border/50 px-2 py-1.5">
-                <div className="h-7" aria-hidden="true" />
-              </div>
+              <VaultFooterBar vaultRoot={vaultRootPath} onCollapse={handleExplorerCollapseAll} />
             ) : null}
           </aside>
         </>

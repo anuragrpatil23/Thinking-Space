@@ -145,6 +145,8 @@ import {
   type ExplorerFolderColorPreferenceBlock,
   readVaultUiPreferencesOrch,
   setExplorerIconStylePreferenceOrch,
+  setExplorerSelectedColorPreferenceOrch,
+  DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK,
   type ExplorerIconStyleBlock,
 } from './services/orchestrators/vaultUiPreferencesOrch'
 import {
@@ -562,6 +564,7 @@ function App() {
   const [commandFilesLastLoadedAt, setCommandFilesLastLoadedAt] = useState(0)
   const [explorerIconStyle, setExplorerIconStyle] = useState<ExplorerIconStyleBlock>('outline')
   const [explorerFolderColorRules, setExplorerFolderColorRules] = useState<ExplorerFolderColorPreferenceBlock[]>([])
+  const [explorerSelectedColor, setExplorerSelectedColor] = useState<string>(DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK)
   const [refreshRunning, setRefreshRunning] = useState(false)
   const [thinkingSpaceGoogleWorkspaceChromeState, setThinkingSpaceGoogleWorkspaceChromeState] = useState<ThinkingSpaceGoogleWorkspaceChromeStateBlock>({
     enabled: false,
@@ -1083,6 +1086,12 @@ function App() {
     () => buildExplorerFolderColorCssBlock(explorerFolderColorRules),
     [explorerFolderColorRules],
   )
+  // Drive the explorer selected-row highlight via a root CSS var so it applies
+  // across every shell surface (including the native iPhone frame) and updates
+  // live when the color is changed in Settings.
+  useEffect(() => {
+    document.documentElement.style.setProperty('--ltm-explorer-selected-color', explorerSelectedColor)
+  }, [explorerSelectedColor])
   const nativeSidebarControl = useMemo(() => {
     if (showGoogleWorkspaceChromeControls) {
       return {
@@ -1433,6 +1442,14 @@ function App() {
     setExplorerIconStyle(nextStyle)
     void setExplorerIconStylePreferenceOrch(nextStyle).catch((error) => {
       console.warn('[App] Failed to persist explorer icon style preference:', error)
+    })
+  }, [])
+
+  const handleExplorerSelectedColorChange = useCallback((nextColor: string) => {
+    const normalized = nextColor.trim() || DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK
+    setExplorerSelectedColor(normalized)
+    void setExplorerSelectedColorPreferenceOrch(normalized).catch((error) => {
+      console.warn('[App] Failed to persist explorer selected color preference:', error)
     })
   }, [])
 
@@ -2270,6 +2287,7 @@ function App() {
         if (cancelled) return
         setExplorerIconStyle(preferences.explorerIconStyle)
         setExplorerFolderColorRules(preferences.explorerFolderColorRules)
+        setExplorerSelectedColor(preferences.explorerSelectedColor)
         setWebullTabLabel(preferences.webullTabLabel || 'Webull')
         setWebullTabIconText(preferences.webullTabIconText || '')
         // Sync scheduler tasks from vault (overrides localStorage)
@@ -2996,6 +3014,8 @@ function App() {
                         onExplorerIconStyleChange={handleExplorerIconStyleChange}
                         explorerFolderColorRules={explorerFolderColorRules}
                         onExplorerFolderColorRulesChange={handleExplorerFolderColorRulesChange}
+                        explorerSelectedColor={explorerSelectedColor}
+                        onExplorerSelectedColorChange={handleExplorerSelectedColorChange}
                         schedulerSettings={schedulerSettings}
                         onSchedulerSettingsChange={handleSchedulerSettingsChange}
                         onRequestVaultSwitch={handleRequestVaultSwitch}
