@@ -362,7 +362,11 @@ export default function MarkdownMiniNavBlock({
 
   return (
     <div
-      className={cn('select-none', className)}
+      // Widen the hover trigger leftward with transparent padding so the panel
+      // opens without pinpointing the thin tick track — the visual rail stays
+      // pinned to the right edge (track is right-aligned inside), only the
+      // hit-zone grows. The panel anchors to the track, so it's unaffected.
+      className={cn('select-none pl-12', className)}
       onPointerEnter={(e) => { if (e.pointerType === 'mouse') handleHoverEnter() }}
       onPointerLeave={handleHoverLeave}
     >
