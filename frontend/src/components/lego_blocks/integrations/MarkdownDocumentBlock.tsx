@@ -1543,7 +1543,15 @@ function MarkdownTextDocumentRuntimeBlock({
                 'flex shrink-0 items-center gap-1',
                 isIosPhone && 'w-full min-w-0 flex-wrap justify-start gap-1.5',
               )}>
-                <InfoPanelToggleButtonBlock active={showMeta} onToggle={() => setShowMeta(v => !v)} />
+                <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex">
+                      <InfoPanelToggleButtonBlock active={showMeta} onToggle={() => setShowMeta(v => !v)} title="Metadata" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Metadata</TooltipContent>
+                </Tooltip>
 
                 {/* Doc/Canvas toggle temporarily disabled in the explorer
                     viewer until the canvas mode is fully wired here. The
@@ -1561,15 +1569,19 @@ function MarkdownTextDocumentRuntimeBlock({
                 )}
 
                 {!isEditing && onOpenAsNotebook && path.toLowerCase().endsWith('.md') && !isExcalidrawDoc && (
-                  <button
-                    onClick={() => onOpenAsNotebook(path)}
-                    disabled={loading || !!error}
-                    className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Notebook view"
-                    aria-label="Notebook view"
-                  >
-                    <BookOpenText className="h-4 w-4" />
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => onOpenAsNotebook(path)}
+                        disabled={loading || !!error}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label="Notebook view"
+                      >
+                        <BookOpenText className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Notebook view</TooltipContent>
+                  </Tooltip>
                 )}
 
                 {!isEditing && (
@@ -1592,14 +1604,19 @@ function MarkdownTextDocumentRuntimeBlock({
                       </Tooltip>
                     </TooltipProvider>
                   ) : (
-                    <button
-                      onClick={() => startEditing()}
-                      disabled={loading || !!error}
-                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                      title="Edit file"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => startEditing()}
+                          disabled={loading || !!error}
+                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                          aria-label="Edit file"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Edit file</TooltipContent>
+                    </Tooltip>
                   )
                 )}
 
@@ -1687,30 +1704,36 @@ function MarkdownTextDocumentRuntimeBlock({
                 <OverflowMenuButtonBlock entries={headerMenuEntries} title="More actions" />
 
                 {showCloseButton && onClose && (
-                  <button
-                    onClick={() => {
-                      // While editing, ✕ means "leave editing", not "close the
-                      // document" — one exit affordance instead of a separate
-                      // Cancel button.
-                      if (isEditing) {
-                        if (autoSaveEnabled && !isExcalidrawDoc) {
-                          void finishEditing()
-                        } else {
-                          cancelEditing()
-                        }
-                        return
-                      }
-                      onClose()
-                    }}
-                    className={cn(
-                      'transition-colors hover:bg-muted',
-                      isIosPhone ? 'rounded-md p-1.5' : 'rounded-lg p-1.5',
-                    )}
-                    title={isEditing ? 'Stop editing' : 'Close'}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => {
+                          // While editing, ✕ means "leave editing", not "close the
+                          // document" — one exit affordance instead of a separate
+                          // Cancel button.
+                          if (isEditing) {
+                            if (autoSaveEnabled && !isExcalidrawDoc) {
+                              void finishEditing()
+                            } else {
+                              cancelEditing()
+                            }
+                            return
+                          }
+                          onClose()
+                        }}
+                        className={cn(
+                          'transition-colors hover:bg-muted',
+                          isIosPhone ? 'rounded-md p-1.5' : 'rounded-lg p-1.5',
+                        )}
+                        aria-label={isEditing ? 'Stop editing' : 'Close'}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">{isEditing ? 'Stop editing' : 'Close'}</TooltipContent>
+                  </Tooltip>
                 )}
+                </TooltipProvider>
               </div>
             </div>
 

@@ -72,6 +72,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/lego_blocks/units/ui/select'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/lego_blocks/units/ui/tooltip'
 import type { SessionTelemetry } from '@/services/orchestrators/sessionTelemetryOrch'
 import { writeSortOrdersBlock } from '@/services/lego_blocks/units/notebookOrderBlock'
 import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebookSidecarBlock'
@@ -1777,23 +1778,28 @@ export default function VaultExplorerBlock({
               disabled?: boolean
               active?: boolean
             }) => (
-              <button
-                type="button"
-                title={label}
-                disabled={disabled}
-                onClick={onClick}
-                className={cn(
-                  'ltm-touch-target flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
-                  !disabled && !active && 'hover:bg-muted hover:text-foreground',
-                  !disabled && active && 'bg-muted text-foreground',
-                  disabled && 'cursor-not-allowed opacity-40',
-                )}
-              >
-                <Icon className="h-4 w-4" />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={label}
+                    disabled={disabled}
+                    onClick={onClick}
+                    className={cn(
+                      'ltm-touch-target flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
+                      !disabled && !active && 'hover:bg-muted hover:text-foreground',
+                      !disabled && active && 'bg-muted text-foreground',
+                      disabled && 'cursor-not-allowed opacity-40',
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{label}</TooltipContent>
+              </Tooltip>
             )
             return (
-              <>
+              <TooltipProvider delayDuration={200}>
                 {viewMode === 'compact' && (
                   <ToolbarBtn
                     icon={Search}
@@ -1863,7 +1869,7 @@ export default function VaultExplorerBlock({
                     onClick={() => setShowInfoPanel(prev => !prev)}
                   />
                 </div>
-              </>
+              </TooltipProvider>
             )
           })()}
         </div>

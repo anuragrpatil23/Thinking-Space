@@ -8,6 +8,7 @@ import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/u
 import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
 import { useSessionTelemetryBlock } from '@/components/lego_blocks/hooks/units/useSessionTelemetryBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/lego_blocks/units/ui/tooltip'
 import { cn } from '@/lib/utils'
 import {
   createDrawingOrch,
@@ -923,18 +924,24 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   )
   // Icon-only variant that lives inline in the explorer top toolbar (desktop).
   const rssExplorerToolbarButton = (
-    <button
-      type="button"
-      title="RSS Feeds"
-      aria-label="RSS Feeds"
-      onClick={() => setRssPanelOpen(prev => { if (prev) setRssActiveArticle(null); return !prev })}
-      className={cn(
-        'ltm-touch-target flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
-        rssPanelOpen ? 'bg-muted text-foreground' : 'hover:bg-muted hover:text-foreground',
-      )}
-    >
-      <RssIcon className="h-4 w-4" />
-    </button>
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="RSS Feeds"
+            onClick={() => setRssPanelOpen(prev => { if (prev) setRssActiveArticle(null); return !prev })}
+            className={cn(
+              'ltm-touch-target flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
+              rssPanelOpen ? 'bg-muted text-foreground' : 'hover:bg-muted hover:text-foreground',
+            )}
+          >
+            <RssIcon className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">RSS Feeds</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
   const useTopRssExplorerToggle = isIPhoneIosSurface
 
