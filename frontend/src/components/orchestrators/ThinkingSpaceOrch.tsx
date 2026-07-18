@@ -163,14 +163,14 @@ function VaultFooterBar({ vaultRoot, onCollapse }: { vaultRoot: string | null; o
             type="button"
             onClick={onCollapse}
             aria-label={`${name} — collapse all folders`}
-            className="flex h-11 w-full shrink-0 items-center border-t border-border/50 px-4 text-left text-xs text-muted-foreground/80 transition-colors hover:bg-muted/50 hover:text-foreground"
+            className="flex h-10 w-full shrink-0 items-center border-t border-border/50 px-4 text-left text-xs text-muted-foreground/50 transition-colors hover:bg-muted/50 hover:text-muted-foreground"
           >
-            <span className="truncate font-medium tracking-wide">{name}</span>
+            <span className="truncate font-normal">{name}</span>
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs">
           <div className="space-y-0.5">
-            <div className="font-medium">Your Thinking Space folder: {name}</div>
+            <div>Your Thinking Space folder: {name}</div>
             <div className="break-all text-[11px] text-muted-foreground">{vaultRoot}</div>
             <div className="pt-0.5 text-[11px] text-muted-foreground">Click to collapse all folders</div>
           </div>
