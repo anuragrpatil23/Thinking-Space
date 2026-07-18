@@ -1522,7 +1522,7 @@ export default function VaultExplorerBlock({
             <div
               key={`file-${filePath}`}
               className={cn(
-                'ltm-explorer-row ltm-explorer-file-row flex w-full items-center gap-2 rounded-md border border-[#c73773]/95 bg-[#c73773] px-2 py-1.5 text-[13px] text-white',
+                'ltm-explorer-row ltm-explorer-file-row flex w-full items-center gap-2 rounded-md border border-blue-600 bg-blue-600 px-2 py-1.5 text-[13px] text-white',
                 canDropOnRows && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/10 dark:bg-blue-500/20',
               )}
               style={{ paddingLeft: `${26 + depth * 14}px` }}
@@ -1604,7 +1604,7 @@ export default function VaultExplorerBlock({
               ref={bindRowRef('file', filePath)}
               className={cn(
                 'ltm-explorer-row ltm-explorer-file-row ltm-touch-row group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/80 transition-colors hover:bg-muted/70',
-                isSelected && 'border border-[#c73773]/95 bg-[#c73773] text-white hover:bg-[#c73773]',
+                isSelected && 'border border-blue-600 bg-blue-600 text-white hover:bg-blue-600',
                 canDropOnRows && dropOverPath === filePath && 'ring-2 ring-blue-500/60 bg-blue-500/5',
                 row.unmapped && !isSelected && 'opacity-60',
                 row.pinned && !isSelected && 'text-foreground/95',
