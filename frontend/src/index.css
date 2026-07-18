@@ -800,25 +800,20 @@
     color: rgb(203 201 201);
   }
 
-  /* Compact explorer view: denser rows + subtle vertical indent guides, drawn
-     as a repeating background so no per-row markup is needed. Guides sit at the
-     folder chevron centers (8px base padding + 14px per depth + ~7px to the
-     glyph center). */
+  /* Compact explorer view: denser rows + VS Code-style vertical indent guides.
+     One line per indent level, rendered per-row so lines only appear where
+     there's real nesting. Hidden until the explorer is hovered; the guide on
+     the selected item's trail stays brighter. */
   .ltm-explorer-compact {
-    --ltm-explorer-guide: rgba(128, 128, 128, 0.16);
-    background-image: repeating-linear-gradient(
-      to right,
-      var(--ltm-explorer-guide) 0,
-      var(--ltm-explorer-guide) 1px,
-      transparent 1px,
-      transparent 14px
-    );
-    background-position: 15px 0;
+    --ltm-explorer-guide: rgba(128, 128, 128, 0.28);
+    --ltm-explorer-guide-active: rgba(120, 170, 255, 0.75);
   }
   .dark .ltm-explorer-compact {
-    --ltm-explorer-guide: rgba(180, 180, 180, 0.12);
+    --ltm-explorer-guide: rgba(180, 180, 180, 0.22);
+    --ltm-explorer-guide-active: rgba(120, 170, 255, 0.7);
   }
   .ltm-explorer-compact .ltm-explorer-row {
+    position: relative;
     padding-top: 0.14rem;
     padding-bottom: 0.14rem;
     font-size: 12px;
@@ -827,6 +822,23 @@
   .ltm-explorer-compact .ltm-explorer-map-section-header {
     padding-top: 0.1rem;
     padding-bottom: 0.1rem;
+  }
+  .ltm-explorer-guide-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: var(--ltm-explorer-guide);
+    opacity: 0;
+    transition: opacity 120ms ease;
+    pointer-events: none;
+  }
+  .ltm-explorer-compact:hover .ltm-explorer-guide-line {
+    opacity: 1;
+  }
+  .ltm-explorer-guide-line[data-active='true'] {
+    background-color: var(--ltm-explorer-guide-active);
+    width: 1.5px;
   }
 
   .ltm-thinking-space-shell .ltm-thinking-space-document-stage {

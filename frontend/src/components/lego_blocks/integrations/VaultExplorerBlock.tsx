@@ -34,6 +34,7 @@ import {
   Link2,
   ListOrdered,
   Loader2,
+  Search,
 } from 'lucide-react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import NotebookTocBlock from '@/components/lego_blocks/integrations/NotebookTocBlock'
@@ -533,6 +534,8 @@ export default function VaultExplorerBlock({
   const [compactNumbering, setCompactNumbering] = useState<boolean>(
     () => initialPersistedState?.compactNumbering === true,
   )
+  // In compact view the filter collapses to a toolbar button; this reveals it.
+  const [compactSearchOpen, setCompactSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [dropOverPath, setDropOverPath] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; kind: ExplorerPathKind } | null>(null)
@@ -1191,6 +1194,35 @@ export default function VaultExplorerBlock({
       const node = getNode(path)
       const rows: JSX.Element[] = []
 
+      const isCompact = viewMode === 'compact'
+      // The folder whose indent guide should read as "active" — the parent of
+      // the currently selected file (falls back to the selected folder).
+      const activeGuideFolder = selectedFilePath
+        ? getParentPath(selectedFilePath)
+        : (selectedFolderPath || null)
+      // One vertical guide per ancestor level. `basePath` is the row's
+      // containing folder (files) or the row's own path (folders); either way
+      // its first `count` prefixes are the ancestor folders to draw.
+      const renderGuides = (count: number, basePath: string): JSX.Element | null => {
+        if (!isCompact || count <= 0) return null
+        const segments = basePath ? basePath.split('/') : []
+        return (
+          <span aria-hidden="true">
+            {Array.from({ length: count }, (_, level) => {
+              const ancestor = segments.slice(0, level + 1).join('/')
+              return (
+                <span
+                  key={level}
+                  className="ltm-explorer-guide-line"
+                  data-active={ancestor && ancestor === activeGuideFolder ? 'true' : undefined}
+                  style={{ left: `${15 + level * 14}px` }}
+                />
+              )
+            })}
+          </span>
+        )
+      }
+
       const telemetryFilterActive = telemetryFilterOn && sessionTelemetry !== null
 
       const visibleFolders = node.folders.filter(folderName => {
@@ -1321,6 +1353,7 @@ export default function VaultExplorerBlock({
               ) : (
                 <Folder className={cn('ltm-explorer-glyph ltm-explorer-folder-icon h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-foreground/85')} />
               )}
+              {renderGuides(depth, folderPath)}
               <span className="truncate">{folderName}</span>
               {sessionTelemetry?.folders.has(folderPath) && (
                 <span
@@ -1544,6 +1577,7 @@ export default function VaultExplorerBlock({
               data-map-unmapped={row.unmapped ? 'true' : undefined}
               data-map-pinned={row.pinned ? 'true' : undefined}
             >
+              {renderGuides(depth, path)}
               {row.index != null ? (
                 <span
                   className={cn(
@@ -1614,6 +1648,7 @@ export default function VaultExplorerBlock({
       sessionTelemetry,
       telemetryFilterOn,
       toggleFolder,
+      viewMode,
     ],
   )
 
@@ -1700,21 +1735,26 @@ export default function VaultExplorerBlock({
           </div>
         )}
 
-        <div className="flex w-full items-center">
-          <UniversalSearchBlock
-            {...UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK}
-            items={[]}
-            query={query}
-            onQueryChange={setQuery}
-            onSelect={() => {}}
-            getItemKey={(value) => value}
-            getItemLabel={(value) => value}
-            placeholder="Filter files..."
-            className="w-full"
-          />
-        </div>
+        {(viewMode !== 'compact' || compactSearchOpen || query) && (
+          <div className="flex w-full items-center">
+            <UniversalSearchBlock
+              {...UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK}
+              items={[]}
+              query={query}
+              onQueryChange={setQuery}
+              onSelect={() => {}}
+              getItemKey={(value) => value}
+              getItemLabel={(value) => value}
+              placeholder="Filter files..."
+              className="w-full"
+            />
+          </div>
+        )}
 
-        <div className={cn('flex items-center gap-1 px-1', viewMode === 'compact' ? 'mt-1' : 'mt-2')}>
+        <div className={cn(
+          'flex items-center gap-1 px-1',
+          viewMode !== 'compact' ? 'mt-2' : (compactSearchOpen || query) ? 'mt-1' : 'mt-0',
+        )}>
           {(() => {
             const parentPath = selectedFolderPath ?? (selectedFilePath ? getParentPath(selectedFilePath) : '')
             const ToolbarBtn = ({
@@ -1747,6 +1787,18 @@ export default function VaultExplorerBlock({
             )
             return (
               <>
+                {viewMode === 'compact' && (
+                  <ToolbarBtn
+                    icon={Search}
+                    label="Filter files"
+                    active={compactSearchOpen || !!query}
+                    onClick={() => setCompactSearchOpen(prev => {
+                      const next = !prev
+                      if (!next) setQuery('')
+                      return next
+                    })}
+                  />
+                )}
                 <ToolbarBtn
                   icon={FolderPlus}
                   label="New Folder"
