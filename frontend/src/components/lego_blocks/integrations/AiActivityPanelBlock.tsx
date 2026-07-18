@@ -326,7 +326,7 @@ export default function AiActivityPanelBlock({
   // stable across re-renders instead of remounting it.
   function renderDrillDetail(withTimeline: boolean) {
     return (
-      <div className="mt-4 space-y-3 border-t border-border/30 pt-3">
+      <div className="mt-4 space-y-5 border-t border-border/30 pt-3">
         {withTimeline && selectedDate && drillChains.length > 0 && (
           <AiActivityDayTimelineBlock
             dateIso={selectedDate}

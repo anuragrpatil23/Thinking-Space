@@ -75,9 +75,9 @@ export default function AiActivityDrillProjectTotalsBlock({
         )
       })}
       {totals.length > 1 && (
-        <span className="ml-auto inline-flex items-center gap-1.5 px-1 py-0.5 text-[11px]">
-          <span className="uppercase tracking-[0.1em] text-muted-foreground/70">Total</span>
-          <span className="font-semibold tabular-nums text-foreground/85">{fmtDurationMsBlock(totalMs)}</span>
+        <span className="ml-auto inline-flex items-center gap-1 px-1 py-0.5 text-[10px]">
+          <span className="uppercase tracking-[0.1em] text-muted-foreground/60">Total</span>
+          <span className="font-medium tabular-nums text-foreground/70">{fmtDurationMsBlock(totalMs)}</span>
         </span>
       )}
     </div>

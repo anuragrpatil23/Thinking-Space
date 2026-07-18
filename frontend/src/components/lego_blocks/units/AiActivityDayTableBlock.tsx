@@ -18,6 +18,7 @@ import ReadingSessionEditModalBlock, {
 } from '@/components/lego_blocks/integrations/ReadingSessionEditModalBlock'
 import { useChainDigestBlock } from '@/components/lego_blocks/hooks/units/useChainDigestBlock'
 import AiActivitySourceChipBlock from '@/components/lego_blocks/units/AiActivitySourceChipBlock'
+import LightMarkdownTextBlock from '@/components/lego_blocks/units/LightMarkdownTextBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import { loadVaultGraph } from '@/services/orchestrators/vaultGraphOrch'
@@ -769,12 +770,10 @@ function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
         {title}
       </div>
       {summary && (
-        <div
-          className="whitespace-pre-wrap text-[11px] text-foreground/70"
-          style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
-        >
-          {summary}
-        </div>
+        <LightMarkdownTextBlock
+          text={summary}
+          className="text-[11px] leading-relaxed text-foreground/70"
+        />
       )}
       {isAi && (
         <div
