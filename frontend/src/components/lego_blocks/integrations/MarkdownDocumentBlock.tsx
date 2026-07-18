@@ -1483,6 +1483,10 @@ function MarkdownTextDocumentRuntimeBlock({
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
       <div className="relative min-h-0 flex-1">
+        {/* [DIAGNOSTIC] gate values for the mini-nav rail */}
+        <div className="pointer-events-none absolute right-0 top-0 z-[60] bg-red-600 px-1 py-0.5 text-[9px] font-bold leading-tight text-white">
+          {`ld:${loading?1:0} er:${error?1:0} c:${content!==null?1:0} ex:${isExcalidrawDoc?1:0} pfr:${pendingFullRender?1:0} rail:${showMiniNavRail?1:0} vs:${viewSurface}`}
+        </div>
         {findOpen && findEligible && (
           <div className="absolute right-3 top-3 z-50">
             <DocumentFindBarBlock find={find} onClose={() => setFindOpen(false)} />

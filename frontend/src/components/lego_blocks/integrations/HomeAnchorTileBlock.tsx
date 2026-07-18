@@ -5,8 +5,7 @@ const DashboardChartsBlock = lazy(() => import('@/components/lego_blocks/integra
 import ThisWeekDigestBlock from '@/components/lego_blocks/integrations/ThisWeekDigestBlock'
 import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
-import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
-import { useCanvasProjectBindingBlock } from '@/components/lego_blocks/hooks/shared/useCanvasProjectBindingBlock'
+import HomeWelcomeBlock from '@/components/lego_blocks/integrations/HomeWelcomeBlock'
 import { useDashboardActivityBlock } from '@/components/lego_blocks/hooks/shared/useDashboardActivityBlock'
 import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import {
@@ -160,9 +159,7 @@ function FloatingPanel({
 
 function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: AnchorElementProps) {
   const theme = useCanvasThemeBlock()
-  const { profile } = useUserProfileBlock()
   const activity = useDashboardActivityBlock('30d')
-  const { project } = useCanvasProjectBindingBlock('home')
   const [showDailyHighlights, setShowDailyHighlights] = useState(false)
 
   useEffect(() => {
@@ -257,43 +254,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
   return (
     <div className={theme.isDark ? 'dark' : ''}>
       <FloatingPanel {...welcome} variant="text" theme={theme}>
-        <div style={{ textAlign: 'center', userSelect: 'none' }}>
-          <p
-            style={{
-              fontSize: 12,
-              color: theme.anchorEyebrow,
-              letterSpacing: '0.24em',
-              textTransform: 'uppercase',
-              margin: 0,
-            }}
-          >
-            Thinking Space
-          </p>
-          <h1
-            style={{
-              fontSize: 36,
-              fontWeight: 600,
-              color: theme.anchorHeading,
-              margin: '10px 0 0',
-              letterSpacing: '-0.02em',
-            }}
-          >
-            Welcome, {profile.name}
-          </h1>
-          {project && project.mission.trim() && (
-            <p
-              style={{
-                fontSize: 14,
-                color: theme.anchorEyebrow,
-                margin: '12px 0 0',
-                fontStyle: 'italic',
-                lineHeight: 1.5,
-              }}
-            >
-              {project.mission}
-            </p>
-          )}
-        </div>
+        <HomeWelcomeBlock />
       </FloatingPanel>
 
       {SHOW_SECONDARY_PANELS && (
