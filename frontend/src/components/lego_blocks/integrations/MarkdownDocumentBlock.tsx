@@ -311,6 +311,15 @@ function MarkdownTextDocumentRuntimeBlock({
   const isExcalidrawDoc = isExcalidrawPathBlock(path)
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
+  // Mirror the scroll element into state so consumers that need the actual
+  // node (the mini-nav rail) re-render once it attaches — a ref alone never
+  // triggers that, which left the rail reading window-scroll metrics and
+  // hiding itself where the body doesn't scroll (Electron).
+  const [scrollContainerEl, setScrollContainerEl] = useState<HTMLDivElement | null>(null)
+  const attachContentScrollRef = useCallback((node: HTMLDivElement | null) => {
+    contentScrollRef.current = node
+    setScrollContainerEl(node)
+  }, [])
   const [findOpen, setFindOpen] = useState(false)
   const lastScrollTopRef = useRef(0)
   const [isHeaderHidden, setIsHeaderHidden] = useState(false)
@@ -1480,7 +1489,7 @@ function MarkdownTextDocumentRuntimeBlock({
           </div>
         )}
         <div
-          ref={contentScrollRef}
+          ref={attachContentScrollRef}
           onScroll={(e) => {
             const top = (e.target as HTMLDivElement).scrollTop
             const prev = lastScrollTopRef.current
@@ -2162,7 +2171,7 @@ function MarkdownTextDocumentRuntimeBlock({
         {!loading && !error && content !== null && !isExcalidrawDoc && !pendingFullRender && showMiniNavRail && (
           <MarkdownMiniNavBlock
             content={isEditing ? displayDraft : viewMarkdown}
-            container={contentScrollRef.current}
+            container={scrollContainerEl}
             useRenderedHeadings={!isEditing}
             renderRootSelector="[data-markdown-nav-root]"
             aiTouch={miniNavAiTouch}
