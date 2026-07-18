@@ -1450,11 +1450,11 @@ export default function VaultExplorerBlock({
         for (const f of visibleFiles) plan.push({ kind: 'file', name: f })
       }
 
-      // In compact view the numbering toggle fully controls the number badges:
-      // on → every file numbered 1..n restarting per folder (overriding _map
-      // section indices); off → no numbers at all. Tree view keeps its _map
-      // section numbers untouched.
-      if (isCompact) {
+      // In compact view the numbering toggle controls badges for folders that
+      // DON'T have a _map.md — on → number every file 1..n, off → no numbers.
+      // A _map.md has highest precedence: its section numbering always shows
+      // and the toggle skips those folders entirely. Tree view is untouched.
+      if (isCompact && !map) {
         if (compactNumbering) {
           let counter = 0
           for (const row of plan) {
