@@ -75,6 +75,52 @@ function nodeRadius(node: VaultGraphNode): number {
   return Math.min(10, 1.8 + Math.sqrt(node.degree) * 0.75)
 }
 
+// Upper bound on the camera zoom when framing a node subset. force-graph's
+// zoomToFit maxes out the zoom for a zero-size bounding box (a lone node or a
+// tight pair), so it would fill the whole canvas with one dot — this caps it.
+const GRAPH_FIT_MAX_ZOOM = 2.2
+
+interface GraphFitTarget {
+  graphData: () => { nodes: VaultGraphNode[] }
+  centerAt: (x: number, y: number, ms?: number) => void
+  zoom: (k: number, ms?: number) => void
+}
+
+/** Center + zoom the camera onto a set of node ids, clamped so a small
+ *  selection frames tightly without over-zooming. */
+function fitGraphToIdsBlock(
+  graph: GraphFitTarget,
+  containerEl: HTMLElement,
+  ids: ReadonlySet<string>,
+  ms: number,
+  padding = 80,
+): void {
+  const matched = (graph.graphData().nodes as VaultGraphNode[]).filter(
+    n => ids.has(n.id) && Number.isFinite(n.x) && Number.isFinite(n.y),
+  )
+  if (matched.length === 0) return
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+  for (const n of matched) {
+    const x = n.x as number
+    const y = n.y as number
+    if (x < minX) minX = x
+    if (x > maxX) maxX = x
+    if (y < minY) minY = y
+    if (y > maxY) maxY = y
+  }
+  const cx = (minX + maxX) / 2
+  const cy = (minY + maxY) / 2
+  const spanX = maxX - minX
+  const spanY = maxY - minY
+  const availW = Math.max(1, containerEl.clientWidth - padding * 2)
+  const availH = Math.max(1, containerEl.clientHeight - padding * 2)
+  const k = (spanX < 1 && spanY < 1)
+    ? GRAPH_FIT_MAX_ZOOM
+    : Math.min(GRAPH_FIT_MAX_ZOOM, availW / Math.max(spanX, 1), availH / Math.max(spanY, 1))
+  graph.centerAt(cx, cy, ms)
+  graph.zoom(k, ms)
+}
+
 // Floor on a node's on-screen radius (px). Below the fit-all zoom the world
 // radius maps to sub-pixel dots, so we lift each node to at least this many
 // screen pixels (÷ zoom converts px back to world units) — legible when zoomed
@@ -909,8 +955,7 @@ export default function VaultGraphCanvasBlock({
           }
           const pendingZoom = zoomToRef.current
           if (pendingZoom && pendingZoom.ids.size > 0) {
-            const ids = pendingZoom.ids
-            graph.zoomToFit(600, 80, (node: VaultGraphNode) => ids.has(node.id))
+            fitGraphToIdsBlock(graph, container, pendingZoom.ids, 600)
           } else {
             graph.zoomToFit(600, 48)
           }
@@ -972,8 +1017,7 @@ export default function VaultGraphCanvasBlock({
         setTimeout(() => {
           const pendingZoom = zoomToRef.current
           if (pendingZoom && pendingZoom.ids.size > 0) {
-            const ids = pendingZoom.ids
-            graph.zoomToFit(0, 80, (node: VaultGraphNode) => ids.has(node.id))
+            fitGraphToIdsBlock(graph, container, pendingZoom.ids, 0)
           } else {
             graph.zoomToFit(0, 48)
           }
@@ -1017,9 +1061,9 @@ export default function VaultGraphCanvasBlock({
   useEffect(() => {
     if (!zoomTo || zoomTo.ids.size === 0) return
     const graph = graphRef.current
-    if (!graph) return
-    const ids = zoomTo.ids
-    graph.zoomToFit(600, 80, (node: VaultGraphNode) => ids.has(node.id))
+    const el = containerRef.current
+    if (!graph || !el) return
+    fitGraphToIdsBlock(graph, el, zoomTo.ids, 600)
   }, [zoomTo])
 
   // Frontmatter summary for the corner card (hovered or selected note) — read
