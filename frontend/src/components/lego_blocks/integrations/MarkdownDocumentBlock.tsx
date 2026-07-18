@@ -913,9 +913,21 @@ function MarkdownTextDocumentRuntimeBlock({
     const headingElements = container
       ? Array.from(container.querySelectorAll<HTMLElement>('[data-markdown-heading-id]'))
       : Array.from(document.querySelectorAll<HTMLElement>('[data-markdown-heading-id]'))
-  const target = headingElements.find((element) => element.dataset.markdownHeadingId === heading.id)
-  if (!target) return
-  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const target = headingElements.find((element) => element.dataset.markdownHeadingId === heading.id)
+    if (!target) return
+    // Land the heading ~1/3 down the viewport (near-center, slightly high) to
+    // match the mini-nav rail's landing so the two outline panels behave alike.
+    if (container) {
+      const containerRect = container.getBoundingClientRect()
+      const targetRect = target.getBoundingClientRect()
+      const offsetTop = targetRect.top - containerRect.top + container.scrollTop
+      const max = Math.max(container.scrollHeight - container.clientHeight, 0)
+      const top = Math.max(0, Math.min(max, offsetTop - container.clientHeight / 3))
+      container.scrollTo({ top, behavior: 'smooth' })
+    } else {
+      const top = Math.max(0, window.scrollY + target.getBoundingClientRect().top - window.innerHeight / 3)
+      window.scrollTo({ top, behavior: 'smooth' })
+    }
   }, [displayContent, pendingFullRender])
 
   useEffect(() => {

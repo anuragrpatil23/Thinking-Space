@@ -224,12 +224,16 @@ export default function MarkdownMiniNavBlock({
     })
     if (container) ro.observe(container)
 
+    // Only structural/text changes move heading positions. Watching attributes
+    // across the subtree would remeasure on every in-content class flip (link
+    // hovers, checkbox toggles); the container ResizeObserver already covers
+    // layout-size changes.
     const mo = new MutationObserver(() => {
       updateMetrics()
       scheduleHeadingUpdate()
     })
     if (container) {
-      mo.observe(container, { subtree: true, childList: true, attributes: true })
+      mo.observe(container, { subtree: true, childList: true, characterData: true })
     }
 
     const handleWindowResize = () => {
