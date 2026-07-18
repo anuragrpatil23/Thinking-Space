@@ -62,6 +62,7 @@ import {
   readPersistedExplorerState,
 } from '@/components/lego_blocks/units/VaultExplorerUtilsBlock'
 import { rankFuzzyItemsBlock } from '@/services/lego_blocks/units/fuzzySearchBlock'
+import { searchNodeFilePathsByText } from '@/services/lego_blocks/integrations/dbBlock'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import { cn } from '@/lib/utils'
 import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
@@ -716,9 +717,38 @@ export default function VaultExplorerBlock({
   const hasTitle = title.trim().length > 0
   const inlineRenameSession = inlineRename ? `${inlineRename.kind}:${inlineRename.path}` : null
 
+  // Dexie content matches (title/tags/excerpt/metadata via precomputed
+  // searchText) so the filter finds notes by what's in them, not just the
+  // path. Null while empty-query or before the async lookup lands.
+  const [contentMatchPaths, setContentMatchPaths] = useState<Set<string> | null>(null)
+
+  useEffect(() => {
+    if (!normalizedQuery) {
+      setContentMatchPaths(null)
+      return
+    }
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      searchNodeFilePathsByText(normalizedQuery)
+        .then(paths => {
+          if (cancelled) return
+          setContentMatchPaths(new Set(
+            paths.map(p => p.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').toLowerCase()),
+          ))
+        })
+        .catch(() => {
+          if (!cancelled) setContentMatchPaths(null)
+        })
+    }, 120)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [normalizedQuery])
+
   useEffect(() => {
     queryMatchCacheRef.current = new Map()
-  }, [normalizedQuery])
+  }, [normalizedQuery, contentMatchPaths])
 
   const pathMatchesSearch = useCallback((path: string): boolean => {
     if (!normalizedQuery) return true
@@ -733,11 +763,11 @@ export default function VaultExplorerBlock({
       query: normalizedQuery,
       limit: 1,
       getCandidates: item => buildPathSearchCandidatesBlock(item),
-    }).length > 0
+    }).length > 0 || (contentMatchPaths?.has(normalizedPath.toLowerCase()) ?? false)
 
     queryMatchCacheRef.current.set(normalizedPath, matched)
     return matched
-  }, [normalizedQuery])
+  }, [contentMatchPaths, normalizedQuery])
 
   const pathMatchesQuery = useCallback(
     (path: string, visited: Set<string>): boolean => {
@@ -1853,7 +1883,13 @@ export default function VaultExplorerBlock({
                       <SelectItem value="grid">Grid view</SelectItem>
                     </SelectContent>
                   </Select>
-                  {viewMode === 'compact' && (
+                  {/* TODO: numbering toggle temporarily hidden — clicking it
+                      hangs the app for a long time even on a small folder (the
+                      per-folder counting itself is cheap; the freeze is in the
+                      re-render, not yet root-caused). Re-enable once fixed.
+                      The compactNumbering state + per-folder numbering in
+                      renderPath are left intact so this is a one-line restore. */}
+                  {false && viewMode === 'compact' && (
                     <ToolbarBtn
                       icon={ListOrdered}
                       label={compactNumbering ? 'Hide numbers' : 'Number files (per folder)'}

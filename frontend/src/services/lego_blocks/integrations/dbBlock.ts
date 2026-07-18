@@ -396,6 +396,26 @@ export async function searchNodes(query: string, limit: number = 20): Promise<No
 }
 
 /**
+ * Vault-relative filePaths of nodes whose pre-computed searchText contains
+ * every query term. Powers the explorer filter's content matches (title,
+ * tags, body excerpt, metadata) without any full-body indexing.
+ */
+export async function searchNodeFilePathsByText(query: string): Promise<string[]> {
+  const db = getDb()
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return []
+
+  const paths: string[] = []
+  await db.nodes.each(node => {
+    const searchable = node.searchText || ''
+    if (terms.every(term => searchable.includes(term))) {
+      paths.push(node.filePath)
+    }
+  })
+  return paths
+}
+
+/**
  * Delete a node by uuid.
  */
 export async function deleteNode(uuid: string): Promise<void> {
