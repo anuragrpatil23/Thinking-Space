@@ -3,7 +3,6 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
-  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -289,15 +288,13 @@ export default function AiActivityTrendChartBlock({
               />
             )}
             {restDayIsos.map(iso => (
-              <ReferenceArea
+              <ReferenceLine
                 key={`rest-${iso}`}
-                x1={iso}
-                x2={iso}
-                fill="rgba(251,191,36,0.14)"
-                fillOpacity={1}
-                stroke="rgba(251,191,36,0.35)"
-                strokeOpacity={0.5}
-                ifOverflow="hidden"
+                x={iso}
+                stroke="rgba(251,191,36,0.45)"
+                strokeWidth={1}
+                strokeDasharray="3 3"
+                ifOverflow="extendDomain"
               />
             ))}
             {visibleProjects.map(p => (
