@@ -1129,10 +1129,14 @@ function App() {
     root.setProperty('--ltm-safe-left', `${leftInset}px`)
   }, [topInset, rightInset, bottomInset, leftInset])
   const nativeSidebarControl = useMemo(() => {
+    // `enabled` drives the native iPhone chrome's side-panel button. Pages
+    // whose iPhone layout already handles the panel natively (Thinking Space
+    // explorer, Webull/F9, Thinking Organizer use list/detail mode) keep
+    // their kind for the desktop chrome but hide the native button.
     if (showGoogleWorkspaceChromeControls) {
       return {
         kind: 'thinking-space-sidebar',
-        enabled: true,
+        enabled: false,
         active: !thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed,
         label: thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show side panel' : 'Hide side panel',
       }
@@ -1156,7 +1160,7 @@ function App() {
     if (showOrganizerSidebarChromeControl) {
       return {
         kind: 'organizer-sidebar',
-        enabled: true,
+        enabled: false,
         active: !organizerSidebarChromeState.collapsed,
         label: organizerSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
       }
@@ -1164,7 +1168,7 @@ function App() {
     if (showWebullSidebarChromeControl) {
       return {
         kind: 'webull-sidebar',
-        enabled: true,
+        enabled: false,
         active: !webullSidebarChromeState.collapsed,
         label: webullSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
       }

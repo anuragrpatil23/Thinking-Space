@@ -1,6 +1,7 @@
 import UIKit
 import SwiftUI
 import Combine
+import WebKit
 
 final class RootShellViewController: UIViewController {
     private let shellBackgroundColor = UIColor.systemBackground
@@ -106,10 +107,12 @@ final class RootShellViewController: UIViewController {
         rootView: BottomChromeView(
             state: chromeState,
             onDrawerToggleTap: { [weak self] in self?.toggleDrawer() },
+            onSidebarToggleTap: { [weak self] in self?.chromePlugin?.emitSidebarToggleTap() },
             onBackTap: { [weak self] in _ = self?.popNavigation() },
             onSearchTap: { [weak self] in self?.chromePlugin?.emitSearchTap() },
             onCreateTap: { [weak self] in self?.chromePlugin?.emitCreateTap() },
             onExpandTap: { [weak self] in self?.chromePlugin?.emitExpandBottomTap() },
+            onTabSwitcherWillPresent: { [weak self] in self?.captureActiveTabSnapshot() },
             onSelectTab: { [weak self] tabId in self?.chromePlugin?.emitSelectTab(tabId: tabId) },
             onCloseTab: { [weak self] tabId in self?.chromePlugin?.emitCloseTab(tabId: tabId) },
             onDebugTap: { [weak self] in self?.chromePlugin?.emitOpenDebugTap() },
@@ -121,6 +124,24 @@ final class RootShellViewController: UIViewController {
             onHeaderToggleTap: { [weak self] in self?.chromePlugin?.emitHeaderToggleTap() }
         )
     )
+
+    /// Snapshot the WKWebView for the currently active tab, downscaled for
+    /// the tab-grid thumbnails. Called right before the tab switcher
+    /// presents, so the grid always has a fresh shot of the tab you came
+    /// from; other tabs keep the snapshot from their last visit.
+    private func captureActiveTabSnapshot() {
+        guard let webView = bridgeVC.webView else { return }
+        guard let activeId = chromeState.tabs.first(where: { $0.active })?.id else { return }
+        let config = WKSnapshotConfiguration()
+        config.snapshotWidth = 420
+        webView.takeSnapshot(with: config) { [weak self] image, _ in
+            guard let self, let image else { return }
+            let liveIds = Set(self.chromeState.tabs.map(\.id))
+            var next = self.chromeState.tabSnapshots.filter { liveIds.contains($0.key) }
+            next[activeId] = image
+            self.chromeState.tabSnapshots = next
+        }
+    }
 
     private let bottomChromeContainerView: UIView = {
         let view = UIView()

@@ -369,6 +369,13 @@ interface VaultExplorerBlockProps {
    *  New Folder/File/Drawing buttons (e.g. the RSS Feeds toggle). */
   toolbarActionsSlot?: ReactNode
   /**
+   * Collapse the always-visible filter input into a toolbar search button in
+   * EVERY view mode (compact mode already does this). Used on iPhone, where
+   * a permanently-open input spends ~56px of tree height on something rarely
+   * touched; tapping the button expands the input, clearing it collapses back.
+   */
+  collapseSearchToButton?: boolean
+  /**
    * Latest AI-session telemetry: dots the touched files/folders and shows a
    * count strip above the tree. Ephemeral by design — the session's trail in
    * AI Activity is the durable record. Omit/null → no telemetry chrome.
@@ -495,6 +502,7 @@ function VaultExplorerBlockInner({
   className,
   belowToolbarSlot = null,
   toolbarActionsSlot = null,
+  collapseSearchToButton = false,
   sessionTelemetry = null,
 }: VaultExplorerBlockProps, ref: Ref<VaultExplorerHandle>) {
   const storageKey = `${EXPLORER_PERSISTENCE_PREFIX}:${persistenceKey}`
@@ -1790,7 +1798,7 @@ function VaultExplorerBlockInner({
           </div>
         )}
 
-        {(viewMode !== 'compact' || compactSearchOpen || query) && (
+        {((viewMode !== 'compact' && !collapseSearchToButton) || compactSearchOpen || query) && (
           <div className="flex w-full items-center">
             <UniversalSearchBlock
               {...UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK}
@@ -1808,7 +1816,7 @@ function VaultExplorerBlockInner({
 
         <div className={cn(
           'flex items-center gap-1 px-1',
-          viewMode !== 'compact' ? 'mt-2' : (compactSearchOpen || query) ? 'mt-1' : 'mt-0',
+          (viewMode !== 'compact' && !collapseSearchToButton) ? 'mt-2' : (compactSearchOpen || query) ? 'mt-1' : 'mt-0',
         )}>
           {(() => {
             const parentPath = selectedFolderPath ?? (selectedFilePath ? getParentPath(selectedFilePath) : '')
@@ -1847,7 +1855,7 @@ function VaultExplorerBlockInner({
             )
             return (
               <TooltipProvider delayDuration={200}>
-                {viewMode === 'compact' && (
+                {(viewMode === 'compact' || collapseSearchToButton) && (
                   <ToolbarBtn
                     icon={Search}
                     label="Filter files"
@@ -1914,13 +1922,20 @@ function VaultExplorerBlockInner({
                       onClick={() => setCompactNumbering(prev => !prev)}
                     />
                   )}
-                  <ToolbarBtn
-                    icon={Info}
-                    label="File info"
-                    disabled={!loadFileTags || !activeFilePath}
-                    active={showInfoPanel}
-                    onClick={() => setShowInfoPanel(prev => !prev)}
-                  />
+                  {/* File-info panel is desktop-only chrome: on iPhone the
+                      toolbar is already full-width (this button overflowed
+                      off-screen) and the hover-style info panel isn't a
+                      touch pattern. collapseSearchToButton doubles as the
+                      phone-surface flag here. */}
+                  {!collapseSearchToButton && (
+                    <ToolbarBtn
+                      icon={Info}
+                      label="File info"
+                      disabled={!loadFileTags || !activeFilePath}
+                      active={showInfoPanel}
+                      onClick={() => setShowInfoPanel(prev => !prev)}
+                    />
+                  )}
                 </div>
               </TooltipProvider>
             )

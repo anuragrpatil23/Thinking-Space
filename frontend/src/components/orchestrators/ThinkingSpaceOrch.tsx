@@ -961,22 +961,9 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     drawerSwipeStartRef.current = null
   }
 
-  const rssExplorerToggleButton = (
-    <button
-      type="button"
-      onClick={() => setRssPanelOpen(prev => { if (prev) setRssActiveArticle(null); return !prev })}
-      className={cn(
-        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
-        rssPanelOpen
-          ? 'bg-primary/10 text-primary'
-          : 'text-muted-foreground hover:bg-muted/70',
-      )}
-    >
-      <RssIcon className="h-3.5 w-3.5" />
-      RSS Feeds
-    </button>
-  )
-  // Icon-only variant that lives inline in the explorer top toolbar (desktop).
+  // Icon-only RSS toggle in the explorer top toolbar (all surfaces — the
+  // iPhone full-width "RSS Feeds" row was folded into this on 2026-07-19 to
+  // give the tree back its vertical room).
   const rssExplorerToolbarButton = (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
@@ -1006,11 +993,6 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
           {inlineExplorerTitle}
         </span>
       </div>
-      {useTopRssExplorerToggle ? (
-        <div className="shrink-0 px-3 py-2">
-          {rssExplorerToggleButton}
-        </div>
-      ) : null}
       {rssPanelOpen ? (
         <div className="min-h-0 flex-1">
           <RssFeedPanelBlock
@@ -1046,7 +1028,8 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
             onMovePath={handleExplorerMovePath}
             onOpenFolderAsNotebook={openNotebookView}
             onShowInGraph={handleExplorerShowInGraph}
-            toolbarActionsSlot={!useTopRssExplorerToggle ? rssExplorerToolbarButton : null}
+            toolbarActionsSlot={rssExplorerToolbarButton}
+            collapseSearchToButton={useTopRssExplorerToggle}
             draggableFiles
             draggableFolders
             title=""
@@ -1057,7 +1040,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
         <VaultFooterBar vaultRoot={vaultRootPath} onCollapse={handleExplorerCollapseAll} />
       ) : null}
     </>
-  ), [handleExplorerCollapseAll, handleExplorerCreateCsvFile, handleExplorerShowInGraph, inlinePath, openRuledNotebookView, rssExplorerToggleButton, rssExplorerToolbarButton, rssPanelOpen, ruledNotebookFilePath, setInlinePathAndSyncUrl, useTopRssExplorerToggle, vaultRootPath])
+  ), [handleExplorerCollapseAll, handleExplorerCreateCsvFile, handleExplorerShowInGraph, inlinePath, openRuledNotebookView, rssExplorerToolbarButton, rssPanelOpen, ruledNotebookFilePath, setInlinePathAndSyncUrl, useTopRssExplorerToggle, vaultRootPath])
 
   const inlineDocumentContent = useMemo(() => {
     if (mountedInlinePaths.length === 0) return null
@@ -1247,11 +1230,6 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </div>
-            {useTopRssExplorerToggle ? (
-              <div className="shrink-0 px-3 py-2">
-                {rssExplorerToggleButton}
-              </div>
-            ) : null}
             {rssPanelOpen ? (
               <div className="min-h-0 flex-1">
                 <RssFeedPanelBlock
@@ -1284,7 +1262,8 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
                   onOpenInFinder={handleExplorerOpenInFinder}
                   onMovePath={handleExplorerMovePath}
                   onShowInGraph={handleExplorerShowInGraph}
-                  toolbarActionsSlot={!useTopRssExplorerToggle ? rssExplorerToolbarButton : null}
+                  toolbarActionsSlot={rssExplorerToolbarButton}
+                  collapseSearchToButton={useTopRssExplorerToggle}
                   draggableFiles
                   draggableFolders
                   title=""

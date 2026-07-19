@@ -263,35 +263,24 @@ private struct NativeTopDrawerSectionCardView: View {
 /// Instagram/Safari-style status-bar treatment: an always-on *progressive*
 /// blur — strong right under the clock, feathering out toward the content —
 /// keeps the status glyphs legible no matter what scrolls beneath, without
-/// ever reading as an opaque bar. When the page scrolls (`isTopBarCollapsed`,
-/// set by the App.tsx native chrome scroll handler) the SAME masked material
-/// simply deepens (the solid region extends further down) — one continuous
-/// surface, so the transition reads as the blur breathing, never as a swap.
+/// ever reading as an opaque bar. The veil is STATIC (decided 2026-07-19):
+/// scroll no longer deepens the mask — the earlier scroll-linked "breathing"
+/// read as the bar visibly changing mid-scroll, which felt like a glitch.
 /// Dark mode is inherited from the root trait override in
 /// RootShellViewController — no per-view color scheme handling here.
 struct TopChromeView: View {
     @ObservedObject var state: TopChromeState
     @Environment(\.colorScheme) private var colorScheme
 
-    /// Both states share the same 4-stop shape so SwiftUI interpolates the
-    /// gradient smoothly instead of cross-fading two different scrims.
     /// Instagram model: the veil is GLASS, not frost — content color bleeds
-    /// through, the mask fades early, and scrolling only firms it up a touch.
-    private var maskStops: [Gradient.Stop] {
-        state.isTopBarCollapsed
-            ? [
-                .init(color: .black, location: 0.0),
-                .init(color: .black, location: 0.55),
-                .init(color: .black.opacity(0.7), location: 0.8),
-                .init(color: .clear, location: 1.0),
-            ]
-            : [
-                .init(color: .black, location: 0.0),
-                .init(color: .black, location: 0.3),
-                .init(color: .black.opacity(0.5), location: 0.6),
-                .init(color: .clear, location: 1.0),
-            ]
-    }
+    /// through and the mask fades early. Same soft short mask at rest and
+    /// while scrolling.
+    private let maskStops: [Gradient.Stop] = [
+        .init(color: .black, location: 0.0),
+        .init(color: .black, location: 0.3),
+        .init(color: .black.opacity(0.5), location: 0.6),
+        .init(color: .clear, location: 1.0),
+    ]
 
     var body: some View {
         ZStack {
@@ -320,7 +309,6 @@ struct TopChromeView: View {
         .mask(
             LinearGradient(stops: maskStops, startPoint: .top, endPoint: .bottom)
         )
-        .animation(.easeInOut(duration: 0.24), value: state.isTopBarCollapsed)
     }
 }
 
@@ -428,10 +416,12 @@ struct BottomChromeView: View {
     @ObservedObject var state: TopChromeState
 
     let onDrawerToggleTap: () -> Void
+    let onSidebarToggleTap: () -> Void
     let onBackTap: () -> Void
     let onSearchTap: () -> Void
     let onCreateTap: () -> Void
     let onExpandTap: () -> Void
+    let onTabSwitcherWillPresent: () -> Void
     let onSelectTab: (String) -> Void
     let onCloseTab: (String) -> Void
     let onDebugTap: () -> Void
@@ -446,26 +436,44 @@ struct BottomChromeView: View {
     @State private var toolsMenuPresented = false
 
     var body: some View {
-        // Layout: hamburger/back morph button on the LEFT, tabs pill in the
-        // middle, chevron-up "more options" menu on the RIGHT. The dedicated
-        // sidebar-toggle button was removed — sidebar visibility is now
-        // driven entirely by the list/detail mode on iPhone.
+        // Safari model (decided 2026-07-19): at rest the bar is hamburger/back
+        // + tabs pill + side-panel toggle + chevron menu. On scroll everything
+        // except the pill scale-fades away and the pill shrinks into a single
+        // small CENTERED chip (badge + current tab name) — one object, two
+        // states, like Safari's minimized address bar. Tapping the chip (or
+        // scrolling up) springs the full bar back.
+        let collapsed = state.isBottomBarCollapsed
         HStack(spacing: 8) {
-            drawerToggleButton
-            morphingBottomPill
-            if state.isBottomBarCollapsed {
+            if collapsed {
                 Spacer(minLength: 0)
-            }
-            toolsMenuButton
-                .padding(6)
-                .background {
-                    floatingChromeCapsule()
+            } else {
+                drawerToggleButton
+                    .transition(chromeButtonTransition)
+                if state.canToggleSidebar {
+                    sidebarToggleButton
+                        .transition(chromeButtonTransition)
                 }
+            }
+            morphingBottomPill
+            if collapsed {
+                Spacer(minLength: 0)
+            } else {
+                toolsMenuButton
+                    .padding(6)
+                    .background {
+                        floatingChromeCapsule()
+                    }
+                    .transition(chromeButtonTransition)
+            }
         }
         .padding(.horizontal, NativeChromeMetrics.outerHorizontalPadding)
         .padding(.top, 4)
         .padding(.bottom, NativeChromeMetrics.bottomChromeBottomPadding)
         .animation(.spring(response: 0.34, dampingFraction: 0.86), value: state.isBottomBarCollapsed)
+    }
+
+    private var chromeButtonTransition: AnyTransition {
+        .scale(scale: 0.6).combined(with: .opacity)
     }
 
     // MARK: - More menu (search + tools combined)
@@ -494,13 +502,6 @@ struct BottomChromeView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("More options")
         .confirmationDialog("More Options", isPresented: $toolsMenuPresented, titleVisibility: .visible) {
-            // Escape hatch: the left chrome slot morphs into a back button
-            // when a page is pushed, which hides the drawer toggle — this
-            // keeps the navigation drawer reachable from anywhere.
-            Button(action: onDrawerToggleTap) {
-                Label("Navigation Drawer", systemImage: "sidebar.left")
-            }
-
             if state.showSearch {
                 Button(action: onSearchTap) {
                     Label("Search", systemImage: "magnifyingglass")
@@ -578,6 +579,29 @@ struct BottomChromeView: View {
         .animation(.easeInOut(duration: 0.22), value: state.canGoBack)
     }
 
+    private var sidebarToggleButton: some View {
+        // Mirrors Electron's SidebarChromeButtonBlock: toggles the current
+        // page's side panel (explorer/chat list/etc), NOT the nav drawer.
+        // Same icon language too — panel-close glyph while the panel is
+        // open, plain panel glyph while collapsed.
+        Button(action: onSidebarToggleTap) {
+            Image(systemName: state.sidebarToggleActive
+                ? "rectangle.lefthalf.inset.filled.arrow.left"
+                : "sidebar.left")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: NativeChromeMetrics.iconButtonSize, height: NativeChromeMetrics.iconButtonSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(state.sidebarToggleLabel)
+        .padding(6)
+        .background {
+            floatingChromeCapsule()
+        }
+        .animation(.easeInOut(duration: 0.22), value: state.sidebarToggleActive)
+    }
+
     @ViewBuilder
     private var morphingDrawerOrBackIcon: some View {
         let symbolName = state.canGoBack ? "chevron.backward" : "line.3.horizontal"
@@ -611,6 +635,7 @@ struct BottomChromeView: View {
                 if collapsed {
                     onExpandTap()
                 } else {
+                    onTabSwitcherWillPresent()
                     tabSwitcherPresented = true
                 }
             }) {
@@ -618,15 +643,19 @@ struct BottomChromeView: View {
                     tabCountBadge
                         .frame(width: collapsed ? 20 : 24, height: collapsed ? 18 : 20)
 
-                    Text(collapsed ? "Tabs" : activeTabLabel)
-                        .font(.system(size: collapsed ? 14 : 15, weight: .medium))
+                    // Safari-style: the minimized chip keeps showing WHERE you
+                    // are (active tab name), not a generic "Tabs" word.
+                    Text(activeTabLabel)
+                        .font(.system(size: collapsed ? 13 : 15, weight: .medium))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .frame(maxWidth: collapsed ? nil : .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, collapsed ? 13 : 18)
                 .frame(maxWidth: collapsed ? nil : .infinity, alignment: .leading)
-                .frame(height: NativeChromeMetrics.floatingControlHeight)
+                .frame(height: collapsed
+                    ? NativeChromeMetrics.floatingCollapsedControlHeight
+                    : NativeChromeMetrics.floatingControlHeight)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -656,7 +685,7 @@ struct BottomChromeView: View {
     @ViewBuilder
     private var tabSwitcherSheet: some View {
         let content = NativeTabSwitcherSheetView(
-            tabs: state.tabs,
+            state: state,
             onSelectTab: { tabId in
                 tabSwitcherPresented = false
                 onSelectTab(tabId)
@@ -710,63 +739,184 @@ struct BottomChromeView: View {
     }
 }
 
-// MARK: - Tab Switcher Sheet
+// MARK: - Tab Switcher Sheet (Safari-style card grid)
+
+private enum NativeTabGridMetrics {
+    static let cardCornerRadius: CGFloat = 18
+    static let cardAspectRatio: CGFloat = 0.74
+    static let gridSpacing: CGFloat = 14
+    static let rowSpacing: CGFloat = 20
+    static let activeRingWidth: CGFloat = 2.5
+}
+
+private func nativeTabCardShape() -> RoundedRectangle {
+    RoundedRectangle(cornerRadius: NativeTabGridMetrics.cardCornerRadius, style: .continuous)
+}
+
+/// One tab card: live snapshot (or a monogram placeholder until the tab has
+/// been visited), accent ring on the active tab, floating ✕, label beneath.
+private struct NativeTabCardView: View {
+    let tab: TopChromeTabItem
+    let snapshot: UIImage?
+    let showClose: Bool
+    let onSelect: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack(alignment: .topTrailing) {
+                Button(action: onSelect) {
+                    Color.clear
+                        .aspectRatio(NativeTabGridMetrics.cardAspectRatio, contentMode: .fit)
+                        .overlay {
+                            if let snapshot {
+                                Image(uiImage: snapshot)
+                                    .resizable()
+                                    .scaledToFill()
+                            } else {
+                                monogramPlaceholder
+                            }
+                        }
+                        .clipShape(nativeTabCardShape())
+                        .contentShape(nativeTabCardShape())
+                }
+                .buttonStyle(.plain)
+
+                if showClose {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.primary.opacity(0.85))
+                            .frame(width: 26, height: 26)
+                            .background(.thinMaterial, in: Circle())
+                            .overlay {
+                                Circle().stroke(Color.white.opacity(0.18), lineWidth: 0.6)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close \(tab.label)")
+                    .padding(7)
+                }
+            }
+            .overlay {
+                nativeTabCardShape()
+                    .stroke(
+                        tab.active ? Color.accentColor : Color.primary.opacity(0.12),
+                        lineWidth: tab.active ? NativeTabGridMetrics.activeRingWidth : 1
+                    )
+            }
+            .shadow(color: Color.black.opacity(0.18), radius: 12, x: 0, y: 6)
+
+            Text(tab.label)
+                .font(.system(size: 13, weight: tab.active ? .semibold : .medium))
+                .foregroundStyle(tab.active ? Color.primary : Color.secondary)
+                .lineLimit(1)
+                .padding(.horizontal, 4)
+        }
+    }
+
+    /// Un-visited tabs have no snapshot yet — show a soft glass card with the
+    /// tab's initial instead of a generic icon, so cards stay tellable apart.
+    private var monogramPlaceholder: some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial)
+            LinearGradient(
+                colors: [Color.white.opacity(0.10), Color.white.opacity(0.02)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Text(String(tab.label.prefix(1)).uppercased())
+                .font(.system(size: 42, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.primary.opacity(0.22))
+        }
+    }
+}
 
 private struct NativeTabSwitcherSheetView: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject var state: TopChromeState
 
-    let tabs: [TopChromeTabItem]
     let onSelectTab: (String) -> Void
     let onCloseTab: (String) -> Void
     let onCreateTap: () -> Void
 
+    private var columns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: NativeTabGridMetrics.gridSpacing),
+            GridItem(.flexible(), spacing: NativeTabGridMetrics.gridSpacing),
+        ]
+    }
+
     var body: some View {
-        NavigationView {
-            List {
-                ForEach(tabs) { tab in
-                    HStack(spacing: 12) {
-                        Button(action: { onSelectTab(tab.id) }) {
-                            HStack(spacing: 12) {
-                                Image(systemName: tab.active ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(tab.active ? .blue : .secondary)
+        VStack(spacing: 0) {
+            HStack {
+                Text("Tabs")
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(.primary)
 
-                                Text(tab.label)
-                                    .font(.system(size: 17, weight: tab.active ? .semibold : .regular))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
+                Spacer()
 
-                        if tabs.count > 1 {
-                            Button(action: { onCloseTab(tab.id) }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Close \(tab.label)")
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
+                Button("Done") { dismiss() }
+                    .font(.system(size: 16, weight: .semibold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
             }
-            .navigationTitle("Tabs")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
+            .padding(.horizontal, 20)
+            .padding(.top, 22)
+            .padding(.bottom, 10)
 
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: onCreateTap) {
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: NativeTabGridMetrics.rowSpacing) {
+                    ForEach(state.tabs) { tab in
+                        NativeTabCardView(
+                            tab: tab,
+                            snapshot: state.tabSnapshots[tab.id],
+                            showClose: state.tabs.count > 1,
+                            onSelect: { onSelectTab(tab.id) },
+                            onClose: { onCloseTab(tab.id) }
+                        )
+                        .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    }
+
+                    newTabCard
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 28)
+                .animation(.spring(response: 0.34, dampingFraction: 0.86), value: state.tabs)
+            }
+        }
+    }
+
+    private var newTabCard: some View {
+        VStack(spacing: 8) {
+            Button(action: onCreateTap) {
+                Color.clear
+                    .aspectRatio(NativeTabGridMetrics.cardAspectRatio, contentMode: .fit)
+                    .overlay {
                         Image(systemName: "plus")
+                            .font(.system(size: 26, weight: .medium))
+                            .foregroundStyle(Color.primary.opacity(0.55))
                     }
-                    .accessibilityLabel("Create tab")
-                }
+                    .background {
+                        nativeTabCardShape()
+                            .fill(Color.primary.opacity(0.045))
+                    }
+                    .overlay {
+                        nativeTabCardShape()
+                            .strokeBorder(
+                                Color.primary.opacity(0.22),
+                                style: StrokeStyle(lineWidth: 1.2, dash: [6, 5])
+                            )
+                    }
+                    .contentShape(nativeTabCardShape())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New tab")
+
+            Text("New Tab")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.secondary)
         }
     }
 }

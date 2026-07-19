@@ -180,6 +180,9 @@ export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promis
     detail: 'Full scan',
   })
   try {
+    // Full sync also replaces the vault file index mid-run, so any trust
+    // marker left by a previous sync must not survive a crash here.
+    consumeVaultIndexTrustMarker()
     const rootPath = normalizeRootPath(options?.rootPath)
     if (!rootPath) {
       await clearAll()
@@ -225,6 +228,11 @@ export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promis
     )
 
     result.durationMs = Date.now() - start
+    // Scoped full sync writes the FULL walk's fingerprints but only parses
+    // the scope subset — trusting that index would let the next incremental
+    // fingerprint-skip out-of-scope files that actually changed. Only an
+    // unscoped full sync leaves a trustworthy index behind.
+    if (!rootPath) setVaultIndexTrustMarker()
     return result
   } finally {
     activity.end()
@@ -383,6 +391,9 @@ export async function incrementalSync(
   result.totalFiles = allEntries.length
   result.durationMs = Date.now() - start
 
+  // Clean finish: the index written above now matches the processed state,
+  // so the NEXT incremental sync may use its fingerprints for skip-decisions.
+  setVaultIndexTrustMarker()
   return result
   } finally {
     activity.end()

@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import CoreGraphics
+import UIKit
 
 struct TopChromeTabItem: Identifiable, Decodable, Equatable {
     let id: String
@@ -28,6 +29,12 @@ final class TopChromeState: ObservableObject {
     @Published var canToggleHeader: Bool = false
     @Published var headerToggleLabel: String = "Toggle Header"
     @Published var tabs: [TopChromeTabItem] = []
+
+    /// Live thumbnails for the Safari-style tab grid, keyed by tab id.
+    /// Captured from the WKWebView right before the switcher presents, so
+    /// each tab accumulates a real snapshot as the user visits it. Purely
+    /// in-memory — closed tabs are pruned at capture time.
+    @Published var tabSnapshots: [String: UIImage] = [:]
     @Published var isBottomBarHidden: Bool = false
     @Published var canRefresh: Bool = true
     @Published var canSync: Bool = true

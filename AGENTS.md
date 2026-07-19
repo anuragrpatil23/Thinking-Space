@@ -46,6 +46,8 @@ Use `DEVELOPMENT.md` as source of truth for implementation phases and detailed a
 
 Current status (v2.5): Phases 0–5, Agent Capability Transport, EPIC-3, Embedded Terminal, Live Source Mode, notebook workspace upgrades, and native iPhone shell/chrome work are all complete.
 
+iOS native chrome (locked 2026-07-19, details in CLAUDE.md): the top status-bar veil is one static masked progressive blur — never Liquid Glass, never scroll-linked; the bottom chrome collapses Safari-style into a single centered chip; the tab switcher is a Safari-style card grid with live WKWebView snapshots; the native side-panel toggle shows only on pages whose iPhone layout doesn't already handle the panel (hidden on Thinking Space explorer, Webull/F9, Thinking Organizer); the iPhone explorer header is a single icon row (collapsed search, RSS in the toolbar slot, no File-info button).
+
 Upcoming:
 - EPIC-5: AI Actions Everywhere
 - EPIC-6: Optional Remote/Agent Backends (later)
