@@ -15,7 +15,12 @@ struct PhoneShellView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let safeTop = proxy.safeAreaInsets.top
+            // The outer `.ignoresSafeArea()` zeroes the proxy's insets, so read
+            // the real status-bar inset from the key window (same workaround as
+            // TopDrawerMenuView). With 0 here the top scrim rendered as a
+            // 16pt band at the physical top edge instead of covering the
+            // status-bar area.
+            let safeTop = max(proxy.safeAreaInsets.top, resolvedNativeTopDrawerSafeAreaTopInset())
             let revealHeight = resolvedDrawerRevealHeight(containerHeight: proxy.size.height, safeTop: safeTop)
             let progress = chromeState.drawerProgress
             let visibleDrawerHeight = max(0, progress * revealHeight)
@@ -38,6 +43,10 @@ struct PhoneShellView: View {
                         onSelectNavItem(navItemId)
                     }
                 )
+                // Match the web's reported surface darkness (can't trait-flip
+                // the container here — it also hosts the WKWebView, whose
+                // prefers-color-scheme must stay untouched).
+                .environment(\.colorScheme, chromeState.isTopBarDark ? .dark : .light)
                 .frame(maxWidth: .infinity, alignment: .top)
                 .frame(height: visibleDrawerHeight + contentCornerRadius, alignment: .top)
                 .clipped()
@@ -56,8 +65,10 @@ struct PhoneShellView: View {
                         TopChromeView(state: chromeState)
                             // Extra height past the safe area gives the
                             // progressive blur room to feather out instead of
-                            // cutting off hard at the status-bar line.
-                            .frame(height: safeTop + 16, alignment: .top)
+                            // cutting off hard at the status-bar line — and
+                            // when scrolled content frosts the band, the clock
+                            // keeps a comfortable legibility margin under it.
+                            .frame(height: safeTop + 24, alignment: .top)
                             .opacity(chromeState.isVisible ? 1 : 0)
                             .offset(y: chromeState.isVisible ? 0 : -18)
                             .contentShape(Rectangle())

@@ -34,7 +34,10 @@ private func nativeTopDrawerSectionShape() -> RoundedRectangle {
     RoundedRectangle(cornerRadius: NativeTopDrawerMetrics.sectionCornerRadius, style: .continuous)
 }
 
-private func resolvedNativeTopDrawerSafeAreaTopInset() -> CGFloat {
+/// Key-window safe-area top. GeometryReader proxies inside `.ignoresSafeArea()`
+/// subtrees report 0 insets, so both the top drawer and the phone shell's
+/// status-bar scrim resolve the real inset from the window instead.
+func resolvedNativeTopDrawerSafeAreaTopInset() -> CGFloat {
     UIApplication.shared.connectedScenes
         .compactMap { $0 as? UIWindowScene }
         .flatMap(\.windows)

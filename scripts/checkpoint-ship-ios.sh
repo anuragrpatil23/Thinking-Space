@@ -40,6 +40,28 @@ mkdir -p "$LOG_DIR" "$TMP_DIR"
 say()  { echo "  $*"; }
 fail() { echo "  ✗ $*" >&2; echo "  log: $LOG" >&2; exit 1; }
 
+# ─── Shared dist lock ─────────────────────────────────────────────────────────
+# The Mac and iOS checkpoint scripts both build frontend/dist (electron vs
+# capacitor targets). Running them concurrently once shipped a Mac app packed
+# from a capacitor-flavored dist (ERR_FILE_NOT_FOUND on ltm-app://) — so both
+# scripts serialize the dist-touching phase through this mkdir lock.
+DIST_LOCK="$TMP_DIR/dist-build.lock"
+acquire_dist_lock() {
+  local waited=0
+  while ! mkdir "$DIST_LOCK" 2>/dev/null; do
+    # Steal locks older than 30 min — a killed build must not wedge shipping.
+    if [ -n "$(find "$DIST_LOCK" -maxdepth 0 -mmin +30 2>/dev/null)" ]; then
+      rmdir "$DIST_LOCK" 2>/dev/null || true
+      continue
+    fi
+    [ $waited = 0 ] && say "waiting for another checkpoint build to release frontend/dist…"
+    waited=1
+    sleep 5
+  done
+  trap 'release_dist_lock' EXIT
+}
+release_dist_lock() { rmdir "$DIST_LOCK" 2>/dev/null || true; }
+
 # Capacitor CLI needs Node >= 22; prefer Homebrew's.
 export PATH="/opt/homebrew/bin:$PATH"
 
@@ -115,11 +137,17 @@ fi
 
 # ─── Build: web bundle + cap sync ────────────────────────────────────────────
 say "building web bundle + cap sync (log: $LOG)"
+acquire_dist_lock
 (cd "$FRONTEND_DIR" && npm run build:ios) >"$LOG" 2>&1 || fail "web build / cap sync failed"
 
 # Security contract (built output): no inline <script> bodies in the entry HTML.
 INLINE_SCRIPTS=$(grep -Eo '<script[^>]*>' "$FRONTEND_DIR/dist/index.html" | grep -v 'src=' || true)
 [ -z "$INLINE_SCRIPTS" ] || fail "security contract: inline <script> found in dist/index.html"
+
+# cap sync copied dist into ios/App/App/public — dist is free for other builds
+# while xcodebuild runs (it never reads frontend/dist).
+release_dist_lock
+trap - EXIT
 
 # ─── Build: native app (Release, automatic signing) ──────────────────────────
 # generic/platform=iOS builds a signed device binary without requiring the

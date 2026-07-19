@@ -88,7 +88,12 @@ struct RailView: View {
     var onSelect: (RailTab) -> Void
     var onClose: () -> Void
 
+    // Follows the trait override RootShellViewController applies to the drawer
+    // container when the web reports a dark surface (isTopBarDark).
+    @Environment(\.colorScheme) private var colorScheme
+
     private let beigeBackground = Color(red: 245.0 / 255.0, green: 243.0 / 255.0, blue: 238.0 / 255.0)
+    private let nightBackground = Color(red: 24.0 / 255.0, green: 24.0 / 255.0, blue: 28.0 / 255.0)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -109,7 +114,7 @@ struct RailView: View {
                 .padding(.bottom, 24)
             }
         }
-        .background(beigeBackground.ignoresSafeArea())
+        .background((colorScheme == .dark ? nightBackground : beigeBackground).ignoresSafeArea())
     }
 }
 
@@ -118,7 +123,20 @@ private struct RailRow: View {
     let isSelected: Bool
     let onTap: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var pressed: Bool = false
+
+    private var selectedFill: Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.white.opacity(0.7)
+    }
+
+    private var pressedFill: Color {
+        colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04)
+    }
+
+    private var mutedIconColor: Color {
+        colorScheme == .dark ? Color(white: 0.72) : Color(white: 0.35)
+    }
 
     var body: some View {
         Button(action: onTap) {
@@ -138,7 +156,7 @@ private struct RailRow: View {
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? Color.white.opacity(0.7) : (pressed ? Color.black.opacity(0.04) : .clear))
+                    .fill(isSelected ? selectedFill : (pressed ? pressedFill : .clear))
             )
         }
         .buttonStyle(.plain)
@@ -155,7 +173,7 @@ private struct RailRow: View {
         case .system(let name):
             Image(systemName: name)
                 .font(.system(size: 18, weight: .regular))
-                .foregroundColor(isSelected ? .primary : Color(white: 0.35))
+                .foregroundColor(isSelected ? .primary : mutedIconColor)
         case .template(let name):
             // The bundled lucide/phosphor vector, tinted to match SF Symbol
             // rows: near-black when selected, muted grey otherwise.
@@ -164,7 +182,7 @@ private struct RailRow: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 21, height: 21)
-                .foregroundColor(isSelected ? .primary : Color(white: 0.35))
+                .foregroundColor(isSelected ? .primary : mutedIconColor)
         case .asset(let name):
             // Render the asset like a mini app icon: full bleed with the
             // standard ~22% continuous-corner radius iOS uses for icons.

@@ -9,7 +9,11 @@ const config: CapacitorConfig = {
   },
   ios: {
     scheme: 'Thinking Space',
-    contentInset: 'automatic',
+    // 'never' = edge-to-edge webview. 'automatic' let UIKit inset the web
+    // content below the top screen edge, which showed as a pale bar above the
+    // status bar once dark backdrops landed. viewport-fit=cover +
+    // env(safe-area-inset-top) own the insets instead.
+    contentInset: 'never',
     scrollEnabled: false,
     allowsLinkPreview: false,
   },

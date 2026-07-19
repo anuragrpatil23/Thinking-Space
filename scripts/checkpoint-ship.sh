@@ -32,6 +32,27 @@ mkdir -p "$LOG_DIR" "$TMP_DIR"
 say()  { echo "  $*"; }
 fail() { echo "  ✗ $*" >&2; echo "  log: $LOG" >&2; exit 1; }
 
+# ─── Shared dist lock ─────────────────────────────────────────────────────────
+# checkpoint-ship.sh and checkpoint-ship-ios.sh both build frontend/dist
+# (electron vs capacitor targets). Running them concurrently once shipped a
+# Mac app packed from a capacitor-flavored dist (ERR_FILE_NOT_FOUND on
+# ltm-app://) — so both serialize the dist-touching phase through this lock.
+DIST_LOCK="$TMP_DIR/dist-build.lock"
+acquire_dist_lock() {
+  local waited=0
+  while ! mkdir "$DIST_LOCK" 2>/dev/null; do
+    # Steal locks older than 30 min — a killed build must not wedge shipping.
+    if [ -n "$(find "$DIST_LOCK" -maxdepth 0 -mmin +30 2>/dev/null)" ]; then
+      rmdir "$DIST_LOCK" 2>/dev/null || true
+      continue
+    fi
+    [ $waited = 0 ] && say "waiting for another checkpoint build to release frontend/dist…"
+    waited=1
+    sleep 5
+  done
+  trap 'rmdir "$DIST_LOCK" 2>/dev/null || true' EXIT
+}
+
 # Capacitor CLI needs Node >= 22; prefer Homebrew's.
 export PATH="/opt/homebrew/bin:$PATH"
 
@@ -165,6 +186,7 @@ if [ $INSIDE_APP = 0 ] && pgrep -f "Thinking Space.app/Contents/MacOS" >/dev/nul
 fi
 
 say "building (unpacked .app; log: $LOG)"
+acquire_dist_lock
 # Stop electron-builder from auto-discovering keychain identities during pack —
 # its signing path isn't on the key's access list and pops a scary keychain
 # password dialog. We sign explicitly below with /usr/bin/codesign, which IS
