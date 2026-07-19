@@ -31,6 +31,7 @@ import {
   replaceLinksForFile,
   replaceVaultFileIndex,
   upsertVaultFileIndexEntry,
+  getVaultFileRecordsByPaths,
   type NodeRecord,
   type NodeKeyConflictBlock,
   type LinkRecord,
@@ -89,6 +90,32 @@ function getCachedFilePathsArray(): string[] | null {
 function setCachedFilePaths(paths: Set<string>): void {
   _cachedFilePathsArray = [...paths]
   _cachedFilePathsAge = Date.now()
+}
+
+// ── Vault-index trust marker ──
+// The vault file index is REPLACED at the start of each sync (before files are
+// processed), so its (mtime, size) fingerprints are only safe to use for
+// skip-decisions if the previous sync actually ran to completion. The marker
+// is cleared when a sync starts and set only on a clean finish — a mid-sync
+// crash therefore disables fingerprint skipping for exactly one run.
+const VAULT_INDEX_TRUST_KEY = 'thinkingspace:vaultIndexTrusted'
+
+function consumeVaultIndexTrustMarker(): boolean {
+  try {
+    const trusted = localStorage.getItem(VAULT_INDEX_TRUST_KEY) === '1'
+    localStorage.removeItem(VAULT_INDEX_TRUST_KEY)
+    return trusted
+  } catch {
+    return false
+  }
+}
+
+function setVaultIndexTrustMarker(): void {
+  try {
+    localStorage.setItem(VAULT_INDEX_TRUST_KEY, '1')
+  } catch {
+    // Storage unavailable — fingerprint skipping just stays off.
+  }
 }
 
 const IOS_MAX_SYNC_FILE_SIZE_BYTES = 2 * 1024 * 1024
@@ -223,6 +250,7 @@ export async function incrementalSync(
     detail: 'Checking for changes',
   })
   try {
+  const indexTrusted = consumeVaultIndexTrustMarker()
   const walked = await vaultFs.walkVault(['.md'])
   const excludedPrefixes = getSyncExcludedPathPrefixes()
   const allEntries = excludedPrefixes.length === 0
@@ -231,7 +259,28 @@ export async function incrementalSync(
 
   // Find files modified since last sync
   const sinceSeconds = normalizeEpochSeconds(sinceTimestamp)
-  const updatedEntries = allEntries.filter(e => normalizeEpochSeconds(e.mtime) > sinceSeconds)
+  const mtimeSelectedEntries = allEntries.filter(e => normalizeEpochSeconds(e.mtime) > sinceSeconds)
+
+  // Fingerprint skip (iCloud churn absorber): if a selected file's exact
+  // (mtime, size) pair is what the PREVIOUS completed sync's walk recorded,
+  // that state was already processed — the mtime being past lastSync just
+  // means iCloud re-materialized it between syncs. Skipping here avoids the
+  // per-file re-read (a bridge round trip on iOS) entirely. Must be read
+  // BEFORE replaceVaultFileIndex overwrites the previous walk's records, and
+  // only applies when the trust marker says the previous sync finished clean.
+  let fingerprintSkipped = 0
+  let updatedEntries = mtimeSelectedEntries
+  if (indexTrusted && mtimeSelectedEntries.length > 0) {
+    const prevIndex = await getVaultFileRecordsByPaths(mtimeSelectedEntries.map(e => e.path))
+    updatedEntries = mtimeSelectedEntries.filter((entry) => {
+      const prev = prevIndex.get(entry.path)
+      const unchanged = prev !== undefined
+        && prev.mtime === normalizeEpochSeconds(entry.mtime)
+        && prev.size === entry.size
+      if (unchanged) fingerprintSkipped++
+      return !unchanged
+    })
+  }
 
   // Detect deleted files — batch delete instead of N individual queries.
   // Excluded paths are ignored on both sides: if a cached entry sits under an

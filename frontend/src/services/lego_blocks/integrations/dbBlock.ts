@@ -499,6 +499,25 @@ export async function getVaultFileIndexRecords(): Promise<VaultFileRecord[]> {
 }
 
 /**
+ * Batch fetch index records for specific paths. Returns a Map keyed by path;
+ * missing paths simply aren't in the result. Used by incremental sync to
+ * compare (mtime, size) fingerprints against the previous walk so iCloud
+ * mtime churn doesn't force per-file re-reads.
+ */
+export async function getVaultFileRecordsByPaths(
+  paths: string[],
+): Promise<Map<string, VaultFileRecord>> {
+  const out = new Map<string, VaultFileRecord>()
+  if (paths.length === 0) return out
+  const db = getDb()
+  const records = await db.files.bulkGet(paths)
+  for (const record of records) {
+    if (record) out.set(record.path, record)
+  }
+  return out
+}
+
+/**
  * Batch fetch nodes by file path. Returns a Map keyed by filePath. Missing
  * paths simply aren't in the result. Single indexed query — much cheaper than
  * N individual getNodeByPath calls during sync reconciliation.

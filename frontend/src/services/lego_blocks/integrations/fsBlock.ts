@@ -737,6 +737,58 @@ class ElectronVaultFS implements VaultFS {
 // The absolute mode is used when the user picks a folder via UIDocumentPickerViewController
 // (including iCloud Drive folders).
 
+// Lazily-registered handle for the native tree walker (VaultWalkPlugin in the
+// iOS shell). One bridge call returns the whole vault listing; see walkVault.
+interface VaultWalkNativeFileBlock {
+  path: string
+  size: number
+  mtime: number
+  ctime: number
+}
+interface VaultWalkPluginBlock {
+  walk(options: {
+    root: string
+    extensions: string[]
+    excludedDirNames: string[]
+    excludedPrefixes: string[]
+  }): Promise<{ files: VaultWalkNativeFileBlock[] }>
+}
+// IMPORTANT: the Capacitor plugin proxy treats EVERY property access as a
+// native method — including `.then`. Resolving a Promise directly with the
+// proxy makes promise-adoption probe `.then()` → a native call named "then"
+// → '"VaultWalk.then()" is not implemented'. Always keep the proxy wrapped
+// in a holder object so it never becomes a thenable resolution value.
+let _vaultWalkPluginPromise: Promise<{ plugin: VaultWalkPluginBlock } | null> | null = null
+
+async function walkVaultNativeBlock(
+  vaultRoot: string,
+  extensions: string[],
+): Promise<VaultEntry[] | null> {
+  if (!_vaultWalkPluginPromise) {
+    _vaultWalkPluginPromise = import('@capacitor/core')
+      .then(({ registerPlugin }) => ({ plugin: registerPlugin<VaultWalkPluginBlock>('VaultWalk') }))
+      .catch(() => null)
+  }
+  const holder = await _vaultWalkPluginPromise
+  const plugin = holder?.plugin
+  if (!plugin) return null
+
+  const result = await plugin.walk({
+    root: vaultRoot,
+    extensions,
+    excludedDirNames: [...EXCLUDED_DIRS],
+    excludedPrefixes: getSyncExcludedPathPrefixes(),
+  })
+  if (!Array.isArray(result?.files)) return null
+  // Native returns epoch SECONDS already (unlike Capacitor Filesystem's ms).
+  return result.files.map(f => ({
+    path: f.path,
+    size: f.size,
+    mtime: f.mtime,
+    ctime: f.ctime || f.mtime,
+  }))
+}
+
 class CapacitorVaultFS implements VaultFS {
   private vaultRoot: string
   private isAbsolute: boolean
@@ -833,6 +885,23 @@ class CapacitorVaultFS implements VaultFS {
   }
 
   async walkVault(extensions: string[] = ['.md']): Promise<VaultEntry[]> {
+    // Fast path: one native call enumerates the entire tree (VaultWalkPlugin,
+    // FileManager.enumerator). The readdir+stat walk below costs one WKWebView
+    // bridge round trip PER DIRECTORY plus one PER FILE — thousands of
+    // serialized calls that froze the app for minutes on every launch and
+    // foreground sync. Falls back to the JS walk if the plugin is missing
+    // (older installed shell newer web bundle, e.g. right after a rebuild).
+    try {
+      const native = await walkVaultNativeBlock(this.vaultRoot, extensions)
+      if (native) return native
+    } catch (err) {
+      logDebug(
+        'Native vault walk unavailable — falling back to readdir walk',
+        err instanceof Error ? err.message : String(err),
+        'fsBlock',
+      )
+    }
+
     const extSet = new Set(extensions)
     const entries: VaultEntry[] = []
     const excludedPrefixes = getSyncExcludedPathPrefixes()
