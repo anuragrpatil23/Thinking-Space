@@ -463,7 +463,7 @@ function MessageOverlaysBlock({
   return null
 }
 
-export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
+export default function MoonSceneBlock({ x, y, showQuote = true }: { x: number; y: number; showQuote?: boolean }) {
   const phase = useTimeOfDayBlock()
   const dj = phase === 'late'
   const darkBackdrop = isDarkPhaseBlock(phase)
@@ -869,7 +869,12 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
       {/* daily reflection quote — shows in every phase, not just the late-night
           DJ wind-down. Lifted up into the open canvas above the scene so it never
           overlaps the sprites; only the eyebrow pulses so the quote reads steady.
-          Colors flip for the light (day/golden) vs dark (night/late) backdrop. */}
+          Colors flip for the light (day/golden) vs dark (night/late) backdrop.
+          The flat (iOS/web) frame passes showQuote=false: its scene wrapper
+          clips at the sprite bounds, so this canvas-space float would land
+          under the status bar — HomeWelcomeBlock renders the quote in-flow
+          there instead. */}
+      {showQuote && (
       <div
         style={{
           position: 'absolute',
@@ -918,6 +923,7 @@ export default function MoonSceneBlock({ x, y }: { x: number; y: number }) {
           </div>
         )}
       </div>
+      )}
 
       {/* astronaut */}
       <div

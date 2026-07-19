@@ -13,6 +13,11 @@ final class TopChromeState: ObservableObject {
     @Published var isVisible: Bool = true
     @Published var activeNavItemId: String? = nil
     @Published var isTopBarCollapsed: Bool = false
+
+    /// True when the web reports the content under the status bar is dark
+    /// (Home's night backdrop, dark app theme). Flips the status-bar glyphs
+    /// to light and renders the top scrim in its dark appearance.
+    @Published var isTopBarDark: Bool = false
     @Published var isBottomBarCollapsed: Bool = false
     @Published var showSearch: Bool = true
     @Published var showTools: Bool = true

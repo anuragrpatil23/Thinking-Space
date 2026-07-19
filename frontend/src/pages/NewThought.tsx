@@ -43,7 +43,11 @@ const DESTINATION_RECENTS_KEY = 'ltm-new-note-destination-recents'
 const CUSTOM_SHORTCUTS_KEY = 'ltm-new-note-custom-shortcuts'
 const LEGACY_QUICK_DESTINATIONS_KEY = 'ltm-new-note-quick-destinations'
 const DESTINATION_USAGE_COUNTS_KEY = 'ltm-new-note-destination-usage-counts'
-const LEFT_PANEL_HIDDEN_KEY = 'ltm-new-note-left-panel-hidden'
+// v2: the v1 key was auto-written on every mount, so the desktop default
+// (`false`) got persisted on phones as if the user had chosen it — pinning the
+// destination sidebar open on iPhone forever. The v2 key is only ever written
+// on an explicit user toggle, so "stored value" really means "user's choice".
+const LEFT_PANEL_HIDDEN_KEY = 'ltm-new-note-left-panel-hidden.v2'
 const DEFAULT_BASE_PATH = ['lifeblood_systems', 'sfdl']
 
 const NEW_THOUGHT_CANVAS_WORLD_WIDTH = 4500
@@ -371,10 +375,6 @@ function CreateTab() {
   }, [])
 
   useEffect(() => {
-    writeJsonStorage(LEFT_PANEL_HIDDEN_KEY, leftPanelHidden)
-  }, [leftPanelHidden])
-
-  useEffect(() => {
     dispatchNewThoughtSidebarChromeStateBlock({ enabled: true, collapsed: leftPanelHidden })
   }, [leftPanelHidden])
 
@@ -385,7 +385,13 @@ function CreateTab() {
   }, [])
 
   useEffect(() => {
-    const handler = () => setLeftPanelHidden(prev => !prev)
+    const handler = () => setLeftPanelHidden(prev => {
+      const next = !prev
+      // Persist only on explicit toggles — never on mount — so the
+      // surface-appropriate default keeps applying until the user decides.
+      writeJsonStorage(LEFT_PANEL_HIDDEN_KEY, next)
+      return next
+    })
     window.addEventListener(NEW_THOUGHT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
     return () => window.removeEventListener(NEW_THOUGHT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK, handler)
   }, [])

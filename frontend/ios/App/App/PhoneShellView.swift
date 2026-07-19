@@ -54,7 +54,10 @@ struct PhoneShellView: View {
                     // Top chrome overlay
                     VStack {
                         TopChromeView(state: chromeState)
-                            .frame(height: safeTop, alignment: .top)
+                            // Extra height past the safe area gives the
+                            // progressive blur room to feather out instead of
+                            // cutting off hard at the status-bar line.
+                            .frame(height: safeTop + 16, alignment: .top)
                             .opacity(chromeState.isVisible ? 1 : 0)
                             .offset(y: chromeState.isVisible ? 0 : -18)
                             .contentShape(Rectangle())

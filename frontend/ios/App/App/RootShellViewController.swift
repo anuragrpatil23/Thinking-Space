@@ -5,13 +5,13 @@ import Combine
 final class RootShellViewController: UIViewController {
     private let shellBackgroundColor = UIColor.systemBackground
 
-    /// App theme is a consistently light warm-beige across all routes, so the
-    /// status bar always wants dark glyphs. Explicit override (over the system
-    /// default) so the intent doesn't drift if Apple changes the default.
-    /// Animating between styles during push/pop is a no-op here because every
-    /// content type lands on the same light background — wrap setNeedsStatus
-    /// BarAppearanceUpdate() in a UIView.animate block if that ever changes.
-    override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
+    /// The app theme is mostly light warm-beige, but some surfaces run a dark
+    /// backdrop under the status bar (Home's night time-of-day canvas, dark
+    /// app theme). The web reports that via TopChrome.setState(topBarDark) →
+    /// chromeState.isTopBarDark, and the glyphs flip to stay legible.
+    override var preferredStatusBarStyle: UIStatusBarStyle {
+        chromeState.isTopBarDark ? .lightContent : .darkContent
+    }
 
     private let bridgeVC = LTMBridgeViewController()
     let chromeState = TopChromeState()
@@ -21,6 +21,7 @@ final class RootShellViewController: UIViewController {
     private var bottomBarLayoutCancellable: AnyCancellable?
     private var activeNavItemCancellable: AnyCancellable?
     private var webullLabelCancellable: AnyCancellable?
+    private var topBarDarkCancellable: AnyCancellable?
     private var bottomChromeHeightConstraint: NSLayoutConstraint?
 
     // MARK: - Rail / drawer state
@@ -158,6 +159,19 @@ final class RootShellViewController: UIViewController {
         } else {
             embedBridgeFullscreen()
         }
+
+        // Re-evaluate preferredStatusBarStyle whenever the web flips the
+        // dark-under-status-bar signal, with a cross-fade so the glyph swap
+        // reads intentional rather than popping.
+        topBarDarkCancellable = chromeState.$isTopBarDark
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                UIView.animate(withDuration: 0.24) {
+                    self.setNeedsStatusBarAppearanceUpdate()
+                }
+            }
     }
 
     /// Mirror user-configured tab labels from chromeState into RailState.

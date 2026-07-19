@@ -8,6 +8,7 @@ import HomeBoardFeedBlock from '@/components/lego_blocks/integrations/HomeBoardF
 import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 import { useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
 import { isCapacitorNative } from '@/services/orchestrators/runtimeOrch'
+import { dispatchTopChromeAppearanceBlock } from '@/services/lego_blocks/units/topChromeAppearanceBlock'
 import type { CanvasThemeTokens } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 
 /**
@@ -21,9 +22,10 @@ import type { CanvasThemeTokens } from '@/components/lego_blocks/hooks/shared/us
  */
 // The moon scene (astronaut + Clawd) is authored at a fixed 520×240 for canvas
 // world-space. In the flat frame we drop it into normal flow and scale it down
-// to fit narrow (iPhone) widths, centered, purely decorative. It carries the
-// daily quote itself — same as the canvas — so the welcome block leaves its
-// quote off here.
+// to fit narrow (iPhone) widths, centered, purely decorative. Its canvas-space
+// floating quote is disabled here (the wrapper clips at sprite bounds, so it
+// would poke under the status bar) — HomeWelcomeBlock renders the daily quote
+// in-flow instead.
 const SCENE_W = 520
 const SCENE_H = 240
 function AnimatedScene() {
@@ -60,7 +62,7 @@ function AnimatedScene() {
           transformOrigin: 'top center',
         }}
       >
-        <MoonSceneBlock x={0} y={0} />
+        <MoonSceneBlock x={0} y={0} showQuote={false} />
       </div>
     </div>
   )
@@ -99,6 +101,14 @@ export default function HomeFlatOrch() {
   // flip to readable dark values without touching the rest of the app.
   const scopeDark = theme.isDark && resolvedColorMode !== 'dark'
 
+  // Tell the native iPhone shell the status-bar area is dark while the night
+  // backdrop is up, so the clock glyphs go light and the top scrim renders in
+  // its dark appearance. Reset on unmount — other routes are light-surface.
+  useEffect(() => {
+    dispatchTopChromeAppearanceBlock({ dark: theme.isDark })
+    return () => dispatchTopChromeAppearanceBlock({ dark: false })
+  }, [theme.isDark])
+
   return (
     <div className={`relative isolate ltm-page ltm-page-edge-bleed${scopeDark ? ' dark' : ''}`}>
       <div className="ltm-page-fixed-bg-anchor">
@@ -117,7 +127,7 @@ export default function HomeFlatOrch() {
         <header className="mx-auto max-w-3xl">
           <AnimatedScene />
           <div className="mt-6">
-            <HomeWelcomeBlock theme={theme} />
+            <HomeWelcomeBlock theme={theme} showQuote />
           </div>
         </header>
 

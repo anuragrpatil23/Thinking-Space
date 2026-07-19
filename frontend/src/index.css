@@ -1230,7 +1230,9 @@
        frosting bar. Edge-bleed pages (Home backdrop) opt out — they deliberately
        run their canvas under the status bar. */
     .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-app-main:not(:has(.ltm-page-edge-bleed)) {
-      padding-top: var(--ltm-safe-top);
+      /* Safe-area plus a touch of breathing room — content resting flush
+         against the status-bar line reads as a layout bug, not a design. */
+      padding-top: calc(var(--ltm-safe-top) + 0.5rem);
     }
 
     /* When a page wants its backdrop to bleed to the screen edges (e.g. the

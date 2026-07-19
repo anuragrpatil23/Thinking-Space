@@ -206,18 +206,37 @@ private struct NativeTopDrawerSectionCardView: View {
 
 // MARK: - Top Chrome (adaptive status-bar scrim)
 
-/// Instagram-style status-bar treatment: fully transparent while the content is
-/// at the top of its scroll (so the page bleeds edge-to-edge under the clock),
-/// then fades in a frosted blur + hairline once content scrolls up underneath —
-/// keeping the status glyphs and any content that slides under it legible.
-/// Driven by `isTopBarCollapsed`, which the web sets true once the active
-/// surface has scrolled down past its threshold (see App.tsx native chrome
-/// scroll handler).
+/// Instagram-style status-bar treatment: an always-on *progressive* blur —
+/// strong right under the clock, feathering out toward the content — keeps the
+/// status glyphs legible no matter what scrolls beneath, without ever reading
+/// as an opaque bar. When the page scrolls (`isTopBarCollapsed`, set by the
+/// App.tsx native chrome scroll handler) the scrim deepens to a full frosted
+/// band with a hairline seam, then relaxes back to the feathered fade at rest.
 struct TopChromeView: View {
     @ObservedObject var state: TopChromeState
 
     var body: some View {
         ZStack(alignment: .bottom) {
+            // Resting scrim: material masked by a vertical fade. Solid across
+            // the status-bar glyphs, dissolving before the frame's bottom edge
+            // so content appears to slide "into" the blur, Instagram-style.
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black, location: 0.0),
+                            .init(color: .black, location: 0.5),
+                            .init(color: .black.opacity(0.6), location: 0.72),
+                            .init(color: .clear, location: 1.0),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .opacity(state.isTopBarCollapsed ? 0 : 1)
+
+            // Scrolled scrim: full frosted band edge-to-edge.
             Rectangle()
                 .fill(.ultraThinMaterial)
                 .opacity(state.isTopBarCollapsed ? 1 : 0)
@@ -229,6 +248,12 @@ struct TopChromeView: View {
                 .opacity(state.isTopBarCollapsed ? 1 : 0)
         }
         .animation(.easeInOut(duration: 0.24), value: state.isTopBarCollapsed)
+        // The web reports whether the content under the status bar is dark
+        // (night backdrop / dark theme). Rendering the materials in the
+        // matching color scheme keeps the scrim a subtle darkening veil there
+        // instead of a pale frosted band over a dark canvas.
+        .environment(\.colorScheme, state.isTopBarDark ? .dark : .light)
+        .animation(.easeInOut(duration: 0.24), value: state.isTopBarDark)
     }
 }
 
