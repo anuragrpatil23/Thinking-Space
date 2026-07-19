@@ -36,6 +36,7 @@ import {
   Loader2,
   Search,
 } from 'lucide-react'
+import { deviceCanHoverBlock } from '@/services/lego_blocks/units/hoverCapabilityBlock'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import NotebookTocBlock from '@/components/lego_blocks/integrations/NotebookTocBlock'
 import {
@@ -197,6 +198,10 @@ function ExplorerRowTooltip({
   }, [filePath, resolveMeta])
 
   const handleEnter = (event: React.MouseEvent) => {
+    // Touch surfaces synthesize mouseenter on tap and may never deliver the
+    // matching mouseleave — the tooltip would appear and stick. Hover-opened
+    // overlays are mouse/trackpad-only chrome.
+    if (!deviceCanHoverBlock()) return
     cursorRef.current = { x: event.clientX, y: event.clientY }
     clearShowTimer()
     showTimerRef.current = window.setTimeout(() => {
@@ -1898,8 +1903,11 @@ function VaultExplorerBlockInner({
                       className="h-8 w-auto min-w-0 gap-2 rounded-md border-0 bg-background/80 px-2 pr-1.5 text-xs font-normal text-muted-foreground shadow-none ring-0 focus:ring-0 focus:ring-offset-0 hover:text-foreground data-[state=open]:text-foreground [&>svg]:text-muted-foreground hover:[&>svg]:text-foreground data-[state=open]:[&>svg]:text-foreground"
                       title="Explorer view"
                     >
+                      {/* Short trigger label — the full "… view" names live in
+                          the menu items; the long form overflowed the toolbar
+                          row on iPad and truncated to "Tre…". */}
                       <SelectValue aria-label={viewMode}>
-                        {viewMode === 'tree' ? 'Tree view' : viewMode === 'compact' ? 'Compact view' : 'Grid view'}
+                        {viewMode === 'tree' ? 'Tree' : viewMode === 'compact' ? 'Compact' : 'Grid'}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>

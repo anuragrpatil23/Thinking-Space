@@ -58,17 +58,28 @@ struct PhoneShellView: View {
 
                     // Top chrome overlay
                     VStack {
-                        TopChromeView(state: chromeState)
+                        // iPad: the veil deepens to hold the whole native
+                        // top-bar zone (58pt bar + feather room), Files-app
+                        // style — the buttons float in blurred space and
+                        // scrolled content passes beneath them. iPhone keeps
+                        // the short status-bar-only scrim.
+                        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+                        TopChromeView(state: chromeState, coversPadBarZone: isPad)
                             // Extra height past the safe area gives the
                             // progressive blur room to feather out instead of
                             // cutting off hard at the status-bar line — and
                             // when scrolled content frosts the band, the clock
                             // keeps a comfortable legibility margin under it.
-                            .frame(height: safeTop + 24, alignment: .top)
+                            .frame(height: isPad ? safeTop + nativeChromePadBarHeight + 26 : safeTop + 24, alignment: .top)
                             .opacity(chromeState.isVisible ? 1 : 0)
                             .offset(y: chromeState.isVisible ? 0 : -18)
                             .contentShape(Rectangle())
                             .highPriorityGesture(topHandleDragGesture(revealHeight: revealHeight))
+                            // Hidden chrome (immersive focus mode) must not
+                            // keep a touch-dead strip over the web content —
+                            // opacity 0 still hit-tests, and the focus-mode
+                            // header lives exactly under this zone.
+                            .allowsHitTesting(chromeState.isVisible)
                         Spacer()
                     }
                     .ignoresSafeArea(edges: .top)

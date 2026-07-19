@@ -176,6 +176,7 @@ export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promis
 
   const activity = startActivity({
     kind: 'sync',
+    channel: 'ambient',
     label: 'Syncing vault…',
     detail: 'Full scan',
   })
@@ -254,6 +255,7 @@ export async function incrementalSync(
 
   const activity = startActivity({
     kind: 'sync',
+    channel: 'ambient',
     label: 'Syncing vault…',
     detail: 'Checking for changes',
   })

@@ -15,9 +15,17 @@ export type BackgroundActivityKind =
   | 'stall'
   | 'generic'
 
+/**
+ * Which surface renders the activity: 'alert' (default) goes to the
+ * right-corner banner; 'ambient' goes to the top-edge progress hairline
+ * (routine background work like vault syncs — present but quiet).
+ */
+export type BackgroundActivityChannel = 'ambient' | 'alert'
+
 export interface BackgroundActivity {
   id: string
   kind: BackgroundActivityKind
+  channel: BackgroundActivityChannel
   label: string
   detail?: string
   startedAt: number
@@ -53,6 +61,7 @@ function emit(): void {
 export function startActivity(input: {
   id?: string
   kind: BackgroundActivityKind
+  channel?: BackgroundActivityChannel
   label: string
   detail?: string
   total?: number
@@ -61,6 +70,7 @@ export function startActivity(input: {
   const activity: BackgroundActivity = {
     id,
     kind: input.kind,
+    channel: input.channel ?? 'alert',
     label: input.label,
     detail: input.detail,
     total: input.total,
@@ -98,7 +108,7 @@ export function subscribeActivities(listener: Listener): () => void {
  * on throw. Returns the fn's result.
  */
 export async function withActivity<T>(
-  input: { kind: BackgroundActivityKind; label: string; detail?: string; total?: number },
+  input: { kind: BackgroundActivityKind; channel?: BackgroundActivityChannel; label: string; detail?: string; total?: number },
   fn: (handle: BackgroundActivityHandle) => Promise<T>,
 ): Promise<T> {
   const handle = startActivity(input)

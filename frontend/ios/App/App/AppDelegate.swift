@@ -93,6 +93,13 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
         configureShellSurface()
     }
 
+    /// Idioms that run the native SwiftUI chrome (mirrors
+    /// RootShellViewController.shouldUseNativeTopChrome): iPhone AND iPad.
+    private var nativeChromeIdiom: Bool {
+        let idiom = UIDevice.current.userInterfaceIdiom
+        return idiom == .phone || idiom == .pad
+    }
+
     override open func capacitorDidLoad() {
         super.capacitorDidLoad()
         configureShellSurface()
@@ -118,8 +125,8 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
     override open func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         
-        // Set up native scroll detection on iPhone after view appears
-        if UIDevice.current.userInterfaceIdiom == .phone && scrollObserver == nil {
+        // Set up native scroll detection on iPhone/iPad after view appears
+        if nativeChromeIdiom && scrollObserver == nil {
             setupScrollDetection()
             
             // Register message handler for JS scroll events
@@ -224,19 +231,19 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
         nativeWebView.scrollView.backgroundColor = shellBackgroundColor
 
         if #available(iOS 11.0, *) {
-            nativeWebView.scrollView.contentInsetAdjustmentBehavior = UIDevice.current.userInterfaceIdiom == .phone
+            nativeWebView.scrollView.contentInsetAdjustmentBehavior = nativeChromeIdiom
                 ? .never
                 : .automatic
-            nativeWebView.scrollView.automaticallyAdjustsScrollIndicatorInsets = UIDevice.current.userInterfaceIdiom != .phone
+            nativeWebView.scrollView.automaticallyAdjustsScrollIndicatorInsets = !nativeChromeIdiom
         }
-        
+
         // Keep original scroll settings - changing these broke scrolling!
         nativeWebView.scrollView.bounces = false
         nativeWebView.scrollView.alwaysBounceVertical = false
         nativeWebView.scrollView.alwaysBounceHorizontal = false
-        
+
         // Remove any bottom content inset that might create a gap
-        if UIDevice.current.userInterfaceIdiom == .phone {
+        if nativeChromeIdiom {
             nativeWebView.scrollView.contentInset = .zero
             nativeWebView.scrollView.scrollIndicatorInsets = .zero
         }

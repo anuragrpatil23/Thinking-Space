@@ -1008,7 +1008,12 @@ class CapacitorVaultFS implements VaultFS {
         ? { path: parent ? this.resolve(parent) : this.resolve('') }
         : { path: parent ? this.resolve(parent) : this.vaultRoot, directory: Directory.Documents }
       const listed = await Filesystem.readdir(parentOpts)
-      return listed.files.some((entry) => entry.name === name)
+      // `.NAME.icloud` = undownloaded iCloud placeholder — the file EXISTS,
+      // its bytes just aren't local yet. Reporting false here made callers
+      // treat vault files as absent and re-seed them (e.g. profile.json
+      // clobbered with defaults from a fresh device).
+      const placeholderName = `.${name}.icloud`
+      return listed.files.some((entry) => entry.name === name || entry.name === placeholderName)
     } catch {
       return false
     }

@@ -31,7 +31,11 @@ export default function BackgroundActivityBannerBlock({ visibilityDelayMs = 300 
     return () => window.clearInterval(id)
   }, [activities.length])
 
-  const visible = activities.filter(a => now - a.startedAt >= visibilityDelayMs)
+  // Ambient-channel activities (vault syncs) render in the top-edge hairline
+  // (SyncProgressHairlineBlock), never here — the banner is for alerts.
+  const visible = activities.filter(
+    a => a.channel !== 'ambient' && now - a.startedAt >= visibilityDelayMs,
+  )
 
   // Collapse expanded state when nothing extra is around.
   useEffect(() => {

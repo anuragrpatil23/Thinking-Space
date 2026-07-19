@@ -41,6 +41,23 @@ export interface MoonSceneMessagePreferenceBlock {
  *  scene can refresh without a reload. */
 export const MOON_SCENE_MESSAGES_UPDATED_EVENT_BLOCK = 'thinking-space:moon-scene-messages-updated'
 
+/**
+ * Roaming mirror of the localStorage-backed AI-activity display prefs
+ * (storageKeyBlock getters/setters stay the synchronous source of truth on
+ * each device; ui.json carries them across devices). `null` = never set on
+ * any device — the device-local default applies. The range-summary provider
+ * deliberately does NOT roam: the Claude-CLI option only exists on Electron.
+ */
+export interface AiActivityRoamingPrefsBlock {
+  homePostItEnabled: boolean | null
+  setMode: boolean | null
+  calendarMode: boolean | null
+  aiTitlesEnabled: boolean | null
+  restDays: number[] | null
+  goodnotesReadingEnabled: boolean | null
+  goodnotesAnnotationGate: boolean | null
+}
+
 export interface VaultUiPreferencesBlock {
   explorerIconStyle: ExplorerIconStyleBlock
   newThoughtQuickDestinations: NewThoughtQuickDestinationPreferenceBlock[]
@@ -69,6 +86,7 @@ export interface VaultUiPreferencesBlock {
    *  particular note structure (daily insight files / memorization sessions)
    *  most users won't have. */
   showDailyHighlights: boolean
+  aiActivityPrefs: AiActivityRoamingPrefsBlock
 }
 
 /** Original hardcoded selected-row highlight; the default when unset. */
@@ -110,6 +128,15 @@ export const DEFAULT_VAULT_UI_PREFERENCES_BLOCK: VaultUiPreferencesBlock = {
   moonSceneMessages: [],
   moonSceneIdleAnimationsEnabled: true,
   showDailyHighlights: false,
+  aiActivityPrefs: {
+    homePostItEnabled: null,
+    setMode: null,
+    calendarMode: null,
+    aiTitlesEnabled: null,
+    restDays: null,
+    goodnotesReadingEnabled: null,
+    goodnotesAnnotationGate: null,
+  },
 }
 
 export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock {
@@ -127,6 +154,41 @@ export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock 
     moonSceneMessages: [],
     moonSceneIdleAnimationsEnabled: true,
     showDailyHighlights: false,
+    aiActivityPrefs: createDefaultAiActivityRoamingPrefsBlock(),
+  }
+}
+
+export function createDefaultAiActivityRoamingPrefsBlock(): AiActivityRoamingPrefsBlock {
+  return {
+    homePostItEnabled: null,
+    setMode: null,
+    calendarMode: null,
+    aiTitlesEnabled: null,
+    restDays: null,
+    goodnotesReadingEnabled: null,
+    goodnotesAnnotationGate: null,
+  }
+}
+
+function normalizeNullableBooleanBlock(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null
+}
+
+export function normalizeAiActivityRoamingPrefsBlock(value: unknown): AiActivityRoamingPrefsBlock {
+  if (!value || typeof value !== 'object') return createDefaultAiActivityRoamingPrefsBlock()
+  const record = value as Partial<AiActivityRoamingPrefsBlock>
+  return {
+    homePostItEnabled: normalizeNullableBooleanBlock(record.homePostItEnabled),
+    setMode: normalizeNullableBooleanBlock(record.setMode),
+    calendarMode: normalizeNullableBooleanBlock(record.calendarMode),
+    aiTitlesEnabled: normalizeNullableBooleanBlock(record.aiTitlesEnabled),
+    restDays: Array.isArray(record.restDays)
+      ? record.restDays.filter(
+          (n): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 6,
+        )
+      : null,
+    goodnotesReadingEnabled: normalizeNullableBooleanBlock(record.goodnotesReadingEnabled),
+    goodnotesAnnotationGate: normalizeNullableBooleanBlock(record.goodnotesAnnotationGate),
   }
 }
 
@@ -264,6 +326,7 @@ export function normalizeVaultUiPreferencesBlock(value: unknown): VaultUiPrefere
     showDailyHighlights: typeof record.showDailyHighlights === 'boolean'
       ? record.showDailyHighlights
       : DEFAULT_VAULT_UI_PREFERENCES_BLOCK.showDailyHighlights,
+    aiActivityPrefs: normalizeAiActivityRoamingPrefsBlock(record.aiActivityPrefs),
   }
 }
 

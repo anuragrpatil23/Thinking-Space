@@ -53,4 +53,10 @@ final class TopChromeState: ObservableObject {
     /// meaningful. Drives the morph from hamburger → chevron-back on the
     /// bottom chrome's drawer toggle button.
     @Published var canGoBack: Bool = false
+
+    /// iPad landscape runs the web app in desktop layout, where the React
+    /// nav rail is visible — the native drawer (and its hamburger) would be
+    /// a redundant second nav, so both hide. Set by RootShellViewController
+    /// from view bounds on every layout pass; always false on iPhone.
+    @Published var isPadLandscape: Bool = false
 }

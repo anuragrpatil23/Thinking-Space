@@ -122,12 +122,27 @@ export function getStorageItem(key: StorageKey): string | null {
   return getLocalStorageItemBlock(key)
 }
 
+// Roaming-settings write hook. The mirror (roamingSettingsBlock, an
+// integration — it needs the vault FS) registers here so this unit stays
+// dependency-free. Called after every successful local write.
+type StorageWriteListenerBlock = (key: StorageKey) => void
+let storageWriteListenerBlock: StorageWriteListenerBlock | null = null
+
+export function registerStorageWriteListenerBlock(listener: StorageWriteListenerBlock | null): void {
+  storageWriteListenerBlock = listener
+}
+
 export function setStorageItem(key: StorageKey, value: string): void {
   if (key === STORAGE_KEYS.vaultRoot && isElectronVaultRootBridgeAvailableBlock()) {
     writeElectronPersistedVaultRootBlock(value)
     return
   }
   setLocalStorageItemBlock(key, value)
+  try {
+    storageWriteListenerBlock?.(key)
+  } catch {
+    // The mirror must never break a settings write.
+  }
 }
 
 export function getJsonStorageItem<T>(key: StorageKey, fallback: T): T {
@@ -159,7 +174,7 @@ export function getGoodnotesAnnotationGate(): boolean {
 }
 
 export function setGoodnotesAnnotationGate(enabled: boolean): void {
-  setLocalStorageItemBlock(STORAGE_KEYS.goodnotesReadingAnnotationGate, enabled ? 'true' : 'false')
+  setStorageItem(STORAGE_KEYS.goodnotesReadingAnnotationGate, enabled ? 'true' : 'false')
 }
 
 /**
@@ -176,7 +191,7 @@ export function getGoodnotesReadingEnabled(): boolean {
 }
 
 export function setGoodnotesReadingEnabled(enabled: boolean): void {
-  setLocalStorageItemBlock(STORAGE_KEYS.goodnotesReadingEnabled, enabled ? 'true' : 'false')
+  setStorageItem(STORAGE_KEYS.goodnotesReadingEnabled, enabled ? 'true' : 'false')
 }
 
 /**
@@ -189,7 +204,7 @@ export function getAiActivityHomePostItEnabled(): boolean {
 }
 
 export function setAiActivityHomePostItEnabled(enabled: boolean): void {
-  setLocalStorageItemBlock(STORAGE_KEYS.aiActivityHomePostItEnabled, enabled ? 'true' : 'false')
+  setStorageItem(STORAGE_KEYS.aiActivityHomePostItEnabled, enabled ? 'true' : 'false')
 }
 
 /**
@@ -205,7 +220,7 @@ export function getAiActivitySetMode(): boolean {
 }
 
 export function setAiActivitySetMode(enabled: boolean): void {
-  setLocalStorageItemBlock(STORAGE_KEYS.aiActivitySetMode, enabled ? 'true' : 'false')
+  setStorageItem(STORAGE_KEYS.aiActivitySetMode, enabled ? 'true' : 'false')
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(AI_ACTIVITY_SET_MODE_EVENT, { detail: enabled }))
   }
@@ -228,7 +243,7 @@ export function getAiActivityCalendarMode(): boolean {
 }
 
 export function setAiActivityCalendarMode(enabled: boolean): void {
-  setLocalStorageItemBlock(STORAGE_KEYS.aiActivityCalendarMode, enabled ? 'true' : 'false')
+  setStorageItem(STORAGE_KEYS.aiActivityCalendarMode, enabled ? 'true' : 'false')
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(AI_ACTIVITY_CALENDAR_MODE_EVENT, { detail: enabled }))
   }
@@ -250,7 +265,7 @@ export function getAiActivityAiTitlesEnabled(): boolean {
 }
 
 export function setAiActivityAiTitlesEnabled(enabled: boolean): void {
-  setLocalStorageItemBlock(STORAGE_KEYS.aiActivityAiTitlesEnabled, enabled ? 'true' : 'false')
+  setStorageItem(STORAGE_KEYS.aiActivityAiTitlesEnabled, enabled ? 'true' : 'false')
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(AI_ACTIVITY_AI_TITLES_EVENT, { detail: enabled }))
   }
@@ -327,7 +342,7 @@ export function setAiActivityRestDays(days: number[]): void {
   const clean = Array.from(new Set(days.filter(n => n >= 0 && n <= 6 && Number.isInteger(n)))).sort(
     (a, b) => a - b,
   )
-  setLocalStorageItemBlock(STORAGE_KEYS.aiActivityRestDays, JSON.stringify(clean))
+  setStorageItem(STORAGE_KEYS.aiActivityRestDays, JSON.stringify(clean))
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(AI_ACTIVITY_REST_DAYS_EVENT, { detail: clean }))
   }

@@ -14,9 +14,29 @@ import {
   type ExplorerIconStyleBlock,
   type MoonSceneMessagePreferenceBlock,
   type NewThoughtQuickDestinationPreferenceBlock,
+  type AiActivityRoamingPrefsBlock,
   type VaultSchedulerTaskPreferenceBlock,
   type VaultUiPreferencesBlock,
 } from '@/services/lego_blocks/units/vaultUiPreferencesBlock'
+import {
+  STORAGE_KEYS,
+  getAiActivityAiTitlesEnabled,
+  getAiActivityCalendarMode,
+  getAiActivityHomePostItEnabled,
+  getAiActivityRestDays,
+  getAiActivitySetMode,
+  getGoodnotesAnnotationGate,
+  getGoodnotesReadingEnabled,
+  getStoredVaultRoot,
+  registerStorageWriteListenerBlock,
+  setAiActivityAiTitlesEnabled,
+  setAiActivityCalendarMode,
+  setAiActivityHomePostItEnabled,
+  setAiActivityRestDays,
+  setAiActivitySetMode,
+  setGoodnotesAnnotationGate,
+  setGoodnotesReadingEnabled,
+} from '@/services/lego_blocks/units/storageKeyBlock'
 
 const THINK_SPACE_DIR_ORCH = '.thinking-space'
 const LEGACY_THINK_SPACE_DIR_ORCH = '.think-space'
@@ -216,3 +236,100 @@ export async function setSchedulerTasksPreferenceOrch(
 }
 
 export type { VaultSchedulerTaskPreferenceBlock }
+
+// ── AI-activity prefs roaming (added 2026-07-19) ──
+//
+// The AI-activity display prefs live in localStorage (storageKeyBlock
+// getters/setters — synchronous reads everywhere). This wiring mirrors them
+// through ui.json so they carry across devices, reusing this orchestrator's
+// existing read-merge-write:
+// - startup PULL: vault values (non-null) overwrite local, via the public
+//   setters so their change events fire and mounted UI updates live.
+// - write-through PUSH: local setter writes (storageKeyBlock's write
+//   listener) schedule a debounced snapshot push into ui.json.
+
+const AI_ACTIVITY_ROAMING_STORAGE_KEYS_ORCH = new Set<string>([
+  STORAGE_KEYS.aiActivityHomePostItEnabled,
+  STORAGE_KEYS.aiActivitySetMode,
+  STORAGE_KEYS.aiActivityCalendarMode,
+  STORAGE_KEYS.aiActivityAiTitlesEnabled,
+  STORAGE_KEYS.aiActivityRestDays,
+  STORAGE_KEYS.goodnotesReadingEnabled,
+  STORAGE_KEYS.goodnotesReadingAnnotationGate,
+])
+
+function snapshotLocalAiActivityPrefsOrch(): AiActivityRoamingPrefsBlock {
+  return {
+    homePostItEnabled: getAiActivityHomePostItEnabled(),
+    setMode: getAiActivitySetMode(),
+    calendarMode: getAiActivityCalendarMode(),
+    aiTitlesEnabled: getAiActivityAiTitlesEnabled(),
+    restDays: getAiActivityRestDays(),
+    goodnotesReadingEnabled: getGoodnotesReadingEnabled(),
+    goodnotesAnnotationGate: getGoodnotesAnnotationGate(),
+  }
+}
+
+let applyingRoamingPullOrch = false
+let roamingPushTimerOrch: ReturnType<typeof setTimeout> | null = null
+
+function scheduleAiActivityPrefsPushOrch(): void {
+  if (roamingPushTimerOrch !== null) clearTimeout(roamingPushTimerOrch)
+  roamingPushTimerOrch = setTimeout(() => {
+    roamingPushTimerOrch = null
+    void updateVaultUiPreferencesOrch({
+      aiActivityPrefs: snapshotLocalAiActivityPrefsOrch(),
+    }).catch((error: unknown) => {
+      console.warn('[vaultUiPreferencesOrch] AI-activity prefs push failed:', error)
+    })
+  }, 1500)
+}
+
+function applyRoamedAiActivityPrefsOrch(prefs: AiActivityRoamingPrefsBlock): void {
+  applyingRoamingPullOrch = true
+  try {
+    if (prefs.homePostItEnabled !== null && prefs.homePostItEnabled !== getAiActivityHomePostItEnabled()) {
+      setAiActivityHomePostItEnabled(prefs.homePostItEnabled)
+    }
+    if (prefs.setMode !== null && prefs.setMode !== getAiActivitySetMode()) {
+      setAiActivitySetMode(prefs.setMode)
+    }
+    if (prefs.calendarMode !== null && prefs.calendarMode !== getAiActivityCalendarMode()) {
+      setAiActivityCalendarMode(prefs.calendarMode)
+    }
+    if (prefs.aiTitlesEnabled !== null && prefs.aiTitlesEnabled !== getAiActivityAiTitlesEnabled()) {
+      setAiActivityAiTitlesEnabled(prefs.aiTitlesEnabled)
+    }
+    if (prefs.restDays !== null && JSON.stringify(prefs.restDays) !== JSON.stringify(getAiActivityRestDays())) {
+      setAiActivityRestDays(prefs.restDays)
+    }
+    if (prefs.goodnotesReadingEnabled !== null && prefs.goodnotesReadingEnabled !== getGoodnotesReadingEnabled()) {
+      setGoodnotesReadingEnabled(prefs.goodnotesReadingEnabled)
+    }
+    if (prefs.goodnotesAnnotationGate !== null && prefs.goodnotesAnnotationGate !== getGoodnotesAnnotationGate()) {
+      setGoodnotesAnnotationGate(prefs.goodnotesAnnotationGate)
+    }
+  } finally {
+    applyingRoamingPullOrch = false
+  }
+}
+
+/**
+ * Install roaming for the AI-activity prefs: one startup pull from ui.json,
+ * then write-through pushes on local changes. Idempotent per app session.
+ */
+export async function initAiActivityPrefsRoamingOrch(): Promise<void> {
+  registerStorageWriteListenerBlock((key) => {
+    if (applyingRoamingPullOrch) return
+    if (!AI_ACTIVITY_ROAMING_STORAGE_KEYS_ORCH.has(key)) return
+    scheduleAiActivityPrefsPushOrch()
+  })
+
+  if (!getStoredVaultRoot()?.trim()) return
+  try {
+    const preferences = await readVaultUiPreferencesOrch()
+    applyRoamedAiActivityPrefsOrch(preferences.aiActivityPrefs)
+  } catch (error) {
+    console.warn('[vaultUiPreferencesOrch] AI-activity prefs pull failed:', error)
+  }
+}

@@ -96,20 +96,33 @@ DEVICES_JSON="$TMP_DIR/ios-devices-$STAMP.json"
 xcrun devicectl list devices --json-output "$DEVICES_JSON" -q >/dev/null 2>&1 \
   || fail "devicectl failed — is Xcode installed?"
 
-WANT="${TS_IOS_DEVICE:-}"
-if [ -z "$WANT" ] && [ -f "$DEVICE_CONFIG" ]; then
-  WANT="$($JQ -r '.deviceName // empty' "$DEVICE_CONFIG" 2>/dev/null || true)"
+# Device list: TS_IOS_DEVICE (comma-separated names/UDIDs) beats the config
+# file, which is {"deviceNames": ["Ichigo","Ikigai"]} (legacy singular
+# "deviceName" still honored). One build installs to every listed device.
+WANT_LIST="${TS_IOS_DEVICE:-}"
+if [ -z "$WANT_LIST" ] && [ -f "$DEVICE_CONFIG" ]; then
+  WANT_LIST="$($JQ -r 'if .deviceNames then (.deviceNames | join(",")) else (.deviceName // empty) end' "$DEVICE_CONFIG" 2>/dev/null || true)"
 fi
 
-if [ -n "$WANT" ]; then
-  DEVICE_ROW="$($JQ -c --arg w "$WANT" '
-    [.result.devices[]
-     | select(.connectionProperties.pairingState == "paired")
-     | select((.deviceProperties.name | ascii_downcase) == ($w | ascii_downcase)
-              or .identifier == $w
-              or (.hardwareProperties.udid // "") == $w)]
-    | first // empty' "$DEVICES_JSON")"
-  [ -n "$DEVICE_ROW" ] || fail "device '$WANT' not found among paired devices (xcrun devicectl list devices)"
+DEVICE_NAMES=()
+DEVICE_IDS=()
+if [ -n "$WANT_LIST" ]; then
+  IFS=',' read -ra WANTED <<< "$WANT_LIST"
+  for WANT in "${WANTED[@]}"; do
+    WANT="$(echo "$WANT" | sed 's/^ *//;s/ *$//')"
+    [ -n "$WANT" ] || continue
+    DEVICE_ROW="$($JQ -c --arg w "$WANT" '
+      [.result.devices[]
+       | select(.connectionProperties.pairingState == "paired")
+       | select((.deviceProperties.name | ascii_downcase) == ($w | ascii_downcase)
+                or .identifier == $w
+                or (.hardwareProperties.udid // "") == $w)]
+      | first // empty' "$DEVICES_JSON")"
+    [ -n "$DEVICE_ROW" ] || fail "device '$WANT' not found among paired devices (xcrun devicectl list devices)"
+    DEVICE_NAMES+=("$(echo "$DEVICE_ROW" | $JQ -r '.deviceProperties.name')")
+    DEVICE_IDS+=("$(echo "$DEVICE_ROW" | $JQ -r '.identifier')")
+  done
+  [ "${#DEVICE_IDS[@]}" -gt 0 ] || fail "no devices resolved from '$WANT_LIST'"
 else
   # No config: exactly one paired iPhone → adopt it and persist the choice.
   CANDIDATES="$($JQ -c '
@@ -117,18 +130,16 @@ else
      | select(.connectionProperties.pairingState == "paired")
      | select(.hardwareProperties.deviceType == "iPhone")]' "$DEVICES_JSON")"
   COUNT="$(echo "$CANDIDATES" | $JQ 'length')"
-  [ "$COUNT" = "1" ] || fail "no device configured — set one with: echo '{\"deviceName\": \"<name>\"}' > $DEVICE_CONFIG (paired iPhones found: $COUNT)"
+  [ "$COUNT" = "1" ] || fail "no device configured — set one with: echo '{\"deviceNames\": [\"<name>\"]}' > $DEVICE_CONFIG (paired iPhones found: $COUNT)"
   DEVICE_ROW="$(echo "$CANDIDATES" | $JQ -c '.[0]')"
-  $JQ -n --arg n "$(echo "$DEVICE_ROW" | $JQ -r '.deviceProperties.name')" \
-    '{deviceName: $n}' > "$DEVICE_CONFIG"
+  DEVICE_NAMES+=("$(echo "$DEVICE_ROW" | $JQ -r '.deviceProperties.name')")
+  DEVICE_IDS+=("$(echo "$DEVICE_ROW" | $JQ -r '.identifier')")
+  $JQ -n --arg n "${DEVICE_NAMES[0]}" '{deviceNames: [$n]}' > "$DEVICE_CONFIG"
   say "adopted sole paired iPhone as default device (saved to $DEVICE_CONFIG)"
 fi
-
-DEVICE_NAME="$(echo "$DEVICE_ROW" | $JQ -r '.deviceProperties.name')"
-DEVICE_ID="$(echo "$DEVICE_ROW" | $JQ -r '.identifier')"
 rm -f "$DEVICES_JSON"
 
-say "checkpoint-ios $TREE_LABEL  device=$DEVICE_NAME ($DEVICE_ID)"
+say "checkpoint-ios $TREE_LABEL  devices=$(IFS=','; echo "${DEVICE_NAMES[*]}")"
 
 if [ $DRY = 1 ]; then
   say "✓ preflight ok (dry run — no build)"
@@ -165,28 +176,57 @@ xcodebuild \
 APP_PATH="$DERIVED_DIR/Build/Products/Release-iphoneos/App.app"
 [ -d "$APP_PATH" ] || fail "expected artifact missing: $APP_PATH"
 
-# ─── Install + relaunch on device ────────────────────────────────────────────
-# Needs the iPhone on USB or the same Wi-Fi as this Mac. The first wireless
+# ─── Install + relaunch on each device ───────────────────────────────────────
+# Needs each device on USB or the same Wi-Fi as this Mac. The first wireless
 # contact often hits a cold CoreDevice tunnel ("connection reset by peer") —
 # the attempt itself wakes it, so retry a few times before giving up.
-say "installing to $DEVICE_NAME"
-INSTALLED=0
-for attempt in 1 2 3 4; do
-  if xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH" >>"$LOG" 2>&1; then
-    INSTALLED=1
-    break
-  fi
-  say "install attempt $attempt failed — retrying (waking device tunnel)…"
-  sleep $((attempt * 3))
-done
-[ $INSTALLED = 1 ] || fail "install failed after 4 attempts — is $DEVICE_NAME on the same network (or plugged in) and unlocked?"
-
-# Best-effort relaunch so the new build is what's on screen. Fails quietly if
-# the device is locked — the install already succeeded, launch is a nicety.
-xcrun devicectl device process launch --terminate-existing \
-  --device "$DEVICE_ID" "$BUNDLE_ID" >>"$LOG" 2>&1 \
-  && LAUNCHED=" (relaunched)" || LAUNCHED=" (installed; launch it manually — device likely locked)"
-
+# Multi-device contract: the ship succeeds if AT LEAST ONE device took the
+# install; unreachable extras are reported, never block the checkpoint.
 MARKETING_VERSION="$(defaults read "$APP_PATH/Info.plist" CFBundleShortVersionString 2>/dev/null || echo '?')"
-say "✓ shipped v$MARKETING_VERSION ($TREE_LABEL) → $DEVICE_NAME$LAUNCHED"
+ANY_INSTALLED=0
+RESULTS=()
+for i in "${!DEVICE_IDS[@]}"; do
+  DEVICE_NAME="${DEVICE_NAMES[$i]}"
+  DEVICE_ID="${DEVICE_IDS[$i]}"
+  say "installing to $DEVICE_NAME"
+  # Kill the app if it's running BEFORE replacing it. Installing over a live
+  # process is what left iPads (which get relaunched every ship, so the app
+  # is always running) with a dead "app no longer available" icon that only
+  # a manual Xcode install cleared. Best-effort: no-op when not running.
+  # Process rows are "PID /path/.../App.app/App" — the bundle DIRECTORY is
+  # App.app (xcode product name), not the bundle id, so match the suffix.
+  PID="$(xcrun devicectl device info processes --device "$DEVICE_ID" 2>/dev/null \
+    | awk '$2 ~ /\/App\.app\/App$/ {print $1; exit}')"
+  if [ -n "$PID" ]; then
+    xcrun devicectl device process signal --device "$DEVICE_ID" --pid "$PID" --signal SIGKILL >>"$LOG" 2>&1 || true
+    sleep 1
+  fi
+  INSTALLED=0
+  for attempt in 1 2 3 4; do
+    if xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH" >>"$LOG" 2>&1; then
+      INSTALLED=1
+      break
+    fi
+    say "install attempt $attempt failed — retrying (waking device tunnel)…"
+    sleep $((attempt * 3))
+  done
+  if [ $INSTALLED = 1 ]; then
+    ANY_INSTALLED=1
+    # Best-effort relaunch so the new build is what's on screen. Fails
+    # quietly if the device is locked — the install already succeeded.
+    if xcrun devicectl device process launch --terminate-existing \
+        --device "$DEVICE_ID" "$BUNDLE_ID" >>"$LOG" 2>&1; then
+      RESULTS+=("$DEVICE_NAME: relaunched")
+    else
+      RESULTS+=("$DEVICE_NAME: installed (launch it manually — device likely locked)")
+    fi
+  else
+    RESULTS+=("$DEVICE_NAME: UNREACHABLE (same network / plugged in / unlocked?)")
+  fi
+done
+
+[ $ANY_INSTALLED = 1 ] || fail "install failed on every device — ${RESULTS[*]}"
+
+say "✓ shipped v$MARKETING_VERSION ($TREE_LABEL)"
+for r in "${RESULTS[@]}"; do say "  $r"; done
 say "log: $LOG"

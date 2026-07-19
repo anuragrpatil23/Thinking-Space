@@ -1,8 +1,18 @@
 import SwiftUI
 import UIKit
 
+/// Total height of the iPad top chrome below the status bar (a single
+/// toolbar row: buttons + centered Files-style tab pill). Shared with
+/// RootShellViewController (container constraint) and PhoneShellView (veil
+/// depth) — keep the three in sync with the web's clearance rule in
+/// index.css (48px).
+let nativeChromePadBarHeight: CGFloat = 48
+
 private enum NativeChromeMetrics {
     static let outerHorizontalPadding: CGFloat = 16
+    static let padCompactButtonSize: CGFloat = 38
+    static let padTabPillSegmentHeight: CGFloat = 30
+    static let padTabPillMaxWidth: CGFloat = 520
     static let bottomChromeBottomPadding: CGFloat = 0
     static let floatingControlHeight: CGFloat = 40
     static let floatingCollapsedControlHeight: CGFloat = 34
@@ -106,6 +116,11 @@ private struct FloatingGlassCapsuleView: View {
 private func floatingChromeCapsule() -> some View {
     FloatingGlassCapsuleView()
 }
+
+// NOTE (2026-07-19): do NOT put `glassEffect` shapes inside a ScrollView
+// (ghost backdrop copies at unscrolled positions) and do NOT wrap this bar
+// in a GlassEffectContainer (washed every button into a translucent ghost).
+// The Safari-style segmented tab bar avoids both by being flat translucency.
 
 private func formatBadgeCount(_ count: Int) -> String {
     count > 99 ? "99+" : "\(max(0, count))"
@@ -272,15 +287,30 @@ struct TopChromeView: View {
     @ObservedObject var state: TopChromeState
     @Environment(\.colorScheme) private var colorScheme
 
+    /// iPad (Files-app model, decided 2026-07-19): the veil is tall enough
+    /// to hold the whole top-bar button zone, so the mask stays solid much
+    /// deeper before feathering — content scrolls under the buttons through
+    /// frosted glass, not past a thin status strip.
+    var coversPadBarZone: Bool = false
+
     /// Instagram model: the veil is GLASS, not frost — content color bleeds
     /// through and the mask fades early. Same soft short mask at rest and
     /// while scrolling.
-    private let maskStops: [Gradient.Stop] = [
-        .init(color: .black, location: 0.0),
-        .init(color: .black, location: 0.3),
-        .init(color: .black.opacity(0.5), location: 0.6),
-        .init(color: .clear, location: 1.0),
-    ]
+    private var maskStops: [Gradient.Stop] {
+        coversPadBarZone
+            ? [
+                .init(color: .black, location: 0.0),
+                .init(color: .black, location: 0.72),
+                .init(color: .black.opacity(0.5), location: 0.86),
+                .init(color: .clear, location: 1.0),
+            ]
+            : [
+                .init(color: .black, location: 0.0),
+                .init(color: .black, location: 0.3),
+                .init(color: .black.opacity(0.5), location: 0.6),
+                .init(color: .clear, location: 1.0),
+            ]
+    }
 
     var body: some View {
         ZStack {
@@ -415,6 +445,12 @@ struct TopDrawerMenuView: View {
 struct BottomChromeView: View {
     @ObservedObject var state: TopChromeState
 
+    /// iPad renders this chrome as a persistent TOP bar with a Safari-style
+    /// tab strip (decided 2026-07-19): the floating phone dock read as a
+    /// blown-up iPhone at 11–13", and iPad convention puts primary chrome at
+    /// the top. Phone keeps the collapsing bottom dock.
+    var padLayout: Bool = false
+
     let onDrawerToggleTap: () -> Void
     let onSidebarToggleTap: () -> Void
     let onBackTap: () -> Void
@@ -436,6 +472,341 @@ struct BottomChromeView: View {
     @State private var toolsMenuPresented = false
 
     var body: some View {
+        if padLayout {
+            padTopBar
+        } else {
+            phoneBottomBar
+        }
+    }
+
+    // MARK: - iPad top bar
+
+    /// Persistent top bar, ONE row (Files-app model, decided 2026-07-19,
+    /// replacing the two-row Safari segmented bar — a lone tab stretched into
+    /// a full-width strip read as a broken title bar): hamburger/back on the
+    /// left, a centered glass pill holding the sidebar toggle + tab segments
+    /// (active segment gets the soft highlight and its ✕), action buttons on
+    /// the right. No scroll-collapse on iPad — the bar simply stays.
+    private var padTopBar: some View {
+        ZStack {
+            HStack(spacing: 8) {
+                // Landscape iPad shows the React desktop nav rail — the
+                // native drawer would be a second nav, so the hamburger
+                // hides. The slot still appears as a back button when the
+                // push stack allows it.
+                if !state.isPadLandscape || state.canGoBack {
+                    padDrawerButton
+                }
+
+                // Landscape = web desktop layout; the side-panel toggle
+                // separates out of the pill into its own glass button at the
+                // far left, mirroring Electron's SidebarChromeButtonBlock
+                // position. Portrait keeps it inside the Files-style pill.
+                if state.isPadLandscape && state.canToggleSidebar {
+                    padGlassIconButton(
+                        systemName: state.sidebarToggleActive
+                            ? "rectangle.lefthalf.inset.filled.arrow.left"
+                            : "sidebar.left",
+                        action: onSidebarToggleTap,
+                        accessibilityLabel: state.sidebarToggleLabel
+                    )
+                    .animation(.easeInOut(duration: 0.22), value: state.sidebarToggleActive)
+                }
+
+                Spacer(minLength: 0)
+
+                if state.showSearch {
+                    padGlassIconButton(
+                        systemName: "magnifyingglass",
+                        action: onSearchTap,
+                        accessibilityLabel: "Search"
+                    )
+                }
+
+                padGlassIconButton(
+                    systemName: "arrow.clockwise",
+                    action: onRefreshTap,
+                    accessibilityLabel: "Refresh workspace",
+                    enabled: state.canRefresh
+                )
+
+                padOverflowMenu
+            }
+
+            padFilesTabPill
+                .frame(maxWidth: NativeChromeMetrics.padTabPillMaxWidth)
+        }
+        .padding(.horizontal, NativeChromeMetrics.outerHorizontalPadding)
+        .padding(.top, 2)
+        .animation(.easeInOut(duration: 0.22), value: state.isPadLandscape)
+    }
+
+    private var padDrawerButton: some View {
+        Button(action: {
+            if state.canGoBack {
+                onBackTap()
+            } else {
+                onDrawerToggleTap()
+            }
+        }) {
+            morphingDrawerOrBackIcon
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(state.drawerProgress > 0.01 ? Color.accentColor : .primary)
+                .frame(width: NativeChromeMetrics.padCompactButtonSize, height: NativeChromeMetrics.padCompactButtonSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(state.canGoBack ? "Back" : "Open navigation")
+        .background {
+            floatingChromeCapsule()
+        }
+        .animation(.easeInOut(duration: 0.22), value: state.canGoBack)
+    }
+
+    // MARK: - Files-style tab pill
+
+    /// One centered glass capsule, exactly the Files-app top-center pill:
+    /// sidebar toggle on the leading edge (when the surface has a native
+    /// side panel), then the tab segments hugging their content — the
+    /// active one carries the soft highlight and its ✕ — and the tab
+    /// controls (+ new, grid switcher) folded into the trailing edge like
+    /// Safari's tab bar. The pill never stretches: a single "Home" tab is a
+    /// small centered chip, not a full-width strip. The grid button opens
+    /// the switcher as an anchored POPOVER, not the phone's modal sheet.
+    private var padFilesTabPill: some View {
+        HStack(spacing: 2) {
+            if state.canToggleSidebar && !state.isPadLandscape {
+                padPillIconButton(
+                    systemName: state.sidebarToggleActive
+                        ? "rectangle.lefthalf.inset.filled.arrow.left"
+                        : "sidebar.left",
+                    action: onSidebarToggleTap,
+                    accessibilityLabel: state.sidebarToggleLabel
+                )
+            }
+
+            ForEach(state.tabs, id: \.id) { tab in
+                padPillTabSegment(tab)
+            }
+
+            padPillDivider
+
+            padPillIconButton(
+                systemName: "plus",
+                action: onCreateTap,
+                accessibilityLabel: "Create note"
+            )
+
+            padPillIconButton(
+                systemName: "square.grid.2x2",
+                action: {
+                    onTabSwitcherWillPresent()
+                    tabSwitcherPresented = true
+                },
+                accessibilityLabel: "Tab switcher"
+            )
+            .popover(isPresented: $tabSwitcherPresented, arrowEdge: .top) {
+                padTabSwitcherPopover
+            }
+        }
+        .padding(.horizontal, 5)
+        .frame(height: NativeChromeMetrics.padCompactButtonSize)
+        .background {
+            floatingChromeCapsule()
+        }
+        .animation(.easeInOut(duration: 0.18), value: state.tabs)
+        .animation(.easeInOut(duration: 0.22), value: state.sidebarToggleActive)
+    }
+
+    private var padPillDivider: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.14))
+            .frame(width: 0.5, height: 16)
+            .padding(.horizontal, 3)
+    }
+
+    private func padPillIconButton(
+        systemName: String,
+        action: @escaping () -> Void,
+        accessibilityLabel: String
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.primary)
+                .frame(width: 34, height: NativeChromeMetrics.padTabPillSegmentHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// Compact anchored version of the tab grid: no title row, cards sized
+    /// for a popover (the phone's full-sheet grid blew up into giant cards
+    /// inside the iPad form sheet). Width follows the card count so two
+    /// tabs make a small two-up popover, not a screen-wide modal.
+    private var padTabSwitcherPopover: some View {
+        let cardCount = state.tabs.count + 1  // + the New Tab card
+        let columns = min(max(cardCount, 2), 3)
+        let cardWidth: CGFloat = 168
+        let spacing = NativeTabGridMetrics.gridSpacing
+        let width = CGFloat(columns) * cardWidth + CGFloat(columns - 1) * spacing + 40
+        let rows = Int(ceil(Double(cardCount) / Double(columns)))
+        let cardHeight = cardWidth / NativeTabGridMetrics.cardAspectRatio + 30
+        let height = CGFloat(min(rows, 2)) * (cardHeight + NativeTabGridMetrics.rowSpacing) + 24
+
+        return NativeTabSwitcherSheetView(
+            state: state,
+            compact: true,
+            onSelectTab: { tabId in
+                tabSwitcherPresented = false
+                onSelectTab(tabId)
+            },
+            onCloseTab: onCloseTab,
+            onCreateTap: {
+                tabSwitcherPresented = false
+                onCreateTap()
+            }
+        )
+        .frame(width: width, height: height)
+    }
+
+    @ViewBuilder
+    private func padPillTabSegment(_ tab: TopChromeTabItem) -> some View {
+        let active = tab.active
+        let closable = active && state.tabs.count > 1
+        HStack(spacing: 5) {
+            if closable {
+                Button(action: { onCloseTab(tab.id) }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close \(tab.label)")
+            }
+
+            Text(tab.label)
+                .font(.system(size: 13, weight: active ? .semibold : .regular))
+                .foregroundStyle(active ? Color.primary : Color.primary.opacity(0.7))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, closable ? 10 : 14)
+        .frame(height: NativeChromeMetrics.padTabPillSegmentHeight)
+        .background {
+            if active {
+                Capsule().fill(padActiveSegmentFill)
+            }
+        }
+        .contentShape(Capsule())
+        .onTapGesture {
+            if !active {
+                onSelectTab(tab.id)
+            }
+        }
+    }
+
+    @Environment(\.colorScheme) private var padColorScheme
+
+    private var padActiveSegmentFill: Color {
+        padColorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.07)
+    }
+
+    private var padOverflowMenu: some View {
+        Menu {
+            if state.canToggleHeader {
+                Button(action: onHeaderToggleTap) {
+                    Label(state.headerToggleLabel, systemImage: "switch.2")
+                }
+            }
+
+            Button(action: onDebugTap) {
+                Label("Debug Console", systemImage: "ladybug")
+            }
+
+            Button(action: onSyncTap) {
+                Label("Sync Folder", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .disabled(!state.canSync)
+
+            Button(action: onRebuildTap) {
+                Label("Rebuild Index + Cache", systemImage: "externaldrive")
+            }
+            .disabled(!state.canRebuild)
+
+            if state.canGitCommit {
+                Divider()
+
+                Button(action: onGitCommitTap) {
+                    Label("Git Commit", systemImage: "checkmark.circle")
+                }
+            }
+
+            if state.canGitPush {
+                Button(action: onGitPushTap) {
+                    Label("Git Push", systemImage: "arrow.up.circle")
+                }
+            }
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .frame(width: NativeChromeMetrics.padCompactButtonSize, height: NativeChromeMetrics.padCompactButtonSize)
+                    .contentShape(Rectangle())
+
+                if state.toolsBadgeCount > 0 {
+                    Text(formatBadgeCount(state.toolsBadgeCount))
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 4)
+                        .frame(minWidth: 15, minHeight: 15)
+                        .background(Color.red)
+                        .clipShape(Capsule())
+                        .offset(x: 3, y: 0)
+                }
+            }
+        }
+        // Menus tint their label with the accent color regardless of the
+        // label's own foregroundStyle — force the neutral primary.
+        .buttonStyle(.plain)
+        .tint(.primary)
+        .background {
+            floatingChromeCapsule()
+        }
+        .accessibilityLabel("More options")
+    }
+
+    /// Compact Safari-sized glass button — no outer padding halo; the glass
+    /// capsule IS the 38pt hit target (the earlier 52pt capsules read as
+    /// "huge", 2026-07-19).
+    private func padGlassIconButton(
+        systemName: String,
+        action: @escaping () -> Void,
+        accessibilityLabel: String,
+        enabled: Bool = true
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(enabled ? .primary : .secondary)
+                .frame(width: NativeChromeMetrics.padCompactButtonSize, height: NativeChromeMetrics.padCompactButtonSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .accessibilityLabel(accessibilityLabel)
+        .background {
+            floatingChromeCapsule()
+        }
+    }
+
+    // MARK: - Phone bottom bar
+
+    @ViewBuilder
+    private var phoneBottomBar: some View {
         // Safari model (decided 2026-07-19): at rest the bar is hamburger/back
         // + tabs pill + side-panel toggle + chevron menu. On scroll everything
         // except the pill scale-fades away and the pill shrinks into a single
@@ -836,12 +1207,20 @@ private struct NativeTabSwitcherSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var state: TopChromeState
 
+    /// Popover mode (iPad pill): no title row, cards at a fixed compact
+    /// size — the host sizes the popover frame to the card count. The
+    /// phone keeps the full sheet with the Tabs/Done header.
+    var compact: Bool = false
+
     let onSelectTab: (String) -> Void
     let onCloseTab: (String) -> Void
     let onCreateTap: () -> Void
 
     private var columns: [GridItem] {
-        [
+        if compact {
+            return [GridItem(.adaptive(minimum: 150, maximum: 200), spacing: NativeTabGridMetrics.gridSpacing)]
+        }
+        return [
             GridItem(.flexible(), spacing: NativeTabGridMetrics.gridSpacing),
             GridItem(.flexible(), spacing: NativeTabGridMetrics.gridSpacing),
         ]
@@ -849,21 +1228,23 @@ private struct NativeTabSwitcherSheetView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Tabs")
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(.primary)
+            if !compact {
+                HStack {
+                    Text("Tabs")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(.primary)
 
-                Spacer()
+                    Spacer()
 
-                Button("Done") { dismiss() }
-                    .font(.system(size: 16, weight: .semibold))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Color.accentColor)
+                    Button("Done") { dismiss() }
+                        .font(.system(size: 16, weight: .semibold))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 22)
+                .padding(.bottom, 10)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 22)
-            .padding(.bottom, 10)
 
             ScrollView {
                 LazyVGrid(columns: columns, spacing: NativeTabGridMetrics.rowSpacing) {
@@ -881,8 +1262,8 @@ private struct NativeTabSwitcherSheetView: View {
                     newTabCard
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 28)
+                .padding(.top, compact ? 16 : 8)
+                .padding(.bottom, compact ? 16 : 28)
                 .animation(.spring(response: 0.34, dampingFraction: 0.86), value: state.tabs)
             }
         }

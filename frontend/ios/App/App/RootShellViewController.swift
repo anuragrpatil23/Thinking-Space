@@ -45,6 +45,11 @@ final class RootShellViewController: UIViewController {
 
     private var isDrawerOpen: Bool = false
     private var leftDrawerWidthConstraint: NSLayoutConstraint?
+    /// iPad: the top chrome bar compacts into the visible content area while
+    /// the drawer is open (leading inset follows the drawer slide offset) —
+    /// otherwise the drawer buries the hamburger and the centered tab pill
+    /// drifts off-center relative to the shifted content.
+    private var bottomChromeLeadingConstraint: NSLayoutConstraint?
 
     private var pushCoordinator: PushNavigationCoordinator?
     private lazy var stubNavBridge: StubPushNavigationBridge = StubPushNavigationBridge()
@@ -103,9 +108,16 @@ final class RootShellViewController: UIViewController {
         )
     )
 
+    /// iPad gets the chrome as a persistent TOP bar (Safari-style tab strip);
+    /// iPhone keeps the collapsing bottom dock. See BottomChromeView.padLayout.
+    private var isPadChrome: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
+
     private lazy var bottomChromeHostingVC = UIHostingController(
         rootView: BottomChromeView(
             state: chromeState,
+            padLayout: isPadChrome,
             onDrawerToggleTap: { [weak self] in self?.toggleDrawer() },
             onSidebarToggleTap: { [weak self] in self?.chromePlugin?.emitSidebarToggleTap() },
             onBackTap: { [weak self] in _ = self?.popNavigation() },
@@ -154,6 +166,10 @@ final class RootShellViewController: UIViewController {
     private lazy var leftEdgeGestureRecognizer: UIScreenEdgePanGestureRecognizer = {
         let r = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleLeftEdgePan(_:)))
         r.edges = .left
+        // WKWebView's internal scroll recognizers win the gesture race and
+        // the edge pan never fires over web content — simultaneous
+        // recognition (via the delegate below) lets it track anyway.
+        r.delegate = self
         return r
     }()
 
@@ -162,7 +178,12 @@ final class RootShellViewController: UIViewController {
     }()
 
     private var shouldUseNativeTopChrome: Bool {
-        UIDevice.current.userInterfaceIdiom == .phone
+        // iPhone AND iPad (decided 2026-07-19): the iPad previously rendered
+        // the web top bar, which never matched the native Liquid Glass
+        // chrome no matter how it was dressed in CSS. One native shell for
+        // both idioms; the web side mirrors this via useNativeTopChrome.
+        let idiom = UIDevice.current.userInterfaceIdiom
+        return idiom == .phone || idiom == .pad
     }
 
     // MARK: - Lifecycle
@@ -237,6 +258,24 @@ final class RootShellViewController: UIViewController {
         applyBottomBarVisibility(animated: false)
         updateDrawerWidthConstraints()
         layoutDrawerTapShield()
+        updatePadOrientationState()
+    }
+
+    /// Landscape iPad = web desktop layout with its own nav rail; the native
+    /// drawer disables there (hamburger hides via chromeState.isPadLandscape,
+    /// edge-swipe is guarded, and an open drawer closes on rotation).
+    private func updatePadOrientationState() {
+        let landscape = isPadChrome && view.bounds.width > view.bounds.height
+        if chromeState.isPadLandscape != landscape {
+            chromeState.isPadLandscape = landscape
+        }
+        if landscape && isDrawerOpen {
+            closeDrawer(animated: false)
+        }
+    }
+
+    private var drawerDisabledForPadLandscape: Bool {
+        isPadChrome && view.bounds.width > view.bounds.height
     }
 
     func wireTopChromePlugin(_ plugin: TopChromePlugin) {
@@ -386,10 +425,19 @@ final class RootShellViewController: UIViewController {
         let heightConstraint = bottomChromeContainerView.heightAnchor.constraint(equalToConstant: resolvedBottomChromeHeight())
         bottomChromeHeightConstraint = heightConstraint
 
+        // iPad: top bar under the status bar. iPhone: dock above the home
+        // indicator.
+        let edgeConstraint = isPadChrome
+            ? bottomChromeContainerView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+            : bottomChromeContainerView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+
+        let leadingConstraint = bottomChromeContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor)
+        bottomChromeLeadingConstraint = leadingConstraint
+
         NSLayoutConstraint.activate([
-            bottomChromeContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            leadingConstraint,
             bottomChromeContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bottomChromeContainerView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            edgeConstraint,
             heightConstraint,
             bottomChromeHostingVC.view.leadingAnchor.constraint(equalTo: bottomChromeContainerView.leadingAnchor),
             bottomChromeHostingVC.view.trailingAnchor.constraint(equalTo: bottomChromeContainerView.trailingAnchor),
@@ -453,7 +501,10 @@ final class RootShellViewController: UIViewController {
     // MARK: - Layout helpers
 
     private func resolvedBottomChromeHeight() -> CGFloat {
-        chromeState.isBottomBarCollapsed ? 42 : 64
+        // iPad top bar is fixed-height — no scroll-collapse (the collapse
+        // messages still arrive from the web; the pad layout ignores them).
+        if isPadChrome { return nativeChromePadBarHeight }
+        return chromeState.isBottomBarCollapsed ? 42 : 64
     }
 
     private func updateBottomChromeSizeConstraint() {
@@ -482,7 +533,10 @@ final class RootShellViewController: UIViewController {
         updateBottomChromeSizeConstraint()
 
         let shouldShowBottomBar = chromeState.isVisible && !chromeState.isBottomBarHidden
-        let hiddenOffset = max(bottomChromeContainerView.bounds.height, 96) + 12
+        // Slide off toward the edge the bar lives on: up on iPad (top bar),
+        // down on iPhone (bottom dock).
+        let hiddenMagnitude = max(bottomChromeContainerView.bounds.height, 96) + 12
+        let hiddenOffset = isPadChrome ? -hiddenMagnitude : hiddenMagnitude
 
         let animations = {
             if shouldShowBottomBar {
@@ -528,6 +582,7 @@ final class RootShellViewController: UIViewController {
 
     private func openDrawer(animated: Bool) {
         guard shouldUseNativeTopChrome else { return }
+        guard !drawerDisabledForPadLandscape else { return }
         guard !isDrawerOpen else { return }
         isDrawerOpen = true
 
@@ -602,6 +657,15 @@ final class RootShellViewController: UIViewController {
             mainShellContainerView.transform = .identity
             mainShellContainerView.layer.shadowOpacity = 0
             drawerTapShieldView.alpha = 0
+        }
+
+        // iPad top bar compacts into the remaining content width instead of
+        // staying full-width under the drawer. Constraint change + layout
+        // inside the caller's animate block so it rides the same spring.
+        if isPadChrome {
+            bottomChromeLeadingConstraint?.constant = isDrawerOpen ? offset : 0
+            chromeState.drawerProgress = isDrawerOpen ? 1 : 0
+            view.layoutIfNeeded()
         }
     }
 
@@ -697,6 +761,18 @@ final class RootShellViewController: UIViewController {
             recognizer.isEnabled = false
             recognizer.isEnabled = true
         }
+    }
+}
+
+extension RootShellViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        // Only our left-edge pan opts into simultaneous recognition — it
+        // must track alongside WKWebView's internal scroll recognizers or
+        // it never fires over web content.
+        gestureRecognizer === leftEdgeGestureRecognizer
     }
 }
 

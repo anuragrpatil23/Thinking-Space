@@ -27,6 +27,7 @@ import {
 } from '@/services/orchestrators/excalidrawSceneOrch'
 import type { ExcalidrawCanvasApiOrch } from '@/services/orchestrators/excalidrawIntegrationOrch'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useNativeChromeImmersionBlock } from '@/components/lego_blocks/hooks/shared/useNativeChromeImmersionBlock'
 import {
   buildObsidianOpenUrlOrch,
   isThinkingSpaceWikilinkHrefOrch,
@@ -322,6 +323,10 @@ function MarkdownTextDocumentRuntimeBlock({
   const ignoreInitialExcalidrawChangeRef = useRef(true)
   const [hasExcalidrawChanges, setHasExcalidrawChanges] = useState(false)
   const [excalidrawImmersive, setExcalidrawImmersive] = useState(false)
+  // While focus mode is up, the native iOS chrome hides so the fullscreen
+  // overlay owns the screen (it's a web-layer div — the native bar would
+  // cover its header otherwise).
+  useNativeChromeImmersionBlock(excalidrawImmersive)
   const markdownSaveInFlightRef = useRef(false)
   const markdownSavePromiseRef = useRef<Promise<boolean> | null>(null)
   const markdownEditBaselineRef = useRef<MarkdownEditBaselineState | null>(null)
@@ -1497,7 +1502,14 @@ function MarkdownTextDocumentRuntimeBlock({
           }}
           className={cn(
             'relative h-full min-h-0 p-0',
-            isExcalidrawDoc && !isEditing ? 'flex flex-col overflow-hidden' : (isExcalidrawDoc ? 'overflow-hidden' : 'overflow-y-auto'),
+            // overflow-x must be pinned: overflow-y-auto alone computes
+            // overflow-x from visible to auto, making the pane horizontally
+            // pannable on iOS (elastic "website wiggle") the moment any
+            // content overflows by a pixel. touch-action pan-y drops
+            // horizontal touch pans at this level entirely; inner scrollers
+            // (code blocks, tables, CM6) still pan-x fine — touch-action on
+            // an ancestor above the scroller doesn't constrain it.
+            isExcalidrawDoc && !isEditing ? 'flex flex-col overflow-hidden' : (isExcalidrawDoc ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden [touch-action:pan-y]'),
           )}
         >
           <div

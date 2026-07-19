@@ -5,6 +5,7 @@ import {
   USER_PROFILE_FILE_PATH_BLOCK,
   applyUserProfilePatchBlock,
   getDefaultUserProfileBlock,
+  isDefaultUserProfileBlock,
   readCachedUserProfileBlock,
   sanitizeUserProfileBlock,
   type UserProfileBlock,
@@ -40,6 +41,11 @@ export async function readUserProfileOrch(): Promise<UserProfileBlock> {
   try {
     const fromVault = await readVaultUserProfileBlock()
     if (!fromVault) {
+      // Never seed the vault with a pure-default profile: on a fresh device
+      // "file absent" may really mean "iCloud placeholder not detected" or a
+      // transient read failure, and writing defaults would clobber the real
+      // profile via vault sync. A default cache has nothing worth seeding.
+      if (isDefaultUserProfileBlock(cached)) return cached
       const seeded = sanitizeUserProfileBlock({
         ...cached,
         updatedAt: new Date().toISOString(),

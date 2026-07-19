@@ -116,6 +116,11 @@ export function applyUserProfilePatchBlock(
   return next
 }
 
+/** True when the profile carries no user-entered content (fresh install). */
+export function isDefaultUserProfileBlock(profile: UserProfileBlock): boolean {
+  return profile.name === DEFAULT_USER_NAME_BLOCK && profile.memories.length === 0
+}
+
 export function readCachedUserProfileBlock(): UserProfileBlock {
   const raw = getJsonStorageItem<Partial<UserProfileBlock> | null>(
     STORAGE_KEYS.userProfileCache,

@@ -18,11 +18,6 @@ struct DrawerHeaderView: View {
     // reports a dark surface).
     @Environment(\.colorScheme) private var colorScheme
 
-    private let beigeLighter = Color(red: 245.0 / 255.0, green: 243.0 / 255.0, blue: 238.0 / 255.0)
-    private let beigeDarker  = Color(red: 241.0 / 255.0, green: 239.0 / 255.0, blue: 232.0 / 255.0)
-    private let nightLighter = Color(red: 28.0 / 255.0, green: 28.0 / 255.0, blue: 33.0 / 255.0)
-    private let nightDarker  = Color(red: 24.0 / 255.0, green: 24.0 / 255.0, blue: 28.0 / 255.0)
-
     private var mutedTextColor: Color {
         colorScheme == .dark ? Color(white: 0.62) : Color(white: 0.45)
     }
@@ -78,14 +73,7 @@ struct DrawerHeaderView: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 12)
         .padding(.top, 4)
-        .background(
-            // Dark: flat, matching the drawer container + rail exactly — a
-            // gradient here starts lighter than the safe-area strip above it
-            // and reads as a seam. Light: the original beige gradient (both
-            // ends match the beige container, so no seam there).
-            colorScheme == .dark
-                ? AnyShapeStyle(nightDarker)
-                : AnyShapeStyle(LinearGradient(colors: [beigeLighter, beigeDarker], startPoint: .top, endPoint: .bottom))
-        )
+        // No background: the drawer container is now one frosted material
+        // surface (RailView) — an opaque header on top of it read as a seam.
     }
 }

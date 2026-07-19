@@ -68,6 +68,7 @@ import RuntimeErrorBoundaryBlock from './components/lego_blocks/integrations/Run
 import RuntimeErrorSurfaceBlock from './components/lego_blocks/integrations/RuntimeErrorSurfaceBlock'
 import DebugPanelBlock from './components/lego_blocks/integrations/DebugPanelBlock'
 import BackgroundActivityBannerBlock from './components/lego_blocks/integrations/BackgroundActivityBannerBlock'
+import SyncProgressHairlineBlock from './components/lego_blocks/units/SyncProgressHairlineBlock'
 import { startStallDetector } from './services/lego_blocks/units/mainThreadStallBlock'
 import DebugToastBlock from './components/lego_blocks/units/DebugToastBlock'
 import {
@@ -177,6 +178,11 @@ import {
   TOP_CHROME_APPEARANCE_EVENT_BLOCK,
   type TopChromeAppearanceStateBlock,
 } from '@/services/lego_blocks/units/topChromeAppearanceBlock'
+import {
+  isNativeChromeImmersedBlock,
+  subscribeNativeChromeImmersionBlock,
+} from '@/services/lego_blocks/units/nativeChromeImmersionBlock'
+import { initAiActivityPrefsRoamingOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import { useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
 import {
   webullSidebarChromeBlock,
@@ -644,6 +650,11 @@ function App() {
   const [nativeTopBarCollapsed, setNativeTopBarCollapsed] = useState(false)
   const [nativeBottomBarCollapsed, setNativeBottomBarCollapsed] = useState(false)
   const [nativeBottomBarHidden, setNativeBottomBarHidden] = useState(false)
+  // Fullscreen web overlays (Excalidraw focus mode etc.) hold an immersion
+  // lease; while one is active the native iOS chrome hides entirely so the
+  // overlay owns the screen, mirroring Electron focus mode.
+  const [nativeChromeImmersed, setNativeChromeImmersed] = useState(() => isNativeChromeImmersedBlock())
+  useEffect(() => subscribeNativeChromeImmersionBlock(setNativeChromeImmersed), [])
   // Native dark signal = app-level dark theme OR a page-reported dark surface
   // (Home's time-of-day night backdrop via topChromeAppearanceBlock). Forwarded
   // to the iOS shell, which flips ONE root trait override — status glyphs,
@@ -955,7 +966,11 @@ function App() {
   const showBottomNav = false
   const phoneMode = layout.mode === 'phone'
   const iPhoneMode = layout.surface === 'capacitor-ios' && phoneMode
-  const useNativeTopChrome = iPhoneMode
+  // Native SwiftUI chrome on iPhone AND iPad (decided 2026-07-19): the web
+  // top bar never matched the native Liquid Glass language on iPad no matter
+  // how it was styled. Mirrors shouldUseNativeTopChrome in
+  // RootShellViewController.swift.
+  const useNativeTopChrome = layout.surface === 'capacitor-ios'
   const iPhoneUserAgent = typeof navigator !== 'undefined' && /iPhone/i.test(navigator.userAgent || '')
   const iPhoneHandsetMode = phoneMode && (iPhoneMode || iPhoneUserAgent)
   const isCapacitorSurface = layout.surface === 'capacitor-ios' || layout.surface === 'capacitor-android'
@@ -1136,7 +1151,10 @@ function App() {
     if (showGoogleWorkspaceChromeControls) {
       return {
         kind: 'thinking-space-sidebar',
-        enabled: false,
+        // iPhone list/detail layouts own the panel (button hidden); iPad
+        // runs the desktop-style split view, so the native chrome button is
+        // the toggle there.
+        enabled: layout.mode !== 'phone',
         active: !thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed,
         label: thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed ? 'Show side panel' : 'Hide side panel',
       }
@@ -1160,7 +1178,7 @@ function App() {
     if (showOrganizerSidebarChromeControl) {
       return {
         kind: 'organizer-sidebar',
-        enabled: false,
+        enabled: layout.mode !== 'phone',
         active: !organizerSidebarChromeState.collapsed,
         label: organizerSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
       }
@@ -1168,7 +1186,7 @@ function App() {
     if (showWebullSidebarChromeControl) {
       return {
         kind: 'webull-sidebar',
-        enabled: false,
+        enabled: layout.mode !== 'phone',
         active: !webullSidebarChromeState.collapsed,
         label: webullSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
       }
@@ -1210,6 +1228,7 @@ function App() {
     chatSidebarChromeState.collapsed,
     compactNav,
     drawerOpen,
+    layout.mode,
     newThoughtSidebarChromeState.collapsed,
     organizerSidebarChromeState.collapsed,
     showChatSidebarChromeControl,
@@ -1778,8 +1797,12 @@ function App() {
 
   const openNativeCreateSurface = useCallback(() => {
     handleCreateWorkspaceTab()
-    navigate('/new-thought')
-  }, [handleCreateWorkspaceTab, navigate])
+    // iPhone dock: the + means "create note". iPad pill: the + sits beside
+    // the tabs (Safari semantics) — plain new tab, which lands on Home.
+    if (iPhoneMode) {
+      navigate('/new-thought')
+    }
+  }, [handleCreateWorkspaceTab, iPhoneMode, navigate])
 
   const handleNativeTopDrawerNavItemTap = useCallback((navItemId: string) => {
     switch (navItemId) {
@@ -1795,6 +1818,7 @@ function App() {
       case '/settings':
       case '/tools':
       case '/personal-tools':
+      case '/vault-graph':
         navigate(resolveWorkspaceNavigationRoute(navItemId))
         return
       case 'search':
@@ -1958,6 +1982,14 @@ function App() {
       })
   }, [needsVaultSetup])
 
+  // Roaming AI-activity prefs: pull the vault-synced values (ui.json) once
+  // the vault is ready, and install the write-through mirror so local
+  // changes ride vault sync to other devices.
+  useEffect(() => {
+    if (needsVaultSetup) return
+    void initAiActivityPrefsRoamingOrch()
+  }, [needsVaultSetup])
+
   useEffect(() => {
     setDrawerOpen(false)
     setCommandPaletteOpen(false)
@@ -1978,7 +2010,11 @@ function App() {
   }, [compactNav])
 
   useEffect(() => {
-    if (!compactNav || drawerOpen || keyboardVisible || tabOwnsSidebarSwipe || iPhoneMode) {
+    // Native-chrome surfaces (iPhone AND iPad) own the left-edge swipe in
+    // Swift (RootShellViewController's edge pan → native drawer / back-pop).
+    // The web handler must not compete — it was winning on iPad and opening
+    // the web drawer instead of the native one.
+    if (!compactNav || drawerOpen || keyboardVisible || tabOwnsSidebarSwipe || iPhoneMode || useNativeTopChrome) {
       drawerEdgeSwipeStartRef.current = null
       return
     }
@@ -2022,7 +2058,7 @@ function App() {
       window.removeEventListener('touchend', clearGesture)
       window.removeEventListener('touchcancel', clearGesture)
     }
-  }, [compactNav, drawerOpen, keyboardVisible, tabOwnsSidebarSwipe, iPhoneMode])
+  }, [compactNav, drawerOpen, keyboardVisible, tabOwnsSidebarSwipe, iPhoneMode, useNativeTopChrome])
 
   useEffect(() => {
     if (keyboardVisible) {
@@ -2137,6 +2173,7 @@ function App() {
 
   useNativeTopChromeBlock({
     enabled: useNativeTopChrome && !needsVaultSetup,
+    visible: !nativeChromeImmersed,
     title: activeWorkspaceTabLabel,
     activeNavItemId: nativeTopDrawerActiveNavItemId,
     topBarCollapsed: nativeTopBarCollapsed,
@@ -2552,6 +2589,7 @@ function App() {
       data-ltm-route={location.pathname}
       data-ltm-explorer-icon-style={explorerIconStyle}
       data-ltm-ios-phone={iPhoneHandsetMode ? 'true' : 'false'}
+      data-ltm-native-chrome={useNativeTopChrome ? 'true' : 'false'}
     >
       {explorerFolderColorCss && <style>{explorerFolderColorCss}</style>}
       <div className="ltm-shell-layer-base">
@@ -3619,6 +3657,7 @@ function App() {
     >
       <>
         {appContent}
+        <SyncProgressHairlineBlock />
         <BackgroundActivityBannerBlock />
         <RuntimeErrorSurfaceBlock
           reports={runtimeErrorReports}

@@ -61,6 +61,10 @@ final class RailState: ObservableObject {
             "/excalidraw-plus", "/capabilities", "/extension-builder",
             "/terminal", "/password-manager", "/personal-tools", "/personal-extension",
         ]),
+        // Vault Graph is a primary rail destination on Electron
+        // (VAULT_GRAPH_NAV_ITEM, sits right after Tools). RailGraphIcon is
+        // the same lucide Waypoints glyph the Electron rail renders.
+        RailTab(id: "/vault-graph",        title: "Thinking Space Graph", icon: .template("RailGraphIcon"),              activePaths: []),
         // Settings is a fixed anchor on the Electron rail (not part of
         // PRIMARY_NAV_ITEMS), but the phone needs it reachable from the main
         // drawer — the top pull-down menu was its only entry point before.
@@ -96,9 +100,6 @@ struct RailView: View {
     // container when the web reports a dark surface (isTopBarDark).
     @Environment(\.colorScheme) private var colorScheme
 
-    private let beigeBackground = Color(red: 245.0 / 255.0, green: 243.0 / 255.0, blue: 238.0 / 255.0)
-    private let nightBackground = Color(red: 24.0 / 255.0, green: 24.0 / 255.0, blue: 28.0 / 255.0)
-
     var body: some View {
         VStack(spacing: 0) {
             DrawerHeaderView(state: headerState, onClose: onClose)
@@ -118,7 +119,29 @@ struct RailView: View {
                 .padding(.bottom, 24)
             }
         }
-        .background((colorScheme == .dark ? nightBackground : beigeBackground).ignoresSafeArea())
+        // Frosted material in BOTH schemes (was an opaque beige sheet in
+        // light mode, which read as flat web furniture next to the glass
+        // chrome). The page behind shows through the blur; the gradient is
+        // a whisper of tint for row legibility.
+        .background {
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                LinearGradient(
+                    stops: colorScheme == .dark
+                        ? [
+                            .init(color: .black.opacity(0.28), location: 0.0),
+                            .init(color: .black.opacity(0.12), location: 1.0),
+                        ]
+                        : [
+                            .init(color: .white.opacity(0.4), location: 0.0),
+                            .init(color: .white.opacity(0.12), location: 1.0),
+                        ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+            .ignoresSafeArea()
+        }
     }
 }
 

@@ -1106,7 +1106,10 @@ export default function VaultGraphCanvasBlock({
       <div
         ref={containerRef}
         className="absolute inset-y-0 left-0"
-        style={{ right: sidePanel ? SIDE_PANEL_RESERVE : 0 }}
+        // touch-action none: the iOS shell puts `touch-action: pan-y` on the
+        // page scroller, which lets the browser claim canvas touches for
+        // scrolling — force-graph's d3-zoom then never sees pan/pinch.
+        style={{ right: sidePanel ? SIDE_PANEL_RESERVE : 0, touchAction: 'none' }}
       />
       {/* Control panel docked to the right edge in screen space — fixed width,
           full height, its own scroll. Does not pan or zoom with the graph. */}
