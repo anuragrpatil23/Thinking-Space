@@ -79,11 +79,13 @@ struct DrawerHeaderView: View {
         .padding(.bottom, 12)
         .padding(.top, 4)
         .background(
-            LinearGradient(
-                colors: colorScheme == .dark ? [nightLighter, nightDarker] : [beigeLighter, beigeDarker],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            // Dark: flat, matching the drawer container + rail exactly — a
+            // gradient here starts lighter than the safe-area strip above it
+            // and reads as a seam. Light: the original beige gradient (both
+            // ends match the beige container, so no seam there).
+            colorScheme == .dark
+                ? AnyShapeStyle(nightDarker)
+                : AnyShapeStyle(LinearGradient(colors: [beigeLighter, beigeDarker], startPoint: .top, endPoint: .bottom))
         )
     }
 }

@@ -43,10 +43,6 @@ struct PhoneShellView: View {
                         onSelectNavItem(navItemId)
                     }
                 )
-                // Match the web's reported surface darkness (can't trait-flip
-                // the container here — it also hosts the WKWebView, whose
-                // prefers-color-scheme must stay untouched).
-                .environment(\.colorScheme, chromeState.isTopBarDark ? .dark : .light)
                 .frame(maxWidth: .infinity, alignment: .top)
                 .frame(height: visibleDrawerHeight + contentCornerRadius, alignment: .top)
                 .clipped()

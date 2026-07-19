@@ -46,14 +46,65 @@ func resolvedNativeTopDrawerSafeAreaTopInset() -> CGFloat {
         .max() ?? 0
 }
 
-private func floatingChromeCapsule() -> some View {
-    Capsule()
-        .fill(.ultraThinMaterial)
-        .overlay {
-            Capsule()
-                .stroke(Color.white.opacity(0.6), lineWidth: 0.75)
+/// Liquid-glass capsule for the floating chrome controls. On iOS 26+ this is
+/// the REAL system Liquid Glass (`glassEffect`) with actual lensing and
+/// automatic light/dark adaptation. Older OSes get the hand-built
+/// approximation: blur base, top specular highlight, and a gradient rim that
+/// catches light at the top and dissolves at the bottom.
+private struct FloatingGlassCapsuleView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        if #available(iOS 26.0, *) {
+            Color.clear
+                .glassEffect(.regular.interactive(), in: Capsule())
+        } else {
+            legacyGlassCapsule
         }
-        .shadow(color: Color.black.opacity(0.09), radius: 18, x: 0, y: 8)
+    }
+
+    @ViewBuilder
+    private var legacyGlassCapsule: some View {
+        let dark = colorScheme == .dark
+        Capsule()
+            .fill(.ultraThinMaterial)
+            .overlay {
+                // Top specular sheen — the "liquid" part of the glass.
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(dark ? 0.10 : 0.32), location: 0.0),
+                                .init(color: .clear, location: 0.55),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .allowsHitTesting(false)
+            }
+            .overlay {
+                // Gradient rim: bright where light hits, fading out below.
+                Capsule()
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(dark ? 0.26 : 0.7),
+                                .white.opacity(dark ? 0.05 : 0.3),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.75
+                    )
+                    .allowsHitTesting(false)
+            }
+            .shadow(color: Color.black.opacity(dark ? 0.4 : 0.09), radius: 18, x: 0, y: 8)
+    }
+}
+
+private func floatingChromeCapsule() -> some View {
+    FloatingGlassCapsuleView()
 }
 
 private func formatBadgeCount(_ count: Int) -> String {
@@ -209,54 +260,67 @@ private struct NativeTopDrawerSectionCardView: View {
 
 // MARK: - Top Chrome (adaptive status-bar scrim)
 
-/// Instagram-style status-bar treatment: an always-on *progressive* blur —
-/// strong right under the clock, feathering out toward the content — keeps the
-/// status glyphs legible no matter what scrolls beneath, without ever reading
-/// as an opaque bar. When the page scrolls (`isTopBarCollapsed`, set by the
-/// App.tsx native chrome scroll handler) the scrim deepens to a full frosted
-/// band with a hairline seam, then relaxes back to the feathered fade at rest.
+/// Instagram/Safari-style status-bar treatment: an always-on *progressive*
+/// blur — strong right under the clock, feathering out toward the content —
+/// keeps the status glyphs legible no matter what scrolls beneath, without
+/// ever reading as an opaque bar. When the page scrolls (`isTopBarCollapsed`,
+/// set by the App.tsx native chrome scroll handler) the SAME masked material
+/// simply deepens (the solid region extends further down) — one continuous
+/// surface, so the transition reads as the blur breathing, never as a swap.
+/// Dark mode is inherited from the root trait override in
+/// RootShellViewController — no per-view color scheme handling here.
 struct TopChromeView: View {
     @ObservedObject var state: TopChromeState
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// Both states share the same 4-stop shape so SwiftUI interpolates the
+    /// gradient smoothly instead of cross-fading two different scrims.
+    /// Instagram model: the veil is GLASS, not frost — content color bleeds
+    /// through, the mask fades early, and scrolling only firms it up a touch.
+    private var maskStops: [Gradient.Stop] {
+        state.isTopBarCollapsed
+            ? [
+                .init(color: .black, location: 0.0),
+                .init(color: .black, location: 0.55),
+                .init(color: .black.opacity(0.7), location: 0.8),
+                .init(color: .clear, location: 1.0),
+            ]
+            : [
+                .init(color: .black, location: 0.0),
+                .init(color: .black, location: 0.3),
+                .init(color: .black.opacity(0.5), location: 0.6),
+                .init(color: .clear, location: 1.0),
+            ]
+    }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // Resting scrim: material masked by a vertical fade. Solid across
-            // the status-bar glyphs, dissolving before the frame's bottom edge
-            // so content appears to slide "into" the blur, Instagram-style.
+        ZStack {
             Rectangle()
                 .fill(.ultraThinMaterial)
-                .mask(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black, location: 0.0),
-                            .init(color: .black, location: 0.5),
-                            .init(color: .black.opacity(0.6), location: 0.72),
-                            .init(color: .clear, location: 1.0),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .opacity(state.isTopBarCollapsed ? 0 : 1)
 
-            // Scrolled scrim: full frosted band edge-to-edge.
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .opacity(state.isTopBarCollapsed ? 1 : 0)
-
-            // Hairline seam under the frosted bar, only while frosted.
-            Rectangle()
-                .fill(Color.primary.opacity(0.08))
-                .frame(height: 0.5)
-                .opacity(state.isTopBarCollapsed ? 1 : 0)
+            // Whisper of tint to keep the status glyphs legible, mirrored per
+            // scheme. Kept faint on purpose — the glass should refract the
+            // content's own color, not paint over it.
+            LinearGradient(
+                stops: colorScheme == .dark
+                    ? [
+                        .init(color: .black.opacity(0.22), location: 0.0),
+                        .init(color: .black.opacity(0.08), location: 0.6),
+                        .init(color: .clear, location: 1.0),
+                    ]
+                    : [
+                        .init(color: .white.opacity(0.16), location: 0.0),
+                        .init(color: .white.opacity(0.06), location: 0.6),
+                        .init(color: .clear, location: 1.0),
+                    ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         }
+        .mask(
+            LinearGradient(stops: maskStops, startPoint: .top, endPoint: .bottom)
+        )
         .animation(.easeInOut(duration: 0.24), value: state.isTopBarCollapsed)
-        // The web reports whether the content under the status bar is dark
-        // (night backdrop / dark theme). Rendering the materials in the
-        // matching color scheme keeps the scrim a subtle darkening veil there
-        // instead of a pale frosted band over a dark canvas.
-        .environment(\.colorScheme, state.isTopBarDark ? .dark : .light)
-        .animation(.easeInOut(duration: 0.24), value: state.isTopBarDark)
     }
 }
 
@@ -430,6 +494,13 @@ struct BottomChromeView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("More options")
         .confirmationDialog("More Options", isPresented: $toolsMenuPresented, titleVisibility: .visible) {
+            // Escape hatch: the left chrome slot morphs into a back button
+            // when a page is pushed, which hides the drawer toggle — this
+            // keeps the navigation drawer reachable from anywhere.
+            Button(action: onDrawerToggleTap) {
+                Label("Navigation Drawer", systemImage: "sidebar.left")
+            }
+
             if state.showSearch {
                 Button(action: onSearchTap) {
                     Label("Search", systemImage: "magnifyingglass")

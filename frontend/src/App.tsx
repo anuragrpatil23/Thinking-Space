@@ -177,6 +177,7 @@ import {
   TOP_CHROME_APPEARANCE_EVENT_BLOCK,
   type TopChromeAppearanceStateBlock,
 } from '@/services/lego_blocks/units/topChromeAppearanceBlock'
+import { useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
 import {
   webullSidebarChromeBlock,
   type WebullSidebarChromeStateBlock,
@@ -643,18 +644,25 @@ function App() {
   const [nativeTopBarCollapsed, setNativeTopBarCollapsed] = useState(false)
   const [nativeBottomBarCollapsed, setNativeBottomBarCollapsed] = useState(false)
   const [nativeBottomBarHidden, setNativeBottomBarHidden] = useState(false)
-  // Page surfaces (Home's time-of-day backdrop) report when the area under the
-  // status bar is dark; forwarded to native so the clock glyphs + top scrim
-  // flip appearance instead of rendering light chrome over a dark canvas.
-  const [nativeTopBarDark, setNativeTopBarDark] = useState(() => getTopChromeAppearanceBlock().dark)
+  // Native dark signal = app-level dark theme OR a page-reported dark surface
+  // (Home's time-of-day night backdrop via topChromeAppearanceBlock). Forwarded
+  // to the iOS shell, which flips ONE root trait override — status glyphs,
+  // top scrim, drawer, and bottom chrome all adapt from that single switch.
+  const { resolvedColorMode } = useUIThemeBlock()
+  const [pageReportedDarkSurface, setPageReportedDarkSurface] = useState(() => getTopChromeAppearanceBlock().dark)
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<TopChromeAppearanceStateBlock>).detail
-      setNativeTopBarDark(Boolean(detail?.dark))
+      setPageReportedDarkSurface(Boolean(detail?.dark))
     }
     window.addEventListener(TOP_CHROME_APPEARANCE_EVENT_BLOCK, handler)
+    // Child effects run BEFORE parent effects: the page (e.g. HomeFlatOrch)
+    // dispatches its dark-surface state on mount before this listener exists.
+    // Re-sync from the block's snapshot so the initial dispatch isn't lost.
+    setPageReportedDarkSurface(getTopChromeAppearanceBlock().dark)
     return () => window.removeEventListener(TOP_CHROME_APPEARANCE_EVENT_BLOCK, handler)
   }, [])
+  const nativeTopBarDark = pageReportedDarkSurface || resolvedColorMode === 'dark'
   const debugToastTimerRef = useRef<number | null>(null)
   const commandInputRef = useRef<HTMLInputElement | null>(null)
   const gitCommitMessageInputRef = useRef<HTMLInputElement | null>(null)

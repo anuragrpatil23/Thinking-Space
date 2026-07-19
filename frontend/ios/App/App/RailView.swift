@@ -61,6 +61,10 @@ final class RailState: ObservableObject {
             "/excalidraw-plus", "/capabilities", "/extension-builder",
             "/terminal", "/password-manager", "/personal-tools", "/personal-extension",
         ]),
+        // Settings is a fixed anchor on the Electron rail (not part of
+        // PRIMARY_NAV_ITEMS), but the phone needs it reachable from the main
+        // drawer — the top pull-down menu was its only entry point before.
+        RailTab(id: "/settings",           title: "Settings",           icon: .system("gearshape"),                    activePaths: []),
     ]
 
     /// Resolve the selected tab from a current path. Used when React pushes

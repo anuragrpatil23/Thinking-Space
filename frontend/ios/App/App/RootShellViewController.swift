@@ -67,17 +67,14 @@ final class RootShellViewController: UIViewController {
         return view
     }()
 
-    /// Warm beige matching the drawer header gradient — #f5f3ee. When the web
-    /// reports a dark surface (isTopBarDark) the drawer flips to the night
-    /// variant below and its SwiftUI subtree gets a dark trait override.
-    private static let drawerBackgroundColor = UIColor(
-        red: 245.0 / 255.0, green: 243.0 / 255.0, blue: 238.0 / 255.0, alpha: 1.0
-    )
-
-    /// Night drawer surface — neutral near-black with a hint of the beige warmth.
-    private static let drawerDarkBackgroundColor = UIColor(
-        red: 24.0 / 255.0, green: 24.0 / 255.0, blue: 28.0 / 255.0, alpha: 1.0
-    )
+    /// Drawer surface: warm beige (#f5f3ee) in light, neutral near-black in
+    /// dark. Dynamic provider — flips automatically with the root trait
+    /// override, no manual re-assignment needed.
+    private static let drawerBackgroundColor = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 24.0 / 255.0, green: 24.0 / 255.0, blue: 28.0 / 255.0, alpha: 1.0)
+            : UIColor(red: 245.0 / 255.0, green: 243.0 / 255.0, blue: 238.0 / 255.0, alpha: 1.0)
+    }
 
     private let leftDrawerContainerView: UIView = {
         let view = UIView()
@@ -167,33 +164,23 @@ final class RootShellViewController: UIViewController {
             embedBridgeFullscreen()
         }
 
-        // Re-evaluate preferredStatusBarStyle whenever the web flips the
-        // dark-under-status-bar signal, with a cross-fade so the glyph swap
-        // reads intentional rather than popping.
+        // Single source of truth for native dark mode: flip the trait on the
+        // ROOT view whenever the web reports the surface is dark. Every native
+        // subview — drawer rail, bottom chrome capsules, top scrim materials,
+        // pull-down menu — adapts through semantic colors/materials, no
+        // per-view overrides. Safe to include the WKWebView subtree: the web
+        // theme is class-based (tailwind darkMode:["class"]) and nothing in it
+        // reads prefers-color-scheme, so the trait flip is invisible to it.
         topBarDarkCancellable = chromeState.$isTopBarDark
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] dark in
                 guard let self else { return }
                 UIView.animate(withDuration: 0.24) {
+                    self.view.overrideUserInterfaceStyle = dark ? .dark : .light
                     self.setNeedsStatusBarAppearanceUpdate()
-                    self.applyChromeInterfaceStyle(dark: dark)
                 }
             }
-    }
-
-    /// Flip the NATIVE chrome surfaces (drawer rail + bottom bar) between
-    /// light and dark to match the web content's reported surface darkness.
-    /// Deliberately NOT applied to mainShellContainerView — that contains the
-    /// WKWebView, and overriding its trait would flip the web's
-    /// prefers-color-scheme behind the web app's own theme system's back.
-    private func applyChromeInterfaceStyle(dark: Bool) {
-        let style: UIUserInterfaceStyle = dark ? .dark : .light
-        leftDrawerContainerView.overrideUserInterfaceStyle = style
-        leftDrawerContainerView.backgroundColor = dark
-            ? Self.drawerDarkBackgroundColor
-            : Self.drawerBackgroundColor
-        bottomChromeContainerView.overrideUserInterfaceStyle = style
     }
 
     /// Mirror user-configured tab labels from chromeState into RailState.
