@@ -558,7 +558,12 @@ export async function fetchAndParseRssFeedOrch(
       const description = typeof item.description === 'string' ? item.description
         : (typeof summaryRaw === 'string' ? summaryRaw
           : (typeof summaryRaw === 'object' && summaryRaw !== null ? String((summaryRaw as { value?: unknown }).value ?? '') : ''))
-      const pubDate = extractDateBlock(item.pubDate ?? item.published ?? item.updated)
+      // Slashdot and other RSS 1.0/RDF feeds carry no <pubDate>; their date is
+      // Dublin Core (`dc:date`), which feedsmith exposes under item.dc / dcterms.
+      const pubDate = extractDateBlock(
+        item.pubDate ?? item.published ?? item.updated
+        ?? extractDublinCoreDateBlock(item.dc) ?? extractDublinCoreDateBlock(item.dcterms),
+      )
       const id = normalizeRssFeedItemIdBlock(config.id, guid, link, title)
 
       // Vault state takes priority; localStorage is fallback for new items.
@@ -663,6 +668,16 @@ function extractDateBlock(value: unknown): string | null {
   if (typeof value === 'string') return value
   if (value instanceof Date) return value.toISOString()
   return null
+}
+
+/** Pull a date out of a feedsmith Dublin Core namespace object (`dc`/`dcterms`).
+ *  Dublin Core fields are repeatable, so prefer the `dates` array and fall back
+ *  to the deprecated single `date`. */
+function extractDublinCoreDateBlock(dc: unknown): unknown {
+  if (!dc || typeof dc !== 'object') return undefined
+  const obj = dc as { date?: unknown; dates?: unknown }
+  if (Array.isArray(obj.dates) && obj.dates.length > 0) return obj.dates[0]
+  return obj.date
 }
 
 function stripHtmlBlock(html: string): string {
