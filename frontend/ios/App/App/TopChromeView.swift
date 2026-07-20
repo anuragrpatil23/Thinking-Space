@@ -783,8 +783,9 @@ struct BottomChromeView: View {
                 SyncSpinIconView(
                     spinning: state.syncActive,
                     size: 14,
-                    tint: state.canRefresh ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary),
-                    progress: state.syncActive ? state.syncProgress : nil
+                    tint: state.syncActive
+                        ? AnyShapeStyle(Color.accentColor)
+                        : (state.canRefresh ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                 )
                 .frame(width: 24, height: NativeChromeMetrics.padCompactButtonSize)
 
@@ -805,6 +806,15 @@ struct BottomChromeView: View {
         .accessibilityLabel(state.syncActive ? "Syncing vault" : "Refresh workspace")
         .background {
             floatingChromeCapsule()
+        }
+        // Progress traces the BUTTON BORDER (matching Electron's pill): a
+        // determinate arc when file totals are known, a marching dash while
+        // indeterminate.
+        .overlay {
+            if state.syncActive {
+                SyncCapsuleProgressView(progress: state.syncProgress)
+                    .transition(.opacity)
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: state.syncActive)
         .animation(.easeInOut(duration: 0.2), value: state.syncTotal > 0)
@@ -1188,7 +1198,7 @@ private struct SyncSpinIconView: View {
             if spinning {
                 Circle()
                     .trim(from: 0, to: progress.map { max(0.02, $0) } ?? 0.3)
-                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .stroke(Color.accentColor.opacity(0.9), style: StrokeStyle(lineWidth: 1.25, lineCap: .round))
                     .frame(width: ringDiameter, height: ringDiameter)
                     .rotationEffect(.degrees(progress == nil ? orbitAngle : -90))
                     .animation(.easeOut(duration: 0.25), value: progress)
@@ -1223,6 +1233,52 @@ private struct SyncSpinIconView: View {
         withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
             orbitAngle = 270
         }
+    }
+}
+
+/// Accent progress stroke tracing a button's capsule border — determinate
+/// arc when `progress` is known, a marching dash segment while nil. Mirrors
+/// Electron's SyncRefreshButtonBlock border ring.
+private struct SyncCapsuleProgressView: View {
+    /// 0..1 while a determinate sync runs; nil = indeterminate march.
+    let progress: Double?
+
+    @State private var dashPhase: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let perimeter = 2 * max(0, w - h) + .pi * h
+
+            if let progress {
+                Capsule()
+                    .trim(from: 0, to: max(0.02, progress))
+                    .stroke(
+                        Color.accentColor.opacity(0.9),
+                        style: StrokeStyle(lineWidth: 1.25, lineCap: .round)
+                    )
+                    .animation(.easeOut(duration: 0.25), value: progress)
+            } else {
+                Capsule()
+                    .stroke(
+                        Color.accentColor.opacity(0.9),
+                        style: StrokeStyle(
+                            lineWidth: 1.25,
+                            lineCap: .round,
+                            dash: [perimeter * 0.26, perimeter * 0.74],
+                            dashPhase: dashPhase
+                        )
+                    )
+                    .onAppear {
+                        dashPhase = 0
+                        withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                            dashPhase = -perimeter
+                        }
+                    }
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 

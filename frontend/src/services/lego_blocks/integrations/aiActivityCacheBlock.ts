@@ -29,6 +29,14 @@ import { loadGoodnotesReadingSessions } from '@/services/lego_blocks/integration
 import { loadMemorizedSessions } from '@/services/lego_blocks/integrations/memorizedReadingBlock'
 import { loadThinkingspaceReadingSessions } from '@/services/lego_blocks/integrations/thinkingspaceReadingBlock'
 import { loadManualSessions } from '@/services/lego_blocks/integrations/manualSessionBlock'
+import {
+  clearPersistedAiActivitySnapshotBlock,
+  readPersistedAiActivitySnapshotBlock,
+  readPersistedDiskCacheMirrorBlock,
+  writePersistedAiActivitySnapshotBlock,
+  writePersistedDiskCacheMirrorBlock,
+} from '@/services/lego_blocks/integrations/aiActivitySnapshotStoreBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 
 const CACHE_PATH = '.thinking-space/ai-activity-cache.json'
 const CACHE_DIR = '.thinking-space'
@@ -62,13 +70,64 @@ function emptyCache(): CacheFile {
   return { version: CACHE_VERSION, sessions: {}, updatedAt: 0 }
 }
 
-async function readCache(fs: VaultFS): Promise<CacheFile> {
+function vaultRootKey(): string {
+  return getStoredVaultRoot() ?? ''
+}
+
+// The vault cache file is multi-MB; on iOS reading it is a WKWebView bridge
+// round-trip (plus a possible iCloud re-download) and JSON.parse runs on the
+// main thread. Fingerprint the file first (mtime+size) and reuse the parsed
+// content — in-memory within a process, IndexedDB-mirrored across launches —
+// whenever the file hasn't changed.
+let _diskCacheMemo: { fingerprint: string; cache: CacheFile } | null = null
+
+async function statCacheFingerprint(fs: VaultFS): Promise<string | null> {
   try {
-    if (!(await fs.exists(CACHE_PATH))) return emptyCache()
+    const st = await fs.stat(CACHE_PATH)
+    if (st.isDirectory) return null
+    return `${st.mtime}:${st.size}`
+  } catch {
+    // Missing file, or an undownloaded iCloud placeholder — fall back to the
+    // exists()+read path, which knows how to handle both.
+    return null
+  }
+}
+
+async function readCache(fs: VaultFS): Promise<CacheFile> {
+  const fingerprint = await statCacheFingerprint(fs)
+  if (fingerprint) {
+    if (_diskCacheMemo?.fingerprint === fingerprint) return _diskCacheMemo.cache
+    const mirrored = await readPersistedDiskCacheMirrorBlock(
+      CACHE_VERSION,
+      vaultRootKey(),
+      fingerprint,
+    )
+    if (mirrored) {
+      const cache: CacheFile = {
+        version: CACHE_VERSION,
+        sessions: mirrored.sessions,
+        updatedAt: mirrored.updatedAt,
+      }
+      _diskCacheMemo = { fingerprint, cache }
+      return cache
+    }
+  }
+  try {
+    if (!fingerprint && !(await fs.exists(CACHE_PATH))) return emptyCache()
     const raw = await fs.read(CACHE_PATH)
     const parsed = JSON.parse(raw) as CacheFile
     if (parsed.version !== CACHE_VERSION) return emptyCache()
     if (!parsed.sessions || typeof parsed.sessions !== 'object') return emptyCache()
+    if (fingerprint) {
+      _diskCacheMemo = { fingerprint, cache: parsed }
+      void writePersistedDiskCacheMirrorBlock(
+        CACHE_VERSION,
+        vaultRootKey(),
+        fingerprint,
+        parsed.sessions,
+        parsed.updatedAt,
+      )
+    }
     return parsed
   } catch {
     return emptyCache()
@@ -81,6 +140,19 @@ async function writeCache(fs: VaultFS, cache: CacheFile): Promise<void> {
       await fs.mkdir(CACHE_DIR)
     }
     await fs.write(CACHE_PATH, JSON.stringify(cache))
+    // Refresh the fingerprint memo/mirror so the next load doesn't re-read
+    // the file we just wrote.
+    const fingerprint = await statCacheFingerprint(fs)
+    if (fingerprint) {
+      _diskCacheMemo = { fingerprint, cache }
+      void writePersistedDiskCacheMirrorBlock(
+        CACHE_VERSION,
+        vaultRootKey(),
+        fingerprint,
+        cache.sessions,
+        cache.updatedAt,
+      )
+    }
   } catch {
     // Cache write failures are silent — next launch just re-parses.
   }
