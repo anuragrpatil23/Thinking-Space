@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
 import type { ParsedExcalidrawScene } from '@/services/orchestrators/excalidrawSceneOrch'
 import {
   parseExcalidrawSceneOrch,
@@ -128,6 +129,12 @@ export default function ExcalidrawDocumentBlock({
   className,
 }: ExcalidrawDocumentBlockProps) {
   const { layout } = useUILayoutBlock()
+  // Follow the app's resolved color mode so the canvas isn't a blinding white
+  // sheet inside a dark shell. Passed as Excalidraw's controlled `theme` prop;
+  // `theme` is stripped from the serialized scene (excalidrawFileBlock) so this
+  // view-only choice never churns the file's stored theme across devices.
+  const { resolvedColorMode } = useUIThemeBlock()
+  const excalidrawTheme = resolvedColorMode === 'dark' ? 'dark' : 'light'
   const isIosSurface = layout.surface === 'capacitor-ios'
   const isCompactLayout = layout.mode === 'phone'
   const debugEnabled = editable
@@ -1258,6 +1265,7 @@ export default function ExcalidrawDocumentBlock({
       <Suspense fallback={<div className="px-4 py-3 text-sm text-muted-foreground">Loading Excalidraw canvas...</div>}>
         <ExcalidrawCanvas
           key={documentKey}
+          theme={excalidrawTheme}
           excalidrawAPI={(api: unknown) => setExcalidrawApi(createExcalidrawCanvasApiOrch(api))}
           initialData={initialData as any}
           viewModeEnabled={!editable}

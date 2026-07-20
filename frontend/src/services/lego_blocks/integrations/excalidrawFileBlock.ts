@@ -174,6 +174,13 @@ function sceneToJson(scene: ParsedExcalidrawScene): string {
   const safeAppState = sanitizeSceneObject(scene.appState ?? {})
   const safeFiles = sanitizeSceneObject(scene.files ?? {})
 
+  // `theme` is a VIEW concern, not document data: the canvas follows the app's
+  // color mode via Excalidraw's controlled `theme` prop (ExcalidrawDocumentBlock).
+  // If we let the forced view theme serialize back, every edit made in dark mode
+  // would rewrite the file's stored theme and churn it across synced devices in
+  // different modes. Drop it so the on-disk scene stays theme-agnostic.
+  delete safeAppState.theme
+
   // Fast path: serialize directly for canonical scenes.
   try {
     return serializeAsJSON(
