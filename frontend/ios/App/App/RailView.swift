@@ -7,10 +7,13 @@ import SwiftUI
 ///   - `template`: a monochrome vector asset (the real lucide/phosphor glyphs
 ///                 bundled from the web nav) rendered as a tintable template so
 ///                 the drawer is pixel-identical to the Electron rail.
+///   - `text`:     a short user-configured text glyph (e.g. "f9" for the
+///                 Webull tab) — mirrors Electron's WebullTextNavIcon.
 enum RailIcon: Equatable {
     case system(String)
     case asset(String)
     case template(String)
+    case text(String)
 }
 
 /// `id` is the canonical route path — same value the React side sends as
@@ -47,14 +50,16 @@ final class RailState: ObservableObject {
     ///   Home             RailHomeIcon      (tree-of-life, full color)
     ///   Thinking Space   RailExplorerIcon  ↔ lucide Compass
     ///   New Note         RailNewNoteIcon   ↔ NewNoteNavIcon (rounded SquarePen)
-    ///   Webull           chart.line…       ↔ WebullNavIcon (user-renamable; SF)
+    ///   Webull           RailWebullIcon    ↔ WebullNavIcon horns SVG (user-renamable;
+    ///                    swaps to .text when webullTabIconText is set — see
+    ///                    RootShellViewController's chrome-state subscription)
     ///   Thinking Organizer RailOrganizerIcon ↔ phosphor TreeView
     ///   Tools            RailToolsIcon     ↔ ToolsShapesNavIcon (Shapes)
     static let defaultTabs: [RailTab] = [
         RailTab(id: "/",                   title: "Home",               icon: .asset("RailHomeIcon"),                  activePaths: []),
         RailTab(id: "/thinking-space",     title: "Thinking Space Explorer", icon: .template("RailExplorerIcon"),      activePaths: []),
         RailTab(id: "/new-thought",        title: "New Note",           icon: .template("RailNewNoteIcon"),            activePaths: []),
-        RailTab(id: "/webull",             title: "Webull",             icon: .system("chart.line.uptrend.xyaxis"),    activePaths: []),
+        RailTab(id: "/webull",             title: "Webull",             icon: .template("RailWebullIcon"),             activePaths: []),
         RailTab(id: "/thinking-organizer", title: "Thinking Organizer", icon: .template("RailOrganizerIcon"),          activePaths: ["/file-organizer"]),
         RailTab(id: "/tools",              title: "Tools",              icon: .template("RailToolsIcon"),              activePaths: [
             "/ai/chat", "/ai/schedules", "/web", "/git-insights",
@@ -87,6 +92,15 @@ final class RailState: ObservableObject {
         let old = tabs[idx]
         guard old.title != label else { return }
         tabs[idx] = RailTab(id: old.id, title: label, icon: old.icon, activePaths: old.activePaths)
+    }
+
+    /// Override the icon for a tab. Used when React pushes the user-configured
+    /// Webull icon text (or clears it back to the horns mark).
+    func setIcon(forPath path: String, _ icon: RailIcon) {
+        guard let idx = tabs.firstIndex(where: { $0.id == path }) else { return }
+        let old = tabs[idx]
+        guard old.icon != icon else { return }
+        tabs[idx] = RailTab(id: old.id, title: old.title, icon: icon, activePaths: old.activePaths)
     }
 }
 
@@ -208,6 +222,16 @@ private struct RailRow: View {
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
+                .frame(width: 21, height: 21)
+                .foregroundColor(isSelected ? .primary : mutedIconColor)
+        case .text(let value):
+            // User-configured text glyph — Electron renders the same value at
+            // text-[12px] font-medium tracking-tight (WebullTextNavIcon).
+            Text(value)
+                .font(.system(size: 13, weight: .medium))
+                .kerning(-0.2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .frame(width: 21, height: 21)
                 .foregroundColor(isSelected ? .primary : mutedIconColor)
         case .asset(let name):

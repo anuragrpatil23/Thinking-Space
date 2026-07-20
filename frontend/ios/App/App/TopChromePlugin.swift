@@ -57,6 +57,7 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let canGitCommit = call.getBool("canGitCommit")
         let canGitPush = call.getBool("canGitPush")
         let webullTabLabel = call.getString("webullTabLabel")
+        let webullTabIconText = call.getString("webullTabIconText")
 
         DispatchQueue.main.async {
             guard let state = self.chromeState else {
@@ -141,6 +142,12 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
             if let webullTabLabel,
                !webullTabLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 state.webullTabLabel = webullTabLabel
+            }
+            // Unlike the label, empty is meaningful here: it clears the text
+            // glyph so the icon falls back to the Webull-horns mark.
+            if let webullTabIconText {
+                state.webullTabIconText = webullTabIconText
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
             }
 
             call.resolve()

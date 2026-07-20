@@ -36,6 +36,10 @@ export interface TopChromeStateBlock {
   canGitPush?: boolean
   /** User-configured label for the Webull tab in the native iPhone rail. */
   webullTabLabel?: string
+  /** User-configured text glyph for the Webull tab icon (Settings → Webull tab
+   *  icon text, e.g. "f9"). Empty string means unset — the native side falls
+   *  back to the Webull-horns mark, mirroring Electron's WebullNavIcon. */
+  webullTabIconText?: string
   /** True when the content under the status bar is dark (night backdrop or
    *  dark app theme) — flips the native status-bar glyphs + top scrim. */
   topBarDark?: boolean

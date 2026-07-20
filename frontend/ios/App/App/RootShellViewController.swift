@@ -22,6 +22,7 @@ final class RootShellViewController: UIViewController {
     private var bottomBarLayoutCancellable: AnyCancellable?
     private var activeNavItemCancellable: AnyCancellable?
     private var webullLabelCancellable: AnyCancellable?
+    private var webullIconCancellable: AnyCancellable?
     private var topBarDarkCancellable: AnyCancellable?
     private var bottomChromeHeightConstraint: NSLayoutConstraint?
 
@@ -101,10 +102,7 @@ final class RootShellViewController: UIViewController {
     private lazy var phoneShellHostingVC = UIHostingController(
         rootView: PhoneShellView(
             chromeState: chromeState,
-            bridgeController: bridgeVC,
-            onSelectNavItem: { [weak self] navItemId in
-                self?.chromePlugin?.emitNavItemTap(navItemId: navItemId)
-            }
+            bridgeController: bridgeVC
         )
     )
 
@@ -225,14 +223,24 @@ final class RootShellViewController: UIViewController {
             }
     }
 
-    /// Mirror user-configured tab labels from chromeState into RailState.
-    /// Today this only covers the Webull/F9 tab label; if more user-renameable
-    /// tabs land in the future, extend this subscription.
+    /// Mirror user-configured tab labels + icons from chromeState into
+    /// RailState. Today this only covers the Webull/F9 tab; if more
+    /// user-renameable tabs land in the future, extend this subscription.
     private func observeRailTabOverrides() {
         webullLabelCancellable = chromeState.$webullTabLabel
             .receive(on: RunLoop.main)
             .sink { [weak self] label in
                 self?.railState.setLabel(forPath: "/webull", label)
+            }
+        webullIconCancellable = chromeState.$webullTabIconText
+            .receive(on: RunLoop.main)
+            .sink { [weak self] iconText in
+                // Same fallback as Electron's resolvedWebullIcon: text glyph
+                // when configured, otherwise the Webull-horns mark.
+                self?.railState.setIcon(
+                    forPath: "/webull",
+                    iconText.isEmpty ? .template("RailWebullIcon") : .text(iconText)
+                )
             }
     }
 
@@ -659,12 +667,16 @@ final class RootShellViewController: UIViewController {
             drawerTapShieldView.alpha = 0
         }
 
+        // Side-drawer open state, consumed by the hamburger button's tint +
+        // accessibility label. Safe to publish on both idioms now that the
+        // legacy top-drawer reveal (which also read this) is gone.
+        chromeState.drawerProgress = isDrawerOpen ? 1 : 0
+
         // iPad top bar compacts into the remaining content width instead of
         // staying full-width under the drawer. Constraint change + layout
         // inside the caller's animate block so it rides the same spring.
         if isPadChrome {
             bottomChromeLeadingConstraint?.constant = isDrawerOpen ? offset : 0
-            chromeState.drawerProgress = isDrawerOpen ? 1 : 0
             view.layoutIfNeeded()
         }
     }

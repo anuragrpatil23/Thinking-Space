@@ -65,6 +65,12 @@ final class TopChromeState: ObservableObject {
     /// Defaults to "Webull"; React pushes the user's actual value on mount.
     @Published var webullTabLabel: String = "Webull"
 
+    /// User-configured text glyph for the Webull tab icon (e.g. "f9"), same
+    /// preference Electron renders via WebullTextNavIcon. Empty = unset — the
+    /// rail/drawer fall back to the Webull-horns template asset
+    /// (RailWebullIcon, the exact WebullNavIcon SVG from App.tsx).
+    @Published var webullTabIconText: String = ""
+
     /// True when the native push-navigation stack has more than one entry
     /// — i.e., the user has drilled into content and a back action is
     /// meaningful. Drives the morph from hamburger → chevron-back on the

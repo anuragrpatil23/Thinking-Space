@@ -2204,6 +2204,7 @@ function App() {
     canGitCommit: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
     canGitPush: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
     webullTabLabel,
+    webullTabIconText,
     onMenuTap: () => {
       // The mobile drawer is intentionally disabled on iPhone; iPad still
       // opens it from the native menu button. iPhone uses the bottom tab
