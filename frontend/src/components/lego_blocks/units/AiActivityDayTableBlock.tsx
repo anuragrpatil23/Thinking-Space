@@ -352,12 +352,19 @@ export default function AiActivityDayTableBlock({
           No sessions on this day.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border/40 bg-card/40">
+        <div
+          className="overflow-x-auto rounded-lg border border-border/40 bg-card/40"
+          style={{ touchAction: 'pan-x pan-y', WebkitOverflowScrolling: 'touch' }}
+        >
+          {/* overflow-x-auto + the table's min-width make the table pan
+              horizontally on narrow screens (iPhone) instead of crushing the
+              fixed columns to nothing; touch-action pan-x re-enables horizontal
+              drag inside the shell's pan-y-only main scroller. */}
           {/* table-layout: fixed so colgroup widths are authoritative AND a wide
               `colSpan` cell (the expanded row's full topic text) cannot stretch
               the table past its container — long topics wrap inside the row
               instead of running off the right edge. */}
-          <table className="w-full text-xs" style={{ tableLayout: 'fixed' }}>
+          <table className="w-full text-xs" style={{ tableLayout: 'fixed', minWidth: 600 }}>
             {/* Explicit column widths so the Topic column takes the remaining
                 space instead of fighting with the natural widths of the other
                 cells. Without this, Time gets too much breathing room and
