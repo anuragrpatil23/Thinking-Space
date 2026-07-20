@@ -8,7 +8,6 @@ import {
   FileText,
   Loader2,
   Menu,
-  RefreshCw,
   Settings as SettingsIcon,
   Sparkles,
   Waypoints,
@@ -68,7 +67,8 @@ import RuntimeErrorBoundaryBlock from './components/lego_blocks/integrations/Run
 import RuntimeErrorSurfaceBlock from './components/lego_blocks/integrations/RuntimeErrorSurfaceBlock'
 import DebugPanelBlock from './components/lego_blocks/integrations/DebugPanelBlock'
 import BackgroundActivityBannerBlock from './components/lego_blocks/integrations/BackgroundActivityBannerBlock'
-import SyncProgressHairlineBlock from './components/lego_blocks/units/SyncProgressHairlineBlock'
+import SyncRefreshButtonBlock from './components/lego_blocks/units/SyncRefreshButtonBlock'
+import { useAmbientSyncActivityBlock } from './components/lego_blocks/hooks/useAmbientSyncActivityBlock'
 import { startStallDetector } from './services/lego_blocks/units/mainThreadStallBlock'
 import DebugToastBlock from './components/lego_blocks/units/DebugToastBlock'
 import {
@@ -2171,6 +2171,8 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab, handleGlobalRefresh, navigate, primaryNavItems, toolsNavItems])
 
+  const { running: ambientSyncRunning } = useAmbientSyncActivityBlock()
+
   useNativeTopChromeBlock({
     enabled: useNativeTopChrome && !needsVaultSetup,
     visible: !nativeChromeImmersed,
@@ -2190,6 +2192,7 @@ function App() {
     tabs: nativeTabItems,
     bottomBarHidden: nativeBottomBarHidden || keyboardVisible,
     canRefresh: !refreshRunning && !needsVaultSetup,
+    syncActive: ambientSyncRunning || refreshRunning,
     canSync: !syncActionRunning && !gitActionRunning && !needsVaultSetup,
     canRebuild: !syncActionRunning && !gitActionRunning && !needsVaultSetup,
     canGitCommit: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
@@ -2710,19 +2713,14 @@ function App() {
                   <SearchNavIcon className="h-3.5 w-3.5" />
                 </button>
 
-                <button
-                  type="button"
+                <SyncRefreshButtonBlock
                   onClick={handleGlobalRefresh}
                   disabled={refreshRunning || needsVaultSetup}
-                  className={`ltm-top-chrome-capsule ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-full border border-border/60 bg-background/85 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 ${
-                    phoneMode ? 'w-8 px-0' : 'px-3'
-                  }`}
-                  aria-label="Refresh current workspace"
+                  busy={refreshRunning}
+                  className="ltm-top-chrome-capsule ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                  ariaLabel="Refresh current workspace"
                   title={`Refresh current workspace (${isMacPlatform ? '⌘R' : 'Ctrl+R'})`}
-                >
-                  {refreshRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                  {!phoneMode && <span className="hidden lg:inline">Refresh</span>}
-                </button>
+                />
 
                 <button
                   type="button"
@@ -3657,7 +3655,6 @@ function App() {
     >
       <>
         {appContent}
-        <SyncProgressHairlineBlock />
         <BackgroundActivityBannerBlock />
         <RuntimeErrorSurfaceBlock
           reports={runtimeErrorReports}

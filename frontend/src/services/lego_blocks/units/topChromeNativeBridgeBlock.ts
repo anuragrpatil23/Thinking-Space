@@ -24,6 +24,9 @@ export interface TopChromeStateBlock {
   tabs?: NativeTopChromeTabBridgeItem[]
   bottomBarHidden?: boolean
   canRefresh?: boolean
+  /** True while a vault sync is in flight (past the visibility threshold) —
+   *  animates the native refresh affordances. */
+  syncActive?: boolean
   canSync?: boolean
   canRebuild?: boolean
   canGitCommit?: boolean

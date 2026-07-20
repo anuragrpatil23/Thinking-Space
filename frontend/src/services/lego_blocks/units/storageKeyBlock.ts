@@ -122,9 +122,9 @@ export function getStorageItem(key: StorageKey): string | null {
   return getLocalStorageItemBlock(key)
 }
 
-// Roaming-settings write hook. The mirror (roamingSettingsBlock, an
-// integration — it needs the vault FS) registers here so this unit stays
-// dependency-free. Called after every successful local write.
+// Roaming-settings write hook. The roaming mirror (vaultUiPreferencesOrch's
+// initAiActivityPrefsRoamingOrch — it needs the vault FS) registers here so
+// this unit stays dependency-free. Called after every successful local write.
 type StorageWriteListenerBlock = (key: StorageKey) => void
 let storageWriteListenerBlock: StorageWriteListenerBlock | null = null
 

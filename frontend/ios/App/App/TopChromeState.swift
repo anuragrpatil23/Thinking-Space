@@ -37,6 +37,12 @@ final class TopChromeState: ObservableObject {
     @Published var tabSnapshots: [String: UIImage] = [:]
     @Published var isBottomBarHidden: Bool = false
     @Published var canRefresh: Bool = true
+
+    /// True while a vault sync is in flight on the web side (past its
+    /// visibility threshold). Spins the refresh affordances in the chrome —
+    /// the pill IS the sync indicator, mirroring Electron's
+    /// SyncRefreshButtonBlock.
+    @Published var syncActive: Bool = false
     @Published var canSync: Bool = true
     @Published var canRebuild: Bool = true
     @Published var canGitCommit: Bool = false
