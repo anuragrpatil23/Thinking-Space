@@ -1520,6 +1520,18 @@ body.ltm-ruled-notebook-active .excalidraw .layer-ui__wrapper {
   display: none !important;
 }
 
+/* Inactive workspace tabs are hidden with `visibility: hidden` (App.tsx), which
+   normally hides the whole subtree. Excalidraw's footer wrapper
+   (`.zen-mode-visibility`) hardcodes `visibility: visible`, so it re-asserts
+   itself and leaves the zoom controls painted on top of the active tab. Force
+   the whole Excalidraw subtree back to hidden whenever it sits inside an
+   aria-hidden (inactive) surface; when the tab is active (aria-hidden="false")
+   this rule does not match and Excalidraw renders normally. */
+[aria-hidden='true'] .excalidraw,
+[aria-hidden='true'] .excalidraw * {
+  visibility: hidden !important;
+}
+
 /* Suppress iOS Safari's long-press callout (image save / link share / text
    selection) on explorer rows so our custom long-press → context menu can fire. */
 .ltm-explorer-row {
