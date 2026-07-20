@@ -3,6 +3,7 @@ import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
   getCachedSnapshot,
   loadAiActivity,
+  subscribeAiActivitySnapshotBlock,
 } from '@/services/lego_blocks/integrations/aiActivityCacheBlock'
 import {
   buildChains,
@@ -313,6 +314,21 @@ export function useAiActivityBlock(
   const [mappingVersion, setMappingVersion] = useState(0)
   useEffect(
     () => subscribeAiActivityMappingBlock(() => setMappingVersion(v => v + 1)),
+    [],
+  )
+  // On a cold launch the load effect below may resolve with the device-persisted
+  // seed while the real vault load keeps running in the background — adopt the
+  // fresh result silently when it lands (same array reference on no-op, so this
+  // never causes churn).
+  useEffect(
+    () =>
+      subscribeAiActivitySnapshotBlock(() => {
+        const snap = getCachedSnapshot()
+        if (snap) {
+          setAllSessions(snap.sessions)
+          setLoading(false)
+        }
+      }),
     [],
   )
 

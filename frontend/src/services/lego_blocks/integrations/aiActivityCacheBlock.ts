@@ -1,11 +1,16 @@
 // Vault-backed cache for parsed Claude Code / Codex sessions.
 //
-// Three layers, fastest first:
+// Four layers, fastest first:
 //   1. Module-level in-memory snapshot (shared across every hook / component).
 //      Returned instantly on subsequent calls — second mount is free.
-//   2. On-disk JSON cache in the vault (survives app restarts; shared with the
-//      Python script that uses the same parser).
-//   3. Parse from the raw session markdown (only for files whose mtime changed
+//   2. Device-persisted snapshot in IndexedDB (aiActivitySnapshotStoreBlock).
+//      Cold launches (iOS kills the WKWebView on background) paint from it
+//      immediately while the full load runs behind; subscribers are notified
+//      when the fresh result lands.
+//   3. On-disk JSON cache in the vault (survives app restarts; shared with the
+//      Python script that uses the same parser). Fingerprinted by stat so an
+//      unchanged file skips the multi-MB read + JSON.parse.
+//   4. Parse from the raw session markdown (only for files whose mtime changed
 //      since the on-disk cache was written).
 //
 // Concurrent callers share the same in-flight load promise so the post-it
@@ -180,6 +185,32 @@ export function getCachedSnapshot(): LoadResult | null {
 export function clearAiActivitySnapshot(): void {
   _snapshot = null
   _inflight = null
+  _diskCacheMemo = null
+  // Drop the device-persisted snapshot too — callers clear when the session
+  // sources change, and a stale seed would resurrect excluded sessions for a
+  // moment on the next cold launch.
+  void clearPersistedAiActivitySnapshotBlock()
+}
+
+// Fires after every fresh performLoad completes, so consumers that painted
+// from a (possibly stale) persisted seed can adopt the real result silently.
+const _snapshotListeners = new Set<() => void>()
+
+export function subscribeAiActivitySnapshotBlock(listener: () => void): () => void {
+  _snapshotListeners.add(listener)
+  return () => {
+    _snapshotListeners.delete(listener)
+  }
+}
+
+function notifySnapshotListeners(): void {
+  for (const listener of [..._snapshotListeners]) {
+    try {
+      listener()
+    } catch {
+      // Listener errors must not break the load pipeline.
+    }
+  }
 }
 
 async function runParallel<T, R>(
@@ -487,9 +518,13 @@ export async function loadAiActivity(
     _inflight = null
   }
 
+  const hadSnapshot = _snapshot != null
+
   const promise = performLoad(fs).then(result => {
     _snapshot = { result, ts: Date.now() }
     _inflight = null
+    void writePersistedAiActivitySnapshotBlock(CACHE_VERSION, vaultRootKey(), result.sessions)
+    notifySnapshotListeners()
     return result
   }).catch(err => {
     _inflight = null
@@ -497,5 +532,26 @@ export async function loadAiActivity(
   })
 
   _inflight = promise
+
+  // Cold start (nothing in memory yet, e.g. a fresh WKWebView after iOS killed
+  // the app): paint immediately from the device-persisted snapshot while the
+  // full load above runs in the background. The `ts: 0` marks the seed stale,
+  // so the next call still awaits the real load; subscribers are notified when
+  // it lands.
+  if (!force && !hadSnapshot) {
+    const persisted = await readPersistedAiActivitySnapshotBlock(
+      CACHE_VERSION,
+      vaultRootKey(),
+    ).catch(() => null)
+    if (persisted && !_snapshot) {
+      const seeded: LoadResult = { sessions: persisted, reparsed: 0 }
+      _snapshot = { result: seeded, ts: 0 }
+      // The background load's rejection is surfaced to any caller awaiting
+      // _inflight; this seed path just must not leave it unhandled.
+      void promise.catch(() => {})
+      return seeded
+    }
+  }
+
   return promise
 }
