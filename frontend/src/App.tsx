@@ -2171,7 +2171,11 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab, handleGlobalRefresh, navigate, primaryNavItems, toolsNavItems])
 
-  const { running: ambientSyncRunning } = useAmbientSyncActivityBlock()
+  const {
+    running: ambientSyncRunning,
+    completedCount: ambientSyncCompleted,
+    totalCount: ambientSyncTotal,
+  } = useAmbientSyncActivityBlock()
 
   useNativeTopChromeBlock({
     enabled: useNativeTopChrome && !needsVaultSetup,
@@ -2193,6 +2197,8 @@ function App() {
     bottomBarHidden: nativeBottomBarHidden || keyboardVisible,
     canRefresh: !refreshRunning && !needsVaultSetup,
     syncActive: ambientSyncRunning || refreshRunning,
+    syncCompleted: ambientSyncCompleted ?? 0,
+    syncTotal: ambientSyncTotal ?? 0,
     canSync: !syncActionRunning && !gitActionRunning && !needsVaultSetup,
     canRebuild: !syncActionRunning && !gitActionRunning && !needsVaultSetup,
     canGitCommit: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
@@ -2717,7 +2723,7 @@ function App() {
                   onClick={handleGlobalRefresh}
                   disabled={refreshRunning || needsVaultSetup}
                   busy={refreshRunning}
-                  className="ltm-top-chrome-capsule ltm-motion-fast inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                  className="ltm-top-chrome-capsule ltm-motion-fast inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/85 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                   ariaLabel="Refresh current workspace"
                   title={`Refresh current workspace (${isMacPlatform ? '⌘R' : 'Ctrl+R'})`}
                 />

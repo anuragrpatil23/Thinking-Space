@@ -98,6 +98,8 @@ export function useNativeTopChromeBlock({
   bottomBarHidden,
   canRefresh,
   syncActive,
+  syncCompleted,
+  syncTotal,
   canSync,
   canRebuild,
   canGitCommit,
@@ -188,6 +190,8 @@ export function useNativeTopChromeBlock({
       bottomBarHidden,
       canRefresh,
       syncActive,
+      syncCompleted,
+      syncTotal,
       canSync,
       canRebuild,
       canGitCommit,
@@ -202,7 +206,7 @@ export function useNativeTopChromeBlock({
     showSearch, showTools, toolsBadgeCount,
     canToggleSidebar, sidebarToggleActive, sidebarToggleLabel,
     canToggleHeader, headerToggleLabel, tabsJson,
-    bottomBarHidden, canRefresh, syncActive, canSync, canRebuild, canGitCommit, canGitPush,
+    bottomBarHidden, canRefresh, syncActive, syncCompleted, syncTotal, canSync, canRebuild, canGitCommit, canGitPush,
     webullTabLabel,
   ])
 

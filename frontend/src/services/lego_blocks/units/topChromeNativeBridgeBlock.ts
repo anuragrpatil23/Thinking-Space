@@ -27,6 +27,9 @@ export interface TopChromeStateBlock {
   /** True while a vault sync is in flight (past the visibility threshold) —
    *  animates the native refresh affordances. */
   syncActive?: boolean
+  /** Processed/total file counts for the in-flight sync; 0 = indeterminate. */
+  syncCompleted?: number
+  syncTotal?: number
   canSync?: boolean
   canRebuild?: boolean
   canGitCommit?: boolean

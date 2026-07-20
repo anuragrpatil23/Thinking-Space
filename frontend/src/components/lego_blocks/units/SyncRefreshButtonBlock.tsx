@@ -5,10 +5,11 @@ import { useAmbientSyncActivityBlock } from '../hooks/useAmbientSyncActivityBloc
 /**
  * Icon-only refresh pill that doubles as the vault-sync indicator — one
  * control that "naturally means refresh AND sync". Click still triggers the
- * cheap UI refresh; any vault sync (startup scan, watcher, manual rebuild)
- * animates the same pill: the icon rotates and a thin accent ring traces the
- * capsule border (determinate arc when file totals are known, sweeping arc
- * otherwise). When the sync ends the ring closes and fades, so even instant
+ * cheap UI refresh; any vault sync past the visibility threshold animates
+ * the same pill: the icon rotates inside a small accent progress circle
+ * (determinate arc when file totals are known, sweeping arc otherwise), and
+ * determinate syncs expand the capsule with a live processed/total file
+ * count. When the sync ends the circle closes and fades — even instant
  * syncs read as one elegant pulse instead of a flicker.
  */
 
@@ -23,7 +24,9 @@ interface Props {
 }
 
 const CLOSE_MS = 650
-const RING_R = 15
+// The progress circle hugs the icon, not the capsule — so it survives the
+// capsule widening for the file count.
+const RING_R = 9
 const RING_C = 2 * Math.PI * RING_R
 
 export default function SyncRefreshButtonBlock({
@@ -34,7 +37,7 @@ export default function SyncRefreshButtonBlock({
   title,
   ariaLabel,
 }: Props) {
-  const { running: syncRunning, progress } = useAmbientSyncActivityBlock()
+  const { running: syncRunning, progress, completedCount, totalCount } = useAmbientSyncActivityBlock()
   const active = syncRunning || busy
   const [closing, setClosing] = useState(false)
   const closeTimerRef = useRef<number | null>(null)
@@ -65,6 +68,7 @@ export default function SyncRefreshButtonBlock({
 
   const showRing = active || closing
   const indeterminate = active && progress === null
+  const showCount = syncRunning && completedCount !== null && totalCount !== null
   // Closing pulse renders the full circle; determinate syncs draw their arc.
   const arcFraction = closing ? 1 : indeterminate ? 0.3 : (progress ?? 0)
 
@@ -73,39 +77,46 @@ export default function SyncRefreshButtonBlock({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`relative ${className}`}
+      className={`relative ${showCount ? 'gap-1.5 px-2' : 'w-8'} ${className}`}
       aria-label={ariaLabel}
       aria-busy={active}
       title={title}
     >
-      <RefreshCw
-        className={`h-3.5 w-3.5 ${active ? 'animate-[ltm-syncbtn-spin_0.9s_linear_infinite]' : ''}`}
-      />
-      {showRing && (
-        <svg
-          viewBox="0 0 32 32"
-          aria-hidden
-          className={`pointer-events-none absolute inset-0 h-full w-full -rotate-90 ${
-            indeterminate ? 'animate-[ltm-syncbtn-orbit_1.1s_linear_infinite]' : ''
-          }`}
-          style={{
-            opacity: closing ? 0 : 1,
-            transition: closing ? `opacity ${CLOSE_MS - 150}ms ease-in 150ms` : undefined,
-          }}
-        >
-          <circle
-            cx="16"
-            cy="16"
-            r={RING_R}
-            fill="none"
-            stroke="var(--ltm-profile-accent, #10b981)"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeDasharray={RING_C}
-            strokeDashoffset={RING_C * (1 - arcFraction)}
-            style={{ transition: 'stroke-dashoffset 250ms ease-out' }}
-          />
-        </svg>
+      <span className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center">
+        <RefreshCw
+          className={`h-3 w-3 ${active ? 'animate-[ltm-syncbtn-spin_0.9s_linear_infinite]' : ''}`}
+        />
+        {showRing && (
+          <svg
+            viewBox="0 0 20 20"
+            aria-hidden
+            className={`pointer-events-none absolute inset-0 h-full w-full -rotate-90 ${
+              indeterminate ? 'animate-[ltm-syncbtn-orbit_1.1s_linear_infinite]' : ''
+            }`}
+            style={{
+              opacity: closing ? 0 : 1,
+              transition: closing ? `opacity ${CLOSE_MS - 150}ms ease-in 150ms` : undefined,
+            }}
+          >
+            <circle
+              cx="10"
+              cy="10"
+              r={RING_R}
+              fill="none"
+              stroke="var(--ltm-profile-accent, #10b981)"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeDasharray={RING_C}
+              strokeDashoffset={RING_C * (1 - arcFraction)}
+              style={{ transition: 'stroke-dashoffset 250ms ease-out' }}
+            />
+          </svg>
+        )}
+      </span>
+      {showCount && (
+        <span className="text-[10px] font-medium tabular-nums text-muted-foreground">
+          {completedCount.toLocaleString()}/{totalCount.toLocaleString()}
+        </span>
       )}
       <style>{`
         @keyframes ltm-syncbtn-spin {

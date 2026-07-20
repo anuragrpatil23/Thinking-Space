@@ -779,12 +779,25 @@ struct BottomChromeView: View {
     /// SyncRefreshButtonBlock. Tap still fires the plain UI refresh.
     private var padRefreshButton: some View {
         Button(action: onRefreshTap) {
-            SyncSpinIconView(
-                spinning: state.syncActive,
-                size: 14,
-                tint: state.canRefresh ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary)
-            )
-            .frame(width: NativeChromeMetrics.padCompactButtonSize, height: NativeChromeMetrics.padCompactButtonSize)
+            HStack(spacing: 6) {
+                SyncSpinIconView(
+                    spinning: state.syncActive,
+                    size: 14,
+                    tint: state.canRefresh ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary),
+                    progress: state.syncActive ? state.syncProgress : nil
+                )
+                .frame(width: 24, height: NativeChromeMetrics.padCompactButtonSize)
+
+                if state.syncActive, state.syncTotal > 0 {
+                    Text("\(state.syncCompleted)/\(state.syncTotal)")
+                        .font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
+                }
+            }
+            .padding(.horizontal, state.syncActive && state.syncTotal > 0
+                ? 10
+                : (NativeChromeMetrics.padCompactButtonSize - 24) / 2)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -793,6 +806,8 @@ struct BottomChromeView: View {
         .background {
             floatingChromeCapsule()
         }
+        .animation(.easeInOut(duration: 0.2), value: state.syncActive)
+        .animation(.easeInOut(duration: 0.2), value: state.syncTotal > 0)
     }
 
     /// Compact Safari-sized glass button — no outer padding halo; the glass
@@ -1030,16 +1045,26 @@ struct BottomChromeView: View {
                     tabCountBadge
                         .frame(width: collapsed ? 20 : 24, height: collapsed ? 18 : 20)
 
-                    // Vault-sync heartbeat: a small accent arrow spins beside
-                    // the badge while the web side reports a sync in flight —
-                    // visible in both the full bar and the minimized chip.
+                    // Vault-sync heartbeat: a small accent arrow spins inside
+                    // its progress circle beside the badge while the web side
+                    // reports a sync in flight — visible in both the full bar
+                    // and the minimized chip; the full bar adds the file count.
                     if state.syncActive {
                         SyncSpinIconView(
                             spinning: true,
-                            size: collapsed ? 11 : 12,
-                            tint: AnyShapeStyle(Color.accentColor)
+                            size: collapsed ? 10 : 11,
+                            tint: AnyShapeStyle(Color.accentColor),
+                            progress: state.syncProgress
                         )
+                        .frame(width: collapsed ? 18 : 20, height: collapsed ? 18 : 20)
                         .transition(.scale(scale: 0.5).combined(with: .opacity))
+
+                        if !collapsed, state.syncTotal > 0 {
+                            Text("\(state.syncCompleted)/\(state.syncTotal)")
+                                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .transition(.opacity)
+                        }
                     }
 
                     // Safari-style: the minimized chip keeps showing WHERE you
@@ -1142,39 +1167,61 @@ struct BottomChromeView: View {
 // MARK: - Sync spin icon
 
 /// The refresh arrow that doubles as the vault-sync indicator. While
-/// `spinning` it rotates continuously; when the sync ends it settles
-/// without snapping (the repeatForever animation is replaced by a short
-/// ease-out back to rest).
+/// `spinning` it rotates continuously inside a small accent progress
+/// circle — a determinate arc when `progress` is known, a sweeping arc
+/// otherwise. When the sync ends it settles without snapping (the
+/// repeatForever animation is replaced by a short ease-out back to rest).
 private struct SyncSpinIconView: View {
     let spinning: Bool
     let size: CGFloat
     let tint: AnyShapeStyle
+    /// 0..1 while a determinate sync runs; nil = indeterminate sweep.
+    var progress: Double? = nil
 
     @State private var angle: Double = 0
+    @State private var orbitAngle: Double = 0
+
+    private var ringDiameter: CGFloat { size + 8 }
 
     var body: some View {
-        Image(systemName: "arrow.clockwise")
-            .font(.system(size: size, weight: .medium))
-            .foregroundStyle(tint)
-            .rotationEffect(.degrees(angle))
-            .onAppear {
-                if spinning { startSpin() }
+        ZStack {
+            if spinning {
+                Circle()
+                    .trim(from: 0, to: progress.map { max(0.02, $0) } ?? 0.3)
+                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .frame(width: ringDiameter, height: ringDiameter)
+                    .rotationEffect(.degrees(progress == nil ? orbitAngle : -90))
+                    .animation(.easeOut(duration: 0.25), value: progress)
+                    .transition(.opacity)
             }
-            .onChange(of: spinning) { isSpinning in
-                if isSpinning {
-                    startSpin()
-                } else {
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        angle = 0
-                    }
+
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: size, weight: .medium))
+                .foregroundStyle(tint)
+                .rotationEffect(.degrees(angle))
+        }
+        .onAppear {
+            if spinning { startSpin() }
+        }
+        .onChange(of: spinning) { isSpinning in
+            if isSpinning {
+                startSpin()
+            } else {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    angle = 0
                 }
             }
+        }
     }
 
     private func startSpin() {
         angle = 0
+        orbitAngle = -90
         withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
             angle = 360
+        }
+        withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
+            orbitAngle = 270
         }
     }
 }

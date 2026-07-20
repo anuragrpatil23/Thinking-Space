@@ -50,6 +50,8 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let bottomBarHidden = call.getBool("bottomBarHidden")
         let canRefresh = call.getBool("canRefresh")
         let syncActive = call.getBool("syncActive")
+        let syncCompleted = call.getInt("syncCompleted")
+        let syncTotal = call.getInt("syncTotal")
         let canSync = call.getBool("canSync")
         let canRebuild = call.getBool("canRebuild")
         let canGitCommit = call.getBool("canGitCommit")
@@ -117,6 +119,12 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
             }
             if let syncActive {
                 state.syncActive = syncActive
+            }
+            if let syncCompleted {
+                state.syncCompleted = max(0, syncCompleted)
+            }
+            if let syncTotal {
+                state.syncTotal = max(0, syncTotal)
             }
             if let canSync {
                 state.canSync = canSync

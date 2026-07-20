@@ -18,9 +18,17 @@ import {
 
 const DEFAULT_VISIBILITY_DELAY_MS = 500
 
+export interface AmbientSyncActivitySnapshot {
+  running: boolean
+  progress: number | null
+  /** Aggregate processed/total file counts; null while indeterminate. */
+  completedCount: number | null
+  totalCount: number | null
+}
+
 export function useAmbientSyncActivityBlock(
   visibilityDelayMs: number = DEFAULT_VISIBILITY_DELAY_MS,
-): { running: boolean; progress: number | null } {
+): AmbientSyncActivitySnapshot {
   const [ambient, setAmbient] = useState<BackgroundActivity[]>([])
   const [now, setNow] = useState(() => Date.now())
 
@@ -49,10 +57,13 @@ export function useAmbientSyncActivityBlock(
     completed += a.completed ?? 0
   }
 
+  const isDeterminate = determinate && total > 0
   return {
     running: visible.length > 0,
-    progress: determinate && total > 0
+    progress: isDeterminate
       ? Math.min(1, Math.max(0, completed / total))
       : null,
+    completedCount: isDeterminate ? Math.min(completed, total) : null,
+    totalCount: isDeterminate ? total : null,
   }
 }

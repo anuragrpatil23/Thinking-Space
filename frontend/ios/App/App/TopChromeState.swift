@@ -43,6 +43,17 @@ final class TopChromeState: ObservableObject {
     /// the pill IS the sync indicator, mirroring Electron's
     /// SyncRefreshButtonBlock.
     @Published var syncActive: Bool = false
+
+    /// Processed/total file counts for the in-flight sync (0 = indeterminate).
+    @Published var syncCompleted: Int = 0
+    @Published var syncTotal: Int = 0
+
+    /// 0..1 fraction when the running sync reports totals; nil while
+    /// indeterminate (drives the sweeping arc instead of a fixed one).
+    var syncProgress: Double? {
+        guard syncTotal > 0 else { return nil }
+        return min(1, max(0, Double(syncCompleted) / Double(syncTotal)))
+    }
     @Published var canSync: Bool = true
     @Published var canRebuild: Bool = true
     @Published var canGitCommit: Bool = false
