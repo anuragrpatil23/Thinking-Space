@@ -22,7 +22,10 @@ import {
   suspendInlineWebViewBlock,
   resumeInlineWebViewBlock,
   updateInlineWebViewFrameBlock,
+  setInlineWebViewThemeBlock,
+  type InlineWebViewTheme,
 } from '@/services/lego_blocks/units/inlineWebViewBlock'
+import { useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
 import {
   derivePasswordEntryTitleBlock,
   findMatchingPasswordEntriesBlock,
@@ -119,6 +122,14 @@ function UrlDocumentBlock({
   const contentAreaRef = useRef<HTMLDivElement | null>(null)
   const passwordProbeInFlightRef = useRef(false)
   const isElectronRuntime = Boolean(window.electronAPI?.isElectron)
+  // Force the guest site's prefers-color-scheme to match the app. Electron
+  // webviews already inherit this via nativeTheme.themeSource (uiThemeOrch);
+  // iOS needs it pushed to the native WKWebView's overrideUserInterfaceStyle.
+  const { resolvedColorMode } = useUIThemeBlock()
+  const inlineWebViewTheme: InlineWebViewTheme = resolvedColorMode === 'dark' ? 'dark' : 'light'
+  // Latest theme, read at open time without re-triggering the mount effect.
+  const inlineWebViewThemeRef = useRef(inlineWebViewTheme)
+  inlineWebViewThemeRef.current = inlineWebViewTheme
   const routeActive = useRouteActivityBlock()
   const windowActive = useWindowActivityBlock()
   // InlineWebView is iOS-only; exclude Electron even though Capacitor reports isNativePlatform() there
@@ -294,11 +305,11 @@ function UrlDocumentBlock({
       // Webview was suspended — restore it at the correct frame (no reload).
       void resumeInlineWebViewBlock(getRect()).then((resumed) => {
         // If resume failed (webview was destroyed externally), fall back to open.
-        if (!resumed) void openInlineWebViewBlock(resolvedUrl, getRect())
+        if (!resumed) void openInlineWebViewBlock(resolvedUrl, getRect(), inlineWebViewThemeRef.current)
       })
     } else {
       // First open — create and load.
-      void openInlineWebViewBlock(resolvedUrl, getRect())
+      void openInlineWebViewBlock(resolvedUrl, getRect(), inlineWebViewThemeRef.current)
       iosWebViewMountedRef.current = true
     }
 
@@ -314,6 +325,13 @@ function UrlDocumentBlock({
       iosWebViewMountedRef.current = false
     }
   }, [isCapacitorRuntime, isTrusted, resolvedUrl, suspended])
+
+  // Push app theme changes to the live iOS webview so an open article re-themes
+  // when the user flips dark/light without needing a reload.
+  useEffect(() => {
+    if (!isCapacitorRuntime || !iosWebViewMountedRef.current || suspended) return
+    void setInlineWebViewThemeBlock(inlineWebViewTheme)
+  }, [isCapacitorRuntime, inlineWebViewTheme, suspended])
 
   // Webview back-state tracking (Electron only)
   useEffect(() => {

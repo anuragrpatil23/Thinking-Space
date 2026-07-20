@@ -1,9 +1,14 @@
 import { registerPlugin } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 
+/** Color scheme forced onto the guest website so its `prefers-color-scheme`
+ *  matches the app. 'system' lets the device decide (default WKWebView). */
+export type InlineWebViewTheme = 'light' | 'dark' | 'system'
+
 interface InlineWebViewPlugin {
-  open(options: { url: string; x: number; y: number; width: number; height: number }): Promise<void>
+  open(options: { url: string; x: number; y: number; width: number; height: number; theme?: InlineWebViewTheme }): Promise<void>
   close(): Promise<void>
+  setTheme(options: { theme: InlineWebViewTheme }): Promise<void>
   suspend(): Promise<void>
   resume(options: { x: number; y: number; width: number; height: number }): Promise<{ resumed: boolean }>
   updateFrame(options: { x: number; y: number; width: number; height: number }): Promise<void>
@@ -15,8 +20,18 @@ interface InlineWebViewPlugin {
 
 const InlineWebView = registerPlugin<InlineWebViewPlugin>('InlineWebView')
 
-export async function openInlineWebViewBlock(url: string, rect: DOMRect): Promise<void> {
-  await InlineWebView.open({ url, x: rect.left, y: rect.top, width: rect.width, height: rect.height })
+export async function openInlineWebViewBlock(
+  url: string,
+  rect: DOMRect,
+  theme: InlineWebViewTheme = 'system',
+): Promise<void> {
+  await InlineWebView.open({ url, x: rect.left, y: rect.top, width: rect.width, height: rect.height, theme })
+}
+
+/** Live-update the guest webview's forced color scheme (app theme toggled while
+ *  an article is open). No-op if the plugin predates this method. */
+export async function setInlineWebViewThemeBlock(theme: InlineWebViewTheme): Promise<void> {
+  await InlineWebView.setTheme?.({ theme })
 }
 
 export async function closeInlineWebViewBlock(): Promise<void> {

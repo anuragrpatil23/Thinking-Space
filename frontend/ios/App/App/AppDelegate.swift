@@ -693,11 +693,24 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setTheme", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "suspend", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "resume", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateFrame", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getCurrentUrl", returnType: CAPPluginReturnPromise),
     ]
+
+    /// Map the JS theme string → a WKWebView trait. A WKWebView's
+    /// `prefers-color-scheme` follows its `overrideUserInterfaceStyle`, so this
+    /// is how the app's dark/light choice reaches the guest website. `.unspecified`
+    /// (system) lets the device trait decide.
+    private func interfaceStyle(for theme: String?) -> UIUserInterfaceStyle {
+        switch theme {
+        case "dark": return .dark
+        case "light": return .light
+        default: return .unspecified
+        }
+    }
 
     // Swipe gesture thresholds matching uiGestureBlock.ts DEFAULT_DRAWER_SWIPE_THRESHOLDS
     private let edgeStartMaxX: CGFloat = 24
@@ -741,6 +754,8 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
                 wkView.navigationDelegate = self
                 wkView.allowsBackForwardNavigationGestures = true
                 wkView.backgroundColor = .systemBackground
+                // Force the guest site's prefers-color-scheme to match the app.
+                wkView.overrideUserInterfaceStyle = self.interfaceStyle(for: call.getString("theme"))
                 parentView.addSubview(wkView)
                 self.inlineWebView = wkView
 
@@ -754,6 +769,7 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
                 wkView.addGestureRecognizer(closePan)
             } else {
                 self.inlineWebView?.frame = frame
+                self.inlineWebView?.overrideUserInterfaceStyle = self.interfaceStyle(for: call.getString("theme"))
             }
 
             self.inlineWebView?.load(URLRequest(url: url))
@@ -765,6 +781,16 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
     @objc func close(_ call: CAPPluginCall) {
         closeWebView()
         call.resolve()
+    }
+
+    /// Live-update the guest webview's forced color scheme when the app theme is
+    /// toggled while an article is open (no reload).
+    @objc func setTheme(_ call: CAPPluginCall) {
+        let theme = call.getString("theme")
+        DispatchQueue.main.async {
+            self.inlineWebView?.overrideUserInterfaceStyle = self.interfaceStyle(for: theme)
+            call.resolve()
+        }
     }
 
     func closeWebView() {
