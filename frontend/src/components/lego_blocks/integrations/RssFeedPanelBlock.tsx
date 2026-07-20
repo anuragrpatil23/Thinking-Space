@@ -70,6 +70,27 @@ function formatRelativeDate(dateStr: string | null): string {
   }
 }
 
+/** Absolute publish date + time for the row body, e.g. "Mar 5, 2:30 PM" (year
+ *  added only when it isn't the current year). The corner still shows the terse
+ *  relative age; this line is the exact timestamp the user asked to see. */
+function formatAbsoluteDateTime(dateStr: string | null): string {
+  if (!dateStr) return ''
+  try {
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return ''
+    const includeYear = date.getFullYear() !== new Date().getFullYear()
+    return date.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      ...(includeYear ? { year: 'numeric' } : {}),
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  } catch {
+    return ''
+  }
+}
+
 export default function RssFeedPanelBlock({
   onOpenArticle,
   onClose,
@@ -801,6 +822,14 @@ function FeedItemRow({
             isSelected ? 'text-white/75' : 'text-muted-foreground',
           )}>
             {item.description}
+          </div>
+        )}
+        {item.pubDate && !isPendingDelete && (
+          <div className={cn(
+            'mt-1 text-[10px] leading-none tabular-nums',
+            isSelected ? 'text-white/60' : 'text-muted-foreground/70',
+          )}>
+            {formatAbsoluteDateTime(item.pubDate)}
           </div>
         )}
         {hasMeta && !isPendingDelete && (
