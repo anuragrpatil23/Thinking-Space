@@ -523,12 +523,7 @@ struct BottomChromeView: View {
                     )
                 }
 
-                padGlassIconButton(
-                    systemName: "arrow.clockwise",
-                    action: onRefreshTap,
-                    accessibilityLabel: "Refresh workspace",
-                    enabled: state.canRefresh
-                )
+                padRefreshButton
 
                 padOverflowMenu
             }
@@ -779,6 +774,27 @@ struct BottomChromeView: View {
         .accessibilityLabel("More options")
     }
 
+    /// Refresh + sync in one control: the arrow spins while a vault sync is
+    /// in flight (state.syncActive from the web side), mirroring Electron's
+    /// SyncRefreshButtonBlock. Tap still fires the plain UI refresh.
+    private var padRefreshButton: some View {
+        Button(action: onRefreshTap) {
+            SyncSpinIconView(
+                spinning: state.syncActive,
+                size: 14,
+                tint: state.canRefresh ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary)
+            )
+            .frame(width: NativeChromeMetrics.padCompactButtonSize, height: NativeChromeMetrics.padCompactButtonSize)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!state.canRefresh)
+        .accessibilityLabel(state.syncActive ? "Syncing vault" : "Refresh workspace")
+        .background {
+            floatingChromeCapsule()
+        }
+    }
+
     /// Compact Safari-sized glass button — no outer padding halo; the glass
     /// capsule IS the 38pt hit target (the earlier 52pt capsules read as
     /// "huge", 2026-07-19).
@@ -1014,6 +1030,18 @@ struct BottomChromeView: View {
                     tabCountBadge
                         .frame(width: collapsed ? 20 : 24, height: collapsed ? 18 : 20)
 
+                    // Vault-sync heartbeat: a small accent arrow spins beside
+                    // the badge while the web side reports a sync in flight —
+                    // visible in both the full bar and the minimized chip.
+                    if state.syncActive {
+                        SyncSpinIconView(
+                            spinning: true,
+                            size: collapsed ? 11 : 12,
+                            tint: AnyShapeStyle(Color.accentColor)
+                        )
+                        .transition(.scale(scale: 0.5).combined(with: .opacity))
+                    }
+
                     // Safari-style: the minimized chip keeps showing WHERE you
                     // are (active tab name), not a generic "Tabs" word.
                     Text(activeTabLabel)
@@ -1051,6 +1079,7 @@ struct BottomChromeView: View {
         .sheet(isPresented: $tabSwitcherPresented) {
             tabSwitcherSheet
         }
+        .animation(.easeInOut(duration: 0.2), value: state.syncActive)
     }
 
     @ViewBuilder
@@ -1106,6 +1135,46 @@ struct BottomChromeView: View {
             Text("\(max(state.tabs.count, 1))")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.primary)
+        }
+    }
+}
+
+// MARK: - Sync spin icon
+
+/// The refresh arrow that doubles as the vault-sync indicator. While
+/// `spinning` it rotates continuously; when the sync ends it settles
+/// without snapping (the repeatForever animation is replaced by a short
+/// ease-out back to rest).
+private struct SyncSpinIconView: View {
+    let spinning: Bool
+    let size: CGFloat
+    let tint: AnyShapeStyle
+
+    @State private var angle: Double = 0
+
+    var body: some View {
+        Image(systemName: "arrow.clockwise")
+            .font(.system(size: size, weight: .medium))
+            .foregroundStyle(tint)
+            .rotationEffect(.degrees(angle))
+            .onAppear {
+                if spinning { startSpin() }
+            }
+            .onChange(of: spinning) { isSpinning in
+                if isSpinning {
+                    startSpin()
+                } else {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        angle = 0
+                    }
+                }
+            }
+    }
+
+    private func startSpin() {
+        angle = 0
+        withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
+            angle = 360
         }
     }
 }

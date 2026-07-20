@@ -49,6 +49,7 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let tabsPayload = call.getString("tabsPayload")
         let bottomBarHidden = call.getBool("bottomBarHidden")
         let canRefresh = call.getBool("canRefresh")
+        let syncActive = call.getBool("syncActive")
         let canSync = call.getBool("canSync")
         let canRebuild = call.getBool("canRebuild")
         let canGitCommit = call.getBool("canGitCommit")
@@ -113,6 +114,9 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
             }
             if let canRefresh {
                 state.canRefresh = canRefresh
+            }
+            if let syncActive {
+                state.syncActive = syncActive
             }
             if let canSync {
                 state.canSync = canSync
