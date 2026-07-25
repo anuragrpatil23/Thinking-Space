@@ -59,23 +59,50 @@ export function startStallDetector(options: StallDetectorOptions = {}): () => vo
     }
   }
 
-  const intervalId = window.setInterval(tick, tickIntervalMs)
+  // STOPPED WHILE HIDDEN, not just reset. This is a 10 Hz heartbeat that exists
+  // only to notice main-thread jank, and a periodic timer is the one thing that
+  // reliably keeps a CPU out of its deep idle states — running it against a
+  // webview nobody is looking at is pure battery burn. There is also nothing to
+  // detect: a hidden document isn't rendering, and the throttled timer would
+  // report phantom stalls anyway (which is what the old reset was papering
+  // over). Matters most on iPad, where this is the app's only unconditional
+  // wakeup source and idle draw is the whole ballgame.
+  let intervalId: number | null = null
 
-  // Reset the heartbeat when visibility changes — setInterval is throttled in
-  // background tabs / minimized apps, so the first tick after resume looks
-  // like a multi-second stall when it isn't.
-  const onVisibilityChange = () => {
+  const startTicking = () => {
+    if (intervalId !== null || disposed) return
     lastTick = performance.now()
-    if (stallHandle && document.visibilityState === 'visible') {
-      stallHandle.end()
-      stallHandle = null
+    intervalId = window.setInterval(tick, tickIntervalMs)
+  }
+
+  const stopTicking = () => {
+    if (intervalId === null) return
+    window.clearInterval(intervalId)
+    intervalId = null
+  }
+
+  const onVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      startTicking()
+      if (stallHandle) {
+        stallHandle.end()
+        stallHandle = null
+      }
+    } else {
+      stopTicking()
+      if (stallHandle) {
+        stallHandle.end()
+        stallHandle = null
+      }
     }
   }
   document.addEventListener('visibilitychange', onVisibilityChange)
 
+  if (document.visibilityState === 'visible') startTicking()
+
   return () => {
     disposed = true
-    window.clearInterval(intervalId)
+    stopTicking()
     document.removeEventListener('visibilitychange', onVisibilityChange)
     if (stallHandle) {
       stallHandle.end()

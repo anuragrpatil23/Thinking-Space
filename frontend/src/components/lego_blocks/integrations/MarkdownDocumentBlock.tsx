@@ -110,6 +110,7 @@ import { isImageDocumentPathBlock } from '@/services/lego_blocks/units/imageDocu
 import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPathBlock'
 import { isHtmlDocumentPathBlock } from '@/services/lego_blocks/units/htmlDocumentPathBlock'
 import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
+import { useScreenWakeLockBlock } from '@/components/lego_blocks/hooks/useScreenWakeLockBlock'
 import {
   clearExcalidrawCrashMarkerBlock,
   markExcalidrawCrashStageBlock,
@@ -495,6 +496,13 @@ function MarkdownTextDocumentRuntimeBlock({
   ), [])
 
   const isEditing = mode === 'edit'
+
+  // Reading holds the display awake (GoodNotes-style). Scoped to the *active*
+  // document in *view* mode: editing already produces a steady stream of taps
+  // that keep the idle timer happy, and an inactive/background tab isn't being
+  // read. Users can turn this off in Settings ▸ Theme.
+  useScreenWakeLockBlock(active && !isEditing && !loading && error === null)
+
   // Live preview makes the view/edit split mostly ceremonial for text docs.
   // Entering editing is a long-press on EVERY surface (mouse and touch alike):
   // a plain click stays reading, holding ~450ms drops you into the editor at

@@ -113,6 +113,7 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
         bridge?.registerPluginInstance(FolderPickerPlugin())
         bridge?.registerPluginInstance(PencilEventsPlugin())
         bridge?.registerPluginInstance(VaultWalkPlugin())
+        bridge?.registerPluginInstance(IdleTimerPlugin())
         let webViewPlugin = InlineWebViewPlugin()
         inlineWebViewPlugin = webViewPlugin
         bridge?.registerPluginInstance(webViewPlugin)

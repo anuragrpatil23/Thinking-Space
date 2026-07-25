@@ -47,6 +47,7 @@ export const STORAGE_KEYS = {
   aiActivityVaultSourcePrefixes: 'ltm-ai-activity-vault-source-prefixes',
   goodnotesReadingAnnotationGate: 'ltm-goodnotes-reading-annotation-gate',
   goodnotesReadingEnabled: 'ltm-goodnotes-reading-enabled',
+  readingKeepScreenAwake: 'ltm-reading-keep-screen-awake',
   aiActivityHomePostItEnabled: 'ltm-ai-activity-home-post-it-enabled',
   aiActivitySetMode: 'ltm-ai-activity-set-mode-enabled',
   aiActivityCalendarMode: 'ltm-ai-activity-calendar-mode-enabled',
@@ -193,6 +194,31 @@ export function getGoodnotesReadingEnabled(): boolean {
 export function setGoodnotesReadingEnabled(enabled: boolean): void {
   setStorageItem(STORAGE_KEYS.goodnotesReadingEnabled, enabled ? 'true' : 'false')
 }
+
+/**
+ * Whether reading a document holds the display awake (GoodNotes-style).
+ *
+ * ON by default: reading is the one activity where the OS idle timer is
+ * actively wrong — you sit still for minutes, so the screen dims and locks
+ * exactly when you're most engaged, and Low Power Mode shortens that window
+ * further. The lease is scoped to a visible document in *view* mode, so it
+ * costs nothing when you're not reading. Default-on is safe because iOS drops
+ * the flag the instant the app backgrounds.
+ */
+export function getReadingKeepScreenAwake(): boolean {
+  return getLocalStorageItemBlock(STORAGE_KEYS.readingKeepScreenAwake) !== 'false'
+}
+
+export function setReadingKeepScreenAwake(enabled: boolean): void {
+  setStorageItem(STORAGE_KEYS.readingKeepScreenAwake, enabled ? 'true' : 'false')
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(READING_KEEP_SCREEN_AWAKE_EVENT, { detail: enabled }))
+  }
+}
+
+/** Fired on the window when the keep-awake preference changes, so an open
+ *  reader picks it up without a remount (`storage` doesn't fire same-tab). */
+export const READING_KEEP_SCREEN_AWAKE_EVENT = 'thinkspc:reading-keep-screen-awake-changed'
 
 /**
  * Whether the home canvas auto-drafts a daily "what I did with AI today" post-it.

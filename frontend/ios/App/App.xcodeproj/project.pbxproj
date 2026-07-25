@@ -11,6 +11,7 @@
 		119A5F5D2C20000100C0D001 /* TopChromePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F592C20000100C0D001 /* TopChromePlugin.swift */; };
 		119A5F5E2C20000100C0D001 /* TopChromeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F5A2C20000100C0D001 /* TopChromeState.swift */; };
 		11AB0002250718AB00C0D001 /* VaultWalkPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11AB0001250718AB00C0D001 /* VaultWalkPlugin.swift */; };
+		11AB0004250718AB00C0D001 /* IdleTimerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11AB0003250718AB00C0D001 /* IdleTimerPlugin.swift */; };
 		119A5F5F2C20000100C0D001 /* TopChromeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F5B2C20000100C0D001 /* TopChromeView.swift */; };
 		119A5F602C20000100C0D001 /* PhoneShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F612C20000100C0D001 /* PhoneShellView.swift */; };
 		119A5F622C20000100C0D001 /* DrawerHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F632C20000100C0D001 /* DrawerHeaderView.swift */; };
@@ -42,6 +43,7 @@
 		119A5F592C20000100C0D001 /* TopChromePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopChromePlugin.swift; sourceTree = "<group>"; };
 		119A5F5A2C20000100C0D001 /* TopChromeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopChromeState.swift; sourceTree = "<group>"; };
 		11AB0001250718AB00C0D001 /* VaultWalkPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultWalkPlugin.swift; sourceTree = "<group>"; };
+		11AB0003250718AB00C0D001 /* IdleTimerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleTimerPlugin.swift; sourceTree = "<group>"; };
 		119A5F5B2C20000100C0D001 /* TopChromeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopChromeView.swift; sourceTree = "<group>"; };
 		119A5F612C20000100C0D001 /* PhoneShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneShellView.swift; sourceTree = "<group>"; };
 		119A5F632C20000100C0D001 /* DrawerHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerHeaderView.swift; sourceTree = "<group>"; };
@@ -108,6 +110,7 @@
 				119A5F592C20000100C0D001 /* TopChromePlugin.swift */,
 				119A5F5A2C20000100C0D001 /* TopChromeState.swift */,
 				11AB0001250718AB00C0D001 /* VaultWalkPlugin.swift */,
+				11AB0003250718AB00C0D001 /* IdleTimerPlugin.swift */,
 				119A5F5B2C20000100C0D001 /* TopChromeView.swift */,
 				119A5F612C20000100C0D001 /* PhoneShellView.swift */,
 				119A5F632C20000100C0D001 /* DrawerHeaderView.swift */,
@@ -229,6 +232,7 @@
 				119A5F5D2C20000100C0D001 /* TopChromePlugin.swift in Sources */,
 				119A5F5E2C20000100C0D001 /* TopChromeState.swift in Sources */,
 				11AB0002250718AB00C0D001 /* VaultWalkPlugin.swift in Sources */,
+				11AB0004250718AB00C0D001 /* IdleTimerPlugin.swift in Sources */,
 				119A5F5F2C20000100C0D001 /* TopChromeView.swift in Sources */,
 				119A5F602C20000100C0D001 /* PhoneShellView.swift in Sources */,
 				119A5F622C20000100C0D001 /* DrawerHeaderView.swift in Sources */,

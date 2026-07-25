@@ -105,6 +105,10 @@ import {
 import type { WebSitePreferencesBlock } from '@/services/lego_blocks/units/webSiteBlock'
 import DeveloperSetupBlock from '@/components/lego_blocks/integrations/DeveloperSetupBlock'
 import ProjectsSettingsBlock from '@/components/lego_blocks/integrations/ProjectsSettingsBlock'
+import {
+  getReadingKeepScreenAwake,
+  setReadingKeepScreenAwake,
+} from '@/services/lego_blocks/units/storageKeyBlock'
 import { readFileActivityIgnoredPaths, writeFileActivityIgnoredPaths } from '@/services/orchestrators/fileActivityOrch'
 import { setFileActivityIgnoredPathsOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import {
@@ -263,6 +267,7 @@ export default function SettingsOrch({
   const [markdownEditorSettings, setMarkdownEditorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
   )
+  const [readingKeepScreenAwake, setReadingKeepScreenAwakeState] = useState(getReadingKeepScreenAwake)
   const [showDailyHighlights, setShowDailyHighlights] = useState(false)
   const [moonSceneMessagesSaved, setMoonSceneMessagesSaved] = useState<MoonSceneMessagePreferenceBlock[]>([])
   const [moonSceneMessagesDraft, setMoonSceneMessagesDraft] = useState<MoonSceneMessagePreferenceBlock[]>([])
@@ -1129,6 +1134,24 @@ export default function SettingsOrch({
                     livePreviewSyntaxHiding: checked,
                   })}
                   aria-label="Live preview while editing"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
+                <div className="space-y-0.5">
+                  <div className="text-sm text-foreground">Keep the screen on while reading</div>
+                  <div className="text-xs text-muted-foreground">
+                    Stops the display dimming and locking while a document is open for reading, even in Low
+                    Power Mode. Only applies while you're actually reading — editing, other screens, and the
+                    app in the background all release it immediately.
+                  </div>
+                </div>
+                <Switch
+                  checked={readingKeepScreenAwake}
+                  onCheckedChange={(checked) => {
+                    setReadingKeepScreenAwake(checked)
+                    setReadingKeepScreenAwakeState(checked)
+                  }}
+                  aria-label="Keep the screen on while reading"
                 />
               </label>
               <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
