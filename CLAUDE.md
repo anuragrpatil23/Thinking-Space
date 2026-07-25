@@ -119,7 +119,17 @@ The iPhone/iPad shell runs the app in a **separate `com.apple.WebKit.WebContent`
 - Diagnostic workflow (works with the device merely connected, no Xcode GUI):
   - Jetsam reports: `xcrun devicectl device info files --device <name> --domain-type systemCrashLogs | grep -i jetsam`, then `devicectl device copy from`. Group the `processes` array by `coalition` — the coalition containing `App` is ours; `reason: per-process-limit` on its `WebContent` is a confirmed memory kill, and `rpages * 16384` is the footprint.
   - Live memory: `xcrun xctrace record --device-name <name> --template 'Activity Monitor' --all-processes --time-limit Ns`, then export the `activity-monitor-process-live` table. Per row the **first** `<process>` is the subject (the second is the parent) and size column **index 1** is the physical footprint — taking a max instead picks up the terabyte-scale virtual address space.
-- Known-open: idle footprint on a freshly launched iPad is ~853 MB and retained from startup (not a read-time leak). Not yet attributed. Measure before touching anything — vault sync is already batched (8 files on iOS) and does NOT retain contents, so it is not the culprit.
+- **Known-open: ~750 MB of the idle footprint belongs to the AI-activity subsystem** (narrowed 2026-07-25 by cold-launch `Activity Monitor` traces on iPad Pro M1, app force-relaunched mid-trace via `xcrun devicectl device process launch --terminate-existing`). The curve is the same every time: memory peaks within ~13s of launch at 60–155% CPU, drops once, then sits perfectly flat — it is set at startup and never released, not a read-time leak. An hours-old process measured 2224 MB (+432 MB in the host `App`), so the floor also drifts up from there.
+
+  | build | startup peak | retained floor |
+  |---|---|---|
+  | normal | 1728 MB | 1078 MB |
+  | vault sync OFF + AI-activity OFF | 786 MB | 310 MB |
+  | vault sync ON + AI-activity OFF | 755 MB | 301 MB |
+
+  So the app's true baseline is ~300 MB and **vault sync costs ~0 retained** — it reads 352 MB across 5,208 files and gives all of it back, which makes it the control proving that read volume alone leaves no floor. Method that works: add temporary module-level kill-switches, `--dirty` ship, cold-launch trace, diff the floor. Instruments' Activity Monitor answers this **without** the Web Inspector — do not turn on `webContentsDebuggingEnabled` for it (Release WKWebViews are non-inspectable and it widens the trust boundary), and do NOT try `Allocations --attach` on `WebContent` (it is a system extension without `get-task-allow` — hard privilege block).
+
+  Three mechanisms are **eliminated, do not re-try them**: (1) Dexie records — `searchText` is built from a 200-char `bodyExcerpt`, never the body; (2) JSC substring retention pinning transcripts via `topic`/`touchedPaths` — flattening every session with a `JSON.parse(JSON.stringify())` round-trip made it *worse* (floor 1078 → 1326 MB); (3) transcripts being re-parsed each launch — the mtime cache is exact (2,859/2,859 vault rows match, 0 MB stale), and `ai-activity-cache.json` is only 3 MB holding 5,204 sessions, far too little to be 750 MB of parsed data. Since disabling `loadAiActivity` also stops the AI-activity UI from mounting, the untested prime suspect is now the **rendering** path (5,204 sessions into panels/charts), not the load. Next probe should separate those two.
 
 ## Energy Contract (Enforced, learned 2026-07-25)
 Battery is a first-class constraint on iPad — the app is a reading tool, so long sessions on a device that is not plugged in are the normal case, not the edge case.
