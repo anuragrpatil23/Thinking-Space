@@ -63,6 +63,36 @@ const MEM_TTL_MS = 5 * 60 * 1000
 /** Max concurrent fs.read calls when re-parsing changed sessions. */
 const READ_CONCURRENCY = 16
 
+/**
+ * Compare file mtimes at whole-second resolution.
+ *
+ * Every adapter reports mtime as FRACTIONAL seconds from a different source —
+ * Electron divides `stat.mtimeMs` by 1000, iOS reads `timeIntervalSince1970`,
+ * the Capacitor Filesystem path divides its own ms value — and the cache
+ * round-trips the number through JSON as a decimal string. Two of those steps
+ * lose the low bits, so an exact `===` on the raw values reports "changed" for
+ * files nobody touched: on the author's Mac 294 of 2,859 rows differed only in
+ * the last ULP (…0964825 vs …0964823), and on iOS, where the value comes from
+ * an entirely different API than the one that wrote the cache, it effectively
+ * never matched.
+ *
+ * The cost of that was not a stale cache — it was correctness-preserving and
+ * catastrophic: every launch re-read and re-parsed all ~1,500 vault transcripts
+ * (~524 MB), which measured as a ~790 MB permanently-retained WebContent
+ * footprint on iPad plus a 13-second 155% CPU burn at startup (see the iOS
+ * Memory Contract). Flooring to seconds is what `vaultSyncOrch` already does
+ * via `normalizeEpochSeconds`, and it works against caches already on disk
+ * without a version bump.
+ *
+ * Tradeoff: a file rewritten within the same second as its cached parse is not
+ * re-parsed. That is the same resolution make(1) and rsync have relied on for
+ * decades, and these transcripts are append-on-session-end, not hot files.
+ */
+function sameMtimeBlock(a: number, b: number): boolean {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false
+  return Math.floor(a) === Math.floor(b)
+}
+
 interface CacheFile {
   version: number
   /** Map of path -> parsed session, keyed by vault-relative path. */
@@ -276,7 +306,7 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
   const vaultToParse: VaultEntry[] = []
   for (const entry of vaultSessions) {
     const cachedWindows = cachedByVaultFile.get(entry.path) ?? []
-    const fresh = cachedWindows.length > 0 && cachedWindows.every(s => s.mtime === entry.mtime)
+    const fresh = cachedWindows.length > 0 && cachedWindows.every(s => sameMtimeBlock(s.mtime, entry.mtime))
     if (fresh) {
       for (const s of cachedWindows) {
         present.add(s.path)
@@ -332,7 +362,7 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
     for (const entry of nativeEntries) {
       const key = `native/${entry.source}/${entry.relPath}`
       const cachedWindows = cachedByFileKey.get(key) ?? []
-      const fresh = cachedWindows.length > 0 && cachedWindows.every(s => s.mtime === entry.mtime)
+      const fresh = cachedWindows.length > 0 && cachedWindows.every(s => sameMtimeBlock(s.mtime, entry.mtime))
       if (fresh) {
         for (const s of cachedWindows) {
           present.add(s.path)
