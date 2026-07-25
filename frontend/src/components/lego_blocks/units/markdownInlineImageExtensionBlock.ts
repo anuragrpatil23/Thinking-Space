@@ -30,13 +30,57 @@ interface LoadedImageEntryBlock {
   url: string
   width: number
   height: number
+  bytes: number
 }
 
 // Session-scoped cache keyed by `${notePath}::${target}` — object URLs plus
 // natural dimensions, so revisits render at full size immediately (reserved
 // height = no scroll jank on the second encounter onward).
+//
+// BOUNDED ON PURPOSE. An object URL pins its Blob's bytes for the life of the
+// document, and WebKit holds the decoded bitmap (width * height * 4 — far
+// larger than the encoded file) for anything still reachable. Unbounded, this
+// map grew for every image the reader ever scrolled past, which on iOS walks
+// the web content process straight into a jetsam kill: the app quits to the
+// home screen mid-read, more often the longer the session. Electron never
+// notices the same leak, which is why this only ever showed up on iPad.
+const IMAGE_CACHE_MAX_BYTES_BLOCK = 32 * 1024 * 1024
+const IMAGE_CACHE_MAX_ENTRIES_BLOCK = 32
 const imageCacheBlock = new Map<string, LoadedImageEntryBlock | 'error'>()
 const pendingLoadsBlock = new Set<string>()
+let imageCacheBytesBlock = 0
+
+function cacheKeyNotePathBlock(cacheKey: string): string {
+  const marker = cacheKey.indexOf('::')
+  return marker < 0 ? cacheKey : cacheKey.slice(0, marker)
+}
+
+function releaseImageCacheEntryBlock(cacheKey: string): void {
+  const entry = imageCacheBlock.get(cacheKey)
+  imageCacheBlock.delete(cacheKey)
+  if (!entry || entry === 'error') return
+  imageCacheBytesBlock -= entry.bytes
+  URL.revokeObjectURL(entry.url)
+}
+
+// Evict least-recently-inserted entries until we're back inside budget. Entries
+// belonging to `keepNotePath` are never evicted — they are the images currently
+// on screen, and revoking a live URL would blank them out mid-scroll. Map
+// iteration order is insertion order, so the oldest note's images go first.
+function trimImageCacheBlock(keepNotePath: string): void {
+  if (imageCacheBytesBlock <= IMAGE_CACHE_MAX_BYTES_BLOCK
+    && imageCacheBlock.size <= IMAGE_CACHE_MAX_ENTRIES_BLOCK) {
+    return
+  }
+  for (const cacheKey of Array.from(imageCacheBlock.keys())) {
+    if (imageCacheBytesBlock <= IMAGE_CACHE_MAX_BYTES_BLOCK
+      && imageCacheBlock.size <= IMAGE_CACHE_MAX_ENTRIES_BLOCK) {
+      return
+    }
+    if (cacheKeyNotePathBlock(cacheKey) === keepNotePath) continue
+    releaseImageCacheEntryBlock(cacheKey)
+  }
+}
 
 function hasImageExtensionBlock(target: string): boolean {
   const clean = target.split(/[#|?]/)[0] ?? ''
@@ -86,7 +130,9 @@ function loadImageBlock(
       const resolvedPath = await resolveImageTargetBlock(kind, target, notePath)
       if (!resolvedPath) throw new Error('not found')
       const doc = await readImageDocumentOrch(resolvedPath)
-      const blob = new Blob([Uint8Array.from(doc.bytes)], { type: doc.mime })
+      // `doc.bytes` is already a Uint8Array — `Uint8Array.from` on one takes the
+      // element-wise path and doubles peak memory for nothing.
+      const blob = new Blob([doc.bytes as BlobPart], { type: doc.mime })
       const url = URL.createObjectURL(blob)
       const dimensions = await new Promise<{ width: number; height: number }>((resolve) => {
         const probe = new Image()
@@ -94,7 +140,10 @@ function loadImageBlock(
         probe.onerror = () => resolve({ width: 0, height: 0 })
         probe.src = url
       })
-      imageCacheBlock.set(cacheKey, { url, ...dimensions })
+      releaseImageCacheEntryBlock(cacheKey)
+      imageCacheBlock.set(cacheKey, { url, ...dimensions, bytes: blob.size })
+      imageCacheBytesBlock += blob.size
+      trimImageCacheBlock(notePath)
     } catch {
       imageCacheBlock.set(cacheKey, 'error')
     } finally {

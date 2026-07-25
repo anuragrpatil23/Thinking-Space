@@ -208,7 +208,9 @@ function MarkdownWikilinkImageBlock({
           return
         }
         const doc = await readImageDocumentOrch(resolvedPath)
-        const blob = new Blob([Uint8Array.from(doc.bytes)], { type: doc.mime })
+        // Already a Uint8Array — `Uint8Array.from` takes the element-wise path
+        // and doubles peak memory, which matters on iOS for large photos.
+        const blob = new Blob([doc.bytes as BlobPart], { type: doc.mime })
         objectUrl = URL.createObjectURL(blob)
         if (!cancelled) setImageUrl(objectUrl)
       } catch (err) {

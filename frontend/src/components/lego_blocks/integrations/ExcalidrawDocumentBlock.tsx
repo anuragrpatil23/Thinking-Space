@@ -129,13 +129,22 @@ export default function ExcalidrawDocumentBlock({
   className,
 }: ExcalidrawDocumentBlockProps) {
   const { layout } = useUILayoutBlock()
+  const { resolvedColorMode } = useUIThemeBlock()
+  const isIosSurface = layout.surface === 'capacitor-ios'
   // Follow the app's resolved color mode so the canvas isn't a blinding white
   // sheet inside a dark shell. Passed as Excalidraw's controlled `theme` prop;
   // `theme` is stripped from the serialized scene (excalidrawFileBlock) so this
   // view-only choice never churns the file's stored theme across devices.
-  const { resolvedColorMode } = useUIThemeBlock()
-  const excalidrawTheme = resolvedColorMode === 'dark' ? 'dark' : 'light'
-  const isIosSurface = layout.surface === 'capacitor-ios'
+  //
+  // NEVER dark on iOS. Excalidraw's dark mode is a CSS filter applied to the
+  // live canvas elements (`.excalidraw.theme--dark canvas { filter: invert(93%)
+  // hue-rotate(180deg) }`), not recolored drawing. WebKit has to allocate a
+  // second full-size composited buffer per canvas per repaint to run it, and
+  // Excalidraw stacks several viewport-sized canvases at 2x retina — enough
+  // extra surface memory to get the whole web content process jetsammed, so
+  // the app quits to the home screen the moment a scene opens (view AND edit).
+  // Chromium absorbs the same filter fine, so this is an iOS-only guard.
+  const excalidrawTheme = resolvedColorMode === 'dark' && !isIosSurface ? 'dark' : 'light'
   const isCompactLayout = layout.mode === 'phone'
   const debugEnabled = editable
     && (globalThis as { __ltmExcalidrawDebugEnabled?: unknown }).__ltmExcalidrawDebugEnabled === true

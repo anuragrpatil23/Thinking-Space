@@ -94,6 +94,14 @@ Electron hardening that must not regress (the renderer runs user markdown + arbi
 - Do NOT add lazy-only vendors to `vite.config.ts` `manualChunks` — object-form manualChunks pulls those chunks back into the entry's static import graph.
 - After changing imports, verify `dist/index.html` modulepreloads only `vendor-react` + `vendor-dexie`. Startup JS budget: ≤ 2.4 MB.
 
+## iOS Memory Contract (Enforced, learned 2026-07-24)
+The iOS shell runs the app in a separate `com.apple.WebKit.WebContent` process that iOS kills on a per-process memory limit. The app then looks like it "quit to the home screen" while the host `App` process sits at ~50–300 MB. **An iOS-only crash with no JS error is a memory kill until proven otherwise**, and Electron will never reproduce it.
+- **Never enable Excalidraw's dark theme on iOS.** Its dark mode is a CSS filter on the live canvases (`.excalidraw.theme--dark canvas { filter: invert(93%) hue-rotate(180deg) }`), forcing a second full-size composited buffer per canvas per repaint. `ExcalidrawDocumentBlock` pins `theme='light'` on `capacitor-ios`; app-follows-dark-mode is desktop-only by design. Excalidraw 0.18 has no filter-free dark path.
+- **Module-level caches holding object URLs must be bounded and must revoke** — an object URL pins its Blob bytes and WebKit retains the decoded bitmap (`w * h * 4`). See `markdownInlineImageExtensionBlock` (32 MB / 32 entries, LRU, never evicts the note being read).
+- **Never `Uint8Array.from(bytes)` on an existing `Uint8Array`** — element-wise path, doubles peak memory. Use `new Blob([bytes as BlobPart])`.
+- Diagnostics (device connected, no Xcode GUI): jetsam reports via `devicectl device info files --domain-type systemCrashLogs` + `copy from` (group `processes` by `coalition`; the one containing `App` is ours, `reason: per-process-limit` confirms it, footprint = `rpages * 16384`); live memory via `xctrace record --template 'Activity Monitor' --all-processes` (in the `activity-monitor-process-live` table the FIRST `<process>` per row is the subject and size index 1 is the physical footprint — a max picks up virtual address space).
+- Known-open: ~853 MB idle footprint retained from startup on iPad, unattributed. Vault sync is already batched and does not retain contents — measure before changing anything.
+
 ## Major Checkpoint Ritual (Ship It)
 A "major checkpoint" = a user-visible feature or fix is complete and verified, not every commit. Ritual: commit (template) → push → `./scripts/checkpoint-ship.sh` in the background (~2–3 min; builds unpacked .app, checks the startup-perf contract, signs, detached-swaps `/Applications/Thinking Space.app`). Read its ~4-line stdout summary; full log lands in `~/.thinking-space/logs/`. The script refuses dirty/unpushed trees — commit first, never bypass. DMGs remain a separate deliberate release step.
 
