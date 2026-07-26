@@ -3,8 +3,8 @@
 Purpose: enable parallel agents to execute without repeatedly re-reading the whole codebase.
 
 ## Files to Use
-- `AGENTS.md`: non-negotiable product/architecture contract for all implementation work
-- `CLAUDE.md`: Claude-native project file (must stay consistent with `AGENTS.md`)
+- `CLAUDE.md`: non-negotiable product/architecture contract for all implementation work; indexes `docs/contracts/` (enforced rules) and `docs/reference/`
+- `AGENTS.md`: pointer to `CLAUDE.md` for non-Claude tools
 - `docs/ARCHITECTURE.md`: system map — processes, trust boundaries, data flow, subsystems
 - `docs/CODEBASE-GUIDE.md`: repo layout, lego-block/orchestrator conventions, how to find code
 - `docs/PLAYBOOKS.md`: recipes for common changes + verify/ship checklist
@@ -19,7 +19,7 @@ Active operations source of truth:
 - `lifeblood_systems/thinkingspace.ai/thinking-organizer/*`
 
 ## Startup Sequence (Every New Agent)
-1. Read `AGENTS.md` (or `CLAUDE.md` for Claude — it's auto-loaded and covers the same ground)
+1. Read `CLAUDE.md` (auto-loaded for Claude; `AGENTS.md` points other tools to it)
 2. New to the codebase? Read `docs/ARCHITECTURE.md` → `docs/CODEBASE-GUIDE.md`; open `docs/PLAYBOOKS.md` for the kind of change you're making
 3. Check active tasks: `./thinkspc organizer.nodes.search --query "status active" --limit 10`
 4. Claim a task and start working

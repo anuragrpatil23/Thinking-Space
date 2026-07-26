@@ -4,7 +4,7 @@ Where code lives, what the naming rules mean, and how to find things fast. Compa
 [ARCHITECTURE.md](ARCHITECTURE.md) (system map) and [PLAYBOOKS.md](PLAYBOOKS.md) (change recipes).
 
 _Last verified: 2026-07-16. The architecture contracts summarized here are enforced in
-`CLAUDE.md` / `AGENTS.md` — those win on conflict._
+`CLAUDE.md` (+ `docs/contracts/`) — those win on conflict._
 
 ## Repo layout
 
@@ -21,7 +21,7 @@ Thinking-Space/
 ├── docs/                      # this folder — architecture, ADRs, build guides
 ├── agents/                    # multi-agent protocol + required templates
 ├── thinkspc / ltm             # agent capability CLI wrappers (repo root)
-├── CLAUDE.md / AGENTS.md      # enforced contracts — read before coding
+├── CLAUDE.md                  # contract index — read before coding (AGENTS.md points here)
 └── DEVELOPMENT.md             # phases, milestones, agent ops pattern
 ```
 
@@ -137,4 +137,4 @@ Search the organizer for prior work and decisions before starting anything non-t
 | [EPIC-3-LOCAL-EXTENSION-PLATFORM.md](EPIC-3-LOCAL-EXTENSION-PLATFORM.md) | extension platform work |
 | [BUILD-macOS-LOCAL.md](BUILD-macOS-LOCAL.md) / [BUILD-iOS.md](BUILD-iOS.md) | packaging |
 | `agents/README.md` + `agents/TEMPLATES/*` | multi-agent protocol, handoffs, commit format |
-| `CLAUDE.md` / `AGENTS.md` | always — enforced contracts |
+| `CLAUDE.md` + `docs/contracts/` | always — enforced contracts |

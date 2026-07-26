@@ -149,7 +149,7 @@ Recurring agent runs via launchd: plist generation (`launchdPlistBlock`), provis
 
 ## Security contract (must not regress)
 
-Summarized from `CLAUDE.md` / `AGENTS.md` (the enforced versions — read those before touching
+Summarized from `CLAUDE.md` and `docs/contracts/` (the enforced versions — read those before touching
 anything listed here):
 
 - `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true` on every BrowserWindow.

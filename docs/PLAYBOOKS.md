@@ -7,7 +7,7 @@ _Last verified: 2026-07-16. File paths are real; verify signatures in-code befor
 
 ## Before any task
 
-1. `CLAUDE.md`/`AGENTS.md` are the enforced contracts — architecture, security, and startup-perf
+1. `CLAUDE.md` is the enforced contract index (`AGENTS.md` just points there) — architecture, security, and startup-perf
    rules there override anything else.
 2. Check prior art: `./thinkspc search --query "<topic>" --limit 10` and grep for an existing
    block/orchestrator that already does 80% of the job. Extend before you create.

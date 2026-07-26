@@ -10,7 +10,7 @@ New to the codebase? Read in this order:
 2. [docs/CODEBASE-GUIDE.md](docs/CODEBASE-GUIDE.md) — repo layout, lego-block/orchestrator conventions, how to find things.
 3. [docs/PLAYBOOKS.md](docs/PLAYBOOKS.md) — step-by-step recipes for common changes + the verify/ship checklist.
 
-`CLAUDE.md` / `AGENTS.md` remain the enforced contracts; this file owns phases/milestones and the agent operations pattern. Full docs index: [docs/README.md](docs/README.md).
+`CLAUDE.md` (+ `docs/contracts/`) remains the enforced contract; this file owns phases/milestones and the agent operations pattern. Full docs index: [docs/README.md](docs/README.md).
 
 ## Table of Contents
 
@@ -49,7 +49,7 @@ New to the codebase? Read in this order:
   - Orchestrators use `*Orch` suffix.
 - Shared UI primitives live in `frontend/src/components/lego_blocks/units/ui/*`.
 - New feature work should extend/reuse existing lego blocks first, then compose in orchestrators.
-- Enforced by: `AGENTS.md`, `CLAUDE.md`, and `agents/TEMPLATES/ORCHESTRATOR_TEMPLATE.md`.
+- Enforced by: `CLAUDE.md`, `docs/contracts/CODE-ARCHITECTURE.md`, and `agents/TEMPLATES/ORCHESTRATOR_TEMPLATE.md`.
 
 ## Service Architecture Contract
 
@@ -260,7 +260,7 @@ Use the organizer workspace as source of truth for active operations:
 - `lifeblood_systems/thinkingspace.ai/thinking-organizer/*`
 
 Key docs:
-- `AGENTS.md` — top-level implementation contract
+- `CLAUDE.md` — top-level implementation contract (index into `docs/contracts/` + `docs/reference/`)
 - `docs/ADR-005-Agent-Capabilities.md` — capability contract, transport, policy/audit expectations
 - `docs/ADR-006-Agent-Workspace-Schema.md` — workspace schema and required operation fields
 
@@ -270,7 +270,7 @@ Recommended organizer layout:
 - `principles and decisions (agent operations)` program for durable guidance
 
 Workflow:
-1. Read `AGENTS.md`
+1. Read `CLAUDE.md`
 2. Read `DEVELOPMENT.md`
 3. Read `agents/README.md`
 4. Read relevant ADR docs as needed

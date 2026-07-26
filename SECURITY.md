@@ -56,7 +56,7 @@ network, credentials) live behind vetted IPC handlers in the main process.
 
 ## Security posture (enforced in code)
 
-These are contracts, not aspirations — see `CLAUDE.md` / `AGENTS.md`
+These are contracts, not aspirations — see `CLAUDE.md` / `docs/contracts/SECURITY.md`
 "Security Contract (Enforced)":
 
 - **Electron hardening:** `contextIsolation: true` and `nodeIntegration: false`

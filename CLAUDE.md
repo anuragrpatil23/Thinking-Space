@@ -1,80 +1,53 @@
 # CLAUDE.md
 
-Project-local Claude instructions for `Thinking Space`.
+Canonical operating contract for any coding agent working in `Thinking Space` — Claude Code reads it natively, and `AGENTS.md` points non-Claude agents here so there is exactly one source of truth. Applies only when working inside this repo.
 
-This file applies only when working inside `Thinking Space/`.
-
-## Relationship to AGENTS.md
-- `CLAUDE.md` is Claude Code's native project instruction file.
-- `AGENTS.md` is the tool-agnostic/open-standard agent contract across coding tools.
-- Both should stay consistent on architecture, priorities, and operating rules.
+If this file conflicts with an assumption, follow this file + `DEVELOPMENT.md`.
 
 ## Responsibility (Critical)
-If Claude learns something useful, Claude must manually update `CLAUDE.md` to preserve that knowledge for future sessions.
 
-Also mirror durable project knowledge to:
-- `AGENTS.md` (cross-tool contract)
-- organizer principles/decision records in `lifeblood_systems/thinkingspace.ai/thinking-organizer/*`
+If Claude learns something durable, Claude must write it down — but **not** into this file by default. This file is the index; it has a hard 40k-char budget and lives in every session's context.
 
-## Proactive Notification Channel (Telegram → Anurag)
-You can send messages directly to Anurag's phone via the Kai Telegram bot. Use this proactively when:
-- A long-running task you started is finished and Anurag stepped away.
-- You hit a blocker that needs human input and the session has been idle.
-- Anurag asked you to "let me know when X" / "ping me if Y".
+Where new knowledge goes:
+- An **enforced rule** (something that must not regress) → the matching file in `docs/contracts/`, then one line here if a new contract file was created.
+- A **block-level explanation** (why this code is shaped this way) → `docs/reference/KEY-BLOCKS.md`.
+- A **recipe** (how to make a kind of change) → `docs/PLAYBOOKS.md`.
+- **Active work** (tasks, plans, handoffs) → the organizer (`thinkspc`), not markdown.
 
-Do NOT use it for:
-- Routine task-complete pings the user is watching you do.
-- Anything that would just be noise — the channel is meant to be high-signal.
+Mirror durable project knowledge to organizer principles/decision records in `lifeblood_systems/thinkingspace.ai/thinking-organizer/*`. `AGENTS.md` needs no mirroring — it is a pointer to this file.
 
-How to send:
-```bash
-TOKEN=$(/usr/bin/jq -r .telegram.bot_token ~/.thinking-space/secrets.json)
-CHAT=$(/usr/bin/jq -r .telegram.chat_id ~/.thinking-space/secrets.json)
-curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
-  -H "Content-Type: application/json" \
-  -d "$(/usr/bin/jq -nc --argjson chat "$CHAT" --arg text "your message here" \
-      '{chat_id:$chat,text:$text,parse_mode:"Markdown"}')"
-```
+## Working Style
 
-Credentials live at `~/.thinking-space/secrets.json` (mode 0600, never committed). Bot is `@anurag_kai_cc_bot`. Messages support Markdown and `obsidian://open?vault=...&file=...` links to make notifications tappable into vault notes.
-
-## Working Style (Inherited + Project-Specific)
 - Think from first principles, then map to concrete code tradeoffs.
 - Be concise and direct.
 - Challenge weak assumptions with practical alternatives.
 - Optimize for implementation momentum without sacrificing safety.
 
 ## Product Direction (Non-Negotiable)
+
 The app must be built as all three from the ground up:
 
-1. Thinking space for individuals
-- Fast, local, hierarchical thinking (`Programs -> Epics -> Ideas -> Thoughts`)
+1. **Thinking space for individuals** — fast, local, hierarchical thinking (`Programs -> Epics -> Ideas -> Thoughts`). For knowledge workers, researchers, writers, founders who arrive at "I need a better way to organize my thoughts."
+2. **Place where humans and AI work together** — thinking and AI assistance in one contextual workspace. For AI-savvy users who arrive at "AI tools are useful but disconnected from where I actually think."
+3. **AI agent management space for humans** — agent orchestration/visibility integrated with human thought workflows. For power users and multi-agent operators who arrive at "I'm running AI agents but have nowhere to manage them alongside my own thoughts."
 
-2. Place where humans and AI work together
-- Thinking and AI assistance in one contextual workspace
-
-3. AI agent management space for humans
-- Agent orchestration/visibility integrated with human thought workflows
-
-These are architecture constraints, not optional positioning variants.
+These are architecture constraints, not optional positioning variants:
+- Do not design isolated feature silos serving only one pillar.
+- Prefer shared primitives that strengthen all three.
+- Any major change must state pillar impact before implementation.
 
 ## Phase Order
-Use `DEVELOPMENT.md` as source of truth for implementation phases and detailed architecture.
 
-Current status (v2.5):
-- Phase 0–5: DONE
-- Agent Capability Transport: DONE
-- EPIC-3 (Extension Platform): DONE
-- Embedded Terminal (xterm.js + node-pty): DONE — but **slated for removal** (decided 2026-07-16: overkill; users run agents in their own terminal). Do not build new features on it; it is no longer advertised in the README.
-- Live Source Mode + Rebuild Pipeline: DONE
-- Notebook workspace upgrades: DONE
-- Native iPhone shell/chrome work: DONE
+`DEVELOPMENT.md` is source of truth for implementation phases and detailed architecture.
 
-Next up:
-- EPIC-5: AI Actions Everywhere
-- EPIC-6: Optional Remote/Agent Backends (later)
+Current status (v2.5) — DONE: Phase 0–5, Agent Capability Transport, EPIC-3 (Extension Platform), Live Source Mode + Rebuild Pipeline, Notebook workspace upgrades, native iPhone shell/chrome.
+
+Embedded Terminal (xterm.js + node-pty) is DONE but **slated for removal** (decided 2026-07-16: overkill; users run agents in their own terminal). Do not build new features on it; it is no longer advertised in the README.
+
+Next up: EPIC-5 (AI Actions Everywhere), then EPIC-6 (Optional Remote/Agent Backends, later).
 
 ## Locked Technical Decisions
+
 1. Electron-first runtime for near-term milestones.
 2. **YAML frontmatter in Markdown files** as source of truth for hierarchy and metadata.
 3. **IndexedDB (Dexie.js)** as rebuildable in-browser cache for fast hierarchy queries.
@@ -84,240 +57,55 @@ Next up:
 7. Related retrieval starts with lexical search via IndexedDB full-text.
 8. Local-only extensions first; no early remote code execution.
 9. AI local-first: Ollama (Electron) or WASM LLM (web/PWA).
-10. Markdown file interaction uses one shared orchestrator/provider (`frontend/src/components/orchestrators/MarkdownViewerOrch.tsx`) for both view and edit; avoid page-specific editor overlays.
-11. **Editor = one CM6 engine, decorations on top (locked 2026-07-17)**: no ProseMirror/Notion block model, ever — markdown+YAML on disk stay byte-identical; richer editing is CM6 decorations (Obsidian Live Preview model) in `MarkdownRichEditorBlock`. Units: `markdownInlineImageExtensionBlock` (inline image widgets, dimension-cached), `markdownSyntaxHidingExtensionBlock` (headings/emphasis/links styled, markers hidden, per-line reveal), `markdownTaskCheckboxExtensionBlock` (clickable checkboxes toggle the markdown, rendered hrs), `editorLanguageBlock` (extension→grammar routing; markdown decorations mount only for markdown files). Code files (`kind === 'code'`) never render through the markdown prose pipeline in view mode — that wraps `//` comments/imports as paragraphs and turns backtick strings into inline code; instead `CodeDocumentViewBlock` mounts a read-only CM6 surface with the same per-language grammar + syntax highlighting (decided 2026-07-17). Edit mode already colors code via `@uiw/react-codemirror` basicSetup (`syntaxHighlighting(defaultHighlightStyle)` on by default) + the grammar extension. Toggle: Settings → Theme → "Live preview while editing" (`livePreviewSyntaxHiding` in markdownEditorSettingsBlock, read per decoration pass). With it on, entering editing from view mode is a **long-press on every surface** (mouse and touch): a plain click stays reading, holding ~450ms drops into the editor at the press point (`longPressToEditActive` + pointer handlers in MarkdownDocumentBlock; movement/selection cancels; a "Keep holding to edit…" hint pill reveals ~150ms in). The pencil button always stays as the discoverable primary. Decided 2026-07-17: uniform hold-to-edit kills accidental single-click edits on Electron/desktop and matches the touch gesture — no single-click-to-edit anywhere. Remaining phases: tables-as-widgets, click-position→cursor mapping, per-profile decoration routing.
-12. Code architecture follows lego blocks + orchestrators:
-  - Reusable primitives in components/hooks/services.
-  - Page/feature orchestration in orchestrator containers.
-  - New major orchestrators follow `agents/TEMPLATES/ORCHESTRATOR_TEMPLATE.md`.
+10. One shared markdown orchestrator (`MarkdownViewerOrch.tsx`) for view and edit — no page-specific editor overlays.
+11. **Editor = one CM6 engine, decorations on top** — no ProseMirror/Notion block model, ever. See [docs/contracts/EDITOR.md](docs/contracts/EDITOR.md).
+12. **Lego blocks + orchestrators** everywhere. See [docs/contracts/CODE-ARCHITECTURE.md](docs/contracts/CODE-ARCHITECTURE.md).
 
-## Security Contract (Enforced)
-Electron hardening that must not regress (renderer runs user markdown + arbitrary webviews, so the main process is the trust boundary):
-- **`nodeIntegration: false`** on every BrowserWindow (`electron/src/setup.ts`). The renderer reaches main only through the `preload.ts` contextBridge; it never needs Node. Do not flip this on.
-- **`contextIsolation: true`** stays on for every window.
-- **`sandbox: true`** on every BrowserWindow. This requires the preload (`build/src/preload.js`) to stay a single self-contained file whose only `require()` is `electron` — no relative `require`, no Node builtins (`fs`/`path`/`crypto`). The Capacitor platform marker is inlined and the terminal-enabled flag comes from main via `terminal:enabled:getSync` for exactly this reason. If you must add a Node/relative dependency to the preload, bundle it (esbuild) first or sandbox breaks silently (renderer loses `electronAPI`).
-- **No inline scripts in `index.html`.** Production `script-src` omits `'unsafe-inline'` (dev-only for Vite HMR). Entry-time scripts go in `main.tsx`/unit blocks (e.g. `iphoneViewportBlock.ts`), never inline `<script>`. After touching HTML/CSP, verify `dist/index.html` has zero `<script>` (only the external module).
-- **Every vault-scoped IPC handler** validates the renderer `vaultRoot` via `assertAuthorizedVaultRootBlock`/`resolveInsideVaultBlock` (`vaultPathGuardBlock.ts`) — never trust a renderer path.
-- **`vault:git`** only runs an allowlisted set of subcommands and rejects leading git global options (`-c`, `--exec-path`); don't widen it to pass arbitrary args.
-- **Outbound network bridges** stay host/target-restricted: Webull + Google use host allowlists; `net:fetchText`/`net:fetchBytes` reject loopback/link-local/private targets (SSRF guard `assertPublicFetchUrlBlock`), including on redirects.
-- **Webview `connect-src`/CSP** and the webview permission allowlist (`setupWebviewSessionPermissions`) stay narrow; new outbound origins go through `cspWhitelistBlock.ts`, not a broadened template.
-- **Every child process must run with `cwd` pinned to the vault root** (fallback: userData / `~/.thinking-space`), never inherit the app's cwd (`/` when Finder-launched) or `$HOME`. macOS bills all file access by app-spawned children (claude CLI, scheduler runner agents, PTYs) to the APP's TCC identity — an unpinned child roaming from `/` or `$HOME` is what caused the "Thinking Space wants access to Desktop/Documents/Downloads/Network Volumes" prompt storm (fixed 2026-07-17: `claudeCliBlock.resolveChildCwdBlock`, `runner.mjs defaultExecutionCwd`, PTYs already pinned). The app's TCC prompt budget is exactly one: the vault folder. Related: TCC keys on bundle id + signing-cert leaf hash, so ad-hoc signing (pre-2026-07-16) reset all grants on every rebuild — the stable local cert in `checkpoint-ship.sh` must not regress.
+## Enforced Contracts
 
-## Startup Performance Contract (Enforced)
-- Heavy vendors (Excalidraw, pdfjs/react-pdf, CodeMirror, recharts) must never be statically reachable from the app entry. They load through code-split boundaries:
-  - `MarkdownDocumentLazyBlock` — the only way eager code may mount `MarkdownDocumentBlock` (pulls CodeMirror + pdfjs + Excalidraw + markdown/katex pipeline).
-  - `MarkdownRichEditorLazyBlock` — the only way eager code may mount the CodeMirror editor.
-  - Chart blocks (`DashboardChartsBlock`, `AiActivity*Block`, `CodexUsageMetricChartBlock`) are `lazy()`-imported at each consumer.
-- Do NOT list lazy-only vendors in `vite.config.ts` `manualChunks` — object-form manualChunks forces those chunks into the entry's static import graph (side-effect ordering), silently re-eagerizing them. Only startup vendors (react, dexie) belong there.
-- Verify after touching imports: `BUILD_TARGET=electron npx vite build`, then check `dist/index.html` modulepreload list — it must contain only `vendor-react` and `vendor-dexie`. Startup JS payload budget: ≤ 2.4 MB (was 5.24 MB before 2026-07 startup-perf pass, −56%).
+Read the file before touching that area. Each one exists because something already regressed.
 
-## iOS Memory Contract (Enforced, learned 2026-07-24)
-The iPhone/iPad shell runs the app in a **separate `com.apple.WebKit.WebContent` process** that iOS kills on a per-process memory limit. When it dies the app appears to "quit to the home screen" while the host `App` process sits at ~50–300 MB — so **an iOS-only "random crash" with no JS error is a memory kill until proven otherwise**, and Electron/Chromium will never reproduce it (no equivalent cap, cheaper compositing).
-- **Never turn on Excalidraw's dark theme on iOS.** Excalidraw dark mode is not recolored drawing — it is a CSS filter on the live canvas elements (`.excalidraw.theme--dark canvas { filter: invert(93%) hue-rotate(180deg) }`). WebKit must allocate a second full-size composited buffer per canvas per repaint, across several viewport-sized canvases at 2× retina. `ExcalidrawDocumentBlock` forces `theme='light'` when `layout.surface === 'capacitor-ios'`; the app-follows-dark-mode behavior is desktop-only on purpose. There is no filter-free dark path in Excalidraw 0.18 — real iPad dark canvas would mean recoloring stroke/background per element on load, which is a document mutation, not a view concern, and needs its own decision.
-- **Module-level caches that hold object URLs must be bounded and must revoke.** An object URL pins its Blob's bytes for the document's lifetime and WebKit retains the decoded bitmap (`width * height * 4`, far larger than the encoded file). `markdownInlineImageExtensionBlock`'s `imageCacheBlock` is capped (32 MB / 32 entries, LRU, never evicting the note being read) for exactly this reason — unbounded, it grew for every image ever scrolled past.
-- **Never `Uint8Array.from(bytes)` on something that is already a `Uint8Array`** — it takes the element-wise path and doubles peak memory. Pass it to `new Blob([bytes as BlobPart])` directly.
-- Diagnostic workflow (works with the device merely connected, no Xcode GUI):
-  - Jetsam reports: `xcrun devicectl device info files --device <name> --domain-type systemCrashLogs | grep -i jetsam`, then `devicectl device copy from`. Group the `processes` array by `coalition` — the coalition containing `App` is ours; `reason: per-process-limit` on its `WebContent` is a confirmed memory kill, and `rpages * 16384` is the footprint.
-  - Live memory: `xcrun xctrace record --device-name <name> --template 'Activity Monitor' --all-processes --time-limit Ns`, then export the `activity-monitor-process-live` table. Per row the **first** `<process>` is the subject (the second is the parent) and size column **index 1** is the physical footprint — taking a max instead picks up the terabyte-scale virtual address space.
-- **Compare file mtimes at whole-second resolution, never with `===` on the raw float.** Adapters emit *fractional* seconds from different sources (Electron `stat.mtimeMs / 1000`, iOS `contentModificationDate.timeIntervalSince1970`, Capacitor FS) and caches round-trip them through JSON, so exact equality reports "changed" for untouched files — on iOS, where reader and writer are different APIs, it effectively never matches. Floor to seconds: `sameMtimeBlock` (`aiActivityCacheBlock.ts`), `normalizeEpochSeconds` (`vaultSyncOrch`). A cache that never hits re-parses everything on every launch, and **retained parse output is what sets the floor** — vault sync reads 352 MB and retains ~0, so I/O volume alone is never the suspect (fixed 2026-07-25: idle floor 1078 → 313 MB, startup peak 1728 → 793 MB).
-- Memory-bisect method for iOS: temporary module-level kill-switches → `--dirty` ship → cold-launch trace (`xcrun devicectl device process launch --terminate-existing` forces the relaunch mid-trace) → diff the floor. Compare **foreground** plateaus only — a drop coinciding with CPU → 0.0 is the app backgrounding and WebKit dumping caches, not a fix. Never truncate when testing an equality that production performs exactly (doing so once "proved" the mtime cache exact and hid the bug). Instruments' Activity Monitor suffices — do NOT enable `webContentsDebuggingEnabled` (Release WKWebViews are non-inspectable; it widens the trust boundary), and do NOT try `Allocations --attach` on `WebContent` (system extension without `get-task-allow` — hard block). Ruled out, don't re-test: Dexie records (`searchText` is a 200-char excerpt), JSC substring pinning (a `JSON.parse(JSON.stringify())` flatten made it *worse*), the AI-activity render path.
+| Contract | One-line rule | Where |
+|---|---|---|
+| Security | Renderer is untrusted; main process is the trust boundary. No `nodeIntegration`, no unvalidated vault paths, no unpinned child `cwd`. | [docs/contracts/SECURITY.md](docs/contracts/SECURITY.md) |
+| Startup performance | Heavy vendors never statically reachable from the entry; startup JS ≤ 2.4 MB. | [docs/contracts/STARTUP-PERFORMANCE.md](docs/contracts/STARTUP-PERFORMANCE.md) |
+| iOS memory | An iOS-only crash with no JS error is a WebContent memory kill until proven otherwise. | [docs/contracts/IOS-MEMORY.md](docs/contracts/IOS-MEMORY.md) |
+| Energy | No unconditional periodic timers; reading holds the display awake, nothing else does. | [docs/contracts/ENERGY.md](docs/contracts/ENERGY.md) |
+| Code architecture | Units / integrations / hooks / orchestrators, with mandatory `*Block` / `use*` / `*Orch` naming. | [docs/contracts/CODE-ARCHITECTURE.md](docs/contracts/CODE-ARCHITECTURE.md) |
+| Editor | One CM6 engine + decorations; markdown on disk stays byte-identical. | [docs/contracts/EDITOR.md](docs/contracts/EDITOR.md) |
+| iOS native chrome | Locked chrome/sync-indicator/settings-roaming design; do not resurrect rejected variants. | [docs/contracts/IOS-NATIVE-CHROME.md](docs/contracts/IOS-NATIVE-CHROME.md) |
 
-## Energy Contract (Enforced, learned 2026-07-25)
-Battery is a first-class constraint on iPad — the app is a reading tool, so long sessions on a device that is not plugged in are the normal case, not the edge case.
-- **No unconditional periodic timers.** A repeating `setInterval` is the single most reliable way to keep a CPU out of its deep idle states, so every interval must be gated on something. `startStallDetector` (`mainThreadStallBlock`) ran at 100ms forever from App mount and merely *reset* its heartbeat on `visibilitychange`; it now **stops** the interval while hidden and restarts on return (fixed 2026-07-25). When adding a timer: gate it on `document.visibilityState === 'visible'` AND on the feature actually being on screen, and prefer event/observer-driven updates over polling. Known ungated pollers still to triage: `UrlDocumentBlock` (700ms), `CodexUsageProbeBlock`, `ScheduleListBlock` (15s), `useSessionTelemetryBlock` (60s).
-- **Reading holds the display awake; nothing else does.** WKWebView does NOT expose the Screen Wake Lock web API, so iOS goes through native `UIApplication.isIdleTimerDisabled` (`IdleTimerPlugin.swift`, registered in `AppDelegate.capacitorDidLoad`). Renderer surface is `screenWakeLockBlock.ts` (unit): **counter-based leases** mirroring `nativeChromeImmersionBlock` so overlapping readers compose, native on iOS / `navigator.wakeLock` elsewhere / silent no-op if neither (never surface an error for a comfort feature). Consumed via `useScreenWakeLockBlock(active)` in `MarkdownDocumentBlock`, scoped to `active && !isEditing && !loading && !error` — editing already generates taps that satisfy the idle timer. Setting: Settings ▸ Theme, `getReadingKeepScreenAwake()`, **default ON** (safe because iOS drops the flag itself the moment the app backgrounds, so a stuck lease cannot drain the battery in the background). The **web** wake lock is dropped on hide and NOT auto-restored by the browser, so `screenWakeLockBlock` re-acquires on `visibilitychange` — without that, one app-switch silently kills the lock for the rest of the session.
-- **Adding a new `.swift` file requires 4 manual `project.pbxproj` edits** (PBXBuildFile, PBXFileReference, group children, Sources build phase). The Xcode project is NOT a `PBXFileSystemSynchronizedRootGroup`, so a new file silently does not compile if you skip this. `IdleTimerPlugin.swift` mirrors `VaultWalkPlugin.swift`'s entries.
-- **Wake-lock and any native plugin change need a real `cap sync` + xcodebuild** — `./scripts/checkpoint-ship-ios.sh`. A web-only bundle push will not pick it up.
-- Suspected-but-unmeasured energy costs (do NOT "optimize" before instrumenting): the ~853 MB idle footprint (memory pressure costs energy directly), and 11 `backdrop-filter` rules (each a live GPU blur pass that recomposites every scroll frame at 2× retina — the steady-state cost while reading, i.e. exactly when the wake lock now holds the screen on). Measure with `xcrun xctrace record --template 'Energy Log'` before changing either.
+## Where Things Live
 
-## Architecture Reference
-- Onboarding docs (read when new to an area): `docs/ARCHITECTURE.md` (system map) → `docs/CODEBASE-GUIDE.md` (where code lives) → `docs/PLAYBOOKS.md` (change recipes + verify/ship checklist). Index: `docs/README.md`.
-- Full YAML schema and architecture details: `docs/ADR-004-YAML-Architecture.md`
-
-## Frontend Architecture Contract (Enforced)
-- Small reusable UI primitives must live in `frontend/src/components/lego_blocks/units/*`.
-- Composite UI lego blocks that compose units must live in `frontend/src/components/lego_blocks/integrations/*`.
-- Component-layer hooks must live in `frontend/src/components/lego_blocks/hooks/*`.
-- Page/feature orchestration must live in `frontend/src/components/orchestrators/*`.
-- `frontend/src/personal_extension/components/*` is allowed for personal-only first-party code when it mirrors the same architecture:
-  - `lego_blocks/{units,integrations,hooks}`
-  - `orchestrators`
-- Do not create `*HelperBlock` or `*HelpersBlock` component files. Prefer concrete domain block names.
-- If logic has only one consumer, keep it local.
-- If logic is reusable, extract to a domain-specific `*Block`/`use*Block` (for example `BacklogListDomainBlock`, `MarkdownDocumentContentBlock`) instead of helper-style naming.
-- Naming is mandatory:
-  - Reusable component files use `*Block` suffix.
-  - Hook files start with `use`.
-  - Orchestrator files use `*Orch` suffix.
-- Shared UI primitives stay in `frontend/src/components/lego_blocks/units/ui/*`.
-- Do not add one-off feature components in `pages/` when a lego block or orchestrator extension is the correct pattern.
-- If an exception is unavoidable, document it in both `CLAUDE.md` and `AGENTS.md` in the same change.
-- Caution: keep UI orchestrators thin. Extract reusable logic and heavy transformations into lego blocks/hooks/services before orchestrator complexity grows.
-
-## Service Architecture Contract (Enforced)
-- Low-level reusable service primitives must live in `frontend/src/services/lego_blocks/units/*`.
-- Composite reusable service lego blocks must live in `frontend/src/services/lego_blocks/integrations/*`.
-- Workflow service composition must live in `frontend/src/services/orchestrators/*`.
-- `frontend/src/personal_extension/services/*` is allowed for personal-only first-party code when it mirrors the same architecture:
-  - `lego_blocks/{units,integrations}`
-  - `orchestrators`
-- Naming is mandatory:
-  - Service primitive and integration files use `*Block` suffix.
-  - Service workflow files use `*Orch` suffix.
-- UI code should consume service orchestrators by default, not low-level service primitives.
-- Caution: keep service orchestrators thin. Move shared algorithms, scanners, adapters, and transformation logic into service lego blocks.
-
-## Key Service Blocks
-- `frontend/src/services/lego_blocks/units/yamlNoteBlock.ts` — YAML frontmatter parse/stringify/validate/key generation
-- `frontend/src/services/lego_blocks/integrations/dbBlock.ts` — Dexie.js IndexedDB cache layer
-- `frontend/src/services/orchestrators/vaultSyncOrch.ts` — vault scan to IndexedDB sync
-- `frontend/src/services/orchestrators/vaultGraphOrch.ts` — vault graph data for the /vault-graph Tools subtab: **one unified graph over notes AND code** (decided 2026-07-17: no source toggle — a repo opened as a profile's vault maps with its docs clustered beside the code). Markdown gets wikilink edges (Dexie), code files get lexical import edges via `codeImportScanBlock` (units): per-language regex extraction (JS/TS family incl. `@/`→nearest-`src` alias heuristic, Python dotted/relative, Rust `mod`) resolved against the walked file set — no parser/LSP/package deps, renderer-side so the existing vault-guarded IPC covers it (no new main surface). Bare package imports never become edges; generated dirs (dist/build/out/coverage/target/vendor/…) are excluded for md too; code files >400KB stay nodes but aren't scanned; code scan capped at 6000 most-recent files. Git births run pathspec-free now (all files, not `*.md`). Plus git file births + AI-session heat; force-graph is dynamically imported in `VaultGraphCanvasBlock` only (startup contract). The graph can also be driven by the AI-activity card (lazy-mounted in a drawer): picking a day lights that day's touched notes, clicking a session zooms to the notes it touched. From the **home** AI-activity card (not the graph page), a session row also offers a graph **peek** without navigating away (added 2026-07-17): ⌘/Ctrl-click a row — or right-click → "Show in graph" — opens `SessionGraphSlideOverBlock` (lazy; keeps force-graph out of the eager home chunk), a right-side slideover mounting the same `VaultGraphCanvasBlock` lensed + zoomed to that session's files via `selectGraphNodesForChainsBlock`. Gated behind `AiActivityPanelBlock`/`AiActivityDayTableBlock` `enableGraphPeek` (off in graph-controller mode). Row hover warms `loadVaultGraph()` (shared 5-min snapshot + in-flight dedupe) so the first open is instant; a ⌘-click on a graph node opens that file. The graph snapshot is deliberately NOT persisted to the vault — it's derived data (locked decision #3: IndexedDB/in-memory is the rebuildable cache, the vault stays byte-identical markdown+YAML), and a vault-committed blob would churn on every edit and conflict across synced devices. Node attribution prefers **file-edit provenance** — `ParsedSession.touchedPaths`/`ActivityChain.touchedPaths` (absolute paths extracted from Claude `tool_use` Edit/Write/MultiEdit/NotebookEdit calls in `nativeAiSessionParserBlock`) mapped vault-relative by `selectGraphNodesForChainsBlock` in `vaultGraphBlock.ts`; falls back to the time-window heuristic (marked `approximate`) for chat sources / GC'd transcripts. Bump `CACHE_VERSION` in `aiActivityCacheBlock.ts` whenever the parsed-session shape changes (provenance landed on v16). Layout uses **folder gravity** (`makeCentroidForce` in `VaultGraphCanvasBlock`): every note is pulled toward its folder's centroid (strong) and its project's (gentle), so the human's own filing shapes neighborhoods instead of a wikilink hairball; wikilinks stay the weak cross-cluster threads.
-- `frontend/src/services/lego_blocks/integrations/aiActivitySnapshotStoreBlock.ts` — device-local IndexedDB persistence for AI activity (added 2026-07-19, fixes the multi-second cold-start load on iOS/iPad where WKWebView death wipes the in-memory snapshot). Two records, both keyed `(CACHE_VERSION, vaultRoot)`: the final deduped session snapshot (cold `loadAiActivity` seeds from it and returns instantly with `ts: 0` = stale, while the full load runs behind and fires `subscribeAiActivitySnapshotBlock` listeners — `useAiActivityBlock` adopts the fresh result silently), and a parsed mirror of the vault's `.thinking-space/ai-activity-cache.json` keyed by stat fingerprint (`mtime:size`), so an unchanged cache file skips the multi-MB bridge read + JSON.parse entirely (`readCache`/`writeCache` in `aiActivityCacheBlock`). `clearAiActivitySnapshot()` also drops the persisted snapshot (session-source settings changes must not resurrect excluded sessions). Derived data only — version or vaultRoot mismatch falls back to the full load; per-profile storage partitions scope it automatically.
-- `frontend/src/services/orchestrators/sessionTelemetryOrch.ts` — latest-session telemetry for the explorer: the most recent AI session that wrote vault files (provenance-only, via `sessionTelemetryBlock.ts`), split created-vs-edited by ctime-inside-session-span. Powers the touched-file dots + "This session: N created · M edited" strip in `VaultExplorerBlock` (wired via `useSessionTelemetryBlock`). Deliberately ephemeral (12h age-out, newer session replaces older) — AI Activity is the durable record; dots are live telemetry, not an inbox.
-- `frontend/src/services/lego_blocks/units/navRailPrefsBlock.ts` — per-profile nav rail order/visibility ({order, hidden, homePosition} in localStorage, so profile partitions scope it automatically). Rail entry: press-and-hold a rail icon → iOS-style jiggle edit mode in App.tsx (drag to reorder, × to hide, Esc to exit); precise fallback in Settings → Navigation (`NavRailSettingsBlock`). Hiding is rail-only (pages stay routable + in ⌘K); ⌘1…n shortcuts and the mobile drawer consume the same filtered arrays so order stays in sync. Settings/avatar are fixed anchors, not manageable. **Home is repositionable** (added 2026-07-18): `homePosition` ('top' | 'bottom', **default 'bottom'** — the bottom corner above the profile switcher) is set by dragging the Home glyph in jiggle-edit mode between the top nav group and the bottom actions group (each is a drop zone that only reacts to the Home id `'/'`, so normal item-reorder drops pass through), or via the Home-position Top/Bottom toggle in `NavRailSettingsBlock`. Home stays non-hideable and is not interleaved among the reorderable items — it's a top-or-bottom anchor only. The dragged-id ref is cleared on `dragEnd` (not mid-drop) so a Home-dropped-on-an-item event still bubbles to the container drop zone.
-- `frontend/src/services/lego_blocks/integrations/capabilityRegistryBlock.ts` — capability registry with typed I/O contracts
-- `frontend/src/services/orchestrators/capabilityRouterOrch.ts` — capability router with policy/audit/dry-run
-- `frontend/src/services/lego_blocks/units/extensionManifestBlock.ts` — extension manifest validation + semver compatibility helpers
-- `frontend/src/services/lego_blocks/integrations/extensionActionBlock.ts` — declarative action schema + context template resolution
-- `frontend/src/services/orchestrators/extensionLoaderOrch.ts` — extension discovery/reload/activation lifecycle
-- `frontend/src/services/orchestrators/extensionUiOrch.ts` — UI slot resolve + action invocation orchestration
-- `frontend/src/services/orchestrators/extensionBuilderOrch.ts` — generate/preview/save/activate extension builder workflow
-
-## Intelligence Subsystem
-Model-agnostic layer for internal AI tasks (session titles, structured extracts, tool loops). Never used for user chat — that path stays in `aiChatBlock`.
-
-- `frontend/src/services/orchestrators/intelligenceOrch.ts` — public surface: `runContract`, `runWithTools`, `availability`, `diagnose`.
-- `frontend/src/services/lego_blocks/units/intelligence/*` — schemaBlock (typed JSON-Schema DSL), promptContractBlock (Contract type), modelProfileBlock (per-model quirks), serverProfileBlock (openai-compat server probe), reasoningStripBlock, intelligenceErrorsBlock, intelligenceTelemetryBlock, contracts/sessionTitleContractBlock.
-- `frontend/src/services/lego_blocks/integrations/intelligence/*` — providers/openaiCompatProviderBlock (mlx_lm.server, LM Studio, Ollama, llama.cpp, vLLM, OpenAI), providers/anthropicProviderBlock (Claude via @anthropic-ai/sdk), providerRegistryBlock (default provider + per-call override), toolLoopBlock, jobQueueBlock (concurrency + dedup), intelligenceCacheBlock (sidecar JSON via electron IPC).
-- Cache lives at `~/.thinking-space/intelligence-cache/<taskId>/<key>.json`. Keyed by `(taskId, inputHash, promptVersion, model)` — any of those changing invalidates automatically.
-- Default provider is user-configurable in Settings → AI → Intelligence Subsystem. Diagnostics panel there shows live provider status, capability probes, and the last 20 requests.
-- To add a new intelligence task: define a Contract in `units/intelligence/contracts/<name>ContractBlock.ts`, call `runContract(contract, input)`. Do NOT open a new HTTP path or add another `sessionTitle`-style module.
-
-## Key Electron Blocks (main process)
-- `frontend/electron/src/lego_blocks/profileRegistryBlock.ts` — Chrome-style workspace profiles (one vault + accent color + own windows per profile; `userData/state/profiles.json`, main-owned trust anchor). Default profile keeps the default session + legacy `vault-root.json` (zero migration); non-default profiles run in `persist:profile-<id>` app partitions that MUST be prepared via `prepareProfileAppSessionBlock` (setup.ts) before first load — a bare partition session has neither the custom app-scheme protocol (electron-serve registers it on the default session only) nor the CSP header rewriter. `vault:root:getPersistedSync`/`setPersisted` answer per-sender-window profile; `vault:watch:event` routes only to the owning profile's windows via `getWindowsForVaultRootBlock` — never broadcast vault-scoped events to all windows. Web-tab webviews use per-profile partitions (`persist:thinking-space-links[-<id>]`, renderer side reads it from `profileContextBlock`), popups reuse the opener webview's session. One vault per profile enforced; delete clears partition storage. Renderer surface: `profileContextBlock.ts` (unit) + `useWorkspaceProfileBlock` (accent CSS var `--ltm-profile-accent`) + `WorkspaceProfilesSettingsBlock` (Settings → Profiles, accent + preset-emoji avatar pickers) + `ProfileSwitcherBlock` (Chrome-style avatar + switcher menu at the sidebar rail bottom; the tree-of-life Home glyph lives at the rail top). Profiles carry an `icon` field (preset emoji; falls back to name initial). Each window indexes/syncs only its own profile's vault into its own partitioned IndexedDB — per-window perf is identical to single-vault.
-- `frontend/electron/src/lego_blocks/vaultPathGuardBlock.ts` — authorization gate for renderer-supplied vault roots. Every vault/hierarchy/harvest IPC handler validates `vaultRoot` against main-anchored roots (persisted root, native `vault:selectFolder` pick, `vault:root:setPersisted`); `resolveInsideVaultBlock` adds traversal-safe containment via `path.relative` (not `startsWith`). New vault-scoped IPC handlers MUST call `assertAuthorizedVaultRootBlock`/`resolveInsideVaultBlock` — never trust a renderer path. This is also the macOS TCC story: the app only ever touches the user-chosen vault (terminal PTYs default to the vault root, not `$HOME`, for the same reason).
-- `frontend/electron/src/lego_blocks/sourceConfigBlock.ts` — read/write `userData/state/source-config.json` (mode, sourcePath, vitePort)
-- `frontend/electron/src/lego_blocks/viteServerBlock.ts` — spawn Vite dev server from source path, poll readiness (45s timeout)
-- `frontend/electron/src/lego_blocks/viteRebuildBlock.ts` — 5-step rebuild pipeline + detached swap script (`applyRebuildBlock`)
-- `frontend/electron/src/lego_blocks/ptyManagerBlock.ts` — node-pty PTY lifecycle, IPC routing by `webContentsId`, per-window cleanup
-- `frontend/electron/src/lego_blocks/intelligenceCacheStoreBlock.ts` — sidecar JSON cache for intelligence outputs; also cleans up the legacy `session-titles/` dir on startup.
-- `frontend/electron/src/lego_blocks/vaultWritePrefsPersistenceBlock.ts` — vault-write prefs, keyed **per vault root** in `userData/state/vault-write-prefs.json` (decided 2026-07-17: a global flag leaked one vault's opt-in into every profile's vault and grew stray `ai-activity/` dirs). **One unified `ai-activity/` folder** (merged 2026-07-18 — was two sibling folders `ai-raw/` + `ai-activity/`): harvested raw signals → `ai-activity/raw-sessions/<source>/` (Apple Screen Time, GoodNotes reading, claude-code/codex/chatgpt/grok session md), AI-derived digests → `ai-activity/{atoms,chains,ranges}`, hand-logged sessions → `ai-activity/manual-sessions.jsonl`. Two opt-ins stay distinct (their data-protection semantics differ): `writeAiRaw` gates `ai-activity/raw-sessions/` and keeps a per-vault dir-exists migration (existed = new `ai-activity/raw-sessions/` OR legacy `ai-raw/`/`ai_raw/`; turning it off would lose Screen Time data past the macOS 28-day cliff); `writeAiActivity` gates the digests mirror and is **strictly opt-in, no migration** — AI Activity works from harness logs + local sidecar cache; the mirror only buys durability (harness logs deleted after ~30 days, e.g. Claude Code `cleanupPeriodDays`) and cross-device history via vault sync, and the Settings copy (AiActivitySessionSourcesSettingsBlock) says so. `migrateAiRawIntoAiActivityBlock` (run at `vault:watch:start`) folds legacy `ai-raw/raw`/`ai_raw/raw` up into `ai-activity/raw-sessions` (fast whole-dir rename when the target is absent, else non-clobbering per-file move) and removes the emptied legacy dir. Setters take the vault root and assert it via `vaultPathGuardBlock`; legacy top-level fields in the JSON are preserved but never read. **Manual sessions** (hand-logged time blocks — "painting 4h") are first-party authored durable data, so writes ride the folder's **general** write permission — `getVaultWriteAiActivityAnyEnabled()` = `writeAiRaw || writeAiActivity` (changed 2026-07-18 from the digests-mirror opt-in specifically, which forced users to enable telemetry mirroring just to hand-log time). They live in `ai-activity/manual-sessions.jsonl` (uuid-keyed JSONL, `manualSessionBlock.ts` — append/edit/delete gated by the "any" helper, reads best-effort). They project into the shared pipeline via `source: 'manual'` (`manualSessionParserBlock.ts`; reading-like — no tokens/cost/msgs, `hadClear:true` so each stays its own chain) and merge in `aiActivityCacheBlock` (bumped CACHE_VERSION→17). UI: `AiActivityDayTableBlock` gets a header "+ Log session" (disabled with a Settings nudge when both opt-ins are off) + `ManualSessionEditModalBlock` (lazy; project combobox seeded from `activity.projects`, date+start+duration, note, delete); gated on the home card via `AiActivityPanelBlock enableManualSessions`. Manual rows show `—` for msgs and no graph-peek (they touch no files). Show under the "All" source pill only. NOTE: the claude-code session md ingest is the user's external SessionEnd hook (`~/.claude/hooks/render-session.sh`) — its `DEST` must point at `ai-activity/raw-sessions/claude-code` for the merge to hold for new sessions (app-side coupling — `claudeSessionCleanupBlock.mjs`, `telegramConversationBlock.ts` — already updated).
-- `frontend/electron/src/lego_blocks/localBuildUpdateNoticeBlock.ts` — update story for custom builds: apps with the `local-build` marker (written by `scripts/checkpoint-ship.sh`) skip electron-updater (official DMG would erase user modifications) and instead get a native notification when a newer official release exists; their upgrade path is fork-merge + rebuild (PLAYBOOKS §12 Step 5).
-
-## iOS Native Chrome Decisions (locked 2026-07-19)
-- **Top status-bar veil is STATIC glass, never Liquid Glass and never scroll-linked.** `TopChromeView` uses one soft masked progressive blur (solid to 30% of the strip, feathered to clear); scroll must not deepen/animate it — the earlier scroll-linked "breathing" read as a glitch. Liquid Glass (`glassEffect`) is for discrete floating controls (bottom chrome capsules), not edge scrims: glass needs a shape boundary and can't feather to nothing.
-- **Bottom chrome collapses Safari-style** (`BottomChromeView`): at rest = hamburger/back + tabs pill + optional side-panel toggle + chevron menu; on scroll everything except the pill scale-fades away and the pill shrinks into one small CENTERED chip (badge + active tab name). Tap chip / scroll-up restores. No half-pill fragments.
-- **Native side-panel toggle button** (mirrors Electron's `SidebarChromeButtonBlock`, emits `topChromeSidebarToggleTap`) shows only where the native chrome is the sole way to reach the panel: Chat, Web, New Note, Settings. Hidden (`enabled: false` in App.tsx `nativeSidebarControl`) on Thinking Space explorer, Webull/F9, and Thinking Organizer — their iPhone list/detail layouts own the panel. The chevron "More Options" menu has NO drawer entry.
-- **Tab switcher is a Safari-style card grid** (`NativeTabSwitcherSheetView`): 2-col grid, live WKWebView snapshots (`captureActiveTabSnapshot` in RootShellViewController, 420pt wide, captured right before the sheet presents, pruned to live tab ids, in-memory only in `TopChromeState.tabSnapshots`), monogram glass placeholder for unvisited tabs, accent ring on active, dashed New Tab card.
-- **iPhone explorer header is one icon row**: filter input collapses to a toolbar Search button via `VaultExplorerBlock collapseSearchToButton` (prop doubles as the phone-surface flag), RSS toggle rides `toolbarActionsSlot` on all surfaces (full-width RSS row removed), File-info `(i)` button is desktop-only.
-- **iPad top bar is ONE row with a Files-app centered tab pill** (replaced the two-row Safari segmented bar 2026-07-19 — a lone tab stretched full-width read as a broken title bar): hamburger/back left, centered Liquid Glass pill (`padFilesTabPill` in TopChromeView) holding sidebar toggle (portrait) + content-hugging tab segments (active = soft highlight + ✕) + hairline divider + `+`/grid folded into the trailing edge, search/refresh/⋯ right. Sync lives in the ⋯ overflow menu (like Electron), not the bar; the ⋯ Menu label needs `.tint(.primary)` or SwiftUI paints it accent-blue. Bar height = 48pt: `nativeChromePadBarHeight` ↔ two `48px` clearance rules in index.css ↔ PhoneShellView veil depth — keep all three in sync. In **landscape** the sidebar toggle separates out of the pill into its own glass button at far left (Electron position); the pill drops it. iPad `+` = plain new tab (lands on Home); iPhone dock `+` = create note (`openNativeCreateSurface` splits by idiom).
-- **iPad tab switcher is an anchored POPOVER off the pill's grid button** (compact `NativeTabSwitcherSheetView compact:true` — no title row, card-count-sized frame); the phone keeps the full sheet with Tabs/Done header. Card grid details (snapshots, monogram placeholders, dashed New Tab) shared between both.
-- **Drawer compaction (iPad)**: while the left drawer is open, the top chrome container gets a leading inset equal to the drawer slide offset (`bottomChromeLeadingConstraint` in `applyDrawerVisualState`, same spring) so the bar squeezes into the visible content area instead of being buried; `chromeState.drawerProgress` is set there too (the iPad path never wrote it).
-- **Immersive focus mode hides the native chrome**: fullscreen web overlays (Excalidraw focus) hold a counter-based lease via `nativeChromeImmersionBlock` + `useNativeChromeImmersionBlock(active)`; App.tsx passes `visible: !immersed` through the top-chrome bridge (hides bar + veil on both idioms, mirrors Electron focus-owns-the-window). CRITICAL: the veil must set `.allowsHitTesting(chromeState.isVisible)` — opacity-0 SwiftUI still hit-tests, and the invisible strip blocked the focus header's Exit button.
-- **Native owns the left-edge swipe**: the web's edge-swipe drawer handler stands down on ALL native-chrome surfaces (`useNativeTopChrome` guard in App.tsx), and the Swift `UIScreenEdgePanGestureRecognizer` needs a `shouldRecognizeSimultaneouslyWith → true` delegate or WKWebView's internal scroll recognizers win the race and it never fires over web content.
-- **Overscroll = content bounces, backdrop stays pinned** (native model): edge-bleed page backdrops are `position: fixed` to the viewport on capacitor phone AND tablet (the tablet rule must live at top level — iPad Pro portrait is 1024px, outside the 1023px media query), so the rubber band reveals more backdrop, never the flat shell background. Do NOT kill vertical bounce. Graph canvas (`VaultGraphCanvasBlock`) sets `touch-action: none` on its mount — the shell's `touch-action: pan-y` otherwise lets the browser eat all canvas touches.
-- **Electron corner treatments don't cross to iPhone**: `.ltm-thinking-space-document-stage` keeps its rounded-right/flat-left corners only where it sits beside the explorer; iPhone full-screen detail zeroes radius + margin.
-
-## Vault-Sync Indicator (locked 2026-07-19)
-The refresh pill IS the sync indicator on every platform — sync never gets its own surface. Design iterated hard: banner → top-edge hairline (rejected: "very bad UI") → this. Do not resurrect either.
-- `backgroundActivityBlock` activities carry `channel: 'ambient' | 'alert'`. Vault syncs (`vaultSyncOrch` full + incremental) publish `ambient`; `BackgroundActivityBannerBlock` renders only alerts (capability calls, main-thread stalls) — the banner is the escalation surface, never routine sync.
-- `useAmbientSyncActivityBlock` (hooks) is the single source of truth: `running` turns true only after a sync has been in flight **500ms** (sub-threshold watcher churn shows nothing anywhere); exposes aggregate progress fraction + completed/total file counts.
-- Desktop: `SyncRefreshButtonBlock` (units) — icon-only pill (no "Refresh" word), click still = cheap UI refresh (`handleGlobalRefresh` does NOT sync; that separation is deliberate — sync fires from startup/watcher/manual rebuild). While syncing: icon spins, a small accent progress circle hugs the **icon** (not the capsule — survives the capsule widening), determinate syncs widen the pill with a tabular `completed/total` count, completion = circle closes + fades (min one ~650ms pulse).
-- iOS: same threshold/state rides the bridge as `syncActive`/`syncCompleted`/`syncTotal` (TopChromeStateBlock → TopChromePlugin → TopChromeState.syncProgress). `SyncSpinIconView` (TopChromeView.swift) draws the ringed spinning arrow; iPad = top-bar refresh button widens with count, iPhone = bottom pill shows ring+count in the full bar, ring only in the minimized chip.
-
-## Cross-Device Settings Roaming (locked 2026-07-19)
-- **The roaming mechanism is `.thinking-space/preferences/ui.json`** via `vaultUiPreferencesOrch` (typed, normalized, read-merge-write). Do NOT invent parallel settings files — extend `VaultUiPreferencesBlock` instead. AI-activity display prefs roam through its `aiActivityPrefs` group (null = unset → device default): startup pull applies vault values through the public storageKeyBlock setters (their events fire, UI updates live), local changes push back debounced via the `registerStorageWriteListenerBlock` hook in storageKeyBlock (`initAiActivityPrefsRoamingOrch`, wired in App.tsx once the vault is ready). Device-bound settings NEVER roam: intelligence provider endpoints, AI-activity range-summary provider (Claude CLI exists only on Electron), vault paths, per-profile nav rail layout.
-- **User profile (name/symbol/memories) roams via `.thinking-space/profile.json`** (its own file, predates ui.json roaming). Two iCloud hazards are guarded: `CapacitorVaultFS.exists` treats `.NAME.icloud` placeholders as existing (undownloaded ≠ absent), and `readUserProfileOrch` never seed-writes a pure-default profile over the vault (`isDefaultUserProfileBlock` guard) — a fresh device once clobbered the real profile with "You" through that path.
+| What | Where |
+|---|---|
+| System map (processes, trust boundaries, data flow) | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Repo layout, how to find code | [docs/CODEBASE-GUIDE.md](docs/CODEBASE-GUIDE.md) |
+| Change recipes + verify/ship checklist | [docs/PLAYBOOKS.md](docs/PLAYBOOKS.md) |
+| Annotated key blocks (services, intelligence, Electron main) | [docs/reference/KEY-BLOCKS.md](docs/reference/KEY-BLOCKS.md) |
+| `thinkspc` CLI + multi-agent discipline | [docs/reference/THINKSPC-CLI.md](docs/reference/THINKSPC-CLI.md) |
+| Checkpoint ship ritual + Telegram notification channel | [docs/reference/CHECKPOINT-RITUAL.md](docs/reference/CHECKPOINT-RITUAL.md) |
+| YAML schema (source of truth for hierarchy) | [docs/ADR-004-YAML-Architecture.md](docs/ADR-004-YAML-Architecture.md) |
+| Capability system / workspace schema | [docs/ADR-005-Agent-Capabilities.md](docs/ADR-005-Agent-Capabilities.md), [docs/ADR-006-Agent-Workspace-Schema.md](docs/ADR-006-Agent-Workspace-Schema.md) |
+| Phases, internal dev docs | [DEVELOPMENT.md](DEVELOPMENT.md) |
+| Product overview, quick start | [README.md](README.md) |
+| Multi-agent handoff protocol | [agents/README.md](agents/README.md) |
+| Docs index | [docs/README.md](docs/README.md) |
 
 ## Startup Sequence (Claude Sessions)
-1. `CLAUDE.md` is auto-loaded — contains architecture, contracts, and locked decisions.
+
+1. This file is auto-loaded — it holds the locked decisions and points at everything else.
 2. Check active tasks: `./thinkspc organizer.nodes.search --query "status active" --limit 10`
-3. Read additional docs only when the task requires it:
-   - `docs/ARCHITECTURE.md` / `docs/CODEBASE-GUIDE.md` / `docs/PLAYBOOKS.md` — when new to an area: system map, code layout, change recipes
-   - `README.md` — for product overview and quick start
-   - `DEVELOPMENT.md` — for architecture contracts, phases, and internal dev docs
-   - `docs/ADR-005-Agent-Capabilities.md` — when modifying the capability system
-   - `docs/ADR-006-Agent-Workspace-Schema.md` — when modifying workspace schema fields
-   - `agents/README.md` — for multi-agent handoff protocol
+3. Read the contract or reference doc for the area you're about to touch. Don't read them all.
 
-## Major Checkpoint Ritual (Ship It)
-A "major checkpoint" = a user-visible feature or fix is complete and verified (typecheck/tests pass), not every commit. At a major checkpoint:
-1. Commit (per `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`) and push.
-2. Run `./scripts/checkpoint-ship.sh` (in the background — takes ~2–3 min). It builds the unpacked .app, verifies the startup-perf contract, signs, and swaps `/Applications/Thinking Space.app` in place (detached swap, so it also works from the app's own embedded terminal). Full output goes to `~/.thinking-space/logs/`; stdout is a ~4-line summary — read that, not the log, unless it failed.
-3. The script refuses dirty/unpushed trees by design — don't work around that; commit first.
-4. **iOS checkpoints**: if the checkpoint touched iOS-relevant surfaces (`frontend/ios/**`, or web code that renders in the iPhone shell — shared `frontend/src` counts), ALSO run `./scripts/checkpoint-ship-ios.sh` (in the background). It builds the web bundle, runs `cap sync`, xcodebuilds Release (`generic/platform=iOS`, automatic signing, persistent derived data at `~/.thinking-space/tmp/ios-derived` for fast incrementals), and installs + relaunches on the user's configured device(s) via `devicectl` (config `~/.thinking-space/ios-device.json` `{"deviceNames": ["Ichigo", "Ikigai"]}` — iPhone + iPad, one build installs to every listed device; legacy singular `deviceName` still honored; env override `TS_IOS_DEVICE` takes comma-separated names; auto-adopts a sole paired iPhone). Install retries 4× per device — the first wireless contact often hits a cold CoreDevice tunnel. Ship succeeds if AT LEAST ONE device takes the install; unreachable extras are reported per-device, never block the checkpoint. Needs each device on USB or the same Wi-Fi. Both ship scripts build the shared `frontend/dist` (electron vs capacitor targets) and serialize that phase via `~/.thinking-space/tmp/dist-build.lock`, so launching Mac + iOS ships together is safe (before the lock, a concurrent run once packed the Mac app from a capacitor-flavored dist → ERR_FILE_NOT_FOUND on `ltm-app://`). `--dirty` skips the clean/pushed preflight for mid-session on-device iteration (personal test build, no /Applications swap); the no-flag form stays strict. Read the ~5-line stdout summary, not the log.
-DMG creation stays a separate deliberate release step; checkpoints install the app directly.
+## Quality Bar
 
-## Multi-Agent Discipline
-- Use organizer tool as source of truth for active operations (tasks, plans, handoffs).
-- Every created operation node must include a substantive YAML `description`.
-- Record implementation plans in the organizer tool for non-trivial tasks (estimated >5 minutes of work). Quick fixes and small changes don't need a plan node.
-- Run logging (`run.log`) is optional — use it for significant multi-step sessions, not every interaction.
-- All agent capability calls must use `actor.kind: "agent"`; never switch to `human` to bypass flag/policy checks.
-- If `agent_capabilities_enabled` is off and a call fails with that error, pause and ask the user before continuing.
-- For external vault writes (such as iCloud paths outside repo sandbox), request escalated permissions first.
-- Follow workspace usage pattern:
-  - `development (agent operations)` for active task/plan work.
-  - `handoffs (agent operations)` for handoff records.
-  - `principles and decisions (agent operations)` for durable guidance.
-- Keep docs synchronized when strategy or architecture shifts.
-- Use detailed commit messages that capture scope + intent + key changes; do not use generic commit titles.
-- Commit body must be the final task output copied verbatim from the agent response (no paraphrase, truncation, or reformatting).
-- Follow `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`.
+Every task completion should answer: which pillar(s) improved, which guardrails were preserved, what tests/validations were run, and what docs were updated for the next agent.
 
-## Capability Runner Pattern
-Two equivalent invocations — both run the same bundled CLI via Electron-as-Node, single source of truth:
-- **`thinkspc`** (no `./`) from any directory once the Thinking Space app has been launched at least once (it provisions a shim at `~/.local/bin/thinkspc` + config at `~/.thinking-space/config.json`). Recommended.
-- **`./thinkspc`** from the repo root — same runtime, but also picks up a fresh repo bundle (after `node frontend/scripts/bundle-cli.mjs`) so source edits are testable without re-installing the app. Sources repo `.env` if no env var/config is set.
+## Shipping
 
-Both default to `actor: {kind: "agent", id: "claude-code"}`. Cold start ~0.1s (no vite-node, no `node_modules` required, single bundled .mjs invoked via ELECTRON_RUN_AS_NODE=1 against `/Applications/Thinking Space.app/Contents/MacOS/Thinking Space`).
-Legacy alias: `./ltm` forwards to `./thinkspc`.
-Wrapper defaults are token-efficient (`text` + `brief` output). Use `--full` for detailed text or `--json` for machine parsing.
-Global output flags (`--json`, `--text`, `--brief`, `--full`) must appear before the command.
-Shortcuts are supported: `search`, `claim`, `comment`, `done`, `wip`, `ready`, `blocked`, `context`.
-CLI parsing supports both `--flag value` and `--flag=value`.
-Long values can be loaded from files with `--<flag>-file` (for example `--text-file ./note.md`).
-
-### Required fields for node creation (easy to forget, causes bugs):
-- `--projectRoot lifeblood_systems/thinkingspace.ai` — without it, nodes land at vault root and won't appear in organizer UI
-- `--description "..."` — mandatory for every created node per multi-agent discipline
-- `--parentKey "..."` — required to place nodes in the correct hierarchy (e.g., `handoffs-agent-operations`, `task-backlog`)
-- `--extra-record_kind <kind>` — for typed records: `task`, `run`, `handoff`, `decision`, `principle`, `note`
-- `--extra-*` is only for custom metadata (`extraFields`). For first-class fields use first-class flags (`--comments`, `--description`, etc). For append-only notes, use `comment.add`.
-
-```bash
-# Read operations
-./thinkspc list
-./thinkspc organizer.nodes.list_roots --typeFilter program
-./thinkspc organizer.nodes.list_children --parentKey "epic-auth"
-./thinkspc organizer.nodes.search --query "auth bug" --limit 10
-./thinkspc search --query "auth bug" --limit 10
-./thinkspc organizer.node.get --uuid "abc-123"
-
-# Create node (all required fields shown)
-./thinkspc organizer.node.create --type task --title "Fix login" \
-  --parentKey "task-backlog" \
-  --projectRoot lifeblood_systems/thinkingspace.ai \
-  --description "Login form crashes on submit due to missing validation" \
-  --extra-record_kind task
-
-# Other write operations
-./thinkspc organizer.node.update --uuid "abc-123" --status active --priority high
-./thinkspc task.claim --uuid "abc-123" --owner claude-code
-./thinkspc task.update_status --uuid "abc-123" --taskStatus done
-./thinkspc done --uuid "abc-123"
-./thinkspc run.log --title "Session log" --projectRoot lifeblood_systems/thinkingspace.ai --agentName claude-code --result success
-./thinkspc handoff.create --title "Handoff" --projectRoot lifeblood_systems/thinkingspace.ai \
-  --summary "Notes" --fromAgent claude-code --toAgent human \
-  --parentKey handoffs-agent-operations
-./thinkspc comment.add --uuid "abc-123" --text "Done" --addedBy claude-code
-./thinkspc comment --uuid "abc-123" --text-file ./status-update.md
-
-# Raw JSON escape hatch (reads stdin, for complex payloads)
-./thinkspc invoke < payload.json
-```
-
-Setup: ensure `.env` at repo root has `THINKSPC_VAULT_ROOT=/path/to/your/vault` (or legacy `LTM_VAULT_ROOT`).
+At a major checkpoint (user-visible feature or fix, verified): commit + push, then `./scripts/checkpoint-ship.sh` in the background; add `./scripts/checkpoint-ship-ios.sh` if iOS surfaces changed. Details and caveats: [docs/reference/CHECKPOINT-RITUAL.md](docs/reference/CHECKPOINT-RITUAL.md).
 
 ## Scope Boundary
+
 These instructions apply to `Thinking Space` only.
