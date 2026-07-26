@@ -20,6 +20,22 @@ const END_MARKER = '# END Thinking Space managed exclusions'
 // who never touch settings that today explicitly call the sync (e.g. Webull).
 const APP_MANAGED_GITIGNORE_BASELINE = ['ai-raw', 'ai-activity']
 
+// Subpaths that must stay *tracked* even though their parent prefix is ignored.
+//
+// `ai-activity/thinking-organizer/` holds undertaking records — the head
+// sentence, tags, sections and `grew_out_of` edges of the Thinking Organizer
+// index. Unlike everything else under `ai-activity/` (raw sessions, chains,
+// ranges) these are hand-written and hand-edited, revised destructively, and
+// regenerable from nothing. Losing git history there loses the data outright,
+// so the parent exclusion is narrowed rather than blanket.
+//
+// Emitted as `/<prefix>/*` + `!/<prefix>/<keep>/` on purpose: the directory
+// form `/<prefix>/` makes git skip descending into it entirely, which silently
+// kills any later negation.
+const APP_MANAGED_GITIGNORE_EXCEPTIONS: Record<string, string[]> = {
+  'ai-activity': ['thinking-organizer'],
+}
+
 function normalizePrefix(value: string): string | null {
   const trimmed = value
     .replace(/\\/g, '/')
@@ -34,7 +50,12 @@ function buildManagedBlock(prefixes: string[]): string {
   const lines = [
     BEGIN_MARKER,
     '# Auto-managed by Thinking Space — edit through the app, not by hand.',
-    ...prefixes.map(p => `/${p}/`),
+    ...prefixes.flatMap(p => {
+      const keep = APP_MANAGED_GITIGNORE_EXCEPTIONS[p]
+      if (!keep?.length) return [`/${p}/`]
+      // Order matters: the exclusion must precede its negations.
+      return [`/${p}/*`, ...keep.map(sub => `!/${p}/${sub}/`)]
+    }),
     END_MARKER,
   ]
   return lines.join('\n')

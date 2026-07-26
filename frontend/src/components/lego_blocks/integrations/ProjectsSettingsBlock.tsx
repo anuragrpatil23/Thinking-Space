@@ -9,6 +9,35 @@ import {
 } from '@/services/lego_blocks/integrations/projectsStorageBlock'
 import type { ProjectBlock } from '@/services/lego_blocks/units/projectBlock'
 
+const CLOBBER_GUARD_MESSAGE =
+  'Could not read projects.json — it may have been written by a newer version on another device. ' +
+  'Nothing was changed. Open the app on that device, or fix the file, then retry.'
+
+interface ProjectDraft {
+  name: string
+  mission: string
+  vaultPath: string
+  organizerEnabled: boolean
+}
+
+function toDraft(project: ProjectBlock): ProjectDraft {
+  return {
+    name: project.name,
+    mission: project.mission,
+    vaultPath: project.vaultPath,
+    organizerEnabled: project.organizerEnabled,
+  }
+}
+
+function draftDiffersBlock(project: ProjectBlock, draft: ProjectDraft): boolean {
+  return (
+    draft.name !== project.name ||
+    draft.mission !== project.mission ||
+    draft.vaultPath !== project.vaultPath ||
+    draft.organizerEnabled !== project.organizerEnabled
+  )
+}
+
 /**
  * ProjectsSettingsBlock — Projects sub-page rendered inside the existing
  * SettingsOrch. Lets the user create / rename / delete projects and edit
@@ -21,7 +50,7 @@ import type { ProjectBlock } from '@/services/lego_blocks/units/projectBlock'
  */
 export default function ProjectsSettingsBlock() {
   const { projects, loading } = useProjectsBlock()
-  const [drafts, setDrafts] = useState<Record<string, { name: string; mission: string }>>({})
+  const [drafts, setDrafts] = useState<Record<string, ProjectDraft>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -32,9 +61,9 @@ export default function ProjectsSettingsBlock() {
   // post-save echoes from the change event).
   useEffect(() => {
     setDrafts(prev => {
-      const next: Record<string, { name: string; mission: string }> = {}
+      const next: Record<string, ProjectDraft> = {}
       for (const project of projects) {
-        next[project.id] = prev[project.id] ?? { name: project.name, mission: project.mission }
+        next[project.id] = prev[project.id] ?? toDraft(project)
       }
       return next
     })
@@ -42,11 +71,10 @@ export default function ProjectsSettingsBlock() {
 
   const dirtyIds = projects.filter(project => {
     const draft = drafts[project.id]
-    if (!draft) return false
-    return draft.name !== project.name || draft.mission !== project.mission
+    return draft ? draftDiffersBlock(project, draft) : false
   }).map(p => p.id)
 
-  const updateDraft = (id: string, patch: Partial<{ name: string; mission: string }>) => {
+  const updateDraft = (id: string, patch: Partial<ProjectDraft>) => {
     setDrafts(prev => ({
       ...prev,
       [id]: { ...prev[id], ...patch },
@@ -62,7 +90,18 @@ export default function ProjectsSettingsBlock() {
     setError(null)
     setMessage(null)
     try {
-      await updateProjectBlock(project.id, { name: draft.name, mission: draft.mission })
+      const saved = await updateProjectBlock(project.id, {
+        name: draft.name,
+        mission: draft.mission,
+        vaultPath: draft.vaultPath,
+        organizerEnabled: draft.organizerEnabled,
+      })
+      // null means the storage layer refused to write rather than clobber an
+      // unreadable file. Silence here would look like a successful save.
+      if (!saved) {
+        setError(CLOBBER_GUARD_MESSAGE)
+        return
+      }
       setMessage(`Saved "${draft.name.trim() || project.name}".`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save project.')
@@ -99,7 +138,11 @@ export default function ProjectsSettingsBlock() {
     setError(null)
     setMessage(null)
     try {
-      await addProjectBlock({ name, mission: newMission })
+      const added = await addProjectBlock({ name, mission: newMission })
+      if (!added) {
+        setError(CLOBBER_GUARD_MESSAGE)
+        return
+      }
       setNewName('')
       setNewMission('')
       setMessage(`Added "${name}".`)
@@ -159,6 +202,38 @@ export default function ProjectsSettingsBlock() {
                       className="w-full rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground outline-none focus:border-ring"
                     />
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">Vault folder</label>
+                    <input
+                      type="text"
+                      value={draft.vaultPath}
+                      onChange={e => updateDraft(project.id, { vaultPath: e.target.value })}
+                      placeholder="acceleration_core/F9"
+                      className="h-9 w-full rounded-md border border-input bg-background px-2 font-mono text-xs text-foreground outline-none focus:border-ring"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Where this project's notes live. Renaming the folder? Change it here — records point at
+                      the project, not the path.
+                    </p>
+                  </div>
+                  <label className="flex items-start gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      checked={draft.organizerEnabled}
+                      onChange={e => updateDraft(project.id, { organizerEnabled: e.target.checked })}
+                      className="mt-0.5"
+                    />
+                    <span className="text-[11px] text-muted-foreground">
+                      <span className="font-medium text-foreground">Build a Thinking Organizer index</span>
+                      {' — '}
+                      an index of what this project took, derived from its activity.
+                      {draft.organizerEnabled && !draft.vaultPath.trim() && (
+                        <span className="block text-destructive">
+                          Needs a vault folder before an index can be built.
+                        </span>
+                      )}
+                    </span>
+                  </label>
                   <div className="flex items-center gap-2 pt-1">
                     <Button
                       type="button"
@@ -172,7 +247,7 @@ export default function ProjectsSettingsBlock() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => updateDraft(project.id, { name: project.name, mission: project.mission })}
+                      onClick={() => updateDraft(project.id, toDraft(project))}
                       disabled={busy || !isDirty}
                     >
                       Reset
@@ -223,6 +298,7 @@ export default function ProjectsSettingsBlock() {
           {message && <p className="text-xs text-muted-foreground">{message}</p>}
         </CardContent>
       </Card>
+
     </div>
   )
 }
