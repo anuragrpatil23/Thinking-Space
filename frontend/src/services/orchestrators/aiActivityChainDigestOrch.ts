@@ -51,7 +51,10 @@ export async function ensureChainDigestOrch(
   const parts = chainStorageParts(chain)
   if (!parts) return null
   const nextHash = computeChainInputHashBlock(chain)
-  const existing = await getProjectChainDigestBlock(parts.projectId, parts.date, parts.chainKey)
+  const loaded = await getProjectChainDigestBlock(parts.projectId, parts.date, parts.chainKey)
+  // Reconcile mechanically-derived pointers before any branch returns `existing`
+  // — they live outside the model-freshness hash on purpose (see the helper).
+  const existing = loaded ? await reconcileDigestPointersBlock(loaded, chain) : null
   // Fast path with tier precedence: reuse the stored digest when it's fresh AND
   // at least as good as what the current selection would produce. So a Claude
   // digest survives a switch to local (we never downgrade a better body we
@@ -170,6 +173,43 @@ function chainPointers(chain: ActivityChain): {
     // after the ask, but assignment lands on the chain via its own path.
     undertaking: '',
   }
+}
+
+function sameStringSetBlock(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const set = new Set(a)
+  return b.every(v => set.has(v))
+}
+
+/**
+ * Keep a stored digest's mechanically-derived pointers in sync with the chain,
+ * without touching the model-derived fields.
+ *
+ * `filesWritten` / `filesRead` come from the transcript's structured tool calls,
+ * not the model, so they must not sit behind the model-freshness hash. A digest
+ * written before pointer extraction existed matches its own `inputHash` forever
+ * (the hash never covered pointers), so the fast path in `ensureChainDigestOrch`
+ * kept handing back empty pointers — 460 real digests frozen as memoirs. Re-derive
+ * on read and patch on drift; no model call, title/summary untouched.
+ *
+ * Two guards make this safe rather than destructive:
+ *   - Only when the chain actually carries provenance. On iPhone/web there is no
+ *     IPC to read `~/.claude`, so native chains come back with no `touchedPaths`;
+ *     replacing good pointers (written by Electron, synced via the vault) with an
+ *     empty list because *this* device is blind would be the stomp. No provenance
+ *     in hand → leave the stored digest alone.
+ *   - Only write on real drift, so the common no-op read stays read-only.
+ */
+async function reconcileDigestPointersBlock(
+  existing: ProjectChainDigest,
+  chain: ActivityChain,
+): Promise<ProjectChainDigest> {
+  if (!chain.touchedPaths || chain.touchedPaths.length === 0) return existing
+  const derived = chainPointers(chain)
+  if (sameStringSetBlock(existing.filesWritten, derived.filesWritten)) return existing
+  const patched: ProjectChainDigest = { ...existing, filesWritten: derived.filesWritten }
+  await putProjectChainDigestBlock(patched)
+  return patched
 }
 
 function chainDurationMs(chain: ActivityChain): number {
