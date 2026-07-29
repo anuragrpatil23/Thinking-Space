@@ -1,4 +1,5 @@
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   isValidChainDigestDateBlock,
   type ProjectChainDigest,
@@ -116,6 +117,7 @@ export async function ensureChainDigestOrch(
     generatedAt: new Date().toISOString(),
     model: (result.meta?.model as string) ?? 'unknown',
     generator: generationSourceForProviderBlock(result.providerId),
+    ...chainPointers(chain),
   }
   await putProjectChainDigestBlock(digest)
   return { digest, isAi: true }
@@ -134,6 +136,40 @@ function chainStorageParts(chain: ActivityChain): ChainStorageParts | null {
   if (!date || !isValidChainDigestDateBlock(date)) return null
   if (!chain.project || !chain.key) return null
   return { projectId: chain.project, date, chainKey: chain.key }
+}
+
+/**
+ * Carry the chain's file-edit provenance into the stored digest.
+ *
+ * The organizer's dry run concluded "chains carry no structured file
+ * references." That was true of the stored chains and false of the pipeline:
+ * `nativeAiSessionParserBlock` has been pulling absolute paths out of
+ * Edit/Write/MultiEdit/NotebookEdit tool calls all along, and the digest simply
+ * dropped them on the way to disk. Since an index entry without pointers is a
+ * memoir, this is the one field that most needed persisting.
+ *
+ * Paths are stored vault-relative where possible so a pointer survives a move
+ * to another machine; anything outside the vault stays absolute rather than
+ * being guessed at.
+ */
+function chainPointers(chain: ActivityChain): {
+  filesWritten: string[]
+  filesRead: string[]
+  undertaking: string
+} {
+  const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
+  const written = (chain.touchedPaths ?? []).map(path =>
+    vaultRoot && path.startsWith(`${vaultRoot}/`) ? path.slice(vaultRoot.length + 1) : path,
+  )
+  return {
+    filesWritten: Array.from(new Set(written)).sort(),
+    // Reads aren't captured by the native parser — it only tracks mutating
+    // tools. Left empty rather than inferred from prose.
+    filesRead: [],
+    // Filled by the end-of-session ask, not here. The digest is generated
+    // after the ask, but assignment lands on the chain via its own path.
+    undertaking: '',
+  }
 }
 
 function chainDurationMs(chain: ActivityChain): number {
@@ -169,6 +205,7 @@ function buildFallbackDigest(
     inputHash,
     generatedAt: new Date().toISOString(),
     model: 'fallback:chain-topic',
+    ...chainPointers(chain),
     // Rule-based fallback — deterministic, no model. Tagged so it's never
     // mistaken for AI output and never persisted (see ensureChainDigestOrch:
     // buildFallbackDigest results skip putProjectChainDigestBlock).

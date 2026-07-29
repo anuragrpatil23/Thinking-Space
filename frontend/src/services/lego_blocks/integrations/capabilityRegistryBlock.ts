@@ -17,6 +17,9 @@ import type {
   TranscriptOptions,
 } from '@/services/lego_blocks/units/typesBlock'
 import type { ExcalidrawHighlightsExtractBlock } from '@/services/lego_blocks/units/excalidrawHighlightExtractBlock'
+import type { UndertakingRecord } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
+import type { ChainEntry } from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
+import type { UndertakingView } from '@/services/orchestrators/aiActivityUndertakingOrch'
 
 export interface CapabilityActor {
   kind: 'human' | 'agent' | 'system'
@@ -66,6 +69,14 @@ export type CapabilityName =
   | 'telegram.send_message'
   | 'telegram.open_conversation'
   | 'telegram.close_conversation'
+  | 'ai_activity.undertakings.list'
+  | 'ai_activity.undertaking.get'
+  | 'ai_activity.undertaking.update_head'
+  | 'ai_activity.undertaking.tag'
+  | 'ai_activity.assignment.record'
+  | 'ai_activity.chains.list'
+  | 'ai_activity.chain.set_project'
+  | 'ai_activity.chain.set_files'
 
 export interface CapabilityInputMap {
   'read_note': {
@@ -309,6 +320,54 @@ export interface CapabilityInputMap {
     reason?: 'wrap_up' | 'ttl' | 'error' | 'manual'
     deleteClaudeSession?: boolean
   }
+  'ai_activity.undertakings.list': {
+    projectId: string
+    section?: string
+  }
+  'ai_activity.undertaking.get': {
+    projectId: string
+    key: string
+  }
+  'ai_activity.undertaking.update_head': {
+    projectId: string
+    key: string
+    text: string
+  }
+  'ai_activity.undertaking.tag': {
+    projectId: string
+    key: string
+    add?: string[]
+    remove?: string[]
+    accept?: string[]
+    reject?: string[]
+    /** Add tags outside the vocabulary. Off by default — see the tag rule. */
+    allowNew?: boolean
+  }
+  'ai_activity.assignment.record': {
+    sessionId: string
+    undertaking: string
+    /** Set when the session opened an undertaking that did not exist before. */
+    newTitle?: string
+    section?: string
+    projectId?: string
+  }
+  'ai_activity.chains.list': {
+    projectId: string
+    from?: string
+    to?: string
+    undertaking?: string
+  }
+  'ai_activity.chain.set_project': {
+    projectId: string
+    chainKey: string
+    toProjectId: string
+  }
+  'ai_activity.chain.set_files': {
+    projectId: string
+    chainKey: string
+    written?: string[]
+    read?: string[]
+  }
 }
 
 export interface CapabilityOutputMap {
@@ -487,6 +546,36 @@ export interface CapabilityOutputMap {
     claudeSessionDeleted: boolean
     claudeSessionPaths: string[]
     activeCleared: boolean
+  }
+  'ai_activity.undertakings.list': {
+    undertakings: UndertakingView[]
+  }
+  'ai_activity.undertaking.get': {
+    undertaking: UndertakingView | null
+  }
+  'ai_activity.undertaking.update_head': {
+    path: string
+    record: UndertakingRecord
+  }
+  'ai_activity.undertaking.tag': {
+    path: string
+    record: UndertakingRecord
+    /** Tags refused for not being in the vocabulary. Empty on a clean call. */
+    rejected: string[]
+    /** Tags newly appended to the vocabulary because `allowNew` was set. */
+    added: string[]
+  }
+  'ai_activity.assignment.record': {
+    path: string
+  }
+  'ai_activity.chains.list': {
+    chains: ChainEntry[]
+  }
+  'ai_activity.chain.set_project': {
+    path: string
+  }
+  'ai_activity.chain.set_files': {
+    path: string
   }
 }
 
@@ -705,6 +794,46 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
   {
     name: 'telegram.close_conversation',
     description: 'Close a Telegram conversation, clear the active pointer, and delete the Claude Code session JSONL.',
+    readOnly: false,
+  },
+  {
+    name: 'ai_activity.undertakings.list',
+    description: 'List a project\'s undertakings with their derived tails — the Thinking Organizer index view.',
+    readOnly: true,
+  },
+  {
+    name: 'ai_activity.undertaking.get',
+    description: 'Get one undertaking: stored head plus the tail derived from its chains.',
+    readOnly: true,
+  },
+  {
+    name: 'ai_activity.undertaking.update_head',
+    description: 'Rewrite an undertaking\'s head — the one line stating what came out.',
+    readOnly: false,
+  },
+  {
+    name: 'ai_activity.undertaking.tag',
+    description: 'Add, remove, accept, or reject tags on an undertaking, validated against the project vocabulary.',
+    readOnly: false,
+  },
+  {
+    name: 'ai_activity.assignment.record',
+    description: 'Record which undertaking a session belongs to, keyed on session id before the chain exists.',
+    readOnly: false,
+  },
+  {
+    name: 'ai_activity.chains.list',
+    description: 'List stored chain digests for a project, optionally by date range or undertaking.',
+    readOnly: true,
+  },
+  {
+    name: 'ai_activity.chain.set_project',
+    description: 'Re-file a chain under the correct project — the repair path for projectId misattribution.',
+    readOnly: false,
+  },
+  {
+    name: 'ai_activity.chain.set_files',
+    description: 'Backfill file pointers onto a chain that predates structured extraction.',
     readOnly: false,
   },
 ]

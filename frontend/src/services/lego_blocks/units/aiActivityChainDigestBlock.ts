@@ -52,9 +52,22 @@ export interface ProjectChainDigest {
    *  Drives regeneration when the selected provider switches families.
    *  Empty string on legacy records written before this field existed. */
   generator: GenerationSource | ''
+  /** Vault/repo paths this chain wrote, root-relative (`vault://`, `cwd://`).
+   *  Lifted from the transcript's structured tool calls, never inferred from
+   *  prose. These are the index's page numbers — an entry without them is a
+   *  memoir. Empty on chains rendered before pointer extraction existed. */
+  filesWritten: string[]
+  /** Same, for files read. Weaker signal than writes but still a pointer. */
+  filesRead: string[]
+  /** Undertaking this chain belongs to, from the end-of-session ask.
+   *  Empty means unassigned, which is the normal state until someone answers. */
+  undertaking: string
 }
 
-const CURRENT_CHAIN_DIGEST_SCHEMA_VERSION = 1
+// v2 adds filesWritten / filesRead / undertaking. Readers tolerate v1 by
+// defaulting all three to empty — a v1 chain is a chain with no pointers, which
+// is exactly what it is.
+const CURRENT_CHAIN_DIGEST_SCHEMA_VERSION = 2
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -102,6 +115,15 @@ function toIsoStringOrNow(value: unknown): string {
   return new Date().toISOString()
 }
 
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const out: string[] = []
+  for (const item of value) {
+    if (typeof item === 'string' && item.trim()) out.push(item.trim())
+  }
+  return out
+}
+
 /** Parse a chain digest markdown mirror back into a struct. Null on drift. */
 export function parseProjectChainDigestMarkdownBlock(content: string): ProjectChainDigest | null {
   const trimmed = content.trimStart()
@@ -140,6 +162,9 @@ export function parseProjectChainDigestMarkdownBlock(content: string): ProjectCh
     generatedAt: toIsoStringOrNow(parsed.generatedAt),
     model: toStringOrEmpty(parsed.model),
     generator: parseGenerationSourceBlock(parsed.generator),
+    filesWritten: toStringArray(parsed.filesWritten),
+    filesRead: toStringArray(parsed.filesRead),
+    undertaking: toStringOrEmpty(parsed.undertaking),
   }
 }
 
@@ -161,6 +186,13 @@ export function stringifyProjectChainDigestMarkdownBlock(digest: ProjectChainDig
     generatedAt: digest.generatedAt,
     title: digest.title,
   }
+  // Only emitted when present. A chain with no pointers should look like a
+  // chain with no pointers, not one carrying two empty lists — most existing
+  // chains predate extraction and writing the keys would imply otherwise.
+  if (digest.filesWritten.length) frontmatter.filesWritten = digest.filesWritten
+  if (digest.filesRead.length) frontmatter.filesRead = digest.filesRead
+  if (digest.undertaking) frontmatter.undertaking = digest.undertaking
+
   const yamlStr = yaml.dump(frontmatter, {
     lineWidth: -1,
     noRefs: true,
@@ -212,5 +244,8 @@ export function parseProjectChainDigestJsonBlock(raw: string): ProjectChainDiges
     generatedAt: toIsoStringOrNow(parsed.generatedAt),
     model: toStringOrEmpty(parsed.model),
     generator: parseGenerationSourceBlock(parsed.generator),
+    filesWritten: toStringArray(parsed.filesWritten),
+    filesRead: toStringArray(parsed.filesRead),
+    undertaking: toStringOrEmpty(parsed.undertaking),
   }
 }

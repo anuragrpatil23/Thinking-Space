@@ -1347,6 +1347,21 @@ export function setVaultFSInstance(fs: VaultFS): void {
   _instance = fs
 }
 
+/**
+ * The current instance without constructing one.
+ *
+ * `getVaultFS()` lazily creates a platform instance, which is wrong for a
+ * caller that only wants to save and restore what was already installed.
+ */
+export function peekVaultFSInstance(): VaultFS | null {
+  return _instance
+}
+
+/** Drop the instance so the next `getVaultFS()` rebuilds it for the platform. */
+export function resetVaultFSInstance(): void {
+  _instance = null
+}
+
 export function setVaultRoot(path: string): void {
   setStoredVaultRoot(path)
   // Reset singleton so next getVaultFS() uses new root

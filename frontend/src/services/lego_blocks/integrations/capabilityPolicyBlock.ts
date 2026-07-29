@@ -31,6 +31,11 @@ const WRITE_CAPABILITIES = new Set<CapabilityName>([
   'telegram.send_message',
   'telegram.open_conversation',
   'telegram.close_conversation',
+  'ai_activity.undertaking.update_head',
+  'ai_activity.undertaking.tag',
+  'ai_activity.assignment.record',
+  'ai_activity.chain.set_project',
+  'ai_activity.chain.set_files',
 ])
 
 const STORAGE_KEY = 'ltm-capability-policy'

@@ -176,6 +176,53 @@ afterEach(async () => {
 })
 
 describe('capabilityRouterOrch', () => {
+
+  it('scopes the fs singleton to the invoke, so getVaultFS() blocks see the caller\'s vault', async () => {
+    const { peekVaultFSInstance, resetVaultFSInstance } = await import('@/services/lego_blocks/integrations/fsBlock')
+    resetVaultFSInstance()
+
+    const fs = new FakeVaultFS()
+    await fs.write('notes/scoped.md', '# Scoped')
+    let seen: unknown = null
+
+    // read_note threads fs explicitly, so observe the singleton from inside the
+    // invoke rather than relying on a capability that reaches for it.
+    const response = await capabilityOrch!.invokeCapabilityOrch(
+      { capability: 'read_note', input: { path: 'notes/scoped.md' }, actor: ACTOR } as never,
+      {
+        fs: new Proxy(fs, {
+          get(target, prop, receiver) {
+            seen = peekVaultFSInstance()
+            return Reflect.get(target, prop, receiver)
+          },
+        }) as never,
+      },
+    )
+
+    expect(response.ok).toBe(true)
+    // The singleton pointed at the caller's fs during the call...
+    expect(seen).not.toBeNull()
+    // ...and was put back afterwards, so a later call against a different vault
+    // (or a deleted temp one) is unaffected.
+    expect(peekVaultFSInstance()).toBeNull()
+  })
+
+  it('restores the previous fs singleton even when the capability fails', async () => {
+    const { peekVaultFSInstance, setVaultFSInstance, resetVaultFSInstance } =
+      await import('@/services/lego_blocks/integrations/fsBlock')
+    const previous = new FakeVaultFS()
+    setVaultFSInstance(previous)
+
+    const response = await capabilityOrch!.invokeCapabilityOrch(
+      { capability: 'not_a_real_capability', input: {}, actor: ACTOR } as never,
+      { fs: new FakeVaultFS() },
+    )
+
+    expect(response.ok).toBe(false)
+    expect(peekVaultFSInstance()).toBe(previous)
+    resetVaultFSInstance()
+  })
+
   it('lists organizer capabilities', () => {
     const names = capabilityOrch!.listCapabilitiesOrch().map(capability => capability.name)
     expect(names).toContain('read_note')

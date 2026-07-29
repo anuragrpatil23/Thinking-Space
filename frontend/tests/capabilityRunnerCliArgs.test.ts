@@ -404,3 +404,80 @@ describe('capabilityRunner CLI argument parsing', () => {
     expect(typeof globalThis.localStorage.clear).toBe('function')
   })
 })
+
+describe('capabilityRunner CLI arguments for ai_activity capabilities', () => {
+  it('coerces tag list flags to arrays and allowNew to a boolean', () => {
+    const { payload } = buildCLIInvokePayload('ai_activity.undertaking.tag', [
+      '--projectId', 'F9',
+      '--key', 'f9-und-micron-memory-cycle',
+      '--add', 'held,bucket 1',
+      '--reject', 'source',
+      '--allowNew',
+    ])
+
+    expect(payload.request.input).toEqual({
+      projectId: 'F9',
+      key: 'f9-und-micron-memory-cycle',
+      add: ['held', 'bucket 1'],
+      reject: ['source'],
+      allowNew: true,
+    })
+  })
+
+  it('keeps allowNew off when not passed, so unknown tags are refused by default', () => {
+    const { payload } = buildCLIInvokePayload('ai_activity.undertaking.tag', [
+      '--projectId', 'F9',
+      '--key', 'f9-und-micron-memory-cycle',
+      '--add', 'fab-equipment',
+    ])
+
+    expect(payload.request.input).not.toHaveProperty('allowNew')
+  })
+
+  it('greedily parses the head text for update_head without quoting', () => {
+    const { payload } = buildCLIInvokePayload('ai_activity.undertaking.update_head', [
+      '--projectId', 'F9',
+      '--key', 'f9-und-micron-memory-cycle',
+      '--text', 'HBM', 'is', 'the', 'whole', 'thesis',
+    ])
+
+    expect(payload.request.input).toEqual({
+      projectId: 'F9',
+      key: 'f9-und-micron-memory-cycle',
+      text: 'HBM is the whole thesis',
+    })
+  })
+
+  it('leaves undertaking keys flat rather than wrapping them in updates', () => {
+    // `key` is an IDENTITY_FIELD, which only wraps for organizer.node.update.
+    const { payload } = buildCLIInvokePayload('ai_activity.undertaking.get', [
+      '--projectId', 'F9',
+      '--key', 'f9-und-micron-memory-cycle',
+    ])
+
+    expect(payload.request.input).toEqual({
+      projectId: 'F9',
+      key: 'f9-und-micron-memory-cycle',
+    })
+  })
+
+  it('parses chain file pointer lists for backfill', () => {
+    const { payload } = buildCLIInvokePayload('ai_activity.chain.set_files', [
+      '--projectId', 'F9',
+      '--chainKey', '2026-07-14-abc123',
+      '--written', 'vault://F9/notes/micron.md,cwd://frontend/src/main.ts',
+    ])
+
+    expect(payload.request.input).toEqual({
+      projectId: 'F9',
+      chainKey: '2026-07-14-abc123',
+      written: ['vault://F9/notes/micron.md', 'cwd://frontend/src/main.ts'],
+    })
+  })
+
+  it('renders capability-specific help listing the tag mechanism flags', () => {
+    const help = renderCapabilityHelp('ai_activity.undertaking.tag')
+    expect(help).toContain('--allowNew')
+    expect(help).toContain('tags.yaml')
+  })
+})
