@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bookmark, ChevronLeft, ChevronRight, FolderInput, Loader2, Star, X } from 'lucide-react'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
-import { updateRssItemMetaOrch, moveRssArticleToVaultOrch } from '@/services/orchestrators/rssFeedOrch'
+import {
+  markRssItemReadOrch,
+  moveRssArticleToVaultOrch,
+  updateRssItemMetaOrch,
+} from '@/services/orchestrators/rssFeedOrch'
 import {
   hasTagBlock,
   tagColorClassBlock,
@@ -23,6 +27,11 @@ const MOVE_RECENTS_KEY = 'ltm-rss-move-to-vault-recents'
 /** One arrow press ≈ three mouse-wheel notches; a page key ≈ most of a screen. */
 const SCROLL_STEP_PX = 120
 const SCROLL_PAGE_PX = 640
+
+/** How long an article has to stay open before we call it read. Arrow keys open
+ *  articles as you move through the list, so merely being opened means nothing —
+ *  only scrolling it or lingering on it does. */
+const DWELL_TO_MARK_READ_MS = 5000
 
 interface RssArticleViewBlockProps {
   item: RssFeedItemBlock
@@ -68,6 +77,25 @@ export default function RssArticleViewBlock({
   // ↑/↓ fall back to being ignored here.
   const articleScrollerRef = useRef<UrlDocumentScrollerBlock | null>(null)
 
+  // Read state is earned, not granted on open. Keyed by id so stepping to the
+  // next article re-arms it, and so a re-render can't double-fire the write.
+  const markedReadIdRef = useRef<string | null>(null)
+  const markRead = useCallback(() => {
+    if (item.read || markedReadIdRef.current === item.id) return
+    markedReadIdRef.current = item.id
+    void markRssItemReadOrch(item.id)
+    onItemUpdate({ ...item, tags, keep, important, read: true })
+  }, [item, tags, keep, important, onItemUpdate])
+
+  // Dwelling on an article counts as reading it. This is the only signal that
+  // works for mouse readers too: scrolling happens inside the webview, where the
+  // host document can't observe it.
+  useEffect(() => {
+    if (item.read) return
+    const timer = setTimeout(markRead, DWELL_TO_MARK_READ_MS)
+    return () => { clearTimeout(timer) }
+  }, [item.id, item.read, markRead])
+
   // Once an article is open the keyboard goes modal: ←/→ walk the queue, ↑/↓
   // scroll the article body, Escape closes. That combination is what makes the
   // reader mouse-free — the user never has to click into the page to scroll it,
@@ -86,6 +114,8 @@ export default function RssArticleViewBlock({
         if (!scroller) return
         event.preventDefault()
         scroller(deltaPx)
+        // Scrolling is unambiguous engagement — no need to wait out the dwell.
+        markRead()
       }
 
       switch (event.key) {
@@ -115,7 +145,7 @@ export default function RssArticleViewBlock({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => { window.removeEventListener('keydown', onKeyDown) }
-  }, [nav, showMoveDialog, onClose])
+  }, [nav, showMoveDialog, onClose, markRead])
 
   const applyMeta = useCallback((
     nextTags: string[],

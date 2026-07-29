@@ -19,7 +19,6 @@ import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useEx
 import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
 import {
   fetchAndParseRssFeedOrch,
-  markRssItemReadOrch,
   markRssItemsReadOrch,
   readRssFeedPreferencesOrch,
   removeRssItemsOrch,
@@ -230,20 +229,16 @@ export default function RssFeedPanelBlock({
     }
     setSelectedItemId(item.id)
     setActiveRowId(rowId)
-    if (!item.read) {
-      markRssItemReadOrch(item.id)
-      // Pin it into the unread inbox for the rest of this session so the list
-      // doesn't reshuffle under the user the moment they open something.
-      setSessionReadIds(prev => new Set(prev).add(item.id))
-      setFeeds(prev => prev.map(f => ({
-        ...f,
-        items: f.items.map(i => i.id === item.id ? { ...i, read: true } : i),
-      })))
-    }
     if (!item.link) return
+    // Opening deliberately does NOT mark read — arrow keys open articles as you
+    // move, so "opened" no longer means "read". The reader reports actual
+    // engagement (scrolling or dwelling) back through onItemUpdate below.
     onOpenArticle(
       item,
       (updated) => {
+        // Pin anything that just became read into the unread inbox for the rest
+        // of this session, so the list doesn't reshuffle under the user.
+        if (updated.read) setSessionReadIds(prev => new Set(prev).add(updated.id))
         setFeeds(prev => prev.map(f => ({
           ...f,
           items: f.items.map(i => i.id === updated.id ? updated : i),
@@ -383,25 +378,24 @@ export default function RssFeedPanelBlock({
   /** Two keyboard modes, both driven from the focused row button (focus stays on
    *  it even while the reader is open, so the keys keep landing here):
    *
-   *  - Nothing open: ↑/↓ browse rows, Enter/Space open via the button's native
-   *    click handling.
+   *  - Nothing open: ↑/↓ move to the next row AND open it, so a reading session
+   *    starts on the first keypress. That immediately puts us in the other mode.
    *  - Article open: ←/→ step through articles; ↑/↓ are let through to the
-   *    reader's window listener, which scrolls the article body instead. */
+   *    reader's window listener, which scrolls the article body instead.
+   *
+   *  Enter/Space still open via the button's native click handling, but they are
+   *  no longer required for anything. */
   const handleItemKeyDown = useCallback((rowId: string, event: KeyboardEvent<HTMLButtonElement>) => {
     if (deleteMode) return
-    const vertical = event.key === 'ArrowDown' || event.key === 'ArrowUp'
-    const horizontal = event.key === 'ArrowRight' || event.key === 'ArrowLeft'
-
     if (articleOpen) {
       // ←/→ are handled by the reader (it owns nav); ↑/↓ scroll the article.
       // Either way the panel must not also move the row selection.
       return
     }
-    if (horizontal) return
-    if (!vertical) return
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
     // Only swallow the scroll once we know there is a row to move to, so the
     // first/last row still scrolls the list normally.
-    if (stepToRow(rowId, event.key === 'ArrowDown' ? 1 : -1, false)) event.preventDefault()
+    if (stepToRow(rowId, event.key === 'ArrowDown' ? 1 : -1, true)) event.preventDefault()
   }, [deleteMode, articleOpen, stepToRow])
 
   // Publish next/prev for the open article upward, so the reader can drive the
