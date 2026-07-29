@@ -1,4 +1,13 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from 'react'
 import { ChevronLeft, ExternalLink, Globe, Loader2, RotateCw, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useElectronWebviewLoadErrorBlock } from '@/components/lego_blocks/hooks/shared/useElectronWebviewLoadErrorBlock'
@@ -69,7 +78,17 @@ interface UrlDocumentBlockProps {
   hideHeader?: boolean
   /** Suspend the native WKWebView (iOS) — use when a native-layer overlay (e.g. drawer) is open. */
   suspended?: boolean
+  /** Receives a scroller for the embedded page, letting a keyboard-driven
+   *  parent scroll the document without the user clicking into it.
+   *
+   *  Only wired on Electron, where the <webview> exposes executeJavaScript.
+   *  Stays null for the iOS native overlay and for the plain <iframe> fallback
+   *  (cross-origin — the parent cannot script it). */
+  scrollerRef?: MutableRefObject<UrlDocumentScrollerBlock | null>
 }
+
+/** Scrolls the embedded document by `deltaPx` (negative scrolls up). */
+export type UrlDocumentScrollerBlock = (deltaPx: number) => void
 
 const ElectronPersistentWebviewBlock = memo(function ElectronPersistentWebviewBlock({
   webviewRef,
@@ -110,6 +129,7 @@ function UrlDocumentBlock({
   partition,
   hideHeader,
   suspended,
+  scrollerRef,
 }: UrlDocumentBlockProps) {
   const navigate = useNavigate()
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(directUrl ?? null)
@@ -257,6 +277,25 @@ function UrlDocumentBlock({
     if (!isElectronRuntime) return null
     return webviewRef.current
   }, [isElectronRuntime])
+
+  // Hand the parent a way to scroll the guest page from the host document.
+  // Keyboard-driven readers need this: the user never clicks into the webview,
+  // so the guest never receives the arrow keys itself.
+  useEffect(() => {
+    if (!scrollerRef) return
+    if (!isElectronRuntime || !electronGuestMounted) {
+      scrollerRef.current = null
+      return
+    }
+    scrollerRef.current = (deltaPx: number) => {
+      const webview = getElectronWebviewBlock()
+      if (!webview?.executeJavaScript) return
+      void webview
+        .executeJavaScript(`window.scrollBy({ top: ${Number(deltaPx)}, behavior: 'instant' })`)
+        .catch(() => { /* guest navigated or was destroyed mid-keypress */ })
+    }
+    return () => { scrollerRef.current = null }
+  }, [scrollerRef, isElectronRuntime, electronGuestMounted, getElectronWebviewBlock])
 
   const remountElectronWebviewBlock = useCallback(() => {
     setCanGoBack(false)

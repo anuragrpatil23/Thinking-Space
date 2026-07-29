@@ -56,6 +56,10 @@ interface RssFeedPanelBlockProps {
   /** Emits whenever the open article or the surrounding queue changes; null
    *  when no article is open. */
   onNavStateChange?: (nav: RssArticleNavStateBlock | null) => void
+  /** True while the reader is showing an article. The panel then stops claiming
+   *  ↑/↓, because in that mode those keys scroll the article body — only the
+   *  owner of the reader knows when it closed, so this can't be derived here. */
+  articleOpen?: boolean
   className?: string
 }
 
@@ -104,6 +108,7 @@ export default function RssFeedPanelBlock({
   onOpenArticle,
   onClose,
   onNavStateChange,
+  articleOpen,
   className,
 }: RssFeedPanelBlockProps) {
   const [feeds, setFeeds] = useState<RssFeedResultBlock[]>([])
@@ -375,15 +380,29 @@ export default function RssFeedPanelBlock({
     return true
   }, [visibleRows, itemsById, handleItemClick])
 
-  /** Arrow keys browse without opening. Enter/Space are left to the button's
-   *  native click handling, which already opens the article. */
+  /** Two keyboard modes, both driven from the focused row button (focus stays on
+   *  it even while the reader is open, so the keys keep landing here):
+   *
+   *  - Nothing open: ↑/↓ browse rows, Enter/Space open via the button's native
+   *    click handling.
+   *  - Article open: ←/→ step through articles; ↑/↓ are let through to the
+   *    reader's window listener, which scrolls the article body instead. */
   const handleItemKeyDown = useCallback((rowId: string, event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
     if (deleteMode) return
+    const vertical = event.key === 'ArrowDown' || event.key === 'ArrowUp'
+    const horizontal = event.key === 'ArrowRight' || event.key === 'ArrowLeft'
+
+    if (articleOpen) {
+      // ←/→ are handled by the reader (it owns nav); ↑/↓ scroll the article.
+      // Either way the panel must not also move the row selection.
+      return
+    }
+    if (horizontal) return
+    if (!vertical) return
     // Only swallow the scroll once we know there is a row to move to, so the
     // first/last row still scrolls the list normally.
     if (stepToRow(rowId, event.key === 'ArrowDown' ? 1 : -1, false)) event.preventDefault()
-  }, [deleteMode, stepToRow])
+  }, [deleteMode, articleOpen, stepToRow])
 
   // Publish next/prev for the open article upward, so the reader can drive the
   // same queue without the user bouncing back to the list.

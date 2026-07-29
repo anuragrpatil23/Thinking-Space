@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bookmark, ChevronLeft, ChevronRight, FolderInput, Loader2, Star, X } from 'lucide-react'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { updateRssItemMetaOrch, moveRssArticleToVaultOrch } from '@/services/orchestrators/rssFeedOrch'
@@ -15,10 +15,14 @@ import type {
 import CascadingFolderPicker, {
   type CascadingFolderPickerChange,
 } from './CascadingFolderPickerBlock'
-import UrlDocumentBlock from './UrlDocumentBlock'
+import UrlDocumentBlock, { type UrlDocumentScrollerBlock } from './UrlDocumentBlock'
 import { cn } from '@/lib/utils'
 
 const MOVE_RECENTS_KEY = 'ltm-rss-move-to-vault-recents'
+
+/** One arrow press ≈ three mouse-wheel notches; a page key ≈ most of a screen. */
+const SCROLL_STEP_PX = 120
+const SCROLL_PAGE_PX = 640
 
 interface RssArticleViewBlockProps {
   item: RssFeedItemBlock
@@ -59,24 +63,51 @@ export default function RssArticleViewBlock({
   const [moving, setMoving] = useState(false)
   const [moveError, setMoveError] = useState<string | null>(null)
 
-  // j/n → next, k/p → previous. Deliberately not the arrow keys: those scroll
-  // the article. Note these only fire while focus is in the app chrome — key
-  // events inside the article webview don't reach this document, so the on-screen
-  // buttons stay the reliable path once you've clicked into the page.
+  // Scrolls the embedded article from the host document. Only Electron populates
+  // this (see UrlDocumentBlock) — elsewhere the guest page is unscriptable and
+  // ↑/↓ fall back to being ignored here.
+  const articleScrollerRef = useRef<UrlDocumentScrollerBlock | null>(null)
+
+  // Once an article is open the keyboard goes modal: ←/→ walk the queue, ↑/↓
+  // scroll the article body, Escape closes. That combination is what makes the
+  // reader mouse-free — the user never has to click into the page to scroll it,
+  // which matters because key events inside the article webview never reach this
+  // document. j/n and k/p stay as aliases for next/prev.
   useEffect(() => {
-    if (!nav || showMoveDialog) return
+    if (showMoveDialog) return
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return
       const target = event.target as HTMLElement | null
       if (target?.isContentEditable) return
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
 
-      const key = event.key.toLowerCase()
-      if (key === 'j' || key === 'n') {
+      const scrollBy = (deltaPx: number) => {
+        const scroller = articleScrollerRef.current
+        if (!scroller) return
+        event.preventDefault()
+        scroller(deltaPx)
+      }
+
+      switch (event.key) {
+        case 'ArrowDown': return scrollBy(SCROLL_STEP_PX)
+        case 'ArrowUp': return scrollBy(-SCROLL_STEP_PX)
+        case 'PageDown': return scrollBy(SCROLL_PAGE_PX)
+        case 'PageUp': return scrollBy(-SCROLL_PAGE_PX)
+        case 'Escape':
+          event.preventDefault()
+          onClose()
+          return
+      }
+
+      const key = event.key === 'ArrowRight' || event.key === 'ArrowLeft'
+        ? event.key
+        : event.key.toLowerCase()
+      if (!nav) return
+      if (key === 'ArrowRight' || key === 'j' || key === 'n') {
         if (!nav.hasNext) return
         event.preventDefault()
         nav.goNext()
-      } else if (key === 'k' || key === 'p') {
+      } else if (key === 'ArrowLeft' || key === 'k' || key === 'p') {
         if (!nav.hasPrev) return
         event.preventDefault()
         nav.goPrev()
@@ -84,7 +115,7 @@ export default function RssArticleViewBlock({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => { window.removeEventListener('keydown', onKeyDown) }
-  }, [nav, showMoveDialog])
+  }, [nav, showMoveDialog, onClose])
 
   const applyMeta = useCallback((
     nextTags: string[],
@@ -224,7 +255,7 @@ export default function RssArticleViewBlock({
               type="button"
               onClick={nav.goPrev}
               disabled={!nav.hasPrev}
-              title="Previous article (k or p)"
+              title="Previous article (← / k / p)"
               className="rounded p-0.5 text-muted-foreground/70 hover:text-foreground disabled:opacity-25 disabled:hover:text-muted-foreground/70"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -236,7 +267,7 @@ export default function RssArticleViewBlock({
               type="button"
               onClick={nav.goNext}
               disabled={!nav.hasNext}
-              title="Next article (j or n)"
+              title="Next article (→ / j / n)"
               className="rounded p-0.5 text-muted-foreground/70 hover:text-foreground disabled:opacity-25 disabled:hover:text-muted-foreground/70"
             >
               <ChevronRight className="h-4 w-4" />
@@ -265,6 +296,7 @@ export default function RssArticleViewBlock({
           showCloseButton={!isIos}
           hideHeader={hideUrlBar}
           suspended={suspended}
+          scrollerRef={articleScrollerRef}
           className="absolute inset-0"
         />
       </div>

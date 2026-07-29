@@ -1004,6 +1004,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
           <RssFeedPanelBlock
             onOpenArticle={handleRssOpenArticle}
             onNavStateChange={setRssArticleNav}
+            articleOpen={rssActiveArticle !== null}
             onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}
           />
         </div>
