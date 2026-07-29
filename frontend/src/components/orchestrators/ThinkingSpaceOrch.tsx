@@ -51,7 +51,10 @@ import RssFeedPanelBlock from '@/components/lego_blocks/integrations/RssFeedPane
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
 import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
 import RuledNotebookDocumentBlock from '@/components/lego_blocks/integrations/RuledNotebookDocumentBlock'
-import type { RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
+import type {
+  RssArticleNavStateBlock,
+  RssFeedItemBlock,
+} from '@/services/lego_blocks/units/rssFeedBlock'
 import type { UILayoutState } from '@/services/lego_blocks/units/uiLayoutBlock'
 import NotebookViewOrch from '@/components/orchestrators/NotebookViewOrch'
 import type { PathGraphTarget } from '@/components/lego_blocks/integrations/PathGraphSlideOverBlock'
@@ -206,6 +209,9 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     presetTags: string[]
     tagColors: Record<string, string>
   } | null>(null)
+  // Published by RssFeedPanelBlock so the open article can step through the
+  // same row queue the list is showing.
+  const [rssArticleNav, setRssArticleNav] = useState<RssArticleNavStateBlock | null>(null)
   const notebookPathFromRoute = routeOverride !== undefined
     ? readThinkingSpaceRouteParamBlock(routeOverride, NOTEBOOK_QUERY_PARAM)
     : (searchParams.get(NOTEBOOK_QUERY_PARAM)?.trim() || null)
@@ -997,6 +1003,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
         <div className="min-h-0 flex-1">
           <RssFeedPanelBlock
             onOpenArticle={handleRssOpenArticle}
+            onNavStateChange={setRssArticleNav}
             onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}
           />
         </div>
@@ -1156,6 +1163,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
                 tagColors={rssActiveArticle.tagColors}
                 suspended={mobileExplorerOpen}
                 hideUrlBar={!rssUrlBarVisible}
+                nav={rssArticleNav}
               />
             </div>
           ) : browserUrl ? (
@@ -1232,6 +1240,10 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
             </div>
             {rssPanelOpen ? (
               <div className="min-h-0 flex-1">
+                {/* No onNavStateChange here on purpose: this drawer copy has its
+                    own feeds state, so if it ever mounted alongside the inline
+                    panel the two would clobber each other's nav. Reader
+                    next/prev is a desktop affordance for now. */}
                 <RssFeedPanelBlock
                   onOpenArticle={handleRssOpenArticle}
                   onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}

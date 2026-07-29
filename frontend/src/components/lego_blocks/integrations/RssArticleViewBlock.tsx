@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react'
-import { Bookmark, FolderInput, Loader2, Star, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Bookmark, ChevronLeft, ChevronRight, FolderInput, Loader2, Star, X } from 'lucide-react'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { updateRssItemMetaOrch, moveRssArticleToVaultOrch } from '@/services/orchestrators/rssFeedOrch'
 import {
@@ -8,7 +8,10 @@ import {
   tagColorStyleBlock,
   tagLookupKeyBlock,
 } from '@/services/lego_blocks/units/tagBlock'
-import type { RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
+import type {
+  RssArticleNavStateBlock,
+  RssFeedItemBlock,
+} from '@/services/lego_blocks/units/rssFeedBlock'
 import CascadingFolderPicker, {
   type CascadingFolderPickerChange,
 } from './CascadingFolderPickerBlock'
@@ -27,6 +30,9 @@ interface RssArticleViewBlockProps {
   className?: string
   suspended?: boolean
   hideUrlBar?: boolean
+  /** Walks the same queue the feed panel is showing, so the reader can move to
+   *  the next article without bouncing back to the list. */
+  nav?: RssArticleNavStateBlock | null
 }
 
 export default function RssArticleViewBlock({
@@ -39,6 +45,7 @@ export default function RssArticleViewBlock({
   className,
   suspended,
   hideUrlBar,
+  nav,
 }: RssArticleViewBlockProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
@@ -51,6 +58,33 @@ export default function RssArticleViewBlock({
   const [moveDestPath, setMoveDestPath] = useState('')
   const [moving, setMoving] = useState(false)
   const [moveError, setMoveError] = useState<string | null>(null)
+
+  // j/n → next, k/p → previous. Deliberately not the arrow keys: those scroll
+  // the article. Note these only fire while focus is in the app chrome — key
+  // events inside the article webview don't reach this document, so the on-screen
+  // buttons stay the reliable path once you've clicked into the page.
+  useEffect(() => {
+    if (!nav || showMoveDialog) return
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const target = event.target as HTMLElement | null
+      if (target?.isContentEditable) return
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+
+      const key = event.key.toLowerCase()
+      if (key === 'j' || key === 'n') {
+        if (!nav.hasNext) return
+        event.preventDefault()
+        nav.goNext()
+      } else if (key === 'k' || key === 'p') {
+        if (!nav.hasPrev) return
+        event.preventDefault()
+        nav.goPrev()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => { window.removeEventListener('keydown', onKeyDown) }
+  }, [nav, showMoveDialog])
 
   const applyMeta = useCallback((
     nextTags: string[],
@@ -182,6 +216,34 @@ export default function RssArticleViewBlock({
 
         {/* Spacer */}
         <div className="flex-1" />
+
+        {/* Next/prev through the feed panel's current queue */}
+        {nav && (
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={nav.goPrev}
+              disabled={!nav.hasPrev}
+              title="Previous article (k or p)"
+              className="rounded p-0.5 text-muted-foreground/70 hover:text-foreground disabled:opacity-25 disabled:hover:text-muted-foreground/70"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="select-none px-0.5 text-[10px] tabular-nums text-muted-foreground/70">
+              {nav.position}/{nav.total}
+            </span>
+            <button
+              type="button"
+              onClick={nav.goNext}
+              disabled={!nav.hasNext}
+              title="Next article (j or n)"
+              className="rounded p-0.5 text-muted-foreground/70 hover:text-foreground disabled:opacity-25 disabled:hover:text-muted-foreground/70"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <div className="mx-1 h-4 w-px bg-border/50" />
+          </div>
+        )}
 
         {/* Move to vault */}
         <button

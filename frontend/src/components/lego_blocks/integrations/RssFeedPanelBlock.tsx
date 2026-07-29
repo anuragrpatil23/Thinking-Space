@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   ArrowLeft,
   Bookmark,
@@ -10,6 +10,7 @@ import {
   Loader2,
   RefreshCw,
   Rss,
+  Sparkles,
   Star,
   Trash2,
   X,
@@ -24,7 +25,12 @@ import {
   removeRssItemsOrch,
 } from '@/services/orchestrators/rssFeedOrch'
 import {
+  RSS_UNREAD_INBOX_ID_BLOCK,
   buildFeedGroupTreeBlock,
+  buildUnreadInboxItemsBlock,
+  flattenVisibleRssRowsBlock,
+  rssRowIdBlock,
+  type RssArticleNavStateBlock,
   type RssFeedConfigBlock,
   type RssFeedGroupTreeNodeBlock,
   type RssFeedItemBlock,
@@ -47,6 +53,9 @@ interface RssFeedPanelBlockProps {
     tagColors: Record<string, string>,
   ) => void
   onClose: () => void
+  /** Emits whenever the open article or the surrounding queue changes; null
+   *  when no article is open. */
+  onNavStateChange?: (nav: RssArticleNavStateBlock | null) => void
   className?: string
 }
 
@@ -94,6 +103,7 @@ function formatAbsoluteDateTime(dateStr: string | null): string {
 export default function RssFeedPanelBlock({
   onOpenArticle,
   onClose,
+  onNavStateChange,
   className,
 }: RssFeedPanelBlockProps) {
   const [feeds, setFeeds] = useState<RssFeedResultBlock[]>([])
@@ -112,6 +122,13 @@ export default function RssFeedPanelBlock({
   const hasFeedsConfigured = useRef(false)
   const rssLoadRequestIdRef = useRef(0)
   const [loadingFeedIds, setLoadingFeedIds] = useState<Set<string>>(new Set())
+  // Row buttons keyed by rowId, so arrow keys can move DOM focus between them.
+  const itemButtonRefs = useRef(new Map<string, HTMLButtonElement>())
+  // Row of the article currently open in the reader — anchors its next/prev.
+  const [activeRowId, setActiveRowId] = useState<string | null>(null)
+  // Articles read since the last refresh. Keeps them from vanishing out of the
+  // unread inbox mid-read; see buildUnreadInboxItemsBlock.
+  const [sessionReadIds, setSessionReadIds] = useState<Set<string>>(new Set())
 
 
   const presetTags = preferences?.presetTags ?? []
@@ -142,6 +159,9 @@ export default function RssFeedPanelBlock({
       if (requestId !== rssLoadRequestIdRef.current) return
 
       setPreferences(prefs)
+      // A refresh is the point where already-read articles finally leave the
+      // unread inbox.
+      setSessionReadIds(new Set())
       hasFeedsConfigured.current = prefs.feeds.length > 0
       const feedConfigs = prefs.feeds
       setFeeds(feedConfigs.map((config) => ({
@@ -192,7 +212,7 @@ export default function RssFeedPanelBlock({
     toggleGroupExpanded(groupId)
   }, [toggleGroupExpanded])
 
-  const handleItemClick = useCallback((item: RssFeedItemBlock) => {
+  const handleItemClick = useCallback((item: RssFeedItemBlock, rowId: string) => {
     if (deleteMode) {
       // Toggle selection in delete-preview mode
       setPendingDeleteIds(prev => {
@@ -204,8 +224,12 @@ export default function RssFeedPanelBlock({
       return
     }
     setSelectedItemId(item.id)
+    setActiveRowId(rowId)
     if (!item.read) {
       markRssItemReadOrch(item.id)
+      // Pin it into the unread inbox for the rest of this session so the list
+      // doesn't reshuffle under the user the moment they open something.
+      setSessionReadIds(prev => new Set(prev).add(item.id))
       setFeeds(prev => prev.map(f => ({
         ...f,
         items: f.items.map(i => i.id === item.id ? { ...i, read: true } : i),
@@ -226,6 +250,7 @@ export default function RssFeedPanelBlock({
           items: f.items.filter(i => i.id !== item.id),
         })))
         setSelectedItemId(null)
+        setActiveRowId(null)
       },
       presetTags,
       tagColors,
@@ -290,6 +315,96 @@ export default function RssFeedPanelBlock({
     [feeds],
   )
 
+  // ---------------------------------------------------------------------
+  // Merged "All Unread" inbox
+  // ---------------------------------------------------------------------
+
+  const unreadInboxEntries = useMemo(
+    () => buildUnreadInboxItemsBlock(feeds, sessionReadIds),
+    [feeds, sessionReadIds],
+  )
+  const unreadInboxExpanded = expandedFeedIds.has(RSS_UNREAD_INBOX_ID_BLOCK)
+  // The inbox merges every source, so it only makes sense in the all-feeds view.
+  const showUnreadInbox = !focusedFeedId && !deleteMode && unreadInboxEntries.length > 0
+
+  // ---------------------------------------------------------------------
+  // Row navigation — arrow keys in the panel, next/prev in the reader
+  // ---------------------------------------------------------------------
+
+  // Mirrors the two rendering branches below: grouped tree vs. flat/focused list.
+  const useGroupedRendering = Boolean(preferences && preferences.groups.length > 0 && !focusedFeedId)
+
+  const visibleRows = useMemo(() => flattenVisibleRssRowsBlock({
+    unreadInbox: showUnreadInbox
+      ? { expanded: unreadInboxExpanded, itemIds: unreadInboxEntries.map(entry => entry.item.id) }
+      : null,
+    tree: useGroupedRendering ? groupTree : null,
+    feeds: useGroupedRendering ? feeds : visibleFeeds,
+    expandedFeedIds,
+    expandedGroupIds,
+  }), [
+    showUnreadInbox, unreadInboxExpanded, unreadInboxEntries,
+    useGroupedRendering, groupTree, feeds, visibleFeeds, expandedFeedIds, expandedGroupIds,
+  ])
+
+  const registerItemButton = useCallback((rowId: string, node: HTMLButtonElement | null) => {
+    if (node) itemButtonRefs.current.set(rowId, node)
+    else itemButtonRefs.current.delete(rowId)
+  }, [])
+
+  const itemsById = useMemo(() => {
+    const map = new Map<string, RssFeedItemBlock>()
+    for (const feed of feeds) for (const item of feed.items) map.set(item.id, item)
+    return map
+  }, [feeds])
+
+  /** Step `delta` rows from `fromRowId`. Always moves focus + the selection
+   *  cursor; only opens the article when asked, so panel arrow keys stay a
+   *  browse gesture while the reader's next/prev actually swaps the article. */
+  const stepToRow = useCallback((fromRowId: string, delta: number, openArticle: boolean) => {
+    const currentIndex = visibleRows.findIndex(row => row.rowId === fromRowId)
+    if (currentIndex === -1) return false
+    const target = visibleRows[currentIndex + delta]
+    if (!target) return false
+    itemButtonRefs.current.get(target.rowId)?.focus()
+    setSelectedItemId(target.itemId)
+    if (openArticle) {
+      const item = itemsById.get(target.itemId)
+      if (item) handleItemClick(item, target.rowId)
+    }
+    return true
+  }, [visibleRows, itemsById, handleItemClick])
+
+  /** Arrow keys browse without opening. Enter/Space are left to the button's
+   *  native click handling, which already opens the article. */
+  const handleItemKeyDown = useCallback((rowId: string, event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    if (deleteMode) return
+    // Only swallow the scroll once we know there is a row to move to, so the
+    // first/last row still scrolls the list normally.
+    if (stepToRow(rowId, event.key === 'ArrowDown' ? 1 : -1, false)) event.preventDefault()
+  }, [deleteMode, stepToRow])
+
+  // Publish next/prev for the open article upward, so the reader can drive the
+  // same queue without the user bouncing back to the list.
+  const activeIndex = activeRowId ? visibleRows.findIndex(row => row.rowId === activeRowId) : -1
+  useEffect(() => {
+    if (!onNavStateChange) return
+    if (activeIndex === -1) {
+      onNavStateChange(null)
+      return
+    }
+    const currentRowId = visibleRows[activeIndex].rowId
+    onNavStateChange({
+      position: activeIndex + 1,
+      total: visibleRows.length,
+      hasPrev: activeIndex > 0,
+      hasNext: activeIndex < visibleRows.length - 1,
+      goPrev: () => { stepToRow(currentRowId, -1, true) },
+      goNext: () => { stepToRow(currentRowId, 1, true) },
+    })
+  }, [onNavStateChange, activeIndex, visibleRows, stepToRow])
+
   if (loading) {
     return (
       <div className={cn('flex h-full flex-col items-center justify-center gap-2 text-muted-foreground', className)}>
@@ -352,6 +467,43 @@ export default function RssFeedPanelBlock({
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* Merged unread inbox — one flat queue across every source, so new
+            articles can be read straight through without hunting per feed. */}
+        {showUnreadInbox && (
+          <div>
+            <button
+              type="button"
+              onClick={() => toggleFeedExpanded(RSS_UNREAD_INBOX_ID_BLOCK)}
+              className="flex w-full items-center gap-1.5 border-b border-border/30 bg-primary/5 px-3 py-3 text-left text-xs hover:bg-primary/10"
+            >
+              {unreadInboxExpanded
+                ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+              <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1 truncate font-medium">All Unread</span>
+              <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                {unreadInboxEntries.filter(entry => !entry.item.read).length}
+              </span>
+            </button>
+            {unreadInboxExpanded && unreadInboxEntries.map((entry, idx) => (
+              <FeedItemRow
+                key={entry.item.id}
+                item={entry.item}
+                rowId={rssRowIdBlock(RSS_UNREAD_INBOX_ID_BLOCK, entry.item.id)}
+                idx={idx}
+                sourceLabel={entry.feedTitle}
+                isSelected={selectedItemId === entry.item.id}
+                isPendingDelete={false}
+                deleteMode={false}
+                handleItemClick={handleItemClick}
+                onItemKeyDown={handleItemKeyDown}
+                registerItemButton={registerItemButton}
+                tagColors={tagColors}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Group tree rendering */}
         {preferences && preferences.groups.length > 0 && !focusedFeedId && (
           <GroupTreeRenderer
@@ -367,6 +519,8 @@ export default function RssFeedPanelBlock({
             selectedItemId={selectedItemId}
             pendingDeleteIds={pendingDeleteIds}
             handleItemClick={handleItemClick}
+            onItemKeyDown={handleItemKeyDown}
+            registerItemButton={registerItemButton}
             tagColors={tagColors}
             depth={0}
           />
@@ -384,6 +538,8 @@ export default function RssFeedPanelBlock({
             selectedItemId={selectedItemId}
             pendingDeleteIds={pendingDeleteIds}
             handleItemClick={handleItemClick}
+            onItemKeyDown={handleItemKeyDown}
+            registerItemButton={registerItemButton}
             tagColors={tagColors}
             depth={0}
           />
@@ -529,6 +685,8 @@ function GroupTreeRenderer({
   selectedItemId,
   pendingDeleteIds,
   handleItemClick,
+  onItemKeyDown,
+  registerItemButton,
   tagColors,
   depth,
 }: {
@@ -543,7 +701,9 @@ function GroupTreeRenderer({
   deleteMode: boolean
   selectedItemId: string | null
   pendingDeleteIds: Set<string>
-  handleItemClick: (item: RssFeedItemBlock) => void
+  handleItemClick: (item: RssFeedItemBlock, rowId: string) => void
+  onItemKeyDown: (rowId: string, event: KeyboardEvent<HTMLButtonElement>) => void
+  registerItemButton: (rowId: string, node: HTMLButtonElement | null) => void
   tagColors: Record<string, string>
   depth: number
 }) {
@@ -575,6 +735,8 @@ function GroupTreeRenderer({
                     selectedItemId={selectedItemId}
                     pendingDeleteIds={pendingDeleteIds}
                     handleItemClick={handleItemClick}
+                    onItemKeyDown={onItemKeyDown}
+                    registerItemButton={registerItemButton}
                     tagColors={tagColors}
                     depth={depth}
                   />
@@ -594,6 +756,8 @@ function GroupTreeRenderer({
                   selectedItemId={selectedItemId}
                   pendingDeleteIds={pendingDeleteIds}
                   handleItemClick={handleItemClick}
+                  onItemKeyDown={onItemKeyDown}
+                  registerItemButton={registerItemButton}
                   tagColors={tagColors}
                   depth={depth}
                 />
@@ -641,6 +805,8 @@ function GroupTreeRenderer({
                       selectedItemId={selectedItemId}
                       pendingDeleteIds={pendingDeleteIds}
                       handleItemClick={handleItemClick}
+                      onItemKeyDown={onItemKeyDown}
+                      registerItemButton={registerItemButton}
                       tagColors={tagColors}
                       depth={depth + 1}
                     />
@@ -660,6 +826,8 @@ function GroupTreeRenderer({
                     selectedItemId={selectedItemId}
                     pendingDeleteIds={pendingDeleteIds}
                     handleItemClick={handleItemClick}
+                    onItemKeyDown={onItemKeyDown}
+                    registerItemButton={registerItemButton}
                     tagColors={tagColors}
                     depth={depth + 1}
                   />
@@ -687,6 +855,8 @@ function FeedSection({
   selectedItemId,
   pendingDeleteIds,
   handleItemClick,
+  onItemKeyDown,
+  registerItemButton,
   tagColors,
   depth,
 }: {
@@ -698,7 +868,9 @@ function FeedSection({
   deleteMode: boolean
   selectedItemId: string | null
   pendingDeleteIds: Set<string>
-  handleItemClick: (item: RssFeedItemBlock) => void
+  handleItemClick: (item: RssFeedItemBlock, rowId: string) => void
+  onItemKeyDown: (rowId: string, event: KeyboardEvent<HTMLButtonElement>) => void
+  registerItemButton: (rowId: string, node: HTMLButtonElement | null) => void
   tagColors: Record<string, string>
   depth: number
 }) {
@@ -735,11 +907,14 @@ function FeedSection({
         <FeedItemRow
           key={item.id}
           item={item}
+          rowId={rssRowIdBlock(feed.feedId, item.id)}
           idx={idx}
           isSelected={selectedItemId === item.id}
           isPendingDelete={pendingDeleteIds.has(item.id)}
           deleteMode={deleteMode}
           handleItemClick={handleItemClick}
+          onItemKeyDown={onItemKeyDown}
+          registerItemButton={registerItemButton}
           tagColors={tagColors}
         />
       ))}
@@ -758,26 +933,37 @@ function FeedSection({
 
 function FeedItemRow({
   item,
+  rowId,
   idx,
+  sourceLabel,
   isSelected,
   isPendingDelete,
   deleteMode,
   handleItemClick,
+  onItemKeyDown,
+  registerItemButton,
   tagColors,
 }: {
   item: RssFeedItemBlock
+  rowId: string
   idx: number
+  /** Source feed name, shown only in the merged unread inbox. */
+  sourceLabel?: string
   isSelected: boolean
   isPendingDelete: boolean
   deleteMode: boolean
-  handleItemClick: (item: RssFeedItemBlock) => void
+  handleItemClick: (item: RssFeedItemBlock, rowId: string) => void
+  onItemKeyDown: (rowId: string, event: KeyboardEvent<HTMLButtonElement>) => void
+  registerItemButton: (rowId: string, node: HTMLButtonElement | null) => void
   tagColors: Record<string, string>
 }) {
   const hasMeta = item.keep || item.important || (item.tags?.length ?? 0) > 0
   return (
     <button
       type="button"
-      onClick={() => handleItemClick(item)}
+      ref={node => { registerItemButton(rowId, node) }}
+      onClick={() => handleItemClick(item, rowId)}
+      onKeyDown={event => onItemKeyDown(rowId, event)}
       className={cn(
         'flex w-full items-start gap-2 border-b border-border/40 px-3 py-3 text-left text-xs transition-colors duration-200',
         deleteMode && isPendingDelete && 'border-destructive/30 bg-destructive/10 hover:bg-destructive/15',
@@ -824,12 +1010,24 @@ function FeedItemRow({
             {item.description}
           </div>
         )}
-        {item.pubDate && !isPendingDelete && (
+        {(item.pubDate || sourceLabel) && !isPendingDelete && (
           <div className={cn(
-            'mt-1 text-[10px] leading-none tabular-nums',
+            'mt-1 flex items-center gap-1 text-[10px] leading-none',
             isSelected ? 'text-white/60' : 'text-muted-foreground/70',
           )}>
-            {formatAbsoluteDateTime(item.pubDate)}
+            {/* The merged inbox mixes feeds, so each row has to name its source. */}
+            {sourceLabel && (
+              <span className={cn(
+                'min-w-0 max-w-[45%] truncate font-medium',
+                isSelected ? 'text-white/75' : 'text-muted-foreground',
+              )}>
+                {sourceLabel}
+              </span>
+            )}
+            {sourceLabel && item.pubDate && <span aria-hidden>·</span>}
+            {item.pubDate && (
+              <span className="tabular-nums">{formatAbsoluteDateTime(item.pubDate)}</span>
+            )}
           </div>
         )}
         {hasMeta && !isPendingDelete && (

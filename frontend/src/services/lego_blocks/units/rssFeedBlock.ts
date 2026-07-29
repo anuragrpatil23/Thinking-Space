@@ -145,6 +145,133 @@ export function buildFeedGroupTreeBlock(
   return []
 }
 
+/** Synthetic feed id for the merged "All Unread" inbox section. Real feed ids
+ *  come from `generateFeedIdBlock`, so this can never collide with one. */
+export const RSS_UNREAD_INBOX_ID_BLOCK = '__unread_inbox__'
+
+export interface RssUnreadInboxEntryBlock {
+  item: RssFeedItemBlock
+  /** Source feed name, shown per-row because the inbox merges across feeds. */
+  feedTitle: string
+}
+
+/**
+ * Build the merged "All Unread" inbox: every unread article across every feed,
+ * newest first.
+ *
+ * `sessionReadIds` is what keeps the list usable. Opening an article marks it
+ * read, and if the inbox dropped it immediately every row below would jump up
+ * one while the user is reading. So items read during this session stay in
+ * place (the row renders dimmed) until the next feed refresh rebuilds the list.
+ */
+export function buildUnreadInboxItemsBlock(
+  feeds: RssFeedResultBlock[],
+  sessionReadIds: Set<string>,
+): RssUnreadInboxEntryBlock[] {
+  const entries: RssUnreadInboxEntryBlock[] = []
+  for (const feed of feeds) {
+    for (const item of feed.items) {
+      if (item.read && !sessionReadIds.has(item.id)) continue
+      entries.push({ item, feedTitle: feed.feedTitle })
+    }
+  }
+  // Newest first; undated items sink to the bottom rather than to the top.
+  return entries.sort((a, b) => {
+    const aTime = a.item.pubDate ? new Date(a.item.pubDate).getTime() : NaN
+    const bTime = b.item.pubDate ? new Date(b.item.pubDate).getTime() : NaN
+    const aValid = !Number.isNaN(aTime)
+    const bValid = !Number.isNaN(bTime)
+    if (!aValid && !bValid) return 0
+    if (!aValid) return 1
+    if (!bValid) return -1
+    return bTime - aTime
+  })
+}
+
+/** Next/prev state for the open article, published by the feed panel so the
+ *  reader can walk the same queue the list is showing. */
+export interface RssArticleNavStateBlock {
+  /** 1-based position of the open article within the visible row list. */
+  position: number
+  total: number
+  hasPrev: boolean
+  hasNext: boolean
+  goPrev: () => void
+  goNext: () => void
+}
+
+/**
+ * One rendered article row.
+ *
+ * `rowId` is section-scoped rather than just the item id, because the same
+ * article shows up twice when the unread inbox and its own feed are both
+ * expanded. Focus refs and arrow navigation key off `rowId` so the two copies
+ * stay distinct; `itemId` is what actually gets opened.
+ */
+export interface RssVisibleRowBlock {
+  rowId: string
+  itemId: string
+}
+
+export function rssRowIdBlock(sectionId: string, itemId: string): string {
+  return `${sectionId}::${itemId}`
+}
+
+/**
+ * Flatten every article row the panel is currently painting into one ordered
+ * list — the sequence arrow keys and the reader's next/prev both walk.
+ *
+ * This must stay in lockstep with how `RssFeedPanelBlock` renders: the unread
+ * inbox comes first when present, then grouped mode walks the tree (a group
+ * contributes its own feeds before recursing into child groups) while
+ * flat/focused mode walks `feeds` directly. A feed contributes its items only
+ * when it is expanded, and a group's whole subtree drops out when the group is
+ * collapsed. Feeds with no fetched result are skipped, mirroring the
+ * `if (!feed) return null` guard in the renderer.
+ */
+export function flattenVisibleRssRowsBlock(params: {
+  unreadInbox: { expanded: boolean; itemIds: string[] } | null
+  tree: RssFeedGroupTreeNodeBlock[] | null
+  feeds: RssFeedResultBlock[]
+  expandedFeedIds: Set<string>
+  expandedGroupIds: Set<string>
+}): RssVisibleRowBlock[] {
+  const { unreadInbox, tree, feeds, expandedFeedIds, expandedGroupIds } = params
+  const resultByFeedId = new Map(feeds.map(feed => [feed.feedId, feed]))
+  const ordered: RssVisibleRowBlock[] = []
+
+  if (unreadInbox?.expanded) {
+    for (const itemId of unreadInbox.itemIds) {
+      ordered.push({ rowId: rssRowIdBlock(RSS_UNREAD_INBOX_ID_BLOCK, itemId), itemId })
+    }
+  }
+
+  const pushFeedItems = (feed: RssFeedResultBlock | undefined) => {
+    if (!feed) return
+    if (!expandedFeedIds.has(feed.feedId)) return
+    for (const item of feed.items) {
+      ordered.push({ rowId: rssRowIdBlock(feed.feedId, item.id), itemId: item.id })
+    }
+  }
+
+  // Flat / focused mode: no group chrome, feeds render in array order.
+  if (!tree) {
+    for (const feed of feeds) pushFeedItems(feed)
+    return ordered
+  }
+
+  const walk = (nodes: RssFeedGroupTreeNodeBlock[]) => {
+    for (const node of nodes) {
+      // The root node (group === null) has no header, so it is never collapsed.
+      if (node.group && !expandedGroupIds.has(node.group.id)) continue
+      for (const config of node.feeds) pushFeedItems(resultByFeedId.get(config.id))
+      walk(node.children)
+    }
+  }
+  walk(tree)
+  return ordered
+}
+
 /**
  * Stable ID for an RSS item from its GUID or link hash.
  */
