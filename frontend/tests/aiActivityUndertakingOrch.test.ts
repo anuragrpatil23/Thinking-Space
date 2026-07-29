@@ -139,15 +139,101 @@ beforeEach(() => {
 })
 
 describe('collapseChainWindowsBlock', () => {
-  it('keeps only the longest window per session, so duration is not double-counted', async () => {
+  it('keeps the longest of two overlapping windows, so duration is not double-counted', async () => {
+    // PreCompact and SessionEnd both firing on one sitting: same session id,
+    // same clock. This is the case the collapse exists for.
     const { collapseChainWindowsBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const collapsed = collapseChainWindowsBlock([
-      { ...makeChain({ chainKey: 'c-1#w1', durationMs: 60_000 }), path: 'a' },
-      { ...makeChain({ chainKey: 'c-1#w2', durationMs: 90_000 }), path: 'b' },
+      {
+        ...makeChain({
+          chainKey: 'c-1#w1',
+          durationMs: 60_000,
+          startedIso: '2026-06-02T10:00:00.000Z',
+          endedIso: '2026-06-02T10:01:00.000Z',
+        }),
+        path: 'a',
+      },
+      {
+        ...makeChain({
+          chainKey: 'c-1#w2',
+          durationMs: 90_000,
+          startedIso: '2026-06-02T10:00:00.000Z',
+          endedIso: '2026-06-02T10:01:30.000Z',
+        }),
+        path: 'b',
+      },
     ])
 
     expect(collapsed).toHaveLength(1)
     expect(collapsed[0].durationMs).toBe(90_000)
+  })
+
+  it('keeps disjoint windows of the same session — they are separate sittings', async () => {
+    // The `#w` suffix comes from idle-gap splitting, not from duplicate hook
+    // fires. Two windows days apart are two days of work, and collapsing them
+    // to the longer one silently deleted the other from every tail.
+    const { collapseChainWindowsBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const collapsed = collapseChainWindowsBlock([
+      {
+        ...makeChain({
+          chainKey: 'c-1',
+          date: '2026-06-19',
+          durationMs: 4_849_749,
+          startedIso: '2026-06-19T20:43:59.000Z',
+          endedIso: '2026-06-19T22:04:49.000Z',
+        }),
+        path: 'a',
+      },
+      {
+        ...makeChain({
+          chainKey: 'c-1#w2',
+          date: '2026-06-23',
+          durationMs: 7_785_561,
+          startedIso: '2026-06-23T00:18:24.000Z',
+          endedIso: '2026-06-23T02:28:10.000Z',
+        }),
+        path: 'b',
+      },
+    ])
+
+    expect(collapsed.map(c => c.chainKey)).toEqual(['c-1', 'c-1#w2'])
+  })
+
+  it('chains a run of overlapping windows into one sitting', async () => {
+    // A overlaps B, B overlaps C, A and C do not touch. All three are one
+    // sitting, so the cluster end has to be a high-water mark.
+    const { collapseChainWindowsBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const collapsed = collapseChainWindowsBlock([
+      {
+        ...makeChain({
+          chainKey: 'c-1#w1',
+          durationMs: 60_000,
+          startedIso: '2026-06-02T10:00:00.000Z',
+          endedIso: '2026-06-02T10:01:00.000Z',
+        }),
+        path: 'a',
+      },
+      {
+        ...makeChain({
+          chainKey: 'c-1#w2',
+          durationMs: 120_000,
+          startedIso: '2026-06-02T10:00:30.000Z',
+          endedIso: '2026-06-02T10:02:30.000Z',
+        }),
+        path: 'b',
+      },
+      {
+        ...makeChain({
+          chainKey: 'c-1#w3',
+          durationMs: 30_000,
+          startedIso: '2026-06-02T10:02:00.000Z',
+          endedIso: '2026-06-02T10:02:30.000Z',
+        }),
+        path: 'c',
+      },
+    ])
+
+    expect(collapsed.map(c => c.chainKey)).toEqual(['c-1#w2'])
   })
 
   it('leaves distinct sessions alone', async () => {

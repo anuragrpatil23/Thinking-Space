@@ -27,6 +27,11 @@ export interface RangeLabelContractInput {
   rangeStartDate: string
   rangeEndDate: string
   chains: RangeLabelChainInput[]
+  /** Theme names already established by earlier batches of the same range.
+   *  Offered as vocabulary so a workstream split across batches comes back
+   *  under one name instead of two near-synonyms. Not an index space — the
+   *  model still numbers its own THEMES list, and the caller merges by name. */
+  existingThemes?: string[]
 }
 
 /** Themes proposed + per-chain assignment. Themes list is 1-indexed as the
@@ -95,6 +100,11 @@ const SYSTEM_PROMPT = [
 
 function buildUserPromptBlock(input: RangeLabelContractInput): string {
   const lines: string[] = []
+  if (input.existingThemes?.length) {
+    lines.push('THEMES ALREADY USED FOR THIS RANGE (reuse the exact name when a session fits one):')
+    input.existingThemes.forEach(t => lines.push(`  - ${t}`))
+    lines.push('')
+  }
   input.chains.forEach(c => {
     lines.push(`${c.shortKey}: ${c.title}`)
     if (c.firstBulletHint) lines.push(`       ${c.firstBulletHint}`)
@@ -137,12 +147,18 @@ function parseSectionsBlock(raw: string, chains: RangeLabelChainInput[]): RangeL
 
 export const rangeLabelContract = defineContractBlock({
   id: 'range-summary-label',
-  promptVersion: 1,
+  promptVersion: 2,
   outputSchema: s.string({ description: 'THEMES + ASSIGNMENTS labeled sections' }),
   buildRequest: (input: RangeLabelContractInput, ctx) => ({
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user' as const, content: buildUserPromptBlock(input) }],
-    maxTokens: Math.max(ctx.recommendedMaxTokens, 500),
+    // Sized from the input, not a flat constant. The output is one `S# -> N`
+    // line per chain (~6 tokens) plus the THEMES block, so a fixed 500-token
+    // budget truncated the assignment list on any sizeable range — and a
+    // truncated list is silent: unlisted chains just default to 'Misc'
+    // downstream, which then swallows the range and forces the fallback.
+    // 12 tokens per chain is double the observed line cost.
+    maxTokens: Math.max(ctx.recommendedMaxTokens, 200 + input.chains.length * 12),
     temperature: 0.15,
   }),
   finalize: (raw: string, input: RangeLabelContractInput): ContractOutput<RangeLabelOutput> | null => {
@@ -150,9 +166,11 @@ export const rangeLabelContract = defineContractBlock({
     if (!parsed) return null
     return { value: parsed, meta: {} }
   },
+  // `existingThemes` is part of the key: the same batch of chains labeled with
+  // a different carried-in vocabulary is a different question.
   cacheKey: (input: RangeLabelContractInput) =>
     `${input.projectId}#label#${input.rangeStartDate}#${input.rangeEndDate}#${input.chains
       .map(c => c.chainKey)
       .sort()
-      .join('|')}`,
+      .join('|')}${input.existingThemes?.length ? `#v:${input.existingThemes.join('|')}` : ''}`,
 })

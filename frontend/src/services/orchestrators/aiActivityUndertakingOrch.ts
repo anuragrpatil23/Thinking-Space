@@ -46,23 +46,55 @@ export interface UndertakingView {
 }
 
 /**
- * Duration is summed over *distinct* chain keys.
+ * Duration is summed over *distinct sittings*, which is not the same thing as
+ * distinct chain keys — and, importantly, not the same thing as distinct
+ * session ids either.
  *
- * `PreCompact` and `SessionEnd` both fire on a single session, producing two
- * near-identical chains whose keys differ only by a `#w1` / `#w2` window
- * suffix. Summing them naively is what inflated the dry run's per-entry minutes
- * by roughly 2x. Collapsing on the pre-suffix key is the honest count, and the
- * density sparkline's entire job is to be honest about how much work happened.
+ * `PreCompact` and `SessionEnd` both fire on a single session, so one sitting
+ * can get recorded twice; summing both inflates duration. But the `#w1` / `#w2`
+ * suffix does *not* mark those duplicates. It comes from the parser splitting a
+ * transcript at idle gaps, and those windows are genuine separate sittings —
+ * across the vault, 106 window pairs sharing a session id are disjoint in time
+ * (often days apart, with different titles and message counts) against 2 that
+ * actually overlap. Collapsing on the pre-suffix key therefore threw away most
+ * of a long-running session's history and kept only its longest sitting.
+ *
+ * So the test is temporal, not lexical: within one session id, merge windows
+ * whose intervals overlap and keep the longest of each cluster; let disjoint
+ * windows through. The density sparkline's entire job is to be honest about how
+ * much work happened, in both directions.
  */
 export function collapseChainWindowsBlock(chains: ChainEntry[]): ChainEntry[] {
-  const bySession = new Map<string, ChainEntry>()
+  const bySession = new Map<string, ChainEntry[]>()
   for (const chain of chains) {
     const base = chain.chainKey.replace(/#w\d+$/, '')
-    const existing = bySession.get(base)
-    // Keep the longest window: it is the fuller record of the same session.
-    if (!existing || chain.durationMs > existing.durationMs) bySession.set(base, chain)
+    const bucket = bySession.get(base)
+    if (bucket) bucket.push(chain)
+    else bySession.set(base, [chain])
   }
-  return Array.from(bySession.values()).sort((a, b) => a.startedIso.localeCompare(b.startedIso))
+
+  const kept: ChainEntry[] = []
+  for (const bucket of bySession.values()) {
+    bucket.sort((a, b) => a.startedIso.localeCompare(b.startedIso))
+    // Interval sweep. `best` is the longest window in the cluster being built;
+    // `clusterEnd` is the cluster's running high-water end, so A–B–C chains
+    // into one sitting even when A and C don't touch.
+    let best: ChainEntry | null = null
+    let clusterEnd = ''
+    for (const chain of bucket) {
+      if (best && chain.startedIso < clusterEnd) {
+        if (chain.durationMs > best.durationMs) best = chain
+        if (chain.endedIso > clusterEnd) clusterEnd = chain.endedIso
+        continue
+      }
+      if (best) kept.push(best)
+      best = chain
+      clusterEnd = chain.endedIso
+    }
+    if (best) kept.push(best)
+  }
+
+  return kept.sort((a, b) => a.startedIso.localeCompare(b.startedIso))
 }
 
 function buildTail(chains: ChainEntry[]): UndertakingTail {
