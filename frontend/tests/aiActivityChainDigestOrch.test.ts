@@ -60,11 +60,12 @@ function digest(over: Partial<ProjectChainDigest> = {}): ProjectChainDigest {
     filesWritten: [],
     filesRead: [],
     undertaking: '',
+    activeDurationMs: 0,
     ...over,
   }
 }
 
-function chain(touchedPaths?: string[]): ActivityChain {
+function chain(touchedPaths?: string[], activeDurationMs?: number): ActivityChain {
   return {
     key: 'c-1',
     project: 'F9',
@@ -74,6 +75,7 @@ function chain(touchedPaths?: string[]): ActivityChain {
     msgCount: 20,
     topic: 'Micron',
     touchedPaths,
+    activeDurationMs,
   } as unknown as ActivityChain
 }
 
@@ -100,6 +102,23 @@ describe('ensureChainDigestOrch — pointer reconciliation (A1)', () => {
   it('does not rewrite when pointers already match', async () => {
     stored = digest({ filesWritten: ['acceleration_core/F9/micron.md'] })
     await ensureChainDigestOrch(chain(['/vault/acceleration_core/F9/micron.md']))
+    expect(putProjectChainDigestBlock).not.toHaveBeenCalled()
+  })
+
+  it('heals activeDurationMs onto a digest written before the field existed', async () => {
+    stored = digest({ activeDurationMs: 0 })
+    const res = await ensureChainDigestOrch(
+      chain(['/vault/acceleration_core/F9/micron.md'], 900_000),
+    )
+    expect(res?.digest.activeDurationMs).toBe(900_000)
+  })
+
+  it('does NOT touch activeDurationMs when the chain never measured it', async () => {
+    // No per-message timing on this device/source → chain.activeDurationMs is
+    // undefined → leave the stored value, same no-stomp rule as pointers.
+    stored = digest({ activeDurationMs: 720_000, filesWritten: ['acceleration_core/F9/micron.md'] })
+    const res = await ensureChainDigestOrch(chain(['/vault/acceleration_core/F9/micron.md']))
+    expect(res?.digest.activeDurationMs).toBe(720_000)
     expect(putProjectChainDigestBlock).not.toHaveBeenCalled()
   })
 

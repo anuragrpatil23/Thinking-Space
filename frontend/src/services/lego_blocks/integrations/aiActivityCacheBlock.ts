@@ -56,7 +56,9 @@ const CACHE_DIR = '.thinking-space'
 // windows (`path#wN`) — frontmatter `updated` proved to be bulk-rewritten junk.
 // v16: native Claude sessions now carry file-edit provenance (`touchedPaths`)
 // for the vault-graph session lens; reparse so cached rows pick it up.
-const CACHE_VERSION = 17
+// v18: native sessions carry activeDurationMs (inter-message time, long pauses
+// clamped) so the density sparkline reflects work, not wall-clock tab-open time.
+const CACHE_VERSION = 18
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000

@@ -38,6 +38,12 @@ export interface ProjectChainDigest {
   msgCount: number
   /** Merged wall-clock duration at digest-time. */
   durationMs: number
+  /** Active duration in ms — sum of inter-message gaps, each clamped so long
+   *  pauses don't count in full. The honest "how much work" measure for the
+   *  density sparkline; `durationMs` stays wall-clock. 0 on records written
+   *  before this field existed (v2), healed on read from `chain.activeDurationMs`
+   *  the same way pointers are — see reconcileDigestPointersBlock. */
+  activeDurationMs: number
   /** Chain start / end ISO — atoms need these for narrative flow. */
   startedIso: string
   endedIso: string
@@ -67,7 +73,10 @@ export interface ProjectChainDigest {
 // v2 adds filesWritten / filesRead / undertaking. Readers tolerate v1 by
 // defaulting all three to empty — a v1 chain is a chain with no pointers, which
 // is exactly what it is.
-const CURRENT_CHAIN_DIGEST_SCHEMA_VERSION = 2
+// v3 adds activeDurationMs. Readers tolerate v1/v2 by defaulting it to 0; it is
+// healed on read from the chain's per-message timing, so 0 means "not measured
+// yet", not "no work".
+const CURRENT_CHAIN_DIGEST_SCHEMA_VERSION = 3
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -156,6 +165,7 @@ export function parseProjectChainDigestMarkdownBlock(content: string): ProjectCh
     source: toStringOrEmpty(parsed.source),
     msgCount: toNumberOrZero(parsed.msgCount),
     durationMs: toNumberOrZero(parsed.durationMs),
+    activeDurationMs: toNumberOrZero(parsed.activeDurationMs),
     startedIso: toStringOrEmpty(parsed.startedIso),
     endedIso: toStringOrEmpty(parsed.endedIso),
     inputHash: toStringOrEmpty(parsed.inputHash),
@@ -180,6 +190,7 @@ export function stringifyProjectChainDigestMarkdownBlock(digest: ProjectChainDig
     endedIso: digest.endedIso,
     msgCount: digest.msgCount,
     durationMs: digest.durationMs,
+    activeDurationMs: digest.activeDurationMs,
     model: digest.model,
     generator: digest.generator,
     inputHash: digest.inputHash,
@@ -238,6 +249,7 @@ export function parseProjectChainDigestJsonBlock(raw: string): ProjectChainDiges
     source: toStringOrEmpty(parsed.source),
     msgCount: toNumberOrZero(parsed.msgCount),
     durationMs: toNumberOrZero(parsed.durationMs),
+    activeDurationMs: toNumberOrZero(parsed.activeDurationMs),
     startedIso: toStringOrEmpty(parsed.startedIso),
     endedIso: toStringOrEmpty(parsed.endedIso),
     inputHash: toStringOrEmpty(parsed.inputHash),

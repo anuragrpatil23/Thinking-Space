@@ -30,14 +30,19 @@ export interface UndertakingTail {
   chainCount: number
   /** Wall-clock across the assigned chains. */
   durationMs: number
+  /** Active duration across the assigned chains — inter-message time with long
+   *  pauses clamped. The honest "how much work" number; the sparkline uses this,
+   *  not wall-clock. Falls back to wall-clock per chain for digests written
+   *  before the field existed and not yet healed on read. */
+  activeDurationMs: number
   /** Distinct calendar days worked — a truer measure of span than duration. */
   dayCount: number
   firstDate: string
   lastDate: string
   /** Union of the chains' file pointers. The index's page numbers. */
   files: string[]
-  /** Per-day chain counts, oldest first — pre-bucketed for the sparkline. */
-  density: Array<{ date: string; chains: number; durationMs: number }>
+  /** Per-day counts, oldest first — pre-bucketed for the sparkline. */
+  density: Array<{ date: string; chains: number; durationMs: number; activeDurationMs: number }>
 }
 
 export interface UndertakingView {
@@ -97,17 +102,27 @@ export function collapseChainWindowsBlock(chains: ChainEntry[]): ChainEntry[] {
   return kept.sort((a, b) => a.startedIso.localeCompare(b.startedIso))
 }
 
+/** Active duration for one chain, falling back to wall-clock when the chain
+ *  predates the field and hasn't been healed on read yet (0 ⇒ not measured). */
+function activeOf(chain: ChainEntry): number {
+  return chain.activeDurationMs > 0 ? chain.activeDurationMs : chain.durationMs
+}
+
 function buildTail(chains: ChainEntry[]): UndertakingTail {
   const collapsed = collapseChainWindowsBlock(chains)
-  const byDate = new Map<string, { chains: number; durationMs: number }>()
+  const byDate = new Map<string, { chains: number; durationMs: number; activeDurationMs: number }>()
   const files = new Set<string>()
   let durationMs = 0
+  let activeDurationMs = 0
 
   for (const chain of collapsed) {
+    const active = activeOf(chain)
     durationMs += chain.durationMs
-    const bucket = byDate.get(chain.date) ?? { chains: 0, durationMs: 0 }
+    activeDurationMs += active
+    const bucket = byDate.get(chain.date) ?? { chains: 0, durationMs: 0, activeDurationMs: 0 }
     bucket.chains += 1
     bucket.durationMs += chain.durationMs
+    bucket.activeDurationMs += active
     byDate.set(chain.date, bucket)
     for (const file of chain.filesWritten) files.add(file)
   }
@@ -116,6 +131,7 @@ function buildTail(chains: ChainEntry[]): UndertakingTail {
   return {
     chainCount: collapsed.length,
     durationMs,
+    activeDurationMs,
     dayCount: dates.length,
     firstDate: dates[0] ?? '',
     lastDate: dates[dates.length - 1] ?? '',

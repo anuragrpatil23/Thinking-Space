@@ -78,6 +78,12 @@ export interface ParsedSession {
    *  notes a session touched, not a time-window guess. Native Claude sources
    *  only; absent for chat/reading sources and pre-provenance cached rows. */
   touchedPaths?: string[]
+  /** Active duration in ms: sum of inter-message gaps within the window, each
+   *  clamped so a long pause counts as a bounded sliver, not its full length.
+   *  This is the honest "how much work" measure for the density sparkline;
+   *  `endedIso - startedIso` remains the wall-clock span. Native sources only —
+   *  absent for chat/vault sources with no per-message timestamps. */
+  activeDurationMs?: number
 }
 
 export interface SessionTokens {
@@ -108,6 +114,9 @@ export interface ActivityChain {
   /** Union of every session's file-edit provenance (absolute paths). Absent
    *  when no session in the chain carried edits. */
   touchedPaths?: string[]
+  /** Sum of the chain's sessions' active durations (see ParsedSession). Absent
+   *  when no session carried per-message timing. */
+  activeDurationMs?: number
 }
 
 // Strict id form used by Claude Code transcripts (date + 8-char hex).
@@ -560,10 +569,18 @@ function makeChain(project: string, sessions: ParsedSession[]): ActivityChain {
   // Union the sessions' file-edit provenance so the chain knows every note it
   // wrote across its windows.
   let touched: Set<string> | null = null
+  // Sum active durations across the chain's sessions. Left undefined when no
+  // session carried timing, so downstream can tell "0 active work" apart from
+  // "never measured" (an old cached row) and fall back to wall-clock.
+  let activeDurationMs: number | undefined
   for (const s of sessions) {
-    if (!s.touchedPaths || s.touchedPaths.length === 0) continue
-    if (!touched) touched = new Set()
-    for (const p of s.touchedPaths) touched.add(p)
+    if (s.touchedPaths && s.touchedPaths.length > 0) {
+      if (!touched) touched = new Set()
+      for (const p of s.touchedPaths) touched.add(p)
+    }
+    if (typeof s.activeDurationMs === 'number') {
+      activeDurationMs = (activeDurationMs ?? 0) + s.activeDurationMs
+    }
   }
   return {
     key,
@@ -575,5 +592,6 @@ function makeChain(project: string, sessions: ParsedSession[]): ActivityChain {
     topic: first.topic,
     sessions,
     touchedPaths: touched ? Array.from(touched) : undefined,
+    activeDurationMs,
   }
 }

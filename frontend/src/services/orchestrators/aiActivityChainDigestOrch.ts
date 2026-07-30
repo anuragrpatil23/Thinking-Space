@@ -114,6 +114,7 @@ export async function ensureChainDigestOrch(
     source: String(chain.source),
     msgCount: chain.msgCount,
     durationMs: chainDurationMs(chain),
+    activeDurationMs: chain.activeDurationMs ?? 0,
     startedIso: chain.startedIso,
     endedIso: chain.endedIso,
     inputHash: nextHash,
@@ -204,10 +205,25 @@ async function reconcileDigestPointersBlock(
   existing: ProjectChainDigest,
   chain: ActivityChain,
 ): Promise<ProjectChainDigest> {
-  if (!chain.touchedPaths || chain.touchedPaths.length === 0) return existing
-  const derived = chainPointers(chain)
-  if (sameStringSetBlock(existing.filesWritten, derived.filesWritten)) return existing
-  const patched: ProjectChainDigest = { ...existing, filesWritten: derived.filesWritten }
+  let patched: ProjectChainDigest | null = null
+
+  // Pointers: patch only when the chain carries provenance (see guard rationale
+  // above), and only on real drift.
+  if (chain.touchedPaths && chain.touchedPaths.length > 0) {
+    const derived = chainPointers(chain)
+    if (!sameStringSetBlock(existing.filesWritten, derived.filesWritten)) {
+      patched = { ...(patched ?? existing), filesWritten: derived.filesWritten }
+    }
+  }
+
+  // Active duration: same shape. `chain.activeDurationMs` is undefined on a
+  // device/source that never measured it (no per-message timing), so absence
+  // means "nothing better to offer" — leave the stored value, don't zero it.
+  if (typeof chain.activeDurationMs === 'number' && chain.activeDurationMs !== existing.activeDurationMs) {
+    patched = { ...(patched ?? existing), activeDurationMs: chain.activeDurationMs }
+  }
+
+  if (!patched) return existing
   await putProjectChainDigestBlock(patched)
   return patched
 }
@@ -240,6 +256,7 @@ function buildFallbackDigest(
     source: String(chain.source),
     msgCount: chain.msgCount,
     durationMs: chainDurationMs(chain),
+    activeDurationMs: chain.activeDurationMs ?? 0,
     startedIso: chain.startedIso,
     endedIso: chain.endedIso,
     inputHash,

@@ -107,6 +107,7 @@ function makeChain(overrides: Partial<ProjectChainDigest> = {}): ProjectChainDig
     source: 'claude-code',
     msgCount: 20,
     durationMs: 60_000,
+    activeDurationMs: 0,
     startedIso: '2026-06-02T10:00:00.000Z',
     endedIso: '2026-06-02T10:01:00.000Z',
     inputHash: 'h',
@@ -271,6 +272,29 @@ describe('listUndertakingsOrch', () => {
       lastDate: '2026-06-03',
       files: ['vault://F9/hbm.md', 'vault://F9/micron.md'],
     })
+  })
+
+  it('sums active duration for the sparkline, falling back to wall-clock per un-healed chain', async () => {
+    seedRecord(makeRecord())
+    // c-1: healed — 30m wall-clock but only 5m of active work (long pauses).
+    seedChain(makeChain({ chainKey: 'c-1', date: '2026-06-02', durationMs: 1_800_000, activeDurationMs: 300_000 }))
+    // c-2: pre-field digest (activeDurationMs 0) → falls back to its wall-clock.
+    seedChain(makeChain({
+      chainKey: 'c-2',
+      date: '2026-06-03',
+      durationMs: 600_000,
+      activeDurationMs: 0,
+      startedIso: '2026-06-03T10:00:00.000Z',
+    }))
+
+    const { listUndertakingsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const views = await listUndertakingsOrch('F9')
+
+    expect(views[0].tail.durationMs).toBe(2_400_000) // wall-clock unchanged
+    expect(views[0].tail.activeDurationMs).toBe(900_000) // 300k active + 600k fallback
+    const byDate = Object.fromEntries(views[0].tail.density.map(d => [d.date, d.activeDurationMs]))
+    expect(byDate['2026-06-02']).toBe(300_000)
+    expect(byDate['2026-06-03']).toBe(600_000)
   })
 
   it('picks up chains that name the undertaking even when the record does not list them', async () => {

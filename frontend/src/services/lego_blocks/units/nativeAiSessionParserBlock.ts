@@ -162,6 +162,25 @@ interface ParseEnvelope {
 const WINDOW_GAP_HOURS = 1
 const WINDOW_GAP_MS = WINDOW_GAP_HOURS * 3_600_000
 
+/** Cap on a single inter-event gap when summing *active* duration. Windowing
+ *  already removes 1h+ idle, but a 40-minute gap inside one sitting is still
+ *  mostly you doing something else, and wall-clock start→end counts it in full.
+ *  Active duration sums each consecutive gap clamped to this cap, so a long
+ *  pause contributes a bounded sliver rather than its whole length. This is the
+ *  honest input to the density sparkline, whose entire job is "how much work
+ *  happened" — not "how long was the tab open". */
+const ACTIVE_GAP_CAP_MS = 5 * 60_000
+
+/** Sum of consecutive event gaps, each clamped to ACTIVE_GAP_CAP_MS. A window
+ *  of one event has no gaps and therefore zero active duration. */
+function activeDurationOfWindow(win: ConvEvent[]): number {
+  let active = 0
+  for (let i = 1; i < win.length; i++) {
+    active += Math.min(win[i].ts - win[i - 1].ts, ACTIVE_GAP_CAP_MS)
+  }
+  return active
+}
+
 interface ConvEvent {
   ts: number          // unix ms
   isUser: boolean
@@ -429,6 +448,7 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       model,
       sessionId: winSessionId,
       touchedPaths: touchedPaths.length > 0 ? touchedPaths : undefined,
+      activeDurationMs: activeDurationOfWindow(win),
     } as ParsedSession & { sessionId?: string } as ParsedSession)
   })
 

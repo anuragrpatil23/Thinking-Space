@@ -82,3 +82,27 @@ describe('parseNativeAiSession file-edit provenance', () => {
     expect(sessions[0].touchedPaths).toEqual([`${CWD}/notes/rel.md`])
   })
 })
+
+describe('parseNativeAiSession active duration', () => {
+  it('sums inter-message gaps, clamping each to 5 minutes', () => {
+    // Gaps: 2m (kept), 40m (clamped to 5m), 1m (kept). Active = 8m.
+    // Wall-clock start→end is 43m — the inflation the sparkline must not show.
+    const text = [
+      userEvent('2026-07-01T10:00:00Z', 'a'),
+      assistantEvent('2026-07-01T10:02:00Z', [{ type: 'text', text: 'b' }]),
+      userEvent('2026-07-01T10:42:00Z', 'c'),
+      assistantEvent('2026-07-01T10:43:00Z', [{ type: 'text', text: 'd' }]),
+    ].join('\n')
+    const sessions = parse(text)
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0].activeDurationMs).toBe(8 * 60_000)
+    // Wall-clock span is still the full 43 minutes.
+    const span = Date.parse(sessions[0].endedIso!) - Date.parse(sessions[0].startedIso)
+    expect(span).toBe(43 * 60_000)
+  })
+
+  it('is zero for a single-event window (no gaps to sum)', () => {
+    const sessions = parse(userEvent('2026-07-01T10:00:00Z', 'only one'))
+    expect(sessions[0].activeDurationMs).toBe(0)
+  })
+})
