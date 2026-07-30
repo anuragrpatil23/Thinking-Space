@@ -18,6 +18,8 @@ import {
   type ChainEntry,
 } from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
 import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
+import { listAsksBlock } from '@/services/lego_blocks/integrations/aiActivityAskStoreBlock'
+import type { Ask } from '@/services/lego_blocks/units/aiActivityAskBlock'
 import {
   bucketDensityBlock,
   type DensityBucket,
@@ -188,6 +190,40 @@ export async function getUndertakingOrch(
   if (!record) return null
   const chains = collapseChainWindowsBlock(await chainsFor(record))
   return { record, tail: buildTail(chains), chains }
+}
+
+// ── The wake list (open asks from the old organizer) ──────────────────────
+
+export interface OpenAsksResult {
+  /** Asks no undertaking discharges — the wake list, oldest first. */
+  open: Ask[]
+  /** Asks the seam edges account for (discharged), for a "N of M closed" read. */
+  dischargedCount: number
+  totalAsks: number
+}
+
+/**
+ * The wake list: old-organizer asks that no undertaking has discharged. Open is
+ * derived, never stored — add a `discharges` edge and the ask drops off the
+ * list on the next read. Keys are compared case-insensitively because the old
+ * store lowercases them (`f9-qt-e-318`) while the seam edges carry the display
+ * form (`F9-QT-E-318`).
+ */
+export async function getOpenAsksOrch(params: {
+  projectId: string
+  projectRoot: string
+}): Promise<OpenAsksResult> {
+  const [asks, undertakings] = await Promise.all([
+    listAsksBlock(params.projectRoot),
+    listUndertakingsBlock(params.projectId),
+  ])
+  const discharged = new Set<string>()
+  for (const u of undertakings) {
+    for (const key of u.discharges) discharged.add(key.toUpperCase())
+  }
+  const open = asks.filter(a => !discharged.has(a.key.toUpperCase()))
+  open.sort((a, b) => (a.openedDate || '').localeCompare(b.openedDate || ''))
+  return { open, dischargedCount: asks.length - open.length, totalAsks: asks.length }
 }
 
 // ── The lineage view (grew_out_of DAG) ────────────────────────────────────

@@ -46,6 +46,13 @@ export interface UndertakingRecord {
   proposedTags: string[]
   /** Causal edges — `grew_out_of` in the file. Deliberately sparse. */
   grewOutOf: string[]
+  /** Seam edges to the old organizer's asks (open questions/ideas that predate
+   *  the chains). `discharges` = asks this undertaking answered; `produces` =
+   *  asks it raised. Pointers to old-store keys (e.g. `F9-QT-E-318`); the asks
+   *  are never migrated, only referenced. An ask no undertaking discharges is,
+   *  by derivation, still open — the wake list. */
+  discharges: string[]
+  produces: string[]
   /** Chains that primarily belong to this undertaking. Pointers, not content. */
   chains: string[]
   /** Chains filed elsewhere that carry a strand belonging here too. */
@@ -128,6 +135,8 @@ export function parseUndertakingBlock(content: string): UndertakingRecord | null
     tags: asStringArray(parsed.tags),
     proposedTags: asStringArray(parsed.proposed_tags),
     grewOutOf: asStringArray(parsed.grew_out_of),
+    discharges: asStringArray(parsed.discharges),
+    produces: asStringArray(parsed.produces),
     chains: asStringArray(parsed.chains),
     alsoFedBy: asStringArray(parsed.also_fed_by),
     files: asStringArray(parsed.files),
@@ -165,6 +174,11 @@ export function serializeUndertakingBlock(record: UndertakingRecord): string {
     files: record.files,
     origin: record.origin,
   }
+  // Seam edges are emitted only when present. Unlike `files` (an empty array is
+  // a recorded gap), most undertakings discharge or produce nothing, and that
+  // is the ordinary case, not a gap worth a line on every record.
+  if (record.discharges.length) frontmatter.discharges = record.discharges
+  if (record.produces.length) frontmatter.produces = record.produces
 
   const yamlStr = yaml
     .dump(frontmatter, { lineWidth: -1, noRefs: true, sortKeys: false, quotingType: '"' })

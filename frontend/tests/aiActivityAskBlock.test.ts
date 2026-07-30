@@ -1,0 +1,60 @@
+import { describe, expect, it } from 'vitest'
+import {
+  askCategoryCodeBlock,
+  askCategoryLabelBlock,
+  parseAskMarkdownBlock,
+} from '@/services/lego_blocks/units/aiActivityAskBlock'
+
+describe('askCategoryCodeBlock', () => {
+  it('extracts the category code from an ask key, case-insensitively', () => {
+    expect(askCategoryCodeBlock('f9-qt-e-318')).toBe('QT')
+    expect(askCategoryCodeBlock('F9-IDE-E-429')).toBe('IDE')
+    expect(askCategoryCodeBlock('f9-ic-e-499')).toBe('IC')
+  })
+  it('returns empty for a key that is not the ask shape', () => {
+    expect(askCategoryCodeBlock('f9-und-micron-memory-cycle')).toBe('')
+  })
+})
+
+describe('askCategoryLabelBlock', () => {
+  it('labels known codes and falls back to the code itself', () => {
+    expect(askCategoryLabelBlock('QT')).toBe('Questions to research')
+    expect(askCategoryLabelBlock('IC')).toBe('Interesting companies')
+    expect(askCategoryLabelBlock('ZZ')).toBe('ZZ')
+  })
+})
+
+describe('parseAskMarkdownBlock', () => {
+  const epic = `---
+uuid: a1
+key: f9-ic-e-499
+title: F9-IC-E-499 - learn more about LAM Research
+type: epic
+record_kind: epic
+status: active
+created_at: "2026-03-01T10:00:00.000Z"
+parent: f9-ic-p-698
+---
+
+## Description
+Understand LAM Research.
+`
+
+  it('parses an epic into an ask with category and opened date', () => {
+    const ask = parseAskMarkdownBlock(epic)
+    expect(ask).not.toBeNull()
+    expect(ask!.key).toBe('f9-ic-e-499')
+    expect(ask!.categoryCode).toBe('IC')
+    expect(ask!.category).toBe('Interesting companies')
+    expect(ask!.openedDate).toBe('2026-03-01')
+  })
+
+  it('rejects a non-epic record_kind', () => {
+    const program = epic.replace('record_kind: epic', 'record_kind: program')
+    expect(parseAskMarkdownBlock(program)).toBeNull()
+  })
+
+  it('returns null on a file without frontmatter', () => {
+    expect(parseAskMarkdownBlock('just text')).toBeNull()
+  })
+})

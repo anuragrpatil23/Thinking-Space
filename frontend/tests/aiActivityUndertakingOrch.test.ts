@@ -88,6 +88,8 @@ function makeRecord(overrides: Partial<UndertakingRecord> = {}): UndertakingReco
     tags: ['held'],
     proposedTags: ['machinery'],
     grewOutOf: [],
+    discharges: [],
+    produces: [],
     chains: ['c-1', 'c-2'],
     alsoFedBy: [],
     files: [],
@@ -132,6 +134,13 @@ function seedRecord(record: UndertakingRecord): void {
   fakeFs.seed(
     `ai-activity/thinking-organizer/${record.projectId}/undertakings/${record.key}.md`,
     serializeUndertakingBlock(record),
+  )
+}
+
+function seedAsk(projectRoot: string, key: string, title: string, createdAt: string): void {
+  fakeFs.seed(
+    `${projectRoot}/thinking-organizer/epics/${key}.md`,
+    `---\nkey: ${key}\ntitle: "${title}"\ntype: epic\nrecord_kind: epic\ncreated_at: "${createdAt}"\n---\n\nAsk.\n`,
   )
 }
 
@@ -501,6 +510,33 @@ describe('getUndertakingIndexOrch', () => {
 
     expect(index.sections.map(s => s.title)).toEqual(['Company Studies', 'sec-gone'])
     expect(index.sections[1].rows[0].record.key).toBe('u-orphan')
+  })
+})
+
+describe('getOpenAsksOrch', () => {
+  it('returns asks no undertaking discharges, oldest first, case-insensitive on keys', () => {
+    seedAsk('acceleration_core/F9', 'f9-qt-e-318', 'history of silicon chips?', '2026-03-17')
+    seedAsk('acceleration_core/F9', 'f9-ic-e-499', 'learn more about LAM Research', '2026-03-01')
+    seedAsk('acceleration_core/F9', 'f9-ide-e-800', 'wafer supply short', '2026-03-18')
+    // An undertaking discharges the silicon-chips ask (display-case key).
+    seedRecord(makeRecord({ key: 'u-phys', discharges: ['F9-QT-E-318'] }))
+
+    return import('@/services/orchestrators/aiActivityUndertakingOrch').then(async m => {
+      const result = await m.getOpenAsksOrch({ projectId: 'F9', projectRoot: 'acceleration_core/F9' })
+      // f9-qt-e-318 is discharged → not open. The other two remain, oldest first.
+      expect(result.open.map(a => a.key)).toEqual(['f9-ic-e-499', 'f9-ide-e-800'])
+      expect(result.dischargedCount).toBe(1)
+      expect(result.totalAsks).toBe(3)
+    })
+  })
+
+  it('returns everything open when nothing discharges', async () => {
+    seedAsk('acceleration_core/F9', 'f9-mi-e-503', 'rare earths bottleneck', '2026-02-26')
+    seedRecord(makeRecord({ key: 'u-x', discharges: [] }))
+    const { getOpenAsksOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const result = await getOpenAsksOrch({ projectId: 'F9', projectRoot: 'acceleration_core/F9' })
+    expect(result.open).toHaveLength(1)
+    expect(result.dischargedCount).toBe(0)
   })
 })
 
