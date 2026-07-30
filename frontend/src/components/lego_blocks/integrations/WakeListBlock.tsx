@@ -1,11 +1,11 @@
 import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { useWakeListBlock } from '@/components/lego_blocks/hooks/units/useWakeListBlock'
-import type { Ask } from '@/services/lego_blocks/units/aiActivityAskBlock'
+import type { Note } from '@/services/lego_blocks/units/aiActivityNoteBlock'
 
 // A Home card: the open-questions wake list. Asks from the old organizer that no
 // undertaking has discharged — questions posed and not yet pursued. Project
-// chips at the top (same shape as the AI-activity card), open asks grouped by
+// chips at the top (same shape as the AI-activity card), open notes grouped by
 // category and sorted oldest-first, so the longest-open questions surface. This
 // is the forward half of the loop, which is why it lives on Home (open loops)
 // rather than the retrospective org tab.
@@ -23,12 +23,12 @@ function ageLabel(openedDate: string): string {
 }
 
 export default function WakeListBlock() {
-  const { projects, selected, select, asks, loadingProjects, loadingAsks, error } = useWakeListBlock()
+  const { projects, selected, select, notes, loadingProjects, loadingNotes, error } = useWakeListBlock()
 
   const grouped = useMemo(() => {
-    if (!asks) return []
-    const byCat = new Map<string, Ask[]>()
-    for (const ask of asks.open) {
+    if (!notes) return []
+    const byCat = new Map<string, Note[]>()
+    for (const ask of notes.open) {
       const arr = byCat.get(ask.category) ?? []
       arr.push(ask)
       byCat.set(ask.category, arr)
@@ -38,7 +38,7 @@ export default function WakeListBlock() {
     return [...byCat.entries()]
       .map(([category, list]) => ({ category, list }))
       .sort((a, b) => (a.list[0]?.openedDate ?? '').localeCompare(b.list[0]?.openedDate ?? ''))
-  }, [asks])
+  }, [notes])
 
   // Nothing to wake on anywhere → render nothing rather than an empty card.
   if (loadingProjects) return null
@@ -48,9 +48,9 @@ export default function WakeListBlock() {
     <section className="rounded-xl border border-border/40 bg-card/40 p-4">
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">Open questions</h3>
-        {asks && (
+        {notes && (
           <span className="text-[11px] text-muted-foreground/70">
-            {asks.dischargedCount} of {asks.totalAsks} answered
+            {notes.answeredCount} of {notes.totalNotes} answered
           </span>
         )}
       </div>
@@ -76,13 +76,13 @@ export default function WakeListBlock() {
       )}
 
       {error && <p className="text-xs text-destructive">{error}</p>}
-      {loadingAsks && <p className="text-xs text-muted-foreground">Loading…</p>}
+      {loadingNotes && <p className="text-xs text-muted-foreground">Loading…</p>}
 
-      {!loadingAsks && asks && asks.open.length === 0 && (
+      {!loadingNotes && notes && notes.open.length === 0 && (
         <p className="text-xs text-muted-foreground/70">Nothing open — every ask has been answered.</p>
       )}
 
-      {!loadingAsks && grouped.length > 0 && (
+      {!loadingNotes && grouped.length > 0 && (
         <div className="space-y-3">
           {grouped.map(({ category, list }) => (
             <div key={category}>

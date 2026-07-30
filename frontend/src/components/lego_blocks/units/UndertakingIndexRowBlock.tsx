@@ -6,8 +6,9 @@ import type { UndertakingIndexRow } from '@/services/orchestrators/aiActivityUnd
 // — the List row's look, minus its work-item chrome. The head is the title; the
 // tags are the same coloured pills the List uses; the attention gutter (density
 // sparkline + pointer count) sits where a List row keeps its status control.
-// Below the row, the asks this undertaking discharged reconcile as ◇→ sublines
-// — the question beneath the answer, so the ask→undertaking loop is legible.
+// Below the row, the migrating notes that fed this undertaking reconcile as ◇→
+// sublines — the question beneath the answer, so the note→undertaking loop is
+// legible.
 
 interface Props {
   row: UndertakingIndexRow
@@ -38,12 +39,12 @@ export default function UndertakingIndexRowBlock({ row, colorIndex, onOpen }: Pr
         </>
       }
       subRows={
-        row.discharged.length > 0 ? (
+        row.fedNotes.length > 0 ? (
           <ul className="mb-0.5 ml-7 mt-px space-y-px">
-            {row.discharged.map(ask => (
-              <li key={ask.key} className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground/60">
+            {row.fedNotes.map(note => (
+              <li key={note.key} className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground/60">
                 <span className="shrink-0 text-muted-foreground/40" aria-hidden>◇→</span>
-                <span className="truncate" title={`${ask.key} — ${ask.title}`}>{ask.title}</span>
+                <span className="truncate" title={`${note.key} — ${note.title}`}>{note.title}</span>
               </li>
             ))}
           </ul>

@@ -44,19 +44,19 @@ export interface UndertakingRecord {
   tags: string[]
   /** Kai's suggestions, pending promotion or dismissal. */
   proposedTags: string[]
-  /** Causal edges — `grew_out_of` in the file. Deliberately sparse. */
+  /** The undertaking this one grew out of — doing→doing lineage. Sparse. */
   grewOutOf: string[]
-  /** Seam edges to the old organizer's asks (open questions/ideas that predate
-   *  the chains). `discharges` = asks this undertaking answered; `produces` =
-   *  asks it raised. Pointers to old-store keys (e.g. `F9-QT-E-318`); the asks
-   *  are never migrated, only referenced. An ask no undertaking discharges is,
-   *  by derivation, still open — the wake list. */
-  discharges: string[]
-  produces: string[]
+  /** Everything that fed this undertaking: the old organizer's notes it took up
+   *  (keys like `F9-QT-E-318`) and chain-strands filed elsewhere that carry work
+   *  for it (keys like `F9::native/…`). The two are told apart by shape. A note
+   *  that fed no undertaking is, by that fact, still open — the wake list. */
+  fedBy: string[]
+  /** Notes this undertaking produced — new questions or findings the work threw
+   *  up. Pointers to note keys; the note's own kind says whether it's still to
+   *  explore. */
+  produced: string[]
   /** Chains that primarily belong to this undertaking. Pointers, not content. */
   chains: string[]
-  /** Chains filed elsewhere that carry a strand belonging here too. */
-  alsoFedBy: string[]
   /** Vault/repo pointers — the index's page numbers. */
   files: string[]
   /** Provenance: which pass created this record. */
@@ -135,10 +135,17 @@ export function parseUndertakingBlock(content: string): UndertakingRecord | null
     tags: asStringArray(parsed.tags),
     proposedTags: asStringArray(parsed.proposed_tags),
     grewOutOf: asStringArray(parsed.grew_out_of),
-    discharges: asStringArray(parsed.discharges),
-    produces: asStringArray(parsed.produces),
+    // `fed_by` merges what were once two fields: `discharges` (notes) and
+    // `also_fed_by` (chain-strands). Legacy names are still read so a record
+    // written before the rename keeps loading; serialize only ever writes
+    // `fed_by`, so it heals on the next save.
+    fedBy: [
+      ...asStringArray(parsed.fed_by),
+      ...asStringArray(parsed.discharges),
+      ...asStringArray(parsed.also_fed_by),
+    ],
+    produced: [...asStringArray(parsed.produced), ...asStringArray(parsed.produces)],
     chains: asStringArray(parsed.chains),
-    alsoFedBy: asStringArray(parsed.also_fed_by),
     files: asStringArray(parsed.files),
     origin: asString(parsed.origin),
     head: body.trim(),
@@ -170,15 +177,14 @@ export function serializeUndertakingBlock(record: UndertakingRecord): string {
     proposed_tags: record.proposedTags,
     grew_out_of: record.grewOutOf,
     chains: record.chains,
-    also_fed_by: record.alsoFedBy,
     files: record.files,
     origin: record.origin,
   }
   // Seam edges are emitted only when present. Unlike `files` (an empty array is
-  // a recorded gap), most undertakings discharge or produce nothing, and that
-  // is the ordinary case, not a gap worth a line on every record.
-  if (record.discharges.length) frontmatter.discharges = record.discharges
-  if (record.produces.length) frontmatter.produces = record.produces
+  // a recorded gap), most undertakings feed or produce nothing, and that is the
+  // ordinary case, not a gap worth a line on every record.
+  if (record.fedBy.length) frontmatter.fed_by = record.fedBy
+  if (record.produced.length) frontmatter.produced = record.produced
 
   const yamlStr = yaml
     .dump(frontmatter, { lineWidth: -1, noRefs: true, sortKeys: false, quotingType: '"' })

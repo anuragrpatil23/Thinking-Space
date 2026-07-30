@@ -30,7 +30,7 @@ interface Props {
   tags?: string[]
   /** The attention gutter (sparkline + count, or age) — right-aligned. */
   rightSlot?: ReactNode
-  /** Reconciliation sublines (◇→ discharged asks) rendered under the row. */
+  /** Reconciliation sublines (◇→ discharged notes) rendered under the row. */
   subRows?: ReactNode
   onClick?: () => void
 }

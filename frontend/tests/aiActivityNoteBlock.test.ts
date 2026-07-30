@@ -1,30 +1,30 @@
 import { describe, expect, it } from 'vitest'
 import {
-  askCategoryCodeBlock,
-  askCategoryLabelBlock,
-  parseAskMarkdownBlock,
-} from '@/services/lego_blocks/units/aiActivityAskBlock'
+  noteCategoryCodeBlock,
+  noteCategoryLabelBlock,
+  parseNoteMarkdownBlock,
+} from '@/services/lego_blocks/units/aiActivityNoteBlock'
 
-describe('askCategoryCodeBlock', () => {
+describe('noteCategoryCodeBlock', () => {
   it('extracts the category code from an ask key, case-insensitively', () => {
-    expect(askCategoryCodeBlock('f9-qt-e-318')).toBe('QT')
-    expect(askCategoryCodeBlock('F9-IDE-E-429')).toBe('IDE')
-    expect(askCategoryCodeBlock('f9-ic-e-499')).toBe('IC')
+    expect(noteCategoryCodeBlock('f9-qt-e-318')).toBe('QT')
+    expect(noteCategoryCodeBlock('F9-IDE-E-429')).toBe('IDE')
+    expect(noteCategoryCodeBlock('f9-ic-e-499')).toBe('IC')
   })
   it('returns empty for a key that is not the ask shape', () => {
-    expect(askCategoryCodeBlock('f9-und-micron-memory-cycle')).toBe('')
+    expect(noteCategoryCodeBlock('f9-und-micron-memory-cycle')).toBe('')
   })
 })
 
-describe('askCategoryLabelBlock', () => {
+describe('noteCategoryLabelBlock', () => {
   it('labels known codes and falls back to the code itself', () => {
-    expect(askCategoryLabelBlock('QT')).toBe('Questions to research')
-    expect(askCategoryLabelBlock('IC')).toBe('Interesting companies')
-    expect(askCategoryLabelBlock('ZZ')).toBe('ZZ')
+    expect(noteCategoryLabelBlock('QT')).toBe('Questions to research')
+    expect(noteCategoryLabelBlock('IC')).toBe('Interesting companies')
+    expect(noteCategoryLabelBlock('ZZ')).toBe('ZZ')
   })
 })
 
-describe('parseAskMarkdownBlock', () => {
+describe('parseNoteMarkdownBlock', () => {
   const epic = `---
 uuid: a1
 key: f9-ic-e-499
@@ -41,7 +41,7 @@ Understand LAM Research.
 `
 
   it('parses an epic into an ask with category and opened date', () => {
-    const ask = parseAskMarkdownBlock(epic)
+    const ask = parseNoteMarkdownBlock(epic)
     expect(ask).not.toBeNull()
     expect(ask!.key).toBe('f9-ic-e-499')
     expect(ask!.categoryCode).toBe('IC')
@@ -51,10 +51,10 @@ Understand LAM Research.
 
   it('rejects a non-epic record_kind', () => {
     const program = epic.replace('record_kind: epic', 'record_kind: program')
-    expect(parseAskMarkdownBlock(program)).toBeNull()
+    expect(parseNoteMarkdownBlock(program)).toBeNull()
   })
 
   it('returns null on a file without frontmatter', () => {
-    expect(parseAskMarkdownBlock('just text')).toBeNull()
+    expect(parseNoteMarkdownBlock('just text')).toBeNull()
   })
 })

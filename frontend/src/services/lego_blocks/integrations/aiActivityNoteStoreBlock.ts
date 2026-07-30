@@ -1,29 +1,29 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
-import { parseAskMarkdownBlock, type Ask } from '@/services/lego_blocks/units/aiActivityAskBlock'
+import { parseNoteMarkdownBlock, type Note } from '@/services/lego_blocks/units/aiActivityNoteBlock'
 
-// Reads the old organizer's asks. They live beside the project, under its vault
+// Reads the old organizer's notes. They live beside the project, under its vault
 // path — `<projectRoot>/thinking-organizer/epics/` — not in `ai-activity/`,
 // because they are Anurag's hand-written records, the other half of the loop.
 // Read-only here: the seam never edits the old store.
 
-export function askEpicsDirBlock(projectRoot: string): string {
+export function noteDirBlock(projectRoot: string): string {
   return `${projectRoot.replace(/\/+$/, '')}/thinking-organizer/epics`
 }
 
-export async function listAsksBlock(projectRoot: string): Promise<Ask[]> {
+export async function listNotesBlock(projectRoot: string): Promise<Note[]> {
   const fs = getVaultFS()
-  const dir = askEpicsDirBlock(projectRoot)
+  const dir = noteDirBlock(projectRoot)
   let names: string[] = []
   try {
     names = (await fs.list(dir)).files.filter(name => name.endsWith('.md'))
   } catch {
     return []
   }
-  const out: Ask[] = []
+  const out: Note[] = []
   for (const name of names) {
     try {
-      const ask = parseAskMarkdownBlock(await fs.read(`${dir}/${name}`))
-      if (ask) out.push(ask)
+      const note = parseNoteMarkdownBlock(await fs.read(`${dir}/${name}`))
+      if (note) out.push(note)
     } catch {
       // A half-finished hand edit skips, never breaks the list.
     }

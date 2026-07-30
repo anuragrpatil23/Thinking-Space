@@ -18,8 +18,8 @@ import {
   type ChainEntry,
 } from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
 import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
-import { listAsksBlock } from '@/services/lego_blocks/integrations/aiActivityAskStoreBlock'
-import { askCategoryLabelBlock, type Ask } from '@/services/lego_blocks/units/aiActivityAskBlock'
+import { listNotesBlock } from '@/services/lego_blocks/integrations/aiActivityNoteStoreBlock'
+import { noteCategoryLabelBlock, type Note } from '@/services/lego_blocks/units/aiActivityNoteBlock'
 import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
 import { readCachedProjectRegistryBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
@@ -167,7 +167,7 @@ function buildTail(chains: ChainEntry[]): UndertakingTail {
 // the one threaded in from the caller.
 async function chainsFor(projectId: string, record: UndertakingRecord): Promise<ChainEntry[]> {
   const all = await listChainsBlock({ projectId })
-  const wanted = new Set([...record.chains, ...record.alsoFedBy])
+  const wanted = new Set([...record.chains, ...record.fedBy])
   return all.filter(
     chain => wanted.has(chain.chainKey) || chain.undertaking.includes(record.key),
   )
@@ -183,7 +183,7 @@ export async function listUndertakingsOrch(
   // vault walk per undertaking, which on F9 alone is 32 walks of the same tree.
   const all = await listChainsBlock({ projectId })
   return filtered.map(record => {
-    const wanted = new Set([...record.chains, ...record.alsoFedBy])
+    const wanted = new Set([...record.chains, ...record.fedBy])
     const mine = all.filter(
       chain => wanted.has(chain.chainKey) || chain.undertaking.includes(record.key),
     )
@@ -201,39 +201,39 @@ export async function getUndertakingOrch(
   return { record, tail: buildTail(chains), chains }
 }
 
-// ── The wake list (open asks from the old organizer) ──────────────────────
+// ── The wake list (open notes from the old organizer) ──────────────────────
 
-export interface OpenAsksResult {
-  /** Asks no undertaking discharges — the wake list, oldest first. */
-  open: Ask[]
-  /** Asks the seam edges account for (discharged), for a "N of M closed" read. */
-  dischargedCount: number
-  totalAsks: number
+export interface OpenNotesResult {
+  /** Notes no undertaking has fed on — the wake list, oldest first. */
+  open: Note[]
+  /** Notes the seam edges account for (fed), for a "N of M answered" read. */
+  answeredCount: number
+  totalNotes: number
 }
 
-export interface AskProject {
+export interface NoteProject {
   /** Registry display name. */
   name: string
   /** ai-activity project id (undertakings dir) — the project-root basename. */
   projectId: string
   /** Vault-relative root holding the old organizer (`<root>/thinking-organizer`). */
   projectRoot: string
-  /** Total asks in the old organizer — cheap signal for chip ordering. */
+  /** Total notes in the old organizer — cheap signal for chip ordering. */
   askCount: number
 }
 
 /**
- * Projects that have an old organizer with asks — the chips for the wake list.
+ * Projects that have an old organizer with notes — the chips for the wake list.
  * Discovered off the project registry: for each registered project, the first
- * vault-relative path whose `thinking-organizer/epics` holds asks. Code-repo
+ * vault-relative path whose `thinking-organizer/epics` holds notes. Code-repo
  * roots (absolute, outside the vault) can't hold an organizer, so they're
  * skipped. Empty when no project has been given a registry path yet.
  */
-export async function listAskProjectsOrch(): Promise<AskProject[]> {
+export async function listNoteProjectsOrch(): Promise<NoteProject[]> {
   await loadProjectRegistryBlock()
   const entries = readCachedProjectRegistryBlock()
   const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
-  const out: AskProject[] = []
+  const out: NoteProject[] = []
   const seen = new Set<string>()
   for (const entry of entries) {
     for (const abs of entry.paths) {
@@ -242,12 +242,12 @@ export async function listAskProjectsOrch(): Promise<AskProject[]> {
       else if (vaultRoot && abs.startsWith(`${vaultRoot}/`)) rel = abs.slice(vaultRoot.length + 1)
       else if (!abs.startsWith('/')) rel = abs
       if (rel === null) continue
-      const asks = await listAsksBlock(rel)
-      if (asks.length === 0) continue
+      const notes = await listNotesBlock(rel)
+      if (notes.length === 0) continue
       const projectId = rel.split('/').pop() || entry.project
       if (seen.has(projectId)) continue
       seen.add(projectId)
-      out.push({ name: entry.project, projectId, projectRoot: rel, askCount: asks.length })
+      out.push({ name: entry.project, projectId, projectRoot: rel, askCount: notes.length })
       break
     }
   }
@@ -256,27 +256,29 @@ export async function listAskProjectsOrch(): Promise<AskProject[]> {
 }
 
 /**
- * The wake list: old-organizer asks that no undertaking has discharged. Open is
- * derived, never stored — add a `discharges` edge and the ask drops off the
+ * The wake list: old-organizer notes that no undertaking has fed on. Open is
+ * derived, never stored — add a `fed_by` edge and the note drops off the
  * list on the next read. Keys are compared case-insensitively because the old
  * store lowercases them (`f9-qt-e-318`) while the seam edges carry the display
  * form (`F9-QT-E-318`).
  */
-export async function getOpenAsksOrch(params: {
+export async function getOpenNotesOrch(params: {
   projectId: string
   projectRoot: string
-}): Promise<OpenAsksResult> {
-  const [asks, undertakings] = await Promise.all([
-    listAsksBlock(params.projectRoot),
+}): Promise<OpenNotesResult> {
+  const [notes, undertakings] = await Promise.all([
+    listNotesBlock(params.projectRoot),
     listUndertakingsBlock(params.projectId),
   ])
-  const discharged = new Set<string>()
+  const fed = new Set<string>()
   for (const u of undertakings) {
-    for (const key of u.discharges) discharged.add(key.toUpperCase())
+    for (const key of u.fedBy) {
+      if (!key.includes('::')) fed.add(key.toUpperCase()) // note keys only, not chains
+    }
   }
-  const open = asks.filter(a => !discharged.has(a.key.toUpperCase()))
+  const open = notes.filter(a => !fed.has(a.key.toUpperCase()))
   open.sort((a, b) => (a.openedDate || '').localeCompare(b.openedDate || ''))
-  return { open, dischargedCount: asks.length - open.length, totalAsks: asks.length }
+  return { open, answeredCount: notes.length - open.length, totalNotes: notes.length }
 }
 
 // ── The lineage view (grew_out_of DAG) ────────────────────────────────────
@@ -306,9 +308,8 @@ export async function getUndertakingDagOrch(projectId: string): Promise<Undertak
 
 // ── The index view ───────────────────────────────────────────────────────
 
-/** An ask (old-organizer question/idea) that an undertaking discharged. The
- *  forward half of the loop, shown reconciled under the doing that answered it. */
-export interface DischargedAskRef {
+/** A note (old-organizer question/idea) resolved to its title, for display. */
+export interface NoteRef {
   key: string
   title: string
 }
@@ -320,10 +321,10 @@ export interface UndertakingIndexRow {
    *  strips is comparable — a flat zero-count strip reads as "written down,
    *  never worked on" against its neighbours. */
   buckets: DensityBucket[]
-  /** Asks this undertaking discharged, resolved to their titles. Rendered as
-   *  `◇→●` reconciliation sublines: the question, under the doing that answered
-   *  it. Empty for undertakings that discharged nothing. */
-  discharged: DischargedAskRef[]
+  /** Migrating notes (Questions) that fed this undertaking, resolved to titles.
+   *  Rendered as `◇→` sublines: the question, under the doing that answered it.
+   *  Empty when nothing migrating fed it. */
+  fedNotes: NoteRef[]
 }
 
 export interface UndertakingIndexSection {
@@ -332,13 +333,12 @@ export interface UndertakingIndexSection {
   rows: UndertakingIndexRow[]
 }
 
-/** One hand-written note (from the old organizer). The undertaking it fed, when
- *  it's a standing kind that stays in its section rather than migrating away. */
+/** One hand-written note (from the old organizer). */
 export interface NoteEntry {
-  ask: Ask
+  note: Note
   /** Set when a standing note (idea, missed idea, learning) fed an undertaking:
    *  it keeps its row and shows a link to what it fed, rather than vacating. */
-  dischargedInto?: { key: string; title: string }
+  fedInto?: { key: string; title: string }
 }
 
 /** Notes of one kind (Ideas, Questions, Missed Ideas, …), in their own section
@@ -364,25 +364,27 @@ export interface UndertakingIndex {
 // question, so it leaves its section and shows under the undertaking that
 // answered it. Every other kind is STANDING — an idea is a thesis, a missed idea
 // a permanent lesson, a learning is knowledge — so it stays in its section when
-// worked and only gains a link to what it fed. (Category codes from the ask key:
+// worked and only gains a link to what it fed. (Category codes from the note key:
 // QT = Questions to research.)
 const MIGRATING_NOTE_CODES = new Set(['QT'])
 
-export interface AskSeam {
+export interface NoteSeam {
   noteSections: NoteSection[]
-  /** Undertaking key → the *migrating* notes it discharged (rendered as ◇→
+  /** Undertaking key → the *migrating* notes that fed it (rendered as ◇→
    *  sublines under the doing). Standing notes are not here — they stay in their
    *  own section, carrying a link back instead. */
-  discharged: Map<string, DischargedAskRef[]>
+  fedNotes: Map<string, NoteRef[]>
 }
 
 /**
- * The note↔undertaking join, derived — never stored. Splits by kind:
+ * The note↔undertaking join, derived — never stored. An undertaking's `fedBy`
+ * holds both note keys and chain keys; only the notes matter here (chain keys
+ * carry `::`). Split by kind:
  *
- * - A **migrating** note (a Question) that got discharged leaves its section and
- *   is handed back as a subline under the undertaking that answered it.
+ * - A **migrating** note (a Question) that fed an undertaking leaves its section
+ *   and is handed back as a subline under the undertaking it fed.
  * - A **standing** note (Idea, Missed Idea, learning…) always keeps its row in
- *   its own section; if it fed an undertaking it carries a link (`dischargedInto`)
+ *   its own section; if it fed an undertaking it carries a link (`fedInto`)
  *   rather than vacating — because a thesis or a lesson doesn't stop existing
  *   once it's been acted on.
  *
@@ -390,50 +392,51 @@ export interface AskSeam {
  * sections with no link. Keys compare case-insensitively — the old store
  * lowercases them, the seam edges carry the display form.
  */
-export function buildAskSeamBlock(asks: Ask[], records: UndertakingRecord[], _nowMs: number): AskSeam {
-  const byKey = new Map<string, Ask>()
-  for (const ask of asks) byKey.set(ask.key.toUpperCase(), ask)
+export function buildNoteSeamBlock(notes: Note[], records: UndertakingRecord[], _nowMs: number): NoteSeam {
+  const byKey = new Map<string, Note>()
+  for (const note of notes) byKey.set(note.key.toUpperCase(), note)
 
   const migratedAway = new Set<string>()
-  const discharged = new Map<string, DischargedAskRef[]>()
-  const dischargedInto = new Map<string, { key: string; title: string }>()
+  const fedNotes = new Map<string, NoteRef[]>()
+  const fedInto = new Map<string, { key: string; title: string }>()
   for (const record of records) {
-    const refs: DischargedAskRef[] = []
-    for (const raw of record.discharges) {
+    const refs: NoteRef[] = []
+    for (const raw of record.fedBy) {
+      if (raw.includes('::')) continue // a chain-strand, not a note
       const up = raw.toUpperCase()
-      const ask = byKey.get(up)
-      // A dangling edge (no matching ask) is treated as migrating — shown as a
+      const note = byKey.get(up)
+      // A dangling edge (no matching note) is treated as migrating — shown as a
       // subline, never a phantom section-dweller.
-      const migrating = ask ? MIGRATING_NOTE_CODES.has(ask.categoryCode) : true
+      const migrating = note ? MIGRATING_NOTE_CODES.has(note.categoryCode) : true
       if (migrating) {
-        refs.push({ key: ask?.key ?? raw, title: ask?.title ?? raw })
+        refs.push({ key: note?.key ?? raw, title: note?.title ?? raw })
         migratedAway.add(up)
       } else {
-        dischargedInto.set(up, { key: record.key, title: record.title })
+        fedInto.set(up, { key: record.key, title: record.title })
       }
     }
-    if (refs.length) discharged.set(record.key, refs)
+    if (refs.length) fedNotes.set(record.key, refs)
   }
 
   const byCategory = new Map<string, NoteEntry[]>()
-  for (const ask of asks) {
-    if (migratedAway.has(ask.key.toUpperCase())) continue
-    const list = byCategory.get(ask.categoryCode) ?? []
-    list.push({ ask, dischargedInto: dischargedInto.get(ask.key.toUpperCase()) })
-    byCategory.set(ask.categoryCode, list)
+  for (const note of notes) {
+    if (migratedAway.has(note.key.toUpperCase())) continue
+    const list = byCategory.get(note.categoryCode) ?? []
+    list.push({ note, fedInto: fedInto.get(note.key.toUpperCase()) })
+    byCategory.set(note.categoryCode, list)
   }
 
   const noteSections: NoteSection[] = [...byCategory.entries()].map(([code, list]) => ({
     code,
-    title: askCategoryLabelBlock(code),
-    notes: list.sort((a, b) => (a.ask.openedDate || '').localeCompare(b.ask.openedDate || '')),
+    title: noteCategoryLabelBlock(code),
+    notes: list.sort((a, b) => (a.note.openedDate || '').localeCompare(b.note.openedDate || '')),
   }))
   // Kinds ordered by their oldest note, so the arrangement is stable.
   noteSections.sort(
-    (a, b) => (a.notes[0]?.ask.openedDate || '').localeCompare(b.notes[0]?.ask.openedDate || ''),
+    (a, b) => (a.notes[0]?.note.openedDate || '').localeCompare(b.notes[0]?.note.openedDate || ''),
   )
 
-  return { noteSections, discharged }
+  return { noteSections, fedNotes }
 }
 
 const INDEX_SPARKLINE_BUCKETS = 24
@@ -455,10 +458,10 @@ export async function getUndertakingIndexOrch(
   const [views, sections, askRoot] = await Promise.all([
     listUndertakingsOrch(projectId),
     listSectionsBlock(projectId),
-    askRootForProjectBlock(projectId),
+    noteRootForProjectBlock(projectId),
   ])
-  const asks = askRoot !== null ? await listAsksBlock(askRoot) : []
-  const seam = buildAskSeamBlock(asks, views.map(v => v.record), Date.now())
+  const notes = askRoot !== null ? await listNotesBlock(askRoot) : []
+  const seam = buildNoteSeamBlock(notes, views.map(v => v.record), Date.now())
 
   // Shared window across every dated entry, so all strips align.
   let windowStart = ''
@@ -476,7 +479,7 @@ export async function getUndertakingIndexOrch(
   const rowFor = (view: UndertakingView): UndertakingIndexRow => ({
     record: view.record,
     tail: view.tail,
-    discharged: seam.discharged.get(view.record.key) ?? [],
+    fedNotes: seam.fedNotes.get(view.record.key) ?? [],
     buckets: windowStart
       ? bucketDensityBlock(
           view.tail.density.map(d => ({
@@ -522,10 +525,10 @@ export async function getUndertakingIndexOrch(
  * organizer`), resolved off the registry by matching the chain-directory id
  * (the path's basename) to `projectId`. Null when no registered path resolves —
  * a code-repo root (absolute, outside the vault) or a project with no registry
- * entry. Kept lean (no ask reads) because the index loads on every tab open;
- * listAskProjectsOrch does the same resolution but also counts asks per project.
+ * entry. Kept lean (no note reads) because the index loads on every tab open;
+ * listNoteProjectsOrch does the same resolution but also counts notes per project.
  */
-async function askRootForProjectBlock(projectId: string): Promise<string | null> {
+async function noteRootForProjectBlock(projectId: string): Promise<string | null> {
   await loadProjectRegistryBlock()
   const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
   for (const entry of readCachedProjectRegistryBlock()) {

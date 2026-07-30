@@ -44,7 +44,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
 
   return (
     <div className="space-y-5">
-      {/* Undertakings (doings) — retrospective. Each carries its reconciled asks. */}
+      {/* Undertakings (doings) — retrospective. Each carries its reconciled notes. */}
       {index!.sections.map(section => (
         <section key={section.key}>
           <h2 className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -79,7 +79,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
           </h2>
           <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
             {section.notes.map((entry, i) => (
-              <OrganizerNoteRowBlock key={entry.ask.key} entry={entry} colorIndex={i} />
+              <OrganizerNoteRowBlock key={entry.note.key} entry={entry} colorIndex={i} />
             ))}
           </div>
         </section>

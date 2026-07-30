@@ -15,20 +15,20 @@ interface Props {
 }
 
 export default function OrganizerNoteRowBlock({ entry, colorIndex }: Props) {
-  const { ask, dischargedInto } = entry
+  const { note, fedInto } = entry
 
   return (
     <OrganizerRowShellBlock
       colorIndex={colorIndex}
-      idBadge={ask.key.toUpperCase()}
-      title={ask.title}
+      idBadge={note.key.toUpperCase()}
+      title={note.title}
       rightSlot={
-        dischargedInto ? (
+        fedInto ? (
           <span
             className="max-w-[16rem] truncate text-[11px] text-muted-foreground/60"
-            title={`Fed: ${dischargedInto.title}`}
+            title={`Fed: ${fedInto.title}`}
           >
-            → {dischargedInto.title}
+            → {fedInto.title}
           </span>
         ) : undefined
       }
