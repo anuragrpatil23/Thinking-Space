@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BookText, Check, FolderTree, LayoutDashboard, List, Loader2, Pencil, Plus, X } from 'lucide-react'
+import { BookText, Check, FolderTree, LayoutDashboard, List, Loader2, Network, Pencil, Plus, X } from 'lucide-react'
 import UndertakingIndexBlock from '@/components/lego_blocks/integrations/UndertakingIndexBlock'
+import UndertakingDagBlock from '@/components/lego_blocks/integrations/UndertakingDagBlock'
 import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
@@ -46,9 +47,11 @@ const ORGANIZER_PRIMARY_VIEW_KEY = 'organizer_primary_view'
 // The org tab's top-level view. 'index' is the Thinking Organizer index (the
 // new primary); 'list'/'canvas' are the existing backlog sub-views, kept during
 // the transition off the work-item model.
-type OrgView = 'index' | 'list' | 'canvas'
+type OrgView = 'index' | 'lineage' | 'list' | 'canvas'
 function parseOrgView(value: string | null): OrgView {
-  return value === 'index' || value === 'list' || value === 'canvas' ? value : 'index'
+  return value === 'index' || value === 'lineage' || value === 'list' || value === 'canvas'
+    ? value
+    : 'index'
 }
 
 interface ProjectEntry {
@@ -120,6 +123,10 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
   )
   const projectRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
+  // The ai-activity project id the index/lineage views key on. Today it's the
+  // project-root basename, matching how chains are attributed; the registry
+  // (D9) will canonicalize this so folder variants collapse to one project.
+  const aiProjectId = projectRoot ? projectRoot.split('/').pop() ?? null : null
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -365,6 +372,7 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
               ariaLabel="Organizer view"
               options={[
                 { value: 'index', label: 'Index', icon: BookText, title: 'Thinking Organizer index' },
+                { value: 'lineage', label: 'Lineage', icon: Network, title: 'grew_out_of lineage' },
                 { value: 'list', label: 'List', icon: List, title: 'Backlog list view' },
                 { value: 'canvas', label: 'Canvas', icon: LayoutDashboard, title: 'Canvas view' },
               ]}
@@ -372,9 +380,9 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
           </div>
           {orgView !== 'canvas' && headerBlock}
           {orgView === 'index' ? (
-            <UndertakingIndexBlock
-              projectId={projectRoot ? projectRoot.split('/').pop() ?? null : null}
-            />
+            <UndertakingIndexBlock projectId={aiProjectId} />
+          ) : orgView === 'lineage' ? (
+            <UndertakingDagBlock projectId={aiProjectId} />
           ) : (
             <BacklogOrch
               view={orgView === 'canvas' ? 'canvas' : 'list'}

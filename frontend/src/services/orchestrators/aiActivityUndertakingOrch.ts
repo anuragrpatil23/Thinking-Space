@@ -23,6 +23,10 @@ import {
   type DensityBucket,
   type DensityDay,
 } from '@/services/lego_blocks/units/aiActivityDensityBlock'
+import {
+  layoutUndertakingDagBlock,
+  type DagLayout,
+} from '@/services/lego_blocks/units/undertakingDagLayoutBlock'
 
 /**
  * The index view: a head Anurag wrote, plus a tail derived on read.
@@ -179,6 +183,31 @@ export async function getUndertakingOrch(
   const record = await getUndertakingBlock(projectId, key)
   if (!record) return null
   return { record, tail: buildTail(await chainsFor(record)) }
+}
+
+// ── The lineage view (grew_out_of DAG) ────────────────────────────────────
+
+export interface UndertakingDag {
+  layout: DagLayout
+  /** Count of undertakings with no lineage edge — shown in the list, not here. */
+  isolatedCount: number
+}
+
+/**
+ * The grew_out_of DAG for a project: which undertakings grew out of which.
+ * Edge direction is ancestor → descendant, the way understanding flowed — for a
+ * record with `grew_out_of: [P]`, the edge is P → this. Only undertakings that
+ * take part in an edge appear; the rest are counted so the UI can say how many
+ * have no lineage yet.
+ */
+export async function getUndertakingDagOrch(projectId: string): Promise<UndertakingDag> {
+  const records = await listUndertakingsBlock(projectId)
+  const nodes = records.map(r => ({ key: r.key, title: r.title }))
+  const edges = records.flatMap(r => r.grewOutOf.map(from => ({ from, to: r.key })))
+  const layout = layoutUndertakingDagBlock(nodes, edges)
+  const included = new Set(layout.nodes.map(n => n.key))
+  const isolatedCount = records.filter(r => !included.has(r.key)).length
+  return { layout, isolatedCount }
 }
 
 // ── The index view ───────────────────────────────────────────────────────
