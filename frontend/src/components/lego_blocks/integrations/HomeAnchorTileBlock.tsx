@@ -316,7 +316,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
           chrome (like the flat home), grows the canvas world with its content,
           and collapses to nothing when no project has open asks. */}
       <FloatingPanel {...wakeList} variant="text" theme={theme} innerRef={wakeListRef}>
-        <WakeListBlock />
+        <WakeListBlock theme={theme} />
       </FloatingPanel>
 
       {SHOW_SECONDARY_PANELS && (

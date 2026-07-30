@@ -141,7 +141,7 @@ export default function HomeFlatOrch() {
             <ThisWeekDigestBlock />
           </FlatPanel>
 
-          <WakeListBlock />
+          <WakeListBlock theme={theme} />
 
           <HomeBoardFeedBlock />
         </div>

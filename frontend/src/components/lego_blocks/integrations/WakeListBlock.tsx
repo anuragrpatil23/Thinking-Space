@@ -1,12 +1,21 @@
 import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { useWakeListBlock } from '@/components/lego_blocks/hooks/units/useWakeListBlock'
+import type { CanvasThemeTokens } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 
 // A quick Home card: the open questions — Questions-to-research (QT) notes from
 // the old organizer that no undertaking has answered, oldest first. A lean
 // glance ("what did I wonder and never look into"), not the full wake list —
 // that lives in the organizer index, across every note kind. Project chips at
 // the top when more than one project has open questions.
+//
+// It brings its own panel chrome (rather than being wrapped in FlatPanel) so it
+// can return null and vanish when there's nothing open — but it uses the same
+// theme tokens FlatPanel does, so it reads as one of the Home cards.
+
+interface Props {
+  theme: CanvasThemeTokens
+}
 
 const DAY_MS = 86_400_000
 
@@ -20,7 +29,7 @@ function ageLabel(openedDate: string): string {
   return `${months.toFixed(months < 10 ? 1 : 0)} mo`
 }
 
-export default function WakeListBlock() {
+export default function WakeListBlock({ theme }: Props) {
   const { projects, selected, select, notes, loadingProjects, loadingNotes, error } = useWakeListBlock()
 
   // Just the open Questions, oldest first.
@@ -38,7 +47,15 @@ export default function WakeListBlock() {
   if (!loadingNotes && !error && questions.length === 0) return null
 
   return (
-    <section className="rounded-xl border border-border/40 bg-card/40 p-4">
+    <section
+      style={{
+        borderRadius: 14,
+        padding: 20,
+        background: theme.anchorPanelBg,
+        border: `1px solid ${theme.anchorPanelBorder}`,
+        boxShadow: theme.anchorPanelShadow,
+      }}
+    >
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">Open questions</h3>
         {questions.length > 0 && (
