@@ -14,19 +14,21 @@ import yaml from 'js-yaml'
 export interface Note {
   key: string
   title: string
-  /** Category code from the key (QT, IDE, MI, IC, …). */
+  /** Normalized category code from the key (QT, IDE, MIDE, IC, …). */
   categoryCode: string
   /** Human label for the category. */
   category: string
   /** ISO date the note was opened (`created_at`). */
   openedDate: string
+  /** The note's own tags (`project_preset_tags`) — Anurag's confidence grid
+   *  (`for sure for value`, `bucket 1`, …). Shown as pills on the row. */
+  tags: string[]
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
   QT: 'Questions to research',
   IDE: 'Ideas',
-  II: 'Identified ideas',
-  MI: 'Missed ideas',
+  MIDE: 'Missed ideas',
   IC: 'Interesting companies',
   KT: 'Key things',
   EL: 'Execution learnings',
@@ -35,14 +37,24 @@ const CATEGORY_LABELS: Record<string, string> = {
   ET: 'Execution to-dos',
   TD: 'Too difficult',
   TT: 'Things to remember',
-  TAX: 'Tax',
 }
 
-/** Category code embedded in a note key (`f9-qt-e-318` → `QT`), or '' if the
- *  key doesn't match the old organizer's `<project>-<CODE>-E-<n>` shape. */
+// Fold near-duplicate kinds onto one code: "Identified ideas" is just Ideas, and
+// "Missed ideas" reads as a variant of Ideas (MIDE). The raw code comes from the
+// historical key, which we never rewrite; the fold happens here on read.
+const CODE_ALIASES: Record<string, string> = {
+  II: 'IDE',
+  MI: 'MIDE',
+}
+
+/** Category code embedded in a note key (`f9-qt-e-318` → `QT`), folded onto its
+ *  canonical form, or '' if the key doesn't match the `<project>-<CODE>-E-<n>`
+ *  shape. */
 export function noteCategoryCodeBlock(key: string): string {
   const m = /^[a-z0-9]+-([a-z]+)-e-\d+/i.exec(key)
-  return m ? m[1].toUpperCase() : ''
+  if (!m) return ''
+  const raw = m[1].toUpperCase()
+  return CODE_ALIASES[raw] ?? raw
 }
 
 export function noteCategoryLabelBlock(code: string): string {
@@ -51,6 +63,20 @@ export function noteCategoryLabelBlock(code: string): string {
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : ''
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0).map(v => v.trim())
+}
+
+// The old organizer's title carries the ticket as a prefix ("F9-IDE-E-429 -
+// MSFT is great value"). The ticket now lives on the detail page, so strip it
+// for the row — but only when real text follows, so a title that is *only* a
+// ticket doesn't collapse to nothing.
+function stripTicketPrefix(title: string): string {
+  const stripped = title.replace(/^[a-z0-9]+-[a-z]+-e-\d+\s*[-–—:]\s*/i, '').trim()
+  return stripped || title
 }
 
 /** Parse one old-organizer epic file into an Note. Null when it isn't an epic
@@ -80,9 +106,10 @@ export function parseNoteMarkdownBlock(content: string): Note | null {
   const code = noteCategoryCodeBlock(key)
   return {
     key,
-    title: asString(parsed.title) || key,
+    title: stripTicketPrefix(asString(parsed.title) || key),
     categoryCode: code,
     category: noteCategoryLabelBlock(code),
     openedDate: asString(parsed.created_at).slice(0, 10),
+    tags: asStringArray(parsed.project_preset_tags),
   }
 }

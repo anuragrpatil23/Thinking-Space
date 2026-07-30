@@ -346,6 +346,7 @@ describe('buildNoteSeamBlock', () => {
     categoryCode,
     category: categoryCode,
     openedDate,
+    tags: [],
   })
   const NOW = Date.parse('2026-07-30T00:00:00.000Z')
 
@@ -379,13 +380,33 @@ describe('buildNoteSeamBlock', () => {
   it('orders note kinds by their oldest note', async () => {
     const notes = [
       ask('f9-ide-e-1', 'newer idea', 'IDE', '2026-06-01'),
-      ask('f9-mi-e-1', 'older missed idea', 'MI', '2026-02-01'),
+      ask('f9-mide-e-1', 'older missed idea', 'MIDE', '2026-02-01'),
     ]
     const { buildNoteSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const seam = buildNoteSeamBlock(notes, [], NOW)
 
     // Missed Ideas lead — their oldest note predates Ideas'.
-    expect(seam.noteSections.map(s => s.code)).toEqual(['MI', 'IDE'])
+    expect(seam.noteSections.map(s => s.code)).toEqual(['MIDE', 'IDE'])
+  })
+
+  it('migrates an Interesting-company note that fed a study, and back-links a produced note', async () => {
+    const notes = [
+      ask('f9-ic-e-499', 'LAM Research — learn more', 'IC', '2026-03-01'),
+      ask('f9-el-e-412', 'exit above the round number', 'EL', '2026-06-20'),
+    ]
+    const records = [
+      makeRecord({ key: 'u-lam', title: 'LAM — the study', fedBy: ['F9-IC-E-499'] }),
+      makeRecord({ key: 'u-review', title: 'June review', produced: ['F9-EL-E-412'] }),
+    ]
+    const { buildNoteSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const seam = buildNoteSeamBlock(notes, records, NOW)
+
+    // IC now migrates: the studied company leaves its section, tucks under the study.
+    expect(seam.fedNotes.get('u-lam')?.[0].title).toBe('LAM Research — learn more')
+    expect(seam.noteSections.some(s => s.code === 'IC')).toBe(false)
+    // The produced learning stays in its section with a back-link to its source.
+    const learnings = seam.noteSections.find(s => s.code === 'EL')
+    expect(learnings?.notes[0].producedBy?.title).toBe('June review')
   })
 })
 

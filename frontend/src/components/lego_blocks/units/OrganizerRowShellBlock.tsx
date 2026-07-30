@@ -22,9 +22,9 @@ interface Props {
   /** Row position within its section — indexes into the shared border palette,
    *  matching how the List colours sibling rows. */
   colorIndex: number
-  /** Mono ID chip (an ask's `F9-IDE-E-…` handle). Omitted for undertakings,
-   *  whose key would just echo the title. */
-  idBadge?: string
+  /** A small leading indicator glyph in the slot before the title (◇ untouched
+   *  / ◆ engaged, for notes). Omitted for undertakings. */
+  leadGlyph?: ReactNode
   title: string
   /** Coloured pills, same component and colouring as the List row. */
   tags?: string[]
@@ -37,7 +37,7 @@ interface Props {
 
 export default function OrganizerRowShellBlock({
   colorIndex,
-  idBadge,
+  leadGlyph,
   title,
   tags,
   rightSlot,
@@ -74,11 +74,7 @@ export default function OrganizerRowShellBlock({
           {formatRowOrdinal(colorIndex)}
         </sup>
 
-        {idBadge && (
-          <span className="hidden shrink-0 items-center rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:inline-flex">
-            {idBadge}
-          </span>
-        )}
+        {leadGlyph && <span className="shrink-0 text-[11px] leading-none">{leadGlyph}</span>}
 
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={title}>
           {title}

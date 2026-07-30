@@ -333,12 +333,16 @@ export interface UndertakingIndexSection {
   rows: UndertakingIndexRow[]
 }
 
-/** One hand-written note (from the old organizer). */
+/** One hand-written note (from the old organizer). A note is "engaged" when it
+ *  either fed an undertaking (`fedInto`) or was produced by one (`producedBy`);
+ *  a note with neither is still untouched — the wake list. */
 export interface NoteEntry {
   note: Note
-  /** Set when a standing note (idea, missed idea, learning) fed an undertaking:
-   *  it keeps its row and shows a link to what it fed, rather than vacating. */
+  /** Set when a standing note fed an undertaking — a `→` link to what it fed. */
   fedInto?: { key: string; title: string }
+  /** Set when the note was produced by an undertaking — a `←` link to its
+   *  source. The forward arm of the loop: the work threw up this note. */
+  producedBy?: { key: string; title: string }
 }
 
 /** Notes of one kind (Ideas, Questions, Missed Ideas, …), in their own section
@@ -366,7 +370,7 @@ export interface UndertakingIndex {
 // a permanent lesson, a learning is knowledge — so it stays in its section when
 // worked and only gains a link to what it fed. (Category codes from the note key:
 // QT = Questions to research.)
-const MIGRATING_NOTE_CODES = new Set(['QT'])
+const MIGRATING_NOTE_CODES = new Set(['QT', 'IC', 'ET', 'EO', 'TD'])
 
 export interface NoteSeam {
   noteSections: NoteSection[]
@@ -399,6 +403,7 @@ export function buildNoteSeamBlock(notes: Note[], records: UndertakingRecord[], 
   const migratedAway = new Set<string>()
   const fedNotes = new Map<string, NoteRef[]>()
   const fedInto = new Map<string, { key: string; title: string }>()
+  const producedBy = new Map<string, { key: string; title: string }>()
   for (const record of records) {
     const refs: NoteRef[] = []
     for (const raw of record.fedBy) {
@@ -416,13 +421,19 @@ export function buildNoteSeamBlock(notes: Note[], records: UndertakingRecord[], 
       }
     }
     if (refs.length) fedNotes.set(record.key, refs)
+    // Notes this undertaking produced stay in their own sections, tagged with a
+    // back-link to their source.
+    for (const raw of record.produced) {
+      producedBy.set(raw.toUpperCase(), { key: record.key, title: record.title })
+    }
   }
 
   const byCategory = new Map<string, NoteEntry[]>()
   for (const note of notes) {
     if (migratedAway.has(note.key.toUpperCase())) continue
+    const up = note.key.toUpperCase()
     const list = byCategory.get(note.categoryCode) ?? []
-    list.push({ note, fedInto: fedInto.get(note.key.toUpperCase()) })
+    list.push({ note, fedInto: fedInto.get(up), producedBy: producedBy.get(up) })
     byCategory.set(note.categoryCode, list)
   }
 
