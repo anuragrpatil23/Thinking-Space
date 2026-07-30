@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { BookText, Check, FolderTree, LayoutDashboard, List, Loader2, Network, Pencil, Plus, X } from 'lucide-react'
 import UndertakingIndexBlock from '@/components/lego_blocks/integrations/UndertakingIndexBlock'
 import UndertakingDagBlock from '@/components/lego_blocks/integrations/UndertakingDagBlock'
+import UndertakingDetailBlock from '@/components/lego_blocks/integrations/UndertakingDetailBlock'
 import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
@@ -109,6 +110,7 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   })
   const setOrgView = useCallback((next: OrgView) => {
     setOrgViewState(next)
+    setOpenUndertaking(null)
     if (typeof window !== 'undefined') window.localStorage.setItem(ORGANIZER_PRIMARY_VIEW_KEY, next)
     // Keep the backlog's own persisted sub-view in sync for list/canvas, so the
     // existing BacklogOrch reads the same choice.
@@ -127,6 +129,9 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   // project-root basename, matching how chains are attributed; the registry
   // (D9) will canonicalize this so folder variants collapse to one project.
   const aiProjectId = projectRoot ? projectRoot.split('/').pop() ?? null : null
+  // Which undertaking's detail page is open (null = the list/lineage view). The
+  // index and lineage both drill into the same page.
+  const [openUndertaking, setOpenUndertaking] = useState<string | null>(null)
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -158,6 +163,8 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
 
 
   useEffect(() => {
+    // A different project's undertaking must not stay open across a switch.
+    setOpenUndertaking(null)
     if (!projectRoot) { setProjectUiState(null); return }
     let cancelled = false
     void readOrganizerUiStateOrch(projectRoot).then(state => {
@@ -379,10 +386,16 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
             />
           </div>
           {orgView !== 'canvas' && headerBlock}
-          {orgView === 'index' ? (
-            <UndertakingIndexBlock projectId={aiProjectId} />
+          {(orgView === 'index' || orgView === 'lineage') && openUndertaking && aiProjectId ? (
+            <UndertakingDetailBlock
+              projectId={aiProjectId}
+              undertakingKey={openUndertaking}
+              onBack={() => setOpenUndertaking(null)}
+            />
+          ) : orgView === 'index' ? (
+            <UndertakingIndexBlock projectId={aiProjectId} onOpenUndertaking={setOpenUndertaking} />
           ) : orgView === 'lineage' ? (
-            <UndertakingDagBlock projectId={aiProjectId} />
+            <UndertakingDagBlock projectId={aiProjectId} onOpenUndertaking={setOpenUndertaking} />
           ) : (
             <BacklogOrch
               view={orgView === 'canvas' ? 'canvas' : 'list'}

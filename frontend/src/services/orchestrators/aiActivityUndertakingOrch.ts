@@ -58,6 +58,10 @@ export interface UndertakingTail {
 export interface UndertakingView {
   record: UndertakingRecord
   tail: UndertakingTail
+  /** The chains this undertaking is built from, collapsed by sitting — the same
+   *  set the tail is derived from. Present on `getUndertakingOrch` (the detail
+   *  page needs the per-chain trail); omitted from list views for weight. */
+  chains?: ChainEntry[]
 }
 
 /**
@@ -182,7 +186,8 @@ export async function getUndertakingOrch(
 ): Promise<UndertakingView | null> {
   const record = await getUndertakingBlock(projectId, key)
   if (!record) return null
-  return { record, tail: buildTail(await chainsFor(record)) }
+  const chains = collapseChainWindowsBlock(await chainsFor(record))
+  return { record, tail: buildTail(chains), chains }
 }
 
 // ── The lineage view (grew_out_of DAG) ────────────────────────────────────
