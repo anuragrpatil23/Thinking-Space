@@ -39,7 +39,7 @@ export default function UndertakingIndexRowBlock({ row, colorIndex, onOpen }: Pr
       }
       subRows={
         row.discharged.length > 0 ? (
-          <ul className="mb-0.5 ml-9 mt-px space-y-px">
+          <ul className="mb-0.5 ml-7 mt-px space-y-px">
             {row.discharged.map(ask => (
               <li key={ask.key} className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground/60">
                 <span className="shrink-0 text-muted-foreground/40" aria-hidden>◇→</span>

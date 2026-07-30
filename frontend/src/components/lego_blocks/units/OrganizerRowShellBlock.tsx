@@ -1,10 +1,9 @@
-import { Layers } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import TagChipListBlock from '@/components/lego_blocks/units/TagChipListBlock'
 import {
   EPIC_BORDER_PALETTE,
-  EPIC_ICON_COLOR_BY_BORDER,
+  formatRowOrdinal,
 } from '@/components/lego_blocks/units/BacklogListDomainBlock'
 
 // The shared presentational row for the Thinking Organizer index — the List
@@ -46,7 +45,6 @@ export default function OrganizerRowShellBlock({
   onClick,
 }: Props) {
   const borderColorClass = EPIC_BORDER_PALETTE[colorIndex % EPIC_BORDER_PALETTE.length]
-  const iconColorClass = EPIC_ICON_COLOR_BY_BORDER[borderColorClass] ?? 'text-muted-foreground'
   const interactive = Boolean(onClick)
 
   return (
@@ -66,12 +64,15 @@ export default function OrganizerRowShellBlock({
             : undefined
         }
         className={cn(
-          'flex items-center gap-2 border-l-[3px] bg-card px-3 py-1.5 transition-colors',
+          'flex items-center gap-2 rounded-md border border-border/50 border-l-[3px] bg-card px-3 py-1.5 transition-colors',
           borderColorClass,
           interactive && 'cursor-pointer hover:bg-zinc-50 focus:outline-none focus-visible:bg-zinc-50 dark:hover:bg-zinc-800/60 dark:focus-visible:bg-zinc-800/60',
         )}
       >
-        <Layers className={cn('h-4 w-4 shrink-0', iconColorClass)} />
+        {/* Row ordinal — the List's small superscript index. */}
+        <sup className="-ml-1 mt-0.5 shrink-0 self-start font-mono text-[9px] leading-none tabular-nums text-muted-foreground/45">
+          {formatRowOrdinal(colorIndex)}
+        </sup>
 
         {idBadge && (
           <span className="hidden shrink-0 items-center rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground sm:inline-flex">
