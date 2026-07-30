@@ -4,6 +4,7 @@ import MoonSceneBlock from '@/components/lego_blocks/units/MoonSceneBlock'
 import HomeWelcomeBlock from '@/components/lego_blocks/integrations/HomeWelcomeBlock'
 import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
 import ThisWeekDigestBlock from '@/components/lego_blocks/integrations/ThisWeekDigestBlock'
+import WakeListBlock from '@/components/lego_blocks/integrations/WakeListBlock'
 import HomeBoardFeedBlock from '@/components/lego_blocks/integrations/HomeBoardFeedBlock'
 import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 import { useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
@@ -139,6 +140,8 @@ export default function HomeFlatOrch() {
           <FlatPanel theme={theme}>
             <ThisWeekDigestBlock />
           </FlatPanel>
+
+          <WakeListBlock />
 
           <HomeBoardFeedBlock />
         </div>

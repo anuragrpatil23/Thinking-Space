@@ -20,6 +20,9 @@ import {
 import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
 import { listAsksBlock } from '@/services/lego_blocks/integrations/aiActivityAskStoreBlock'
 import type { Ask } from '@/services/lego_blocks/units/aiActivityAskBlock'
+import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
+import { readCachedProjectRegistryBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   bucketDensityBlock,
   type DensityBucket,
@@ -200,6 +203,50 @@ export interface OpenAsksResult {
   /** Asks the seam edges account for (discharged), for a "N of M closed" read. */
   dischargedCount: number
   totalAsks: number
+}
+
+export interface AskProject {
+  /** Registry display name. */
+  name: string
+  /** ai-activity project id (undertakings dir) — the project-root basename. */
+  projectId: string
+  /** Vault-relative root holding the old organizer (`<root>/thinking-organizer`). */
+  projectRoot: string
+  /** Total asks in the old organizer — cheap signal for chip ordering. */
+  askCount: number
+}
+
+/**
+ * Projects that have an old organizer with asks — the chips for the wake list.
+ * Discovered off the project registry: for each registered project, the first
+ * vault-relative path whose `thinking-organizer/epics` holds asks. Code-repo
+ * roots (absolute, outside the vault) can't hold an organizer, so they're
+ * skipped. Empty when no project has been given a registry path yet.
+ */
+export async function listAskProjectsOrch(): Promise<AskProject[]> {
+  await loadProjectRegistryBlock()
+  const entries = readCachedProjectRegistryBlock()
+  const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
+  const out: AskProject[] = []
+  const seen = new Set<string>()
+  for (const entry of entries) {
+    for (const abs of entry.paths) {
+      let rel: string | null = null
+      if (vaultRoot && abs === vaultRoot) rel = ''
+      else if (vaultRoot && abs.startsWith(`${vaultRoot}/`)) rel = abs.slice(vaultRoot.length + 1)
+      else if (!abs.startsWith('/')) rel = abs
+      if (rel === null) continue
+      const asks = await listAsksBlock(rel)
+      if (asks.length === 0) continue
+      const projectId = rel.split('/').pop() || entry.project
+      if (seen.has(projectId)) continue
+      seen.add(projectId)
+      out.push({ name: entry.project, projectId, projectRoot: rel, askCount: asks.length })
+      break
+    }
+  }
+  out.sort((a, b) => b.askCount - a.askCount || a.name.localeCompare(b.name))
+  return out
 }
 
 /**
