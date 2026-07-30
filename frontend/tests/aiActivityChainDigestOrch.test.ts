@@ -59,7 +59,7 @@ function digest(over: Partial<ProjectChainDigest> = {}): ProjectChainDigest {
     generator: 'local',
     filesWritten: [],
     filesRead: [],
-    undertaking: '',
+    undertaking: [],
     activeDurationMs: 0,
     ...over,
   }

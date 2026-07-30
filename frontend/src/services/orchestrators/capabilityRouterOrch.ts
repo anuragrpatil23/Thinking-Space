@@ -926,7 +926,9 @@ async function executeCapability<Name extends CapabilityName>(
     case 'ai_activity.assignment.record': {
       const payload = input as CapabilityInputMap['ai_activity.assignment.record']
       assertNonEmptyString(payload.sessionId, 'sessionId')
-      assertNonEmptyString(payload.undertaking, 'undertaking')
+      if (!Array.isArray(payload.undertakings) || payload.undertakings.length === 0) {
+        throw new Error('Missing required field: undertakings')
+      }
       const result = await recordAssignmentOrch(payload)
       return result as CapabilityOutputMap[Name]
     }

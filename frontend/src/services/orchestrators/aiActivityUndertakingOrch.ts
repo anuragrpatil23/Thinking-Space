@@ -144,7 +144,7 @@ async function chainsFor(record: UndertakingRecord): Promise<ChainEntry[]> {
   const all = await listChainsBlock({ projectId: record.projectId })
   const wanted = new Set([...record.chains, ...record.alsoFedBy])
   return all.filter(
-    chain => wanted.has(chain.chainKey) || chain.undertaking === record.key,
+    chain => wanted.has(chain.chainKey) || chain.undertaking.includes(record.key),
   )
 }
 
@@ -160,7 +160,7 @@ export async function listUndertakingsOrch(
   return filtered.map(record => {
     const wanted = new Set([...record.chains, ...record.alsoFedBy])
     const mine = all.filter(
-      chain => wanted.has(chain.chainKey) || chain.undertaking === record.key,
+      chain => wanted.has(chain.chainKey) || chain.undertaking.includes(record.key),
     )
     return { record, tail: buildTail(mine) }
   })
@@ -243,7 +243,7 @@ export async function tagUndertakingOrch(
 /** Answer the end-of-session ask. Keyed on session id — see the block's note. */
 export async function recordAssignmentOrch(params: {
   sessionId: string
-  undertaking: string
+  undertakings: string[]
   newTitle?: string
   section?: string
   projectId?: string

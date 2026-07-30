@@ -434,6 +434,31 @@ describe('capabilityRunner CLI arguments for ai_activity capabilities', () => {
     expect(payload.request.input).not.toHaveProperty('allowNew')
   })
 
+  it('coerces --undertakings to an array so a session can feed several', () => {
+    const { payload } = buildCLIInvokePayload('ai_activity.assignment.record', [
+      '--sessionId', '3f3ea0fb-0000',
+      '--undertakings', 'f9-und-tsmc,f9-und-semiconductor-physics',
+      '--projectId', 'F9',
+    ])
+
+    expect(payload.request.input).toEqual({
+      sessionId: '3f3ea0fb-0000',
+      undertakings: ['f9-und-tsmc', 'f9-und-semiconductor-physics'],
+      projectId: 'F9',
+    })
+  })
+
+  it('coerces a single --undertakings value to a one-element array', () => {
+    const { payload } = buildCLIInvokePayload('ai_activity.assignment.record', [
+      '--sessionId', '3f3ea0fb-0000',
+      '--undertakings', 'f9-und-micron-memory-cycle',
+    ])
+
+    expect(payload.request.input).toMatchObject({
+      undertakings: ['f9-und-micron-memory-cycle'],
+    })
+  })
+
   it('greedily parses the head text for update_head without quoting', () => {
     const { payload } = buildCLIInvokePayload('ai_activity.undertaking.update_head', [
       '--projectId', 'F9',

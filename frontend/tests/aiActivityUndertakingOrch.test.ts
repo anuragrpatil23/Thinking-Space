@@ -116,7 +116,7 @@ function makeChain(overrides: Partial<ProjectChainDigest> = {}): ProjectChainDig
     generator: 'claude',
     filesWritten: ['vault://F9/micron.md'],
     filesRead: [],
-    undertaking: '',
+    undertaking: [],
     ...overrides,
   }
 }
@@ -299,7 +299,7 @@ describe('listUndertakingsOrch', () => {
 
   it('picks up chains that name the undertaking even when the record does not list them', async () => {
     seedRecord(makeRecord({ chains: [] }))
-    seedChain(makeChain({ chainKey: 'c-9', undertaking: 'f9-und-micron' }))
+    seedChain(makeChain({ chainKey: 'c-9', undertaking: ['f9-und-micron'] }))
 
     const { listUndertakingsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const views = await listUndertakingsOrch('F9')
@@ -459,12 +459,12 @@ describe('recordAssignmentOrch', () => {
     const { recordAssignmentOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const { path } = await recordAssignmentOrch({
       sessionId: '3f3ea0fb-362b-4694-b744-cd5135c868d0',
-      undertaking: 'f9-und-micron',
+      undertakings: ['f9-und-micron', 'f9-und-semiconductor-physics'],
     })
 
     expect(path).toBe('ai-activity/pending-assignments/3f3ea0fb-362b-4694-b744-cd5135c868d0.json')
     const parsed = JSON.parse(fakeFs.files.get(path)!)
-    expect(parsed.undertaking).toBe('f9-und-micron')
+    expect(parsed.undertakings).toEqual(['f9-und-micron', 'f9-und-semiconductor-physics'])
     expect(parsed.recordedAt).toBeTruthy()
   })
 })

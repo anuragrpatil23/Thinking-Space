@@ -345,7 +345,8 @@ export interface CapabilityInputMap {
   }
   'ai_activity.assignment.record': {
     sessionId: string
-    undertaking: string
+    /** One or more undertaking keys — a session commonly feeds several. */
+    undertakings: string[]
     /** Set when the session opened an undertaking that did not exist before. */
     newTitle?: string
     section?: string
@@ -818,7 +819,7 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
   },
   {
     name: 'ai_activity.assignment.record',
-    description: 'Record which undertaking a session belongs to, keyed on session id before the chain exists.',
+    description: 'Record which undertaking(s) a session belongs to, keyed on session id before the chain exists.',
     readOnly: false,
   },
   {

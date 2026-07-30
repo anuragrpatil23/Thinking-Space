@@ -202,7 +202,7 @@ export class NodeVaultFS implements VaultFS {
 // ── CLI arg parsing for direct capability invocation ──
 
 const NUMBER_FIELDS = new Set(['limit', 'lineNumber'])
-const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments', 'derived_from', 'changed_paths', 'concept_subpath', 'insights', 'files_touched', 'linked_notes', 'add', 'remove', 'accept', 'reject', 'written', 'read'])
+const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments', 'derived_from', 'changed_paths', 'concept_subpath', 'insights', 'files_touched', 'linked_notes', 'add', 'remove', 'accept', 'reject', 'written', 'read', 'undertakings'])
 const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header', 'text-stdin', 'overwrite', 'deleteClaudeSession', 'allowNew'])
 const JSON_FIELDS = new Set(['frontmatter', 'set', 'append_unique'])
 const GREEDY_TEXT_FIELDS = new Set([
@@ -855,8 +855,9 @@ const CAPABILITY_EXAMPLES: Record<string, string[]> = {
     'thinkspc ai_activity.undertaking.tag --projectId F9 --key f9-und-micron-memory-cycle --add "fab-equipment" --allowNew',
   ],
   'ai_activity.assignment.record': [
-    'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertaking f9-und-micron-memory-cycle',
-    'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertaking f9-und-new-thing --newTitle "Coherent optics teardown" --projectId F9',
+    'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-micron-memory-cycle',
+    'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings "f9-und-tsmc,f9-und-semiconductor-physics"',
+    'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-new-thing --newTitle "Coherent optics teardown" --projectId F9',
   ],
   'ai_activity.chains.list': [
     'thinkspc ai_activity.chains.list --projectId F9 --from 2026-07-01',
@@ -1113,7 +1114,7 @@ const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: bo
   ],
   'ai_activity.assignment.record': [
     { flag: 'sessionId', required: true, note: 'Claude Code session id, not the commit-footer slug' },
-    { flag: 'undertaking', required: true, note: 'undertaking key' },
+    { flag: 'undertakings', required: true, note: 'comma-separated undertaking keys; a session can feed several' },
     { flag: 'newTitle', required: false, note: 'set when the session opened a new undertaking' },
     { flag: 'section', required: false },
     { flag: 'projectId', required: false },

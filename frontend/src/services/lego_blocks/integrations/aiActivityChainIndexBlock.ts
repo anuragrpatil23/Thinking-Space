@@ -74,7 +74,7 @@ export async function listChainsBlock(query: ChainQuery): Promise<ChainEntry[]> 
       }
       const digest = parseProjectChainDigestMarkdownBlock(content)
       if (!digest) continue
-      if (query.undertaking && digest.undertaking !== query.undertaking) continue
+      if (query.undertaking && !digest.undertaking.includes(query.undertaking)) continue
       out.push({ ...digest, path })
     }
   }

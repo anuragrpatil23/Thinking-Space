@@ -65,9 +65,12 @@ export interface ProjectChainDigest {
   filesWritten: string[]
   /** Same, for files read. Weaker signal than writes but still a pointer. */
   filesRead: string[]
-  /** Undertaking this chain belongs to, from the end-of-session ask.
-   *  Empty means unassigned, which is the normal state until someone answers. */
-  undertaking: string
+  /** Undertakings this chain belongs to, from the end-of-session ask. Plural:
+   *  one session commonly carries a strand that feeds another undertaking (the
+   *  Amazon sessions fed Semiconductor physics too), and forcing a single
+   *  assignment destroys that thread. Empty means unassigned — the normal state
+   *  until someone answers. */
+  undertaking: string[]
 }
 
 // v2 adds filesWritten / filesRead / undertaking. Readers tolerate v1 by
@@ -133,6 +136,13 @@ function toStringArray(value: unknown): string[] {
   return out
 }
 
+/** Like toStringArray but tolerates the pre-plural scalar form (`undertaking:
+ *  "key"`) so a v2 digest reads as a one-element list rather than empty. */
+function toStringArrayLoose(value: unknown): string[] {
+  if (typeof value === 'string') return value.trim() ? [value.trim()] : []
+  return toStringArray(value)
+}
+
 /** Parse a chain digest markdown mirror back into a struct. Null on drift. */
 export function parseProjectChainDigestMarkdownBlock(content: string): ProjectChainDigest | null {
   const trimmed = content.trimStart()
@@ -174,7 +184,7 @@ export function parseProjectChainDigestMarkdownBlock(content: string): ProjectCh
     generator: parseGenerationSourceBlock(parsed.generator),
     filesWritten: toStringArray(parsed.filesWritten),
     filesRead: toStringArray(parsed.filesRead),
-    undertaking: toStringOrEmpty(parsed.undertaking),
+    undertaking: toStringArrayLoose(parsed.undertaking),
   }
 }
 
@@ -202,7 +212,7 @@ export function stringifyProjectChainDigestMarkdownBlock(digest: ProjectChainDig
   // chains predate extraction and writing the keys would imply otherwise.
   if (digest.filesWritten.length) frontmatter.filesWritten = digest.filesWritten
   if (digest.filesRead.length) frontmatter.filesRead = digest.filesRead
-  if (digest.undertaking) frontmatter.undertaking = digest.undertaking
+  if (digest.undertaking.length) frontmatter.undertaking = digest.undertaking
 
   const yamlStr = yaml.dump(frontmatter, {
     lineWidth: -1,
@@ -258,6 +268,6 @@ export function parseProjectChainDigestJsonBlock(raw: string): ProjectChainDiges
     generator: parseGenerationSourceBlock(parsed.generator),
     filesWritten: toStringArray(parsed.filesWritten),
     filesRead: toStringArray(parsed.filesRead),
-    undertaking: toStringOrEmpty(parsed.undertaking),
+    undertaking: toStringArrayLoose(parsed.undertaking),
   }
 }

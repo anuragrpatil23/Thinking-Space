@@ -159,7 +159,7 @@ function chainStorageParts(chain: ActivityChain): ChainStorageParts | null {
 function chainPointers(chain: ActivityChain): {
   filesWritten: string[]
   filesRead: string[]
-  undertaking: string
+  undertaking: string[]
 } {
   const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
   const written = (chain.touchedPaths ?? []).map(path =>
@@ -172,7 +172,7 @@ function chainPointers(chain: ActivityChain): {
     filesRead: [],
     // Filled by the end-of-session ask, not here. The digest is generated
     // after the ask, but assignment lands on the chain via its own path.
-    undertaking: '',
+    undertaking: [],
   }
 }
 

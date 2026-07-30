@@ -29,9 +29,12 @@ const PENDING_DIR = 'ai-activity/pending-assignments'
 
 export interface PendingAssignment {
   sessionId: string
-  /** Existing undertaking key, or the key minted for a brand-new one. */
-  undertaking: string
-  /** Set when the session opened an undertaking that did not exist before. */
+  /** Undertaking keys this session belongs to — existing, plus the key minted
+   *  for a brand-new one. Plural: a session commonly feeds more than one strand
+   *  (see ProjectChainDigest.undertaking). */
+  undertakings: string[]
+  /** Set when the session opened an undertaking that did not exist before —
+   *  describes the newly-minted key (at most one per ask for now). */
   newTitle?: string
   /** Section key for a brand-new undertaking. */
   section?: string
@@ -64,7 +67,7 @@ export async function readAssignmentBlock(sessionId: string): Promise<PendingAss
     const parsed = JSON.parse(await fs.read(path)) as unknown
     if (!parsed || typeof parsed !== 'object') return null
     const record = parsed as PendingAssignment
-    return record.sessionId && record.undertaking ? record : null
+    return record.sessionId && record.undertakings?.length ? record : null
   } catch {
     return null
   }
