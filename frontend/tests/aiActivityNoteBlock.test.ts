@@ -60,7 +60,7 @@ record_kind: epic
 status: active
 created_at: "2026-03-01T10:00:00.000Z"
 parent: f9-ic-p-698
-project_preset_tags:
+tags:
   - for sure for value
   - bucket 1
 ---
@@ -79,6 +79,11 @@ Understand LAM Research.
     expect(note!.tags).toEqual(['for sure for value', 'bucket 1'])
     // The ticket prefix moves to the detail page; the row title is clean.
     expect(note!.title).toBe('learn more about LAM Research')
+  })
+
+  it('reads the single `tags` field and ignores any legacy project_preset_tags', () => {
+    const withLegacy = epic.replace('---\n\n## Description', 'project_preset_tags:\n  - legacy\n---\n\n## Description')
+    expect(parseNoteMarkdownBlock(withLegacy)!.tags).toEqual(['for sure for value', 'bucket 1'])
   })
 
   it('rejects a non-epic record_kind', () => {

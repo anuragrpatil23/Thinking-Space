@@ -135,7 +135,9 @@ export function parseNoteMarkdownBlock(content: string): Note | null {
     categoryCode: code,
     category: noteCategoryLabelBlock(code),
     openedDate: asString(parsed.created_at).slice(0, 10),
-    tags: asStringArray(parsed.project_preset_tags),
+    // One universal tag field. `project_preset_tags` was retired — the vault
+    // migration merged it into `tags`.
+    tags: asStringArray(parsed.tags),
     ticket: noteTicketBlock(key),
   }
 }
