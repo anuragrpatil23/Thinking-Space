@@ -1,14 +1,12 @@
 import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { useWakeListBlock } from '@/components/lego_blocks/hooks/units/useWakeListBlock'
-import type { Note } from '@/services/lego_blocks/units/aiActivityNoteBlock'
 
-// A Home card: the open-questions wake list. Asks from the old organizer that no
-// undertaking has discharged — questions posed and not yet pursued. Project
-// chips at the top (same shape as the AI-activity card), open notes grouped by
-// category and sorted oldest-first, so the longest-open questions surface. This
-// is the forward half of the loop, which is why it lives on Home (open loops)
-// rather than the retrospective org tab.
+// A quick Home card: the open questions — Questions-to-research (QT) notes from
+// the old organizer that no undertaking has answered, oldest first. A lean
+// glance ("what did I wonder and never look into"), not the full wake list —
+// that lives in the organizer index, across every note kind. Project chips at
+// the top when more than one project has open questions.
 
 const DAY_MS = 86_400_000
 
@@ -25,33 +23,26 @@ function ageLabel(openedDate: string): string {
 export default function WakeListBlock() {
   const { projects, selected, select, notes, loadingProjects, loadingNotes, error } = useWakeListBlock()
 
-  const grouped = useMemo(() => {
-    if (!notes) return []
-    const byCat = new Map<string, Note[]>()
-    for (const ask of notes.open) {
-      const arr = byCat.get(ask.category) ?? []
-      arr.push(ask)
-      byCat.set(ask.category, arr)
-    }
-    // Categories ordered by their oldest open ask, so the most-neglected
-    // cluster leads.
-    return [...byCat.entries()]
-      .map(([category, list]) => ({ category, list }))
-      .sort((a, b) => (a.list[0]?.openedDate ?? '').localeCompare(b.list[0]?.openedDate ?? ''))
-  }, [notes])
+  // Just the open Questions, oldest first.
+  const questions = useMemo(
+    () =>
+      (notes?.open ?? [])
+        .filter(n => n.categoryCode === 'QT')
+        .sort((a, b) => (a.openedDate || '').localeCompare(b.openedDate || '')),
+    [notes],
+  )
 
-  // Nothing to wake on anywhere → render nothing rather than an empty card.
+  // A quick card: nothing to show → show nothing, no empty shell.
   if (loadingProjects) return null
   if (projects.length === 0) return null
+  if (!loadingNotes && !error && questions.length === 0) return null
 
   return (
     <section className="rounded-xl border border-border/40 bg-card/40 p-4">
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">Open questions</h3>
-        {notes && (
-          <span className="text-[11px] text-muted-foreground/70">
-            {notes.answeredCount} of {notes.totalNotes} answered
-          </span>
+        {questions.length > 0 && (
+          <span className="text-[11px] tabular-nums text-muted-foreground/70">{questions.length}</span>
         )}
       </div>
 
@@ -78,32 +69,19 @@ export default function WakeListBlock() {
       {error && <p className="text-xs text-destructive">{error}</p>}
       {loadingNotes && <p className="text-xs text-muted-foreground">Loading…</p>}
 
-      {!loadingNotes && notes && notes.open.length === 0 && (
-        <p className="text-xs text-muted-foreground/70">Nothing open — every ask has been answered.</p>
-      )}
-
-      {!loadingNotes && grouped.length > 0 && (
-        <div className="space-y-3">
-          {grouped.map(({ category, list }) => (
-            <div key={category}>
-              <h4 className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-                {category}
-              </h4>
-              <ul className="space-y-0.5">
-                {list.map(ask => (
-                  <li key={ask.key} className="flex items-baseline gap-2 text-sm">
-                    <span className="min-w-0 flex-1 truncate text-foreground/85" title={ask.title}>
-                      {ask.title}
-                    </span>
-                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">
-                      {ageLabel(ask.openedDate)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+      {!loadingNotes && questions.length > 0 && (
+        <ul className="space-y-0.5">
+          {questions.map(q => (
+            <li key={q.key} className="flex items-baseline gap-2 text-sm">
+              <span className="min-w-0 flex-1 truncate text-foreground/85" title={q.title}>
+                {q.title}
+              </span>
+              <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">
+                {ageLabel(q.openedDate)}
+              </span>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </section>
   )
