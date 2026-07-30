@@ -1,6 +1,6 @@
 import { Loader2 } from 'lucide-react'
 import UndertakingIndexRowBlock from '@/components/lego_blocks/units/UndertakingIndexRowBlock'
-import OpenAskRowBlock from '@/components/lego_blocks/units/OpenAskRowBlock'
+import OrganizerNoteRowBlock from '@/components/lego_blocks/units/OrganizerNoteRowBlock'
 import { useUndertakingIndexBlock } from '@/components/lego_blocks/hooks/units/useUndertakingIndexBlock'
 
 // The Thinking Organizer index view: undertakings grouped under their section
@@ -32,9 +32,9 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
   }
 
   const hasUndertakings = index && index.sections.length > 0
-  const hasOpenAsks = index && index.openAskSections.length > 0
+  const hasNotes = index && index.noteSections.length > 0
 
-  if (!hasUndertakings && !hasOpenAsks) {
+  if (!hasUndertakings && !hasNotes) {
     return (
       <div className="px-2 py-8 text-sm text-muted-foreground/70">
         No undertakings yet. They fill in as sessions get filed at the end-of-session ask.
@@ -63,17 +63,23 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
         </section>
       ))}
 
-      {/* Open asks (the forward, still-unanswered half) — the wake list, in the
-          index. Kept below the doings and under an "Open —" heading so the split
-          between what emerged and what's still a question stays legible. */}
-      {index!.openAskSections.map(section => (
-        <section key={`ask-${section.code}`}>
-          <h2 className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-            Open — {section.title}
+      {/* A plain divider between the two taxonomies — the doings above, the
+          hand-written notes below. No label: the section names carry it, and a
+          note still sitting here with no link is, by that fact alone, the wake
+          list. */}
+      {hasUndertakings && hasNotes && (
+        <div className="border-t border-border/50" aria-hidden />
+      )}
+
+      {/* The note taxonomy — Anurag's own kinds, real names, as peers. */}
+      {index!.noteSections.map(section => (
+        <section key={`note-${section.code}`}>
+          <h2 className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            {section.title}
           </h2>
           <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
-            {section.asks.map((entry, i) => (
-              <OpenAskRowBlock key={entry.ask.key} entry={entry} colorIndex={i} />
+            {section.notes.map((entry, i) => (
+              <OrganizerNoteRowBlock key={entry.ask.key} entry={entry} colorIndex={i} />
             ))}
           </div>
         </section>

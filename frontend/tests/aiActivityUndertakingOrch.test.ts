@@ -350,41 +350,42 @@ describe('buildAskSeamBlock', () => {
   })
   const NOW = Date.parse('2026-07-30T00:00:00.000Z')
 
-  it('splits asks into discharged (per undertaking) and open (by kind), case-insensitively', async () => {
+  it('migrates a discharged Question out of its section but keeps a discharged Idea in place with a link', async () => {
     const asks = [
       ask('f9-ide-e-534', 'MU hits $100B revenue', 'IDE', '2026-04-01'),
       ask('f9-ic-e-499', 'LAM Research — learn more', 'IC', '2026-03-01'),
       ask('f9-qt-e-672', 'What are TSMC margins?', 'QT', '2026-02-20'),
     ]
     const records = [
-      makeRecord({ key: 'u-micron', discharges: ['F9-IDE-E-534'] }),
-      makeRecord({ key: 'u-tide', discharges: ['F9-QT-E-672'] }),
+      makeRecord({ key: 'u-micron', title: 'Micron — the memory cycle', discharges: ['F9-IDE-E-534'] }),
+      makeRecord({ key: 'u-tide', title: 'The Cognition Tide', discharges: ['F9-QT-E-672'] }),
     ]
 
     const { buildAskSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const seam = buildAskSeamBlock(asks, records, NOW)
 
-    // Discharged asks resolve to their titles, keyed by the undertaking.
-    expect(seam.discharged.get('u-micron')).toEqual([{ key: 'f9-ide-e-534', title: 'MU hits $100B revenue' }])
+    // The discharged Question migrated: subline under its undertaking, gone from sections.
     expect(seam.discharged.get('u-tide')?.[0].title).toBe('What are TSMC margins?')
-    // Only the undischarged LAM ask stays open; the other two are gone.
-    expect(seam.openSections).toHaveLength(1)
-    expect(seam.openSections[0].code).toBe('IC')
-    expect(seam.openSections[0].asks.map(a => a.ask.key)).toEqual(['f9-ic-e-499'])
+    expect(seam.noteSections.some(s => s.code === 'QT')).toBe(false)
+    // The discharged Idea is standing: it stays in its section, carrying a link, not a subline.
+    expect(seam.discharged.has('u-micron')).toBe(false)
+    const ideas = seam.noteSections.find(s => s.code === 'IDE')
+    expect(ideas?.notes[0].dischargedInto?.title).toBe('Micron — the memory cycle')
+    // The untouched company note is just present, no link.
+    const companies = seam.noteSections.find(s => s.code === 'IC')
+    expect(companies?.notes[0].dischargedInto).toBeUndefined()
   })
 
-  it('orders open kinds by their oldest ask and computes age in days', async () => {
+  it('orders note kinds by their oldest note', async () => {
     const asks = [
       ask('f9-ide-e-1', 'newer idea', 'IDE', '2026-06-01'),
-      ask('f9-qt-e-1', 'older question', 'QT', '2026-02-01'),
+      ask('f9-mi-e-1', 'older missed idea', 'MI', '2026-02-01'),
     ]
     const { buildAskSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const seam = buildAskSeamBlock(asks, [], NOW)
 
-    // Questions lead — their oldest ask predates Ideas'.
-    expect(seam.openSections.map(s => s.code)).toEqual(['QT', 'IDE'])
-    // 2026-02-01 → 2026-07-30 is 179 days.
-    expect(seam.openSections[0].asks[0].ageDays).toBe(179)
+    // Missed Ideas lead — their oldest note predates Ideas'.
+    expect(seam.noteSections.map(s => s.code)).toEqual(['MI', 'IDE'])
   })
 })
 

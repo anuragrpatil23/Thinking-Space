@@ -332,85 +332,108 @@ export interface UndertakingIndexSection {
   rows: UndertakingIndexRow[]
 }
 
-/** An open ask — one nobody has discharged — with how long it has sat. */
-export interface OpenAskEntry {
+/** One hand-written note (from the old organizer). The undertaking it fed, when
+ *  it's a standing kind that stays in its section rather than migrating away. */
+export interface NoteEntry {
   ask: Ask
-  ageDays: number
+  /** Set when a standing note (idea, missed idea, learning) fed an undertaking:
+   *  it keeps its row and shows a link to what it fed, rather than vacating. */
+  dischargedInto?: { key: string; title: string }
 }
 
-/** Open asks of one kind (Ideas, Questions, Missed Ideas, …). The forward,
- *  still-unanswered half of the loop — the wake list, in the index. */
-export interface OpenAskSection {
+/** Notes of one kind (Ideas, Questions, Missed Ideas, …), in their own section
+ *  — the other taxonomy, sitting as a peer beside the undertaking sections. */
+export interface NoteSection {
   code: string
   title: string
-  asks: OpenAskEntry[]
+  notes: NoteEntry[]
 }
 
 export interface UndertakingIndex {
   sections: UndertakingIndexSection[]
-  /** Open asks grouped by kind, appended after the undertaking zone. Empty when
-   *  the project has no old organizer, or every ask has been discharged. */
-  openAskSections: OpenAskSection[]
+  /** The note taxonomy — the hand-written half — as peer sections after the
+   *  undertaking zone. Empty when the project has no old organizer. */
+  noteSections: NoteSection[]
   /** The shared window every strip is bucketed over (`YYYY-MM-DD`), or '' when
    *  there is no dated activity anywhere in the index. */
   windowStart: string
   windowEnd: string
 }
 
-const DAY_MS = 86_400_000
+// Note kinds that MIGRATE when worked: a researched question stops being an open
+// question, so it leaves its section and shows under the undertaking that
+// answered it. Every other kind is STANDING — an idea is a thesis, a missed idea
+// a permanent lesson, a learning is knowledge — so it stays in its section when
+// worked and only gains a link to what it fed. (Category codes from the ask key:
+// QT = Questions to research.)
+const MIGRATING_NOTE_CODES = new Set(['QT'])
 
 export interface AskSeam {
-  openSections: OpenAskSection[]
-  /** Undertaking key → the asks it discharged. */
+  noteSections: NoteSection[]
+  /** Undertaking key → the *migrating* notes it discharged (rendered as ◇→
+   *  sublines under the doing). Standing notes are not here — they stay in their
+   *  own section, carrying a link back instead. */
   discharged: Map<string, DischargedAskRef[]>
 }
 
 /**
- * The ask↔undertaking join, derived — never stored. Given the project's asks
- * and its undertaking records: which asks each undertaking discharged (for the
- * reconciliation sublines), and which asks nobody discharged (the open wake
- * list), grouped by kind and ordered so the most-neglected kind leads. Keys
- * compare case-insensitively — the old store lowercases them, the seam edges
- * carry the display form.
+ * The note↔undertaking join, derived — never stored. Splits by kind:
+ *
+ * - A **migrating** note (a Question) that got discharged leaves its section and
+ *   is handed back as a subline under the undertaking that answered it.
+ * - A **standing** note (Idea, Missed Idea, learning…) always keeps its row in
+ *   its own section; if it fed an undertaking it carries a link (`dischargedInto`)
+ *   rather than vacating — because a thesis or a lesson doesn't stop existing
+ *   once it's been acted on.
+ *
+ * So the wake list needs no label: it's simply the notes still sitting in their
+ * sections with no link. Keys compare case-insensitively — the old store
+ * lowercases them, the seam edges carry the display form.
  */
-export function buildAskSeamBlock(asks: Ask[], records: UndertakingRecord[], nowMs: number): AskSeam {
+export function buildAskSeamBlock(asks: Ask[], records: UndertakingRecord[], _nowMs: number): AskSeam {
   const byKey = new Map<string, Ask>()
   for (const ask of asks) byKey.set(ask.key.toUpperCase(), ask)
 
-  const dischargedKeys = new Set<string>()
+  const migratedAway = new Set<string>()
   const discharged = new Map<string, DischargedAskRef[]>()
+  const dischargedInto = new Map<string, { key: string; title: string }>()
   for (const record of records) {
     const refs: DischargedAskRef[] = []
     for (const raw of record.discharges) {
       const up = raw.toUpperCase()
-      dischargedKeys.add(up)
       const ask = byKey.get(up)
-      refs.push({ key: ask?.key ?? raw, title: ask?.title ?? raw })
+      // A dangling edge (no matching ask) is treated as migrating — shown as a
+      // subline, never a phantom section-dweller.
+      const migrating = ask ? MIGRATING_NOTE_CODES.has(ask.categoryCode) : true
+      if (migrating) {
+        refs.push({ key: ask?.key ?? raw, title: ask?.title ?? raw })
+        migratedAway.add(up)
+      } else {
+        dischargedInto.set(up, { key: record.key, title: record.title })
+      }
     }
     if (refs.length) discharged.set(record.key, refs)
   }
 
-  const open = asks.filter(ask => !dischargedKeys.has(ask.key.toUpperCase()))
-  const byCategory = new Map<string, OpenAskEntry[]>()
-  for (const ask of open) {
-    const opened = ask.openedDate ? Date.parse(ask.openedDate) : NaN
-    const ageDays = Number.isNaN(opened) ? 0 : Math.max(0, Math.floor((nowMs - opened) / DAY_MS))
+  const byCategory = new Map<string, NoteEntry[]>()
+  for (const ask of asks) {
+    if (migratedAway.has(ask.key.toUpperCase())) continue
     const list = byCategory.get(ask.categoryCode) ?? []
-    list.push({ ask, ageDays })
+    list.push({ ask, dischargedInto: dischargedInto.get(ask.key.toUpperCase()) })
     byCategory.set(ask.categoryCode, list)
   }
 
-  const openSections: OpenAskSection[] = [...byCategory.entries()].map(([code, list]) => ({
+  const noteSections: NoteSection[] = [...byCategory.entries()].map(([code, list]) => ({
     code,
     title: askCategoryLabelBlock(code),
-    asks: list.sort((a, b) => (a.ask.openedDate || '').localeCompare(b.ask.openedDate || '')),
+    notes: list.sort((a, b) => (a.ask.openedDate || '').localeCompare(b.ask.openedDate || '')),
   }))
-  // Kinds ordered by their oldest open ask, so the most-neglected leads.
-  openSections.sort(
-    (a, b) => (a.asks[0]?.ask.openedDate || '').localeCompare(b.asks[0]?.ask.openedDate || ''),
+  // Kinds ordered by their oldest note, so the arrangement is stable.
+  noteSections.sort(
+    (a, b) => (a.notes[0]?.ask.openedDate || '').localeCompare(b.notes[0]?.ask.openedDate || ''),
   )
 
-  return { openSections, discharged }
+  return { noteSections, discharged }
 }
 
 const INDEX_SPARKLINE_BUCKETS = 24
@@ -491,7 +514,7 @@ export async function getUndertakingIndexOrch(
     ordered.push({ key, title, rows })
   }
 
-  return { sections: ordered, openAskSections: seam.openSections, windowStart, windowEnd }
+  return { sections: ordered, noteSections: seam.noteSections, windowStart, windowEnd }
 }
 
 /**
