@@ -71,6 +71,7 @@ import {
 } from '@/services/lego_blocks/integrations/telegramConversationBlock'
 import {
   getUndertakingOrch,
+  getUndertakingDensityOrch,
   listChainsOrch,
   listUndertakingsOrch,
   recordAssignmentOrch,
@@ -901,6 +902,17 @@ async function executeCapability<Name extends CapabilityName>(
       assertNonEmptyString(payload.key, 'key')
       const undertaking = await getUndertakingOrch(payload.projectId, payload.key)
       return { undertaking } as CapabilityOutputMap[Name]
+    }
+    case 'ai_activity.undertaking.density': {
+      const payload = input as CapabilityInputMap['ai_activity.undertaking.density']
+      assertNonEmptyString(payload.projectId, 'projectId')
+      assertNonEmptyString(payload.key, 'key')
+      const result = await getUndertakingDensityOrch(payload.projectId, payload.key, {
+        buckets: payload.buckets ?? 10,
+        from: payload.from,
+        to: payload.to,
+      })
+      return result as CapabilityOutputMap[Name]
     }
     case 'ai_activity.undertaking.update_head': {
       const payload = input as CapabilityInputMap['ai_activity.undertaking.update_head']

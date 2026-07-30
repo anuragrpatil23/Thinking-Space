@@ -201,7 +201,7 @@ export class NodeVaultFS implements VaultFS {
 
 // ── CLI arg parsing for direct capability invocation ──
 
-const NUMBER_FIELDS = new Set(['limit', 'lineNumber'])
+const NUMBER_FIELDS = new Set(['limit', 'lineNumber', 'buckets'])
 const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments', 'derived_from', 'changed_paths', 'concept_subpath', 'insights', 'files_touched', 'linked_notes', 'add', 'remove', 'accept', 'reject', 'written', 'read', 'undertakings'])
 const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header', 'text-stdin', 'overwrite', 'deleteClaudeSession', 'allowNew'])
 const JSON_FIELDS = new Set(['frontmatter', 'set', 'append_unique'])
@@ -847,6 +847,10 @@ const CAPABILITY_EXAMPLES: Record<string, string[]> = {
   'ai_activity.undertaking.get': [
     'thinkspc ai_activity.undertaking.get --projectId F9 --key f9-und-micron-memory-cycle',
   ],
+  'ai_activity.undertaking.density': [
+    'thinkspc ai_activity.undertaking.density --projectId F9 --key f9-und-micron-memory-cycle --buckets 12',
+    'thinkspc ai_activity.undertaking.density --projectId F9 --key f9-und-micron-memory-cycle --buckets 12 --from 2026-05-01 --to 2026-07-31',
+  ],
   'ai_activity.undertaking.update_head': [
     'thinkspc ai_activity.undertaking.update_head --projectId F9 --key f9-und-micron-memory-cycle --text "HBM is the whole thesis; the commodity DRAM cycle is noise around it."',
   ],
@@ -1099,6 +1103,13 @@ const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: bo
   'ai_activity.undertaking.get': [
     { flag: 'projectId', required: true },
     { flag: 'key', required: true },
+  ],
+  'ai_activity.undertaking.density': [
+    { flag: 'projectId', required: true },
+    { flag: 'key', required: true },
+    { flag: 'buckets', required: false, note: 'number of equal-width buckets (default 10)' },
+    { flag: 'from', required: false, note: 'shared window start YYYY-MM-DD, to align a column of strips' },
+    { flag: 'to', required: false, note: 'shared window end YYYY-MM-DD' },
   ],
   'ai_activity.undertaking.update_head': [
     { flag: 'projectId', required: true },

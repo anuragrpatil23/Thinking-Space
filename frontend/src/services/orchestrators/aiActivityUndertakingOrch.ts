@@ -17,6 +17,11 @@ import {
   type ChainEntry,
 } from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
 import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
+import {
+  bucketDensityBlock,
+  type DensityBucket,
+  type DensityDay,
+} from '@/services/lego_blocks/units/aiActivityDensityBlock'
 
 /**
  * The index view: a head Anurag wrote, plus a tail derived on read.
@@ -173,6 +178,33 @@ export async function getUndertakingOrch(
   const record = await getUndertakingBlock(projectId, key)
   if (!record) return null
   return { record, tail: buildTail(await chainsFor(record)) }
+}
+
+/**
+ * Sparkline data for one undertaking, pre-bucketed so the UI doesn't recompute.
+ *
+ * Optional `from`/`to` set a shared window so strips in a column are comparable
+ * (see the density block); absent, the undertaking's own span is used. Throws
+ * on a missing undertaking rather than returning empty buckets, which would be
+ * indistinguishable from a real never-worked-on entry.
+ */
+export async function getUndertakingDensityOrch(
+  projectId: string,
+  key: string,
+  options: { buckets: number; from?: string; to?: string },
+): Promise<{ buckets: DensityBucket[]; firstDate: string; lastDate: string }> {
+  const view = await getUndertakingOrch(projectId, key)
+  if (!view) throw new Error(`Undertaking not found: ${key}`)
+  const days: DensityDay[] = view.tail.density.map(d => ({
+    date: d.date,
+    chains: d.chains,
+    activeDurationMs: d.activeDurationMs,
+  }))
+  return {
+    buckets: bucketDensityBlock(days, options),
+    firstDate: view.tail.firstDate,
+    lastDate: view.tail.lastDate,
+  }
 }
 
 /**

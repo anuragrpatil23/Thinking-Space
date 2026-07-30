@@ -20,6 +20,7 @@ import type { ExcalidrawHighlightsExtractBlock } from '@/services/lego_blocks/un
 import type { UndertakingRecord } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
 import type { ChainEntry } from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
 import type { UndertakingView } from '@/services/orchestrators/aiActivityUndertakingOrch'
+import type { DensityBucket } from '@/services/lego_blocks/units/aiActivityDensityBlock'
 
 export interface CapabilityActor {
   kind: 'human' | 'agent' | 'system'
@@ -71,6 +72,7 @@ export type CapabilityName =
   | 'telegram.close_conversation'
   | 'ai_activity.undertakings.list'
   | 'ai_activity.undertaking.get'
+  | 'ai_activity.undertaking.density'
   | 'ai_activity.undertaking.update_head'
   | 'ai_activity.undertaking.tag'
   | 'ai_activity.assignment.record'
@@ -328,6 +330,15 @@ export interface CapabilityInputMap {
     projectId: string
     key: string
   }
+  'ai_activity.undertaking.density': {
+    projectId: string
+    key: string
+    /** Number of equal-width buckets. Defaults to 10 when omitted. */
+    buckets?: number
+    /** Shared window bounds (`YYYY-MM-DD`) so a column of strips aligns. */
+    from?: string
+    to?: string
+  }
   'ai_activity.undertaking.update_head': {
     projectId: string
     key: string
@@ -555,6 +566,11 @@ export interface CapabilityOutputMap {
   }
   'ai_activity.undertaking.get': {
     undertaking: UndertakingView | null
+  }
+  'ai_activity.undertaking.density': {
+    buckets: DensityBucket[]
+    firstDate: string
+    lastDate: string
   }
   'ai_activity.undertaking.update_head': {
     path: string
@@ -807,6 +823,11 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
   {
     name: 'ai_activity.undertaking.get',
     description: 'Get one undertaking: stored head plus the tail derived from its chains.',
+    readOnly: true,
+  },
+  {
+    name: 'ai_activity.undertaking.density',
+    description: 'Pre-bucketed density (active work per bucket) for one undertaking\'s sparkline, over a shared window so a column of strips aligns.',
     readOnly: true,
   },
   {

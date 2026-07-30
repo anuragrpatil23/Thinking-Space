@@ -434,6 +434,20 @@ describe('capabilityRunner CLI arguments for ai_activity capabilities', () => {
     expect(payload.request.input).not.toHaveProperty('allowNew')
   })
 
+  it('coerces --buckets to a number for undertaking.density', () => {
+    const { payload } = buildCLIInvokePayload('ai_activity.undertaking.density', [
+      '--projectId', 'F9',
+      '--key', 'f9-und-micron-memory-cycle',
+      '--buckets', '12',
+    ])
+
+    expect(payload.request.input).toEqual({
+      projectId: 'F9',
+      key: 'f9-und-micron-memory-cycle',
+      buckets: 12,
+    })
+  })
+
   it('coerces --undertakings to an array so a session can feed several', () => {
     const { payload } = buildCLIInvokePayload('ai_activity.assignment.record', [
       '--sessionId', '3f3ea0fb-0000',
