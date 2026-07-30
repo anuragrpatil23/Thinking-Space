@@ -83,6 +83,57 @@ export async function listUndertakingsBlock(projectId: string): Promise<Undertak
   return records
 }
 
+/** A section heading an undertaking files under (the `parent` of a record). */
+export interface SectionEntry {
+  key: string
+  title: string
+  sortOrder: number
+}
+
+function parseFrontmatterRecord(content: string): Record<string, unknown> | null {
+  const trimmed = content.trimStart()
+  if (!trimmed.startsWith('---')) return null
+  const afterOpen = trimmed.indexOf('\n')
+  if (afterOpen === -1) return null
+  const rest = trimmed.slice(afterOpen + 1)
+  const closeIdx = rest.search(/^---\s*$/m)
+  if (closeIdx === -1) return null
+  try {
+    const parsed = yaml.load(rest.slice(0, closeIdx))
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
+/** The project's section headings, ordered as they should render. Empty when
+ *  the project has no sections dir — the index then falls back to one group. */
+export async function listSectionsBlock(projectId: string): Promise<SectionEntry[]> {
+  const fs = getVaultFS()
+  const dir = sectionDirBlock(projectId)
+  let names: string[] = []
+  try {
+    names = (await fs.list(dir)).files.filter(name => name.endsWith('.md'))
+  } catch {
+    return []
+  }
+  const out: SectionEntry[] = []
+  for (const name of names) {
+    const content = await readIfPresent(`${dir}/${name}`)
+    if (!content) continue
+    const fm = parseFrontmatterRecord(content)
+    const key = fm && typeof fm.key === 'string' ? fm.key : ''
+    if (!key) continue
+    out.push({
+      key,
+      title: fm && typeof fm.title === 'string' && fm.title.trim() ? fm.title : key,
+      sortOrder: fm && typeof fm.sort_order === 'number' ? fm.sort_order : 0,
+    })
+  }
+  out.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title))
+  return out
+}
+
 export async function getUndertakingBlock(
   projectId: string,
   key: string,

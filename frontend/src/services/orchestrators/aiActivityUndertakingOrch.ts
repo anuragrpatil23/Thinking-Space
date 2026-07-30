@@ -5,6 +5,7 @@ import {
 } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
 import {
   getUndertakingBlock,
+  listSectionsBlock,
   listUndertakingsBlock,
   readTagVocabularyBlock,
   writeTagVocabularyBlock,
@@ -178,6 +179,108 @@ export async function getUndertakingOrch(
   const record = await getUndertakingBlock(projectId, key)
   if (!record) return null
   return { record, tail: buildTail(await chainsFor(record)) }
+}
+
+// ── The index view ───────────────────────────────────────────────────────
+
+export interface UndertakingIndexRow {
+  record: UndertakingRecord
+  tail: UndertakingTail
+  /** Density bucketed over the window shared by the whole index, so a column of
+   *  strips is comparable — a flat zero-count strip reads as "written down,
+   *  never worked on" against its neighbours. */
+  buckets: DensityBucket[]
+}
+
+export interface UndertakingIndexSection {
+  key: string
+  title: string
+  rows: UndertakingIndexRow[]
+}
+
+export interface UndertakingIndex {
+  sections: UndertakingIndexSection[]
+  /** The shared window every strip is bucketed over (`YYYY-MM-DD`), or '' when
+   *  there is no dated activity anywhere in the index. */
+  windowStart: string
+  windowEnd: string
+}
+
+const INDEX_SPARKLINE_BUCKETS = 24
+/** Group key for undertakings whose section isn't among the project's sections
+ *  (hand-edited parent, or sections dir absent). Rendered last. */
+const UNFILED_SECTION_KEY = '__unfiled__'
+
+/**
+ * The whole index for a project, grouped by section, each entry carrying a
+ * sparkline bucketed over one shared window so strips are comparable.
+ *
+ * This is what the Thinking Organizer index view renders. Kept in the orch (not
+ * the UI) so the CLI and the tab derive identical data — the parity rule.
+ */
+export async function getUndertakingIndexOrch(
+  projectId: string,
+  options?: { buckets?: number },
+): Promise<UndertakingIndex> {
+  const [views, sections] = await Promise.all([
+    listUndertakingsOrch(projectId),
+    listSectionsBlock(projectId),
+  ])
+
+  // Shared window across every dated entry, so all strips align.
+  let windowStart = ''
+  let windowEnd = ''
+  for (const view of views) {
+    if (view.tail.firstDate && (!windowStart || view.tail.firstDate < windowStart)) {
+      windowStart = view.tail.firstDate
+    }
+    if (view.tail.lastDate && (!windowEnd || view.tail.lastDate > windowEnd)) {
+      windowEnd = view.tail.lastDate
+    }
+  }
+
+  const buckets = options?.buckets ?? INDEX_SPARKLINE_BUCKETS
+  const rowFor = (view: UndertakingView): UndertakingIndexRow => ({
+    record: view.record,
+    tail: view.tail,
+    buckets: windowStart
+      ? bucketDensityBlock(
+          view.tail.density.map(d => ({
+            date: d.date,
+            chains: d.chains,
+            activeDurationMs: d.activeDurationMs,
+          })),
+          { from: windowStart, to: windowEnd, buckets },
+        )
+      : [],
+  })
+
+  const rowsBySection = new Map<string, UndertakingIndexRow[]>()
+  for (const view of views) {
+    const key = view.record.section || UNFILED_SECTION_KEY
+    const bucket = rowsBySection.get(key) ?? []
+    bucket.push(rowFor(view))
+    rowsBySection.set(key, bucket)
+  }
+
+  const ordered: UndertakingIndexSection[] = []
+  for (const section of sections) {
+    const rows = rowsBySection.get(section.key)
+    if (rows?.length) {
+      ordered.push({ key: section.key, title: section.title, rows })
+      rowsBySection.delete(section.key)
+    }
+  }
+  // Anything left is a section the project doesn't declare — keep it visible
+  // rather than dropping entries, under a plain heading, ordered after the
+  // declared sections.
+  for (const [key, rows] of rowsBySection) {
+    if (!rows.length) continue
+    const title = key === UNFILED_SECTION_KEY ? 'Unfiled' : key
+    ordered.push({ key, title, rows })
+  }
+
+  return { sections: ordered, windowStart, windowEnd }
 }
 
 /**

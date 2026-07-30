@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Check, FolderTree, LayoutDashboard, List, Loader2, Pencil, Plus, X } from 'lucide-react'
+import { BookText, Check, FolderTree, LayoutDashboard, List, Loader2, Pencil, Plus, X } from 'lucide-react'
+import UndertakingIndexBlock from '@/components/lego_blocks/integrations/UndertakingIndexBlock'
 import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
 import {
   STORAGE_KEYS,
   getJsonStorageItem,
-  getStorageItem,
   setJsonStorageItem,
   setStorageItem,
 } from '@/services/orchestrators/storageOrch'
@@ -22,8 +22,6 @@ import {
 import BacklogOrch, {
   ORGANIZER_OPEN_CREATE_PROJECT_EVENT,
   ORGANIZER_PROJECTS_UPDATED_EVENT,
-  parseBacklogView,
-  type BacklogView,
   type OrganizerProjectsUpdatedDetail,
 } from '@/components/orchestrators/BacklogOrch'
 import { cn } from '@/lib/utils'
@@ -43,6 +41,15 @@ function normalizePath(value: string): string {
 }
 
 const ORGANIZER_SIDEBAR_COLLAPSED_KEY = 'organizer_sidebar_collapsed'
+const ORGANIZER_PRIMARY_VIEW_KEY = 'organizer_primary_view'
+
+// The org tab's top-level view. 'index' is the Thinking Organizer index (the
+// new primary); 'list'/'canvas' are the existing backlog sub-views, kept during
+// the transition off the work-item model.
+type OrgView = 'index' | 'list' | 'canvas'
+function parseOrgView(value: string | null): OrgView {
+  return value === 'index' || value === 'list' || value === 'canvas' ? value : 'index'
+}
 
 interface ProjectEntry {
   name: string
@@ -93,15 +100,18 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     const stored = window.localStorage.getItem(ORGANIZER_SIDEBAR_COLLAPSED_KEY)
     return stored === '1'
   })
-  const [backlogView, setBacklogViewState] = useState<BacklogView>(
-    () => parseBacklogView(
-      getStorageItem(STORAGE_KEYS.thinkingOrganizerBacklogView),
-      isCapacitorNative() ? 'list' : 'canvas',
-    ),
-  )
-  const setBacklogView = useCallback((next: BacklogView) => {
-    setBacklogViewState(next)
-    setStorageItem(STORAGE_KEYS.thinkingOrganizerBacklogView, next)
+  const [orgView, setOrgViewState] = useState<OrgView>(() => {
+    if (typeof window === 'undefined') return 'index'
+    return parseOrgView(window.localStorage.getItem(ORGANIZER_PRIMARY_VIEW_KEY))
+  })
+  const setOrgView = useCallback((next: OrgView) => {
+    setOrgViewState(next)
+    if (typeof window !== 'undefined') window.localStorage.setItem(ORGANIZER_PRIMARY_VIEW_KEY, next)
+    // Keep the backlog's own persisted sub-view in sync for list/canvas, so the
+    // existing BacklogOrch reads the same choice.
+    if (next === 'list' || next === 'canvas') {
+      setStorageItem(STORAGE_KEYS.thinkingOrganizerBacklogView, next)
+    }
   }, [])
 
   // Project context
@@ -344,27 +354,34 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
         <div className={cn(
           'relative min-w-0',
           phoneListMode ? 'hidden' : 'flex-1',
-          backlogView === 'canvas'
+          orgView === 'canvas'
             ? 'overflow-hidden'
             : 'overflow-y-auto px-6 py-5',
         )}>
           <div className="absolute right-3 top-3 z-40">
             <SegmentedToggleBlock
-              value={backlogView}
-              onChange={setBacklogView}
-              ariaLabel="Backlog view"
+              value={orgView}
+              onChange={setOrgView}
+              ariaLabel="Organizer view"
               options={[
-                { value: 'list', label: 'List', icon: List, title: 'List view' },
+                { value: 'index', label: 'Index', icon: BookText, title: 'Thinking Organizer index' },
+                { value: 'list', label: 'List', icon: List, title: 'Backlog list view' },
                 { value: 'canvas', label: 'Canvas', icon: LayoutDashboard, title: 'Canvas view' },
               ]}
             />
           </div>
-          {backlogView !== 'canvas' && headerBlock}
-          <BacklogOrch
-            view={backlogView}
-            canvasProjectName={projectName}
-            canvasMissionStatement={missionStatement}
-          />
+          {orgView !== 'canvas' && headerBlock}
+          {orgView === 'index' ? (
+            <UndertakingIndexBlock
+              projectId={projectRoot ? projectRoot.split('/').pop() ?? null : null}
+            />
+          ) : (
+            <BacklogOrch
+              view={orgView === 'canvas' ? 'canvas' : 'list'}
+              canvasProjectName={projectName}
+              canvasMissionStatement={missionStatement}
+            />
+          )}
         </div>
       </div>
     </div>

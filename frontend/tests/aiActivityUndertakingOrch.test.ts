@@ -135,6 +135,13 @@ function seedRecord(record: UndertakingRecord): void {
   )
 }
 
+function seedSection(projectId: string, key: string, title: string, sortOrder: number): void {
+  fakeFs.seed(
+    `ai-activity/thinking-organizer/${projectId}/sections/${key}.md`,
+    `---\nkey: ${key}\ntitle: "${title}"\nrecord_kind: section\nsort_order: ${sortOrder}\n---\n\nSection.\n`,
+  )
+}
+
 beforeEach(() => {
   fakeFs.files.clear()
 })
@@ -451,6 +458,49 @@ describe('listChainsOrch', () => {
     const chains = await listChainsOrch({ projectId: 'F9', from: '2026-06-02', to: '2026-06-03' })
 
     expect(chains.map(c => c.chainKey)).toEqual(['c-2', 'c-3'])
+  })
+})
+
+describe('getUndertakingIndexOrch', () => {
+  it('groups by section in section order and buckets every strip over one shared window', async () => {
+    seedSection('F9', 'sec-b', 'Execution', 2)
+    seedSection('F9', 'sec-a', 'Company Studies', 1)
+    // sec-a: one undertaking active early June. sec-b: one active late June.
+    seedRecord(makeRecord({ key: 'u-a', section: 'sec-a', sortOrder: 1, chains: ['c-a'] }))
+    seedRecord(makeRecord({ key: 'u-b', section: 'sec-b', sortOrder: 1, chains: ['c-b'] }))
+    seedChain(makeChain({ chainKey: 'c-a', date: '2026-06-01', durationMs: 60_000, activeDurationMs: 60_000, startedIso: '2026-06-01T10:00:00.000Z' }))
+    seedChain(makeChain({ chainKey: 'c-b', date: '2026-06-30', durationMs: 60_000, activeDurationMs: 60_000, startedIso: '2026-06-30T10:00:00.000Z' }))
+
+    const { getUndertakingIndexOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const index = await getUndertakingIndexOrch('F9', { buckets: 10 })
+
+    // Section order follows sort_order, not insertion order.
+    expect(index.sections.map(s => s.title)).toEqual(['Company Studies', 'Execution'])
+    expect(index.windowStart).toBe('2026-06-01')
+    expect(index.windowEnd).toBe('2026-06-30')
+
+    // Both strips span the same window and the same bucket count, so they are
+    // comparable: u-a's work is in the first bucket, u-b's in the last.
+    const stripA = index.sections[0].rows[0].buckets
+    const stripB = index.sections[1].rows[0].buckets
+    expect(stripA).toHaveLength(10)
+    expect(stripB).toHaveLength(10)
+    expect(stripA[0].chains).toBe(1)
+    expect(stripA[9].chains).toBe(0)
+    expect(stripB[0].chains).toBe(0)
+    expect(stripB[9].chains).toBe(1)
+  })
+
+  it('keeps an undertaking whose section the project does not declare, under Unfiled', async () => {
+    seedSection('F9', 'sec-a', 'Company Studies', 1)
+    seedRecord(makeRecord({ key: 'u-a', section: 'sec-a', chains: [] }))
+    seedRecord(makeRecord({ key: 'u-orphan', section: 'sec-gone', chains: [] }))
+
+    const { getUndertakingIndexOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const index = await getUndertakingIndexOrch('F9')
+
+    expect(index.sections.map(s => s.title)).toEqual(['Company Studies', 'sec-gone'])
+    expect(index.sections[1].rows[0].record.key).toBe('u-orphan')
   })
 })
 
