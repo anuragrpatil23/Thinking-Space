@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectChainDigest } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 import { stringifyProjectChainDigestMarkdownBlock } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 import { serializeUndertakingBlock, type UndertakingRecord } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
+import type { Ask } from '@/services/lego_blocks/units/aiActivityAskBlock'
 
 /**
  * The seam these tests guard: an undertaking's head is stored and its tail is
@@ -336,6 +337,54 @@ describe('listUndertakingsOrch', () => {
   it('returns an empty list for a project with no store rather than throwing', async () => {
     const { listUndertakingsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     await expect(listUndertakingsOrch('Nonexistent')).resolves.toEqual([])
+  })
+})
+
+describe('buildAskSeamBlock', () => {
+  const ask = (key: string, title: string, categoryCode: string, openedDate: string): Ask => ({
+    key,
+    title,
+    categoryCode,
+    category: categoryCode,
+    openedDate,
+  })
+  const NOW = Date.parse('2026-07-30T00:00:00.000Z')
+
+  it('splits asks into discharged (per undertaking) and open (by kind), case-insensitively', async () => {
+    const asks = [
+      ask('f9-ide-e-534', 'MU hits $100B revenue', 'IDE', '2026-04-01'),
+      ask('f9-ic-e-499', 'LAM Research — learn more', 'IC', '2026-03-01'),
+      ask('f9-qt-e-672', 'What are TSMC margins?', 'QT', '2026-02-20'),
+    ]
+    const records = [
+      makeRecord({ key: 'u-micron', discharges: ['F9-IDE-E-534'] }),
+      makeRecord({ key: 'u-tide', discharges: ['F9-QT-E-672'] }),
+    ]
+
+    const { buildAskSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const seam = buildAskSeamBlock(asks, records, NOW)
+
+    // Discharged asks resolve to their titles, keyed by the undertaking.
+    expect(seam.discharged.get('u-micron')).toEqual([{ key: 'f9-ide-e-534', title: 'MU hits $100B revenue' }])
+    expect(seam.discharged.get('u-tide')?.[0].title).toBe('What are TSMC margins?')
+    // Only the undischarged LAM ask stays open; the other two are gone.
+    expect(seam.openSections).toHaveLength(1)
+    expect(seam.openSections[0].code).toBe('IC')
+    expect(seam.openSections[0].asks.map(a => a.ask.key)).toEqual(['f9-ic-e-499'])
+  })
+
+  it('orders open kinds by their oldest ask and computes age in days', async () => {
+    const asks = [
+      ask('f9-ide-e-1', 'newer idea', 'IDE', '2026-06-01'),
+      ask('f9-qt-e-1', 'older question', 'QT', '2026-02-01'),
+    ]
+    const { buildAskSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const seam = buildAskSeamBlock(asks, [], NOW)
+
+    // Questions lead — their oldest ask predates Ideas'.
+    expect(seam.openSections.map(s => s.code)).toEqual(['QT', 'IDE'])
+    // 2026-02-01 → 2026-07-30 is 179 days.
+    expect(seam.openSections[0].asks[0].ageDays).toBe(179)
   })
 })
 

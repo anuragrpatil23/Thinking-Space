@@ -47,6 +47,7 @@ export default function UndertakingIndexRowBlock({ row, onOpen }: Props) {
   const hasMeta = confidence.label || solidTags.length > 0 || ghostTags.length > 0
 
   return (
+    <div>
     <button
       type="button"
       onClick={() => onOpen?.(record.key)}
@@ -109,5 +110,20 @@ export default function UndertakingIndexRowBlock({ row, onOpen }: Props) {
         </span>
       </span>
     </button>
+
+    {/* Reconciliation: the asks this doing discharged. The forward half of the
+        loop (◇), shown under the doing (●) that answered it — the question
+        beneath its answer, so the trail from ask to undertaking is legible. */}
+    {row.discharged.length > 0 && (
+      <ul className="mb-0.5 ml-[1.35rem] space-y-px">
+        {row.discharged.map(ask => (
+          <li key={ask.key} className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground/60">
+            <span className="shrink-0 text-muted-foreground/40" aria-hidden>◇→</span>
+            <span className="truncate" title={`${ask.key} — ${ask.title}`}>{ask.title}</span>
+          </li>
+        ))}
+      </ul>
+    )}
+    </div>
   )
 }

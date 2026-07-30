@@ -19,7 +19,7 @@ import {
 } from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
 import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
 import { listAsksBlock } from '@/services/lego_blocks/integrations/aiActivityAskStoreBlock'
-import type { Ask } from '@/services/lego_blocks/units/aiActivityAskBlock'
+import { askCategoryLabelBlock, type Ask } from '@/services/lego_blocks/units/aiActivityAskBlock'
 import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
 import { readCachedProjectRegistryBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
@@ -306,6 +306,13 @@ export async function getUndertakingDagOrch(projectId: string): Promise<Undertak
 
 // ── The index view ───────────────────────────────────────────────────────
 
+/** An ask (old-organizer question/idea) that an undertaking discharged. The
+ *  forward half of the loop, shown reconciled under the doing that answered it. */
+export interface DischargedAskRef {
+  key: string
+  title: string
+}
+
 export interface UndertakingIndexRow {
   record: UndertakingRecord
   tail: UndertakingTail
@@ -313,6 +320,10 @@ export interface UndertakingIndexRow {
    *  strips is comparable — a flat zero-count strip reads as "written down,
    *  never worked on" against its neighbours. */
   buckets: DensityBucket[]
+  /** Asks this undertaking discharged, resolved to their titles. Rendered as
+   *  `◇→●` reconciliation sublines: the question, under the doing that answered
+   *  it. Empty for undertakings that discharged nothing. */
+  discharged: DischargedAskRef[]
 }
 
 export interface UndertakingIndexSection {
@@ -321,12 +332,85 @@ export interface UndertakingIndexSection {
   rows: UndertakingIndexRow[]
 }
 
+/** An open ask — one nobody has discharged — with how long it has sat. */
+export interface OpenAskEntry {
+  ask: Ask
+  ageDays: number
+}
+
+/** Open asks of one kind (Ideas, Questions, Missed Ideas, …). The forward,
+ *  still-unanswered half of the loop — the wake list, in the index. */
+export interface OpenAskSection {
+  code: string
+  title: string
+  asks: OpenAskEntry[]
+}
+
 export interface UndertakingIndex {
   sections: UndertakingIndexSection[]
+  /** Open asks grouped by kind, appended after the undertaking zone. Empty when
+   *  the project has no old organizer, or every ask has been discharged. */
+  openAskSections: OpenAskSection[]
   /** The shared window every strip is bucketed over (`YYYY-MM-DD`), or '' when
    *  there is no dated activity anywhere in the index. */
   windowStart: string
   windowEnd: string
+}
+
+const DAY_MS = 86_400_000
+
+export interface AskSeam {
+  openSections: OpenAskSection[]
+  /** Undertaking key → the asks it discharged. */
+  discharged: Map<string, DischargedAskRef[]>
+}
+
+/**
+ * The ask↔undertaking join, derived — never stored. Given the project's asks
+ * and its undertaking records: which asks each undertaking discharged (for the
+ * reconciliation sublines), and which asks nobody discharged (the open wake
+ * list), grouped by kind and ordered so the most-neglected kind leads. Keys
+ * compare case-insensitively — the old store lowercases them, the seam edges
+ * carry the display form.
+ */
+export function buildAskSeamBlock(asks: Ask[], records: UndertakingRecord[], nowMs: number): AskSeam {
+  const byKey = new Map<string, Ask>()
+  for (const ask of asks) byKey.set(ask.key.toUpperCase(), ask)
+
+  const dischargedKeys = new Set<string>()
+  const discharged = new Map<string, DischargedAskRef[]>()
+  for (const record of records) {
+    const refs: DischargedAskRef[] = []
+    for (const raw of record.discharges) {
+      const up = raw.toUpperCase()
+      dischargedKeys.add(up)
+      const ask = byKey.get(up)
+      refs.push({ key: ask?.key ?? raw, title: ask?.title ?? raw })
+    }
+    if (refs.length) discharged.set(record.key, refs)
+  }
+
+  const open = asks.filter(ask => !dischargedKeys.has(ask.key.toUpperCase()))
+  const byCategory = new Map<string, OpenAskEntry[]>()
+  for (const ask of open) {
+    const opened = ask.openedDate ? Date.parse(ask.openedDate) : NaN
+    const ageDays = Number.isNaN(opened) ? 0 : Math.max(0, Math.floor((nowMs - opened) / DAY_MS))
+    const list = byCategory.get(ask.categoryCode) ?? []
+    list.push({ ask, ageDays })
+    byCategory.set(ask.categoryCode, list)
+  }
+
+  const openSections: OpenAskSection[] = [...byCategory.entries()].map(([code, list]) => ({
+    code,
+    title: askCategoryLabelBlock(code),
+    asks: list.sort((a, b) => (a.ask.openedDate || '').localeCompare(b.ask.openedDate || '')),
+  }))
+  // Kinds ordered by their oldest open ask, so the most-neglected leads.
+  openSections.sort(
+    (a, b) => (a.asks[0]?.ask.openedDate || '').localeCompare(b.asks[0]?.ask.openedDate || ''),
+  )
+
+  return { openSections, discharged }
 }
 
 const INDEX_SPARKLINE_BUCKETS = 24
@@ -345,10 +429,13 @@ export async function getUndertakingIndexOrch(
   projectId: string,
   options?: { buckets?: number },
 ): Promise<UndertakingIndex> {
-  const [views, sections] = await Promise.all([
+  const [views, sections, askRoot] = await Promise.all([
     listUndertakingsOrch(projectId),
     listSectionsBlock(projectId),
+    askRootForProjectBlock(projectId),
   ])
+  const asks = askRoot !== null ? await listAsksBlock(askRoot) : []
+  const seam = buildAskSeamBlock(asks, views.map(v => v.record), Date.now())
 
   // Shared window across every dated entry, so all strips align.
   let windowStart = ''
@@ -366,6 +453,7 @@ export async function getUndertakingIndexOrch(
   const rowFor = (view: UndertakingView): UndertakingIndexRow => ({
     record: view.record,
     tail: view.tail,
+    discharged: seam.discharged.get(view.record.key) ?? [],
     buckets: windowStart
       ? bucketDensityBlock(
           view.tail.density.map(d => ({
@@ -403,7 +491,32 @@ export async function getUndertakingIndexOrch(
     ordered.push({ key, title, rows })
   }
 
-  return { sections: ordered, windowStart, windowEnd }
+  return { sections: ordered, openAskSections: seam.openSections, windowStart, windowEnd }
+}
+
+/**
+ * The vault-relative root of a project's old organizer (`<root>/thinking-
+ * organizer`), resolved off the registry by matching the chain-directory id
+ * (the path's basename) to `projectId`. Null when no registered path resolves —
+ * a code-repo root (absolute, outside the vault) or a project with no registry
+ * entry. Kept lean (no ask reads) because the index loads on every tab open;
+ * listAskProjectsOrch does the same resolution but also counts asks per project.
+ */
+async function askRootForProjectBlock(projectId: string): Promise<string | null> {
+  await loadProjectRegistryBlock()
+  const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
+  for (const entry of readCachedProjectRegistryBlock()) {
+    for (const abs of entry.paths) {
+      let rel: string | null = null
+      if (vaultRoot && abs === vaultRoot) rel = ''
+      else if (vaultRoot && abs.startsWith(`${vaultRoot}/`)) rel = abs.slice(vaultRoot.length + 1)
+      else if (!abs.startsWith('/')) rel = abs
+      if (rel === null) continue
+      const id = rel.split('/').pop() || entry.project
+      if (id === projectId) return rel
+    }
+  }
+  return null
 }
 
 /**

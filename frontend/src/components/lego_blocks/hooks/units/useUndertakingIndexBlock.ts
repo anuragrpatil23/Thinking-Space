@@ -14,7 +14,7 @@ export interface UndertakingIndexState {
   error: string | null
 }
 
-const EMPTY: UndertakingIndex = { sections: [], windowStart: '', windowEnd: '' }
+const EMPTY: UndertakingIndex = { sections: [], openAskSections: [], windowStart: '', windowEnd: '' }
 
 export function useUndertakingIndexBlock(projectId: string | null): UndertakingIndexState {
   const [state, setState] = useState<UndertakingIndexState>({

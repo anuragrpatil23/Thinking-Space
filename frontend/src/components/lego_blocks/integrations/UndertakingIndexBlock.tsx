@@ -1,5 +1,6 @@
 import { Loader2 } from 'lucide-react'
 import UndertakingIndexRowBlock from '@/components/lego_blocks/units/UndertakingIndexRowBlock'
+import OpenAskRowBlock from '@/components/lego_blocks/units/OpenAskRowBlock'
 import { useUndertakingIndexBlock } from '@/components/lego_blocks/hooks/units/useUndertakingIndexBlock'
 
 // The Thinking Organizer index view: undertakings grouped under their section
@@ -30,7 +31,10 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
     return <div className="px-2 py-8 text-sm text-destructive">Could not load the index: {error}</div>
   }
 
-  if (!index || index.sections.length === 0) {
+  const hasUndertakings = index && index.sections.length > 0
+  const hasOpenAsks = index && index.openAskSections.length > 0
+
+  if (!hasUndertakings && !hasOpenAsks) {
     return (
       <div className="px-2 py-8 text-sm text-muted-foreground/70">
         No undertakings yet. They fill in as sessions get filed at the end-of-session ask.
@@ -40,7 +44,8 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
 
   return (
     <div className="space-y-5">
-      {index.sections.map(section => (
+      {/* Undertakings (doings) — retrospective. Each carries its reconciled asks. */}
+      {index!.sections.map(section => (
         <section key={section.key}>
           <h2 className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             {section.title}
@@ -52,6 +57,22 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
                 row={row}
                 onOpen={onOpenUndertaking}
               />
+            ))}
+          </div>
+        </section>
+      ))}
+
+      {/* Open asks (the forward, still-unanswered half) — the wake list, in the
+          index. Kept below the doings and under an "Open —" heading so the split
+          between what emerged and what's still a question stays legible. */}
+      {index!.openAskSections.map(section => (
+        <section key={`ask-${section.code}`}>
+          <h2 className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+            Open — {section.title}
+          </h2>
+          <div className="space-y-0.5">
+            {section.asks.map(entry => (
+              <OpenAskRowBlock key={entry.ask.key} entry={entry} />
             ))}
           </div>
         </section>
