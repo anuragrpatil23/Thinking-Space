@@ -36,6 +36,13 @@ export interface PendingAssignment {
   /** Set when the session opened an undertaking that did not exist before —
    *  describes the newly-minted key (at most one per ask for now). */
   newTitle?: string
+  /** The one-line "what came out", written now while the work is fresh — the
+   *  same second as the assignment. Heads must not be batched later (that
+   *  summarizes a summary and drifts back to filing labels), so the ask
+   *  collects it here. Applies to the session's primary undertaking
+   *  (`undertakings[0]`, or the newly-minted one). A later sweep pushes it onto
+   *  the undertaking record via update_head; empty leaves the head as-is. */
+  head?: string
   /** Section key for a brand-new undertaking. */
   section?: string
   /** Project the undertaking belongs to. */

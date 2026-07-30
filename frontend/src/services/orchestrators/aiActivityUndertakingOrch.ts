@@ -245,6 +245,7 @@ export async function recordAssignmentOrch(params: {
   sessionId: string
   undertakings: string[]
   newTitle?: string
+  head?: string
   section?: string
   projectId?: string
 }): Promise<{ path: string }> {

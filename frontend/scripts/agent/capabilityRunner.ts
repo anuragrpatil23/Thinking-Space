@@ -218,6 +218,7 @@ const GREEDY_TEXT_FIELDS = new Set([
   'headings_text',
   'title',
   'conversation',
+  'head',
 ])
 
 const COMMAND_SHORTCUTS: Record<string, string> = {
@@ -858,6 +859,7 @@ const CAPABILITY_EXAMPLES: Record<string, string[]> = {
     'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-micron-memory-cycle',
     'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings "f9-und-tsmc,f9-und-semiconductor-physics"',
     'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-new-thing --newTitle "Coherent optics teardown" --projectId F9',
+    'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-micron-memory-cycle --head HBM capacity is the whole thesis; the DRAM cycle is noise',
   ],
   'ai_activity.chains.list': [
     'thinkspc ai_activity.chains.list --projectId F9 --from 2026-07-01',
@@ -1116,6 +1118,7 @@ const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: bo
     { flag: 'sessionId', required: true, note: 'Claude Code session id, not the commit-footer slug' },
     { flag: 'undertakings', required: true, note: 'comma-separated undertaking keys; a session can feed several' },
     { flag: 'newTitle', required: false, note: 'set when the session opened a new undertaking' },
+    { flag: 'head', required: false, note: 'one line of what came out; greedy, so put it last, no quotes needed' },
     { flag: 'section', required: false },
     { flag: 'projectId', required: false },
   ],

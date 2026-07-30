@@ -349,6 +349,8 @@ export interface CapabilityInputMap {
     undertakings: string[]
     /** Set when the session opened an undertaking that did not exist before. */
     newTitle?: string
+    /** One-line "what came out", captured now rather than batched later. */
+    head?: string
     section?: string
     projectId?: string
   }

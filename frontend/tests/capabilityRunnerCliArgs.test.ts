@@ -459,6 +459,20 @@ describe('capabilityRunner CLI arguments for ai_activity capabilities', () => {
     })
   })
 
+  it('greedily parses --head on assignment.record so the one-liner needs no quotes', () => {
+    const { payload } = buildCLIInvokePayload('ai_activity.assignment.record', [
+      '--sessionId', '3f3ea0fb-0000',
+      '--undertakings', 'f9-und-micron-memory-cycle',
+      '--head', 'HBM', 'capacity', 'is', 'the', 'thesis',
+    ])
+
+    expect(payload.request.input).toEqual({
+      sessionId: '3f3ea0fb-0000',
+      undertakings: ['f9-und-micron-memory-cycle'],
+      head: 'HBM capacity is the thesis',
+    })
+  })
+
   it('greedily parses the head text for update_head without quoting', () => {
     const { payload } = buildCLIInvokePayload('ai_activity.undertaking.update_head', [
       '--projectId', 'F9',
