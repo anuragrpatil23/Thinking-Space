@@ -23,6 +23,10 @@ export interface Note {
   /** The note's own tags (`project_preset_tags`) — Anurag's confidence grid
    *  (`for sure for value`, `bucket 1`, …). Shown as pills on the row. */
   tags: string[]
+  /** The plain ticket (`F9-QT-E-541`), derived from the slugged key. This is
+   *  what `fed_by`/`produced` edges reference, so it's the join key — the key
+   *  itself carries a title slug that edges don't. */
+  ticket: string
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -55,6 +59,14 @@ export function noteCategoryCodeBlock(key: string): string {
   if (!m) return ''
   const raw = m[1].toUpperCase()
   return CODE_ALIASES[raw] ?? raw
+}
+
+/** The plain ticket embedded in a slugged key (`f9-qt-e-541-history…` →
+ *  `F9-QT-E-541`) — the form `fed_by`/`produced` edges use. Falls back to the
+ *  whole key uppercased when it doesn't match the note shape. */
+export function noteTicketBlock(key: string): string {
+  const m = /^[a-z0-9]+-[a-z]+-e-\d+/i.exec(key)
+  return (m ? m[0] : key).toUpperCase()
 }
 
 export function noteCategoryLabelBlock(code: string): string {
@@ -111,5 +123,6 @@ export function parseNoteMarkdownBlock(content: string): Note | null {
     category: noteCategoryLabelBlock(code),
     openedDate: asString(parsed.created_at).slice(0, 10),
     tags: asStringArray(parsed.project_preset_tags),
+    ticket: noteTicketBlock(key),
   }
 }

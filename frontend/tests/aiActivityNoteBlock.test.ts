@@ -2,8 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   noteCategoryCodeBlock,
   noteCategoryLabelBlock,
+  noteTicketBlock,
   parseNoteMarkdownBlock,
 } from '@/services/lego_blocks/units/aiActivityNoteBlock'
+
+describe('noteTicketBlock', () => {
+  it('extracts the plain ticket from a slugged key', () => {
+    expect(noteTicketBlock('f9-qt-e-541-history-of-silicon-chips')).toBe('F9-QT-E-541')
+    expect(noteTicketBlock('F9-IDE-E-429')).toBe('F9-IDE-E-429')
+  })
+})
 
 describe('noteCategoryCodeBlock', () => {
   it('extracts the category code from a note key, case-insensitively', () => {

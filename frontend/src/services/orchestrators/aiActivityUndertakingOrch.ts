@@ -273,10 +273,10 @@ export async function getOpenNotesOrch(params: {
   const fed = new Set<string>()
   for (const u of undertakings) {
     for (const key of u.fedBy) {
-      if (!key.includes('::')) fed.add(key.toUpperCase()) // note keys only, not chains
+      if (!key.includes('::')) fed.add(key.toUpperCase()) // note tickets only, not chains
     }
   }
-  const open = notes.filter(a => !fed.has(a.key.toUpperCase()))
+  const open = notes.filter(a => !fed.has(a.ticket))
   open.sort((a, b) => (a.openedDate || '').localeCompare(b.openedDate || ''))
   return { open, answeredCount: notes.length - open.length, totalNotes: notes.length }
 }
@@ -397,8 +397,10 @@ export interface NoteSeam {
  * lowercases them, the seam edges carry the display form.
  */
 export function buildNoteSeamBlock(notes: Note[], records: UndertakingRecord[], _nowMs: number): NoteSeam {
+  // Keyed on the ticket (`F9-QT-E-541`), not the slugged key — edges reference
+  // the ticket, the note's key carries a title slug the edges don't have.
   const byKey = new Map<string, Note>()
-  for (const note of notes) byKey.set(note.key.toUpperCase(), note)
+  for (const note of notes) byKey.set(note.ticket, note)
 
   const migratedAway = new Set<string>()
   const fedNotes = new Map<string, NoteRef[]>()
@@ -430,10 +432,9 @@ export function buildNoteSeamBlock(notes: Note[], records: UndertakingRecord[], 
 
   const byCategory = new Map<string, NoteEntry[]>()
   for (const note of notes) {
-    if (migratedAway.has(note.key.toUpperCase())) continue
-    const up = note.key.toUpperCase()
+    if (migratedAway.has(note.ticket)) continue
     const list = byCategory.get(note.categoryCode) ?? []
-    list.push({ note, fedInto: fedInto.get(up), producedBy: producedBy.get(up) })
+    list.push({ note, fedInto: fedInto.get(note.ticket), producedBy: producedBy.get(note.ticket) })
     byCategory.set(note.categoryCode, list)
   }
 

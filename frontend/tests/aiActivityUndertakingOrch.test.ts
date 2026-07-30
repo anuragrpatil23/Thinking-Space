@@ -347,6 +347,7 @@ describe('buildNoteSeamBlock', () => {
     category: categoryCode,
     openedDate,
     tags: [],
+    ticket: key.toUpperCase(),
   })
   const NOW = Date.parse('2026-07-30T00:00:00.000Z')
 
@@ -375,6 +376,26 @@ describe('buildNoteSeamBlock', () => {
     // The untouched company note is just present, no link.
     const companies = seam.noteSections.find(s => s.code === 'IC')
     expect(companies?.notes[0].fedInto).toBeUndefined()
+  })
+
+  it('joins fed_by edges to slugged note keys via the ticket (shows title, not the raw ticket)', async () => {
+    const notes: Note[] = [{
+      key: 'f9-qt-e-541-history-of-silicon-chips',
+      title: 'History of silicon chips',
+      categoryCode: 'QT',
+      category: 'Questions to research',
+      openedDate: '2026-03-01',
+      tags: [],
+      ticket: 'F9-QT-E-541',
+    }]
+    const records = [makeRecord({ key: 'u-tsmc', title: 'TSMC study', fedBy: ['F9-QT-E-541'] })]
+    const { buildNoteSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const seam = buildNoteSeamBlock(notes, records, NOW)
+
+    // The subline shows the note's title (join succeeded), not the raw ticket.
+    expect(seam.fedNotes.get('u-tsmc')?.[0].title).toBe('History of silicon chips')
+    // And the migrating QT actually left its section.
+    expect(seam.noteSections.some(s => s.code === 'QT')).toBe(false)
   })
 
   it('orders note kinds by their oldest note', async () => {

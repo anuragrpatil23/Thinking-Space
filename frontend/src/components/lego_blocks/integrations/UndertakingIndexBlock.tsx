@@ -47,7 +47,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
       {/* Undertakings (doings) — retrospective. Each carries its reconciled notes. */}
       {index!.sections.map(section => (
         <section key={section.key}>
-          <h2 className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <h2 className="mb-1.5 px-2 text-[13px] font-bold uppercase tracking-[0.1em] text-foreground/80">
             {section.title}
           </h2>
           <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
@@ -74,7 +74,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
       {/* The note taxonomy — Anurag's own kinds, real names, as peers. */}
       {index!.noteSections.map(section => (
         <section key={`note-${section.code}`}>
-          <h2 className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <h2 className="mb-1.5 px-2 text-[13px] font-bold uppercase tracking-[0.1em] text-foreground/80">
             {section.title}
           </h2>
           <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
