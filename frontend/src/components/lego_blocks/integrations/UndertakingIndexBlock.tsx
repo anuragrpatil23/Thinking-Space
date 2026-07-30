@@ -50,7 +50,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
           <h2 className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             {section.title}
           </h2>
-          <div className="space-y-0.5">
+          <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
             {section.rows.map((row, i) => (
               <UndertakingIndexRowBlock
                 key={row.record.key}
@@ -71,7 +71,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
           <h2 className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
             Open — {section.title}
           </h2>
-          <div className="space-y-0.5">
+          <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
             {section.asks.map((entry, i) => (
               <OpenAskRowBlock key={entry.ask.key} entry={entry} colorIndex={i} />
             ))}

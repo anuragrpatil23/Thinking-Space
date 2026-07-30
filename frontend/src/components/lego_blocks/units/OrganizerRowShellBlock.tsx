@@ -48,7 +48,7 @@ export default function OrganizerRowShellBlock({
   const interactive = Boolean(onClick)
 
   return (
-    <div>
+    <div className="bg-card">
       <div
         role={interactive ? 'button' : undefined}
         tabIndex={interactive ? 0 : undefined}
@@ -64,7 +64,7 @@ export default function OrganizerRowShellBlock({
             : undefined
         }
         className={cn(
-          'flex items-center gap-2 rounded-md border border-border/50 border-l-[3px] bg-card px-3 py-1.5 transition-colors',
+          'flex items-center gap-2 border-l-[3px] px-3 py-1.5 transition-colors',
           borderColorClass,
           interactive && 'cursor-pointer hover:bg-zinc-50 focus:outline-none focus-visible:bg-zinc-50 dark:hover:bg-zinc-800/60 dark:focus-visible:bg-zinc-800/60',
         )}
