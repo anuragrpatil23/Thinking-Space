@@ -10,6 +10,10 @@
 // them never invalidates the parse cache — they regroup/recolor instantly.
 
 import { getJsonStorageItem, setJsonStorageItem, STORAGE_KEYS } from '@/services/lego_blocks/units/storageKeyBlock'
+import {
+  readCachedProjectRegistryBlock,
+  resolveProjectByCwdBlock,
+} from '@/services/lego_blocks/units/projectRegistryBlock'
 
 export type AiActivityRuleMode = 'exact' | 'contains'
 
@@ -113,6 +117,7 @@ export function resolveCanonicalProjectBlock(
   settings?: AiActivityMappingSettings,
 ): string {
   const snapshot = settings ?? readAiActivityMappingBlock()
+  // Explicit user rules win — a deliberate override beats any automatic map.
   for (const rule of snapshot.rules) {
     if (!rule.enabled) continue
     if (rule.mode === 'exact') {
@@ -123,6 +128,13 @@ export function resolveCanonicalProjectBlock(
       if (path && path.toLowerCase().includes(needle)) return rule.output
       if (cwd && cwd.toLowerCase().includes(needle)) return rule.output
     }
+  }
+  // Registry: longest-prefix match on the real cwd, more principled than the
+  // basename that produced `rawProject`. Collapses a project's folder variants
+  // to one name. Empty cache (not loaded) → no match → basename fallback.
+  if (cwd) {
+    const canonical = resolveProjectByCwdBlock(cwd, readCachedProjectRegistryBlock())
+    if (canonical) return canonical
   }
   return rawProject
 }
