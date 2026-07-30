@@ -15,9 +15,10 @@ function chipLabel(f: OrganizerFilter): string {
   return f.attr === 'engagement' ? (ENGAGEMENT_LABELS[f.value] ?? f.value) : f.value
 }
 
-// The dark charcoal pill shared by the dropdowns and the active chips.
-const PILL = 'inline-flex items-center gap-2 rounded-xl bg-zinc-700 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-600'
-const COUNT_BADGE = 'rounded-full bg-zinc-600 px-1.5 py-0.5 text-[11px] leading-none tabular-nums text-zinc-200'
+// Dropdown buttons stay light; only a *selected* filter is dark (the chip).
+const DROPDOWN_PILL = 'inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/60'
+const DROPDOWN_BADGE = 'rounded-full bg-muted px-1.5 py-0.5 text-[11px] leading-none tabular-nums text-muted-foreground'
+const CHIP_PILL = 'inline-flex items-center gap-2 rounded-xl bg-zinc-800 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-700 dark:hover:bg-zinc-600'
 
 interface Props {
   groups: FilterGroup[]
@@ -54,11 +55,11 @@ function FilterDropdown({
           const rect = buttonRef.current?.getBoundingClientRect()
           if (rect) setPosition({ x: rect.left, y: rect.bottom + 6 })
         }}
-        className={cn(PILL, position !== null && 'bg-zinc-600')}
+        className={cn(DROPDOWN_PILL, position !== null && 'bg-muted/60')}
       >
-        <ChevronDown className="h-4 w-4 text-zinc-400" />
+        <ChevronDown className="h-4 w-4 text-muted-foreground" />
         {group.label}
-        <span className={COUNT_BADGE}>{activeCount > 0 ? activeCount : group.values.length}</span>
+        <span className={DROPDOWN_BADGE}>{activeCount > 0 ? activeCount : group.values.length}</span>
       </button>
       {position && (
         <ContextMenuBlock
@@ -91,7 +92,7 @@ export default function OrganizerFilterBarBlock({ groups, active, onToggle }: Pr
           key={`${f.attr}:${f.value}`}
           type="button"
           onClick={() => onToggle(f)}
-          className={PILL}
+          className={CHIP_PILL}
           title="Remove filter"
         >
           {chipLabel(f)}
