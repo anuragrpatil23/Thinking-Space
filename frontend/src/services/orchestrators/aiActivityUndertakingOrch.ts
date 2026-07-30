@@ -159,8 +159,14 @@ function buildTail(chains: ChainEntry[]): UndertakingTail {
   }
 }
 
-async function chainsFor(record: UndertakingRecord): Promise<ChainEntry[]> {
-  const all = await listChainsBlock({ projectId: record.projectId })
+// `projectId` is the chain-directory id (e.g. `F9`), not `record.projectId` —
+// that field carries the project's stable UUID, and chains live under
+// `chains/<dir-id>/`. Passing the UUID here reads a directory that doesn't
+// exist and silently yields zero chains (every detail page shows "0 sessions"),
+// which is exactly the bug this replaced. The id the index path already uses is
+// the one threaded in from the caller.
+async function chainsFor(projectId: string, record: UndertakingRecord): Promise<ChainEntry[]> {
+  const all = await listChainsBlock({ projectId })
   const wanted = new Set([...record.chains, ...record.alsoFedBy])
   return all.filter(
     chain => wanted.has(chain.chainKey) || chain.undertaking.includes(record.key),
@@ -191,7 +197,7 @@ export async function getUndertakingOrch(
 ): Promise<UndertakingView | null> {
   const record = await getUndertakingBlock(projectId, key)
   if (!record) return null
-  const chains = collapseChainWindowsBlock(await chainsFor(record))
+  const chains = collapseChainWindowsBlock(await chainsFor(projectId, record))
   return { record, tail: buildTail(chains), chains }
 }
 

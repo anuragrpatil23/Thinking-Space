@@ -337,6 +337,28 @@ describe('listUndertakingsOrch', () => {
     const { listUndertakingsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     await expect(listUndertakingsOrch('Nonexistent')).resolves.toEqual([])
   })
+})
+
+describe('getUndertakingOrch', () => {
+  it('resolves the tail via the chain-directory id, not the record projectId (UUID)', async () => {
+    // Production shape: the record lives under the directory id `F9`, but its
+    // `projectId` frontmatter is the project's stable UUID. Chains live under
+    // `chains/F9/`. Reading chains by `record.projectId` looks in
+    // `chains/<uuid>/`, finds nothing, and every detail page shows 0 sessions.
+    const record = makeRecord({ projectId: '8bf4d342-uuid', chains: ['c-1'] })
+    fakeFs.seed(
+      `ai-activity/thinking-organizer/F9/undertakings/${record.key}.md`,
+      serializeUndertakingBlock(record),
+    )
+    seedChain(makeChain({ chainKey: 'c-1', date: '2026-06-03', durationMs: 90_000 }))
+
+    const { getUndertakingOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const view = await getUndertakingOrch('F9', record.key)
+
+    expect(view).not.toBeNull()
+    expect(view!.tail.chainCount).toBe(1)
+    expect(view!.chains.map(c => c.chainKey)).toEqual(['c-1'])
+  })
 
   it('never writes the derived tail back into the record', async () => {
     seedRecord(makeRecord())
