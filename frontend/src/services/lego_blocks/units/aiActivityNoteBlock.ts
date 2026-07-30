@@ -73,6 +73,19 @@ export function noteCategoryLabelBlock(code: string): string {
   return CATEGORY_LABELS[code] ?? (code || 'Other')
 }
 
+// Reference kinds are captured knowledge — Key things, Things to remember,
+// Execution learnings/mistakes, Missed ideas (permanent lessons). They never
+// have an open→worked lifecycle, so they don't wear the ◇/◆ engagement glyph
+// (an "open" mark would be meaningless on a record). Every other kind is an
+// open loop that can sit untouched (◇) or be engaged (◆).
+const REFERENCE_NOTE_CODES = new Set(['KT', 'TT', 'EL', 'EM', 'MIDE'])
+
+/** True when the note is captured knowledge rather than an open loop — so the
+ *  row shows no open/engaged glyph (its `→`/`←` link, if any, still shows). */
+export function noteIsReferenceBlock(code: string): boolean {
+  return REFERENCE_NOTE_CODES.has(code)
+}
+
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }

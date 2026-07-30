@@ -1,4 +1,5 @@
 import OrganizerRowShellBlock from '@/components/lego_blocks/units/OrganizerRowShellBlock'
+import { noteIsReferenceBlock } from '@/services/lego_blocks/units/aiActivityNoteBlock'
 import type { NoteEntry } from '@/services/orchestrators/aiActivityUndertakingOrch'
 
 // One note (from the old organizer) — a question, idea, missed idea, company to
@@ -20,6 +21,8 @@ interface Props {
 export default function OrganizerNoteRowBlock({ entry, colorIndex, ordinal }: Props) {
   const { note, fedInto, producedBy } = entry
   const engaged = Boolean(fedInto || producedBy)
+  // Reference kinds (captured knowledge) never wear the open/engaged glyph.
+  const showGlyph = !noteIsReferenceBlock(note.categoryCode)
 
   const link = fedInto
     ? { arrow: '→', label: fedInto.title }
@@ -32,13 +35,15 @@ export default function OrganizerNoteRowBlock({ entry, colorIndex, ordinal }: Pr
       colorIndex={colorIndex}
       ordinal={ordinal}
       leadGlyph={
-        <span
-          className={engaged ? 'text-foreground/70' : 'text-muted-foreground/50'}
-          title={engaged ? 'Engaged — it fed or came from a doing' : 'Untouched'}
-          aria-hidden
-        >
-          {engaged ? '◆' : '◇'}
-        </span>
+        showGlyph ? (
+          <span
+            className={engaged ? 'text-foreground/70' : 'text-muted-foreground/50'}
+            title={engaged ? 'Engaged — it fed or came from a doing' : 'Untouched'}
+            aria-hidden
+          >
+            {engaged ? '◆' : '◇'}
+          </span>
+        ) : undefined
       }
       title={note.title}
       tags={note.tags}

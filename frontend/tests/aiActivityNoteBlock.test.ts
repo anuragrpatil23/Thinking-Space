@@ -2,9 +2,23 @@ import { describe, expect, it } from 'vitest'
 import {
   noteCategoryCodeBlock,
   noteCategoryLabelBlock,
+  noteIsReferenceBlock,
   noteTicketBlock,
   parseNoteMarkdownBlock,
 } from '@/services/lego_blocks/units/aiActivityNoteBlock'
+
+describe('noteIsReferenceBlock', () => {
+  it('marks captured-knowledge kinds as reference (no open glyph)', () => {
+    for (const code of ['KT', 'TT', 'EL', 'EM', 'MIDE']) {
+      expect(noteIsReferenceBlock(code)).toBe(true)
+    }
+  })
+  it('leaves open-loop kinds non-reference', () => {
+    for (const code of ['QT', 'IC', 'IDE', 'ET', 'EO', 'TD']) {
+      expect(noteIsReferenceBlock(code)).toBe(false)
+    }
+  })
+})
 
 describe('noteTicketBlock', () => {
   it('extracts the plain ticket from a slugged key', () => {
