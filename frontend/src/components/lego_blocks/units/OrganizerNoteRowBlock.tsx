@@ -11,11 +11,13 @@ import type { NoteEntry } from '@/services/orchestrators/aiActivityUndertakingOr
 
 interface Props {
   entry: NoteEntry
-  /** Position within the section, for the shared border palette. */
+  /** The section's palette slot (shared by all rows in the grouping). */
   colorIndex: number
+  /** 1-based row number within the section. */
+  ordinal: number
 }
 
-export default function OrganizerNoteRowBlock({ entry, colorIndex }: Props) {
+export default function OrganizerNoteRowBlock({ entry, colorIndex, ordinal }: Props) {
   const { note, fedInto, producedBy } = entry
   const engaged = Boolean(fedInto || producedBy)
 
@@ -28,6 +30,7 @@ export default function OrganizerNoteRowBlock({ entry, colorIndex }: Props) {
   return (
     <OrganizerRowShellBlock
       colorIndex={colorIndex}
+      ordinal={ordinal}
       leadGlyph={
         <span
           className={engaged ? 'text-foreground/70' : 'text-muted-foreground/50'}

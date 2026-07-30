@@ -3,40 +3,53 @@ import { cn } from '@/lib/utils'
 import TagChipListBlock from '@/components/lego_blocks/units/TagChipListBlock'
 import {
   EPIC_BORDER_PALETTE,
-  formatRowOrdinal,
+  EPIC_ICON_COLOR_BY_BORDER,
 } from '@/components/lego_blocks/units/BacklogListDomainBlock'
 
 // The shared presentational row for the Thinking Organizer index — the List
 // (backlog) row's visual language, reused: the coloured left bar from the same
-// EPIC_BORDER_PALETTE, the layers icon, the mono ID chip, and TagChipListBlock's
-// coloured pills, on the same card surface. What's dropped is the work-item
-// chrome the List row carries — status control, expand chevron, info/copy/
-// grouping buttons, drag/drop — because that machinery is exactly what the
-// redesign removes. The `rightSlot` is where a List row spends its status
-// control; here it carries the attention signal (density + count, or age).
+// EPIC_BORDER_PALETTE and TagChipListBlock's coloured pills, on the same card
+// surface. What's dropped is the work-item chrome the List row carries — status
+// control, expand chevron, info/copy/grouping buttons, drag/drop. The
+// `rightSlot` is where a List row spends its status control; here it carries the
+// attention signal (density + count, or a link).
 //
-// Both the undertaking row and the open-ask row render through this, so the two
-// kinds read as one language and can't drift.
+// Colour encodes the *section*, not the row: every row in a grouping shares one
+// palette colour (passed as `colorIndex`), which is why the ordinal is a
+// separate `ordinal` prop rather than being read off the colour index.
+//
+// Both the undertaking row and the note row render through this, so the two read
+// as one language and can't drift.
 
 interface Props {
-  /** Row position within its section — indexes into the shared border palette,
-   *  matching how the List colours sibling rows. */
+  /** The section's palette slot — shared by every row in the grouping. */
   colorIndex: number
-  /** A small leading indicator glyph in the slot before the title (◇ untouched
-   *  / ◆ engaged, for notes). Omitted for undertakings. */
+  /** 1-based row number within its section. */
+  ordinal: number
+  /** A small leading indicator glyph before the title (◇ untouched / ◆ engaged,
+   *  for notes). Omitted for undertakings. */
   leadGlyph?: ReactNode
   title: string
   /** Coloured pills, same component and colouring as the List row. */
   tags?: string[]
-  /** The attention gutter (sparkline + count, or age) — right-aligned. */
+  /** The attention gutter (sparkline + count, or a link) — right-aligned. */
   rightSlot?: ReactNode
-  /** Reconciliation sublines (◇→ discharged notes) rendered under the row. */
+  /** Reconciliation sublines (◆→ notes) rendered under the row. */
   subRows?: ReactNode
   onClick?: () => void
 }
 
+/** Border + matching text colour for a section, from its palette slot. The text
+ *  class comes from the shared literal map (not string-built) so Tailwind's JIT
+ *  actually generates it, in both light and dark. */
+export function organizerSectionColorBlock(colorIndex: number): { border: string; text: string } {
+  const border = EPIC_BORDER_PALETTE[colorIndex % EPIC_BORDER_PALETTE.length]
+  return { border, text: EPIC_ICON_COLOR_BY_BORDER[border] ?? 'text-foreground/80' }
+}
+
 export default function OrganizerRowShellBlock({
   colorIndex,
+  ordinal,
   leadGlyph,
   title,
   tags,
@@ -44,7 +57,7 @@ export default function OrganizerRowShellBlock({
   subRows,
   onClick,
 }: Props) {
-  const borderColorClass = EPIC_BORDER_PALETTE[colorIndex % EPIC_BORDER_PALETTE.length]
+  const { border } = organizerSectionColorBlock(colorIndex)
   const interactive = Boolean(onClick)
 
   return (
@@ -64,19 +77,20 @@ export default function OrganizerRowShellBlock({
             : undefined
         }
         className={cn(
-          'flex items-center gap-2 border-l-[3px] px-3 py-1.5 transition-colors',
-          borderColorClass,
+          'flex min-h-[2.25rem] items-center gap-2 border-l-[3px] px-3 py-1.5 transition-colors',
+          border,
           interactive && 'cursor-pointer hover:bg-zinc-50 focus:outline-none focus-visible:bg-zinc-50 dark:hover:bg-zinc-800/60 dark:focus-visible:bg-zinc-800/60',
         )}
       >
-        {/* Row ordinal — the List's small superscript index. */}
-        <sup className="-ml-1 mt-0.5 shrink-0 self-start font-mono text-[9px] leading-none tabular-nums text-muted-foreground/45">
-          {formatRowOrdinal(colorIndex)}
-        </sup>
+        {/* Ordinal — fixed-width so single- and double-digit numbers don't shift
+            the title, self-start for the superscript feel. */}
+        <span className="w-4 shrink-0 self-start pt-1 text-right font-mono text-[9px] leading-none tabular-nums text-muted-foreground/45">
+          {ordinal}
+        </span>
 
         {leadGlyph && <span className="shrink-0 text-[11px] leading-none">{leadGlyph}</span>}
 
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={title}>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium leading-tight text-foreground" title={title}>
           {title}
         </span>
 

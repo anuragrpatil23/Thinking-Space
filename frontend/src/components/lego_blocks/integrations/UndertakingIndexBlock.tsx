@@ -1,6 +1,8 @@
 import { Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import UndertakingIndexRowBlock from '@/components/lego_blocks/units/UndertakingIndexRowBlock'
 import OrganizerNoteRowBlock from '@/components/lego_blocks/units/OrganizerNoteRowBlock'
+import { organizerSectionColorBlock } from '@/components/lego_blocks/units/OrganizerRowShellBlock'
 import { useUndertakingIndexBlock } from '@/components/lego_blocks/hooks/units/useUndertakingIndexBlock'
 
 // The Thinking Organizer index view: undertakings grouped under their section
@@ -42,26 +44,40 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
     )
   }
 
+  // Colour encodes the grouping: each section gets one palette slot, shared by
+  // every row in it and its heading. Indexed continuously across both zones so
+  // adjacent sections differ.
+  let sectionColor = 0
+
   return (
     <div className="space-y-5">
       {/* Undertakings (doings) — retrospective. Each carries its reconciled notes. */}
-      {index!.sections.map(section => (
-        <section key={section.key}>
-          <h2 className="mb-1.5 px-2 text-[13px] font-bold uppercase tracking-[0.1em] text-foreground/80">
-            {section.title}
-          </h2>
-          <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
-            {section.rows.map((row, i) => (
-              <UndertakingIndexRowBlock
-                key={row.record.key}
-                row={row}
-                colorIndex={i}
-                onOpen={onOpenUndertaking}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
+      {index!.sections.map(section => {
+        const colorIndex = sectionColor++
+        return (
+          <section key={section.key}>
+            <h2
+              className={cn(
+                'mb-1.5 px-2 text-[13px] font-bold uppercase tracking-[0.1em]',
+                organizerSectionColorBlock(colorIndex).text,
+              )}
+            >
+              {section.title}
+            </h2>
+            <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
+              {section.rows.map((row, i) => (
+                <UndertakingIndexRowBlock
+                  key={row.record.key}
+                  row={row}
+                  colorIndex={colorIndex}
+                  ordinal={i + 1}
+                  onOpen={onOpenUndertaking}
+                />
+              ))}
+            </div>
+          </section>
+        )
+      })}
 
       {/* A plain divider between the two taxonomies — the doings above, the
           hand-written notes below. No label: the section names carry it, and a
@@ -72,18 +88,26 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
       )}
 
       {/* The note taxonomy — Anurag's own kinds, real names, as peers. */}
-      {index!.noteSections.map(section => (
-        <section key={`note-${section.code}`}>
-          <h2 className="mb-1.5 px-2 text-[13px] font-bold uppercase tracking-[0.1em] text-foreground/80">
-            {section.title}
-          </h2>
-          <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
-            {section.notes.map((entry, i) => (
-              <OrganizerNoteRowBlock key={entry.note.key} entry={entry} colorIndex={i} />
-            ))}
-          </div>
-        </section>
-      ))}
+      {index!.noteSections.map(section => {
+        const colorIndex = sectionColor++
+        return (
+          <section key={`note-${section.code}`}>
+            <h2
+              className={cn(
+                'mb-1.5 px-2 text-[13px] font-bold uppercase tracking-[0.1em]',
+                organizerSectionColorBlock(colorIndex).text,
+              )}
+            >
+              {section.title}
+            </h2>
+            <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
+              {section.notes.map((entry, i) => (
+                <OrganizerNoteRowBlock key={entry.note.key} entry={entry} colorIndex={colorIndex} ordinal={i + 1} />
+              ))}
+            </div>
+          </section>
+        )
+      })}
     </div>
   )
 }
