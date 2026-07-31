@@ -18,15 +18,6 @@ export const dispatchWebSidebarChromeToggleHeaderBlock = block.dispatchToggleHea
 
 export const webSidebarChromeBlock = block
 
-export interface NewThoughtSidebarChromeStateBlock extends SidebarChromeStateBlock {}
-
-const newThoughtBlock = createSidebarChromeBlock<NewThoughtSidebarChromeStateBlock>('new-thought')
-
-export const NEW_THOUGHT_SIDEBAR_CHROME_STATE_EVENT_BLOCK = newThoughtBlock.stateEvent
-export const NEW_THOUGHT_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK = newThoughtBlock.toggleEvent
-
-export const dispatchNewThoughtSidebarChromeStateBlock = (state: Pick<WebSidebarChromeStateBlock, 'enabled' | 'collapsed'>) =>
-  newThoughtBlock.dispatchState({ ...state, label: 'New Note' })
-export const dispatchNewThoughtSidebarChromeToggleBlock = newThoughtBlock.dispatchToggle
-
-export const newThoughtSidebarChromeBlock = newThoughtBlock
+// New Note had a `new-thought` sidebar chrome channel until 2026-07-31. It is
+// gone: the tab is now a single full-bleed iA-Writer-style writing surface with
+// no side panel, so there is nothing for the native/web chrome button to toggle.

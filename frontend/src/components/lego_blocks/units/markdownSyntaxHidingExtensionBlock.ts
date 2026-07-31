@@ -26,6 +26,10 @@ const HEADING_LINE_CLASS_BLOCK: Record<string, string> = {
 }
 
 const hiddenMarkDecorationBlock = Decoration.replace({})
+// iA-Writer marker mode: markers stay in place at low opacity instead of being
+// replaced. Cheaper than hiding (a mark, not a replace) and — because it never
+// depends on cursor position — text never reflows as the caret moves lines.
+const dimmedMarkDecorationBlock = Decoration.mark({ class: 'ltm-cm-syntax-mark' })
 const boldMarkBlock = Decoration.mark({ class: 'ltm-cm-strong' })
 const italicMarkBlock = Decoration.mark({ class: 'ltm-cm-em' })
 const strikeMarkBlock = Decoration.mark({ class: 'ltm-cm-strike' })
@@ -57,10 +61,19 @@ export const markdownSyntaxHidingThemeBlock: Extension = EditorView.baseTheme({
     textDecorationColor: 'hsl(var(--primary) / 0.4)',
   },
   '.ltm-cm-quote-mark': { opacity: '0.4' },
+  '.ltm-cm-syntax-mark': { opacity: '0.35' },
 })
+
+/** How markdown syntax markers are treated on lines the cursor isn't touching.
+ *  - `'hide'` — markers are replaced away (Obsidian live preview, the default).
+ *  - `'dim'`  — markers stay visible at reduced opacity (iA Writer). */
+export type SyntaxMarkerModeBlock = 'hide' | 'dim'
 
 interface SyntaxHidingOptionsBlock {
   isEnabled: () => boolean
+  /** Read per decoration pass so a profile switch applies without a remount.
+   *  Defaults to `'hide'` — existing callers keep their behavior. */
+  markerMode?: () => SyntaxMarkerModeBlock
 }
 
 export function createMarkdownSyntaxHidingExtensionBlock(
@@ -91,6 +104,12 @@ export function createMarkdownSyntaxHidingExtensionBlock(
         }
         const onCursorLine = (pos: number): boolean =>
           cursorLines.has(view.state.doc.lineAt(pos).number)
+
+        // Dim mode shows every marker at all times, so the per-line reveal
+        // (and the reflow it causes) drops out entirely.
+        const dimMarkers = (options.markerMode?.() ?? 'hide') === 'dim'
+        const markerDecoBlock = dimMarkers ? dimmedMarkDecorationBlock : hiddenMarkDecorationBlock
+        const skipMarker = (pos: number): boolean => !dimMarkers && onCursorLine(pos)
 
         // Collect first (tree iteration order isn't strictly sorted across
         // overlapping mark/replace ranges), then feed a sorted builder.
@@ -129,30 +148,37 @@ export function createMarkdownSyntaxHidingExtensionBlock(
                   marks.push({ from: node.from, to: node.to, deco: quoteMarkBlock })
                   return
                 case 'HeaderMark': {
-                  if (onCursorLine(node.from)) return
-                  // Hide `##` plus the following space.
+                  if (skipMarker(node.from)) return
+                  // Hide `##` plus the following space. Dim mode keeps the
+                  // space at full width so the heading text stays put.
                   const after = view.state.doc.sliceString(node.to, node.to + 1)
                   marks.push({
                     from: node.from,
-                    to: after === ' ' ? node.to + 1 : node.to,
-                    deco: hiddenMarkDecorationBlock,
+                    to: !dimMarkers && after === ' ' ? node.to + 1 : node.to,
+                    deco: markerDecoBlock,
                   })
                   return
                 }
                 case 'EmphasisMark':
                 case 'StrikethroughMark':
                 case 'CodeMark': {
-                  if (onCursorLine(node.from)) return
-                  marks.push({ from: node.from, to: node.to, deco: hiddenMarkDecorationBlock })
+                  if (skipMarker(node.from)) return
+                  marks.push({ from: node.from, to: node.to, deco: markerDecoBlock })
                   return
                 }
                 case 'LinkMark': {
-                  if (onCursorLine(node.from)) return
-                  marks.push({ from: node.from, to: node.to, deco: hiddenMarkDecorationBlock })
+                  if (skipMarker(node.from)) return
+                  marks.push({ from: node.from, to: node.to, deco: markerDecoBlock })
                   return
                 }
                 case 'URL': {
-                  if (onCursorLine(node.from)) return
+                  if (skipMarker(node.from)) return
+                  if (dimMarkers) {
+                    // iA shows the whole `[text](url)`; dim the URL in place
+                    // rather than padding out to swallow the parens.
+                    marks.push({ from: node.from, to: node.to, deco: dimmedMarkDecorationBlock })
+                    return
+                  }
                   // Hide the (url) part of [text](url); the parens are LinkMarks…
                   // except they aren't in all grammar versions, so pad to cover
                   // an immediately-surrounding ( ) pair when present.

@@ -1,4 +1,5 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import CodeMirror from '@uiw/react-codemirror'
 import { redo, undo } from '@codemirror/commands'
 import { EditorState, type Extension } from '@codemirror/state'
@@ -11,7 +12,7 @@ import {
   Link2,
   List,
   ListOrdered,
-  PenLine,
+  AlignLeft,
   Quote,
   RotateCcw,
   RotateCw,
@@ -55,6 +56,10 @@ import {
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import { createMarkdownInlineImageExtensionBlock } from '@/components/lego_blocks/units/markdownInlineImageExtensionBlock'
 import { createMarkdownSyntaxHidingExtensionBlock } from '@/components/lego_blocks/units/markdownSyntaxHidingExtensionBlock'
+import {
+  createFocusTypographyThemeBlock,
+  type EditorTypographyProfileBlock,
+} from '@/components/lego_blocks/units/iaTypographyProfileBlock'
 import { createMarkdownTaskCheckboxExtensionBlock } from '@/components/lego_blocks/units/markdownTaskCheckboxExtensionBlock'
 import { resolveEditorLanguageBlock } from '@/components/lego_blocks/units/editorLanguageBlock'
 import { findEditorLinkAtColumnBlock } from '@/components/lego_blocks/units/markdownEditorLinkClickBlock'
@@ -83,6 +88,11 @@ interface MarkdownRichEditorBlockProps {
   compactMobile?: boolean
   /** When true the toolbar is always visible (legacy behavior). When false a toggle button is shown. Default: false. */
   toolbarAlwaysVisible?: boolean
+  /** Portal target for the AI / Mindmap / formatting controls. When set, the
+   *  editor renders no header row of its own and those buttons appear inside
+   *  the given element instead — so a host with its own title bar (New Note)
+   *  can gather all chrome on one line without forking this component. */
+  headerControlsContainer?: HTMLElement | null
   /** Rendered-text snippets around a view-mode click; used to place the caret
    *  at the clicked spot when the editor mounts (best-effort text search). */
   initialCursorHint?: { before: string; after: string } | null
@@ -126,6 +136,14 @@ interface MarkdownRichEditorBlockProps {
   onRelatedThoughtOpenPath?: (path: string) => void
   /** Called when user opens a related-thought result in a new app tab. */
   onRelatedThoughtOpenPathInNewTab?: (path: string) => void
+  /** Typography profile. `'default'` reads the global markdown editor settings
+   *  (explorer behavior — do not change it). `'focus'` is the iA-Writer-style
+   *  writing surface: Plex Mono, capped measure, dimmed syntax markers. Per
+   *  instance on purpose so New Note can differ from the explorer. */
+  typographyProfile?: EditorTypographyProfileBlock
+  /** Focus profile only: bottom padding reserved for the on-screen keyboard,
+   *  so the caret never sits under it on iOS. */
+  focusKeyboardInsetPx?: number
 }
 
 export interface MarkdownRichEditorBlockHandle {
@@ -474,6 +492,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   placeholder = 'Write markdown...',
   compactMobile = false,
   toolbarAlwaysVisible = false,
+  headerControlsContainer = null,
   initialCursorHint = null,
   onOpenWikilink,
   enableFormattingToolbar = true,
@@ -494,6 +513,8 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   relatedThoughtsMinChars = 24,
   onRelatedThoughtOpenPath,
   onRelatedThoughtOpenPathInNewTab,
+  typographyProfile = 'default',
+  focusKeyboardInsetPx = 0,
 }, ref) {
   const { layout } = useUILayoutBlock()
   const { resolvedColorMode } = useUIThemeBlock()
@@ -512,6 +533,9 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   const editorLanguage = useMemo(() => resolveEditorLanguageBlock(currentPath), [currentPath])
   // Live-preview markdown should LOOK like the document, not a code editor:
   // prose font + view-mode spacing, no gutters. Code files keep the editor feel.
+  // Focus typography applies to markdown only — a code file in the New Note
+  // tab should still look like code.
+  const focusProfile = typographyProfile === 'focus' && editorLanguage.kind === 'markdown'
   const proseEditing = editorLanguage.kind === 'markdown'
     && readMarkdownEditorSettingsBlock().livePreviewSyntaxHiding
   const handleImagePasteRef = useRef<((file: File, view: EditorView) => Promise<void>) | null>(null)
@@ -1040,6 +1064,15 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
       },
     })
 
+    // Focus profile layers *after* uiTheme so its measure/font/padding win,
+    // while everything uiTheme sets that the profile doesn't touch survives.
+    const focusTheme = focusProfile
+      ? [createFocusTypographyThemeBlock({
+          compact: compactMobile,
+          keyboardInsetPx: focusKeyboardInsetPx,
+        })]
+      : []
+
     const nextExtensions: Extension[] = [
       editorLanguage.extension,
       EditorView.lineWrapping,
@@ -1115,16 +1148,20 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
               getCurrentPath: () => currentPathRef.current ?? null,
             }),
             createMarkdownSyntaxHidingExtensionBlock({
-              isEnabled: () => readMarkdownEditorSettingsBlock().livePreviewSyntaxHiding,
+              // The focus profile always decorates: its whole point is dimmed
+              // markers, which the global live-preview toggle must not switch off.
+              isEnabled: () => focusProfile || readMarkdownEditorSettingsBlock().livePreviewSyntaxHiding,
+              markerMode: () => (focusProfile ? 'dim' : 'hide'),
             }),
             createMarkdownTaskCheckboxExtensionBlock({
               isEnabled: () => readMarkdownEditorSettingsBlock().livePreviewSyntaxHiding,
             }),
           ]
         : []),
+      ...focusTheme,
     ]
     return nextExtensions
-  }, [compactMobile, editorLanguage, proseEditing, inlineDiffDecorations, inlineDiffRender, placeholder])
+  }, [compactMobile, editorLanguage, proseEditing, focusProfile, focusKeyboardInsetPx, inlineDiffDecorations, inlineDiffRender, placeholder])
 
   const applyPatch = (patchFactory: (text: string, from: number, to: number) => { value: string; start: number; end: number }) => {
     const view = editorViewRef.current
@@ -1200,11 +1237,16 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
     })
   }, [pasteClipboardAsMarkdownTable])
 
-  return (
-    <div className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col', editorCanvasClassName, className)}>
-      {/* Toolbar toggle button (only when not always visible) */}
-      {enableFormattingToolbar && !toolbarAlwaysVisible && (
-        <div className="flex items-center justify-end gap-1 px-2 pt-1.5">
+  // Header controls (AI / Mindmap / formatting toggle). Rendered in place by
+  // default; portalled into the host's own bar when `headerControlsContainer`
+  // is given, which is how New Note gets everything on one line.
+  const headerControlsBlock = (enableFormattingToolbar && !toolbarAlwaysVisible) ? (
+    <div
+      className={cn(
+        'flex items-center justify-end gap-1',
+        !headerControlsContainer && 'px-2 pt-1.5',
+      )}
+    >
           {enableAiAssist && !showToolbar && (
             <button
               type="button"
@@ -1242,9 +1284,20 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
             )}
             title={toolbarOpen ? 'Hide formatting' : 'Show formatting'}
           >
-            <PenLine className="h-4 w-4" />
+            {/* Text-lines glyph, not a pencil: this opens *formatting*, and a
+                pencil reads as "edit" — which is already the mode you're in.
+                Mirrors iA Writer's format control. */}
+            <AlignLeft className="h-4 w-4" />
           </button>
-        </div>
+    </div>
+  ) : null
+
+  return (
+    <div className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col', editorCanvasClassName, className)}>
+      {headerControlsBlock && (
+        headerControlsContainer
+          ? createPortal(headerControlsBlock, headerControlsContainer)
+          : headerControlsBlock
       )}
 
       {/* Formatting toolbar */}
