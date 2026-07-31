@@ -95,6 +95,7 @@ function makeRecord(overrides: Partial<UndertakingRecord> = {}): UndertakingReco
     files: [],
     origin: 'manual',
     head: 'HBM is the thesis.',
+    notes: [],
     ...overrides,
   }
 }
@@ -479,6 +480,48 @@ describe('updateUndertakingHeadOrch', () => {
   it('throws on an unknown key instead of silently creating a record', async () => {
     const { updateUndertakingHeadOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     await expect(updateUndertakingHeadOrch('F9', 'nope', 'x')).rejects.toThrow(/not found/i)
+  })
+})
+
+describe('undertaking notes', () => {
+  it('adds a dated note newest-first and persists it to the body', async () => {
+    seedRecord(makeRecord())
+    const { addUndertakingNoteOrch, getUndertakingOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+
+    await addUndertakingNoteOrch('F9', 'f9-und-micron', '  first note  ')
+    const { record } = await addUndertakingNoteOrch('F9', 'f9-und-micron', 'second note')
+
+    expect(record.notes).toHaveLength(2)
+    expect(record.notes[0].text).toBe('second note') // newest first
+    expect(record.notes[1].text).toBe('first note') // trimmed
+    expect(record.notes[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+
+    // Round-trips through the store, not just the returned object.
+    const reread = await getUndertakingOrch('F9', 'f9-und-micron')
+    expect(reread!.record.notes.map(n => n.text)).toEqual(['second note', 'first note'])
+  })
+
+  it('rejects an empty note', async () => {
+    seedRecord(makeRecord())
+    const { addUndertakingNoteOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    await expect(addUndertakingNoteOrch('F9', 'f9-und-micron', '   ')).rejects.toThrow(/empty/i)
+  })
+
+  it('removes a note by its position in the newest-first list', async () => {
+    seedRecord(makeRecord({ notes: [
+      { date: '2026-07-31', author: '', text: 'newest' },
+      { date: '2026-06-02', author: '', text: 'oldest' },
+    ] }))
+    const { removeUndertakingNoteOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+
+    const { record } = await removeUndertakingNoteOrch('F9', 'f9-und-micron', 0)
+    expect(record.notes.map(n => n.text)).toEqual(['oldest'])
+  })
+
+  it('throws on an out-of-range note index rather than silently no-op', async () => {
+    seedRecord(makeRecord())
+    const { removeUndertakingNoteOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    await expect(removeUndertakingNoteOrch('F9', 'f9-und-micron', 3)).rejects.toThrow(/no note/i)
   })
 })
 

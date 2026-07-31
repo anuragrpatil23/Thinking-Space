@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { BookText, Check, FolderTree, LayoutDashboard, List, Loader2, Network, Pencil, Plus, X } from 'lucide-react'
 import UndertakingIndexBlock from '@/components/lego_blocks/integrations/UndertakingIndexBlock'
 import UndertakingDagBlock from '@/components/lego_blocks/integrations/UndertakingDagBlock'
-import UndertakingDetailBlock from '@/components/lego_blocks/integrations/UndertakingDetailBlock'
+import UndertakingDetailDrawerBlock from '@/components/lego_blocks/integrations/UndertakingDetailDrawerBlock'
 import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
@@ -386,13 +386,9 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
             />
           </div>
           {orgView !== 'canvas' && headerBlock}
-          {(orgView === 'index' || orgView === 'lineage') && openUndertaking && aiProjectId ? (
-            <UndertakingDetailBlock
-              projectId={aiProjectId}
-              undertakingKey={openUndertaking}
-              onBack={() => setOpenUndertaking(null)}
-            />
-          ) : orgView === 'index' ? (
+          {/* The index/lineage stay mounted; the detail opens as a drawer over
+              them so a peek never costs your place in the scan. */}
+          {orgView === 'index' ? (
             <UndertakingIndexBlock projectId={aiProjectId} onOpenUndertaking={setOpenUndertaking} />
           ) : orgView === 'lineage' ? (
             <UndertakingDagBlock projectId={aiProjectId} onOpenUndertaking={setOpenUndertaking} />
@@ -401,6 +397,13 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
               view={orgView === 'canvas' ? 'canvas' : 'list'}
               canvasProjectName={projectName}
               canvasMissionStatement={missionStatement}
+            />
+          )}
+          {(orgView === 'index' || orgView === 'lineage') && openUndertaking && aiProjectId && (
+            <UndertakingDetailDrawerBlock
+              projectId={aiProjectId}
+              undertakingKey={openUndertaking}
+              onClose={() => setOpenUndertaking(null)}
             />
           )}
         </div>

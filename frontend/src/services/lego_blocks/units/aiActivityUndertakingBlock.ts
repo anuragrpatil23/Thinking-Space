@@ -61,11 +61,68 @@ export interface UndertakingRecord {
   files: string[]
   /** Provenance: which pass created this record. */
   origin: string
-  /** The head. One line: what came out. */
+  /** The head. One line: what came out. The first paragraph of the body. */
   head: string
+  /** Margin notes — Anurag's annotations over time. They live in the *body*
+   *  under a `## Notes` heading, not in YAML: they are prose he reads and edits
+   *  in Obsidian, and YAML is machine-only. Newest first. */
+  notes: UndertakingNote[]
+}
+
+/** One margin note on an undertaking. Stored in the body as a paragraph led by
+ *  `**YYYY-MM-DD**` (optionally `· Author`); a hand-typed paragraph with no such
+ *  lead parses as an undated note so an Obsidian edit never breaks. */
+export interface UndertakingNote {
+  /** `YYYY-MM-DD`, or '' for a hand-typed undated note. */
+  date: string
+  /** Author after the date (`· Kai`); '' means the default single user. */
+  author: string
+  /** The note prose (markdown). */
+  text: string
 }
 
 export const UNDERTAKING_RECORD_KIND = 'undertaking'
+
+/** The heading that splits head (above) from notes (below) in the body. */
+const NOTES_HEADING_RE = /^[ \t]*##[ \t]+Notes[ \t]*$/m
+/** A note paragraph's lead: `**2026-07-31** — text` or, with an author,
+ *  `**2026-07-31** · Kai — text`. The `—`/`-` separator is required so the
+ *  author group binds to the whole name rather than its first letter; a block
+ *  without this exact shape parses as an undated note. */
+const NOTE_LEAD_RE = /^\*\*(\d{4}-\d{2}-\d{2})\*\*(?:[ \t]*·[ \t]*(.+?))?[ \t]*[—-][ \t]+/
+
+/** Split a `## Notes` region into structured notes: one per blank-line-separated
+ *  paragraph. A `**date**` lead makes it dated; anything else — a paragraph typed
+ *  straight into Obsidian — parses as an undated note rather than being dropped
+ *  or glued to its neighbour. One block ⇒ one note keeps the round-trip exact. */
+function parseNotesRegionBlock(region: string): UndertakingNote[] {
+  const blocks = region.split(/\n[ \t]*\n/).map(b => b.trim()).filter(Boolean)
+  return blocks.map(block => {
+    const lead = NOTE_LEAD_RE.exec(block)
+    return lead
+      ? { date: lead[1], author: (lead[2] ?? '').trim(), text: block.slice(lead[0].length).trim() }
+      : { date: '', author: '', text: block }
+  })
+}
+
+/** Render one note back to its body paragraph. Internal blank lines are collapsed
+ *  so a note stays a single block — the invariant `parseNotesRegionBlock` relies on
+ *  (one block ⇒ one note), so a note can never split itself on the next read. */
+function serializeNoteBlock(note: UndertakingNote): string {
+  const text = note.text.replace(/\n[ \t]*\n+/g, '\n').trim()
+  if (!note.date && !note.author) return text
+  const prefix = note.author ? `**${note.date}** · ${note.author}` : `**${note.date}**`
+  return `${prefix} — ${text}`
+}
+
+/** Assemble the body from its two halves: head on top, a `## Notes` section
+ *  below when there are any. The one place the body's shape is defined. */
+export function buildUndertakingBodyBlock(head: string, notes: UndertakingNote[]): string {
+  const h = head.trim()
+  if (!notes.length) return h
+  const rendered = notes.map(serializeNoteBlock).join('\n\n')
+  return h ? `${h}\n\n## Notes\n\n${rendered}` : `## Notes\n\n${rendered}`
+}
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
@@ -122,6 +179,14 @@ export function parseUndertakingBlock(content: string): UndertakingRecord | null
   if (asString(parsed.record_kind) !== UNDERTAKING_RECORD_KIND) return null
 
   const body = rest.slice(close.index + close[0].length).replace(/^\n+/, '')
+  // The body carries the head (first paragraph) and, below a `## Notes` heading,
+  // the margin notes. A record with no such heading is all head — which is every
+  // record written before notes existed, so they keep loading unchanged.
+  const notesHeading = NOTES_HEADING_RE.exec(body)
+  const head = (notesHeading ? body.slice(0, notesHeading.index) : body).trim()
+  const notes = notesHeading
+    ? parseNotesRegionBlock(body.slice(notesHeading.index + notesHeading[0].length))
+    : []
 
   return {
     uuid,
@@ -148,7 +213,8 @@ export function parseUndertakingBlock(content: string): UndertakingRecord | null
     chains: asStringArray(parsed.chains),
     files: asStringArray(parsed.files),
     origin: asString(parsed.origin),
-    head: body.trim(),
+    head,
+    notes,
   }
 }
 
@@ -190,7 +256,8 @@ export function serializeUndertakingBlock(record: UndertakingRecord): string {
     .dump(frontmatter, { lineWidth: -1, noRefs: true, sortKeys: false, quotingType: '"' })
     .trimEnd()
 
-  return `---\n${yamlStr}\n---\n${record.head ? `\n${record.head}\n` : ''}`
+  const body = buildUndertakingBodyBlock(record.head, record.notes)
+  return `---\n${yamlStr}\n---\n${body ? `\n${body}\n` : ''}`
 }
 
 export interface TagVocabulary {

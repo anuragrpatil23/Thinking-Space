@@ -1,6 +1,7 @@
 import {
   applyTagsBlock,
   extendVocabularyBlock,
+  type UndertakingNote,
   type UndertakingRecord,
 } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
 import {
@@ -601,6 +602,56 @@ export async function updateUndertakingHeadOrch(
   const next: UndertakingRecord = {
     ...record,
     head: head.trim(),
+    updatedAt: new Date().toISOString().slice(0, 10),
+  }
+  return { path: await writeUndertakingBlock(projectId, next), record: next }
+}
+
+/**
+ * Add a margin note to an undertaking.
+ *
+ * Notes are the annotation surface — Anurag's voice on an entry, the "edits are
+ * signal" half of the design. They live in the body under `## Notes`, dated,
+ * newest first, so they read and edit as prose in Obsidian. Unlike the head
+ * (one line, replaced destructively) notes accumulate: append-only by intent,
+ * though any of them stays hand-editable in the vault file.
+ */
+export async function addUndertakingNoteOrch(
+  projectId: string,
+  key: string,
+  text: string,
+  author = '',
+): Promise<{ path: string; record: UndertakingRecord }> {
+  const trimmed = text.trim()
+  if (!trimmed) throw new Error('Empty note')
+  const record = await getUndertakingBlock(projectId, key)
+  if (!record) throw new Error(`Undertaking not found: ${key}`)
+  const today = new Date().toISOString().slice(0, 10)
+  const note: UndertakingNote = { date: today, author: author.trim(), text: trimmed }
+  const next: UndertakingRecord = {
+    ...record,
+    notes: [note, ...record.notes],
+    updatedAt: today,
+  }
+  return { path: await writeUndertakingBlock(projectId, next), record: next }
+}
+
+/**
+ * Remove a note by its position in the newest-first list the UI shows. Index-
+ * based rather than content-based because notes carry no id — position is the
+ * only handle, and the drawer's list is the same order this reads.
+ */
+export async function removeUndertakingNoteOrch(
+  projectId: string,
+  key: string,
+  index: number,
+): Promise<{ path: string; record: UndertakingRecord }> {
+  const record = await getUndertakingBlock(projectId, key)
+  if (!record) throw new Error(`Undertaking not found: ${key}`)
+  if (index < 0 || index >= record.notes.length) throw new Error(`No note at ${index}`)
+  const next: UndertakingRecord = {
+    ...record,
+    notes: record.notes.filter((_, i) => i !== index),
     updatedAt: new Date().toISOString().slice(0, 10),
   }
   return { path: await writeUndertakingBlock(projectId, next), record: next }

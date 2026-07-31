@@ -87,6 +87,55 @@ describe('serializeUndertakingBlock', () => {
   })
 })
 
+describe('undertaking notes (body)', () => {
+  const WITH_NOTES = FILE.replace(
+    'The memory cycle turned, and the turn was priced before the earnings confirmed it.\n',
+    `The memory cycle turned, and the turn was priced before the earnings confirmed it.
+
+## Notes
+
+**2026-07-31** — reconsidered after the MU earnings; thesis held.
+
+**2026-06-02** · Kai — first flagged this.
+
+a paragraph typed straight into Obsidian with no date lead
+`,
+  )
+
+  it('leaves notes empty and head whole when there is no ## Notes heading', () => {
+    const record = parseUndertakingBlock(FILE)!
+    expect(record.notes).toEqual([])
+    expect(record.head).not.toContain('## Notes')
+  })
+
+  it('splits head from a dated notes section', () => {
+    const record = parseUndertakingBlock(WITH_NOTES)!
+    expect(record.head).toBe(
+      'The memory cycle turned, and the turn was priced before the earnings confirmed it.',
+    )
+    expect(record.notes).toHaveLength(3)
+    expect(record.notes[0]).toEqual({ date: '2026-07-31', author: '', text: 'reconsidered after the MU earnings; thesis held.' })
+    expect(record.notes[1]).toEqual({ date: '2026-06-02', author: 'Kai', text: 'first flagged this.' })
+  })
+
+  it('parses a lead-less paragraph as an undated note rather than dropping it', () => {
+    const record = parseUndertakingBlock(WITH_NOTES)!
+    expect(record.notes[2]).toEqual({ date: '', author: '', text: 'a paragraph typed straight into Obsidian with no date lead' })
+  })
+
+  it('round-trips notes without loss', () => {
+    const record = parseUndertakingBlock(WITH_NOTES)!
+    const again = parseUndertakingBlock(serializeUndertakingBlock(record))!
+    expect(again.notes).toEqual(record.notes)
+    expect(again.head).toBe(record.head)
+  })
+
+  it('writes a ## Notes section only when there are notes', () => {
+    expect(serializeUndertakingBlock(parseUndertakingBlock(FILE)!)).not.toContain('## Notes')
+    expect(serializeUndertakingBlock(parseUndertakingBlock(WITH_NOTES)!)).toContain('## Notes')
+  })
+})
+
 describe('normalizeTagBlock', () => {
   it('collapses case, separators, and edge punctuation', () => {
     expect(normalizeTagBlock('For Sure For Value')).toBe('for sure for value')
