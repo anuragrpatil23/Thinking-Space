@@ -13,6 +13,8 @@ import {
   type OrganizerFilter,
 } from '@/services/lego_blocks/units/organizerIndexFilterBlock'
 import { useUndertakingIndexBlock } from '@/components/lego_blocks/hooks/units/useUndertakingIndexBlock'
+import type { LinkedUndertakings } from '@/components/lego_blocks/units/UndertakingIndexRowBlock'
+import type { NoteRef } from '@/services/orchestrators/aiActivityUndertakingOrch'
 
 // The Thinking Organizer index view: undertakings and notes grouped under their
 // section headings, one dense line each — a *view* over the derived index. The
@@ -31,8 +33,43 @@ const HEADING = 'mb-1.5 px-2 text-[13px] font-bold uppercase tracking-[0.1em]'
 export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: Props) {
   const { index, loading, error } = useUndertakingIndexBlock(projectId)
   const [filters, setFilters] = useState<OrganizerFilter[]>([])
+  // One row's inline peek open at a time — expansion is a peek, not a mode, and
+  // several open at once is the density failure the index exists to avoid.
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const toggleExpand = useCallback((key: string) => {
+    setExpandedKey(prev => (prev === key ? null : key))
+  }, [])
 
   const groups = useMemo(() => (index ? collectFilterGroupsBlock(index) : []), [index])
+
+  // The link graph, resolved once: a row's parents are the undertakings it grew
+  // out of; its children are the undertakings that grew out of it (the reverse
+  // edge). Titles resolve against the whole index, so a link to a currently
+  // filtered-out row still reads as a title, not a bare key.
+  const linkedByKey = useMemo(() => {
+    const titleByKey = new Map<string, string>()
+    const childrenByKey = new Map<string, NoteRef[]>()
+    if (index) {
+      for (const section of index.sections) {
+        for (const { record } of section.rows) titleByKey.set(record.key, record.title || record.head || record.key)
+      }
+      for (const section of index.sections) {
+        for (const { record } of section.rows) {
+          for (const parent of record.grewOutOf) {
+            const list = childrenByKey.get(parent) ?? []
+            list.push({ key: record.key, title: titleByKey.get(record.key) ?? record.key })
+            childrenByKey.set(parent, list)
+          }
+        }
+      }
+    }
+    const resolve = (key: string): LinkedUndertakings => ({
+      parents: (index?.sections.flatMap(s => s.rows).find(r => r.record.key === key)?.record.grewOutOf ?? [])
+        .map(k => ({ key: k, title: titleByKey.get(k) ?? k })),
+      children: childrenByKey.get(key) ?? [],
+    })
+    return resolve
+  }, [index])
 
   const toggle = useCallback((f: OrganizerFilter) => {
     setFilters(prev =>
@@ -105,9 +142,13 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
                   <UndertakingIndexRowBlock
                     key={row.record.key}
                     row={row}
+                    projectId={projectId}
                     colorIndex={section.colorIndex}
                     ordinal={i + 1}
-                    onOpen={onOpenUndertaking}
+                    expanded={expandedKey === row.record.key}
+                    onToggle={() => toggleExpand(row.record.key)}
+                    onOpenDrawer={onOpenUndertaking}
+                    linked={linkedByKey(row.record.key)}
                   />
                 ))}
               </div>
