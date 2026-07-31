@@ -76,22 +76,19 @@ export function createFocusTypographyThemeBlock(
       borderLeftColor: 'var(--ltm-explorer-selected-color, hsl(var(--primary)))',
       transition: 'left 70ms cubic-bezier(0.22, 1, 0.36, 1), top 110ms cubic-bezier(0.22, 1, 0.36, 1)',
     },
-    // CM6's stock blink is a hard `steps(1)` on/off. iA's fades. Own keyframe
-    // name, not an override of `cm-blink`: keyframes are global, and stomping
-    // CM's would change every other editor in the app too.
-    '@keyframes ltm-ia-caret-blink': {
-      '0%, 45%': { opacity: '1' },
-      '55%, 95%': { opacity: '0' },
-      '100%': { opacity: '1' },
-    },
-    '&.cm-focused .cm-cursor': {
-      animation: 'ltm-ia-caret-blink 1.15s ease-in-out infinite',
-    },
-    // Respect the OS setting — a gliding, pulsing caret is exactly the kind of
-    // motion people turn this on to avoid.
+    // No soft-fade blink here, deliberately. CM6 does not blink `.cm-cursor` —
+    // `drawSelection` animates the enclosing `.cm-cursorLayer` with a hard
+    // `steps(1)` opacity toggle, and restarts it by writing `animationName`
+    // (`cm-blink`/`cm-blink2`) as an *inline* style on every selection change.
+    // Inline beats any stylesheet rule, so a fade declared here would be dead
+    // CSS layered under a hard toggle. Changing the rate is a `drawSelection`
+    // option; changing the shape means redefining the global `cm-blink`
+    // keyframes, which would alter every editor in the app.
+    //
+    // Respect the OS setting — a gliding caret is the kind of motion people
+    // turn this on to avoid.
     '@media (prefers-reduced-motion: reduce)': {
       '.cm-cursor, .cm-dropCursor': { transition: 'none' },
-      '&.cm-focused .cm-cursor': { animation: 'none' },
     },
     '.cm-line': {
       padding: '0',

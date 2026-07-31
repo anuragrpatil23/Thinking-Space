@@ -894,7 +894,15 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         maxWidth: '100%',
         overflow: 'hidden',
         color: 'hsl(var(--foreground))',
-        caretColor: proseEditing ? 'hsl(var(--primary))' : 'hsl(var(--foreground))',
+        // Typography and caret are ceded to the focus profile when it owns this
+        // instance. Two `EditorView.theme()`s setting the same property is a
+        // cascade race decided by StyleModule *mount* order, not by which
+        // extension came last in the array — so "layer focusTheme afterwards"
+        // did not actually make it win (2026-07-31). Not setting the property
+        // twice is what makes it deterministic.
+        caretColor: focusProfile
+          ? 'var(--ltm-explorer-selected-color, hsl(var(--primary)))'
+          : (proseEditing ? 'hsl(var(--primary))' : 'hsl(var(--foreground))'),
       },
       '.cm-scroller': {
         height: '100%',
@@ -902,11 +910,14 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         overflowY: 'auto',
         overflowX: 'hidden',
         backgroundColor: 'transparent',
-        fontFamily: proseEditing
-          ? DOCUMENT_FONT_STACKS_BLOCK[readMarkdownEditorSettingsBlock().documentFontFamily]
-          : 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        fontSize: proseEditing ? `${readMarkdownEditorSettingsBlock().documentFontSizePx}px` : '13px',
-        lineHeight: proseEditing ? '1.75' : '1.5',
+        // Font stack/size/leading: focus profile's when active — see above.
+        ...(focusProfile ? {} : {
+          fontFamily: proseEditing
+            ? DOCUMENT_FONT_STACKS_BLOCK[readMarkdownEditorSettingsBlock().documentFontFamily]
+            : 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+          fontSize: proseEditing ? `${readMarkdownEditorSettingsBlock().documentFontSizePx}px` : '13px',
+          lineHeight: proseEditing ? '1.75' : '1.5',
+        }),
       },
       '.cm-line': {
         overflowWrap: 'anywhere',
@@ -925,9 +936,13 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         : {}),
       '.cm-content': {
         minHeight: '100%',
-        padding: proseEditing
-          ? (compactMobile ? '1.25rem 1.25rem' : '1.75rem 2rem')
-          : (compactMobile ? '0.6rem 0.6rem 0.6rem 0.45rem' : '0.75rem 0.75rem 0.75rem 0.5rem'),
+        // Padding too — the focus profile's measure only reads right with its
+        // own generous top/bottom, and this rule was silently winning.
+        ...(focusProfile ? {} : {
+          padding: proseEditing
+            ? (compactMobile ? '1.25rem 1.25rem' : '1.75rem 2rem')
+            : (compactMobile ? '0.6rem 0.6rem 0.6rem 0.45rem' : '0.75rem 0.75rem 0.75rem 0.5rem'),
+        }),
         whiteSpace: 'pre-wrap',
       },
       '.cm-gutters': {
@@ -938,9 +953,11 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         paddingLeft: compactMobile ? '0.1rem' : '0.25rem',
         color: 'hsl(var(--muted-foreground))',
       },
-      '.cm-cursor, .cm-dropCursor': {
-        borderLeftColor: proseEditing ? 'hsl(var(--primary))' : 'hsl(var(--foreground))',
-      },
+      ...(focusProfile ? {} : {
+        '.cm-cursor, .cm-dropCursor': {
+          borderLeftColor: proseEditing ? 'hsl(var(--primary))' : 'hsl(var(--foreground))',
+        },
+      }),
       '.cm-lineNumbers .cm-gutterElement': {
         padding: '0 0.35rem 0 0',
       },
