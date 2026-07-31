@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import UndertakingIndexRowBlock from '@/components/lego_blocks/units/UndertakingIndexRowBlock'
 import OrganizerNoteRowBlock from '@/components/lego_blocks/units/OrganizerNoteRowBlock'
 import OrganizerFilterBarBlock from '@/components/lego_blocks/units/OrganizerFilterBarBlock'
+import OrganizerSectionManagerBlock from '@/components/lego_blocks/integrations/OrganizerSectionManagerBlock'
 import { organizerSectionColorBlock } from '@/components/lego_blocks/units/OrganizerRowShellBlock'
 import {
   collectFilterGroupsBlock,
@@ -31,8 +32,9 @@ interface Props {
 const HEADING = 'mb-1.5 px-2 text-[13px] font-bold uppercase tracking-[0.1em]'
 
 export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: Props) {
-  const { index, loading, error } = useUndertakingIndexBlock(projectId)
+  const { index, loading, error, reload } = useUndertakingIndexBlock(projectId)
   const [filters, setFilters] = useState<OrganizerFilter[]>([])
+  const [managingSections, setManagingSections] = useState(false)
   // One row's inline peek open at a time — expansion is a peek, not a mode, and
   // several open at once is the density failure the index exists to avoid.
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
@@ -126,7 +128,29 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
 
   return (
     <div>
-      <OrganizerFilterBarBlock groups={groups} active={filters} onToggle={toggle} />
+      <div className="flex items-start justify-between gap-2">
+        <OrganizerFilterBarBlock groups={groups} active={filters} onToggle={toggle} />
+        {projectId && (
+          <button
+            type="button"
+            onClick={() => setManagingSections(v => !v)}
+            className={cn(
+              'ltm-motion-fast mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
+              managingSections
+                ? 'border-border bg-foreground text-background'
+                : 'border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground',
+            )}
+            title="Create, rename, reorder, or delete sections"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Sections
+          </button>
+        )}
+      </div>
+
+      {projectId && managingSections && (
+        <OrganizerSectionManagerBlock projectId={projectId} onChanged={reload} />
+      )}
 
       {nothingMatches ? (
         <p className="px-2 py-8 text-sm text-muted-foreground/70">Nothing matches these filters.</p>

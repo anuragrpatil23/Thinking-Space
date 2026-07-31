@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectChainDigest } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 import { stringifyProjectChainDigestMarkdownBlock } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 import { serializeUndertakingBlock, type UndertakingRecord } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
+import { serializeSectionBlock, type SectionRecord } from '@/services/lego_blocks/units/aiActivitySectionBlock'
 import type { Note } from '@/services/lego_blocks/units/aiActivityNoteBlock'
 
 /**
@@ -135,6 +136,26 @@ function seedRecord(record: UndertakingRecord): void {
   fakeFs.seed(
     `ai-activity/thinking-organizer/${record.projectId}/undertakings/${record.key}.md`,
     serializeUndertakingBlock(record),
+  )
+}
+
+function makeSection(over: Partial<SectionRecord> = {}): SectionRecord {
+  return {
+    uuid: 's-uuid',
+    key: 'f9-sec-ideas',
+    title: 'Ideas',
+    projectId: 'proj-uuid',
+    sortOrder: 1,
+    origin: 'test',
+    body: 'Section.',
+    ...over,
+  }
+}
+
+function seedSectionRecord(record: SectionRecord): void {
+  fakeFs.seed(
+    `ai-activity/thinking-organizer/F9/sections/${record.key.replace(/[^A-Za-z0-9._-]+/g, '-')}.md`,
+    serializeSectionBlock(record),
   )
 }
 
@@ -522,6 +543,96 @@ describe('undertaking notes', () => {
     seedRecord(makeRecord())
     const { removeUndertakingNoteOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     await expect(removeUndertakingNoteOrch('F9', 'f9-und-micron', 3)).rejects.toThrow(/no note/i)
+  })
+})
+
+describe('updateUndertakingFieldsOrch', () => {
+  it('patches title, section, and grew_out_of, moving updated_at', async () => {
+    seedRecord(makeRecord())
+    const { updateUndertakingFieldsOrch, getUndertakingOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+
+    await updateUndertakingFieldsOrch('F9', 'f9-und-micron', {
+      title: '  Micron — the cycle turns  ',
+      section: 'f9-sec-ideas',
+      grewOutOf: ['f9-und-tsmc'],
+    })
+
+    const { record } = (await getUndertakingOrch('F9', 'f9-und-micron'))!
+    expect(record.title).toBe('Micron — the cycle turns') // trimmed
+    expect(record.section).toBe('f9-sec-ideas')
+    expect(record.grewOutOf).toEqual(['f9-und-tsmc'])
+    expect(record.updatedAt).not.toBe('2026-06-01')
+  })
+
+  it('leaves untouched fields alone', async () => {
+    seedRecord(makeRecord({ tags: ['held'], head: 'Original head.' }))
+    const { updateUndertakingFieldsOrch, getUndertakingOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    await updateUndertakingFieldsOrch('F9', 'f9-und-micron', { section: 'f9-sec-ideas' })
+    const { record } = (await getUndertakingOrch('F9', 'f9-und-micron'))!
+    expect(record.tags).toEqual(['held'])
+    expect(record.head).toBe('Original head.')
+  })
+
+  it('refuses an empty title rather than blanking it', async () => {
+    seedRecord(makeRecord())
+    const { updateUndertakingFieldsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    await expect(updateUndertakingFieldsOrch('F9', 'f9-und-micron', { title: '   ' })).rejects.toThrow(/empty/i)
+  })
+})
+
+describe('section management', () => {
+  it('creates a section with a slugged key and next sort order', async () => {
+    seedSectionRecord(makeSection({ key: 'f9-sec-ideas', sortOrder: 1 }))
+    const { createSectionOrch, listManagedSectionsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+
+    const { record } = await createSectionOrch('F9', '  Company Studies  ')
+    expect(record.key).toBe('f9-sec-company-studies')
+    expect(record.title).toBe('Company Studies')
+    expect(record.sortOrder).toBe(2)
+
+    const managed = await listManagedSectionsOrch('F9')
+    expect(managed.map(m => m.title)).toContain('Company Studies')
+  })
+
+  it('de-duplicates a colliding section key', async () => {
+    seedSectionRecord(makeSection({ key: 'f9-sec-ideas', title: 'Ideas' }))
+    const { createSectionOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const { record } = await createSectionOrch('F9', 'Ideas')
+    expect(record.key).toBe('f9-sec-ideas-2')
+  })
+
+  it('renames a section', async () => {
+    seedSectionRecord(makeSection({ key: 'f9-sec-ideas', title: 'Ideas' }))
+    const { renameSectionOrch, listManagedSectionsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    await renameSectionOrch('F9', 'f9-sec-ideas', 'Theses')
+    const managed = await listManagedSectionsOrch('F9')
+    expect(managed.find(m => m.key === 'f9-sec-ideas')!.title).toBe('Theses')
+  })
+
+  it('reorders by renumbering sort_order', async () => {
+    seedSectionRecord(makeSection({ key: 'f9-sec-a', title: 'A', sortOrder: 1 }))
+    seedSectionRecord(makeSection({ key: 'f9-sec-b', title: 'B', sortOrder: 2 }))
+    const { reorderSectionOrch, listManagedSectionsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+
+    await reorderSectionOrch('F9', 'f9-sec-b', 'up')
+    const managed = await listManagedSectionsOrch('F9')
+    expect(managed.map(m => m.key)).toEqual(['f9-sec-b', 'f9-sec-a'])
+  })
+
+  it('counts undertakings per section and blocks deleting a non-empty one', async () => {
+    seedSectionRecord(makeSection({ key: 'f9-sec-ideas' }))
+    seedRecord(makeRecord({ key: 'u-1', section: 'f9-sec-ideas' }))
+    const { deleteSectionOrch, listManagedSectionsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+
+    expect((await listManagedSectionsOrch('F9')).find(m => m.key === 'f9-sec-ideas')!.count).toBe(1)
+    await expect(deleteSectionOrch('F9', 'f9-sec-ideas')).rejects.toThrow(/move them first/i)
+  })
+
+  it('deletes an empty section', async () => {
+    seedSectionRecord(makeSection({ key: 'f9-sec-empty', title: 'Empty' }))
+    const { deleteSectionOrch, listManagedSectionsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    await deleteSectionOrch('F9', 'f9-sec-empty')
+    expect((await listManagedSectionsOrch('F9')).some(m => m.key === 'f9-sec-empty')).toBe(false)
   })
 })
 

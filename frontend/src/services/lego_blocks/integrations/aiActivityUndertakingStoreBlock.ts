@@ -6,6 +6,11 @@ import {
   type TagVocabulary,
   type UndertakingRecord,
 } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
+import {
+  parseSectionBlock,
+  serializeSectionBlock,
+  type SectionRecord,
+} from '@/services/lego_blocks/units/aiActivitySectionBlock'
 
 /**
  * Vault-side storage for undertaking records and the tag vocabulary.
@@ -46,6 +51,10 @@ function fileNameFor(key: string): string {
 
 export function undertakingPathBlock(projectId: string, key: string): string {
   return `${undertakingDirBlock(projectId)}/${fileNameFor(key)}`
+}
+
+export function sectionPathBlock(projectId: string, key: string): string {
+  return `${sectionDirBlock(projectId)}/${fileNameFor(key)}`
 }
 
 async function readIfPresent(path: string): Promise<string | null> {
@@ -90,25 +99,9 @@ export interface SectionEntry {
   sortOrder: number
 }
 
-function parseFrontmatterRecord(content: string): Record<string, unknown> | null {
-  const trimmed = content.trimStart()
-  if (!trimmed.startsWith('---')) return null
-  const afterOpen = trimmed.indexOf('\n')
-  if (afterOpen === -1) return null
-  const rest = trimmed.slice(afterOpen + 1)
-  const closeIdx = rest.search(/^---\s*$/m)
-  if (closeIdx === -1) return null
-  try {
-    const parsed = yaml.load(rest.slice(0, closeIdx))
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
-  } catch {
-    return null
-  }
-}
-
-/** The project's section headings, ordered as they should render. Empty when
- *  the project has no sections dir — the index then falls back to one group. */
-export async function listSectionsBlock(projectId: string): Promise<SectionEntry[]> {
+/** The project's full section records, ordered as they should render. Empty
+ *  when the project has no sections dir. */
+export async function listSectionRecordsBlock(projectId: string): Promise<SectionRecord[]> {
   const fs = getVaultFS()
   const dir = sectionDirBlock(projectId)
   let names: string[] = []
@@ -117,21 +110,43 @@ export async function listSectionsBlock(projectId: string): Promise<SectionEntry
   } catch {
     return []
   }
-  const out: SectionEntry[] = []
+  const out: SectionRecord[] = []
   for (const name of names) {
     const content = await readIfPresent(`${dir}/${name}`)
     if (!content) continue
-    const fm = parseFrontmatterRecord(content)
-    const key = fm && typeof fm.key === 'string' ? fm.key : ''
-    if (!key) continue
-    out.push({
-      key,
-      title: fm && typeof fm.title === 'string' && fm.title.trim() ? fm.title : key,
-      sortOrder: fm && typeof fm.sort_order === 'number' ? fm.sort_order : 0,
-    })
+    const record = parseSectionBlock(content)
+    if (record) out.push(record)
   }
   out.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title))
   return out
+}
+
+/** The project's section headings — the lean {key,title,sortOrder} the index and
+ *  the re-file dropdown read. Falls back to one group when there is no sections
+ *  dir. */
+export async function listSectionsBlock(projectId: string): Promise<SectionEntry[]> {
+  const records = await listSectionRecordsBlock(projectId)
+  return records.map(({ key, title, sortOrder }) => ({ key, title, sortOrder }))
+}
+
+export async function getSectionBlock(projectId: string, key: string): Promise<SectionRecord | null> {
+  const direct = await readIfPresent(sectionPathBlock(projectId, key))
+  if (direct) return parseSectionBlock(direct)
+  const all = await listSectionRecordsBlock(projectId)
+  return all.find(record => record.key === key) ?? null
+}
+
+export async function writeSectionBlock(projectId: string, record: SectionRecord): Promise<string> {
+  const fs = getVaultFS()
+  await fs.mkdir(sectionDirBlock(projectId))
+  const path = sectionPathBlock(projectId, record.key)
+  await fs.write(path, serializeSectionBlock(record))
+  return path
+}
+
+export async function deleteSectionBlock(projectId: string, key: string): Promise<void> {
+  const fs = getVaultFS()
+  await fs.delete(sectionPathBlock(projectId, key))
 }
 
 export async function getUndertakingBlock(

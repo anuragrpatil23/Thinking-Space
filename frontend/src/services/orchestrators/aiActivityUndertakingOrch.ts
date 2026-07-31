@@ -5,13 +5,21 @@ import {
   type UndertakingRecord,
 } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
 import {
+  deleteSectionBlock,
+  getSectionBlock,
   getUndertakingBlock,
+  listSectionRecordsBlock,
   listSectionsBlock,
   listUndertakingsBlock,
   readTagVocabularyBlock,
+  writeSectionBlock,
   writeTagVocabularyBlock,
   writeUndertakingBlock,
 } from '@/services/lego_blocks/integrations/aiActivityUndertakingStoreBlock'
+import {
+  sectionKeyFromTitleBlock,
+  type SectionRecord,
+} from '@/services/lego_blocks/units/aiActivitySectionBlock'
 import {
   findChainBlock,
   listChainsBlock,
@@ -655,6 +663,163 @@ export async function removeUndertakingNoteOrch(
     updatedAt: new Date().toISOString().slice(0, 10),
   }
   return { path: await writeUndertakingBlock(projectId, next), record: next }
+}
+
+/** Editable non-tag fields on an undertaking. Everything here is Anurag's
+ *  judgment — title, where it files, and its relationship edges — so all of it
+ *  stays hand-editable (the design's "nothing may depend on upkeep, but
+ *  everything may be edited"). Tags go through `tagUndertakingOrch` for
+ *  vocabulary validation; the head and notes have their own orchs. */
+export interface UndertakingFieldPatch {
+  title?: string
+  /** Section key (the record's `parent`). Re-files the undertaking. */
+  section?: string
+  /** Undertaking keys this one grew out of — its causes. */
+  grewOutOf?: string[]
+  /** Note keys this undertaking produced. */
+  produced?: string[]
+}
+
+export async function updateUndertakingFieldsOrch(
+  projectId: string,
+  key: string,
+  patch: UndertakingFieldPatch,
+): Promise<{ path: string; record: UndertakingRecord }> {
+  const record = await getUndertakingBlock(projectId, key)
+  if (!record) throw new Error(`Undertaking not found: ${key}`)
+  if (patch.title !== undefined && !patch.title.trim()) throw new Error('Title cannot be empty')
+  const next: UndertakingRecord = {
+    ...record,
+    ...(patch.title !== undefined ? { title: patch.title.trim() } : {}),
+    ...(patch.section !== undefined ? { section: patch.section } : {}),
+    ...(patch.grewOutOf !== undefined ? { grewOutOf: patch.grewOutOf } : {}),
+    ...(patch.produced !== undefined ? { produced: patch.produced } : {}),
+    updatedAt: new Date().toISOString().slice(0, 10),
+  }
+  return { path: await writeUndertakingBlock(projectId, next), record: next }
+}
+
+/** The project's sections, for the re-file dropdown. */
+export async function listUndertakingSectionsOrch(
+  projectId: string,
+): Promise<Array<{ key: string; title: string }>> {
+  return listSectionsBlock(projectId)
+}
+
+/** Lightweight {key,title} for every undertaking in a project — the candidate
+ *  set for the grew_out_of picker. Reads records only (no chain walk), unlike
+ *  listUndertakingsOrch which also builds tails. */
+export async function listUndertakingTitlesOrch(
+  projectId: string,
+): Promise<Array<{ key: string; title: string }>> {
+  const records = await listUndertakingsBlock(projectId)
+  return records.map(r => ({ key: r.key, title: r.title || r.head || r.key }))
+}
+
+// ── Section management (CRUD) ─────────────────────────────────────────────
+//
+// Sections are the one level of grouping — "one home per entry by kind." They
+// were seeded by the migration and, until now, could only be read. These make
+// the set editable from the app: create, rename, reorder, delete. Nothing here
+// touches an undertaking; re-filing is a field edit on the undertaking side.
+
+function newUuidBlock(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  return `sec-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+/** A section plus how many undertakings file under it — the manager's row. The
+ *  count is what gates deletion (a non-empty section can't be removed without
+ *  orphaning its undertakings). */
+export interface ManagedSection {
+  key: string
+  title: string
+  sortOrder: number
+  count: number
+}
+
+export async function listManagedSectionsOrch(projectId: string): Promise<ManagedSection[]> {
+  const [sections, undertakings] = await Promise.all([
+    listSectionRecordsBlock(projectId),
+    listUndertakingsBlock(projectId),
+  ])
+  const counts = new Map<string, number>()
+  for (const u of undertakings) counts.set(u.section, (counts.get(u.section) ?? 0) + 1)
+  return sections.map(s => ({ key: s.key, title: s.title, sortOrder: s.sortOrder, count: counts.get(s.key) ?? 0 }))
+}
+
+export async function createSectionOrch(
+  projectId: string,
+  title: string,
+): Promise<{ path: string; record: SectionRecord }> {
+  const t = title.trim()
+  if (!t) throw new Error('Section title cannot be empty')
+  const existing = await listSectionRecordsBlock(projectId)
+  const key = sectionKeyFromTitleBlock(projectId, t, existing.map(s => s.key))
+  const maxSort = existing.reduce((m, s) => Math.max(m, s.sortOrder), 0)
+  // The stable project id is cosmetic on a section (nothing resolves by it), but
+  // keep it consistent with the project's other records when one is available.
+  let stableProjectId = existing[0]?.projectId ?? ''
+  if (!stableProjectId) {
+    const unds = await listUndertakingsBlock(projectId)
+    stableProjectId = unds[0]?.projectId ?? ''
+  }
+  const record: SectionRecord = {
+    uuid: newUuidBlock(),
+    key,
+    title: t,
+    projectId: stableProjectId,
+    sortOrder: maxSort + 1,
+    origin: 'organizer-ui',
+    body: 'Section of the index. Holds undertakings.',
+  }
+  return { path: await writeSectionBlock(projectId, record), record }
+}
+
+export async function renameSectionOrch(
+  projectId: string,
+  key: string,
+  title: string,
+): Promise<{ path: string; record: SectionRecord }> {
+  const t = title.trim()
+  if (!t) throw new Error('Section title cannot be empty')
+  const record = await getSectionBlock(projectId, key)
+  if (!record) throw new Error(`Section not found: ${key}`)
+  const next: SectionRecord = { ...record, title: t }
+  return { path: await writeSectionBlock(projectId, next), record: next }
+}
+
+/** Move a section one place up or down. Renumbers sort_order to 1..n so the
+ *  order is exact regardless of the prior values, writing only the rows that
+ *  actually moved. A no-op at the ends. */
+export async function reorderSectionOrch(
+  projectId: string,
+  key: string,
+  direction: 'up' | 'down',
+): Promise<void> {
+  const list = await listSectionRecordsBlock(projectId)
+  const i = list.findIndex(s => s.key === key)
+  if (i < 0) throw new Error(`Section not found: ${key}`)
+  const j = direction === 'up' ? i - 1 : i + 1
+  if (j < 0 || j >= list.length) return
+  const reordered = [...list]
+  ;[reordered[i], reordered[j]] = [reordered[j], reordered[i]]
+  await Promise.all(
+    reordered.map((s, idx) =>
+      s.sortOrder === idx + 1
+        ? Promise.resolve('')
+        : writeSectionBlock(projectId, { ...s, sortOrder: idx + 1 }),
+    ),
+  )
+}
+
+/** Delete a section — refused while it still has undertakings, so nothing is
+ *  silently orphaned into "Unfiled". Move them first. */
+export async function deleteSectionOrch(projectId: string, key: string): Promise<void> {
+  const undertakings = await listUndertakingsBlock(projectId)
+  const count = undertakings.filter(u => u.section === key).length
+  if (count > 0) throw new Error(`Section still holds ${count} undertaking${count === 1 ? '' : 's'} — move them first`)
+  await deleteSectionBlock(projectId, key)
 }
 
 export interface TagUndertakingOptions {

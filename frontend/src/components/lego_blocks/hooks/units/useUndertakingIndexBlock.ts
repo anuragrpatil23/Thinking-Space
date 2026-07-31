@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   getUndertakingIndexOrch,
   type UndertakingIndex,
@@ -12,16 +12,20 @@ export interface UndertakingIndexState {
   index: UndertakingIndex | null
   loading: boolean
   error: string | null
+  /** Re-derive the index — call after a section or undertaking edit. */
+  reload: () => void
 }
 
 const EMPTY: UndertakingIndex = { sections: [], noteSections: [], windowStart: '', windowEnd: '' }
 
 export function useUndertakingIndexBlock(projectId: string | null): UndertakingIndexState {
-  const [state, setState] = useState<UndertakingIndexState>({
+  const [state, setState] = useState<Omit<UndertakingIndexState, 'reload'>>({
     index: null,
     loading: Boolean(projectId),
     error: null,
   })
+  const [nonce, setNonce] = useState(0)
+  const reload = useCallback(() => setNonce(n => n + 1), [])
 
   useEffect(() => {
     if (!projectId) {
@@ -46,7 +50,7 @@ export function useUndertakingIndexBlock(projectId: string | null): UndertakingI
     return () => {
       cancelled = true
     }
-  }, [projectId])
+  }, [projectId, nonce])
 
-  return state
+  return { ...state, reload }
 }
