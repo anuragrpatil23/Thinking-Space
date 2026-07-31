@@ -77,6 +77,12 @@ export function createFocusTypographyThemeBlock(
     '.cm-cursor, .cm-dropCursor': {
       borderLeftWidth: '2.5px',
       borderLeftColor: 'var(--ltm-explorer-selected-color, hsl(var(--primary)))',
+      // Slightly translucent on purpose. CM's default hairline caret was never
+      // pixel-aligned, so it antialiased across two columns and read as softer
+      // than its own colour; widening it to 2.5px snapped it to whole pixels
+      // and made it fully saturated. This puts that softness back as something
+      // deliberate rather than an artifact of sub-pixel placement.
+      opacity: '0.8',
       transition: 'left 70ms cubic-bezier(0.22, 1, 0.36, 1), top 110ms cubic-bezier(0.22, 1, 0.36, 1)',
     },
     // No soft-fade blink here, deliberately. CM6 does not blink `.cm-cursor` —
