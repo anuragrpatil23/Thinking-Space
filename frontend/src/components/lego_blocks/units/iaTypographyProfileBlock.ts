@@ -25,9 +25,12 @@ export type EditorTypographyProfileBlock = 'default' | 'focus'
 export const FOCUS_FONT_STACK_BLOCK =
   '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
 
-/** Measure cap. ~66 characters is the classic prose measure and lands close to
- *  iA Writer's default column at its default size. */
-const FOCUS_MEASURE_BLOCK = '66ch'
+/** Measure cap. 66ch is the classic prose measure, but it was cut for a
+ *  *proportional* face — in a monospace every character is as wide as an `m`,
+ *  so the same count renders a visibly narrower column with a lot of dead
+ *  margin either side. Widened to 76ch (2026-07-31) to put the rendered width
+ *  back where the classic measure actually sits. */
+const FOCUS_MEASURE_BLOCK = '76ch'
 
 export interface FocusTypographyOptionsBlock {
   /** Phone/compact surfaces drop the measure cap and shrink the padding —
@@ -72,7 +75,7 @@ export function createFocusTypographyThemeBlock(
     // iA Writer's does instead of teleporting. Horizontal is quicker than
     // vertical — a line change should feel like a step, not a swoop.
     '.cm-cursor, .cm-dropCursor': {
-      borderLeftWidth: '2px',
+      borderLeftWidth: '2.5px',
       borderLeftColor: 'var(--ltm-explorer-selected-color, hsl(var(--primary)))',
       transition: 'left 70ms cubic-bezier(0.22, 1, 0.36, 1), top 110ms cubic-bezier(0.22, 1, 0.36, 1)',
     },
