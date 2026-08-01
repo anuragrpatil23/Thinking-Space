@@ -205,14 +205,15 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
         <p className="px-2 py-8 text-sm text-muted-foreground/70">Nothing matches these filters.</p>
       ) : (
         <div className="space-y-5">
-          {undertakingSections.map((section, si) => (
+          {undertakingSections.map(section => (
             <section key={section.key}>
               <SectionHeading title={section.title} colorIndex={section.colorIndex} />
-              {/* Seated on the first row block's top border, ticks running down
-                  to meet it. On its own hairline above the list it was a rule
-                  belonging to nothing; here the border it lands on is the same
-                  edge the tracks below start from. */}
-              {si === 0 && axisTicks.length > 0 && (
+              {/* Seated on the row block's top border, ticks running down to
+                  meet it — the same edge the tracks below start from. Every
+                  block with tracks gets one: stated only above the first, it
+                  read as a header for the whole page, and by the third section
+                  you were scrolling marks with the axis long gone off-screen. */}
+              {axisTicks.length > 0 && (
                 <div className="flex justify-end" style={{ paddingRight: STRIP_RIGHT_OFFSET }}>
                   <DensityAxisBlock ticks={axisTicks} width={STRIP_WIDTH} />
                 </div>
