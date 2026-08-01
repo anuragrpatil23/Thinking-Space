@@ -408,6 +408,7 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
             <UndertakingDetailDrawerBlock
               projectId={aiProjectId}
               undertakingKey={openUndertaking}
+              onOpen={setOpenUndertaking}
               onClose={() => setOpenUndertaking(null)}
             />
           )}

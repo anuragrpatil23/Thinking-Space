@@ -723,6 +723,40 @@ export async function listUndertakingSectionsOrch(
   return listSectionsBlock(projectId)
 }
 
+/** The edges pointing *at* an undertaking. None of these are stored on the
+ *  record — they are the reverse of edges other records own, which is exactly
+ *  why the detail view has to be handed them: it can read its own `grewOutOf`
+ *  but has no way to know what grew out of it. */
+export interface UndertakingLinks {
+  /** Undertakings whose `grewOutOf` names this one. */
+  ledTo: NoteRef[]
+  /** Migrating notes (Questions) this undertaking answered. */
+  fedBy: NoteRef[]
+}
+
+/**
+ * Resolve the reverse edges for one undertaking. The index block does this for
+ * the whole list at once; the drawer opens on a single key and would otherwise
+ * show a strictly poorer relationship picture than the inline peek behind it.
+ */
+export async function getUndertakingLinksOrch(
+  projectId: string,
+  key: string,
+): Promise<UndertakingLinks> {
+  const [records, askRoot] = await Promise.all([
+    listUndertakingsBlock(projectId),
+    noteRootForProjectBlock(projectId),
+  ])
+  const notes = askRoot !== null ? await listNotesBlock(askRoot) : []
+  const seam = buildNoteSeamBlock(notes, records, Date.now())
+  return {
+    ledTo: records
+      .filter(r => r.grewOutOf.includes(key))
+      .map(r => ({ key: r.key, title: r.title || r.head || r.key })),
+    fedBy: seam.fedNotes.get(key) ?? [],
+  }
+}
+
 /** Lightweight {key,title} for every undertaking in a project — the candidate
  *  set for the grew_out_of picker. Reads records only (no chain walk), unlike
  *  listUndertakingsOrch which also builds tails. */

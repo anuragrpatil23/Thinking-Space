@@ -9,12 +9,14 @@ import { bucketDensityBlock } from '@/services/lego_blocks/units/aiActivityDensi
 import { useUndertakingDetailBlock } from '@/components/lego_blocks/hooks/units/useUndertakingDetailBlock'
 import {
   addUndertakingNoteOrch,
+  getUndertakingLinksOrch,
   listUndertakingSectionsOrch,
   listUndertakingTitlesOrch,
   removeUndertakingNoteOrch,
   tagUndertakingOrch,
   updateUndertakingFieldsOrch,
   updateUndertakingHeadOrch,
+  type UndertakingLinks,
 } from '@/services/orchestrators/aiActivityUndertakingOrch'
 
 // The page behind an index entry, as a right-hand drawer — the index stays
@@ -26,6 +28,9 @@ import {
 interface Props {
   projectId: string
   undertakingKey: string
+  /** Swap the drawer to another undertaking — how the relationship links
+   *  navigate. Without it they render as plain text. */
+  onOpen?: (key: string) => void
   onClose: () => void
 }
 
@@ -68,7 +73,7 @@ function humanDuration(ms: number): string {
   return rem ? `${h}h ${rem}m` : `${h}h`
 }
 
-export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey, onClose }: Props) {
+export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey, onOpen, onClose }: Props) {
   const { view, loading, error, reload } = useUndertakingDetailBlock(projectId, undertakingKey)
 
   const [titleDraft, setTitleDraft] = useState('')
@@ -81,6 +86,10 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
 
   const [sections, setSections] = useState<Array<{ key: string; title: string }>>([])
   const [allTitles, setAllTitles] = useState<Array<{ key: string; title: string }>>([])
+  // The edges pointing *at* this undertaking. They aren't on the record — they
+  // are the reverse of edges other records own — so they have to be resolved
+  // separately, and re-resolved after an edit that could have changed one.
+  const [links, setLinks] = useState<UndertakingLinks>({ ledTo: [], fedBy: [] })
 
   const record = view?.record
   const tail = view?.tail
@@ -105,6 +114,17 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
     })
     return () => { cancelled = true }
   }, [projectId])
+
+  // Keyed on `view` rather than the key alone: `reload()` hands back a fresh
+  // view after every edit, and an edit here can be the very thing that changes
+  // what points at this row.
+  useEffect(() => {
+    let cancelled = false
+    void getUndertakingLinksOrch(projectId, undertakingKey).then(next => {
+      if (!cancelled) setLinks(next)
+    })
+    return () => { cancelled = true }
+  }, [projectId, undertakingKey, view])
 
   // Esc closes, matching every other slide-over in the app.
   useEffect(() => {
@@ -462,9 +482,11 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                       <ul className="mt-2 space-y-1.5">
                         {record.grewOutOf.map(key => (
                           <li key={key} className="group flex items-start gap-1.5 text-[13px]">
-                            <span className="min-w-0 flex-1 leading-snug text-foreground/80" title={key}>
-                              {titleByKey.get(key) ?? key}
-                            </span>
+                            <LinkTitle
+                              title={titleByKey.get(key) ?? key}
+                              linkKey={key}
+                              onOpen={onOpen}
+                            />
                             <button
                               type="button"
                               onClick={() => removeParent(key)}
@@ -494,6 +516,16 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                       </SelectShell>
                     )}
                   </div>
+
+                  {/* The reverse edges. Neither is stored on this record — one
+                      is other undertakings naming this one, the other is the
+                      note seam — so the drawer has to be handed them, and
+                      without them it showed a strictly poorer relationship
+                      picture than the one-line peek in the list behind it.
+                      Read-only by construction: you edit an edge from the end
+                      that owns it. */}
+                  <ReverseLinks label="Led to" refs={links.ledTo} onOpen={onOpen} />
+                  <ReverseLinks label="Answered" refs={links.fedBy} muted />
                 </div>
               </Field>
 
@@ -679,6 +711,72 @@ function RailLabel({ children }: { children: React.ReactNode }) {
     <h3 className="text-[10px] font-semibold uppercase tracking-[0.13em] text-muted-foreground/60">
       {children}
     </h3>
+  )
+}
+
+/** A linked undertaking's title. Navigable when the drawer was given a way to
+ *  swap keys — following an edge should land you on the thing the edge names,
+ *  not make you close the drawer and hunt the list for it. */
+function LinkTitle({
+  title,
+  linkKey,
+  onOpen,
+  muted = false,
+}: {
+  title: string
+  linkKey: string
+  onOpen?: (key: string) => void
+  muted?: boolean
+}) {
+  const tone = muted ? 'text-muted-foreground/75' : 'text-foreground/80'
+  if (!onOpen) {
+    return (
+      <span className={cn('min-w-0 flex-1 leading-snug', tone)} title={linkKey}>
+        {title}
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(linkKey)}
+      className={cn(
+        'min-w-0 flex-1 text-left leading-snug underline-offset-2 transition-colors hover:text-foreground hover:underline',
+        tone,
+      )}
+      title={`${linkKey} — ${title}`}
+    >
+      {title}
+    </button>
+  )
+}
+
+/** A read-only edge list in the Relationships grid. Renders nothing when empty:
+ *  an "and nothing led out of this" placeholder in every one of these cells
+ *  would be four-fifths of the grid saying nothing. */
+function ReverseLinks({
+  label,
+  refs,
+  onOpen,
+  muted = false,
+}: {
+  label: string
+  refs: Array<{ key: string; title: string }>
+  onOpen?: (key: string) => void
+  muted?: boolean
+}) {
+  if (refs.length === 0) return null
+  return (
+    <div className="min-w-0">
+      <RailLabel>{label}</RailLabel>
+      <ul className="mt-2 space-y-1.5">
+        {refs.map(ref => (
+          <li key={ref.key} className="flex items-start gap-1.5 text-[13px]">
+            <LinkTitle title={ref.title} linkKey={ref.key} onOpen={onOpen} muted={muted} />
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
