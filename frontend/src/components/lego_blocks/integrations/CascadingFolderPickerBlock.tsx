@@ -10,51 +10,12 @@ import {
 import {
   getVaultPathKind,
   type VaultPathKind,
-  listChildFolders,
 } from '@/services/orchestrators/fileSystemOrch'
-
-const CACHE_TTL_MS = 5 * 60 * 1000
-const SESSION_PREFIX = 'ltm-folder-children:'
-const childrenCache = new Map<string, { ts: number; data: string[] }>()
-const inFlight = new Map<string, Promise<string[]>>()
-
-function getCachedChildren(path: string): string[] | null {
-  const entry = childrenCache.get(path)
-  if (!entry) return null
-  if (Date.now() - entry.ts > CACHE_TTL_MS) {
-    childrenCache.delete(path)
-    return null
-  }
-  return entry.data
-}
-
-function getSessionChildren(path: string): string[] | null {
-  try {
-    const raw = sessionStorage.getItem(`${SESSION_PREFIX}${path}`)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as { ts: number; data: string[] }
-    if (!parsed || !Array.isArray(parsed.data)) return null
-    if (Date.now() - parsed.ts > CACHE_TTL_MS) {
-      sessionStorage.removeItem(`${SESSION_PREFIX}${path}`)
-      return null
-    }
-    childrenCache.set(path, { ts: parsed.ts, data: parsed.data })
-    return parsed.data
-  } catch {
-    return null
-  }
-}
-
-function setSessionChildren(path: string, data: string[]) {
-  try {
-    sessionStorage.setItem(
-      `${SESSION_PREFIX}${path}`,
-      JSON.stringify({ ts: Date.now(), data }),
-    )
-  } catch {
-    // ignore storage failures
-  }
-}
+// The folder cache used to live here. It moved to a unit block (2026-07-31)
+// when the destination browser's tree needed the same data — two private caches
+// walking one vault would double the filesystem calls and let the two pickers
+// disagree about what exists.
+import { fetchFolderChildrenBlock } from '@/services/lego_blocks/units/folderChildrenCacheBlock'
 
 function parseRecents(raw: string | null): string[][] {
   if (!raw) return []
@@ -166,29 +127,10 @@ export default function CascadingFolderPicker({
     setRecents(parseRecents(localStorage.getItem(storageKey)))
   }, [storageKey])
 
-  const fetchChildren = useCallback(async (path: string): Promise<string[]> => {
-    const cached = getCachedChildren(path)
-    if (cached) return cached
-    const sessionCached = getSessionChildren(path)
-    if (sessionCached) return sessionCached
-
-    const inFlightReq = inFlight.get(path)
-    if (inFlightReq) return inFlightReq
-
-    const req = listChildFolders(path)
-      .then(files => {
-        childrenCache.set(path, { ts: Date.now(), data: files })
-        setSessionChildren(path, files)
-        return files
-      })
-      .catch(() => [] as string[])
-      .finally(() => {
-        inFlight.delete(path)
-      })
-
-    inFlight.set(path, req)
-    return req
-  }, [])
+  const fetchChildren = useCallback(
+    (path: string): Promise<string[]> => fetchFolderChildrenBlock(path),
+    [],
+  )
 
   const getSelectedSegments = useCallback(
     (lvls: Level[]) => lvls.filter(level => level.selected).map(level => level.selected!),
