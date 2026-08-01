@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectChainDigest } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
-import { stringifyProjectChainDigestMarkdownBlock } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
+import {
+  chainDigestVaultRelPathBlock,
+  stringifyProjectChainDigestMarkdownBlock,
+} from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 import { serializeUndertakingBlock, type UndertakingRecord } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
 import { serializeSectionBlock, type SectionRecord } from '@/services/lego_blocks/units/aiActivitySectionBlock'
 import type { Note } from '@/services/lego_blocks/units/aiActivityNoteBlock'
@@ -102,9 +105,15 @@ function makeRecord(overrides: Partial<UndertakingRecord> = {}): UndertakingReco
 }
 
 function makeChain(overrides: Partial<ProjectChainDigest> = {}): ProjectChainDigest {
+  // chainId follows chainKey unless a test sets it explicitly — the two are
+  // equal for a freshly minted chain, and letting them drift apart silently
+  // would collide every fixture onto one flat filename.
+  const chainKey = overrides.chainKey ?? 'c-1'
   return {
     projectId: 'F9',
-    chainKey: 'c-1',
+    chainId: chainKey,
+    sessions: [chainKey],
+    chainKey,
     date: '2026-06-02',
     title: 'Micron read',
     summary: 'Read the 10-K.',
@@ -125,10 +134,22 @@ function makeChain(overrides: Partial<ProjectChainDigest> = {}): ProjectChainDig
   }
 }
 
-function seedChain(digest: ProjectChainDigest, name = `${digest.chainKey}.md`): void {
+/** Flat layout, addressed by chainId — the only layout written since v4. */
+function seedChain(digest: ProjectChainDigest): void {
   fakeFs.seed(
-    `ai-activity/chains/${digest.projectId}/${digest.date}/${name.replace(/[^A-Za-z0-9._-]+/g, '-')}`,
+    chainDigestVaultRelPathBlock(digest.projectId, digest.chainId),
     stringifyProjectChainDigestMarkdownBlock(digest),
+  )
+}
+
+/** The pre-v4 `<project>/<date>/<chainKey>.md` layout, still read so no vault
+ *  loses its history on upgrade. Such a record has no `chainId` and adopts its
+ *  `chainKey` as one. */
+function seedLegacyNestedChain(digest: ProjectChainDigest): void {
+  const { chainId: _drop, sessions: _drop2, ...legacy } = digest
+  fakeFs.seed(
+    `ai-activity/chains/${digest.projectId}/${digest.date}/${digest.chainKey.replace(/[^A-Za-z0-9._-]+/g, '_')}.md`,
+    stringifyProjectChainDigestMarkdownBlock(legacy as ProjectChainDigest),
   )
 }
 
@@ -703,8 +724,8 @@ describe('chain repair orchestrators', () => {
     const { setChainProjectOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const { path } = await setChainProjectOrch('Thinking-Space', 'c-1', 'F9')
 
-    expect(path).toBe('ai-activity/chains/F9/2026-06-02/c-1.md')
-    expect(fakeFs.files.has('ai-activity/chains/Thinking-Space/2026-06-02/c-1.md')).toBe(false)
+    expect(path).toBe('ai-activity/chains/F9/c-1.md')
+    expect(fakeFs.files.has('ai-activity/chains/Thinking-Space/c-1.md')).toBe(false)
     expect(fakeFs.files.get(path)).toContain('projectId: F9')
   })
 
@@ -735,6 +756,33 @@ describe('listChainsOrch', () => {
     const chains = await listChainsOrch({ projectId: 'F9', from: '2026-06-02', to: '2026-06-03' })
 
     expect(chains.map(c => c.chainKey)).toEqual(['c-2', 'c-3'])
+  })
+
+  it('still reads pre-v4 nested records, which adopt their chainKey as chainId', async () => {
+    // The layout change must not cost anyone their history. A nested record has
+    // no chainId, and the name its file already had is the right one to keep.
+    seedLegacyNestedChain(makeChain({ chainKey: 'c-old', title: 'Older thinking' }))
+
+    const { listChainsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const chains = await listChainsOrch({ projectId: 'F9' })
+
+    expect(chains).toHaveLength(1)
+    expect(chains[0].chainId).toBe('c-old')
+    expect(chains[0].title).toBe('Older thinking')
+    expect(chains[0].path).toBe('ai-activity/chains/F9/2026-06-02/c-old.md')
+  })
+
+  it('prefers the flat record over its legacy twin rather than listing both', async () => {
+    // Mid-migration state: the nested file is still on disk after the record
+    // has been written back flat. One chain must not become two.
+    seedLegacyNestedChain(makeChain({ chainKey: 'c-1', title: 'Stale copy' }))
+    seedChain(makeChain({ chainKey: 'c-1', title: 'Current copy' }))
+
+    const { listChainsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const chains = await listChainsOrch({ projectId: 'F9' })
+
+    expect(chains).toHaveLength(1)
+    expect(chains[0].title).toBe('Current copy')
   })
 })
 

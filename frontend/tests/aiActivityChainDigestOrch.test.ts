@@ -50,7 +50,9 @@ function digest(over: Partial<ProjectChainDigest> = {}): ProjectChainDigest {
     summary: 'Read the 10-K.',
     source: 'claude-code',
     msgCount: 20,
-    durationMs: 60_000,
+    // Must agree with the window below: durationMs is mechanical, so a fixture
+    // that disagrees with its own chain is drift the projection will correct.
+    durationMs: 1_800_000,
     startedIso: '2026-06-02T10:00:00.000Z',
     endedIso: '2026-06-02T10:30:00.000Z',
     inputHash: 'h',
@@ -131,5 +133,57 @@ describe('ensureChainDigestOrch — pointer reconciliation (A1)', () => {
     const res = await ensureChainDigestOrch(chain(undefined))
     expect(res?.digest.filesWritten).toEqual(['acceleration_core/F9/micron.md'])
     expect(putProjectChainDigestBlock).not.toHaveBeenCalled()
+  })
+})
+
+// A2: the failure above was never really about pointers — it was that the
+// digest stores a *copy* of fields that are pure functions of the chain, and
+// nothing said which copy to believe. The answer is that the chain in hand
+// always wins; the stored copy is transport for devices that cannot derive one.
+// These tests pin the projection, so a newly added mechanical field is covered
+// without new plumbing.
+describe('ensureChainDigestOrch — the chain in hand wins (A2)', () => {
+  beforeEach(() => {
+    stored = null
+    putProjectChainDigestBlock.mockClear()
+  })
+
+  it('re-derives every mechanical field on a legacy digest in one pass', async () => {
+    // The shape 462 of 469 stored digests were actually in: written before
+    // pointer extraction existed, matching their own inputHash forever.
+    stored = digest({ filesWritten: [], activeDurationMs: 0 })
+    const res = await ensureChainDigestOrch(
+      chain(['/vault/acceleration_core/F9/micron.md'], 900_000),
+    )
+    expect(res?.digest.filesWritten).toEqual(['acceleration_core/F9/micron.md'])
+    expect(res?.digest.activeDurationMs).toBe(900_000)
+    // Model-derived fields are never collateral damage — that is the whole
+    // point of separating what costs a provider call from what does not.
+    expect(res?.digest.title).toBe('Micron thesis')
+    expect(res?.digest.summary).toBe('Read the 10-K.')
+    expect(putProjectChainDigestBlock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not rewrite a digest that already agrees with its chain', async () => {
+    // The steady state: the projection is free, but the write must not be
+    // repeated on every read.
+    stored = digest({
+      filesWritten: ['acceleration_core/F9/micron.md'],
+      activeDurationMs: 900_000,
+    })
+    await ensureChainDigestOrch(chain(['/vault/acceleration_core/F9/micron.md'], 900_000))
+    expect(putProjectChainDigestBlock).not.toHaveBeenCalled()
+  })
+
+  it('re-derives the chain window when the grouping rule moved it', async () => {
+    // `buildChains` changed once already (concurrent sessions now split). A
+    // digest whose window disagrees with its chain is the trace that grouping
+    // shifted underneath it.
+    stored = digest({
+      endedIso: '2026-06-02T23:59:00.000Z',
+      filesWritten: ['acceleration_core/F9/micron.md'],
+    })
+    const res = await ensureChainDigestOrch(chain(['/vault/acceleration_core/F9/micron.md']))
+    expect(res?.digest.endedIso).toBe('2026-06-02T10:30:00.000Z')
   })
 })

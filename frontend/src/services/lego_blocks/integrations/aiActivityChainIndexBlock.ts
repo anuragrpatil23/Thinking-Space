@@ -1,12 +1,20 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
+  chainDigestVaultRelPathBlock,
   parseProjectChainDigestMarkdownBlock,
   stringifyProjectChainDigestMarkdownBlock,
   type ProjectChainDigest,
 } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 
 /**
- * Walk the stored chain digests: `ai-activity/chains/<project>/<date>/*.md`.
+ * Walk the stored chain digests: `ai-activity/chains/<project>/*.md`.
+ *
+ * Flat, addressed by `chainId`. The previous layout nested a `<date>/` bucket
+ * and named files after `chainKey` — both computed from the grouping rule, so
+ * re-chaining moved records and orphaned them. Legacy nested files are still
+ * *read* (see `readLegacyNestedBlock`) so nothing is lost; they are superseded
+ * the first time their chain is written back, and the reader can be deleted
+ * once no vault has them.
  *
  * Every consumer of this data has so far grepped the filesystem directly, which
  * is why four defects in the layer went unnoticed until something tried to build
@@ -35,6 +43,7 @@ function withinRange(date: string, from?: string, to?: string): boolean {
   return true
 }
 
+/** Legacy date buckets under a project, newest layout has none. */
 export async function listChainDatesBlock(projectId: string): Promise<string[]> {
   const fs = getVaultFS()
   try {
@@ -45,6 +54,18 @@ export async function listChainDatesBlock(projectId: string): Promise<string[]> 
   }
 }
 
+async function readDigestFileBlock(path: string): Promise<ChainEntry | null> {
+  const fs = getVaultFS()
+  let content: string
+  try {
+    content = await fs.read(path)
+  } catch {
+    return null
+  }
+  const digest = parseProjectChainDigestMarkdownBlock(content)
+  return digest ? { ...digest, path } : null
+}
+
 export interface ChainEntry extends ProjectChainDigest {
   /** Vault-relative path of the chain file, for repair capabilities. */
   path: string
@@ -52,34 +73,44 @@ export interface ChainEntry extends ProjectChainDigest {
 
 export async function listChainsBlock(query: ChainQuery): Promise<ChainEntry[]> {
   const fs = getVaultFS()
-  const dates = await listChainDatesBlock(query.projectId)
-  const out: ChainEntry[] = []
+  const dir = `${CHAINS_ROOT}/${query.projectId}`
 
-  for (const date of dates) {
-    if (!withinRange(date, query.from, query.to)) continue
-    const dir = `${CHAINS_ROOT}/${query.projectId}/${date}`
-    let names: string[] = []
+  // Flat layout first, so a migrated record always wins over its legacy twin.
+  const byId = new Map<string, ChainEntry>()
+  let names: string[] = []
+  try {
+    names = (await fs.list(dir)).files.filter(name => name.endsWith('.md'))
+  } catch {
+    names = []
+  }
+  for (const name of names) {
+    const entry = await readDigestFileBlock(`${dir}/${name}`)
+    if (entry) byId.set(entry.chainId, entry)
+  }
+
+  // Legacy `<date>/<chainKey>.md`. Skipped entirely once a project has been
+  // written back, because `listChainDatesBlock` finds no date folders.
+  for (const date of await listChainDatesBlock(query.projectId)) {
+    let legacy: string[] = []
     try {
-      names = (await fs.list(dir)).files.filter(name => name.endsWith('.md'))
+      legacy = (await fs.list(`${dir}/${date}`)).files.filter(name => name.endsWith('.md'))
     } catch {
       continue
     }
-    for (const name of names) {
-      const path = `${dir}/${name}`
-      let content: string
-      try {
-        content = await fs.read(path)
-      } catch {
-        continue
-      }
-      const digest = parseProjectChainDigestMarkdownBlock(content)
-      if (!digest) continue
-      if (query.undertaking && !digest.undertaking.includes(query.undertaking)) continue
-      out.push({ ...digest, path })
+    for (const name of legacy) {
+      const entry = await readDigestFileBlock(`${dir}/${date}/${name}`)
+      if (entry && !byId.has(entry.chainId)) byId.set(entry.chainId, entry)
     }
   }
 
-  out.sort((a, b) => a.startedIso.localeCompare(b.startedIso) || a.chainKey.localeCompare(b.chainKey))
+  const out: ChainEntry[] = []
+  for (const entry of byId.values()) {
+    if (!withinRange(entry.date, query.from, query.to)) continue
+    if (query.undertaking && !entry.undertaking.includes(query.undertaking)) continue
+    out.push(entry)
+  }
+
+  out.sort((a, b) => a.startedIso.localeCompare(b.startedIso) || a.chainId.localeCompare(b.chainId))
   return out
 }
 
@@ -109,9 +140,10 @@ export async function patchChainBlock(
 
   // Re-projecting moves the file: the project id is a path segment, so leaving
   // it in place would make the on-disk location contradict the frontmatter.
-  const targetDir = `${CHAINS_ROOT}/${digest.projectId}/${digest.date}`
-  const name = entry.path.slice(entry.path.lastIndexOf('/') + 1)
-  const targetPath = `${targetDir}/${name}`
+  // The date is not a segment any more, so only a project change relocates —
+  // and a legacy nested record migrates to the flat layout on its first patch.
+  const targetDir = `${CHAINS_ROOT}/${digest.projectId}`
+  const targetPath = chainDigestVaultRelPathBlock(digest.projectId, digest.chainId)
 
   if (targetPath !== entry.path) {
     await fs.mkdir(targetDir)

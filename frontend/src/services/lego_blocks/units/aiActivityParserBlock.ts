@@ -415,7 +415,13 @@ export function parseSession(input: ParseInput): ParsedSession | null {
 // across a workday into one 10-hour chain; idle-time is the real signal —
 // "I came back after an hour and kept going" reads as one chain, "I worked on
 // auth this morning and bills this afternoon" doesn't.
-const GAP_HOURS = 1
+//
+// The same threshold splits one JSONL file into active windows in
+// `nativeAiSessionParserBlock` — deliberately one constant, because two copies
+// of "what counts as idle" can disagree, and then a file splits into windows
+// that immediately re-merge into one chain (or don't, and nobody can say why).
+export const IDLE_GAP_HOURS = 1
+export const IDLE_GAP_MS = IDLE_GAP_HOURS * 3_600_000
 // How close (in time) an unknown session has to be to a classified one to
 // inherit its project. Pure-chat sessions don't include any path signals in
 // the saved transcript, so they fall to <unknown> on the structural detector.
@@ -474,16 +480,46 @@ export function inheritUnknownSessions(sessions: ParsedSession[]): ParsedSession
 }
 
 
+/** A chain still accepting sessions. One project can have several at once —
+ *  that is the whole point (see `buildChains`). */
+interface OpenChain {
+  sessions: ParsedSession[]
+  /** Latest end across every member. A new session starting before this
+   *  overlaps the chain and therefore belongs to a different thread. */
+  maxEndMs: number
+  /** The most recent member ran `/clear`, so this chain is finished. Per-chain,
+   *  not per-project: clearing in one terminal says nothing about another. */
+  cleared: boolean
+}
+
 /**
- * Group sessions into chains: same project + within GAP_HOURS of previous session
- * in that project (and no /clear in the previous session) belong together.
+ * Group sessions into chains: same project, within IDLE_GAP_HOURS of the chain's
+ * last activity, not overlapping it, and not after a `/clear`.
+ *
+ * A project can have several chains open at once, and that is load-bearing. Two
+ * terminals on one repo interleave: A runs 10:00–12:00, B cuts in at 10:30, A
+ * resumes at 12:30. B correctly breaks out — it overlaps A, and absorbing it
+ * would hide it from the drill-down. But with a single open chain per project,
+ * breaking B out also *discarded* A, so A's resumption at 12:30 started a third
+ * chain. A thread that got interleaved even once became permanently unresumable,
+ * and every resumption minted a new chain key — a new digest, a new provider
+ * call, a new row for work the user experienced as continuous.
+ *
+ * So each project keeps a list of open chains. A session joins the one that was
+ * active most recently among those it can legally join, which is the same choice
+ * the single-chain version made whenever only one was open — i.e. this is a
+ * strict generalisation, not a new rule.
  */
 export function buildChains(sessions: ParsedSession[]): ActivityChain[] {
   if (sessions.length === 0) return []
 
-  // Sort ascending so adjacency math works
+  // Sort ascending so adjacency math works. Path breaks ties because the first
+  // session's path becomes the chain's key: leaving two same-instant sessions in
+  // readdir order would let the filesystem decide a chain's identity, and it
+  // would decide differently on another device.
   const sorted = [...sessions].sort(
-    (a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso),
+    (a, b) =>
+      Date.parse(a.startedIso) - Date.parse(b.startedIso) || a.path.localeCompare(b.path),
   )
 
   // Group by project, then chain within each project's time-ordered list.
@@ -496,63 +532,66 @@ export function buildChains(sessions: ParsedSession[]): ActivityChain[] {
 
   const chains: ActivityChain[] = []
   for (const [project, list] of byProject.entries()) {
-    let current: ParsedSession[] = []
-    let lastBreaker = false
-    // Track the latest end timestamp seen across every session already in the
-    // open chain so a new session that *overlaps* one of them (parallel work in
-    // two terminals on the same project) breaks into its own chain instead of
-    // getting absorbed. Without this, two concurrent Claude sessions on the
-    // same cwd merge into a single chain and the second session disappears from
-    // the drill-down table — the table row + timeline pill only carry the first
-    // session's topic + msg count.
-    let maxEndMs = -Infinity
+    let open: OpenChain[] = []
     for (const s of list) {
       const sStartMs = Date.parse(s.startedIso)
       const sEndMs = Date.parse(s.endedIso ?? s.startedIso)
-      if (current.length === 0) {
-        current = [s]
-        lastBreaker = s.hadClear
-        maxEndMs = sEndMs
-        continue
-      }
-      // Idle gap = time between the chain's latest known end and the new
-      // session's start. Falls back to start-to-start when the previous
-      // session has no real end (vault markdown rows where endedIso ==
-      // startedIso) so we don't artificially over-merge.
-      const prev = current[current.length - 1]
-      const prevEndMs = Date.parse(prev.endedIso ?? prev.startedIso)
-      const referenceEndMs = Number.isFinite(maxEndMs) && maxEndMs > prevEndMs ? maxEndMs : prevEndMs
-      const idleHours = (sStartMs - referenceEndMs) / 3_600_000
-      const overlapsOpen = sStartMs < maxEndMs
-      if (lastBreaker || idleHours > GAP_HOURS || overlapsOpen) {
-        chains.push(makeChain(project, current))
-        current = [s]
-        maxEndMs = sEndMs
-      } else {
-        current.push(s)
-        if (sEndMs > maxEndMs) maxEndMs = sEndMs
-      }
-      lastBreaker = s.hadClear
-    }
-    if (current.length > 0) chains.push(makeChain(project, current))
-  }
 
-  // Lift the chain's topic to the first substantive (non-label, non-empty) prompt
-  // across its sessions — first session might be /clear-only or auto-prompt.
-  const isLabel = (t: string) => t.startsWith('[') && t.endsWith(']')
-  for (const c of chains) {
-    if (isLabel(c.topic) || c.topic === '(no user message)') {
-      for (const s of c.sessions.slice(1)) {
-        if (!isLabel(s.topic) && s.topic !== '(no user message)') {
-          c.topic = s.topic
-          break
-        }
+      // Retire anything this session is already too late to join. Sessions
+      // arrive in ascending start order, so nothing later can revive it either.
+      const stillOpen: OpenChain[] = []
+      for (const chain of open) {
+        if (sStartMs - chain.maxEndMs > IDLE_GAP_MS) chains.push(makeChain(project, chain.sessions))
+        else stillOpen.push(chain)
+      }
+      open = stillOpen
+
+      // Among the chains it may join, take the one active most recently — the
+      // shortest idle gap. `maxEndMs` is the chain's latest known end and falls
+      // back to the start for vault markdown rows, where `endedIso ===
+      // startedIso`; measuring those start-to-start is what stops zero-length
+      // sessions from over-merging.
+      //
+      // A session starting before a chain's end overlaps it: parallel work in
+      // two terminals, which must split so the second session keeps its own row
+      // in the drill-down instead of vanishing into the first's topic.
+      let best: OpenChain | null = null
+      for (const chain of open) {
+        if (chain.cleared) continue
+        if (sStartMs < chain.maxEndMs) continue
+        if (!best || chain.maxEndMs > best.maxEndMs) best = chain
+      }
+
+      if (best) {
+        best.sessions.push(s)
+        if (sEndMs > best.maxEndMs) best.maxEndMs = sEndMs
+        best.cleared = s.hadClear
+      } else {
+        open.push({ sessions: [s], maxEndMs: sEndMs, cleared: s.hadClear })
       }
     }
+    for (const chain of open) chains.push(makeChain(project, chain.sessions))
   }
 
   chains.sort((a, b) => Date.parse(b.startedIso) - Date.parse(a.startedIso))
   return chains
+}
+
+/** A topic that names nothing: an auto-prompt label like `[auto-commit]`, or a
+ *  session that never got a user message. */
+function isPlaceholderTopic(topic: string): boolean {
+  return (topic.startsWith('[') && topic.endsWith(']')) || topic === '(no user message)'
+}
+
+/** The chain's topic is its head session's, reaching past placeholder heads to
+ *  the first session that actually says what the work was. Resolved here rather
+ *  than patched onto the chain afterwards — a chain is built once and is then
+ *  final, so nothing downstream can read a half-formed one. */
+function chainTopic(sessions: ParsedSession[]): string {
+  for (const s of sessions) {
+    if (!isPlaceholderTopic(s.topic)) return s.topic
+  }
+  return sessions[0].topic
 }
 
 function makeChain(project: string, sessions: ParsedSession[]): ActivityChain {
@@ -589,7 +628,7 @@ function makeChain(project: string, sessions: ParsedSession[]): ActivityChain {
     startedIso: first.startedIso,
     endedIso: lastEnded,
     msgCount,
-    topic: first.topic,
+    topic: chainTopic(sessions),
     sessions,
     touchedPaths: touched ? Array.from(touched) : undefined,
     activeDurationMs,

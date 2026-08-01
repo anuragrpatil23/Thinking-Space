@@ -1,4 +1,5 @@
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   isValidChainDigestDateBlock,
@@ -35,7 +36,10 @@ import { getAiActivityAiTitlesEnabled } from '@/services/lego_blocks/units/stora
 export async function loadChainDigestOrch(chain: ActivityChain): Promise<ProjectChainDigest | null> {
   const parts = chainStorageParts(chain)
   if (!parts) return null
-  return getProjectChainDigestBlock(parts.projectId, parts.date, parts.chainKey)
+  return getProjectChainDigestBlock(parts.projectId, parts.chainId, {
+    date: parts.date,
+    chainKey: parts.chainKey,
+  })
 }
 
 /** Ensure a stored digest exists for `chain`. Returns:
@@ -51,10 +55,14 @@ export async function ensureChainDigestOrch(
   const parts = chainStorageParts(chain)
   if (!parts) return null
   const nextHash = computeChainInputHashBlock(chain)
-  const loaded = await getProjectChainDigestBlock(parts.projectId, parts.date, parts.chainKey)
-  // Reconcile mechanically-derived pointers before any branch returns `existing`
-  // — they live outside the model-freshness hash on purpose (see the helper).
-  const existing = loaded ? await reconcileDigestPointersBlock(loaded, chain) : null
+  const loaded = await getProjectChainDigestBlock(parts.projectId, parts.chainId, {
+    date: parts.date,
+    chainKey: parts.chainKey,
+  })
+  // Mechanical fields come from the chain in hand, not from disk. The stored
+  // copy is refreshed as a side effect so other devices benefit, but the value
+  // returned here never depends on that write landing.
+  const existing = loaded ? await refreshStoredChainFieldsOrch(loaded, chain) : null
   // Fast path with tier precedence: reuse the stored digest when it's fresh AND
   // at least as good as what the current selection would produce. So a Claude
   // digest survives a switch to local (we never downgrade a better body we
@@ -131,15 +139,59 @@ export async function ensureChainDigestOrch(
 
 interface ChainStorageParts {
   projectId: string
+  chainId: string
+  sessions: string[]
   date: string
   chainKey: string
 }
 
-function chainStorageParts(chain: ActivityChain): ChainStorageParts | null {
+/** The chain's member session ids — its real identity. A chain *is* its
+ *  sessions; everything else about it is a label. */
+export function chainSessionIdsBlock(chain: ActivityChain): string[] {
+  if (!Array.isArray(chain.sessions)) return []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const s of chain.sessions) {
+    const id = sessionIdOf(s)
+    if (id && !seen.has(id)) {
+      seen.add(id)
+      out.push(id)
+    }
+  }
+  return out
+}
+
+/**
+ * Mint an id for a chain that has no stored digest yet.
+ *
+ * Deliberately *minted*, not derived: written once, and every later read finds
+ * the record by it. It starts life equal to `chain.key` — but only as a seed.
+ * Nothing recomputes it afterwards, so when the grouping later decides a
+ * different session sorts first, `chain.key` moves and `chainId` does not.
+ * That divergence is the entire point.
+ *
+ * Seeding from `chain.key` rather than the head session id is load-bearing for
+ * existing vaults: every pre-v4 digest's `chainId` *is* its `chainKey` (that is
+ * what its filename encoded), so a chain whose grouping has not changed finds
+ * its record on the first lookup and never regenerates. Seeding from the
+ * session id instead would have missed all 469 of them and re-run the model on
+ * every one.
+ */
+export function mintChainIdBlock(chain: ActivityChain): string {
+  return chain.key
+}
+
+function chainStorageParts(chain: ActivityChain, chainId?: string): ChainStorageParts | null {
   const date = isoDayLocalBlock(chain.startedIso)
   if (!date || !isValidChainDigestDateBlock(date)) return null
   if (!chain.project || !chain.key) return null
-  return { projectId: chain.project, date, chainKey: chain.key }
+  return {
+    projectId: chain.project,
+    chainId: chainId || mintChainIdBlock(chain),
+    sessions: chainSessionIdsBlock(chain),
+    date,
+    chainKey: chain.key,
+  }
 }
 
 /**
@@ -176,56 +228,113 @@ function chainPointers(chain: ActivityChain): {
   }
 }
 
-function sameStringSetBlock(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false
-  const set = new Set(a)
-  return b.every(v => set.has(v))
+// Tolerates undefined on either side: these compare records deserialized from
+// disk, and a digest written by a build that predates a field simply has no key
+// there. Treating that as an empty set is the same "absence is not a value"
+// rule the projection follows.
+function sameStringSetBlock(a: string[] | undefined, b: string[] | undefined): boolean {
+  const left = a ?? []
+  const right = b ?? []
+  if (left.length !== right.length) return false
+  const set = new Set(left)
+  return right.every(v => set.has(v))
 }
 
 /**
- * Keep a stored digest's mechanically-derived pointers in sync with the chain,
- * without touching the model-derived fields.
+ * Project a chain's mechanical fields onto a stored digest.
  *
- * `filesWritten` / `filesRead` come from the transcript's structured tool calls,
- * not the model, so they must not sit behind the model-freshness hash. A digest
- * written before pointer extraction existed matches its own `inputHash` forever
- * (the hash never covered pointers), so the fast path in `ensureChainDigestOrch`
- * kept handing back empty pointers — 460 real digests frozen as memoirs. Re-derive
- * on read and patch on drift; no model call, title/summary untouched.
+ * This replaces the reconcile/heal machinery that used to live here, and the
+ * question it existed to answer. Mechanical fields (pointers, active duration,
+ * the chain window) are pure functions of the chain, so a reader holding a
+ * chain simply recomputes them — there is no "has the stored copy drifted?" to
+ * ask, hence no freshness hash over them, no schema version, and nothing to
+ * migrate. The stored values are transport for devices that cannot derive
+ * chains at all, not a cache to be kept in step.
  *
- * Two guards make this safe rather than destructive:
- *   - Only when the chain actually carries provenance. On iPhone/web there is no
- *     IPC to read `~/.claude`, so native chains come back with no `touchedPaths`;
- *     replacing good pointers (written by Electron, synced via the vault) with an
- *     empty list because *this* device is blind would be the stomp. No provenance
- *     in hand → leave the stored digest alone.
- *   - Only write on real drift, so the common no-op read stays read-only.
+ * That is the same rule the layer above already follows: an undertaking's tail
+ * is recomputed on every read and never stored, precisely so it cannot go stale
+ * (see `aiActivityChainIndexBlock`). The digest broke it, and the cost was 462
+ * of 469 records frozen at their first write, 5 carrying pointers, while 397
+ * sessions had correct provenance sitting in the cache the whole time.
+ *
+ * Model-derived (`title`, `summary`) and human (`undertaking`) fields are never
+ * touched — those are the ones that genuinely cannot be recomputed.
+ *
+ * Absence is not zero. A device with no IPC to `~/.claude` parses native chains
+ * with no `touchedPaths` and no per-message timing; overwriting good values
+ * synced from Electron because *this* device is blind would be the one
+ * destructive move available here. No value in hand → keep what is stored.
  */
-async function reconcileDigestPointersBlock(
-  existing: ProjectChainDigest,
+export function projectChainFieldsBlock(
+  stored: ProjectChainDigest,
+  chain: ActivityChain,
+): ProjectChainDigest {
+  const next = { ...stored }
+
+  if (chain.touchedPaths && chain.touchedPaths.length > 0) {
+    const { filesWritten, filesRead } = chainPointers(chain)
+    next.filesWritten = filesWritten
+    if (filesRead.length > 0) next.filesRead = filesRead
+  }
+  // `Number.isFinite`, not `typeof === 'number'`: NaN is a number, and a NaN
+  // sum from one malformed session would be written over a good stored value.
+  // Same no-stomp rule as absent pointers.
+  const active = chain.activeDurationMs
+  if (typeof active === 'number' && Number.isFinite(active)) next.activeDurationMs = active
+  if (chain.startedIso) next.startedIso = chain.startedIso
+  if (chain.endedIso ?? chain.startedIso) next.endedIso = chain.endedIso ?? chain.startedIso
+  if (typeof chain.msgCount === 'number' && Number.isFinite(chain.msgCount)) {
+    next.msgCount = chain.msgCount
+  }
+  const duration = chainDurationMs(chain)
+  if (duration > 0) next.durationMs = duration
+  // Membership last. Empty means this device could not see the chain's
+  // sessions, not that the chain has none — same no-stomp rule as pointers.
+  const sessions = chainSessionIdsBlock(chain)
+  if (sessions.length > 0) next.sessions = sessions
+  // `chainKey` is a display handle that tracks the current grouping. `chainId`
+  // is the address and is never reassigned here — that is what makes it an id.
+  if (chain.key) next.chainKey = chain.key
+  const date = isoDayLocalBlock(chain.startedIso)
+  if (date && isValidChainDigestDateBlock(date)) next.date = date
+
+  return next
+}
+
+/** True when the projection would change what is on disk — the only reason to
+ *  spend a write. Compared field-by-field rather than by deep-equal so the
+ *  model-derived and human fields are provably excluded from the check. */
+export function chainFieldsDifferBlock(a: ProjectChainDigest, b: ProjectChainDigest): boolean {
+  return (
+    !sameStringSetBlock(a.filesWritten, b.filesWritten) ||
+    !sameStringSetBlock(a.filesRead, b.filesRead) ||
+    !sameStringSetBlock(a.sessions, b.sessions) ||
+    a.chainKey !== b.chainKey ||
+    a.date !== b.date ||
+    a.activeDurationMs !== b.activeDurationMs ||
+    a.startedIso !== b.startedIso ||
+    a.endedIso !== b.endedIso ||
+    a.msgCount !== b.msgCount ||
+    a.durationMs !== b.durationMs
+  )
+}
+
+/**
+ * Refresh the transport copy on disk when the derived truth has moved.
+ *
+ * Not a heal — the reader already has the right values from
+ * `projectChainFieldsBlock` and does not depend on this succeeding. The write
+ * exists solely so a phone that cannot derive chains sees current data after
+ * the vault syncs. Best-effort by construction.
+ */
+export async function refreshStoredChainFieldsOrch(
+  stored: ProjectChainDigest,
   chain: ActivityChain,
 ): Promise<ProjectChainDigest> {
-  let patched: ProjectChainDigest | null = null
-
-  // Pointers: patch only when the chain carries provenance (see guard rationale
-  // above), and only on real drift.
-  if (chain.touchedPaths && chain.touchedPaths.length > 0) {
-    const derived = chainPointers(chain)
-    if (!sameStringSetBlock(existing.filesWritten, derived.filesWritten)) {
-      patched = { ...(patched ?? existing), filesWritten: derived.filesWritten }
-    }
-  }
-
-  // Active duration: same shape. `chain.activeDurationMs` is undefined on a
-  // device/source that never measured it (no per-message timing), so absence
-  // means "nothing better to offer" — leave the stored value, don't zero it.
-  if (typeof chain.activeDurationMs === 'number' && chain.activeDurationMs !== existing.activeDurationMs) {
-    patched = { ...(patched ?? existing), activeDurationMs: chain.activeDurationMs }
-  }
-
-  if (!patched) return existing
-  await putProjectChainDigestBlock(patched)
-  return patched
+  const projected = projectChainFieldsBlock(stored, chain)
+  if (!chainFieldsDifferBlock(stored, projected)) return stored
+  await putProjectChainDigestBlock(projected).catch(() => undefined)
+  return projected
 }
 
 function chainDurationMs(chain: ActivityChain): number {
@@ -272,8 +381,11 @@ function buildFallbackDigest(
 
 /** Hash the inputs the digest depends on. Djb2 for speed; not crypto. */
 function computeChainInputHashBlock(chain: ActivityChain): string {
+  // Deliberately NOT chain.key: the key is the grouping rule's opinion about
+  // which session sorts first. Including it meant a re-grouping invalidated the
+  // hash and bought a fresh provider call for a conversation whose content had
+  // not changed by one byte. Hash the model's inputs, nothing else.
   const material = [
-    chain.key,
     String(chain.msgCount),
     chain.startedIso,
     chain.endedIso,
