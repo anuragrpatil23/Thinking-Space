@@ -24,16 +24,24 @@ import {
 // Best-effort throughout: nothing readable leaves the cache empty and
 // attribution falls back to the basename, which is the pre-registry behaviour.
 
-const LEGACY_PROJECTS_MD_PATH = 'kai-workspace/projects.md'
+// Tried in order. The first is the generated mirror of `projects.json` — it
+// only matters if the JSON is lost or unreadable, in which case the mirror is
+// the freshest surviving copy. The second is the old hand-maintained file, kept
+// for vaults that never imported.
+const FALLBACK_PROJECTS_MD_PATHS = ['.thinking-space/projects.md', 'kai-workspace/projects.md']
 
-async function legacyRegistryBlock(vaultRoot: string) {
-  try {
-    const fs = getVaultFS()
-    if (!(await fs.exists(LEGACY_PROJECTS_MD_PATH))) return []
-    return parseProjectRegistryMarkdownBlock(await fs.read(LEGACY_PROJECTS_MD_PATH), vaultRoot)
-  } catch {
-    return []
+async function fallbackRegistryBlock(vaultRoot: string) {
+  const fs = getVaultFS()
+  for (const path of FALLBACK_PROJECTS_MD_PATHS) {
+    try {
+      if (!(await fs.exists(path))) continue
+      const entries = parseProjectRegistryMarkdownBlock(await fs.read(path), vaultRoot)
+      if (entries.length) return entries
+    } catch {
+      /* try the next one */
+    }
   }
+  return []
 }
 
 export async function loadProjectRegistryBlock(): Promise<void> {
@@ -62,7 +70,7 @@ export async function loadProjectRegistryBlock(): Promise<void> {
     // Merging the two would let a stale markdown line quietly outrank an edit
     // made in Settings, and longest-prefix would pick between them by accident.
     setCachedProjectRegistryBlock(
-      defined.length > 0 ? defined : await legacyRegistryBlock(vaultRoot),
+      defined.length > 0 ? defined : await fallbackRegistryBlock(vaultRoot),
     )
   } catch {
     // Leave whatever is cached; never let registry loading break the view.

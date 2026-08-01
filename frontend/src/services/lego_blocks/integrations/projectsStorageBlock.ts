@@ -8,6 +8,7 @@ import {
   type ProjectBlock,
   type ProjectsFileBlock,
 } from '@/services/lego_blocks/units/projectBlock'
+import { renderProjectsMarkdownBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 
 /**
  * projectsStorageBlock — read/write `.thinking-space/projects.json` and emit
@@ -23,6 +24,7 @@ import {
  */
 
 export const PROJECTS_FILE_PATH_BLOCK = '.thinking-space/projects.json'
+export const PROJECTS_MIRROR_PATH_BLOCK = '.thinking-space/projects.md'
 export const PROJECTS_FILE_DIR_BLOCK = '.thinking-space'
 export const PROJECTS_CHANGE_EVENT_BLOCK = 'thinking-space:projects-changed'
 
@@ -130,7 +132,29 @@ async function writeProjectsBlock(projects: ProjectBlock[]): Promise<void> {
     projects,
   }
   await fs.write(PROJECTS_FILE_PATH_BLOCK, JSON.stringify(payload, null, 2))
+  await writeProjectsMirrorBlock(projects)
   dispatchProjectsChangeBlock()
+}
+
+/**
+ * Rewrite the human-readable `projects.md` mirror beside the JSON.
+ *
+ * A mirror, not a source: it exists so a person or an agent reading the vault
+ * can see what the projects are without parsing JSON. Best-effort and always
+ * after the JSON write — the registry must never fail to save because a
+ * courtesy file could not be written.
+ */
+async function writeProjectsMirrorBlock(projects: ProjectBlock[]): Promise<void> {
+  try {
+    const fs = getVaultFS()
+    const next = renderProjectsMarkdownBlock(projects)
+    if (await fs.exists(PROJECTS_MIRROR_PATH_BLOCK)) {
+      if ((await fs.read(PROJECTS_MIRROR_PATH_BLOCK)) === next) return
+    }
+    await fs.write(PROJECTS_MIRROR_PATH_BLOCK, next)
+  } catch {
+    /* no-op */
+  }
 }
 
 export async function addProjectBlock(input: CreateProjectInputBlock): Promise<ProjectBlock | null> {

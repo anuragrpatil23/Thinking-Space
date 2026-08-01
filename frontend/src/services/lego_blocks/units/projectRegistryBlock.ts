@@ -57,6 +57,61 @@ export function parseProjectRegistryMarkdownBlock(
   return out
 }
 
+export const PROJECTS_MARKDOWN_BANNER_BLOCK =
+  '<!-- GENERATED from .thinking-space/projects.json — do not edit. Edit projects in Settings → Projects. -->'
+
+/**
+ * Render the human-readable mirror of `projects.json`.
+ *
+ * Deliberately emits the same line shape `parseProjectRegistryMarkdownBlock`
+ * reads, so the mirror is legible to a person, to an agent grepping the vault,
+ * and — if `projects.json` is ever lost — to the fallback parser. It is a
+ * mirror and never a source: the banner says so, and nothing writes back.
+ *
+ * Keys, not names, head each line: the key is the address every chain directory
+ * and organizer record is filed under, so that is what a reader needs to match.
+ *
+ * No timestamp on purpose — it is rewritten with every `projects.json` write, so
+ * a date would add nothing but an iCloud sync on every keystroke-saved edit.
+ */
+export function renderProjectsMarkdownBlock(
+  projects: Array<{ key: string; name: string; mission: string; roots: string[]; group: string; aliases: string[] }>,
+): string {
+  const listed = projects.filter(p => p.key)
+  const groups = new Map<string, typeof listed>()
+  for (const project of listed) {
+    const group = project.group.trim()
+    if (!groups.has(group)) groups.set(group, [])
+    groups.get(group)!.push(project)
+  }
+  // Named groups first, alphabetically; the ungrouped remainder last, under its
+  // own heading — without one it reads as the tail of whichever group sorted
+  // last, which is exactly the wrong thing for a file about what belongs where.
+  const names = [...groups.keys()].filter(Boolean).sort((a, b) => a.localeCompare(b))
+  if (groups.has('')) names.push('')
+
+  const lines: string[] = [PROJECTS_MARKDOWN_BANNER_BLOCK, '', '# Projects', '']
+  for (const group of names) {
+    lines.push(`## ${group || 'Ungrouped'}`, '')
+    const members = groups.get(group)!.slice().sort((a, b) => a.key.localeCompare(b.key))
+    for (const project of members) {
+      const paths = project.roots.map(root => `\`${root}\``).join(' ')
+      const label = project.name.trim() && project.name.trim() !== project.key ? ` (${project.name.trim()})` : ''
+      const mission = project.mission.trim().replace(/\s+/g, ' ')
+      // Parenthesised only when it trails a mission; on its own it is the note.
+      const akaText = project.aliases.length
+        ? `also known as ${project.aliases.map(a => `"${a}"`).join(', ')}`
+        : ''
+      const aka = akaText && mission ? `(${akaText})` : akaText
+      // A mission is prose and usually ends in its own period; don't add a second.
+      const tail = [mission, aka].filter(Boolean).join(mission.endsWith('.') ? ' ' : '. ')
+      lines.push(`- **${project.key}**${label}${paths ? ` ${paths}` : ''}${tail ? ` — ${tail}` : ''}`)
+    }
+    lines.push('')
+  }
+  return lines.join('\n')
+}
+
 /** Longest registered root containing `cwd`, with the root that matched — the
  *  root is what the settings page shows to explain an attribution. */
 export function matchProjectRootBlock(

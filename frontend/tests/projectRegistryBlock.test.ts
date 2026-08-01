@@ -4,6 +4,8 @@ import {
   projectLabelBlock,
   projectAliasesFromProjectsBlock,
   projectRegistryFromProjectsBlock,
+  renderProjectsMarkdownBlock,
+  PROJECTS_MARKDOWN_BANNER_BLOCK,
   resolveProjectByAliasBlock,
   resolveProjectByCwdBlock,
   setCachedProjectNamesBlock,
@@ -171,5 +173,50 @@ describe('project labels', () => {
   it('falls back to the key when a project has no name', () => {
     setCachedProjectNamesBlock({ F9: 'Acceleration Core' })
     expect(projectLabelBlock('thinkingspace.ai')).toBe('thinkingspace.ai')
+  })
+})
+
+describe('renderProjectsMarkdownBlock', () => {
+  const projects = [
+    {
+      key: 'Thinking-Space',
+      name: 'Thinking Space',
+      mission: 'The app that orchestrates\nthe other projects.',
+      roots: ['lifeblood_systems/thinkingspace.ai', '/Volumes/Code/Thinking-Space'],
+      group: 'lifeblood_systems',
+      aliases: ['thinkingspace.ai'],
+    },
+    { key: 'F9', name: 'F9', mission: '', roots: ['acceleration_core/F9'], group: 'acceleration_core', aliases: [] },
+    { key: '', name: 'Unaddressed', mission: '', roots: ['somewhere'], group: '', aliases: [] },
+  ]
+
+  it('marks itself generated so nobody hand-edits a mirror', () => {
+    expect(renderProjectsMarkdownBlock(projects).startsWith(PROJECTS_MARKDOWN_BANNER_BLOCK)).toBe(true)
+  })
+
+  it('heads each line with the key, not the name', () => {
+    const md = renderProjectsMarkdownBlock(projects)
+    expect(md).toContain('- **Thinking-Space** (Thinking Space)')
+    // A key that equals the name is not repeated in parentheses.
+    expect(md).toContain('- **F9** `acceleration_core/F9`')
+  })
+
+  it('omits projects with no key — they have no address to publish', () => {
+    expect(renderProjectsMarkdownBlock(projects)).not.toContain('Unaddressed')
+  })
+
+  it('round-trips through the parser, so the mirror can serve as a fallback', () => {
+    const entries = parseProjectRegistryMarkdownBlock(renderProjectsMarkdownBlock(projects), VAULT)
+    expect(entries).toEqual([
+      { project: 'F9', paths: [`${VAULT}/acceleration_core/F9`] },
+      {
+        project: 'Thinking-Space',
+        paths: [`${VAULT}/lifeblood_systems/thinkingspace.ai`, '/Volumes/Code/Thinking-Space'],
+      },
+    ])
+  })
+
+  it('is stable across calls so the mirror is only rewritten on real changes', () => {
+    expect(renderProjectsMarkdownBlock(projects)).toBe(renderProjectsMarkdownBlock(projects))
   })
 })
