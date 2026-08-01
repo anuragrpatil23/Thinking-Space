@@ -89,7 +89,9 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
   // The edges pointing *at* this undertaking. They aren't on the record — they
   // are the reverse of edges other records own — so they have to be resolved
   // separately, and re-resolved after an edit that could have changed one.
-  const [links, setLinks] = useState<UndertakingLinks>({ ledTo: [], fedBy: [] })
+  const [links, setLinks] = useState<UndertakingLinks>({
+    ledTo: [], answered: [], fedBy: [], produced: [],
+  })
 
   const record = view?.record
   const tail = view?.tail
@@ -517,15 +519,24 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                     )}
                   </div>
 
-                  {/* The reverse edges. Neither is stored on this record — one
-                      is other undertakings naming this one, the other is the
-                      note seam — so the drawer has to be handed them, and
-                      without them it showed a strictly poorer relationship
-                      picture than the one-line peek in the list behind it.
+                  {/* The rest of the graph. `grewOutOf` above is the only edge
+                      this record owns; everything here is either another record
+                      naming it or a note edge, so the drawer has to be handed
+                      them — without them it showed a strictly poorer
+                      relationship picture than the one-line peek behind it.
                       Read-only by construction: you edit an edge from the end
-                      that owns it. */}
+                      that owns it.
+
+                      Fed by and Answered are both note edges but not the same
+                      fact: a Question migrates out of its section to sit under
+                      the doing that answered it, while a standing note (an
+                      idea, a thesis, a lesson) keeps its own row and merely
+                      fed this one. Collapsing them would claim this undertaking
+                      closed something it only drew on. */}
                   <ReverseLinks label="Led to" refs={links.ledTo} onOpen={onOpen} />
-                  <ReverseLinks label="Answered" refs={links.fedBy} muted />
+                  <ReverseLinks label="Fed by" refs={links.fedBy} muted />
+                  <ReverseLinks label="Answered" refs={links.answered} muted />
+                  <ReverseLinks label="Produced" refs={links.produced} muted />
                 </div>
               </Field>
 

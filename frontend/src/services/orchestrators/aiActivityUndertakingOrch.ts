@@ -730,14 +730,22 @@ export async function listUndertakingSectionsOrch(
 export interface UndertakingLinks {
   /** Undertakings whose `grewOutOf` names this one. */
   ledTo: NoteRef[]
-  /** Migrating notes (Questions) this undertaking answered. */
+  /** *Migrating* notes (Questions) this undertaking answered — they left their
+   *  section to sit under it. */
+  answered: NoteRef[]
+  /** *Standing* notes (Ideas, learnings, theses) that fed it. These keep their
+   *  own rows — a thesis doesn't stop existing once it's been acted on — so
+   *  they never appear in the seam's fedNotes and were invisible here. */
   fedBy: NoteRef[]
+  /** Notes this undertaking produced (`produced`). */
+  produced: NoteRef[]
 }
 
 /**
- * Resolve the reverse edges for one undertaking. The index block does this for
- * the whole list at once; the drawer opens on a single key and would otherwise
- * show a strictly poorer relationship picture than the inline peek behind it.
+ * Resolve every edge touching one undertaking that isn't already legible from
+ * its own record. The index block does the equivalent for the whole list at
+ * once; the drawer opens on a single key and would otherwise show a strictly
+ * poorer relationship picture than the inline peek behind it.
  */
 export async function getUndertakingLinksOrch(
   projectId: string,
@@ -749,11 +757,31 @@ export async function getUndertakingLinksOrch(
   ])
   const notes = askRoot !== null ? await listNotesBlock(askRoot) : []
   const seam = buildNoteSeamBlock(notes, records, Date.now())
+  const record = records.find(r => r.key === key)
+
+  const noteByTicket = new Map<string, Note>()
+  for (const note of notes) noteByTicket.set(note.ticket, note)
+  const resolveNote = (raw: string): NoteRef => {
+    const note = noteByTicket.get(raw.toUpperCase())
+    return { key: note?.key ?? raw, title: note?.title ?? raw }
+  }
+
+  // The migrating half of `fedBy` is what the seam already handed back; whatever
+  // is left (minus chain strands, which are sessions not notes) is standing.
+  const answered = seam.fedNotes.get(key) ?? []
+  const answeredKeys = new Set(answered.map(r => r.key))
+  const fedBy = (record?.fedBy ?? [])
+    .filter(raw => !raw.includes('::'))
+    .map(resolveNote)
+    .filter(ref => !answeredKeys.has(ref.key))
+
   return {
     ledTo: records
       .filter(r => r.grewOutOf.includes(key))
       .map(r => ({ key: r.key, title: r.title || r.head || r.key })),
-    fedBy: seam.fedNotes.get(key) ?? [],
+    answered,
+    fedBy,
+    produced: (record?.produced ?? []).map(resolveNote),
   }
 }
 
