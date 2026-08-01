@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Check, Copy, Loader2, Plus, Trash2, X } from 'lucide-react'
@@ -64,6 +65,7 @@ function humanDuration(ms: number): string {
 
 export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey, onOpen, onClose }: Props) {
   const { view, loading, error, reload } = useUndertakingDetailBlock(projectId, undertakingKey)
+  const navigate = useNavigate()
 
   const [titleDraft, setTitleDraft] = useState('')
   const [headDraft, setHeadDraft] = useState('')
@@ -415,19 +417,27 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                     ) : (
                       <ol className="-mx-2">
                         {chains.map(chain => (
-                          <li
-                            key={chain.chainKey}
-                            className="flex items-baseline gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-black/[0.025] dark:hover:bg-white/[0.03]"
-                          >
-                            <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/50">
-                              {chain.date}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate text-[13px] text-foreground/85" title={chain.title}>
-                              {chain.title || '(untitled session)'}
-                            </span>
-                            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/50">
-                              {humanDuration(chain.activeDurationMs > 0 ? chain.activeDurationMs : chain.durationMs)}
-                            </span>
+                          <li key={chain.chainKey}>
+                            {/* A session row looked like a link and did
+                                nothing. It opens the chain digest — the written
+                                record of that session, its title, summary and
+                                the files it touched. */}
+                            <button
+                              type="button"
+                              onClick={() => navigate(`/thinking-space?file=${encodeURIComponent(chain.path)}`)}
+                              className="flex w-full items-baseline gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-black/[0.025] dark:hover:bg-white/[0.03]"
+                              title={chain.path}
+                            >
+                              <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/50">
+                                {chain.date}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate text-[13px] text-foreground/85">
+                                {chain.title || '(untitled session)'}
+                              </span>
+                              <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/50">
+                                {humanDuration(chain.activeDurationMs > 0 ? chain.activeDurationMs : chain.durationMs)}
+                              </span>
+                            </button>
                           </li>
                         ))}
                       </ol>
