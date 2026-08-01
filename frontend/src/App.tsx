@@ -165,7 +165,6 @@ import {
   type ChatSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/chatSidebarChromeBlock'
 import {
-  newThoughtSidebarChromeBlock,
   webSidebarChromeBlock,
   type WebSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/webSidebarChromeBlock'
@@ -618,7 +617,6 @@ function App() {
     collapsed: false,
     label: 'Tools',
   })
-  const [newThoughtSidebarChromeState, setNewThoughtSidebarChromeState] = useState({ enabled: false, collapsed: false })
   const [settingsSidebarChromeState, setSettingsSidebarChromeState] = useState<SettingsSidebarChromeStateBlock>({
     enabled: false,
     collapsed: false,
@@ -713,7 +711,6 @@ function App() {
   const showOrganizerHeaderToggle = showOrganizerSidebarChromeControl && organizerSidebarChromeState.showHeaderToggle
   const showWebullSidebarChromeControl = location.pathname === '/webull' && webullSidebarChromeState.enabled
   const showToolsSidebarChromeControl = toolsSidebarChromeState.enabled && TOOLS_NAV_ACTIVE_PATHS.includes(location.pathname)
-  const showNewThoughtSidebarChromeControl = location.pathname === '/new-thought' && newThoughtSidebarChromeState.enabled
   const showSettingsSidebarChromeControl = location.pathname === '/settings' && settingsSidebarChromeState.enabled
   // On Capacitor, each of these tabs owns its own edge-swipe gesture.
   // Suppress the global nav-drawer swipe so they don't conflict.
@@ -723,7 +720,6 @@ function App() {
     || showOrganizerSidebarChromeControl
     || showWebullSidebarChromeControl
     || showToolsSidebarChromeControl
-    || showNewThoughtSidebarChromeControl
     || showSettingsSidebarChromeControl
   const isElectronDesktopSurface = layout.surface === 'electron' && layout.mode === 'desktop'
   const isMacDesktopSurface = isElectronDesktopSurface
@@ -1060,13 +1056,6 @@ function App() {
       toggleLabels: { show: 'Show sidebar', hide: 'Hide sidebar' },
     },
     {
-      id: 'new-thought',
-      show: showNewThoughtSidebarChromeControl,
-      block: newThoughtSidebarChromeBlock,
-      collapsed: newThoughtSidebarChromeState.collapsed,
-      toggleLabels: { show: 'Show left panel', hide: 'Hide left panel' },
-    },
-    {
       id: 'settings',
       show: showSettingsSidebarChromeControl,
       block: settingsSidebarChromeBlock,
@@ -1191,14 +1180,6 @@ function App() {
         label: webullSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
       }
     }
-    if (showNewThoughtSidebarChromeControl) {
-      return {
-        kind: 'new-thought-sidebar',
-        enabled: true,
-        active: !newThoughtSidebarChromeState.collapsed,
-        label: newThoughtSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
-      }
-    }
     if (showSettingsSidebarChromeControl) {
       return {
         kind: 'settings-sidebar',
@@ -1229,11 +1210,9 @@ function App() {
     compactNav,
     drawerOpen,
     layout.mode,
-    newThoughtSidebarChromeState.collapsed,
     organizerSidebarChromeState.collapsed,
     showChatSidebarChromeControl,
     showGoogleWorkspaceChromeControls,
-    showNewThoughtSidebarChromeControl,
     showOrganizerSidebarChromeControl,
     showSettingsSidebarChromeControl,
     showWebSidebarChromeControl,
@@ -1845,9 +1824,6 @@ function App() {
         return
       case 'webull-sidebar':
         webullSidebarChromeBlock.dispatchToggle()
-        return
-      case 'new-thought-sidebar':
-        newThoughtSidebarChromeBlock.dispatchToggle()
         return
       case 'settings-sidebar':
         settingsSidebarChromeBlock.dispatchToggle()
@@ -2482,16 +2458,6 @@ function App() {
     },
   )
 
-  useChromeStateEventBlock<{ enabled: boolean; collapsed: boolean }>(
-    newThoughtSidebarChromeBlock.stateEvent,
-    (detail) => {
-      setNewThoughtSidebarChromeState({
-        enabled: Boolean(detail.enabled),
-        collapsed: Boolean(detail.collapsed),
-      })
-    },
-  )
-
   useChromeStateEventBlock<SettingsSidebarChromeStateBlock>(
     settingsSidebarChromeBlock.stateEvent,
     (detail) => {
@@ -2975,7 +2941,11 @@ function App() {
               )}
               {persistentRouteMounts.newThought && (
                 <div
-                  className="absolute inset-0 min-h-0 overflow-y-auto overflow-x-hidden"
+                  // `overflow-hidden`, not `overflow-y-auto`: since the iA
+                  // layout (2026-07-31) New Note is a fixed full-bleed surface
+                  // and CodeMirror owns the only scroller. An outer scroller
+                  // here just showed an inert scrollbar on an empty note.
+                  className="absolute inset-0 min-h-0 overflow-hidden"
                   style={{ visibility: isNewThoughtRoute ? 'visible' : 'hidden', pointerEvents: isNewThoughtRoute ? 'auto' : 'none' }}
                   aria-hidden={!isNewThoughtRoute}
                 >

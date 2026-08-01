@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, GitCommit, Users, Waves, Flame, Calendar } from 'lucide-react'
+import { Activity, GitCommit, Users, Waves, Flame, Calendar, Eye, CheckSquare } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/lego_blocks/units/ui/card'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import FileActivityOrch from '@/components/orchestrators/FileActivityOrch'
 import MetricBlock from '@/components/lego_blocks/units/MetricBlock'
+import ThoughtsCalendarOrch from '@/components/orchestrators/ThoughtsCalendarOrch'
+import TodoCalendarOrch from '@/components/orchestrators/TodoCalendarOrch'
 import { getGitInsights } from '@/services/orchestrators/gitInsightsOrch'
 import type { GitInsightsData, HeatmapDay } from '@/services/lego_blocks/units/typesBlock'
 
-type Tab = 'git' | 'file'
+// 'notes'/'todos' moved here from the New Note tab (2026-07-31): New Note is
+// now a single full-bleed writing surface with no mode nav, and browsing what
+// you already wrote is an insights activity, not a composing one.
+type Tab = 'git' | 'file' | 'notes' | 'todos'
 
 function fmt(n: number): string {
   return n.toLocaleString()
@@ -484,11 +489,29 @@ export default function GitInsights() {
               <Calendar className="h-3.5 w-3.5 mr-1.5" />
               File Activity
             </Button>
+            <Button
+              variant={tab === 'notes' ? 'default' : 'secondary'}
+              size="sm"
+              onClick={() => setTab('notes')}
+            >
+              <Eye className="h-3.5 w-3.5 mr-1.5" />
+              Notes
+            </Button>
+            <Button
+              variant={tab === 'todos' ? 'default' : 'secondary'}
+              size="sm"
+              onClick={() => setTab('todos')}
+            >
+              <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
+              To Dos
+            </Button>
           </div>
         </header>
 
         {tab === 'git' && <GitActivityTab />}
         {tab === 'file' && <FileActivityOrch />}
+        {tab === 'notes' && <ThoughtsCalendarOrch />}
+        {tab === 'todos' && <TodoCalendarOrch />}
       </div>
     </div>
   )
