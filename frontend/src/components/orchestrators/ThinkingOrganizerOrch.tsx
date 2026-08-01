@@ -313,7 +313,12 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
         {!phoneDetailMode && (
           <aside
             className={cn(
-              'ltm-organizer-shell-nav bg-background/40 overflow-y-auto overflow-x-hidden',
+              // `overscroll-none`: WebKit rubber-bands an overflow:auto pane on
+              // a wheel gesture even when its content fits, so the project list
+              // bounced under the cursor and read as a scrolling web page rather
+              // than a fixed sidebar. It still scrolls when it genuinely
+              // overflows — it just no longer moves when there is nowhere to go.
+              'ltm-organizer-shell-nav bg-background/40 overflow-y-auto overflow-x-hidden overscroll-none',
               phoneListMode
                 ? 'flex-1 px-3 py-4 opacity-100'
                 : cn(
