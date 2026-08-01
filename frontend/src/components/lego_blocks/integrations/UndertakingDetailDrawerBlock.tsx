@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import { Check, ChevronDown, Loader2, Plus, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import DensitySparklineBlock from '@/components/lego_blocks/units/DensitySparklineBlock'
+import { bucketDensityBlock } from '@/services/lego_blocks/units/aiActivityDensityBlock'
 import { useUndertakingDetailBlock } from '@/components/lego_blocks/hooks/units/useUndertakingDetailBlock'
 import {
   addUndertakingNoteOrch,
@@ -55,6 +56,9 @@ const DRAWER_SELECT = cn(DRAWER_INPUT, 'cursor-pointer appearance-none pr-9')
 /** The one filled action in the drawer. Everything else is quiet by design. */
 const PRIMARY_BUTTON =
   'inline-flex items-center gap-1.5 rounded-[10px] bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40'
+/** Buckets in the rail's density strip. Wider than the index's 24 because the
+ *  rail strip is the only place you see one undertaking's shape on its own. */
+const DRAWER_SPARKLINE_BUCKETS = 40
 
 function humanDuration(ms: number): string {
   const m = Math.max(0, Math.round(ms / 60_000))
@@ -196,12 +200,25 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
     } finally { setRemovingIndex(null) }
   }
 
-  const sparkBuckets = (tail?.density ?? []).map(d => ({
-    startDate: d.date,
-    endDate: d.date,
-    chains: d.chains,
-    activeDurationMs: d.activeDurationMs,
-  }))
+  // The density strip has to span a *window*, not the worked days. Mapping
+  // `tail.density` straight through gave one bucket per worked day, so a
+  // single-day undertaking rendered as a lone tick and a three-day one as three
+  // fat bars with no sense of whether those days were a week or a year apart.
+  // Bucketing across first→last puts the bars where the calendar puts them.
+  const sparkBuckets = useMemo(() => {
+    if (!tail?.firstDate || !tail.lastDate) return []
+    return bucketDensityBlock(tail.density, {
+      from: tail.firstDate,
+      to: tail.lastDate,
+      buckets: DRAWER_SPARKLINE_BUCKETS,
+    })
+  }, [tail?.firstDate, tail?.lastDate, tail?.density])
+
+  const dateRange = !tail?.firstDate
+    ? null
+    : tail.firstDate === tail.lastDate
+      ? tail.firstDate
+      : `${tail.firstDate} → ${tail.lastDate}`
 
   return createPortal(
     <>
@@ -255,119 +272,93 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                 className="-mx-2 w-[calc(100%+1rem)] rounded-lg bg-transparent px-2 py-1 text-[1.6rem] font-semibold leading-[1.25] tracking-[-0.015em] outline-none transition-colors hover:bg-black/[0.03] focus:bg-black/[0.03] dark:hover:bg-white/[0.04] dark:focus:bg-white/[0.04]"
               />
 
-              {/* A reading column and a metadata rail. The panel is wide, and a
-                  single full-width column made a section name into a 1400px
-                  control — the width has to become structure, not stretch. What
-                  you read and write (head, notes, sessions) holds the measure on
-                  the left; what classifies the undertaking (section, tags, edges,
-                  the derived tail) is compact reference on the right. */}
-              <div className="grid grid-cols-1 gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,1fr)_17rem]">
-                {/* ── Reading column ─────────────────────────────────────── */}
-                <div className="min-w-0 space-y-7">
-                  <Field label="Head">
-                    <div className="flex flex-col gap-2">
-                      <GrowTextarea
-                        value={headDraft}
-                        onChange={e => setHeadDraft(e.target.value)}
-                        placeholder="What came out — one line…"
-                        className={cn(DRAWER_INPUT, 'min-h-[3.5rem] text-[15px] leading-relaxed')}
-                      />
-                      {headChanged && (
-                        <button
-                          type="button"
-                          onClick={() => void saveHead()}
-                          disabled={savingHead}
-                          className={cn(PRIMARY_BUTTON, 'w-fit')}
-                        >
-                          {savingHead ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                          Save head
-                        </button>
-                      )}
-                    </div>
-                  </Field>
+              {/* "Head" is the internal field name; what it holds is the
+                  one-line result of the undertaking, so that is what the label
+                  says. Boxing it made the drawer open on a form control — it
+                  reads as the standfirst under the title instead, with the same
+                  hover/focus tint the title uses to say it is editable. It gets
+                  the full panel width: it is the answer to "what was this", and
+                  it was previously squeezed into a two-thirds column. */}
+              <Field label="Outcome">
+                <div className="flex flex-col gap-2">
+                  <GrowTextarea
+                    value={headDraft}
+                    onChange={e => setHeadDraft(e.target.value)}
+                    placeholder="What came out of this — one line…"
+                    aria-label="Outcome"
+                    className="-mx-2 w-[calc(100%+1rem)] rounded-lg bg-transparent px-2 py-1 text-[15px] leading-relaxed outline-none transition-colors placeholder:text-muted-foreground/50 hover:bg-black/[0.03] focus:bg-black/[0.03] dark:hover:bg-white/[0.04] dark:focus:bg-white/[0.04]"
+                  />
+                  {headChanged && (
+                    <button
+                      type="button"
+                      onClick={() => void saveHead()}
+                      disabled={savingHead}
+                      className={cn(PRIMARY_BUTTON, 'w-fit')}
+                    >
+                      {savingHead ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                      Save outcome
+                    </button>
+                  )}
+                </div>
+              </Field>
 
-                  {/* Notes — the annotation thread, stored in the body. Reads as
-                      a thread: an authored entry with an avatar and a date. */}
-                  <Field
-                    label="Notes"
-                    action={
-                      record.notes.length > 0 ? (
-                        <span className="text-xs tabular-nums text-muted-foreground/70">
-                          {record.notes.length}
-                        </span>
-                      ) : undefined
-                    }
-                  >
-                    <div className="flex items-start gap-3">
-                      <NoteAvatar author={null} />
-                      <div className="min-w-0 flex-1">
-                        <textarea
-                          value={noteDraft}
-                          onChange={e => setNoteDraft(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void addNote() }
-                          }}
-                          placeholder="Add a note…"
-                          className={cn(DRAWER_INPUT, 'min-h-[72px] resize-y leading-relaxed')}
-                        />
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <span className="text-[11px] text-muted-foreground/60">⌘↵ to add</span>
-                          <button
-                            type="button"
-                            onClick={() => void addNote()}
-                            disabled={busy || !noteDraft.trim()}
-                            className={PRIMARY_BUTTON}
-                          >
-                            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                            Add note
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {record.notes.length === 0 ? (
-                      <p className="mt-4 text-[13px] text-muted-foreground/55">
-                        Nothing noted yet.
-                      </p>
-                    ) : (
-                      <ol className="mt-5 space-y-4">
-                        {record.notes.map((note, index) => (
-                          <li key={`${note.date}-${index}`} className="group flex items-start gap-3">
-                            <NoteAvatar author={note.author} />
-                            <div className="min-w-0 flex-1">
-                              <p className="flex items-baseline gap-2 text-[12px] leading-none">
-                                <span className="font-medium text-foreground/85">{note.author || 'You'}</span>
-                                <span className="tabular-nums text-muted-foreground/55">{note.date || 'undated'}</span>
-                              </p>
-                              <div className="prose prose-sm mt-1.5 max-w-none leading-relaxed dark:prose-invert prose-p:my-0">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.text}</ReactMarkdown>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => void removeNote(index)}
-                              disabled={removingIndex === index}
-                              className="-mr-1 shrink-0 rounded-md p-1.5 text-transparent transition-colors hover:bg-black/[0.04] hover:!text-destructive focus-visible:text-muted-foreground/60 group-hover:text-muted-foreground/50 dark:hover:bg-white/[0.05]"
-                              aria-label="Delete note"
-                            >
-                              {removingIndex === index
-                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                : <Trash2 className="h-3.5 w-3.5" />}
-                            </button>
-                          </li>
-                        ))}
-                      </ol>
+              {/* The trail and the sessions are the same fact at two
+                  resolutions — the summary figure and the entries it was
+                  summed from — so they sit side by side with a rule between
+                  them rather than stacked as unrelated blocks. */}
+              <section className="border-t border-black/[0.06] pt-6 dark:border-white/[0.06]">
+                <div className="grid grid-cols-1 gap-x-10 gap-y-8 lg:grid-cols-[15rem_minmax(0,1fr)]">
+                  <div className="min-w-0">
+                    <FieldHeading label="Trail" />
+                    {/* Led by the one figure that actually varies — how much
+                        work went in — with everything else as one supporting
+                        line. Five label/value rows gave "Days 1" the same
+                        weight as "Active 6h 20m", so the block read as a table
+                        of five equally unimportant numbers instead of a fact
+                        with context. */}
+                    <p className="flex items-baseline gap-1.5">
+                      <span className="text-[1.75rem] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
+                        {tail.activeDurationMs > 0 ? humanDuration(tail.activeDurationMs) : '—'}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground/70">active</span>
+                    </p>
+                    <p className="mt-2.5 text-[12px] text-muted-foreground/75">
+                      {tail.chainCount} session{tail.chainCount === 1 ? '' : 's'}
+                      <span className="px-1 text-muted-foreground/40">·</span>
+                      {tail.dayCount} day{tail.dayCount === 1 ? '' : 's'}
+                    </p>
+                    {dateRange && (
+                      <p className="mt-0.5 text-[12px] tabular-nums text-muted-foreground/60">{dateRange}</p>
                     )}
-                  </Field>
+                    {/* A one-bucket strip is a tick with no information in it,
+                        so the strip only appears once there is a span to show. */}
+                    {tail.dayCount > 1 && sparkBuckets.length > 0 && (
+                      <DensitySparklineBlock buckets={sparkBuckets} height={24} barWidth={5} className="mt-4" />
+                    )}
 
-                  <Field
-                    label="Sessions"
-                    action={
-                      chains.length > 0 ? (
-                        <span className="text-xs tabular-nums text-muted-foreground/70">{chains.length}</span>
-                      ) : undefined
-                    }
-                  >
+                    {tail.files.length > 0 && (
+                      <div className="mt-6">
+                        <RailLabel>Pages</RailLabel>
+                        <ul className="mt-2 space-y-1">
+                          {tail.files.map(f => (
+                            <li key={f} className="truncate font-mono text-[11px] text-muted-foreground/70" title={f}>
+                              {f}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0 lg:border-l lg:border-black/[0.06] lg:pl-10 dark:lg:border-white/[0.06]">
+                    <FieldHeading
+                      label="Sessions"
+                      action={
+                        chains.length > 0 ? (
+                          <span className="text-xs tabular-nums text-muted-foreground/70">{chains.length}</span>
+                        ) : undefined
+                      }
+                    />
                     {chains.length === 0 ? (
                       <p className="text-[13px] text-muted-foreground/55">No sessions filed here yet.</p>
                     ) : (
@@ -390,28 +381,17 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                         ))}
                       </ol>
                     )}
-                  </Field>
-                </div>
-
-                {/* ── Metadata rail ──────────────────────────────────────── */}
-                <aside className="min-w-0 space-y-6 lg:border-l lg:border-black/[0.06] lg:pl-8 lg:dark:border-white/[0.06]">
-                  {/* The derived tail: read-only by construction, so it is stated
-                      rather than presented as a field you could edit. */}
-                  <div>
-                    <RailLabel>Trail</RailLabel>
-                    <dl className="mt-2 space-y-1.5">
-                      <RailStat label="Sessions" value={String(tail.chainCount)} />
-                      <RailStat label="Active" value={humanDuration(tail.activeDurationMs)} />
-                      <RailStat label="Days" value={String(tail.dayCount)} />
-                      <RailStat label="First" value={tail.firstDate || '—'} />
-                      <RailStat label="Last" value={tail.lastDate || '—'} />
-                    </dl>
-                    <div className="mt-3">
-                      <DensitySparklineBlock buckets={sparkBuckets} height={22} />
-                    </div>
                   </div>
+                </div>
+              </section>
 
-                  <div>
+              {/* Everything that says where this undertaking sits relative to
+                  the rest of them — the section it files under, the tags it
+                  shares, and the undertakings it came out of. They were three
+                  separate rail blocks; they are one question. */}
+              <Field label="Relationships">
+                <div className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-3">
+                  <div className="min-w-0">
                     <RailLabel>Section</RailLabel>
                     <SelectShell className="mt-2">
                       <select
@@ -430,7 +410,7 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                     </SelectShell>
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <RailLabel>Tags</RailLabel>
                     {record.tags.length > 0 && (
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -473,7 +453,7 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                     </div>
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <RailLabel>Grew out of</RailLabel>
                     {record.grewOutOf.length > 0 && (
                       <ul className="mt-2 space-y-1.5">
@@ -511,21 +491,105 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                       </SelectShell>
                     )}
                   </div>
+                </div>
+              </Field>
 
-                  {tail.files.length > 0 && (
-                    <div>
-                      <RailLabel>Pages</RailLabel>
-                      <ul className="mt-2 space-y-1">
-                        {tail.files.map(f => (
-                          <li key={f} className="truncate font-mono text-[11px] text-muted-foreground/70" title={f}>
-                            {f}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+              {/* Notes live below the two columns, across the full panel. In
+                  the reading column they were a narrow box wedged between the
+                  outcome and the sessions while the bottom half of the drawer
+                  sat empty — and notes are the one thing here you compose at
+                  length, so they get the width and the room. The thread itself
+                  reads as one: an authored entry with an avatar and a date. */}
+              <Field
+                label="Notes"
+                action={
+                  record.notes.length > 0 ? (
+                    <span className="text-xs tabular-nums text-muted-foreground/70">
+                      {record.notes.length}
+                    </span>
+                  ) : undefined
+                }
+              >
+                {/* One composer object: the writing surface and its actions
+                    share a single well, divided by a hairline, rather than a
+                    cramped box with controls floating under it. The avatar
+                    moves out of the left gutter and into the footer bar — the
+                    note you are writing should be the widest thing on the page,
+                    and the attribution still has to be visible, because an
+                    agent writing through the CLI files notes into this same
+                    thread under its own name. */}
+                <div
+                  className={cn(
+                    FIELD_SURFACE,
+                    'overflow-hidden transition-colors',
+                    'focus-within:border-black/[0.12] focus-within:bg-black/[0.035]',
+                    'dark:focus-within:border-white/[0.14] dark:focus-within:bg-white/[0.05]',
                   )}
-                </aside>
-              </div>
+                >
+                  <textarea
+                    value={noteDraft}
+                    onChange={e => setNoteDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void addNote() }
+                    }}
+                    rows={5}
+                    placeholder="Add a note…"
+                    aria-label="Add a note"
+                    className="block w-full resize-y bg-transparent px-3.5 py-3 text-sm leading-relaxed outline-none placeholder:text-muted-foreground/50"
+                  />
+                  <div className="flex items-center justify-between gap-2 border-t border-black/[0.05] px-3 py-2 dark:border-white/[0.06]">
+                    <span className="flex items-center gap-2 text-[11px] text-muted-foreground/70">
+                      <NoteAvatar author={null} size="sm" />
+                      Adding as <span className="font-medium text-foreground/75">You</span>
+                      <span className="text-muted-foreground/40">·</span>
+                      ⌘↵ to add
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void addNote()}
+                      disabled={busy || !noteDraft.trim()}
+                      className={PRIMARY_BUTTON}
+                    >
+                      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                      Add note
+                    </button>
+                  </div>
+                </div>
+
+                {record.notes.length === 0 ? (
+                  <p className="mt-4 text-[13px] text-muted-foreground/55">
+                    Nothing noted yet.
+                  </p>
+                ) : (
+                  <ol className="mt-6 space-y-5">
+                    {record.notes.map((note, index) => (
+                      <li key={`${note.date}-${index}`} className="group flex items-start gap-3">
+                        <NoteAvatar author={note.author} />
+                        <div className="min-w-0 flex-1">
+                          <p className="flex items-baseline gap-2 text-[12px] leading-none">
+                            <span className="font-medium text-foreground/85">{note.author || 'You'}</span>
+                            <span className="tabular-nums text-muted-foreground/55">{note.date || 'undated'}</span>
+                          </p>
+                          <div className="prose prose-sm mt-1.5 max-w-none leading-relaxed dark:prose-invert prose-p:my-0">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.text}</ReactMarkdown>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void removeNote(index)}
+                          disabled={removingIndex === index}
+                          className="-mr-1 shrink-0 rounded-md p-1.5 text-transparent transition-colors hover:bg-black/[0.04] hover:!text-destructive focus-visible:text-muted-foreground/60 group-hover:text-muted-foreground/50 dark:hover:bg-white/[0.05]"
+                          aria-label="Delete note"
+                        >
+                          {removingIndex === index
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <Trash2 className="h-3.5 w-3.5" />}
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </Field>
             </>
           )}
         </div>
@@ -543,7 +607,7 @@ const NOTE_AVATAR_COLORS = [
   'bg-amber-500', 'bg-rose-500', 'bg-cyan-600',
 ]
 
-function NoteAvatar({ author }: { author: string | null }) {
+function NoteAvatar({ author, size = 'md' }: { author: string | null; size?: 'sm' | 'md' }) {
   const name = author?.trim() || ''
   const initials = name
     ? name.split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase()
@@ -555,7 +619,8 @@ function NoteAvatar({ author }: { author: string | null }) {
     <span
       aria-hidden
       className={cn(
-        'mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white',
+        'inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white',
+        size === 'sm' ? 'h-5 w-5 text-[8px]' : 'mt-0.5 h-7 w-7 text-[10px]',
         slot,
       )}
     >
@@ -614,16 +679,6 @@ function RailLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-/** One derived-tail figure: label left, value right, on a shared baseline. */
-function RailStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-[12px] text-muted-foreground/70">{label}</dt>
-      <dd className="text-[12px] tabular-nums text-foreground/85">{value}</dd>
-    </div>
-  )
-}
-
 /** A titled group: a heading, then content, separated from its neighbour by a
  *  hairline and space — no card. The heading is sentence-case at reading size;
  *  the drawer previously set every label as an identical 11px uppercase eyebrow,
@@ -639,11 +694,20 @@ function Field({
 }) {
   return (
     <section className="border-t border-black/[0.06] pt-6 first:border-t-0 first:pt-0 dark:border-white/[0.06]">
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-foreground/70">{label}</h2>
-        {action}
-      </div>
+      <FieldHeading label={label} action={action} />
       {children}
     </section>
+  )
+}
+
+/** The heading alone, for the groups that share one hairline instead of each
+ *  carrying their own — the trail/sessions pair sits inside a single section, so
+ *  a second `Field` there would have drawn a rule across the middle of it. */
+function FieldHeading({ label, action }: { label: string; action?: React.ReactNode }) {
+  return (
+    <div className="mb-3 flex items-baseline justify-between gap-3">
+      <h2 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-foreground/70">{label}</h2>
+      {action}
+    </div>
   )
 }

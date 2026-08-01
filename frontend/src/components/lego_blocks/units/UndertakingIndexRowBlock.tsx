@@ -153,6 +153,7 @@ function PeekPanel({
   const { record, tail } = row
   const answered = row.fedNotes
   const { border } = organizerSectionColorBlock(colorIndex)
+  // `head` is the field's internal name; the peek labels it by what it holds.
   const hasHeadPreview = Boolean(record.head) && record.head !== record.title
 
   // Sessions lazy-load only when the peek is open — the index list omits them
@@ -175,7 +176,7 @@ function PeekPanel({
     >
       <div className="ml-[2.25rem] mr-4 space-y-3 py-4">
         {hasHeadPreview && (
-          <PeekRow label="Head">
+          <PeekRow label="Outcome">
             <p className={cn(PEEK_BODY, 'leading-relaxed text-foreground/85')}>{record.head}</p>
           </PeekRow>
         )}
