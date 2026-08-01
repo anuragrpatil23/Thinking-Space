@@ -98,7 +98,11 @@ export default function OrganizerRowShellBlock({
             : undefined
         }
         className={cn(
-          'relative flex min-h-[2.25rem] items-center gap-2 py-1.5 pl-[0.9375rem] pr-3 transition-colors',
+          // The left padding only has to clear the 3px spine, not restate the
+          // right-hand padding — the ordinal column already supplies the air
+          // before the title, so matching px on both sides just pushed the
+          // whole row off its own edge.
+          'relative flex min-h-[2.25rem] items-center gap-2 py-1.5 pl-1.5 pr-3 transition-colors',
           interactive && 'cursor-pointer focus:outline-none',
           // An open row shares the peek's surface, so header and panel read as
           // one raised block; a closed row keeps the plain hover.

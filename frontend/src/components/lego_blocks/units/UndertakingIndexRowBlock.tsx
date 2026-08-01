@@ -99,7 +99,7 @@ export default function UndertakingIndexRowBlock({
       subRows={
         <>
           {row.fedNotes.length > 0 && !expanded && (
-            <ul className="mb-0.5 ml-7 mt-px space-y-px">
+            <ul className="mb-0.5 ml-6 mt-px space-y-px">
               {row.fedNotes.map(note => (
                 <li key={note.key} className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground/60">
                   <span className="shrink-0 text-muted-foreground/50" aria-hidden>◆→</span>
@@ -172,7 +172,7 @@ function PeekPanel({
         'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(255,255,255,0.06)]',
       )}
     >
-      <div className="ml-[2.25rem] mr-4 space-y-3 py-4">
+      <div className="ml-7 mr-4 space-y-3 py-4">
         {hasHeadPreview && (
           <PeekRow label="Outcome">
             <p className={cn(PEEK_BODY, 'leading-relaxed text-foreground/85')}>{record.head}</p>
