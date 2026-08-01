@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import { SettingsGroupBlock, SettingsRowBlock } from '@/components/lego_blocks/units/SettingsGroupBlock'
 import { cn } from '@/lib/utils'
 import {
   getAiActivityRangeSummaryProvider,
@@ -45,45 +45,30 @@ export default function AiActivityRangeSummaryProviderSettingsBlock() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Range summary provider</CardTitle>
-        <CardDescription>
-          Which path generates the "This Week" and multi-day range summaries.
-          Independent of the per-chain digest toggle above — range summaries
-          require more reasoning across sessions and the tradeoffs are different.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <fieldset className="space-y-2">
-          {OPTIONS.map(opt => {
-            const active = selected === opt.id
-            return (
-              <label
-                key={opt.id}
-                className={cn(
-                  'flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5 transition-colors',
-                  active
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border/60 hover:border-border',
-                )}
-              >
-                <input
-                  type="radio"
-                  name="ai-activity-range-summary-provider"
-                  className="mt-0.5"
-                  checked={active}
-                  onChange={() => pick(opt.id)}
-                />
-                <div className="min-w-0 space-y-1">
-                  <div className="text-sm font-medium text-foreground">{opt.label}</div>
-                  <p className="text-xs text-muted-foreground">{opt.description}</p>
-                </div>
-              </label>
-            )
-          })}
-        </fieldset>
-      </CardContent>
-    </Card>
+    <SettingsGroupBlock
+      heading="Range summary provider"
+      description={'Which path generates the "This Week" and multi-day range summaries. Independent of the per-chain digest toggle — range summaries need more reasoning across sessions and the tradeoffs differ.'}
+    >
+      {OPTIONS.map(opt => {
+        const active = selected === opt.id
+        return (
+          <SettingsRowBlock
+            key={opt.id}
+            as="label"
+            className={cn('cursor-pointer transition-colors', active && 'bg-primary/5')}
+            label={opt.label}
+            description={opt.description}
+            control={(
+              <input
+                type="radio"
+                name="ai-activity-range-summary-provider"
+                checked={active}
+                onChange={() => pick(opt.id)}
+              />
+            )}
+          />
+        )
+      })}
+    </SettingsGroupBlock>
   )
 }

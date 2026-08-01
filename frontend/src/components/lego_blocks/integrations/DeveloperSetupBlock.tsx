@@ -131,7 +131,7 @@ export default function DeveloperSetupBlock() {
   return (
     <div className="space-y-6">
       {/* Hero */}
-      <div className="space-y-3 rounded-md border border-border/40 bg-muted/20 px-3 py-3 text-xs text-muted-foreground leading-relaxed space-y-2">
+      <div className="space-y-2 rounded-xl border border-border/60 bg-card px-3.5 py-3 text-[12px] leading-relaxed text-muted-foreground">
         <p>
           This app ships with its own source code. You can use Claude Code in the terminal to
           change anything — the layout, features, shortcuts — and see the result live after Edit Mode is fully set up.
@@ -245,11 +245,11 @@ export default function DeveloperSetupBlock() {
       </div>
 
       {/* Source path (advanced) */}
-      <details className="rounded-md border border-border/50 [&>summary]:cursor-pointer">
-        <summary className="px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground select-none">
+      <details className="overflow-hidden rounded-xl border border-border/60 bg-card [&>summary]:cursor-pointer">
+        <summary className="select-none px-3.5 py-3 text-[13px] font-medium text-foreground hover:bg-muted/40">
           Source files location
         </summary>
-        <div className="border-t border-border/50 px-3 py-3 space-y-2">
+        <div className="space-y-2 border-t border-border/60 px-3.5 py-3">
           <p className="text-xs text-muted-foreground">
             Point this at your own copy of the Thinking Space code (a GitHub fork you or your AI
             assistant cloned). Your changes stay version-controlled and survive app updates.
@@ -289,14 +289,14 @@ export default function DeveloperSetupBlock() {
 
       {/* Rebuild */}
       <details
-        className="rounded-md border border-border/50 [&>summary]:cursor-pointer"
+        className="overflow-hidden rounded-xl border border-border/60 bg-card [&>summary]:cursor-pointer"
         open={rebuildOpen}
         onToggle={(e) => setRebuildOpen((e.currentTarget as HTMLDetailsElement).open)}
       >
-        <summary className="px-3 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground select-none">
+        <summary className="select-none px-3.5 py-3 text-[13px] font-medium text-foreground hover:bg-muted/40">
           Build a permanent version
         </summary>
-        <div className="border-t border-border/50 px-3 py-3 space-y-3">
+        <div className="space-y-3 border-t border-border/60 px-3.5 py-3">
           <p className="text-xs text-muted-foreground">
             Compiles your source files into a full production app — the same as a clean install,
             with your changes baked in. Takes about 2 minutes. When done, click{' '}

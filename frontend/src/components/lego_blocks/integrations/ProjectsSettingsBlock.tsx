@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import {
+  SETTINGS_PANE_WIDTH_BLOCK,
+  SettingsGroupBlock,
+  SettingsRowBlock,
+  SettingsSectionHeaderBlock,
+} from '@/components/lego_blocks/units/SettingsGroupBlock'
+import { cn } from '@/lib/utils'
 import { useProjectsBlock } from '@/components/lego_blocks/hooks/shared/useProjectsBlock'
 import {
   addProjectBlock,
@@ -232,7 +238,7 @@ export default function ProjectsSettingsBlock() {
   }
 
   const renderEditor = (project: ProjectBlock, draft: ProjectDraft) => (
-    <div className="space-y-3 border-t border-border/60 px-3 py-3">
+    <div className="space-y-3 border-t border-border/60 bg-muted/20 px-3.5 py-3">
       <div className="space-y-1">
         <label className={LABEL_CLASS}>Name</label>
         <input
@@ -382,114 +388,102 @@ export default function ProjectsSettingsBlock() {
   )
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Projects</CardTitle>
-          <CardDescription>
-            What you're working on, defined once. A project's folders are how a session's working
-            directory finds it, so the activity views, the organizer and the canvas surfaces all read
-            the same definition instead of three different ones.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {loading && (
-            <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-              Loading projects...
-            </div>
-          )}
+    <>
+      <SettingsSectionHeaderBlock
+        title="Projects"
+        description="What you're working on, defined once. A project's folders are how a session's working directory finds it, so the activity views, the organizer and the canvas surfaces all read the same definition instead of three different ones."
+      />
 
-          {!loading && projects.length === 0 && (
-            <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-              No projects yet. Add one below — canvas surfaces will pick it up automatically.
-            </div>
-          )}
+      {loading && (
+        <SettingsGroupBlock>
+          <SettingsRowBlock label="Loading projects…" />
+        </SettingsGroupBlock>
+      )}
 
-          {grouped.map(([label, members]) => (
-            <div key={label} className="space-y-1.5">
-              <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                {label}
-              </h3>
-              <div className="overflow-hidden rounded-md border border-border/60">
-                {members.map((project, index) => {
-                  const draft = drafts[project.uuid] ?? toDraft(project)
-                  const isOpen = openId === project.uuid
-                  const dirty = isDirtyBlock(project)
-                  return (
-                    <div
-                      key={project.uuid}
-                      className={index > 0 ? 'border-t border-border/60' : undefined}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setOpenId(isOpen ? null : project.uuid)}
-                        aria-expanded={isOpen}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40"
-                      >
-                        <span
-                          aria-hidden
-                          className="h-2.5 w-2.5 shrink-0 rounded-full border border-border/60"
-                          style={project.color ? { backgroundColor: project.color } : undefined}
-                        />
-                        <span className="truncate text-sm text-foreground">{project.name}</span>
-                        {dirty && (
-                          <span className="shrink-0 text-[11px] text-muted-foreground">unsaved</span>
-                        )}
-                        <span className="flex-1" />
-                        {/* The count, not the paths: a project with none matches
-                            no session, and that is the thing worth spotting. */}
-                        <span className="shrink-0 text-[11px] text-muted-foreground">
-                          {project.roots.length === 0
-                            ? 'no folders'
-                            : `${project.roots.length} folder${project.roots.length === 1 ? '' : 's'}`}
-                        </span>
-                      </button>
-                      {isOpen && renderEditor(project, draft)}
-                    </div>
-                  )
-                })}
+      {!loading && projects.length === 0 && (
+        <SettingsGroupBlock>
+          <SettingsRowBlock label="No projects yet." description="Add one below — canvas surfaces will pick it up automatically." />
+        </SettingsGroupBlock>
+      )}
+
+      {grouped.map(([label, members]) => (
+        <SettingsGroupBlock key={label} heading={label}>
+          {members.map((project) => {
+            const draft = drafts[project.uuid] ?? toDraft(project)
+            const isOpen = openId === project.uuid
+            const dirty = isDirtyBlock(project)
+            return (
+              <div key={project.uuid}>
+                <button
+                  type="button"
+                  onClick={() => setOpenId(isOpen ? null : project.uuid)}
+                  aria-expanded={isOpen}
+                  className="flex w-full items-center gap-2 px-3.5 py-3 text-left hover:bg-muted/40"
+                >
+                  <span
+                    aria-hidden
+                    className="h-2.5 w-2.5 shrink-0 rounded-full border border-border/60"
+                    style={project.color ? { backgroundColor: project.color } : undefined}
+                  />
+                  <span className="truncate text-[13px] font-medium text-foreground">{project.name}</span>
+                  {dirty && (
+                    <span className="shrink-0 text-[11px] text-muted-foreground">unsaved</span>
+                  )}
+                  <span className="flex-1" />
+                  {/* The count, not the paths: a project with none matches
+                      no session, and that is the thing worth spotting. */}
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                    {project.roots.length === 0
+                      ? 'no folders'
+                      : `${project.roots.length} folder${project.roots.length === 1 ? '' : 's'}`}
+                  </span>
+                </button>
+                {isOpen && renderEditor(project, draft)}
               </div>
-            </div>
-          ))}
+            )
+          })}
+        </SettingsGroupBlock>
+      ))}
 
-          <div className="border-t border-border/60 pt-4">
-            {adding ? (
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium">Add Project</h3>
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={e => setNewName(e.target.value)}
-                  placeholder="Project name"
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-ring"
-                />
-                <textarea
-                  value={newMission}
-                  onChange={e => setNewMission(e.target.value)}
-                  placeholder="Mission (optional)"
-                  rows={2}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring"
-                />
-                <div className="flex items-center gap-2">
-                  <Button type="button" onClick={() => { void onAdd() }} disabled={busy || !newName.trim()}>
-                    {busy ? 'Adding...' : 'Add Project'}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setAdding(false)} disabled={busy}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <Button type="button" variant="outline" onClick={() => setAdding(true)} disabled={busy}>
-                Add Project
+      {adding ? (
+        <SettingsGroupBlock heading="Add project">
+          <SettingsRowBlock stacked className="gap-2">
+            <input
+              type="text"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              placeholder="Project name"
+              aria-label="New project name"
+              className={FIELD_CLASS}
+            />
+            <textarea
+              value={newMission}
+              onChange={e => setNewMission(e.target.value)}
+              placeholder="Mission (optional)"
+              rows={2}
+              aria-label="New project mission"
+              className={AREA_CLASS}
+            />
+            <div className="flex items-center gap-2">
+              <Button type="button" size="sm" onClick={() => { void onAdd() }} disabled={busy || !newName.trim()}>
+                {busy ? 'Adding...' : 'Add Project'}
               </Button>
-            )}
-          </div>
+              <Button type="button" size="sm" variant="outline" onClick={() => setAdding(false)} disabled={busy}>
+                Cancel
+              </Button>
+            </div>
+          </SettingsRowBlock>
+        </SettingsGroupBlock>
+      ) : (
+        <div className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'flex flex-wrap gap-2')}>
+          <Button type="button" size="sm" variant="outline" onClick={() => setAdding(true)} disabled={busy}>
+            Add Project
+          </Button>
+        </div>
+      )}
 
-          {error && <p className="text-xs text-destructive">{error}</p>}
-          {message && <p className="text-xs text-muted-foreground">{message}</p>}
-        </CardContent>
-      </Card>
-    </div>
+      {error && <p className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'text-[13px] text-destructive')}>{error}</p>}
+      {message && <p className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'text-[13px] text-muted-foreground')}>{message}</p>}
+    </>
   )
 }

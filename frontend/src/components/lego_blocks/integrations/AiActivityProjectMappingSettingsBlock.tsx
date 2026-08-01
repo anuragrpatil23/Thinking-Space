@@ -13,7 +13,7 @@
 // while a real project also owns its chain directory and organizer records.
 
 import { useMemo, useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import { SettingsGroupBlock, SettingsRowBlock } from '@/components/lego_blocks/units/SettingsGroupBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { useAiActivityBlock } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import { useProjectsBlock } from '@/components/lego_blocks/hooks/shared/useProjectsBlock'
@@ -157,74 +157,59 @@ export default function AiActivityProjectMappingSettingsBlock() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Detected projects</CardTitle>
-        <CardDescription>
-          What the activity parser actually found: every project, the working directories behind it,
-          and what claimed it. The paths are the evidence and aren't editable. To change a name,
-          folders, aliases or color, edit the project in <span className="font-medium">Projects</span>{' '}
-          — anything here that isn't a project yet can be made one.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {error && (
-          <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-            {error}
-          </div>
+    <>
+      <SettingsGroupBlock
+        heading="Detected projects"
+        description={(
+          <>
+            What the activity parser actually found: every project, the working directories behind it,
+            and what claimed it. The paths are the evidence and aren't editable. To change a name,
+            folders, aliases or color, edit the project in <span className="font-medium">Projects</span>{' '}
+            — anything here that isn't a project yet can be made one.
+          </>
         )}
-
-        <div className="space-y-2">
-          {activity.loading && projects.length === 0 && (
-            <p className="text-xs text-muted-foreground">Loading activity…</p>
-          )}
-          {!activity.loading && projects.length === 0 && (
-            <p className="text-xs text-muted-foreground/70">No AI activity found yet.</p>
-          )}
-          <div className="space-y-1.5">
-            {projects.map(p => (
-              <ProjectRow
-                key={p.name}
-                canonical={p.name}
-                meta={`${p.totalChains} chain${p.totalChains === 1 ? '' : 's'} · ${p.totalMsgs} msg${p.totalMsgs === 1 ? '' : 's'}${p.isNoise ? ' · noise' : p.isUnknown ? ' · unknown' : ''}`}
-                details={detailsByProject.get(p.name) ?? null}
-                isDefined={definedKeys.has(p.name)}
-                isBucket={p.isNoise || p.isUnknown}
-                hasColorOverride={!!settings.colors[p.name]}
-                busy={busy === p.name}
-                onColor={hex => setColor(p.name, hex)}
-                onResetColor={() => setColor(p.name, null)}
-                onAdopt={() => void adopt(p.name, detailsByProject.get(p.name)?.dirs ?? [])}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Legacy rules. Never offered for new use — a rule relabels activity
-            views only, while a project also owns its chains and records. Kept
-            editable so the ones people already rely on can be seen and undone. */}
-        {settings.rules.length > 0 && (
-          <div className="space-y-2 border-t border-border/60 pt-4">
-            <h3 className="text-sm font-medium text-foreground">Mapping rules (legacy)</h3>
-            <p className="text-xs text-muted-foreground">
-              These run before folders and aliases and override both. They predate projects having
-              folders of their own; prefer adding the folder or alias to the project instead, then
-              remove the rule here.
-            </p>
-            <div className="space-y-1.5">
-              {settings.rules.map(rule => (
-                <RuleRow
-                  key={rule.id}
-                  rule={rule}
-                  onChange={patch => updateRule(rule.id, patch)}
-                  onRemove={() => removeRule(rule.id)}
-                />
-              ))}
-            </div>
-          </div>
+        footnote={error ? <span className="text-destructive">{error}</span> : undefined}
+      >
+        {activity.loading && projects.length === 0 && <SettingsRowBlock label="Loading activity…" />}
+        {!activity.loading && projects.length === 0 && (
+          <SettingsRowBlock label="No AI activity found yet." />
         )}
-      </CardContent>
-    </Card>
+        {projects.map(p => (
+          <ProjectRow
+            key={p.name}
+            canonical={p.name}
+            meta={`${p.totalChains} chain${p.totalChains === 1 ? '' : 's'} · ${p.totalMsgs} msg${p.totalMsgs === 1 ? '' : 's'}${p.isNoise ? ' · noise' : p.isUnknown ? ' · unknown' : ''}`}
+            details={detailsByProject.get(p.name) ?? null}
+            isDefined={definedKeys.has(p.name)}
+            isBucket={p.isNoise || p.isUnknown}
+            hasColorOverride={!!settings.colors[p.name]}
+            busy={busy === p.name}
+            onColor={hex => setColor(p.name, hex)}
+            onResetColor={() => setColor(p.name, null)}
+            onAdopt={() => void adopt(p.name, detailsByProject.get(p.name)?.dirs ?? [])}
+          />
+        ))}
+      </SettingsGroupBlock>
+
+      {/* Legacy rules. Never offered for new use — a rule relabels activity
+          views only, while a project also owns its chains and records. Kept
+          editable so the ones people already rely on can be seen and undone. */}
+      {settings.rules.length > 0 && (
+        <SettingsGroupBlock
+          heading="Mapping rules (legacy)"
+          description="These run before folders and aliases and override both. They predate projects having folders of their own; prefer adding the folder or alias to the project instead, then remove the rule here."
+        >
+          {settings.rules.map(rule => (
+            <RuleRow
+              key={rule.id}
+              rule={rule}
+              onChange={patch => updateRule(rule.id, patch)}
+              onRemove={() => removeRule(rule.id)}
+            />
+          ))}
+        </SettingsGroupBlock>
+      )}
+    </>
   )
 }
 
@@ -262,7 +247,7 @@ function ProjectRow({
   const visibleDirs = showAll ? dirs : dirs.slice(0, 1)
 
   return (
-    <div className="rounded-md border border-border/60 px-3 py-2">
+    <SettingsRowBlock stacked className="gap-1.5">
       <div className="flex items-center gap-2">
         {isDefined ? (
           <span
@@ -310,7 +295,7 @@ function ProjectRow({
       </div>
 
       {details && (
-        <div className="mt-1.5 space-y-0.5 pl-8">
+        <div className="space-y-0.5 pl-8">
           <div className="text-[11px] text-muted-foreground/70">
             {attributionTextBlock(details.source, details.via)}
           </div>
@@ -330,7 +315,7 @@ function ProjectRow({
           )}
         </div>
       )}
-    </div>
+    </SettingsRowBlock>
   )
 }
 
@@ -342,7 +327,7 @@ interface RuleRowProps {
 
 function RuleRow({ rule, onChange, onRemove }: RuleRowProps) {
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 px-3 py-2">
+    <SettingsRowBlock stacked className="flex-row flex-wrap items-center gap-2">
       <input
         type="checkbox"
         checked={rule.enabled}
@@ -377,6 +362,6 @@ function RuleRow({ rule, onChange, onRemove }: RuleRowProps) {
       <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={onRemove}>
         Remove
       </Button>
-    </div>
+    </SettingsRowBlock>
   )
 }

@@ -8,16 +8,17 @@ import {
   type WorkspaceProfileBlock,
 } from '@/services/lego_blocks/units/profileContextBlock'
 import { useWorkspaceProfileBlock } from '@/components/lego_blocks/hooks/useWorkspaceProfileBlock'
+import { ProfileAvatarIconBlock } from '@/components/lego_blocks/units/ProfileAvatarIconBlock'
 
 // Chrome-style profile avatar for the sidebar rail bottom: shows the current
 // profile's glyph inside its accent ring; clicking opens a switcher menu
 // listing every profile (click → that profile's window) plus a link to
-// Settings → Profiles. Falls back to a plain Settings link off-desktop.
+// Settings → Thinking Space Profiles. Falls back to a plain Settings link
+// off-desktop.
 
 const AVATAR_FALLBACK_RING_BLOCK = 'var(--ltm-shell-surface-border, #d4d4d8)'
 
-export function profileAvatarGlyphBlock(profile: Pick<WorkspaceProfileBlock, 'name' | 'icon'>): string {
-  if (profile.icon) return profile.icon
+export function profileAvatarFallbackTextBlock(profile: Pick<WorkspaceProfileBlock, 'name'>): string {
   const initial = profile.name.trim().charAt(0)
   return initial ? initial.toUpperCase() : '•'
 }
@@ -37,7 +38,7 @@ function ProfileAvatarFaceBlock({
         color: profile.accentColor ?? 'inherit',
       }}
     >
-      {profileAvatarGlyphBlock(profile)}
+      <ProfileAvatarIconBlock icon={profile.icon} fallbackText={profileAvatarFallbackTextBlock(profile)} />
     </span>
   )
 }
@@ -94,7 +95,7 @@ export function ProfileSwitcherBlock() {
     return (
       <Link
         to="/settings?tab=workspace_profiles"
-        aria-label="Profiles"
+        aria-label="Thinking Space Profiles"
         className="ltm-motion-fast ltm-rail-item inline-flex h-10 w-full items-center justify-center rounded-lg transition-colors"
       >
         <ProfileAvatarFaceBlock profile={currentProfile} sizeClassName="h-7 w-7" />
@@ -123,7 +124,7 @@ export function ProfileSwitcherBlock() {
           role="menu"
         >
           <p className="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Profiles
+            Thinking Space Profiles
           </p>
           {profiles.map((profile) => {
             const isCurrent = profile.id === currentProfile.id
@@ -152,7 +153,7 @@ export function ProfileSwitcherBlock() {
             onClick={() => setOpen(false)}
             className="block rounded-lg px-2 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
-            Manage Profiles…
+            Manage Thinking Space Profiles…
           </Link>
         </div>,
         document.body,
