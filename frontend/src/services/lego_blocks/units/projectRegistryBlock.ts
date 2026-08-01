@@ -8,7 +8,9 @@
 // its path. Basename can't fix that; a path map can. This is the mechanism the
 // design calls "the actual prerequisite" for the cross-project view.
 //
-// The data comes from `kai-workspace/projects.md`, one line per project:
+// The data comes from `.thinking-space/projects.json`. The markdown parser and
+// renderer below are the fallback/mirror pair for that file, one line per
+// project:
 //   - **F9** · `acceleration_core/F9/` — …
 // A line may carry more than one backticked path. That matters for code repos:
 // a vault project's sessions run from inside the vault (one path), but
