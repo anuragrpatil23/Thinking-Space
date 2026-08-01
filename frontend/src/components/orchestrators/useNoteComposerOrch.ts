@@ -169,8 +169,15 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   // --- destination ---
   const [pickerDefaultPath, setPickerDefaultPath] = useState<string[]>(DEFAULT_BASE_PATH_BLOCK)
   const [pickerVersion, setPickerVersion] = useState(0)
-  const [folderBaseSegments, setFolderBaseSegments] = useState<string[]>([])
-  const [folderBasePath, setFolderBasePath] = useState('')
+  // Seeded, not empty. The base used to be filled by the cascading picker
+  // firing `onChange` as it hydrated; when that picker left the panel
+  // (2026-07-31) nothing set it, so it stayed `[]` and the built-in shortcuts
+  // composed to bare `thoughts` at the vault root instead of
+  // `lifeblood_systems/sfdl/thoughts` — notes silently landed in the wrong
+  // folder. The default belongs here, where it does not depend on a child
+  // component being mounted to take effect.
+  const [folderBaseSegments, setFolderBaseSegments] = useState<string[]>(DEFAULT_BASE_PATH_BLOCK)
+  const [folderBasePath, setFolderBasePath] = useState(DEFAULT_BASE_PATH_BLOCK.join('/'))
   const [activeShortcutId, setActiveShortcutId] = useState('thoughts')
   const [shortcutBeforeTodoMode, setShortcutBeforeTodoMode] = useState('thoughts')
   const [customShortcuts, setCustomShortcuts] = useState<DestinationShortcutBlock[]>([])

@@ -1,8 +1,8 @@
 import { memo, useEffect, useRef, useState } from 'react'
-import { Loader2, X, Plus, FolderTree, ChevronDown, Save } from 'lucide-react'
+import { Loader2, X, Plus, FolderTree, ChevronDown, Save, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
-import DestinationBrowserModalBlock from '@/components/lego_blocks/integrations/DestinationBrowserModalBlock'
+import FolderTreePickerBlock from '@/components/lego_blocks/integrations/FolderTreePickerBlock'
 import EmotionTagger from '@/components/lego_blocks/integrations/EmotionTaggerBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorLazyBlock'
@@ -51,6 +51,7 @@ function CreateTab() {
   // stays edge to edge, which is the whole point of the iA layout.
   const [composerPanelOpen, setComposerPanelOpen] = useState(false)
   const [destinationBrowserOpen, setDestinationBrowserOpen] = useState(false)
+  const [quickDestinationLabel, setQuickDestinationLabel] = useState('')
   const [showAiAssist, setShowAiAssist] = useState(false)
 
   const panelTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -82,6 +83,17 @@ function CreateTab() {
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [composerPanelOpen, isPhoneSurface])
+
+  // Saves whatever the tree currently points at as a labelled chip. The path
+  // comes from the composer rather than local state because the inline tree
+  // commits as you click — there is no draft to reconcile.
+  const handleSaveQuickDestination = () => {
+    const label = quickDestinationLabel.trim()
+    if (!label || !composer.destinationPath) return
+    if (composer.addQuickDestination(label, composer.destinationPath.split('/').filter(Boolean))) {
+      setQuickDestinationLabel('')
+    }
+  }
 
   const handleRelatedThoughtOpenPath = (relatedPath: string) => {
     openFileInNewTabOrch(relatedPath)
@@ -227,14 +239,42 @@ function CreateTab() {
         )}
       </div>
 
+      {/* --- note type ---
+          Ahead of the destination on purpose: it routes to a different
+          capability and changes what saving means, so it is the first decision
+          about the note, not a switch tucked in with the cosmetic ones. */}
+      <div className="space-y-1.5 p-4">
+        <div className={PANEL_LABEL_CLASS}>Note type</div>
+        <div className="flex gap-1 rounded-lg border border-border/60 bg-muted/30 p-0.5">
+          {NOTE_KINDS_BLOCK.map((kind) => (
+            <button
+              key={kind.id}
+              type="button"
+              onClick={() => composer.setNoteKind(kind.id)}
+              className={cn(
+                'ltm-motion-fast flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                composer.noteKind === kind.id
+                  ? 'bg-foreground text-background'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {kind.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* --- destination --- */}
       <div className="space-y-2.5 p-4">
         <div className="flex items-center justify-between gap-2">
           <div className={PANEL_LABEL_CLASS}>Destination</div>
           <button
             type="button"
-            onClick={() => setDestinationBrowserOpen(true)}
-            className="ltm-motion-fast inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            onClick={() => setDestinationBrowserOpen(open => !open)}
+            className={cn(
+              'ltm-motion-fast inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors hover:bg-muted hover:text-foreground',
+              destinationBrowserOpen ? 'bg-muted text-foreground' : 'text-muted-foreground',
+            )}
           >
             <FolderTree className="h-3 w-3" />
             Browse
@@ -292,42 +332,54 @@ function CreateTab() {
           })}
           <button
             type="button"
-            onClick={() => setDestinationBrowserOpen(true)}
-            title="Add quick destination"
-            aria-label="Add quick destination"
+            onClick={() => setDestinationBrowserOpen(open => !open)}
+            title="Browse for a folder"
+            aria-label="Browse for a folder"
             className="ltm-motion-fast inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
           >
             <Plus className="h-3 w-3" />
           </button>
         </div>
+
+        {/* The browser unfolds in place rather than in a modal (2026-07-31).
+            A modal put a `fixed` scrim over a popover that lives inside the
+            title bar's stacking context, so the scrim painted *on top of* the
+            panel and the whole thing went translucent. Inline also means
+            picking a folder is one click, not click-then-confirm. */}
+        {destinationBrowserOpen && (
+          <div className="ltm-animate-fade-in space-y-2.5 rounded-lg border border-border/60 bg-muted/20 p-2.5">
+            <FolderTreePickerBlock
+              value={composer.destinationPath}
+              onChange={composer.applyDestinationPath}
+              maxHeightClassName="max-h-[34vh]"
+            />
+            <div className="flex gap-1.5 border-t border-border/50 pt-2.5">
+              <input
+                value={quickDestinationLabel}
+                onChange={(event) => setQuickDestinationLabel(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') { event.preventDefault(); handleSaveQuickDestination() }
+                }}
+                placeholder="Save this folder as a chip…"
+                aria-label="Quick destination name"
+                className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 text-xs outline-none transition-colors focus:border-foreground/30"
+              />
+              <button
+                type="button"
+                onClick={handleSaveQuickDestination}
+                disabled={!quickDestinationLabel.trim() || !composer.destinationPath}
+                className="ltm-motion-fast inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-border/70 bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-40"
+              >
+                <Star className="h-3 w-3" />
+                Save
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* --- options --- */}
       <div className="space-y-3 p-4">
-        {/* Note kind leads the section: it routes to a different capability and
-            changes what saving means, so it outranks the cosmetic switches that
-            used to sit alongside it as a peer toggle. */}
-        <div className="space-y-1.5">
-          <div className={PANEL_LABEL_CLASS}>Note type</div>
-          <div className="flex gap-1 rounded-lg border border-border/60 bg-muted/30 p-0.5">
-            {NOTE_KINDS_BLOCK.map((kind) => (
-              <button
-                key={kind.id}
-                type="button"
-                onClick={() => composer.setNoteKind(kind.id)}
-                className={cn(
-                  'ltm-motion-fast flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
-                  composer.noteKind === kind.id
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {kind.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {composer.makeThisTodo ? (
           <p className="text-xs text-muted-foreground">
             Each non-empty line becomes a checklist item — {composer.todoItemCount} detected.
@@ -458,10 +510,10 @@ function CreateTab() {
             ref={panelRef}
             className={cn(
               'ltm-animate-fade-in ltm-motion-fast absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 overflow-hidden rounded-xl border border-border/70 bg-background shadow-2xl transition-[width]',
-              // Only the folder browser needs the width. Settings alone at
-              // 48rem would be a wall of half-empty rows.
+              // The tree unfolds inside the panel, so it only needs enough
+              // extra width to keep nested folder names off the wrap.
               destinationBrowserOpen
-                ? 'w-[min(48rem,calc(100vw-2rem))]'
+                ? 'w-[min(34rem,calc(100vw-2rem))]'
                 : 'w-[min(30rem,calc(100vw-2rem))]',
             )}
           >
@@ -599,14 +651,6 @@ function CreateTab() {
         )}
       </div>
 
-      <DestinationBrowserModalBlock
-        open={destinationBrowserOpen}
-        onClose={() => setDestinationBrowserOpen(false)}
-        value={composer.destinationPath}
-        onConfirm={composer.applyDestinationPath}
-        mostUsed={composer.mostUsedDestinations}
-        onSaveQuickDestination={composer.addQuickDestination}
-      />
     </div>
   )
 }
