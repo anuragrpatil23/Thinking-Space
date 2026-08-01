@@ -762,11 +762,16 @@ function CreateTab() {
           <div
             ref={panelRef}
             className={cn(
-              // No entry animation. It was fading the whole panel to
-              // translucent mid-interaction (2026-07-31) — the trigger is still
-              // unidentified, but an opacity animation on a panel you interact
-              // with has no upside worth that risk.
-              'ltm-motion-fast absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 overflow-hidden rounded-xl border border-border/70 bg-background shadow-2xl transition-[width]',
+              // Deliberately NOT `ltm-motion-fast`. That utility carries a
+              // press-feedback rule — `.ltm-motion-fast:active { opacity: .7 }`
+              // (index.css) — and `:active` matches ancestors, so pressing any
+              // chip or toggle inside the panel dimmed the *whole panel* to 70%
+              // for the length of the click, showing the editor through it
+              // (2026-07-31, finally traced). `ltm-motion-fast` is for leaf tap
+              // targets only; a container that wraps buttons must never wear it.
+              // No entry animation either, for the same reason: opacity on a
+              // panel you interact with has no upside worth the risk.
+              'absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 overflow-hidden rounded-xl border border-border/70 bg-background shadow-2xl transition-[width] duration-150 ease-out',
               // Wide while browsing: the tree carries deeply nested names next
               // to a jump-target column, and at 34rem both were wrapping.
               destinationBrowserOpen

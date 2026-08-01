@@ -1480,6 +1480,12 @@
     transition-timing-function: var(--ltm-anim-baseline, cubic-bezier(0.22, 1, 0.36, 1));
   }
 
+  /* Press feedback — and the reason `ltm-motion-fast` belongs on leaf tap
+     targets ONLY. `:active` matches every ancestor of the pressed element, so
+     putting this class on a panel, card or popover that *contains* buttons dims
+     the whole container to 70% for the length of any click inside it. That cost
+     the New Note destination panel a day of "why does it go translucent"
+     (2026-07-31). Container needs a transition? Use a plain `transition-*`. */
   .ltm-motion-fast:active,
   .ltm-touch-row:active {
     opacity: 0.7;
