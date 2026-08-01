@@ -39,10 +39,11 @@ interface Props {
 // then block — the ruler wedged a band between a heading and the rows it names,
 // leaving the heading floating equidistant between two blocks.
 //
-// Bare uppercase text at 13px was the quietest thing on a screen full of row
-// titles, which is backwards: the headings are the list's structure. Size and
-// the section's own colour carry that — a coloured bar beside it only restated
-// what the row spines already say, twice, at a different size.
+// Headings are the list's structure, so they need weight — but uppercase was
+// the wrong way to buy it. A section name is a name ("Company Studies"), and
+// setting names in caps costs the word shape you actually read by while adding
+// a label-ish register the rows below don't share. Size, weight, and the
+// section's own colour carry it instead.
 function SectionHeader({
   title,
   colorIndex,
@@ -59,7 +60,7 @@ function SectionHeader({
     >
       <h2
         className={cn(
-          'px-1.5 pb-1 text-[15px] font-bold uppercase leading-none tracking-[0.11em]',
+          'px-1.5 pb-1 text-[16px] font-semibold leading-none tracking-[-0.01em]',
           organizerSectionColorBlock(colorIndex).text,
         )}
       >
