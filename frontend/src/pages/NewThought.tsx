@@ -95,38 +95,31 @@ function CreateTab() {
     }
   }
 
-  const destinationSegments = composer.destinationPath.split('/').filter(Boolean)
-
-  const jumpListBlock = (title: string, paths: string[]) => paths.length > 0 && (
-    <div className="space-y-1">
+  // One box per job, matching the tree's box. Paths render flat — no emphasis
+  // on the last segment: these are whole paths you jump to, and bolding the
+  // leaf implied a distinction that does not exist here.
+  const jumpListBlock = (title: string, paths: string[]) => (
+    <div className="flex min-h-0 flex-col gap-1.5">
       <div className={PANEL_LABEL_CLASS}>{title}</div>
-      {paths.map((path) => {
-        const segments = path.split('/').filter(Boolean)
-        return (
+      {/* Capped: stacked in one column, an uncapped list would push its sibling
+          off the bottom of the panel. Tall enough for five rows so the cap
+          rarely bites — the old 15vh sliced the last row in half, which read as
+          broken rather than as "scroll for more". */}
+      <div className="min-h-0 max-h-[22vh] flex-1 space-y-0.5 overflow-auto rounded-lg border border-border/60 bg-background p-1.5">
+        {paths.length === 0 ? (
+          <div className="px-2 py-1.5 text-[11px] text-muted-foreground/60">Nothing yet.</div>
+        ) : paths.map((path) => (
           <button
             key={`${title}-${path}`}
             type="button"
             onClick={() => composer.applyDestinationPath(path)}
             title={path}
-            // No selected state. These are jump targets, not a second place the
-            // current destination is displayed — the sticky strip above already
-            // says where you are, and highlighting a row here read as random.
-            className="ltm-motion-fast block w-full break-all rounded-md px-2 py-1 text-left font-mono text-[11px] transition-colors hover:bg-muted"
+            className="ltm-motion-fast block w-full break-all rounded-md px-2 py-1.5 text-left font-mono text-[11px] leading-relaxed text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            {segments.map((segment, index) => (
-              <span key={`${segment}-${index}`}>
-                {index > 0 && <span className="text-muted-foreground/40">/</span>}
-                <span className={index === segments.length - 1
-                  ? 'font-semibold text-foreground'
-                  : 'text-muted-foreground/70'}
-                >
-                  {segment}
-                </span>
-              </span>
-            ))}
+            {path}
           </button>
-        )
-      })}
+        ))}
+      </div>
     </div>
   )
 
@@ -237,26 +230,46 @@ function CreateTab() {
   // browser is open. It has to outlive scrolling: the tree is taller than the
   // panel, so by the time you are deep enough to click something the path had
   // scrolled out of sight — which is exactly when you need to watch it change.
-  const stickyDestinationBlock = destinationBrowserOpen && (
-    <div className="sticky top-0 z-20 border-b border-border/60 bg-background/95 px-4 py-2.5 backdrop-blur">
-      <div className={PANEL_LABEL_CLASS}>Saving to</div>
-      <div className="mt-1 break-all font-mono text-sm leading-snug">
-        {destinationSegments.length === 0 ? (
-          <span className="text-muted-foreground/60">Pick a folder below</span>
-        ) : (
-          destinationSegments.map((segment, index) => (
-            <span key={`${segment}-${index}`}>
-              {index > 0 && <span className="text-muted-foreground/50">/</span>}
-              <span className={index === destinationSegments.length - 1
-                ? 'font-semibold text-foreground'
-                : 'text-muted-foreground'}
-              >
-                {segment}
-              </span>
-            </span>
-          ))
-        )}
+  // Always on, always pinned: the full path including the filename. This is the
+  // panel's answer to "where does this note go", so the line that used to
+  // repeat it under File name is gone — one place, not two.
+  const stickyDestinationBlock = (
+    <div className="sticky top-0 z-20 flex items-baseline gap-2 border-b border-border/60 bg-background/95 px-4 py-2.5 backdrop-blur">
+      {/* Label and path share one line — the stacked version cost a whole row of
+          panel height to say two words. */}
+      {/* Sentence case, not the panel's uppercase label style. This one sits
+          inline with the path and reads as the start of a sentence, not as a
+          section header for the rows below.
+          The dot is a resolved/unresolved tell: green once there is a real file
+          to write to, dim while the path is still missing a piece. */}
+      <div className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground/70">
+        <span
+          className={cn(
+            'ltm-motion-fast h-1.5 w-1.5 rounded-full transition-colors',
+            composer.targetPath ? 'bg-emerald-500' : 'bg-muted-foreground/30',
+          )}
+        />
+        Saving to
       </div>
+      {composer.targetPath ? (
+        <button
+          type="button"
+          onClick={() => openFileInNewTabOrch(composer.targetPath!)}
+          title={composer.targetPath}
+          // One line, never wrapped. `break-all` split the path mid-word and
+          // left the filename orphaned on a second line reading `d` — the
+          // folder gives way instead: it truncates, the filename never does,
+          // because the filename is the part you are checking.
+          className="flex min-w-0 flex-1 items-baseline text-left font-mono text-xs leading-snug transition-colors hover:text-primary"
+        >
+          <span className="truncate text-muted-foreground">{composer.destinationPath}/</span>
+          <span className="shrink-0 font-semibold text-foreground">{composer.targetPath.split('/').pop()}</span>
+        </button>
+      ) : (
+        <div className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground/60">
+          {composer.makeThisTodo ? 'Pick a destination and date' : 'Pick a destination and file name'}
+        </div>
+      )}
     </div>
   )
 
@@ -283,20 +296,8 @@ function CreateTab() {
             className={PANEL_INPUT_CLASS}
           />
         )}
-        {composer.targetPath ? (
-          <button
-            type="button"
-            onClick={() => openFileInNewTabOrch(composer.targetPath!)}
-            title="Open in the explorer (new tab)"
-            className="block w-full truncate text-left font-mono text-[11px] text-muted-foreground transition-colors hover:text-primary"
-          >
-            {composer.targetPath}
-          </button>
-        ) : (
-          <div className="truncate font-mono text-[11px] text-muted-foreground/60">
-            {composer.makeThisTodo ? 'Pick a destination and date' : 'Pick a destination below'}
-          </div>
-        )}
+        {/* The resolved path used to be repeated here. It lives in the sticky
+            "Saving to" strip at the top of the panel now. */}
         {composer.loadingTargetContent && (
           <div className="text-[11px] text-muted-foreground">Loading destination note…</div>
         )}
@@ -308,17 +309,19 @@ function CreateTab() {
           about the note, not a switch tucked in with the cosmetic ones. */}
       <div className="space-y-1.5 p-4">
         <div className={PANEL_LABEL_CLASS}>Note type</div>
-        <div className="flex gap-1 rounded-lg border border-border/60 bg-muted/30 p-0.5">
+        {/* Chips, same as Destination below. The segmented full-width control
+            this used to be was the only widget in the panel shaped like that,
+            and it stretched four short words across the whole row. */}
+        <div className="flex flex-wrap gap-1.5">
           {NOTE_KINDS_BLOCK.map((kind) => (
             <button
               key={kind.id}
               type="button"
               onClick={() => composer.setNoteKind(kind.id)}
               className={cn(
-                'ltm-motion-fast flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
-                composer.noteKind === kind.id
-                  ? 'bg-foreground text-background'
-                  : 'text-muted-foreground hover:text-foreground',
+                PANEL_CHIP_CLASS,
+                'px-2.5',
+                composer.noteKind === kind.id && PANEL_CHIP_ACTIVE_CLASS,
               )}
             >
               {kind.label}
@@ -393,26 +396,36 @@ function CreateTab() {
             panel and the whole thing went translucent. Inline also means
             picking a folder is one click, not click-then-confirm. */}
         {destinationBrowserOpen && (
-          <div className="space-y-2.5 rounded-lg border border-border/60 bg-muted/20 p-2.5">
-            <div className="grid gap-2.5 sm:grid-cols-[1.5fr_1fr]">
-              <FolderTreePickerBlock
-                value={composer.destinationPath}
-                onChange={composer.applyDestinationPath}
-                maxHeightClassName="max-h-[34vh]"
-              />
-              <div className="min-w-0 space-y-3">
+          <div className="space-y-2.5">
+            {/* Three peers, each in its own box: explorer, most used, recent.
+                The single outer container that used to wrap them added a frame
+                around a frame and made the group read as one widget. */}
+            {/* 1.15fr, not 1.6fr — full vault paths were wrapping onto three
+                lines in the jump column while the tree sat on empty space. */}
+            <div className="grid gap-2.5 sm:grid-cols-[1.15fr_1fr]">
+              <div className="flex min-h-0 flex-col gap-1.5">
+                <div className={PANEL_LABEL_CLASS}>Explorer</div>
+                <FolderTreePickerBlock
+                  value={composer.destinationPath}
+                  onChange={composer.applyDestinationPath}
+                  maxHeightClassName="max-h-[34vh]"
+                />
+              </div>
+              {/* The two jump lists stack in one column beside the tree — side by
+                  side they were each too narrow for a nested path. */}
+              <div className="flex min-h-0 flex-col gap-2.5">
                 {jumpListBlock('Most used', composer.mostUsedDestinations.map(entry => entry.path))}
                 {jumpListBlock('Recent', composer.recentDestinations)}
               </div>
             </div>
-            <div className="flex gap-1.5 border-t border-border/50 pt-2.5">
+            <div className="flex gap-1.5">
               <input
                 value={quickDestinationLabel}
                 onChange={(event) => setQuickDestinationLabel(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') { event.preventDefault(); handleSaveQuickDestination() }
                 }}
-                placeholder="Save this folder as a chip…"
+                placeholder="Save this folder destination as a chip…"
                 aria-label="Quick destination name"
                 className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 text-xs outline-none transition-colors focus:border-foreground/30"
               />
@@ -524,11 +537,17 @@ function CreateTab() {
     ? composer.targetPath.slice(composer.targetPath.lastIndexOf('/') + 1)
     : identityLeafFallback
 
-  // `bg-card`, not `bg-background`: the page background is a light grey and the
-  // editor surface below is white. The bar belongs to the paper, so it takes
-  // the paper's colour.
+  // The bar belongs to the paper, so it takes the paper's colour — but "paper"
+  // is a different token per theme. In light, `--background` is grey and
+  // `--card` is white, so card is right. In dark the pair inverts (bg 9%, card
+  // 12%), so plain `bg-card` painted a visibly lighter strip across the top of
+  // an otherwise near-black writing surface. Follow the surface, not the token.
+  //
+  // No bottom border either. Once the bar is the same colour as the paper the
+  // rule was the only thing left drawing a box around the writing area, and the
+  // controls read as chrome floating on the page without it.
   const titleBarBlock = (
-    <div className="absolute inset-x-0 top-0 z-40 flex h-11 items-center gap-2 border-b border-border/50 bg-card px-2">
+    <div className="absolute inset-x-0 top-0 z-40 flex h-11 items-center gap-2 bg-card px-2 dark:bg-background">
       {/* Equal-width flanks keep the filename optically centered. */}
       <div className="flex-1" />
 
@@ -569,7 +588,7 @@ function CreateTab() {
               // Wide while browsing: the tree carries deeply nested names next
               // to a jump-target column, and at 34rem both were wrapping.
               destinationBrowserOpen
-                ? 'w-[min(46rem,calc(100vw-2rem))]'
+                ? 'w-[min(54rem,calc(100vw-2rem))]'
                 : 'w-[min(30rem,calc(100vw-2rem))]',
             )}
           >

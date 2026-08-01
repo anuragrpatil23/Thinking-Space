@@ -452,8 +452,12 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     setFolderBasePath(normalized.join('/'))
     setActiveShortcutId('none')
     clearTransientStatus()
-    rememberDestinationUsage(normalized)
-  }, [clearTransientStatus, rememberDestinationUsage])
+    // Deliberately does NOT record usage. Selecting is browsing, not using:
+    // recording here filled Recent with every folder you clicked through on the
+    // way somewhere else, and — because both lists re-sort on write — made the
+    // whole panel reshuffle under the cursor on every click (2026-07-31).
+    // Usage is recorded on save, where it reflects an actual destination.
+  }, [clearTransientStatus])
 
   const applyDestinationPath = useCallback((path: string) => {
     applyDestinationSegments(normalizeSegmentsBlock(path))
