@@ -11,6 +11,8 @@ import {
   RailLabel,
 } from '@/components/lego_blocks/units/OrganizerDrawerChromeBlock'
 import TagChipListBlock from '@/components/lego_blocks/units/TagChipListBlock'
+import VaultPageListBlock from '@/components/lego_blocks/units/VaultPageListBlock'
+import { noteIsReferenceBlock } from '@/services/lego_blocks/units/aiActivityNoteBlock'
 import { noteAgeLabelBlock } from '@/services/lego_blocks/units/noteAgeBlock'
 import { getNoteDetailOrch, type NoteDetail } from '@/services/orchestrators/aiActivityUndertakingOrch'
 
@@ -186,10 +188,14 @@ export default function NoteDetailDrawerBlock({ projectId, noteKey, onOpenUndert
                 )}
               </div>
             ) : (
-              // The wake list is exactly this state, so it gets a real sentence
-              // rather than an empty grid: nothing has acted on this yet.
+              // A real sentence rather than an empty grid — but not the same
+              // sentence for both kinds. A reference note (a lesson, a thing to
+              // remember) is a record, not a loop, so "still open" would be
+              // calling it late for something it was never going to do.
               <p className="text-[13px] text-muted-foreground/55">
-                Nothing has fed on this yet — it is still open.
+                {noteIsReferenceBlock(detail.note.categoryCode)
+                  ? 'A record — nothing has drawn on it yet.'
+                  : 'Nothing has fed on this yet — it is still open.'}
               </p>
             )}
           </Field>
@@ -224,11 +230,12 @@ export default function NoteDetailDrawerBlock({ projectId, noteKey, onOpenUndert
             </Field>
           )}
 
-          {/* The file is the record. Naming it is how you get from the drawer to
-              the thing you'd edit, since nothing here writes. */}
-          <p className="truncate font-mono text-[11px] text-muted-foreground/45" title={detail.path}>
-            {detail.path}
-          </p>
+          {/* The file is the record. Since nothing here writes, opening it is
+              how you get to the thing you'd edit — so it is a link, not a
+              path printed at the bottom of the panel. */}
+          <Field label="File">
+            <VaultPageListBlock files={[detail.path]} />
+          </Field>
         </>
       )}
     </DrawerShellBlock>

@@ -44,9 +44,14 @@ export default function OrganizerNoteRowBlock({
       ? { arrow: '←', label: producedBy.title, key: producedBy.key }
       : null
 
-  // Notes sort by when they were opened, so a row with no age was in a
-  // meaningful order with nothing on screen saying what that order was.
-  const age = noteAgeLabelBlock(note.openedDate)
+  // The age answers one question — "how long has this been sitting unanswered"
+  // — so it is only shown where that question exists: an open loop nobody has
+  // acted on. A reference kind (a learning, a lesson, a thing to remember) has
+  // no lifecycle to be late in, and a note that already fed a doing has been
+  // answered; on those rows a number just reads as an accusation about a record
+  // doing exactly what it is for. The column stays reserved so the rows keep
+  // one right edge.
+  const age = engaged || !showGlyph ? '' : noteAgeLabelBlock(note.openedDate)
 
   return (
     <OrganizerRowShellBlock
@@ -106,7 +111,7 @@ export default function OrganizerNoteRowBlock({
               'w-14 text-right text-xs tabular-nums text-muted-foreground/60',
               !age && 'invisible',
             )}
-            title={note.openedDate ? `Opened ${note.openedDate}` : undefined}
+            title={note.openedDate ? `Open since ${note.openedDate}` : undefined}
           >
             {age || '—'}
           </span>

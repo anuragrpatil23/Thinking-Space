@@ -20,6 +20,7 @@ import {
   SelectShell,
 } from '@/components/lego_blocks/units/OrganizerDrawerChromeBlock'
 import DensitySparklineBlock from '@/components/lego_blocks/units/DensitySparklineBlock'
+import VaultPageListBlock from '@/components/lego_blocks/units/VaultPageListBlock'
 import { bucketDensityBlock } from '@/services/lego_blocks/units/aiActivityDensityBlock'
 import { useUndertakingDetailBlock } from '@/components/lego_blocks/hooks/units/useUndertakingDetailBlock'
 import {
@@ -391,13 +392,7 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                     <div className="mt-6">
                       <RailLabel>Pages</RailLabel>
                       {tail.files.length > 0 ? (
-                        <ul className="mt-2 space-y-1">
-                          {tail.files.map(f => (
-                            <li key={f} className="truncate font-mono text-[11px] text-muted-foreground/70" title={f}>
-                              {f}
-                            </li>
-                          ))}
-                        </ul>
+                        <VaultPageListBlock files={tail.files} className="mt-1.5" />
                       ) : (
                         <p className="mt-2 text-[11px] text-muted-foreground/55">
                           No file provenance captured.
