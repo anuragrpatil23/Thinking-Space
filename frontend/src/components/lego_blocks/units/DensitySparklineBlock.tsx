@@ -24,6 +24,11 @@ interface Props {
   height?: number
   /** Width per bucket in px. */
   barWidth?: number
+  /** Calendar boundaries in the shared window, as fractions in [0, 1]. Drawn as
+   *  faint vertical rules so a mark's position lands against something the
+   *  ruler above the list has already named. Omitted, the track is a bare strip
+   *  again and position means nothing. */
+  gridlines?: number[]
   className?: string
 }
 
@@ -58,6 +63,7 @@ export default function DensitySparklineBlock({
   buckets,
   height = 16,
   barWidth = 4,
+  gridlines,
   className,
 }: Props) {
   const svgRef = useRef<SVGSVGElement | null>(null)
@@ -121,6 +127,18 @@ export default function DensitySparklineBlock({
         onMouseLeave={() => setHovered(null)}
       >
         <title>{label}</title>
+        {gridlines?.map((at, i) => (
+          <line
+            key={`g-${i}`}
+            x1={at * width}
+            y1={0}
+            x2={at * width}
+            y2={height}
+            stroke="currentColor"
+            strokeWidth={1}
+            className="text-foreground/[0.09]"
+          />
+        ))}
         {buckets.map((b, i) => {
           // Every bucket draws something. A worked bucket is a bar scaled to
           // the strip's own max; an empty one is a floor tick — the track that

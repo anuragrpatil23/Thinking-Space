@@ -42,6 +42,9 @@ interface Props {
   onOpenDrawer?: (key: string) => void
   /** Linked undertakings, resolved by the index block. */
   linked: LinkedUndertakings
+  /** Calendar boundaries in the shared window, as fractions in [0, 1] — the
+   *  gridlines of the ruler stated once above the list. */
+  gridlines?: number[]
 }
 
 function humanDuration(ms: number): string {
@@ -61,6 +64,7 @@ export default function UndertakingIndexRowBlock({
   onToggle,
   onOpenDrawer,
   linked,
+  gridlines,
 }: Props) {
   const { record, tail, buckets } = row
   const pointerCount = tail.files.length
@@ -80,7 +84,7 @@ export default function UndertakingIndexRowBlock({
       onClick={onToggle}
       rightSlot={
         <>
-          <DensitySparklineBlock buckets={buckets} />
+          <DensitySparklineBlock buckets={buckets} gridlines={gridlines} />
           {/* The strip says *when* the work happened; this says *how much*. It
               used to be the file-pointer count, which is 0 for almost every
               undertaking — a column of identical placeholder dots that never

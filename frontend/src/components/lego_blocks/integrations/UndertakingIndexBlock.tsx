@@ -8,6 +8,9 @@ import OrganizerFilterBarBlock, {
 } from '@/components/lego_blocks/units/OrganizerFilterBarBlock'
 import OrganizerSectionManagerBlock from '@/components/lego_blocks/integrations/OrganizerSectionManagerBlock'
 import { organizerSectionColorBlock } from '@/components/lego_blocks/units/OrganizerRowShellBlock'
+import DensityAxisBlock, {
+  densityAxisTicksBlock,
+} from '@/components/lego_blocks/units/DensityAxisBlock'
 import {
   collectFilterGroupsBlock,
   noteEntryAttrsBlock,
@@ -33,6 +36,12 @@ interface Props {
 
 const HEADING = 'mb-1.5 px-2 text-[13px] font-bold uppercase tracking-[0.1em]'
 
+// The strip column's geometry, restated so the ruler can sit exactly over it:
+// the strip is 24 buckets × 4px, and to its right the row keeps the w-14
+// duration (56px), the gap-2 between them (8px), and its own pr-3 (12px).
+const STRIP_WIDTH = 96
+const STRIP_RIGHT_OFFSET = 56 + 8 + 12
+
 export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: Props) {
   const { index, loading, error, reload } = useUndertakingIndexBlock(projectId)
   const [filters, setFilters] = useState<OrganizerFilter[]>([])
@@ -45,6 +54,18 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
   }, [])
 
   const groups = useMemo(() => (index ? collectFilterGroupsBlock(index) : []), [index])
+
+  // Every strip in the list spans the same window, so the axis is the same for
+  // every row — naming it per row is impossible in 96px and would be 200 copies
+  // of one fact. It is stated once above the list; the rows repeat only its
+  // gridlines, which is what makes a mark's *position* mean a date.
+  const axisTicks = useMemo(
+    () => (index?.windowStart && index.windowEnd
+      ? densityAxisTicksBlock(index.windowStart, index.windowEnd)
+      : []),
+    [index?.windowStart, index?.windowEnd],
+  )
+  const gridlines = useMemo(() => axisTicks.map(t => t.at), [axisTicks])
 
   // The link graph, resolved once: a row's parents are the undertakings it grew
   // out of; its children are the undertakings that grew out of it (the reverse
@@ -169,6 +190,12 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
         <p className="px-2 py-8 text-sm text-muted-foreground/70">Nothing matches these filters.</p>
       ) : (
         <div className="space-y-5">
+          {axisTicks.length > 0 && undertakingSections.length > 0 && (
+            <div className="flex justify-end" style={{ paddingRight: STRIP_RIGHT_OFFSET }}>
+              <DensityAxisBlock ticks={axisTicks} width={STRIP_WIDTH} />
+            </div>
+          )}
+
           {undertakingSections.map(section => (
             <section key={section.key}>
               <h2 className={cn(HEADING, organizerSectionColorBlock(section.colorIndex).text)}>
@@ -186,6 +213,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
                     onToggle={() => toggleExpand(row.record.key)}
                     onOpenDrawer={onOpenUndertaking}
                     linked={linkedByKey(row.record.key)}
+                    gridlines={gridlines}
                   />
                 ))}
               </div>
