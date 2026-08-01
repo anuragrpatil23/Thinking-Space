@@ -86,7 +86,11 @@ export function createFocusTypographyThemeBlock(
       // easeOutCubic, not the quint this started as: quint dumps almost all the
       // travel into the first few milliseconds and then crawls, which reads as
       // a snap followed by a lag rather than one movement. Cubic spreads it.
-      transition: 'left 90ms cubic-bezier(0.33, 1, 0.68, 1), top 130ms cubic-bezier(0.33, 1, 0.68, 1)',
+      // 70ms horizontal (2026-07-31). `top` stays longer than `left` on purpose
+      // — a line change moves the caret much further than a character does, so
+      // matching durations would make vertical jumps look like teleports. Kept
+      // at the same ~1.45x ratio the 90/130 pair had.
+      transition: 'left 70ms cubic-bezier(0.33, 1, 0.68, 1), top 100ms cubic-bezier(0.33, 1, 0.68, 1)',
     },
     // No soft-fade blink here, deliberately. CM6 does not blink `.cm-cursor` —
     // `drawSelection` animates the enclosing `.cm-cursorLayer` with a hard
