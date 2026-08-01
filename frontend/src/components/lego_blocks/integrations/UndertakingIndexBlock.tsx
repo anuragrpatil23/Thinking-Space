@@ -223,10 +223,12 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
       {nothingMatches ? (
         <p className="px-2 py-8 text-sm text-muted-foreground/70">Nothing matches these filters.</p>
       ) : (
-        /* A heading now sits right on its own block, so the gap *between*
-           blocks has to be clearly bigger than that — otherwise a heading is
-           equidistant from the block above and the one it names. */
-        <div className="space-y-7">
+        /* A heading sits right on its own block, so the gap *between* blocks
+           has to be clearly bigger than that — otherwise a heading reads as
+           equidistant from the block above and the one it names. `mt-3`
+           completes the filter bar's own mb-4 to that same 28px, so the first
+           heading isn't the one crowded against the pills. */
+        <div className="mt-3 space-y-7">
           {undertakingSections.map(section => (
             <section key={section.key}>
               {/* The ruler seats on the row block's top border, ticks running
