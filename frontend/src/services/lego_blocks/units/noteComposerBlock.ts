@@ -27,6 +27,36 @@ export interface QuickDestinationBlock {
  *  which is why New Note needs no Save button while auto-save is on. */
 export type NoteSaveStateBlock = 'idle' | 'dirty' | 'saving' | 'saved'
 
+/** What kind of note this is. Replaces the old "Make this a to do" switch
+ *  (2026-07-31): the choice routes to a different capability and changes what
+ *  save means, which is too much weight for a toggle sitting in a list of
+ *  cosmetic ones.
+ *
+ *  Only `todo` changes the capability (`todos.create`); the rest go through
+ *  `thoughts.create` and differ by tag. Note kind is deliberately *not*
+ *  `frontmatter.type` — that field is the hierarchy's `NodeType`, a closed
+ *  union with a level mapping (see ADR-004), and inventing a `meeting` level
+ *  would destabilise the organizer. Tags are the universal field the note
+ *  reader already queries. */
+export type NoteKindBlock = 'thought' | 'meeting' | 'todo' | 'none'
+
+export const NOTE_KIND_PREF_KEY_BLOCK = 'ltm-new-note-kind'
+
+export const NOTE_KINDS_BLOCK: Array<{ id: NoteKindBlock; label: string }> = [
+  { id: 'thought', label: 'Thought' },
+  { id: 'meeting', label: 'Meeting' },
+  { id: 'todo', label: 'To Do' },
+  { id: 'none', label: 'None' },
+]
+
+/** Kind tag written alongside the emotion tags, or `null` for an untagged
+ *  note. `todo` never reaches this — it takes the todos capability instead. */
+export function noteKindTagBlock(kind: NoteKindBlock): string | null {
+  if (kind === 'thought') return 'thought'
+  if (kind === 'meeting') return 'meeting'
+  return null
+}
+
 export interface NoteContentMetaBlock {
   lines: number
   words: number

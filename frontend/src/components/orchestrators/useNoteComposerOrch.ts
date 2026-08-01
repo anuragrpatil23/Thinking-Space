@@ -39,6 +39,7 @@ import {
 } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import {
   AUTO_SAVE_PREF_KEY_BLOCK,
+  NOTE_KIND_PREF_KEY_BLOCK,
   BUILT_IN_SHORTCUTS_BLOCK,
   DEFAULT_BASE_PATH_BLOCK,
   DESTINATION_RECENTS_KEY_BLOCK,
@@ -69,6 +70,7 @@ import {
   writeJsonStorageBlock,
   type DestinationShortcutBlock,
   type NoteContentMetaBlock,
+  type NoteKindBlock,
   type NoteSaveStateBlock,
   type QuickDestinationBlock,
 } from '@/services/lego_blocks/units/noteComposerBlock'
@@ -108,6 +110,8 @@ export interface NoteComposerOrch {
   targetPath: string | null
 
   // --- mode + settings ---
+  noteKind: NoteKindBlock
+  /** `noteKind === 'todo'` — kept because the todo save path branches on it. */
   makeThisTodo: boolean
   todoDateStr: string
   dateHeader: boolean
@@ -144,6 +148,7 @@ export interface NoteComposerOrch {
   setDateHeader: (enabled: boolean) => void
   setEmotions: (value: string[]) => void
   setTodoDateStr: (value: string) => void
+  setNoteKind: (kind: NoteKindBlock) => void
   setMakeThisTodo: (checked: boolean) => void
   setContent: (value: string) => void
   setEditorBody: (nextBody: string) => void
@@ -184,7 +189,13 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   // the caret seconds after you start typing. The date is already in the
   // frontmatter and the filename. Still a switch in the settings panel.
   const [dateHeader, setDateHeader] = useState(false)
-  const [makeThisTodo, setMakeThisTodoState] = useState(false)
+  // Note kind supersedes the old boolean todo switch. `makeThisTodo` survives
+  // as a derived value because a dozen branches below (and the whole todo save
+  // path) read it, and rewriting them all would bury the actual change.
+  const [noteKind, setNoteKindState] = useState<NoteKindBlock>(
+    () => readJsonStorageBlock<NoteKindBlock>(NOTE_KIND_PREF_KEY_BLOCK, 'thought'),
+  )
+  const makeThisTodo = noteKind === 'todo'
   const [todoDateStr, setTodoDateStr] = useState(todayDateStrBlock())
   const [emotions, setEmotions] = useState<string[]>([])
 
@@ -371,13 +382,21 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     setFilenameState(filenameFromTitleBlock(title))
   }, [title])
 
-  const setMakeThisTodo = useCallback((checked: boolean) => {
-    setMakeThisTodoState(checked)
+  const setNoteKind = useCallback((kind: NoteKindBlock) => {
+    setNoteKindState(kind)
+    writeJsonStorageBlock(NOTE_KIND_PREF_KEY_BLOCK, kind)
+    // Todo mode owns the destination (todos live in one folder); leaving it
+    // restores whatever shortcut was active before, so switching kinds to look
+    // and switching back doesn't strand the note somewhere else.
     setActiveShortcutId((current) => {
-      if (checked) return current === 'todo' ? current : 'todo'
+      if (kind === 'todo') return current === 'todo' ? current : 'todo'
       return current === 'todo' ? (shortcutBeforeTodoMode || 'thoughts') : current
     })
   }, [shortcutBeforeTodoMode])
+
+  const setMakeThisTodo = useCallback((checked: boolean) => {
+    setNoteKind(checked ? 'todo' : 'thought')
+  }, [setNoteKind])
 
   // --- destination actions ---------------------------------------------------
 
@@ -627,6 +646,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
             title: useCustomTitle ? (title.trim() || null) : null,
             date_header: dateHeader,
             emotions,
+            note_kind: noteKind,
           },
           actor: THOUGHTS_ACTOR,
         })).output_path
@@ -677,6 +697,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     emotions,
     filename,
     loadingTargetContent,
+    noteKind,
     makeThisTodo,
     normalizedFilename,
     rememberDestinationUsage,
@@ -726,6 +747,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     title,
     targetPath,
 
+    noteKind,
     makeThisTodo,
     todoDateStr,
     dateHeader,
@@ -756,6 +778,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     setDateHeader,
     setEmotions,
     setTodoDateStr,
+    setNoteKind,
     setMakeThisTodo,
     setContent,
     setEditorBody,

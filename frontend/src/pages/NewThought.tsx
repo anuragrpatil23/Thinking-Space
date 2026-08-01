@@ -1,12 +1,8 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { Loader2, X, Plus, FolderTree, ChevronDown, Save } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
-import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
-import CascadingFolderPicker, {
-  type CascadingFolderPickerChange,
-} from '@/components/lego_blocks/integrations/CascadingFolderPickerBlock'
+import DestinationBrowserModalBlock from '@/components/lego_blocks/integrations/DestinationBrowserModalBlock'
 import EmotionTagger from '@/components/lego_blocks/integrations/EmotionTaggerBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorLazyBlock'
@@ -15,16 +11,13 @@ import BacklogCanvasAnchorBlock from '@/components/lego_blocks/integrations/Back
 import { useNoteComposerOrch } from '@/components/orchestrators/useNoteComposerOrch'
 import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
-import {
-  DEFAULT_BASE_PATH_BLOCK,
-  DESTINATION_RECENTS_KEY_BLOCK,
-} from '@/services/lego_blocks/units/noteComposerBlock'
+import { NOTE_KINDS_BLOCK } from '@/services/lego_blocks/units/noteComposerBlock'
 
 // Settings-panel vocabulary. Kept as constants so every row in the popover is
 // visually identical — the old panel drifted because each row styled itself.
 const PANEL_LABEL_CLASS = 'text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/70'
 const PANEL_INPUT_CLASS = 'h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none transition-colors focus:border-foreground/30'
-const PANEL_CHIP_CLASS = 'ltm-motion-fast inline-flex items-center gap-0.5 rounded-full border border-border/70 bg-background px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground'
+const PANEL_CHIP_CLASS = 'group ltm-motion-fast inline-flex items-center gap-0.5 rounded-full border border-border/70 bg-background px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground'
 const PANEL_CHIP_ACTIVE_CLASS = 'border-foreground bg-foreground text-background hover:border-foreground hover:text-background'
 
 const NEW_THOUGHT_CANVAS_WORLD_WIDTH = 4500
@@ -67,15 +60,6 @@ function CreateTab() {
   // State, not a ref: the editor must re-render once the node exists.
   const [editorControlsSlot, setEditorControlsSlot] = useState<HTMLDivElement | null>(null)
 
-  const [customShortcutLabel, setCustomShortcutLabel] = useState('')
-  const [customShortcutPath, setCustomShortcutPath] = useState('')
-
-  const [quickDestinationModalOpen, setQuickDestinationModalOpen] = useState(false)
-  const [quickDestinationLabel, setQuickDestinationLabel] = useState('')
-  const [quickDestinationPickerDefaultPath, setQuickDestinationPickerDefaultPath] = useState<string[]>(DEFAULT_BASE_PATH_BLOCK)
-  const [quickDestinationPickerVersion, setQuickDestinationPickerVersion] = useState(0)
-  const [quickDestinationBaseSegments, setQuickDestinationBaseSegments] = useState<string[]>([])
-  const [quickDestinationBasePath, setQuickDestinationBasePath] = useState('')
 
   // Dismiss the settings popover the way every other popover behaves: Escape,
   // or a click anywhere that isn't the panel or the button that opened it.
@@ -103,118 +87,6 @@ function CreateTab() {
     openFileInNewTabOrch(relatedPath)
     composer.setMessage(`Opened ${relatedPath} in a new tab.`)
   }
-
-  const handleAddCustomShortcut = () => {
-    if (composer.addCustomShortcut(customShortcutLabel, customShortcutPath)) {
-      setCustomShortcutLabel('')
-      setCustomShortcutPath('')
-    }
-  }
-
-  const openQuickDestinationModal = () => {
-    const seed = composer.destinationPath
-      ? composer.destinationPath.split('/').filter(Boolean)
-      : DEFAULT_BASE_PATH_BLOCK
-    setQuickDestinationLabel('')
-    setQuickDestinationPickerDefaultPath(seed)
-    setQuickDestinationPickerVersion(current => current + 1)
-    setQuickDestinationBaseSegments(seed)
-    setQuickDestinationBasePath(seed.join('/'))
-    setQuickDestinationModalOpen(true)
-  }
-
-  const handleQuickDestinationFolderChange = (change: CascadingFolderPickerChange) => {
-    setQuickDestinationBaseSegments(change.baseSegments)
-    setQuickDestinationBasePath(change.basePath)
-  }
-
-  const handleAddQuickDestination = () => {
-    if (composer.addQuickDestination(quickDestinationLabel, quickDestinationBaseSegments)) {
-      setQuickDestinationModalOpen(false)
-      setQuickDestinationLabel('')
-      setQuickDestinationBaseSegments([])
-      setQuickDestinationBasePath('')
-    }
-  }
-
-  // The full folder browser. Two columns when there is room: the picker is a
-  // tall stack by nature, so pairing it with the shortcut/most-used side rail
-  // roughly halves the panel's height instead of making one long scroller.
-  // The shortcut *chips* deliberately are not repeated here — the destination
-  // row above already owns them.
-  const destinationPanel = (
-    <div className="grid gap-4 rounded-lg border border-border/60 bg-muted/20 p-3 md:grid-cols-2">
-      <div className="min-w-0 space-y-2">
-        <div className={PANEL_LABEL_CLASS}>Folder</div>
-        <p className="break-all text-[11px] text-muted-foreground/70">
-          {composer.folderBasePath || '(choose a folder)'}
-        </p>
-        <CascadingFolderPicker
-          key={`new-note-picker-${composer.pickerVersion}`}
-          defaultPath={composer.pickerDefaultPath}
-          onChange={composer.changeFolder}
-          previewLabel="Destination preview"
-          storageKey={DESTINATION_RECENTS_KEY_BLOCK}
-        />
-      </div>
-
-      <div className="min-w-0 space-y-4">
-        {composer.mostUsedDestinations.length > 0 && (
-          <div className="space-y-1.5">
-            <div className={PANEL_LABEL_CLASS}>Most used</div>
-            <div className="space-y-1">
-              {composer.mostUsedDestinations.map((entry) => (
-                <button
-                  key={entry.path}
-                  type="button"
-                  onClick={() => composer.applyDestinationPath(entry.path)}
-                  className="ltm-motion-fast flex w-full items-center justify-between gap-2 rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
-                >
-                  <span className="min-w-0 break-all">{entry.path}</span>
-                  <span className="shrink-0 tabular-nums opacity-60">{entry.count}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-1.5">
-          <div className={PANEL_LABEL_CLASS}>New shortcut</div>
-          <input
-            value={customShortcutLabel}
-            onChange={(event) => setCustomShortcutLabel(event.target.value)}
-            placeholder="Shortcut name"
-            className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs outline-none transition-colors focus:border-foreground/30"
-          />
-          <div className="flex gap-1.5">
-            <input
-              value={customShortcutPath}
-              onChange={(event) => setCustomShortcutPath(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  handleAddCustomShortcut()
-                }
-              }}
-              placeholder="clients/acme/notes"
-              className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 text-xs outline-none transition-colors focus:border-foreground/30"
-            />
-            <button
-              type="button"
-              className="ltm-motion-fast inline-flex h-8 shrink-0 items-center rounded-lg border border-border/70 bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted"
-              onClick={handleAddCustomShortcut}
-            >
-              Add
-            </button>
-          </div>
-        </div>
-
-        <p className="break-all text-[11px] text-muted-foreground/70">
-          Active destination: {composer.destinationPath || '(choose a folder)'}
-        </p>
-      </div>
-    </div>
-  )
 
   // Ambient save state, borrowed from the explorer's editing badge
   // (MarkdownDocumentBlock): while auto-save is on there is no Save button at
@@ -361,13 +233,8 @@ function CreateTab() {
           <div className={PANEL_LABEL_CLASS}>Destination</div>
           <button
             type="button"
-            onClick={() => setDestinationBrowserOpen(open => !open)}
-            className={cn(
-              'ltm-motion-fast inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors',
-              destinationBrowserOpen
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-            )}
+            onClick={() => setDestinationBrowserOpen(true)}
+            className="ltm-motion-fast inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <FolderTree className="h-3 w-3" />
             Browse
@@ -389,7 +256,7 @@ function CreateTab() {
                 {!shortcut.builtIn && (
                   <button
                     type="button"
-                    className="rounded-full p-0.5 opacity-60 transition-opacity hover:opacity-100"
+                    className="ltm-motion-fast rounded-full p-0.5 opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
                     onClick={() => composer.deleteCustomShortcut(shortcut.id)}
                     title={`Remove shortcut ${shortcut.label}`}
                   >
@@ -414,7 +281,7 @@ function CreateTab() {
                 </button>
                 <button
                   type="button"
-                  className="rounded-full p-0.5 opacity-60 transition-opacity hover:opacity-100"
+                  className="ltm-motion-fast rounded-full p-0.5 opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
                   title={`Remove quick destination ${destination.label}`}
                   onClick={() => composer.deleteQuickDestination(destination.id)}
                 >
@@ -425,7 +292,7 @@ function CreateTab() {
           })}
           <button
             type="button"
-            onClick={openQuickDestinationModal}
+            onClick={() => setDestinationBrowserOpen(true)}
             title="Add quick destination"
             aria-label="Add quick destination"
             className="ltm-motion-fast inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
@@ -433,19 +300,32 @@ function CreateTab() {
             <Plus className="h-3 w-3" />
           </button>
         </div>
-
-        {destinationBrowserOpen && destinationPanel}
       </div>
 
       {/* --- options --- */}
       <div className="space-y-3 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <label htmlFor="compose-make-this-todo" className="cursor-pointer text-sm">Make this a to do</label>
-          <Switch
-            id="compose-make-this-todo"
-            checked={composer.makeThisTodo}
-            onCheckedChange={composer.setMakeThisTodo}
-          />
+        {/* Note kind leads the section: it routes to a different capability and
+            changes what saving means, so it outranks the cosmetic switches that
+            used to sit alongside it as a peer toggle. */}
+        <div className="space-y-1.5">
+          <div className={PANEL_LABEL_CLASS}>Note type</div>
+          <div className="flex gap-1 rounded-lg border border-border/60 bg-muted/30 p-0.5">
+            {NOTE_KINDS_BLOCK.map((kind) => (
+              <button
+                key={kind.id}
+                type="button"
+                onClick={() => composer.setNoteKind(kind.id)}
+                className={cn(
+                  'ltm-motion-fast flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                  composer.noteKind === kind.id
+                    ? 'bg-foreground text-background'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {kind.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {composer.makeThisTodo ? (
@@ -719,73 +599,14 @@ function CreateTab() {
         )}
       </div>
 
-      {quickDestinationModalOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-background/50 backdrop-blur-sm"
-            onClick={() => setQuickDestinationModalOpen(false)}
-          />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <Card className="w-full max-w-2xl border-border/80 shadow-2xl">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <CardTitle>Add Quick Destination</CardTitle>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Create a top-panel destination button (for example, Webull Thoughts).
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-                    onClick={() => setQuickDestinationModalOpen(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Button label</label>
-                  <input
-                    value={quickDestinationLabel}
-                    onChange={(event) => setQuickDestinationLabel(event.target.value)}
-                    placeholder="Webull Thoughts"
-                    className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">Destination folder</label>
-                  <p className="text-[11px] text-muted-foreground/70 break-all">
-                    {quickDestinationBasePath || '(choose a folder)'}
-                  </p>
-                  <CascadingFolderPicker
-                    key={`quick-destination-picker-${quickDestinationPickerVersion}`}
-                    defaultPath={quickDestinationPickerDefaultPath}
-                    onChange={handleQuickDestinationFolderChange}
-                    previewLabel="Destination preview"
-                    storageKey={DESTINATION_RECENTS_KEY_BLOCK}
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="secondary"
-                    onClick={() => setQuickDestinationModalOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleAddQuickDestination}
-                    disabled={!quickDestinationLabel.trim() || quickDestinationBaseSegments.length === 0}
-                  >
-                    Add Destination
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </>
-      )}
+      <DestinationBrowserModalBlock
+        open={destinationBrowserOpen}
+        onClose={() => setDestinationBrowserOpen(false)}
+        value={composer.destinationPath}
+        onConfirm={composer.applyDestinationPath}
+        mostUsed={composer.mostUsedDestinations}
+        onSaveQuickDestination={composer.addQuickDestination}
+      />
     </div>
   )
 }

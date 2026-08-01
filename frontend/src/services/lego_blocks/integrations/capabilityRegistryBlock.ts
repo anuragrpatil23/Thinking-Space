@@ -231,6 +231,9 @@ export interface CapabilityInputMap {
     title: string | null
     date_header: boolean
     emotions: string[]
+    /** Note kind, written as a tag. Optional so existing callers (and agents)
+     *  keep the historical 'thought' behaviour. */
+    note_kind?: 'thought' | 'meeting' | 'none'
   }
   'daily.log_insight': {
     insights: string[]

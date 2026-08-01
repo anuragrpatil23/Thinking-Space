@@ -54,6 +54,11 @@ export async function createThought(params: {
   title: string | null
   date_header: boolean
   emotions: string[]
+  /** Written as a tag, not as `frontmatter.type`: that field is the
+   *  hierarchy's `NodeType` (closed union + level mapping, ADR-004), so a
+   *  `meeting` value there would need a schema change. Defaults to 'thought'
+   *  so every existing caller keeps its behaviour. */
+  note_kind?: 'thought' | 'meeting' | 'none'
 }): Promise<{ output_path: string }> {
   const fs = getVaultFS()
   const outputPath = `${params.folder_path}/${params.filename}`
@@ -78,12 +83,13 @@ export async function createThought(params: {
   bodyParts.push(params.content)
 
   const noteTitle = customTitle || deriveTitleFromFilename(params.filename)
+  const kind = params.note_kind ?? 'thought'
+  const kindTags = kind === 'none' ? [] : [kind]
+  const tags = [...kindTags, ...emotions.map(emotionToTag)]
   const note = createNote({
     type: 'thought',
     title: noteTitle,
-    tags: emotions.length > 0
-      ? ['thought', ...emotions.map(emotionToTag)]
-      : ['thought'],
+    tags,
     body: bodyParts.join('\n'),
   })
   note.frontmatter.key = await ensureUniqueKeyForPath(outputPath, note.frontmatter.key)
