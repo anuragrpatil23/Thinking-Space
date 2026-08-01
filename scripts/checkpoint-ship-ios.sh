@@ -195,8 +195,12 @@ for i in "${!DEVICE_IDS[@]}"; do
   # a manual Xcode install cleared. Best-effort: no-op when not running.
   # Process rows are "PID /path/.../App.app/App" — the bundle DIRECTORY is
   # App.app (xcode product name), not the bundle id, so match the suffix.
+  # `|| true` is load-bearing: under `set -euo pipefail` a failing probe (device
+  # asleep, tunnel cold) makes the substitution nonzero and kills the whole ship
+  # here — before any install, with no summary and no ✗. It cost one silent
+  # iPad-shaped hole in a checkpoint. This lookup is best-effort by design.
   PID="$(xcrun devicectl device info processes --device "$DEVICE_ID" 2>/dev/null \
-    | awk '$2 ~ /\/App\.app\/App$/ {print $1; exit}')"
+    | awk '$2 ~ /\/App\.app\/App$/ {print $1; exit}')" || true
   if [ -n "$PID" ]; then
     xcrun devicectl device process signal --device "$DEVICE_ID" --pid "$PID" --signal SIGKILL >>"$LOG" 2>&1 || true
     sleep 1
