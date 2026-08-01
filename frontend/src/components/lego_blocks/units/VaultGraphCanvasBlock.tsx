@@ -153,32 +153,29 @@ function truncateTitle(title: string): string {
 /** Simulation-time node: d3-force adds velocity fields it integrates each tick. */
 type SimNode = VaultGraphNode & { vx: number; vy: number }
 
-// Container roots hold projects one segment down (mirrors vaultGraphBlock's
-// rawProjectOf) — kept local so the grouping math doesn't couple the canvas to
-// the data block. A project therefore spans 2 leading segments inside a
-// container, 1 otherwise.
-const CONTAINER_ROOTS = new Set(['acceleration_core', 'lifeblood_systems', 'operations'])
-
-function projectSegDepth(segs: string[]): number {
-  return CONTAINER_ROOTS.has(segs[0]) && segs.length >= 3 ? 2 : 1
-}
-
 /** The neighborhood a note belongs to: its project's top-level folder — one
  *  level shallower than the deepest folder, so `thinking-organizer/{epics,
  *  thoughts}` reads as one "thinking-organizer" region instead of splintering.
  *  The key keeps the full project prefix, so every project's templated
  *  "AI Synthesis" folder stays a distinct cluster (they never fuse by name);
- *  `folder` is that top-level folder, '' when the note sits in the project root. */
-function regionGroupOf(id: string): { key: string; folder: string } {
-  const segs = id.split('/')
-  const pd = projectSegDepth(segs)
+ *  `folder` is that top-level folder, '' when the note sits in the project root.
+ *
+ *  The prefix comes off the node. This file used to carry its own copy of the
+ *  container-root rule "so the grouping math doesn't couple the canvas to the
+ *  data block" — but two copies of a rule are coupling with no one responsible
+ *  for keeping them equal, and the copy here was hardcoded to three folder
+ *  names that only exist in one vault. */
+function regionGroupOf(node: Pick<VaultGraphNode, 'id' | 'projectPrefix'>): { key: string; folder: string } {
+  const prefix = node.projectPrefix
+  const rest = node.id.startsWith(`${prefix}/`) ? node.id.slice(prefix.length + 1) : ''
+  const segs = rest.split('/')
   // note directly under the project root — no sub-folder to name
-  if (segs.length <= pd + 1) return { key: segs.slice(0, pd).join('/'), folder: '' }
-  return { key: segs.slice(0, pd + 1).join('/'), folder: segs[pd] }
+  if (segs.length <= 1) return { key: prefix, folder: '' }
+  return { key: `${prefix}/${segs[0]}`, folder: segs[0] }
 }
 
-function regionKeyOf(id: string): string {
-  return regionGroupOf(id).key
+function regionKeyOf(node: Pick<VaultGraphNode, 'id' | 'projectPrefix'>): string {
+  return regionGroupOf(node).key
 }
 
 /** d3 custom force: nudge each node toward its group's centroid. Groups with a
@@ -248,7 +245,7 @@ interface ClusterRegionFrame {
 function buildClusterRegionDefs(nodes: VaultGraphNode[]): ClusterRegionDef[] {
   const byRegion = new Map<string, { members: VaultGraphNode[]; folder: string }>()
   for (const node of nodes) {
-    const { key, folder } = regionGroupOf(node.id)
+    const { key, folder } = regionGroupOf(node)
     if (!key) continue // loose root files are not a neighborhood
     const region = byRegion.get(key)
     if (region) region.members.push(node)
@@ -975,7 +972,7 @@ export default function VaultGraphCanvasBlock({
       // neighborhoods, the project pull drifts sibling folders near each other.
       // Keyed on the region grouping (project top-level folder), so a blob's
       // shape matches its label instead of splintering one level too deep.
-      graph.d3Force('folderCluster', makeCentroidForce(n => regionKeyOf(n.id), FOLDER_CLUSTER_STRENGTH))
+      graph.d3Force('folderCluster', makeCentroidForce(n => regionKeyOf(n), FOLDER_CLUSTER_STRENGTH))
       graph.d3Force('projectCluster', makeCentroidForce(n => n.project, PROJECT_CLUSTER_STRENGTH))
 
       // ── Interaction model: match the rest of the app's canvases ──

@@ -13,9 +13,12 @@ import { loadAiActivity } from '@/services/lego_blocks/integrations/aiActivityCa
 import { loadGitFileBirthsBlock } from '@/services/lego_blocks/units/gitFileBirthBlock'
 import {
   buildVaultGraphBlock,
+  projectPrefixOfBlock,
   type GraphLinkInput,
   type VaultGraphData,
 } from '@/services/lego_blocks/integrations/vaultGraphBlock'
+import { readProjectsBlock } from '@/services/lego_blocks/integrations/projectsStorageBlock'
+import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
 import {
   buildCodeGraphLinksBlock,
   isGeneratedCodePathBlock,
@@ -96,6 +99,26 @@ async function performLoad(): Promise<VaultGraphData> {
   // the AI activity card applies, matched against each file's vault path.
   const mappingSettings = readAiActivityMappingBlock()
 
+  // The defined projects: a note's folder now names its project, so a note and
+  // a session sitting in the same folder finally agree instead of reaching that
+  // answer through two unrelated rules.
+  //
+  // Roots are consulted *after* the existing mapping, not by handing the note's
+  // absolute path to `resolveCanonicalProjectBlock` as a cwd. That shortcut
+  // would quietly widen every `contains` rule to match the vault's own absolute
+  // path — a rule written to catch one folder would start matching the whole
+  // vault. An explicit rule (or an alias) still wins; roots only speak when the
+  // mapping had nothing to say.
+  await loadProjectRegistryBlock().catch(() => undefined)
+  const rootToKey = new Map<string, string>()
+  for (const project of await readProjectsBlock()) {
+    if (!project.key) continue
+    for (const root of project.roots) {
+      if (!root.startsWith('/')) rootToKey.set(root, project.key)
+    }
+  }
+  const projectRoots = [...rootToKey.keys()]
+
   return buildVaultGraphBlock({
     // Nodes: all markdown, plus the capped/most-recent code set (uncapped code
     // entries would appear as permanently link-less nodes).
@@ -106,7 +129,12 @@ async function performLoad(): Promise<VaultGraphData> {
     vaultFolderName,
     nowMs: Date.now(),
     nodeExtensions: ['.md', ...CODE_GRAPH_NODE_EXTENSIONS],
-    resolveProject: (raw, path) => resolveCanonicalProjectBlock(raw, path, null, mappingSettings),
+    projectRoots,
+    resolveProject: (raw, path) => {
+      const mapped = resolveCanonicalProjectBlock(raw, path, null, mappingSettings)
+      if (mapped !== raw) return mapped
+      return rootToKey.get(projectPrefixOfBlock(path, projectRoots)) ?? mapped
+    },
   })
 }
 
