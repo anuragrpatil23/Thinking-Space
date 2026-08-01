@@ -193,62 +193,6 @@ function chainBelongsToBlock(chain: ChainEntry, record: UndertakingRecord, wante
   )
 }
 
-/**
- * The session a chain pointer actually names.
- *
- * A pointer is `<project>::<transcript path>` with an optional `#wN` window
- * suffix — the chain key as it stood when the assignment was made, which is the
- * key of that chain's *first* session. So a pointer carries more information
- * than "some chain": it names one sitting.
- *
- * Returns `null` for anything that isn't a transcript pointer (`fed_by` holds
- * old organizer ids like `F9-IDE-E-991`), which callers read as "no session-level
- * information here" rather than "no sessions".
- */
-export function pointerSessionIdBlock(pointer: string): string | null {
-  const sep = pointer.indexOf('::')
-  const rest = sep >= 0 ? pointer.slice(sep + 2) : pointer
-  const window = /#w(\d+)$/.exec(rest)
-  const path = window ? rest.slice(0, -window[0].length) : rest
-  const base = path.split('/').pop() ?? path
-  const uuid = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(base)
-  if (!uuid) return null
-  const id = uuid[1].toLowerCase()
-  return window ? `${id}::w${window[1]}` : id
-}
-
-/**
- * Show only the pages the undertaking's own sitting wrote.
- *
- * A chain groups by time and can hold two unrelated topics: Broadcom's chain
- * merged a window that ended 18:41:03 with a session that began 18:41:23, which
- * is one chain by the idle rule and correctly so — but the drawer then listed
- * the second topic's notes under the first topic's undertaking.
- *
- * Narrowing is deliberately timid, because the failure mode on the other side is
- * a page that silently disappears. It happens only when the digest carries
- * per-session attribution for more than one session, a pointer resolves to a
- * session *that chain actually holds*, and the result is a proper non-empty
- * subset. Anything else — no attribution, a pointer from the old organizer, a
- * chain matched by its own `undertaking` field with no pointer — is returned
- * untouched, showing the full union exactly as before.
- */
-function narrowFilesToRecordBlock(chain: ChainEntry, wanted: Set<string>): ChainEntry {
-  const attributed = chain.filesBySession
-  if (!attributed || attributed.length < 2) return chain
-  const mine = new Set<string>()
-  for (const pointer of wanted) {
-    const session = pointerSessionIdBlock(pointer)
-    if (session) mine.add(session)
-  }
-  if (mine.size === 0) return chain
-  const kept = attributed.filter(entry => mine.has(entry.session))
-  if (kept.length === 0 || kept.length === attributed.length) return chain
-  const files = new Set<string>()
-  for (const entry of kept) for (const file of entry.files) files.add(file)
-  return { ...chain, filesWritten: Array.from(files).sort(), filesBySession: kept }
-}
-
 // `projectId` is the chain-directory id (e.g. `F9`), not `record.projectId` —
 // that field carries the project's stable UUID, and chains live under
 // `chains/<dir-id>/`. Passing the UUID here reads a directory that doesn't
@@ -262,9 +206,7 @@ async function chainsFor(projectId: string, record: UndertakingRecord): Promise<
   // undertakings whose provenance had been captured correctly all along.
   const all = await listProjectChainsOrch(projectId)
   const wanted = new Set([...record.chains, ...record.fedBy])
-  return all
-    .filter(chain => chainBelongsToBlock(chain, record, wanted))
-    .map(chain => narrowFilesToRecordBlock(chain, wanted))
+  return all.filter(chain => chainBelongsToBlock(chain, record, wanted))
 }
 
 export async function listUndertakingsOrch(
@@ -278,9 +220,7 @@ export async function listUndertakingsOrch(
   const all = await listProjectChainsOrch(projectId)
   return filtered.map(record => {
     const wanted = new Set([...record.chains, ...record.fedBy])
-    const mine = all
-      .filter(chain => chainBelongsToBlock(chain, record, wanted))
-      .map(chain => narrowFilesToRecordBlock(chain, wanted))
+    const mine = all.filter(chain => chainBelongsToBlock(chain, record, wanted))
     return { record, tail: buildTail(mine) }
   })
 }
