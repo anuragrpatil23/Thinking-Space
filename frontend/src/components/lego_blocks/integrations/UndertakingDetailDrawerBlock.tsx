@@ -1,9 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Check, ChevronDown, Copy, Loader2, Plus, Trash2, X } from 'lucide-react'
+import { Check, Copy, Loader2, Plus, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  DRAWER_HEADER_BUTTON,
+  DRAWER_INPUT,
+  DRAWER_SELECT,
+  DrawerShellBlock,
+  Field,
+  FieldHeading,
+  FIELD_SURFACE,
+  GrowTextarea,
+  LinkTitle,
+  NoteAvatar,
+  PRIMARY_BUTTON,
+  RailLabel,
+  ReverseLinks,
+  SelectShell,
+} from '@/components/lego_blocks/units/OrganizerDrawerChromeBlock'
 import DensitySparklineBlock from '@/components/lego_blocks/units/DensitySparklineBlock'
 import { bucketDensityBlock } from '@/services/lego_blocks/units/aiActivityDensityBlock'
 import { useUndertakingDetailBlock } from '@/components/lego_blocks/hooks/units/useUndertakingDetailBlock'
@@ -34,33 +49,6 @@ interface Props {
   onClose: () => void
 }
 
-// The drawer speaks the home canvas's panel language (useCanvasThemeBlock's
-// anchor panel: 14px radius, a translucent fill, a near-invisible 0.06 border,
-// one soft ambient shadow). Two rules carry it:
-//
-//   1. No box inside a box. The drawer *is* the panel. Groups are separated by
-//      space and a hairline, never by another bordered card — the old drawer's
-//      nested-card look is exactly what this replaces.
-//   2. Controls are recessed, not outlined. A field reads as a soft well in the
-//      panel surface rather than a boxed form input, so the eye follows content
-//      instead of counting borders.
-
-/** A recessed field surface — the well. */
-const FIELD_SURFACE =
-  'rounded-[10px] border border-black/[0.06] bg-black/[0.02] dark:border-white/[0.06] dark:bg-white/[0.03]'
-/** Text inputs and textareas. */
-const DRAWER_INPUT = cn(
-  FIELD_SURFACE,
-  'w-full px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground/50',
-  'focus:border-black/[0.12] focus:bg-black/[0.035] dark:focus:border-white/[0.14] dark:focus:bg-white/[0.05]',
-  'disabled:opacity-60',
-)
-/** Selects — `appearance-none` kills the OS chevron, which was the loudest
- *  unfinished tell in the drawer; ChevronDown is drawn over it instead. */
-const DRAWER_SELECT = cn(DRAWER_INPUT, 'cursor-pointer appearance-none pr-9')
-/** The one filled action in the drawer. Everything else is quiet by design. */
-const PRIMARY_BUTTON =
-  'inline-flex items-center gap-1.5 rounded-[10px] bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40'
 /** Buckets in the rail's density strip. Wider than the index's 24 because the
  *  rail strip is the only place you see one undertaking's shape on its own. */
 const DRAWER_SPARKLINE_BUCKETS = 40
@@ -128,13 +116,6 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
     })
     return () => { cancelled = true }
   }, [projectId, undertakingKey, view])
-
-  // Esc closes, matching every other slide-over in the app.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   const titleByKey = useMemo(() => {
     const m = new Map<string, string>()
@@ -290,52 +271,28 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
       ? tail.firstDate
       : `${tail.firstDate} → ${tail.lastDate}`
 
-  return createPortal(
-    <>
-      <div
-        className="fixed inset-0 z-[120] bg-background/60 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="fixed inset-y-0 right-0 z-[121] w-[min(96vw,58rem)] overflow-auto border-l border-black/[0.06] bg-background pt-[max(env(safe-area-inset-top),3.5rem)] shadow-[0_8px_40px_rgba(20,20,24,0.14)] animate-slide-in dark:border-white/[0.06] sm:pt-0">
-        {/* Content runs to the panel's own padding rather than a centred
-            measure. The 52rem cap made sense when this was one reading column,
-            but the body is columns now — trail beside sessions, three
-            relationship fields across — and capping it stacked a 48px dead
-            gutter on top of the padding on both sides while squeezing those
-            columns. */}
-        <div className="flex flex-col gap-5 p-5 sm:px-8 sm:py-7">
-          {/* Header */}
-          <div className="flex items-start justify-between gap-3">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Undertaking
-            </span>
-            <div className="flex items-center gap-1">
-              {/* Copies the whole undertaking as markdown, not just the title —
-                  the drawer is where you come to have the full picture, and
-                  taking it somewhere else meant hand-assembling it from six
-                  separate selections. */}
-              {record && tail && (
-                <button
-                  type="button"
-                  onClick={copyMarkdown}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  title="Copy this undertaking as markdown"
-                >
-                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                  {copied ? 'Copied' : 'Copy'}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-                aria-label="Close"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-
+  return (
+    <DrawerShellBlock
+      eyebrow="Undertaking"
+      onClose={onClose}
+      actions={
+        // Copies the whole undertaking as markdown, not just the title — the
+        // drawer is where you come to have the full picture, and taking it
+        // somewhere else meant hand-assembling it from six separate selections.
+        record && tail ? (
+          <button
+            type="button"
+            onClick={copyMarkdown}
+            className={DRAWER_HEADER_BUTTON}
+            title="Copy this undertaking as markdown"
+          >
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        ) : undefined
+      }
+    >
+      <>
           {loading && (
             <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -712,188 +669,7 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
               </Field>
             </>
           )}
-        </div>
-      </div>
-    </>,
-    document.body,
-  )
-}
-
-/** The initials disc on a note. Colour is derived from the author string so the
- *  same author is always the same colour, and unattributed notes ("You") share
- *  one neutral slot. */
-const NOTE_AVATAR_COLORS = [
-  'bg-blue-500', 'bg-violet-500', 'bg-emerald-500',
-  'bg-amber-500', 'bg-rose-500', 'bg-cyan-600',
-]
-
-function NoteAvatar({ author, size = 'md' }: { author: string | null; size?: 'sm' | 'md' }) {
-  const name = author?.trim() || ''
-  const initials = name
-    ? name.split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase()
-    : 'YOU'
-  const slot = name
-    ? NOTE_AVATAR_COLORS[[...name].reduce((n, c) => n + c.charCodeAt(0), 0) % NOTE_AVATAR_COLORS.length]
-    : 'bg-muted-foreground/50'
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white',
-        size === 'sm' ? 'h-5 w-5 text-[8px]' : 'mt-0.5 h-7 w-7 text-[10px]',
-        slot,
-      )}
-    >
-      {initials.slice(0, 3)}
-    </span>
-  )
-}
-
-/** A textarea that grows to fit its content. Both the title and the head were
- *  fixed at `rows={2}`, which clipped longer text mid-sentence — the head in
- *  particular is a paragraph and was being cut off with no way to see the rest. */
-function GrowTextarea({
-  value,
-  className,
-  ...rest
-}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { value: string }) {
-  const ref = useRef<HTMLTextAreaElement | null>(null)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }, [value])
-  return (
-    <textarea
-      ref={ref}
-      value={value}
-      rows={1}
-      className={cn('resize-none overflow-hidden', className)}
-      {...rest}
-    />
-  )
-}
-
-/** Positions a chevron over an `appearance-none` select so it reads as one of
- *  the app's controls rather than an OS dropdown. */
-function SelectShell({ className, children }: { className?: string; children: React.ReactNode }) {
-  return (
-    <div className={cn('relative', className)}>
-      {children}
-      <ChevronDown
-        className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-        aria-hidden
-      />
-    </div>
-  )
-}
-
-/** The rail's group label. Quieter than a reading-column heading on purpose —
- *  the rail is reference, and it must not compete with the head or the notes. */
-function RailLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="text-[10px] font-semibold uppercase tracking-[0.13em] text-muted-foreground/60">
-      {children}
-    </h3>
-  )
-}
-
-/** A linked undertaking's title. Navigable when the drawer was given a way to
- *  swap keys — following an edge should land you on the thing the edge names,
- *  not make you close the drawer and hunt the list for it. */
-function LinkTitle({
-  title,
-  linkKey,
-  onOpen,
-  muted = false,
-}: {
-  title: string
-  linkKey: string
-  onOpen?: (key: string) => void
-  muted?: boolean
-}) {
-  const tone = muted ? 'text-muted-foreground/75' : 'text-foreground/80'
-  if (!onOpen) {
-    return (
-      <span className={cn('min-w-0 flex-1 leading-snug', tone)} title={linkKey}>
-        {title}
-      </span>
-    )
-  }
-  return (
-    <button
-      type="button"
-      onClick={() => onOpen(linkKey)}
-      className={cn(
-        'min-w-0 flex-1 text-left leading-snug underline-offset-2 transition-colors hover:text-foreground hover:underline',
-        tone,
-      )}
-      title={`${linkKey} — ${title}`}
-    >
-      {title}
-    </button>
-  )
-}
-
-/** A read-only edge list in the Relationships grid. Renders nothing when empty:
- *  an "and nothing led out of this" placeholder in every one of these cells
- *  would be four-fifths of the grid saying nothing. */
-function ReverseLinks({
-  label,
-  refs,
-  onOpen,
-  muted = false,
-}: {
-  label: string
-  refs: Array<{ key: string; title: string }>
-  onOpen?: (key: string) => void
-  muted?: boolean
-}) {
-  if (refs.length === 0) return null
-  return (
-    <div className="min-w-0">
-      <RailLabel>{label}</RailLabel>
-      <ul className="mt-2 space-y-1.5">
-        {refs.map(ref => (
-          <li key={ref.key} className="flex items-start gap-1.5 text-[13px]">
-            <LinkTitle title={ref.title} linkKey={ref.key} onOpen={onOpen} muted={muted} />
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-/** A titled group: a heading, then content, separated from its neighbour by a
- *  hairline and space — no card. The heading is sentence-case at reading size;
- *  the drawer previously set every label as an identical 11px uppercase eyebrow,
- *  so eight groups all shouted at the same pitch and none read as a heading. */
-function Field({
-  label,
-  action,
-  children,
-}: {
-  label: string
-  action?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <section className="border-t border-black/[0.06] pt-6 first:border-t-0 first:pt-0 dark:border-white/[0.06]">
-      <FieldHeading label={label} action={action} />
-      {children}
-    </section>
-  )
-}
-
-/** The heading alone, for the groups that share one hairline instead of each
- *  carrying their own — the trail/sessions pair sits inside a single section, so
- *  a second `Field` there would have drawn a rule across the middle of it. */
-function FieldHeading({ label, action }: { label: string; action?: React.ReactNode }) {
-  return (
-    <div className="mb-3 flex items-baseline justify-between gap-3">
-      <h2 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-foreground/70">{label}</h2>
-      {action}
-    </div>
+      </>
+    </DrawerShellBlock>
   )
 }

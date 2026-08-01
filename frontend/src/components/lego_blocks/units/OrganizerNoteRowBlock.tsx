@@ -21,6 +21,9 @@ interface Props {
   /** Open the drawer for the undertaking on the other end of this note's link.
    *  Without it the link renders as plain text, as it always did. */
   onOpenUndertaking?: (key: string) => void
+  /** Open this note's own drawer. Without it the row is inert — which is what
+   *  it was before the note drawer existed. */
+  onOpen?: (key: string) => void
 }
 
 export default function OrganizerNoteRowBlock({
@@ -28,6 +31,7 @@ export default function OrganizerNoteRowBlock({
   colorIndex,
   ordinal,
   onOpenUndertaking,
+  onOpen,
 }: Props) {
   const { note, fedInto, producedBy } = entry
   const engaged = Boolean(fedInto || producedBy)
@@ -46,6 +50,7 @@ export default function OrganizerNoteRowBlock({
 
   return (
     <OrganizerRowShellBlock
+      onClick={onOpen ? () => onOpen(note.key) : undefined}
       colorIndex={colorIndex}
       ordinal={ordinal}
       leadGlyph={
@@ -66,8 +71,8 @@ export default function OrganizerNoteRowBlock({
           {/* The link is the one live thing on a note row — it names the doing
               that consumed or produced this note, and as plain text it made
               half the index a dead end: you could read the edge but not
-              follow it. `stopPropagation` so it stays its own target if the
-              row ever becomes clickable.
+              follow it. `stopPropagation` because the row itself opens this
+              note's drawer — the link goes the other way, to the doing.
               It gets a fixed column rather than sitting wherever the tags
               happen to end: left to float, the arrows landed at a different x
               on every row, so a column that says the same thing each time read

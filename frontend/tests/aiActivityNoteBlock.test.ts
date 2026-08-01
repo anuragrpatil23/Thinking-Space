@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  noteBodyBlock,
   noteCategoryCodeBlock,
   noteCategoryLabelBlock,
   noteIsReferenceBlock,
@@ -97,5 +98,36 @@ Understand LAM Research.
 
   it('returns null on a file without frontmatter', () => {
     expect(parseNoteMarkdownBlock('just text')).toBeNull()
+  })
+})
+
+describe('noteBodyBlock', () => {
+  // The real shape from the old organizer: frontmatter, then a Description
+  // section and a Comments thread.
+  const FILE = [
+    '---',
+    'key: f9-mi-e-300-the-price-increase',
+    'title: F9-MI-E-300 - the price increase',
+    'created_at: "2026-02-26T18:22:06.606Z"',
+    '---',
+    '',
+    '## Description',
+    '',
+    'this is not a for sure thing.',
+    '',
+  ].join('\n')
+
+  it('returns everything after the frontmatter, leading blank lines trimmed', () => {
+    expect(noteBodyBlock(FILE)).toBe('## Description\n\nthis is not a for sure thing.\n')
+  })
+
+  it('treats a file with no frontmatter as all body', () => {
+    // A hand-written file is still readable; the drawer shows what is there.
+    expect(noteBodyBlock('just a thought\n')).toBe('just a thought\n')
+  })
+
+  it('returns empty when the frontmatter never closes', () => {
+    // Half-saved file: better a blank body than the YAML rendered as prose.
+    expect(noteBodyBlock('---\nkey: x\n')).toBe('')
   })
 })

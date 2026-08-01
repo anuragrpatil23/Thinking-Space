@@ -26,8 +26,11 @@ import {
   patchChainBlock,
   type ChainEntry,
 } from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
+import { listProjectChainsOrch } from '@/services/orchestrators/aiActivityChainReconcileOrch'
 import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
-import { listNotesBlock } from '@/services/lego_blocks/integrations/aiActivityNoteStoreBlock'
+import { listNotesBlock, readNoteBlock } from '@/services/lego_blocks/integrations/aiActivityNoteStoreBlock'
+import { parseOrganizerBodySections } from '@/services/lego_blocks/integrations/organizerBodyBlock'
+import type { YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { noteCategoryLabelBlock, type Note } from '@/services/lego_blocks/units/aiActivityNoteBlock'
 import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
 import { readCachedProjectRegistryBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
@@ -168,6 +171,28 @@ function buildTail(chains: ChainEntry[]): UndertakingTail {
   }
 }
 
+/**
+ * Does this chain belong to that undertaking?
+ *
+ * Two directions, and they are not equal. `chain.undertaking` lives on the
+ * digest and is the authoritative one — the chain says which undertaking it
+ * served. `record.chains`/`record.fedBy` are pointers the other way, carried in
+ * from the old organizer, and they hold whatever a chain was *called* at import
+ * time. A name is a derived value: re-grouping moves a chain's `chainKey`, and
+ * every pointer written against the old one silently stops resolving.
+ *
+ * So the pointer is matched against the frozen `chainId` as well. New records
+ * should carry ids; old ones keep working because a pre-v4 chain's id is the
+ * key it was imported under.
+ */
+function chainBelongsToBlock(chain: ChainEntry, record: UndertakingRecord, wanted: Set<string>): boolean {
+  return (
+    chain.undertaking.includes(record.key) ||
+    wanted.has(chain.chainId) ||
+    wanted.has(chain.chainKey)
+  )
+}
+
 // `projectId` is the chain-directory id (e.g. `F9`), not `record.projectId` —
 // that field carries the project's stable UUID, and chains live under
 // `chains/<dir-id>/`. Passing the UUID here reads a directory that doesn't
@@ -175,11 +200,13 @@ function buildTail(chains: ChainEntry[]): UndertakingTail {
 // which is exactly the bug this replaced. The id the index path already uses is
 // the one threaded in from the caller.
 async function chainsFor(projectId: string, record: UndertakingRecord): Promise<ChainEntry[]> {
-  const all = await listChainsBlock({ projectId })
+  // `listProjectChainsOrch`, not `listChainsBlock`: the stored digest's
+  // mechanical fields are a transport copy, and this device can derive the real
+  // ones. Reading the raw file is what made the drawer show no pages for
+  // undertakings whose provenance had been captured correctly all along.
+  const all = await listProjectChainsOrch(projectId)
   const wanted = new Set([...record.chains, ...record.fedBy])
-  return all.filter(
-    chain => wanted.has(chain.chainKey) || chain.undertaking.includes(record.key),
-  )
+  return all.filter(chain => chainBelongsToBlock(chain, record, wanted))
 }
 
 export async function listUndertakingsOrch(
@@ -190,12 +217,10 @@ export async function listUndertakingsOrch(
   const filtered = section ? records.filter(record => record.section === section) : records
   // One chain read, reused across every record — the alternative is a full
   // vault walk per undertaking, which on F9 alone is 32 walks of the same tree.
-  const all = await listChainsBlock({ projectId })
+  const all = await listProjectChainsOrch(projectId)
   return filtered.map(record => {
     const wanted = new Set([...record.chains, ...record.fedBy])
-    const mine = all.filter(
-      chain => wanted.has(chain.chainKey) || chain.undertaking.includes(record.key),
-    )
+    const mine = all.filter(chain => chainBelongsToBlock(chain, record, wanted))
     return { record, tail: buildTail(mine) }
   })
 }
@@ -782,6 +807,66 @@ export async function getUndertakingLinksOrch(
     answered,
     fedBy,
     produced: (record?.produced ?? []).map(resolveNote),
+  }
+}
+
+/** One note, everything on it, plus the edges that name it — what the note
+ *  drawer renders. The mirror of an undertaking's view across the seam. */
+export interface NoteDetail {
+  note: Note
+  /** The `## Description` section, or the preface when the file has no
+   *  headings — the note's own words either way. */
+  description: string
+  /** The `## Comments` thread, the same one the organizer CLI appends to. */
+  comments: YAMLCommentEntry[]
+  /** Vault-relative path of the markdown this came from. */
+  path: string
+  /** The undertaking this note fed, if one did. */
+  fedInto?: NoteRef
+  /** The undertaking that produced it, if one did. */
+  producedBy?: NoteRef
+}
+
+/**
+ * One note's page, assembled across the seam.
+ *
+ * The index carries only what a row needs (title, kind, date, tags), so the
+ * note's own writing — the thing it was captured for — was in the vault and
+ * nowhere in the app. This reads the file for the body and re-derives the two
+ * undertaking edges from the records, because a note never stores them: the
+ * undertaking owns `fed_by`/`produced`, and the note is only ever named by them.
+ *
+ * Read-only by construction. The old organizer's store is Anurag's hand-written
+ * half and the seam has never written to it.
+ */
+export async function getNoteDetailOrch(projectId: string, noteKey: string): Promise<NoteDetail | null> {
+  const askRoot = await noteRootForProjectBlock(projectId)
+  if (askRoot === null) return null
+  const file = await readNoteBlock(askRoot, noteKey)
+  if (!file) return null
+
+  const records = await listUndertakingsBlock(projectId)
+  const ticket = file.note.ticket.toUpperCase()
+  let fedInto: NoteRef | undefined
+  let producedBy: NoteRef | undefined
+  for (const record of records) {
+    const ref = { key: record.key, title: record.title || record.head || record.key }
+    if (!fedInto && record.fedBy.some(raw => raw.toUpperCase() === ticket)) fedInto = ref
+    if (!producedBy && record.produced.some(raw => raw.toUpperCase() === ticket)) producedBy = ref
+  }
+
+  const sections = parseOrganizerBodySections(file.body)
+  return {
+    note: file.note,
+    // No `## Description` heading means the whole body is the description —
+    // plenty of these notes are a paragraph under the frontmatter and nothing
+    // else, and dropping them would make the drawer look empty for the notes
+    // that have the most to say.
+    description: sections.description ?? (file.body.includes('## ') ? '' : file.body.trim()),
+    comments: sections.comments,
+    path: file.path,
+    fedInto,
+    producedBy,
   }
 }
 

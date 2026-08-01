@@ -151,3 +151,21 @@ export function parseNoteMarkdownBlock(content: string): Note | null {
     ticket: noteTicketBlock(key),
   }
 }
+
+/**
+ * The markdown after the frontmatter — a note's own words.
+ *
+ * Separate from `parseNoteMarkdownBlock` because the index reads every note in
+ * the project on every load and never wants the body; only the drawer, opening
+ * one note, does.
+ */
+export function noteBodyBlock(content: string): string {
+  const trimmed = content.trimStart()
+  if (!trimmed.startsWith('---')) return trimmed
+  const afterOpen = trimmed.indexOf('\n')
+  if (afterOpen === -1) return ''
+  const rest = trimmed.slice(afterOpen + 1)
+  const close = /^---\s*$/m.exec(rest)
+  if (!close) return ''
+  return rest.slice(close.index + close[0].length).replace(/^\n+/, '')
+}

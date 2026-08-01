@@ -32,6 +32,7 @@ interface Props {
    *  registry will canonicalize this — D9). Null renders the empty state. */
   projectId: string | null
   onOpenUndertaking?: (key: string) => void
+  onOpenNote?: (key: string) => void
 }
 
 // A block's header row: the section name at one end, its ruler at the other,
@@ -80,7 +81,7 @@ function SectionHeader({
 const STRIP_WIDTH = 96
 const STRIP_RIGHT_OFFSET = 56 + 8 + 12
 
-export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: Props) {
+export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, onOpenNote }: Props) {
   const { index, loading, error, reload } = useUndertakingIndexBlock(projectId)
   const [filters, setFilters] = useState<OrganizerFilter[]>([])
   const [managingSections, setManagingSections] = useState(false)
@@ -287,6 +288,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
                     colorIndex={section.colorIndex}
                     ordinal={i + 1}
                     onOpenUndertaking={onOpenUndertaking}
+                    onOpen={onOpenNote}
                   />
                 ))}
               </div>
