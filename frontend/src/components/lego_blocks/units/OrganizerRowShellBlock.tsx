@@ -42,12 +42,29 @@ interface Props {
   onClick?: () => void
 }
 
-/** Border + matching text colour for a section, from its palette slot. The text
- *  class comes from the shared literal map (not string-built) so Tailwind's JIT
- *  actually generates it, in both light and dark. */
-export function organizerSectionColorBlock(colorIndex: number): { border: string; text: string } {
+/** The spine's fill, keyed off the same palette slot as the border class. A
+ *  literal map (not string-built) so Tailwind's JIT actually generates these. */
+const SPINE_BG_BY_BORDER: Record<string, string> = {
+  'border-l-blue-500': 'bg-blue-500',
+  'border-l-violet-500': 'bg-violet-500',
+  'border-l-emerald-500': 'bg-emerald-500',
+  'border-l-amber-500': 'bg-amber-500',
+  'border-l-rose-500': 'bg-rose-500',
+  'border-l-cyan-500': 'bg-cyan-500',
+  'border-l-fuchsia-500': 'bg-fuchsia-500',
+  'border-l-lime-500': 'bg-lime-500',
+}
+
+/** Border, spine fill, and matching text colour for a section, from its palette
+ *  slot. The classes come from shared literal maps (not string-built) so
+ *  Tailwind's JIT actually generates them, in both light and dark. */
+export function organizerSectionColorBlock(colorIndex: number): { border: string; spine: string; text: string } {
   const border = EPIC_BORDER_PALETTE[colorIndex % EPIC_BORDER_PALETTE.length]
-  return { border, text: EPIC_ICON_COLOR_BY_BORDER[border] ?? 'text-foreground/80' }
+  return {
+    border,
+    spine: SPINE_BG_BY_BORDER[border] ?? 'bg-foreground/30',
+    text: EPIC_ICON_COLOR_BY_BORDER[border] ?? 'text-foreground/80',
+  }
 }
 
 export default function OrganizerRowShellBlock({
@@ -61,7 +78,7 @@ export default function OrganizerRowShellBlock({
   active = false,
   onClick,
 }: Props) {
-  const { border } = organizerSectionColorBlock(colorIndex)
+  const { spine } = organizerSectionColorBlock(colorIndex)
   const interactive = Boolean(onClick)
 
   return (
@@ -81,8 +98,7 @@ export default function OrganizerRowShellBlock({
             : undefined
         }
         className={cn(
-          'flex min-h-[2.25rem] items-center gap-2 border-l-[3px] px-3 py-1.5 transition-colors',
-          border,
+          'relative flex min-h-[2.25rem] items-center gap-2 py-1.5 pl-[0.9375rem] pr-3 transition-colors',
           interactive && 'cursor-pointer focus:outline-none',
           // An open row shares the peek's surface, so header and panel read as
           // one raised block; a closed row keeps the plain hover.
@@ -91,6 +107,18 @@ export default function OrganizerRowShellBlock({
             : interactive && 'hover:bg-zinc-50 focus-visible:bg-zinc-50 dark:hover:bg-zinc-800/60 dark:focus-visible:bg-zinc-800/60',
         )}
       >
+        {/* The spine is a rounded bar inset from the row's top and bottom, not a
+            left border. A border is full-bleed, so in a flush list the spines of
+            consecutive rows weld into one continuous stripe — it stops marking a
+            row and becomes a background rail, and a section change reads as a
+            seam in that rail rather than a new mark. Inset and rounded, each row
+            owns its own token and the colour goes back to meaning "this row is
+            in that section". */}
+        <span
+          aria-hidden
+          className={cn('absolute bottom-1 left-0 top-1 w-[3px] rounded-full', spine)}
+        />
+
         {/* Ordinal — fixed-width so single- and double-digit numbers don't shift
             the title, self-start for the superscript feel. */}
         <span className="w-4 shrink-0 self-start pt-1 text-right font-mono text-[9px] leading-none tabular-nums text-muted-foreground/45">

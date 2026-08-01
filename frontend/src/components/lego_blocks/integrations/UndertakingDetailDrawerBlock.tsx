@@ -227,10 +227,13 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
         onClick={onClose}
       />
       <div className="fixed inset-y-0 right-0 z-[121] w-[min(96vw,58rem)] overflow-auto border-l border-black/[0.06] bg-background pt-[max(env(safe-area-inset-top),3.5rem)] shadow-[0_8px_40px_rgba(20,20,24,0.14)] animate-slide-in dark:border-white/[0.06] sm:pt-0">
-        {/* The canvas panel's own padding (20px), with the content measure held
-            in from the panel edge so the wider drawer reads as air rather than
-            a stretched form. */}
-        <div className="mx-auto flex max-w-[52rem] flex-col gap-5 p-5 sm:p-7">
+        {/* Content runs to the panel's own padding rather than a centred
+            measure. The 52rem cap made sense when this was one reading column,
+            but the body is columns now — trail beside sessions, three
+            relationship fields across — and capping it stacked a 48px dead
+            gutter on top of the padding on both sides while squeezing those
+            columns. */}
+        <div className="flex flex-col gap-5 p-5 sm:px-8 sm:py-7">
           {/* Header */}
           <div className="flex items-start justify-between gap-3">
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
