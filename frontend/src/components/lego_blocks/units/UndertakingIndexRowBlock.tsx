@@ -2,9 +2,7 @@ import type { ReactNode } from 'react'
 import { ArrowUpRight, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import DensitySparklineBlock from '@/components/lego_blocks/units/DensitySparklineBlock'
-import OrganizerRowShellBlock, {
-  organizerSectionColorBlock,
-} from '@/components/lego_blocks/units/OrganizerRowShellBlock'
+import OrganizerRowShellBlock from '@/components/lego_blocks/units/OrganizerRowShellBlock'
 import { useUndertakingDetailBlock } from '@/components/lego_blocks/hooks/units/useUndertakingDetailBlock'
 import type { NoteRef, UndertakingIndexRow } from '@/services/orchestrators/aiActivityUndertakingOrch'
 
@@ -18,9 +16,9 @@ import type { NoteRef, UndertakingIndexRow } from '@/services/orchestrators/aiAc
 // grew out of, what grew out of it, the questions it answered). The peek is the
 // "see the linked rows in the row" affordance — visual grouping read off the
 // edge graph, never a hand-built tree. Going deeper (editing the head, writing
-// notes) is the drawer, opened from the peek. The section's colour spine
-// continues down through the peek, so it reads as the row unfolding rather than
-// a detached card.
+// notes) is the drawer, opened from the peek. The peek keeps the row's spine
+// width so its edge stays aligned, but the spine goes neutral there — colour
+// marks rows, and running it down the panel made the two read as one long row.
 
 /** An undertaking this row links to, resolved to a title for display. */
 export interface LinkedUndertakings {
@@ -114,7 +112,6 @@ export default function UndertakingIndexRowBlock({
             <PeekPanel
               row={row}
               projectId={projectId}
-              colorIndex={colorIndex}
               linked={linked}
               onOpenDrawer={onOpenDrawer}
             />
@@ -140,19 +137,16 @@ const PEEK_META = 'text-[11px]'
 function PeekPanel({
   row,
   projectId,
-  colorIndex,
   linked,
   onOpenDrawer,
 }: {
   row: UndertakingIndexRow
   projectId: string | null
-  colorIndex: number
   linked: LinkedUndertakings
   onOpenDrawer?: (key: string) => void
 }) {
   const { record, tail } = row
   const answered = row.fedNotes
-  const { border } = organizerSectionColorBlock(colorIndex)
   // `head` is the field's internal name; the peek labels it by what it holds.
   const hasHeadPreview = Boolean(record.head) && record.head !== record.title
 
@@ -163,15 +157,19 @@ function PeekPanel({
 
   return (
     // The open row has to read as a different plane from the closed rows around
-    // it, not a slightly tinted continuation of them. Three things do that: a
-    // recessed surface, an inset hairline at the top edge so the panel looks
-    // pressed into the list, and the section's colour spine continuing down.
+    // it, not a slightly tinted continuation of them: a recessed surface, and an
+    // inset hairline top and bottom so the panel looks pressed into the list.
+    //
+    // The spine keeps the row's 3px width so the block edge stays aligned, but
+    // goes neutral. The colour marks *rows* — it is how you tell which section a
+    // row belongs to while scanning the list — and carrying it down through the
+    // panel made the open row and its panel read as one long row instead of a
+    // row that opened.
     <div
       className={cn(
-        'ltm-animate-peek-in border-l-[3px] bg-black/[0.035] dark:bg-white/[0.035]',
+        'ltm-animate-peek-in border-l-[3px] border-foreground/10 bg-black/[0.035] dark:bg-white/[0.035]',
         'shadow-[inset_0_1px_0_rgba(0,0,0,0.06),inset_0_-1px_0_rgba(0,0,0,0.06)]',
         'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(255,255,255,0.06)]',
-        border,
       )}
     >
       <div className="ml-[2.25rem] mr-4 space-y-3 py-4">
