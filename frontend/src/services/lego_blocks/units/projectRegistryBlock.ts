@@ -57,23 +57,32 @@ export function parseProjectRegistryMarkdownBlock(
   return out
 }
 
+/** Longest registered root containing `cwd`, with the root that matched — the
+ *  root is what the settings page shows to explain an attribution. */
+export function matchProjectRootBlock(
+  cwd: string,
+  entries: ProjectRegistryEntry[],
+): { project: string; root: string } | null {
+  const norm = cwd.replace(/\/+$/, '')
+  if (!norm) return null
+  let best: { project: string; root: string } | null = null
+  for (const entry of entries) {
+    for (const path of entry.paths) {
+      if (norm === path || norm.startsWith(`${path}/`)) {
+        if (!best || path.length > best.root.length) best = { project: entry.project, root: path }
+      }
+    }
+  }
+  return best
+}
+
 /** Canonical project for a cwd by longest-prefix match, or null when no
  *  registered path contains it (caller falls back to basename inference). */
 export function resolveProjectByCwdBlock(
   cwd: string,
   entries: ProjectRegistryEntry[],
 ): string | null {
-  const norm = cwd.replace(/\/+$/, '')
-  if (!norm) return null
-  let best: { project: string; len: number } | null = null
-  for (const entry of entries) {
-    for (const path of entry.paths) {
-      if (norm === path || norm.startsWith(`${path}/`)) {
-        if (!best || path.length > best.len) best = { project: entry.project, len: path.length }
-      }
-    }
-  }
-  return best ? best.project : null
+  return matchProjectRootBlock(cwd, entries)?.project ?? null
 }
 
 /**

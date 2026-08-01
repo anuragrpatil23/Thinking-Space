@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { resolveCanonicalProjectBlock } from '@/services/lego_blocks/units/aiActivityMappingBlock'
+import {
+  explainCanonicalProjectBlock,
+  resolveCanonicalProjectBlock,
+} from '@/services/lego_blocks/units/aiActivityMappingBlock'
 import {
   projectAliasesFromProjectsBlock,
   projectRegistryFromProjectsBlock,
@@ -61,5 +64,46 @@ describe('resolveCanonicalProjectBlock', () => {
 
   it('falls back to the detected name when nothing matches', () => {
     expect(resolveCanonicalProjectBlock('Reps', null, '/Volumes/Code/Reps', NO_RULES)).toBe('Reps')
+  })
+})
+
+describe('explainCanonicalProjectBlock', () => {
+  // The settings page shows *why* a session landed where it did. That reason
+  // has to come from the same walk that decided it — a second copy of the
+  // ladder would explain one thing while the views group by another.
+  it('names the registered root that claimed a cwd', () => {
+    expect(explainCanonicalProjectBlock('frontend', null, `${REPO}/frontend`, NO_RULES)).toEqual({
+      canonical: 'thinkingspace.ai',
+      source: 'root',
+      via: REPO,
+    })
+  })
+
+  it('names the alias when no root contains the cwd', () => {
+    expect(explainCanonicalProjectBlock('backend', null, VAULT, NO_RULES)).toEqual({
+      canonical: 'thinkingspace.ai',
+      source: 'alias',
+      via: 'backend',
+    })
+  })
+
+  it('names the rule when one fires, and the rule still outranks the root', () => {
+    const rules = {
+      rules: [{ id: 'r1', mode: 'exact' as const, match: 'frontend', output: 'Elsewhere', enabled: true }],
+      colors: {},
+    }
+    expect(explainCanonicalProjectBlock('frontend', null, `${REPO}/frontend`, rules)).toEqual({
+      canonical: 'Elsewhere',
+      source: 'rule',
+      via: 'frontend',
+    })
+  })
+
+  it('reports an unclaimed project as detected, so the page can offer to adopt it', () => {
+    expect(explainCanonicalProjectBlock('Stranger', null, '/tmp/Stranger', NO_RULES)).toEqual({
+      canonical: 'Stranger',
+      source: 'detected',
+      via: '',
+    })
   })
 })

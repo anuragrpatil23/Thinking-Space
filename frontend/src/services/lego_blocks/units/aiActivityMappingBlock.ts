@@ -14,8 +14,8 @@ import {
   readCachedProjectAliasesBlock,
   readCachedProjectColorsBlock,
   readCachedProjectRegistryBlock,
+  matchProjectRootBlock,
   resolveProjectByAliasBlock,
-  resolveProjectByCwdBlock,
 } from '@/services/lego_blocks/units/projectRegistryBlock'
 
 export type AiActivityRuleMode = 'exact' | 'contains'
@@ -110,41 +110,73 @@ export function subscribeAiActivityMappingBlock(cb: () => void): () => void {
 
 // ---- resolvers --------------------------------------------------------------
 
-/** Resolve the canonical (possibly renamed/merged) project name for a session.
- *  `contains` rules match the raw name, the transcript path, and (when known)
- *  the session's working directory. */
-export function resolveCanonicalProjectBlock(
+/** Which rung of the ladder decided a session's project. */
+export type ProjectAttributionSourceBlock = 'rule' | 'root' | 'alias' | 'detected'
+
+export interface ProjectAttributionBlock {
+  canonical: string
+  source: ProjectAttributionSourceBlock
+  /** What matched: the rule's `match`, the registered root, or the alias.
+   *  Empty for `detected` — nothing claimed it. */
+  via: string
+}
+
+/**
+ * The precedence ladder, with its reasoning exposed.
+ *
+ * `resolveCanonicalProjectBlock` is this function's `canonical` field and
+ * nothing else, so there is exactly one implementation of the ladder — the
+ * settings page can explain an attribution without a second copy that drifts.
+ * The order is pinned in `tests/aiActivityCanonicalProjectBlock.test.ts` and
+ * documented in `docs/contracts/DERIVATION.md`.
+ *
+ * `contains` rules match the raw name, the transcript path, and (when known)
+ * the session's working directory.
+ */
+export function explainCanonicalProjectBlock(
   rawProject: string,
   path: string | null,
   cwd?: string | null,
   settings?: AiActivityMappingSettings,
-): string {
+): ProjectAttributionBlock {
   const snapshot = settings ?? readAiActivityMappingBlock()
   // Explicit user rules win — a deliberate override beats any automatic map.
   for (const rule of snapshot.rules) {
     if (!rule.enabled) continue
     if (rule.mode === 'exact') {
-      if (rawProject === rule.match) return rule.output
+      if (rawProject === rule.match) return { canonical: rule.output, source: 'rule', via: rule.match }
     } else {
       const needle = rule.match.toLowerCase()
-      if (rawProject.toLowerCase().includes(needle)) return rule.output
-      if (path && path.toLowerCase().includes(needle)) return rule.output
-      if (cwd && cwd.toLowerCase().includes(needle)) return rule.output
+      const hit =
+        rawProject.toLowerCase().includes(needle) ||
+        (path != null && path.toLowerCase().includes(needle)) ||
+        (cwd != null && cwd.toLowerCase().includes(needle))
+      if (hit) return { canonical: rule.output, source: 'rule', via: rule.match }
     }
   }
   // Registry: longest-prefix match on the real cwd, more principled than the
   // basename that produced `rawProject`. Collapses a project's folder variants
   // to one name. Empty cache (not loaded) → no match → basename fallback.
   if (cwd) {
-    const canonical = resolveProjectByCwdBlock(cwd, readCachedProjectRegistryBlock())
-    if (canonical) return canonical
+    const match = matchProjectRootBlock(cwd, readCachedProjectRegistryBlock())
+    if (match) return { canonical: match.project, source: 'root', via: match.root }
   }
   // Aliases last, and only on the detected name: a path is stronger evidence
   // than a folder's spelling, so a session whose cwd is inside a registered root
   // must never be pulled elsewhere by a name another project claimed.
   const byAlias = resolveProjectByAliasBlock(rawProject, readCachedProjectAliasesBlock())
-  if (byAlias) return byAlias
-  return rawProject
+  if (byAlias) return { canonical: byAlias, source: 'alias', via: rawProject }
+  return { canonical: rawProject, source: 'detected', via: '' }
+}
+
+/** Resolve the canonical (possibly renamed/merged) project name for a session. */
+export function resolveCanonicalProjectBlock(
+  rawProject: string,
+  path: string | null,
+  cwd?: string | null,
+  settings?: AiActivityMappingSettings,
+): string {
+  return explainCanonicalProjectBlock(rawProject, path, cwd, settings).canonical
 }
 
 // ---- path → project auto-infer (parse-time) ----------------------------------
