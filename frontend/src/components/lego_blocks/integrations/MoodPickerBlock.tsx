@@ -67,15 +67,32 @@ export interface MoodPickerBlockProps {
   selected: string[]
   onChange: (next: string[]) => void
   onClose: () => void
+  /** Focus the search field on open. True on desktop, where typing is how you
+   *  narrow 80 feelings. False on touch: focusing summons the on-screen
+   *  keyboard, which covered the very list the picker exists to show
+   *  (2026-08-01) — and on a phone you scroll or tap a quadrant instead. */
+  autoFocusSearch?: boolean
+  /** Height cap. The default assumes the picker hangs somewhere near the top of
+   *  the viewport; callers anchoring it lower pass a tighter cap. */
+  maxHeightClassName?: string
 }
 
-export default function MoodPickerBlock({ selected, onChange, onClose }: MoodPickerBlockProps) {
+export default function MoodPickerBlock({
+  selected,
+  onChange,
+  onClose,
+  autoFocusSearch = true,
+  maxHeightClassName = 'max-h-[min(38rem,78vh)]',
+}: MoodPickerBlockProps) {
   const [quadrant, setQuadrant] = useState<EmotionColor | null>(null)
   const [query, setQuery] = useState('')
   const [justPicked, setJustPicked] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
-  useEffect(() => { inputRef.current?.focus() }, [])
+  useEffect(() => {
+    if (!autoFocusSearch) return
+    inputRef.current?.focus()
+  }, [autoFocusSearch])
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -100,7 +117,7 @@ export default function MoodPickerBlock({ selected, onChange, onClose }: MoodPic
   return (
     // Roomy on purpose: definitions are the point of the list, and at 26rem the
     // longer ones were truncating on nearly every row.
-    <div className="flex max-h-[min(38rem,78vh)] w-[min(34rem,calc(100vw-2rem))] flex-col">
+    <div className={cn('flex w-[min(34rem,calc(100vw-2rem))] flex-col', maxHeightClassName)}>
       {/* --- selections --- */}
       {selected.length > 0 && (
         <div className="flex flex-wrap gap-1.5 border-b border-border/50 p-3">

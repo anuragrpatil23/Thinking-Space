@@ -32,13 +32,19 @@ export const FOCUS_FONT_STACK_BLOCK =
  *  back where the classic measure actually sits. */
 const FOCUS_MEASURE_BLOCK = '76ch'
 
+/** Bottom padding reserved for the on-screen keyboard, read from a CSS variable
+ *  rather than baked into the theme. The inset changes several times while iOS
+ *  animates the keyboard in, and a themed value would mean a CM6
+ *  `StateEffect.reconfigure` — plus a freshly compiled StyleModule and another
+ *  `<style>` element — on every one of those frames. That was the stall on the
+ *  first tap into the New Note surface (2026-08-01). The host publishes this
+ *  var on the editor root instead, so the keyboard only ever moves padding. */
+export const FOCUS_KEYBOARD_INSET_VAR_BLOCK = '--ltm-focus-keyboard-inset'
+
 export interface FocusTypographyOptionsBlock {
   /** Phone/compact surfaces drop the measure cap and shrink the padding —
    *  a 66ch column inside a 390px viewport reads as a narrow ribbon. */
   compact?: boolean
-  /** Bottom padding reserved for the on-screen keyboard (iOS). Keeps the caret
-   *  clear of the keyboard on the full-bleed surface. */
-  keyboardInsetPx?: number
 }
 
 /** CM6 theme for the focus profile. Pairs with the `'dim'` marker mode in
@@ -47,7 +53,7 @@ export function createFocusTypographyThemeBlock(
   options: FocusTypographyOptionsBlock = {},
 ): Extension {
   const compact = options.compact ?? false
-  const keyboardInsetPx = Math.max(0, options.keyboardInsetPx ?? 0)
+  const keyboardInset = `var(${FOCUS_KEYBOARD_INSET_VAR_BLOCK}, 0px)`
 
   return EditorView.theme({
     '.cm-scroller': {
@@ -59,11 +65,17 @@ export function createFocusTypographyThemeBlock(
       fontVariantLigatures: 'none',
     },
     '.cm-content': {
-      maxWidth: compact ? '100%' : FOCUS_MEASURE_BLOCK,
+      // `min(…, 100%)`, never the bare measure: a 76ch monospace column is
+      // ~770px, so on a 390px phone the bare cap plus `margin-inline: auto`
+      // pushed half the column off the left edge of the screen and the first
+      // characters of every line were unreachable (2026-08-01). The compact
+      // flag still drops the cap outright; this is the guard for when a caller
+      // forgets to set it.
+      maxWidth: compact ? '100%' : `min(${FOCUS_MEASURE_BLOCK}, 100%)`,
       marginInline: 'auto',
       padding: compact
-        ? `2rem 1.25rem ${1.5 + keyboardInsetPx / 16}rem`
-        : `4rem 0 ${8 + keyboardInsetPx / 16}rem`,
+        ? `2rem 1.25rem calc(1.5rem + ${keyboardInset})`
+        : `4rem 0 calc(8rem + ${keyboardInset})`,
     },
     // Thicker, iA-style caret in the user's own accent — `--ltm-explorer-selected-color`
     // is the "Selected item color" from Settings → Explorer, already published

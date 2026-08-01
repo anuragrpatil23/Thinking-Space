@@ -48,11 +48,21 @@ struct PhoneShellView: View {
                         .frame(height: isPad ? safeTop + nativeChromePadBarHeight + 26 : safeTop + 24, alignment: .top)
                         .opacity(chromeState.isVisible ? 1 : 0)
                         .offset(y: chromeState.isVisible ? 0 : -18)
-                        // Hidden chrome (immersive focus mode) must not
-                        // keep a touch-dead strip over the web content —
-                        // opacity 0 still hit-tests, and the focus-mode
-                        // header lives exactly under this zone.
-                        .allowsHitTesting(chromeState.isVisible)
+                        // NEVER hit-tests, visible or not. TopChromeView is a
+                        // scrim — a masked material rectangle with no controls
+                        // in it on either idiom — so every touch it receives is
+                        // a touch stolen from the web content beneath.
+                        //
+                        // This was `.allowsHitTesting(chromeState.isVisible)`,
+                        // which only fixed the hidden case (immersive focus
+                        // mode, where the invisible strip blocked the focus
+                        // header's Exit button). The visible case is the same
+                        // bug: the veil runs `safeTop + 24`, so its feathered
+                        // tail covers the top ~24pt of whatever the page puts
+                        // directly under the status bar. New Note's title-bar
+                        // controls live exactly there, and half of each 44pt
+                        // tap target was dead before this (2026-08-01).
+                        .allowsHitTesting(false)
                     Spacer()
                 }
                 .ignoresSafeArea(edges: .top)

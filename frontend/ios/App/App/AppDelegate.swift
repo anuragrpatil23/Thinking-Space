@@ -125,7 +125,11 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
     
     override open func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        
+
+        // WKContentView only exists once the web view has laid out, so this
+        // cannot move up into capacitorDidLoad.
+        installKeyboardAccessoryBar()
+
         // Set up native scroll detection on iPhone/iPad after view appears
         if nativeChromeIdiom && scrollObserver == nil {
             setupScrollDetection()
@@ -222,6 +226,54 @@ class LTMBridgeViewController: CAPBridgeViewController, WKScriptMessageHandler {
 
     func resumeInlineWebView() {
         inlineWebViewPlugin?.resumeWebView()
+    }
+
+    /// Replace UIKit's form accessory bar — the ‹prev› ‹next› ✓ strip meant for
+    /// tabbing between fields in a web form — with our own single Done button.
+    /// In a full-screen editor there is exactly one field, so the arrows are
+    /// dead controls, but the ✓ is not: without something there the keyboard
+    /// has no dismiss affordance at all (2026-08-01).
+    ///
+    /// There is no API for this; the getter lives on the private WKContentView,
+    /// so the override goes on in the ObjC runtime. Same hook @capacitor/keyboard
+    /// uses — done here so we do not take the plugin, whose resize modes would
+    /// fight the visualViewport-based keyboard insets the web layer already
+    /// computes (uiLayoutOrch).
+    private func installKeyboardAccessoryBar() {
+        guard let webView = webView ?? bridge?.webView else { return }
+        guard let contentView = webView.scrollView.subviews.first(where: {
+            String(describing: type(of: $0)).hasPrefix("WKContent")
+        }) else { return }
+
+        let contentClass: AnyClass = type(of: contentView)
+        let selector = #selector(getter: UIResponder.inputAccessoryView)
+        guard let template = class_getInstanceMethod(UIResponder.self, selector) else { return }
+
+        let ourAccessory: @convention(block) (AnyObject) -> UIView? = { _ in
+            LTMKeyboardAccessoryBar.shared
+        }
+        let imp = imp_implementationWithBlock(ourAccessory)
+
+        // Patch WKContentView itself rather than re-classing the instance.
+        // object_setClass on a live WKContentView also cost us the selection
+        // grabbers — WebKit's text-interaction assistant is keyed off that
+        // view, and swapping its class out from under UIKit left selection
+        // with a callout menu but no handles (2026-08-01). class_addMethod is
+        // scoped to WKContentView and changes no identity.
+        if !class_addMethod(contentClass, selector, imp, method_getTypeEncoding(template)) {
+            // Already overridden by WebKit (this is where the form bar comes
+            // from). class_getInstanceMethod now resolves to WKContentView's
+            // own method, so the replacement stays scoped to it — critically
+            // NOT to UIResponder, which every responder in the app inherits.
+            if let existing = class_getInstanceMethod(contentClass, selector) {
+                method_setImplementation(existing, imp)
+            }
+        }
+
+        // The class is patched for the process; reloading the accessory only
+        // matters if a field is already focused, which it is not at first
+        // appearance.
+        contentView.reloadInputViews()
     }
 
     private func configureShellSurface() {
@@ -946,5 +998,68 @@ public class InlineWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDeleg
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
     ) -> Bool {
         return true
+    }
+}
+
+// MARK: - Keyboard accessory bar
+
+/// The one control above the keyboard: a blue ✓ that dismisses it, the way
+/// Notes and Numbers do it. A `UIToolbar` rather than a hand-rolled view so the
+/// material, the hairline, and the height all come from UIKit and track the
+/// system — the point of this being native at all.
+///
+/// One shared instance: only one field is first responder at a time, and the
+/// runtime override that vends it (`installKeyboardAccessoryBar`) has no
+/// per-webview state to carry.
+final class LTMKeyboardAccessoryBar: UIToolbar {
+    static let shared: LTMKeyboardAccessoryBar = {
+        let bar = LTMKeyboardAccessoryBar()
+        bar.configure()
+        return bar
+    }()
+
+    /// Tall enough for the round prominent button UIKit draws for a `.done`
+    /// item: at the toolbar's natural 44 the circle is bigger than its own bar
+    /// and hangs over both edges, half-buried in the keyboard (2026-08-01).
+    /// 56, not 64: the button is ~48pt, and the bar centers it, so every extra
+    /// point of height is two points of gap above the keyboard.
+    private static let barHeight: CGFloat = 56
+
+    private func configure() {
+        barStyle = .default
+        tintColor = .systemBlue
+        // No chrome of its own — the button is a filled circle that reads as a
+        // floating control, and a bar behind it would be a second surface
+        // stacked on the keyboard.
+        isTranslucent = true
+        setBackgroundImage(UIImage(), forToolbarPosition: .any, barMetrics: .default)
+        setShadowImage(UIImage(), forToolbarPosition: .any)
+        backgroundColor = .clear
+
+        let done = UIBarButtonItem(
+            image: UIImage(systemName: "checkmark"),
+            style: .done,
+            target: self,
+            action: #selector(dismissKeyboard)
+        )
+        done.accessibilityLabel = "Dismiss keyboard"
+        items = [
+            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
+            done,
+        ]
+        // Toolbars inset their items by 16pt; the keyboard's own edge keys sit
+        // closer than that, so the button looked indented next to them.
+        insetsLayoutMarginsFromSafeArea = false
+        directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 2)
+
+        // An inputAccessoryView is sized from its frame, not by sizeToFit.
+        frame = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: Self.barHeight)
+        autoresizingMask = .flexibleWidth
+    }
+
+    /// Resign whoever holds first responder — no reference to the web view
+    /// needed, and it stays correct if the focused field ever moves.
+    @objc private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }

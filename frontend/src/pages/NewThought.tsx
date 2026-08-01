@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Loader2, X, Plus, FolderTree, ChevronDown, Save, Star, Tag } from 'lucide-react'
+import { Loader2, X, Plus, FolderTree, ChevronDown, ChevronRight, Save, Star, Tag, MoreHorizontal, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -9,6 +9,7 @@ import {
 } from '@/components/lego_blocks/units/ui/tooltip'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import FolderTreePickerBlock from '@/components/lego_blocks/integrations/FolderTreePickerBlock'
+import DestinationPickerSheetBlock from '@/components/lego_blocks/integrations/DestinationPickerSheetBlock'
 import MoodPickerBlock, { moodDotClassForLabelBlock } from '@/components/lego_blocks/integrations/MoodPickerBlock'
 import NoteTagsPopoverBlock from '@/components/lego_blocks/integrations/NoteTagsPopoverBlock'
 import InfoPanelToggleButtonBlock from '@/components/lego_blocks/units/InfoPanelToggleButtonBlock'
@@ -18,6 +19,8 @@ import BacklogCanvasAnchorBlock from '@/components/lego_blocks/integrations/Back
 import { useNoteComposerOrch } from '@/components/orchestrators/useNoteComposerOrch'
 import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useNativeChromeImmersionBlock } from '@/components/lego_blocks/hooks/shared/useNativeChromeImmersionBlock'
+import { deriveAdaptiveShellStateOrch } from '@/services/orchestrators/uiNavigationOrch'
 import { NOTE_KINDS_BLOCK } from '@/services/lego_blocks/units/noteComposerBlock'
 
 // Settings-panel vocabulary. Kept as constants so every row in the popover is
@@ -56,6 +59,9 @@ function CreateTab() {
   // Phones get a sheet instead of the floating dock — the native bottom chrome
   // already owns that edge (docs/contracts/IOS-NATIVE-CHROME.md).
   const isPhoneSurface = layout.mode === 'phone'
+  // Same derivation the app shell uses, so the settings sheet reserves exactly
+  // the height the bottom dock occupies rather than guessing at it.
+  const shell = deriveAdaptiveShellStateOrch(layout)
   const composer = useNoteComposerOrch()
 
   // Canvas mode has no switch in the UI right now (removed 2026-07-31 at the
@@ -70,6 +76,8 @@ function CreateTab() {
   // stays edge to edge, which is the whole point of the iA layout.
   const [composerPanelOpen, setComposerPanelOpen] = useState(false)
   const [destinationBrowserOpen, setDestinationBrowserOpen] = useState(false)
+  // Phone only: destination is its own sheet, pushed on top of Note settings.
+  const [destinationSheetOpen, setDestinationSheetOpen] = useState(false)
   const [quickDestinationLabel, setQuickDestinationLabel] = useState('')
   // Emotions and tags left the settings panel (2026-07-31). They are not
   // settings like filename or destination — one is an act of reflection, the
@@ -78,6 +86,25 @@ function CreateTab() {
   const [moodPickerOpen, setMoodPickerOpen] = useState(false)
   const [tagsPopoverOpen, setTagsPopoverOpen] = useState(false)
   const [showAiAssist, setShowAiAssist] = useState(false)
+  // Phone only. The bar keeps what you reach for mid-sentence — mood, tags, the
+  // save dot — and everything you go *looking* for (the editor's AI / Mindmap /
+  // Formatting controls, and the metadata panel) moves behind this. Fitting all
+  // seven on a 390px bar was never going to work; the icons kept climbing over
+  // the filename (2026-08-01).
+  const [overflowMenuOpen, setOverflowMenuOpen] = useState(false)
+
+  // Title-bar popovers (mood, tags, metadata) hang off their own button, which
+  // assumes there is room to the left of it. On a phone there is not: the mood
+  // picker is a near-full-width panel anchored to a button three quarters of
+  // the way across the bar, so `right-0` put its whole left half — the search
+  // field, the quadrant labels, every feeling word — off the screen
+  // (2026-08-01). On phone they stop being anchored to the trigger and centre
+  // under the bar instead: dropping `relative` from the wrapper leaves the
+  // title bar itself as the positioning ancestor, and it spans the viewport.
+  const popoverAnchorClass = isPhoneSurface ? undefined : 'relative'
+  const popoverPositionClass = isPhoneSurface
+    ? 'absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2'
+    : 'absolute right-0 top-full z-50 mt-1.5'
 
   const panelTriggerRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
@@ -87,6 +114,8 @@ function CreateTab() {
   const metaPanelRef = useRef<HTMLDivElement | null>(null)
   const moodTriggerRef = useRef<HTMLButtonElement | null>(null)
   const moodPopoverRef = useRef<HTMLDivElement | null>(null)
+  const overflowTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const overflowMenuRef = useRef<HTMLDivElement | null>(null)
   // Portal target for the editor's own AI / Mindmap / formatting buttons, so
   // all chrome sits on the title bar's one line instead of a second strip.
   // State, not a ref: the editor must re-render once the node exists.
@@ -121,7 +150,7 @@ function CreateTab() {
   // Escape is owned by whichever popover has an input to clear first — mood and
   // tags handle their own — so only metadata needs it here.
   useEffect(() => {
-    if (!tagsPopoverOpen && !showMetaPanel && !moodPickerOpen) return
+    if (!tagsPopoverOpen && !showMetaPanel && !moodPickerOpen && !overflowMenuOpen) return
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as Node
       const inside = (
@@ -132,13 +161,18 @@ function CreateTab() {
       const hitTags = inside(tagsPopoverRef, tagsTriggerRef)
       const hitMeta = inside(metaPanelRef, metaTriggerRef)
       const hitMood = inside(moodPopoverRef, moodTriggerRef)
+      const hitOverflow = inside(overflowMenuRef, overflowTriggerRef)
 
       if (!hitTags) setTagsPopoverOpen(false)
       if (!hitMeta) setShowMetaPanel(false)
       if (!hitMood) setMoodPickerOpen(false)
+      if (!hitOverflow) setOverflowMenuOpen(false)
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setShowMetaPanel(false)
+      if (event.key === 'Escape') {
+        setShowMetaPanel(false)
+        setOverflowMenuOpen(false)
+      }
     }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
@@ -146,7 +180,7 @@ function CreateTab() {
       document.removeEventListener('mousedown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [tagsPopoverOpen, showMetaPanel, moodPickerOpen])
+  }, [tagsPopoverOpen, showMetaPanel, moodPickerOpen, overflowMenuOpen])
 
   // Saves whatever the tree currently points at as a labelled chip. The path
   // comes from the composer rather than local state because the inline tree
@@ -249,8 +283,18 @@ function CreateTab() {
   // the button and the room behind it speak the same language.
   const moodDotClass = moodDotClassForLabelBlock(composer.emotions[0])
 
+  // Title-bar tap targets. Desktop keeps the tight `p-1.5` icon button — it is
+  // driven by a cursor, and a 44px button in a 44px bar reads as oversized
+  // furniture. Phone gets the HIG 44pt minimum: these were ~28pt, small enough
+  // that hitting mood instead of tags was routine (2026-08-01). The room comes
+  // from the status-bar strip, which the bar now owns rather than sitting below.
+  const titleBarIconButtonClass = isPhoneSurface
+    ? 'h-11 w-11 justify-center rounded-lg'
+    : 'rounded-md p-1.5'
+  const titleBarIconSizeClass = isPhoneSurface ? 'h-[18px] w-[18px]' : 'h-4 w-4'
+
   const moodButtonBlock = !isTodoMode ? (
-    <div className="relative">
+    <div className={popoverAnchorClass}>
       <TitleBarTipBlock
         label={composer.emotions.length > 0
           ? `Feeling ${composer.emotions.join(', ')}`
@@ -263,13 +307,15 @@ function CreateTab() {
           aria-expanded={moodPickerOpen}
           aria-label="Tag how you feel"
           className={cn(
-            'ltm-motion-fast inline-flex items-center rounded-md p-1.5 transition-colors hover:bg-muted',
+            'ltm-motion-fast inline-flex items-center transition-colors hover:bg-muted',
+            titleBarIconButtonClass,
             moodPickerOpen && 'bg-muted',
           )}
         >
           <span
             className={cn(
-              'ltm-motion-fast h-4 w-4 rounded-full transition-colors',
+              'ltm-motion-fast rounded-full transition-colors',
+              titleBarIconSizeClass,
               // Hollow while unset — a filled grey circle looks like a mood you
               // did not choose rather than a mood you have not chosen.
               moodDotClass ?? 'border-2 border-muted-foreground/50',
@@ -280,12 +326,21 @@ function CreateTab() {
       {moodPickerOpen && (
         <div
           ref={moodPopoverRef}
-          className="ltm-animate-fade-in absolute right-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl border border-border/70 bg-background shadow-2xl"
+          className={cn(
+            'ltm-animate-fade-in overflow-hidden rounded-xl border border-border/70 bg-background shadow-2xl',
+            popoverPositionClass,
+          )}
         >
           <MoodPickerBlock
             selected={composer.emotions}
             onChange={composer.setEmotions}
             onClose={() => setMoodPickerOpen(false)}
+            autoFocusSearch={!isPhoneSurface}
+            // The panel hangs below the title bar, so a viewport-relative cap
+            // overhangs the bottom of the screen by the bar's own height.
+            maxHeightClassName={isPhoneSurface
+              ? 'max-h-[min(38rem,calc(100vh-7rem))]'
+              : undefined}
           />
         </div>
       )}
@@ -293,7 +348,13 @@ function CreateTab() {
   ) : null
 
   const tagsButtonBlock = (
-    <div className="relative">
+    <div className={popoverAnchorClass}>
+      {/* Phone: the trigger moves into the … menu and only the popover stays
+          here, so it keeps hanging off the title bar rather than off a menu row
+          that vanishes when you tap it (same split as metadata below). Losing
+          the button is what buys the filename its centring — a 44pt target on
+          each flank is more than a 390pt bar can spend (2026-08-01). */}
+      {!isPhoneSurface && (
       <TitleBarTipBlock
         label={composer.tags.length > 0 ? composer.tags.join(', ') : 'Add tags'}
       >
@@ -304,18 +365,23 @@ function CreateTab() {
           aria-expanded={tagsPopoverOpen}
           aria-label="Add tags"
           className={cn(
-            'ltm-motion-fast inline-flex items-center rounded-md p-1.5 transition-colors hover:bg-muted hover:text-foreground',
+            'ltm-motion-fast inline-flex items-center transition-colors hover:bg-muted hover:text-foreground',
+            titleBarIconButtonClass,
             composer.tags.length > 0 ? 'text-foreground' : 'text-muted-foreground',
             tagsPopoverOpen && 'bg-muted text-foreground',
           )}
         >
-          <Tag className={cn('h-4 w-4', composer.tags.length > 0 && 'fill-current')} />
+          <Tag className={cn(titleBarIconSizeClass, composer.tags.length > 0 && 'fill-current')} />
         </button>
       </TitleBarTipBlock>
+      )}
       {tagsPopoverOpen && (
         <div
           ref={tagsPopoverRef}
-          className="ltm-animate-fade-in absolute right-0 top-full z-50 mt-1.5 rounded-xl border border-border/70 bg-background shadow-2xl"
+          className={cn(
+            'ltm-animate-fade-in rounded-xl border border-border/70 bg-background shadow-2xl',
+            popoverPositionClass,
+          )}
         >
           <NoteTagsPopoverBlock
             tags={composer.tags}
@@ -330,23 +396,30 @@ function CreateTab() {
   // Counts and the YAML preview, anchored to the (i) button. Read-only, so it
   // dismisses on any outside click without anything to reconcile.
   const metaPanelBlock = (
-    <div className="relative">
-      <TitleBarTipBlock label="Metadata & YAML">
-        {/* Empty `title` so the shared button's native tooltip does not race the
-            themed one. The block is used on other surfaces that have no
-            TooltipProvider, so its default stays the native string. */}
-        <div ref={metaTriggerRef} className="flex">
-          <InfoPanelToggleButtonBlock
-            active={showMetaPanel}
-            onToggle={() => setShowMetaPanel(open => !open)}
-            title=""
-          />
-        </div>
-      </TitleBarTipBlock>
+    <div className={popoverAnchorClass}>
+      {/* On phone the (i) button lives in the … menu instead — only the panel
+          itself renders here, still anchored to the title bar. */}
+      {!isPhoneSurface && (
+        <TitleBarTipBlock label="Metadata & YAML">
+          {/* Empty `title` so the shared button's native tooltip does not race
+              the themed one. The block is used on other surfaces that have no
+              TooltipProvider, so its default stays the native string. */}
+          <div ref={metaTriggerRef} className="flex">
+            <InfoPanelToggleButtonBlock
+              active={showMetaPanel}
+              onToggle={() => setShowMetaPanel(open => !open)}
+              title=""
+            />
+          </div>
+        </TitleBarTipBlock>
+      )}
       {showMetaPanel && (
         <div
           ref={metaPanelRef}
-          className="ltm-animate-fade-in absolute right-0 top-full z-50 mt-1.5 w-[min(24rem,calc(100vw-2rem))] space-y-2 rounded-xl border border-border/70 bg-background p-3 shadow-2xl"
+          className={cn(
+            'ltm-animate-fade-in w-[min(24rem,calc(100vw-2rem))] space-y-2 rounded-xl border border-border/70 bg-background p-3 shadow-2xl',
+            popoverPositionClass,
+          )}
         >
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span><strong className="text-foreground/70">{composer.contentMeta.lines}</strong> lines</span>
@@ -369,6 +442,77 @@ function CreateTab() {
       )}
     </div>
   )
+
+  // The phone's overflow menu. Two things live in it: the editor's own controls
+  // (portalled in, wearing their `'menu'` layout) and the metadata panel's
+  // trigger.
+  //
+  // Rendered always and *hidden* when closed rather than unmounted, because the
+  // portal target has to outlive the menu: the moment `editorControlsSlot` goes
+  // null the editor renders its controls in place instead — which would drop an
+  // AI/Mindmap row into the top of the writing surface every time you dismissed
+  // the menu.
+  const overflowMenuBlock = isPhoneSurface ? (
+    <div
+      ref={overflowMenuRef}
+      className={cn(
+        'absolute right-2 top-full z-50 mt-1.5 w-[min(15rem,calc(100vw-2rem))] rounded-xl border border-border/70 bg-background p-1 shadow-2xl',
+        !overflowMenuOpen && 'hidden',
+      )}
+    >
+      {/* Any control in here acts and dismisses — each one opens a panel that
+          wants the screen the menu is sitting on. */}
+      <div
+        ref={setEditorControlsSlot}
+        className="w-full"
+        onClick={() => setOverflowMenuOpen(false)}
+      />
+      <button
+        type="button"
+        onClick={() => {
+          setTagsPopoverOpen(open => !open)
+          setOverflowMenuOpen(false)
+        }}
+        className={cn(
+          'ltm-motion-fast inline-flex w-full items-center justify-start gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted hover:text-foreground',
+          composer.tags.length > 0 ? 'text-foreground' : 'text-muted-foreground',
+        )}
+      >
+        <Tag className={cn('h-3.5 w-3.5 shrink-0', composer.tags.length > 0 && 'fill-current')} />
+        {/* The count is what the bar's icon could only imply. A menu row has
+            the width to just say it. */}
+        {composer.tags.length > 0 ? `Tags · ${composer.tags.length}` : 'Tags'}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setShowMetaPanel(open => !open)
+          setOverflowMenuOpen(false)
+        }}
+        className="ltm-motion-fast inline-flex w-full items-center justify-start gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <Info className="h-3.5 w-3.5 shrink-0" />
+        Metadata
+      </button>
+    </div>
+  ) : null
+
+  const overflowButtonBlock = isPhoneSurface ? (
+    <button
+      ref={overflowTriggerRef}
+      type="button"
+      onClick={() => setOverflowMenuOpen(open => !open)}
+      aria-expanded={overflowMenuOpen}
+      aria-label="More note controls"
+      className={cn(
+        'ltm-motion-fast inline-flex items-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+        titleBarIconButtonClass,
+        overflowMenuOpen && 'bg-muted text-foreground',
+      )}
+    >
+      <MoreHorizontal className={titleBarIconSizeClass} />
+    </button>
+  ) : null
 
   // Manual mode only. Auto-save is the normal path, and it needs no button.
   const manualSaveButtonBlock = (!composer.autoSaveEnabled || isTodoMode) ? (
@@ -405,6 +549,7 @@ function CreateTab() {
       placeholder={composer.makeThisTodo ? 'One task per line...' : "What's on your mind?"}
       toolbarAlwaysVisible={viewSurface === 'canvas'}
       headerControlsContainer={viewSurface === 'doc' ? editorControlsSlot : null}
+      headerControlsLayout={isPhoneSurface ? 'menu' : 'bar'}
       aiPanelOpen={showAiAssist}
       onAiPanelOpenChange={setShowAiAssist}
       aiAssistScope="new_thought"
@@ -413,6 +558,11 @@ function CreateTab() {
       aiAssistHelperText="Suggestions apply inline. Configure provider/model in AI Settings."
       onRelatedThoughtOpenPath={handleRelatedThoughtOpenPath}
       typographyProfile="focus"
+      // Without this the focus profile keeps its 76ch measure — ~770px of
+      // monospace centered in a 390px viewport, so half of every line hung off
+      // the left edge of the phone (2026-08-01). It also drops the header
+      // controls to glyphs, which is what keeps them off the filename.
+      compactMobile={isPhoneSurface}
       focusKeyboardInsetPx={layout.keyboardInset}
       className={viewSurface === 'canvas'
         ? 'min-h-[520px] rounded-none border-0 border-b border-border/40 md:min-h-[620px]'
@@ -471,11 +621,32 @@ function CreateTab() {
     </div>
   )
 
+  // The sheet is content-sized, so "make it taller" is a question of how much
+  // room each section takes, not of the `max-h` cap — that cap was never being
+  // reached (2026-08-01). Phone sections breathe more and every toggle row is a
+  // 44pt target, which grows the sheet and makes it easier to hit at once.
+  const panelSectionPadClass = isPhoneSurface ? 'px-4 py-5' : 'p-4'
+  const switchSize = isPhoneSurface ? 'touch' : 'default'
+
+  // The floating bottom dock used to sit on top of this sheet — its last two
+  // rows were behind it, unreadable and untappable — so the sheet reserved the
+  // dock's whole height. Now the sheet takes an immersion lease and the dock
+  // goes away while it is open, which is what a modal should do: nothing behind
+  // it is reachable anyway, and the dock was the loudest thing on the screen
+  // competing with it. With the dock gone the reservation would be dead space,
+  // so pad to the safe area only (2026-08-01).
+  useNativeChromeImmersionBlock(isPhoneSurface && composerPanelOpen)
+  const sheetBottomPadPx = Math.max(shell.bottomInset, 12)
+  const panelToggleRowClass = cn(
+    'flex items-center justify-between gap-3',
+    isPhoneSurface && 'min-h-[44px]',
+  )
+
   const noteConfigBlock = (
     <div className="divide-y divide-border/40 text-sm">
       {stickyDestinationBlock}
       {/* --- identity --- */}
-      <div className="space-y-2 p-4">
+      <div className={cn('space-y-2', panelSectionPadClass)}>
         <div className={PANEL_LABEL_CLASS}>{composer.makeThisTodo ? 'Todo date' : 'File name'}</div>
         {composer.makeThisTodo ? (
           <input
@@ -505,12 +676,12 @@ function CreateTab() {
           Ahead of the destination on purpose: it routes to a different
           capability and changes what saving means, so it is the first decision
           about the note, not a switch tucked in with the cosmetic ones. */}
-      <div className="space-y-1.5 p-4">
+      <div className={cn('space-y-1.5', panelSectionPadClass)}>
         <div className={PANEL_LABEL_CLASS}>Note type</div>
         {/* Chips, same as Destination below. The segmented full-width control
             this used to be was the only widget in the panel shaped like that,
             and it stretched four short words across the whole row. */}
-        <div className="flex flex-wrap gap-1.5">
+        <div className={cn('flex flex-wrap', isPhoneSurface ? 'gap-2' : 'gap-1.5')}>
           {NOTE_KINDS_BLOCK.map((kind) => (
             <button
               key={kind.id}
@@ -519,6 +690,10 @@ function CreateTab() {
               className={cn(
                 PANEL_CHIP_CLASS,
                 'px-2.5',
+                // PANEL_CHIP_CLASS is shared with the desktop quick-destination
+                // chips, so the finger-sized version is layered on here rather
+                // than in the constant.
+                isPhoneSurface && 'h-9 px-3.5 text-sm',
                 composer.noteKind === kind.id && PANEL_CHIP_ACTIVE_CLASS,
               )}
             >
@@ -528,8 +703,26 @@ function CreateTab() {
         </div>
       </div>
 
-      {/* --- destination --- */}
-      <div className="space-y-2.5 p-4">
+      {/* --- destination ---
+          Phone gets a disclosure row that pushes the picker sheet; everything
+          below is the desktop layout, which has the width for a tree beside two
+          jump lists and stays as it was. */}
+      {isPhoneSurface ? (
+        <button
+          type="button"
+          onClick={() => setDestinationSheetOpen(true)}
+          className="ltm-motion-fast flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/50"
+        >
+          <div className="min-w-0 flex-1">
+            <div className={PANEL_LABEL_CLASS}>Destination</div>
+            <div className="truncate pt-1 font-mono text-[13px] text-foreground">
+              {composer.destinationPath || 'Choose a folder…'}
+            </div>
+          </div>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+      ) : (
+      <div className={cn('space-y-2.5', panelSectionPadClass)}>
         <div className="flex items-center justify-between gap-2">
           <div className={PANEL_LABEL_CLASS}>Destination</div>
           <button
@@ -640,9 +833,10 @@ function CreateTab() {
           </div>
         )}
       </div>
+      )}
 
       {/* --- options --- */}
-      <div className="space-y-3 p-4">
+      <div className={cn('space-y-3', panelSectionPadClass)}>
         {composer.makeThisTodo ? (
           <p className="text-xs text-muted-foreground">
             Each non-empty line becomes a checklist item — {composer.todoItemCount} detected.
@@ -650,21 +844,22 @@ function CreateTab() {
           </p>
         ) : (
           <>
-            <div className="flex items-center justify-between gap-3">
+            <div className={panelToggleRowClass}>
               <label htmlFor="auto-save" className="cursor-pointer text-sm">Auto-save</label>
               <Switch
                 id="auto-save"
+                size={switchSize}
                 checked={composer.autoSaveEnabled}
                 onCheckedChange={composer.setAutoSaveEnabled}
               />
             </div>
-            <div className="flex items-center justify-between gap-3">
+            <div className={panelToggleRowClass}>
               <label htmlFor="date-header" className="cursor-pointer text-sm">Add date header</label>
-              <Switch id="date-header" checked={composer.dateHeader} onCheckedChange={composer.setDateHeader} />
+              <Switch id="date-header" size={switchSize} checked={composer.dateHeader} onCheckedChange={composer.setDateHeader} />
             </div>
-            <div className="flex items-center justify-between gap-3">
+            <div className={panelToggleRowClass}>
               <label htmlFor="custom-title" className="cursor-pointer text-sm">Use custom title</label>
-              <Switch id="custom-title" checked={composer.useCustomTitle} onCheckedChange={composer.setUseCustomTitle} />
+              <Switch id="custom-title" size={switchSize} checked={composer.useCustomTitle} onCheckedChange={composer.setUseCustomTitle} />
             </div>
             {composer.useCustomTitle && (
               <input
@@ -725,11 +920,30 @@ function CreateTab() {
     // One provider for the whole bar — the popovers anchored inside it (mood,
     // tags, metadata) render within this tree, so their own tooltips inherit it.
     <TooltipProvider delayDuration={200}>
-    <div className="absolute inset-x-0 top-0 z-40 flex h-11 items-center gap-2 bg-card px-2 dark:bg-background">
-      {/* Equal-width flanks keep the filename optically centered. */}
-      <div className="flex-1" />
+    {/* Grid, not flex, for the three zones. Equal `1fr` flanks centre the
+        filename exactly as the old flex spacers did, but an `fr` track is
+        `minmax(auto, 1fr)` — it refuses to shrink below its content, so the
+        control cluster can no longer overflow its share and spill leftward over
+        the filename, which is precisely how the two ended up drawn on top of
+        each other twice (2026-08-01). When the name is too long to centre, the
+        left flank collapses and it slides left rather than colliding.
 
-      <div className="relative flex min-w-0 shrink items-center justify-center">
+        On phone the bar swallows the status-bar strip (`--ltm-safe-top`) rather
+        than starting below it: that strip was painting the grey shell
+        background above the paper, and the page is meant to read as one sheet
+        from the top edge down. Paying for it in padding also buys the height
+        that makes 44pt tap targets fit. */}
+    <div
+      className={cn(
+        'absolute inset-x-0 top-0 z-40 grid grid-cols-[1fr_auto_1fr] items-center gap-1 bg-card px-2 dark:bg-background sm:gap-2',
+        isPhoneSurface
+          ? 'h-[calc(3.5rem+var(--ltm-safe-top))] pt-[var(--ltm-safe-top)]'
+          : 'h-11',
+      )}
+    >
+      <div />
+
+      <div className="relative flex min-w-0 items-center justify-center">
         {/* Names the action, not the path. The path is already on screen twice —
             in the button itself and on the "Saving to" line — so repeating it on
             hover said nothing; what the button *does* was the missing part. */}
@@ -741,17 +955,30 @@ function CreateTab() {
           aria-expanded={composerPanelOpen}
           aria-label="Note settings"
           className={cn(
-            'ltm-motion-fast inline-flex min-w-0 max-w-[min(34rem,62vw)] items-center gap-1.5 rounded-md px-2.5 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+            'ltm-motion-fast inline-flex min-w-0 max-w-[min(34rem,62vw)] items-center gap-1.5 rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+            // Phone: this is the page's title, so it gets title weight and a
+            // tappable row height rather than the desktop bar's quiet 14px
+            // label. `max-w` above still keeps it off the control cluster.
+            isPhoneSurface
+              ? 'h-10 rounded-lg px-2.5 text-[15px] font-medium text-foreground'
+              : 'px-2.5 py-1 text-sm',
             composerPanelOpen && 'bg-muted text-foreground',
           )}
         >
           <span className="flex min-w-0 items-baseline">
-            {identityDir && <span className="truncate opacity-50">{identityDir}</span>}
+            {/* The folder only comes along on desktop. Sharing ~170pt with the
+                filename, it truncated to `lifeblood_systems/…` — enough to
+                identify nothing — and pushed the filename itself down to
+                `2026…` (2026-08-01). One legible name beats two illegible
+                ones, and the full path is a tap away on the "Saving to" line. */}
+            {identityDir && !isPhoneSurface && <span className="truncate opacity-50">{identityDir}</span>}
+            {/* The folder gives way, the filename never does. */}
             <span className="shrink-0">{identityLeaf}</span>
           </span>
           <ChevronDown
             className={cn(
-              'h-3.5 w-3.5 shrink-0 opacity-50 transition-transform',
+              'shrink-0 opacity-50 transition-transform',
+              isPhoneSurface ? 'h-4 w-4' : 'h-3.5 w-3.5',
               composerPanelOpen && 'rotate-180',
             )}
           />
@@ -784,14 +1011,36 @@ function CreateTab() {
         )}
       </div>
 
-      <div className="flex flex-1 items-center justify-end gap-0.5">
-        <div ref={setEditorControlsSlot} className="flex items-center" />
+      {/* Emphatically NOT `min-w-0`. These are fixed-size icons with nothing to
+          truncate, so letting the cluster shrink below its content just made it
+          overflow — and an overflowing `justify-end` row spills to the *left*,
+          which is how the icons ended up painted on top of the filename
+          (2026-08-01). Its automatic minimum size is the icons' width, so the
+          filename beside it is the thing that gives way, which is correct: the
+          filename can truncate and an icon cannot. */}
+      <div
+        className={cn(
+          'flex items-center justify-self-end gap-0.5',
+          // Grid flanks share free space evenly, so the centered filename only
+          // stays put while both flanks are the same width — and this one is
+          // not a constant: the save badge and the manual-save button come and
+          // go, and the filename visibly slid every time (2026-08-01). Pin the
+          // column to the cluster's full width so its contents change inside a
+          // fixed frame.
+          isPhoneSurface && 'min-w-[7rem]',
+        )}
+      >
+        {/* Desktop keeps the editor's controls inline on the bar; on phone they
+            are portalled into the … menu, whose slot lives there instead. */}
+        {!isPhoneSurface && <div ref={setEditorControlsSlot} className="flex items-center" />}
         {moodButtonBlock}
         {tagsButtonBlock}
         {saveStateBadgeBlock}
         {manualSaveButtonBlock}
         {metaPanelBlock}
+        {overflowButtonBlock}
       </div>
+      {overflowMenuBlock}
     </div>
     </TooltipProvider>
   )
@@ -807,8 +1056,14 @@ function CreateTab() {
         onClick={() => setComposerPanelOpen(false)}
       />
       <div
-        className="fixed inset-x-0 bottom-0 z-50 max-h-[75vh] overflow-auto rounded-t-2xl border-t border-border bg-background shadow-2xl"
-        style={{ paddingBottom: 'var(--safe-area-inset-bottom, 0px)' }}
+        // 85vh, not 75: at 75 the roomier sections below would have started
+        // scrolling a sheet that has only six rows in it, which reads as the
+        // panel being cut off rather than as a scroll region (2026-08-01).
+        // 28px top radius, not 16: iOS sheets present with a corner large
+        // enough to read as a card lifting off the screen, and at 16 against a
+        // full-width sheet it just looked like a slightly soft edge.
+        className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-auto rounded-t-[28px] border-t border-border bg-background shadow-2xl"
+        style={{ paddingBottom: `${sheetBottomPadPx}px` }}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border/60 bg-background px-4 py-3">
           <span className="text-sm font-medium">Note settings</span>
@@ -824,6 +1079,27 @@ function CreateTab() {
         {noteConfigBlock}
       </div>
     </>
+  ) : null
+
+  // Pushed on top of the settings sheet, so Cancel returns there rather than
+  // dismissing the stack. Gated on `composerPanelOpen` too: the only way in is
+  // through that sheet, and leaving it mounted after the parent closed would
+  // strand a full-screen surface with nothing behind it.
+  const destinationSheetBlock = (isPhoneSurface && composerPanelOpen && destinationSheetOpen) ? (
+    <DestinationPickerSheetBlock
+      value={composer.destinationPath}
+      onChange={composer.applyDestinationPath}
+      onClose={() => setDestinationSheetOpen(false)}
+      quickDestinations={composer.quickDestinations}
+      mostUsedDestinations={composer.mostUsedDestinations}
+      recentDestinations={composer.recentDestinations}
+      onDeleteQuickDestination={composer.deleteQuickDestination}
+      onAddQuickDestination={(label, segments) => composer.addQuickDestination(label, segments)}
+      // Same dock reservation the settings sheet makes, plus the keyboard the
+      // search field summons — it is pinned to the bottom edge, so it is the
+      // one control that has to move out of the keyboard's way itself.
+      bottomInsetPx={Math.max(sheetBottomPadPx, layout.keyboardInset)}
+    />
   ) : null
 
   const statusMessagesBlock = (composer.message || composer.error) ? (
@@ -852,7 +1128,9 @@ function CreateTab() {
   )
 
   return (
-    <div className="ltm-newthought-shell flex h-full min-h-0 w-full">
+    // `ltm-page-flush-top`: this page paints its own status-bar strip (the
+    // title bar's top padding), so the shell must not reserve one above it.
+    <div className="ltm-newthought-shell ltm-page-flush-top flex h-full min-h-0 w-full">
       <div className="relative min-w-0 flex-1 overflow-hidden">
         {titleBarBlock}
         {viewSurface === 'canvas' ? (
@@ -904,7 +1182,15 @@ function CreateTab() {
           // Doc mode: the editor owns the whole area. Config floats over it
           // (desktop pill) or arrives as a sheet (phone) — never a docked
           // slab, so the writing surface runs edge to edge.
-          <div className="absolute inset-0 flex min-h-0 flex-col pt-11">
+          //
+          // The top padding clears the title bar, whose phone height includes
+          // the status-bar strip it now owns. Keep the two in step.
+          <div
+            className={cn(
+              'absolute inset-0 flex min-h-0 flex-col',
+              isPhoneSurface ? 'pt-[calc(3.5rem+var(--ltm-safe-top))]' : 'pt-11',
+            )}
+          >
             {statusMessagesBlock && (
               <div className="shrink-0 px-4 pb-2">{statusMessagesBlock}</div>
             )}
@@ -912,6 +1198,7 @@ function CreateTab() {
               {editorSurfaceBlock}
             </div>
             {composerSheetBlock}
+            {destinationSheetBlock}
           </div>
         )}
       </div>

@@ -1247,6 +1247,30 @@
          against the status-bar line reads as a layout bug, not a design. */
       padding-top: calc(var(--ltm-safe-top) + 0.5rem);
     }
+
+    /* Pages that paint their own status-bar strip opt out of the shell's.
+       New Note is one sheet of paper from the top edge down — the reserved
+       inset above it showed as a grey band between the clock and the title
+       bar (2026-08-01), because the strip inherits the shell background while
+       the page below it is card-white. The page's own title bar carries
+       `--ltm-safe-top` as padding instead, so the strip is paper. Distinct
+       from `ltm-page-edge-bleed`, which also drops the stage's side/bottom
+       insets — this one touches nothing but the top. Declared after the rule
+       above so it wins on equal specificity. */
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-app-main:has(.ltm-page-flush-top) {
+      padding-top: 0;
+    }
+
+    /* Same argument at the bottom edge. When the keyboard opens App.tsx pads
+       the stage by the keyboard inset, which shrinks the card-white page and
+       leaves a band of shell grey between the page and the keyboard
+       (2026-08-01). A full-bleed editor should run under the keyboard; the
+       editor pads its own content with `--ltm-focus-keyboard-inset`, so
+       nothing is buried. `!important` because that padding is an inline
+       style — the one place in this file where a CSS rule has to outrank one. */
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-app-main:has(.ltm-page-flush-top) {
+      padding-bottom: 0 !important;
+    }
   }
 
   /* iPad under native chrome: the web top bar is gone and the native

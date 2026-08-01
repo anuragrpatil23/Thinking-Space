@@ -1,4 +1,4 @@
-import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import CodeMirror from '@uiw/react-codemirror'
 import { redo, undo } from '@codemirror/commands'
@@ -58,6 +58,7 @@ import { createMarkdownInlineImageExtensionBlock } from '@/components/lego_block
 import { createMarkdownSyntaxHidingExtensionBlock } from '@/components/lego_blocks/units/markdownSyntaxHidingExtensionBlock'
 import {
   createFocusTypographyThemeBlock,
+  FOCUS_KEYBOARD_INSET_VAR_BLOCK,
   type EditorTypographyProfileBlock,
 } from '@/components/lego_blocks/units/iaTypographyProfileBlock'
 import { createMarkdownTaskCheckboxExtensionBlock } from '@/components/lego_blocks/units/markdownTaskCheckboxExtensionBlock'
@@ -93,6 +94,11 @@ interface MarkdownRichEditorBlockProps {
    *  the given element instead — so a host with its own title bar (New Note)
    *  can gather all chrome on one line without forking this component. */
   headerControlsContainer?: HTMLElement | null
+  /** How the AI / Mindmap / formatting controls lay themselves out. `'bar'` is
+   *  the icon row that sits in a title bar. `'menu'` makes them labelled
+   *  full-width rows for an overflow menu — which is where a phone puts them,
+   *  since a 390px bar cannot hold them next to a filename. */
+  headerControlsLayout?: 'bar' | 'menu'
   /** Rendered-text snippets around a view-mode click; used to place the caret
    *  at the clicked spot when the editor mounts (best-effort text search). */
   initialCursorHint?: { before: string; after: string } | null
@@ -142,7 +148,9 @@ interface MarkdownRichEditorBlockProps {
    *  instance on purpose so New Note can differ from the explorer. */
   typographyProfile?: EditorTypographyProfileBlock
   /** Focus profile only: bottom padding reserved for the on-screen keyboard,
-   *  so the caret never sits under it on iOS. */
+   *  so the caret never sits under it on iOS. Applied as a CSS variable on the
+   *  editor root, never as part of the CM6 extension set — see
+   *  `FOCUS_KEYBOARD_INSET_VAR_BLOCK`. */
   focusKeyboardInsetPx?: number
 }
 
@@ -493,6 +501,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   compactMobile = false,
   toolbarAlwaysVisible = false,
   headerControlsContainer = null,
+  headerControlsLayout = 'bar',
   initialCursorHint = null,
   onOpenWikilink,
   enableFormattingToolbar = true,
@@ -936,6 +945,17 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         : {}),
       '.cm-content': {
         minHeight: '100%',
+        // iPhone runs without `drawSelection` so iOS can own the selection, and
+        // the tuned `.cm-cursor` goes with it — that caret is a div CM6 draws.
+        // The native caret takes the same colour here; its width and blink are
+        // UIKit's, and the glide is not recoverable this way (2026-08-01).
+        // Gated on the same flag as `drawSelection`, not on `compactMobile`:
+        // where drawSelection is on it sets `caret-color: transparent` to hide
+        // the native caret behind its own, and re-colouring it there would
+        // paint two.
+        ...(isIphoneRuntime
+          ? { caretColor: 'var(--ltm-explorer-selected-color, hsl(var(--primary)))' }
+          : {}),
         // Padding too — the focus profile's measure only reads right with its
         // own generous top/bottom, and this rule was silently winning.
         ...(focusProfile ? {} : {
@@ -1084,10 +1104,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
     // Focus profile layers *after* uiTheme so its measure/font/padding win,
     // while everything uiTheme sets that the profile doesn't touch survives.
     const focusTheme = focusProfile
-      ? [createFocusTypographyThemeBlock({
-          compact: compactMobile,
-          keyboardInsetPx: focusKeyboardInsetPx,
-        })]
+      ? [createFocusTypographyThemeBlock({ compact: compactMobile })]
       : []
 
     const nextExtensions: Extension[] = [
@@ -1178,7 +1195,14 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
       ...focusTheme,
     ]
     return nextExtensions
-  }, [compactMobile, editorLanguage, proseEditing, focusProfile, focusKeyboardInsetPx, inlineDiffDecorations, inlineDiffRender, placeholder])
+    // `focusKeyboardInsetPx` is deliberately NOT a dependency: every identity
+    // change here costs a full `StateEffect.reconfigure` (react-codemirror
+    // reconfigures whenever the extension array changes), which recompiles
+    // every theme in the set and mounts another `<style>` element. The
+    // keyboard inset moves several times per keyboard animation, so wiring it
+    // in here stalled the first tap and leaked stylesheets for the rest of the
+    // session. It rides `FOCUS_KEYBOARD_INSET_VAR_BLOCK` on the root instead.
+  }, [compactMobile, editorLanguage, isIphoneRuntime, proseEditing, focusProfile, inlineDiffDecorations, inlineDiffRender, placeholder])
 
   const applyPatch = (patchFactory: (text: string, from: number, to: number) => { value: string; start: number; end: number }) => {
     const view = editorViewRef.current
@@ -1257,11 +1281,23 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   // Header controls (AI / Mindmap / formatting toggle). Rendered in place by
   // default; portalled into the host's own bar when `headerControlsContainer`
   // is given, which is how New Note gets everything on one line.
+  //
+  // Two shapes. `'bar'` is the icon row. `'menu'` is labelled full-width rows,
+  // for the phone's overflow menu: a 390px title bar cannot hold three controls
+  // next to a filename and the mood/tag buttons — squeezing them in is what
+  // made the icons overlap the filename (2026-08-01) — so on phone they move
+  // behind `…` and get their names back, since a menu has room to say them.
+  const headerControlsMenuLayout = headerControlsLayout === 'menu'
+  const headerControlRowClass = headerControlsMenuLayout
+    ? 'w-full justify-start gap-2.5 rounded-lg px-3 py-2 text-sm font-medium'
+    : 'gap-1 rounded-md px-1.5 py-1 text-xs font-semibold'
   const headerControlsBlock = (enableFormattingToolbar && !toolbarAlwaysVisible) ? (
     <div
       className={cn(
-        'flex items-center justify-end gap-1',
-        !headerControlsContainer && 'px-2 pt-1.5',
+        headerControlsMenuLayout
+          ? 'flex w-full flex-col gap-0.5'
+          : 'flex items-center justify-end gap-1',
+        !headerControlsContainer && !headerControlsMenuLayout && 'px-2 pt-1.5',
       )}
     >
           {enableAiAssist && !showToolbar && (
@@ -1269,13 +1305,15 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
               type="button"
               onClick={toggleAiPanel}
               className={cn(
-                'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground',
+                'inline-flex items-center text-muted-foreground hover:bg-muted hover:text-foreground',
+                headerControlRowClass,
                 aiPanelOpen && 'bg-muted text-foreground',
               )}
               title={aiPanelOpen ? 'Hide AI tools' : 'Show AI tools'}
+              aria-label={aiPanelOpen ? 'Hide AI tools' : 'Show AI tools'}
             >
-              <Sparkles className="h-3.5 w-3.5" />
-              AI
+              <Sparkles className="h-3.5 w-3.5 shrink-0" />
+              {(headerControlsMenuLayout || !compactMobile) && 'AI'}
             </button>
           )}
           {supportsMindmap && !showToolbar && (
@@ -1283,20 +1321,25 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
               type="button"
               onClick={toggleMindmapPanel}
               className={cn(
-                'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground',
+                'inline-flex items-center text-muted-foreground hover:bg-muted hover:text-foreground',
+                headerControlRowClass,
                 mindmapPanelOpen && 'bg-muted text-foreground',
               )}
               title={mindmapPanelOpen ? 'Hide mindmap tools' : 'Show mindmap tools'}
+              aria-label={mindmapPanelOpen ? 'Hide mindmap tools' : 'Show mindmap tools'}
             >
-              <Workflow className="h-3.5 w-3.5" />
-              Mindmap
+              <Workflow className="h-3.5 w-3.5 shrink-0" />
+              {(headerControlsMenuLayout || !compactMobile) && 'Mindmap'}
             </button>
           )}
           <button
             type="button"
             onClick={() => setToolbarOpen(prev => !prev)}
             className={cn(
-              'rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground',
+              'text-muted-foreground hover:bg-muted hover:text-foreground',
+              headerControlsMenuLayout
+                ? cn('inline-flex items-center', headerControlRowClass)
+                : 'rounded-md p-1.5',
               toolbarOpen && 'bg-muted text-foreground',
             )}
             title={toolbarOpen ? 'Hide formatting' : 'Show formatting'}
@@ -1304,13 +1347,19 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
             {/* Text-lines glyph, not a pencil: this opens *formatting*, and a
                 pencil reads as "edit" — which is already the mode you're in.
                 Mirrors iA Writer's format control. */}
-            <AlignLeft className="h-4 w-4" />
+            <AlignLeft className={headerControlsMenuLayout ? 'h-3.5 w-3.5 shrink-0' : 'h-4 w-4'} />
+            {headerControlsMenuLayout && 'Formatting'}
           </button>
     </div>
   ) : null
 
   return (
-    <div className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col', editorCanvasClassName, className)}>
+    <div
+      className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col', editorCanvasClassName, className)}
+      style={focusProfile
+        ? { [FOCUS_KEYBOARD_INSET_VAR_BLOCK]: `${Math.max(0, Math.round(focusKeyboardInsetPx))}px` } as CSSProperties
+        : undefined}
+    >
       {headerControlsBlock && (
         headerControlsContainer
           ? createPortal(headerControlsBlock, headerControlsContainer)
@@ -1627,6 +1676,13 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
             highlightActiveLineGutter: false,
             foldGutter: !isIphoneRuntime && !proseEditing,
             dropCursor: false,
+            // iPhone keeps the *native* selection. `drawSelection` replaces it
+            // with CM6's own div layer and makes `::selection` transparent, and
+            // iOS hangs its grabbers off the real selection — so with it on you
+            // get a highlight you cannot adjust, no handles, no loupe, and
+            // rectangles that overhang the text (2026-08-01). Desktop keeps it:
+            // it is what draws multiple ranges and the styled caret.
+            drawSelection: !isIphoneRuntime,
             allowMultipleSelections: true,
             indentOnInput: true,
             bracketMatching: true,
