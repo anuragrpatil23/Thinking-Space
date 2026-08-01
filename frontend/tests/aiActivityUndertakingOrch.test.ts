@@ -768,6 +768,22 @@ describe('getUndertakingIndexOrch', () => {
     expect(stripB[9].chains).toBe(1)
   })
 
+  it('orders rows within a section by most recently worked, with never-worked last', async () => {
+    seedSection('F9', 'sec-a', 'Company Studies', 1)
+    // Seeded deliberately out of order, and with sortOrder that would disagree,
+    // so a pass-through of insertion or sort_order would fail this.
+    seedRecord(makeRecord({ key: 'u-old', section: 'sec-a', sortOrder: 1, chains: ['c-old'] }))
+    seedRecord(makeRecord({ key: 'u-never', section: 'sec-a', sortOrder: 2, chains: [] }))
+    seedRecord(makeRecord({ key: 'u-recent', section: 'sec-a', sortOrder: 3, chains: ['c-recent'] }))
+    seedChain(makeChain({ chainKey: 'c-old', date: '2026-06-01', durationMs: 60_000, activeDurationMs: 60_000, startedIso: '2026-06-01T10:00:00.000Z' }))
+    seedChain(makeChain({ chainKey: 'c-recent', date: '2026-06-30', durationMs: 60_000, activeDurationMs: 60_000, startedIso: '2026-06-30T10:00:00.000Z' }))
+
+    const { getUndertakingIndexOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const index = await getUndertakingIndexOrch('F9')
+
+    expect(index.sections[0].rows.map(r => r.record.key)).toEqual(['u-recent', 'u-old', 'u-never'])
+  })
+
   it('keeps an undertaking whose section the project does not declare, under Unfiled', async () => {
     seedSection('F9', 'sec-a', 'Company Studies', 1)
     seedRecord(makeRecord({ key: 'u-a', section: 'sec-a', chains: [] }))

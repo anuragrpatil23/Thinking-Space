@@ -521,6 +521,23 @@ export async function getUndertakingIndexOrch(
     rowsBySection.set(key, bucket)
   }
 
+  // Most recently worked first, within each section. `lastDate` is `YYYY-MM-DD`
+  // so it sorts lexically; undertakings with no recorded work (no lastDate) fall
+  // to the bottom rather than sorting as the empty string at the top. Ties break
+  // on title so the order is stable between loads.
+  for (const rows of rowsBySection.values()) {
+    rows.sort((a, b) => {
+      const aDate = a.tail.lastDate || ''
+      const bDate = b.tail.lastDate || ''
+      if (aDate !== bDate) {
+        if (!aDate) return 1
+        if (!bDate) return -1
+        return bDate.localeCompare(aDate)
+      }
+      return (a.record.title || '').localeCompare(b.record.title || '')
+    })
+  }
+
   const ordered: UndertakingIndexSection[] = []
   for (const section of sections) {
     const rows = rowsBySection.get(section.key)

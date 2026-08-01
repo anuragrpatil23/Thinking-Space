@@ -36,6 +36,9 @@ interface Props {
   rightSlot?: ReactNode
   /** Reconciliation sublines (◆→ notes) rendered under the row. */
   subRows?: ReactNode
+  /** The row is open — it heads an expanded panel, so it joins that panel's
+   *  plane instead of sitting on the closed-row surface. */
+  active?: boolean
   onClick?: () => void
 }
 
@@ -55,6 +58,7 @@ export default function OrganizerRowShellBlock({
   tags,
   rightSlot,
   subRows,
+  active = false,
   onClick,
 }: Props) {
   const { border } = organizerSectionColorBlock(colorIndex)
@@ -79,7 +83,12 @@ export default function OrganizerRowShellBlock({
         className={cn(
           'flex min-h-[2.25rem] items-center gap-2 border-l-[3px] px-3 py-1.5 transition-colors',
           border,
-          interactive && 'cursor-pointer hover:bg-zinc-50 focus:outline-none focus-visible:bg-zinc-50 dark:hover:bg-zinc-800/60 dark:focus-visible:bg-zinc-800/60',
+          interactive && 'cursor-pointer focus:outline-none',
+          // An open row shares the peek's surface, so header and panel read as
+          // one raised block; a closed row keeps the plain hover.
+          active
+            ? 'bg-black/[0.035] shadow-[inset_0_1px_0_rgba(0,0,0,0.06)] dark:bg-white/[0.035] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
+            : interactive && 'hover:bg-zinc-50 focus-visible:bg-zinc-50 dark:hover:bg-zinc-800/60 dark:focus-visible:bg-zinc-800/60',
         )}
       >
         {/* Ordinal — fixed-width so single- and double-digit numbers don't shift

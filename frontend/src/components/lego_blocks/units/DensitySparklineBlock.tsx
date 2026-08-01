@@ -51,18 +51,22 @@ export default function DensitySparklineBlock({
       aria-label={title}
     >
       <title>{title}</title>
-      {max === 0 ? (
-        // The signal that exists nowhere else: written down, never worked on.
-        <line
-          x1={0}
-          y1={height - 0.5}
-          x2={width}
-          y2={height - 0.5}
-          stroke="currentColor"
-          strokeWidth={1}
-          className="text-foreground/15"
-        />
-      ) : (
+      {/* The baseline is always drawn, never only in the all-zero case. It is
+          what makes the strip read as a strip: an undertaking worked on a single
+          day is one bar among 23 empty buckets, and without a rule under it that
+          lone bar looks like a stray tick rather than a spike in a window. The
+          all-zero strip — written down, never worked on — is then just this line
+          with nothing on it, which is the signal it always was. */}
+      <line
+        x1={0}
+        y1={height - 0.5}
+        x2={width}
+        y2={height - 0.5}
+        stroke="currentColor"
+        strokeWidth={1}
+        className="text-foreground/15"
+      />
+      {max > 0 && (
         buckets.map((b, i) => {
           const h = b.activeDurationMs === 0 ? 0 : Math.max(1, (b.activeDurationMs / max) * height)
           return (

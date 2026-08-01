@@ -78,15 +78,23 @@ export default function UndertakingIndexRowBlock({
       }
       title={record.title || record.head || '(untitled undertaking)'}
       tags={[...record.tags, ...record.proposedTags]}
+      active={expanded}
       onClick={onToggle}
       rightSlot={
         <>
           <DensitySparklineBlock buckets={buckets} />
+          {/* The strip says *when* the work happened; this says *how much*. It
+              used to be the file-pointer count, which is 0 for almost every
+              undertaking — a column of identical placeholder dots that never
+              told you anything. Pointer count survives in the tooltip. */}
           <span
-            className="w-6 text-right text-xs tabular-nums text-muted-foreground/60"
-            title={`${pointerCount} file pointer${pointerCount === 1 ? '' : 's'}`}
+            className="w-14 text-right text-xs tabular-nums text-muted-foreground/70"
+            title={
+              `${humanDuration(tail.activeDurationMs)} of active work · ` +
+              `${pointerCount} file pointer${pointerCount === 1 ? '' : 's'}`
+            }
           >
-            {pointerCount > 0 ? pointerCount : '·'}
+            {tail.activeDurationMs > 0 ? humanDuration(tail.activeDurationMs) : '—'}
           </span>
         </>
       }
@@ -119,6 +127,16 @@ export default function UndertakingIndexRowBlock({
 
 const DOT = <span className="text-muted-foreground/30" aria-hidden>·</span>
 
+// The peek's whole type scale — three steps, and every size in the panel comes
+// from one of them. It previously ran eight sizes between 10px and 13px, which
+// is too fine a gradient to read as hierarchy: it just looked imprecise.
+/** Eyebrow — the label column. */
+const PEEK_EYEBROW = 'text-[10px] font-medium uppercase tracking-[0.12em]'
+/** Body — anything you actually read: the head, link titles, session titles. */
+const PEEK_BODY = 'text-[13px]'
+/** Meta — counts, dates, durations, empty states. */
+const PEEK_META = 'text-[11px]'
+
 function PeekPanel({
   row,
   projectId,
@@ -143,20 +161,35 @@ function PeekPanel({
   const chains = view?.chains ?? []
 
   return (
-    <div className={cn('ltm-animate-peek-in border-l-[3px] bg-muted/20 dark:bg-white/[0.015]', border)}>
-      <div className="ml-[2.25rem] mr-4 space-y-3 py-3">
+    // The open row has to read as a different plane from the closed rows around
+    // it, not a slightly tinted continuation of them. Three things do that: a
+    // recessed surface, an inset hairline at the top edge so the panel looks
+    // pressed into the list, and the section's colour spine continuing down.
+    <div
+      className={cn(
+        'ltm-animate-peek-in border-l-[3px] bg-black/[0.035] dark:bg-white/[0.035]',
+        'shadow-[inset_0_1px_0_rgba(0,0,0,0.06),inset_0_-1px_0_rgba(0,0,0,0.06)]',
+        'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_-1px_0_rgba(255,255,255,0.06)]',
+        border,
+      )}
+    >
+      <div className="ml-[2.25rem] mr-4 space-y-3 py-4">
         {hasHeadPreview && (
-          <p className="text-[13px] leading-relaxed text-foreground/85">{record.head}</p>
+          <PeekRow label="Head">
+            <p className={cn(PEEK_BODY, 'leading-relaxed text-foreground/85')}>{record.head}</p>
+          </PeekRow>
         )}
 
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] tabular-nums text-muted-foreground/70">
-          <span>{tail.chainCount} session{tail.chainCount === 1 ? '' : 's'}</span>
-          {DOT}
-          <span>{humanDuration(tail.activeDurationMs)} active</span>
-          {DOT}
-          <span>{tail.dayCount} day{tail.dayCount === 1 ? '' : 's'}</span>
-          {tail.firstDate && (<>{DOT}<span>{tail.firstDate} → {tail.lastDate}</span></>)}
-        </div>
+        <PeekRow label="Trail">
+          <div className={cn(PEEK_META, 'flex flex-wrap items-center gap-x-2 gap-y-0.5 tabular-nums')}>
+            <span>{tail.chainCount} session{tail.chainCount === 1 ? '' : 's'}</span>
+            {DOT}
+            <span>{humanDuration(tail.activeDurationMs)} active</span>
+            {DOT}
+            <span>{tail.dayCount} day{tail.dayCount === 1 ? '' : 's'}</span>
+            {tail.firstDate && (<>{DOT}<span>{tail.firstDate} → {tail.lastDate}</span></>)}
+          </div>
+        </PeekRow>
 
         {(linked.parents.length > 0 || linked.children.length > 0 || answered.length > 0) && (
           <div className="space-y-2">
@@ -168,18 +201,18 @@ function PeekPanel({
 
         <PeekRow label="Sessions">
           {loading && chains.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground/45">Loading…</p>
+            <p className={cn(PEEK_META, 'text-muted-foreground/45')}>Loading…</p>
           ) : chains.length === 0 ? (
-            <p className="text-[11px] italic text-muted-foreground/40">None filed yet.</p>
+            <p className={cn(PEEK_META, 'italic text-muted-foreground/40')}>None filed yet.</p>
           ) : (
             <ul className="space-y-1">
               {chains.map(chain => (
-                <li key={chain.chainKey} className="flex items-baseline gap-2 text-[12px]">
-                  <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/45">{chain.date}</span>
+                <li key={chain.chainKey} className={cn(PEEK_BODY, 'flex items-baseline gap-2')}>
+                  <span className={cn(PEEK_META, 'shrink-0 font-mono tabular-nums text-muted-foreground/45')}>{chain.date}</span>
                   <span className="min-w-0 flex-1 truncate text-foreground/75" title={chain.title}>
                     {chain.title || '(untitled session)'}
                   </span>
-                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/45">
+                  <span className={cn(PEEK_META, 'shrink-0 tabular-nums text-muted-foreground/45')}>
                     {humanDuration(chain.activeDurationMs > 0 ? chain.activeDurationMs : chain.durationMs)}
                   </span>
                 </li>
@@ -188,17 +221,20 @@ function PeekPanel({
           )}
         </PeekRow>
 
+        {/* The footer action rides the content column rather than a PeekRow with
+            an empty label — an eyebrow slot with nothing in it still reserved its
+            width, which read as an unexplained indent. */}
         {onOpenDrawer && (
-          <PeekRow label="">
+          <div className="pl-[calc(4.25rem+0.75rem)]">
             <button
               type="button"
               onClick={() => onOpenDrawer(record.key)}
-              className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground/65 transition-colors hover:text-foreground"
+              className={cn(PEEK_BODY, 'inline-flex items-center gap-1 font-medium text-foreground/65 transition-colors hover:text-foreground')}
             >
               Open details
               <ArrowUpRight className="h-3 w-3" />
             </button>
-          </PeekRow>
+          </div>
         )}
       </div>
     </div>
@@ -211,7 +247,7 @@ function PeekPanel({
 function PeekRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex gap-3">
-      <span className="w-[4.25rem] shrink-0 select-none pt-[2px] text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/45">
+      <span className={cn(PEEK_EYEBROW, 'w-[4.25rem] shrink-0 select-none pt-[2px] text-muted-foreground/45')}>
         {label}
       </span>
       <div className="min-w-0 flex-1">{children}</div>
@@ -241,7 +277,8 @@ function LinkGroup({
               onClick={() => onOpen?.(ref.key)}
               disabled={!onOpen}
               className={cn(
-                'block max-w-full truncate text-left text-[12px] underline-offset-2 hover:underline disabled:no-underline',
+                PEEK_BODY,
+                'block max-w-full truncate text-left underline-offset-2 hover:underline disabled:no-underline',
                 muted ? 'text-muted-foreground/70 hover:text-muted-foreground' : 'text-foreground/80 hover:text-foreground',
               )}
               title={`${ref.key} — ${ref.title}`}
