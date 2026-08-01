@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   parseProjectRegistryMarkdownBlock,
+  projectLabelBlock,
   projectAliasesFromProjectsBlock,
   projectRegistryFromProjectsBlock,
   resolveProjectByAliasBlock,
   resolveProjectByCwdBlock,
+  setCachedProjectNamesBlock,
 } from '@/services/lego_blocks/units/projectRegistryBlock'
 
 const VAULT = '/Users/x/Vault'
@@ -153,5 +155,21 @@ describe('resolveProjectByCwdBlock', () => {
       '',
     )
     expect(resolveProjectByCwdBlock('a/b/c/d', nested)).toBe('inner')
+  })
+})
+
+describe('project labels', () => {
+  afterEach(() => setCachedProjectNamesBlock({}))
+
+  it('renders the display name while the key stays the address', () => {
+    // A rename must not move `ai-activity/chains/F9/` or split the project's
+    // history: grouping, colors, and every on-disk path stay on the key.
+    setCachedProjectNamesBlock({ F9: 'Acceleration Core' })
+    expect(projectLabelBlock('F9')).toBe('Acceleration Core')
+  })
+
+  it('falls back to the key when a project has no name', () => {
+    setCachedProjectNamesBlock({ F9: 'Acceleration Core' })
+    expect(projectLabelBlock('thinkingspace.ai')).toBe('thinkingspace.ai')
   })
 })

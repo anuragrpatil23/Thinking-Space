@@ -7,6 +7,7 @@ import {
   projectRegistryFromProjectsBlock,
   setCachedProjectAliasesBlock,
   setCachedProjectColorsBlock,
+  setCachedProjectNamesBlock,
   setCachedProjectRegistryBlock,
 } from '@/services/lego_blocks/units/projectRegistryBlock'
 
@@ -46,6 +47,15 @@ export async function loadProjectRegistryBlock(): Promise<void> {
     setCachedProjectColorsBlock(
       Object.fromEntries(
         projects.filter(p => p.key && p.color).map(p => [p.key, p.color]),
+      ),
+    )
+    // Names are labels only. A rename must never move a chain directory or
+    // split a project's history, so nothing but rendered text reads these.
+    setCachedProjectNamesBlock(
+      Object.fromEntries(
+        projects
+          .filter(p => p.key && p.name.trim() && p.name.trim() !== p.key)
+          .map(p => [p.key, p.name.trim()]),
       ),
     )
     // Only fall back when the defined projects contribute *no* roots at all.

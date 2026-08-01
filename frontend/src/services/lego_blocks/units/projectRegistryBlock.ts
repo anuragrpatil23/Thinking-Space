@@ -158,6 +158,7 @@ export function resolveProjectByAliasBlock(
 let _cache: ProjectRegistryEntry[] = []
 let _aliasCache: ProjectAliasMapBlock = new Map()
 let _colorCache: Record<string, string> = {}
+let _nameCache: Record<string, string> = {}
 
 export function setCachedProjectRegistryBlock(entries: ProjectRegistryEntry[]): void {
   _cache = entries
@@ -183,4 +184,22 @@ export function setCachedProjectColorsBlock(colors: Record<string, string>): voi
 
 export function readCachedProjectColorsBlock(): Record<string, string> {
   return _colorCache
+}
+
+/** Canonical key → display name. Grouping, colors, and every on-disk address
+ *  stay on the key; only rendered text goes through here. That split is what
+ *  lets a project be renamed without moving its chain directory or splitting
+ *  its history in two. */
+export function setCachedProjectNamesBlock(names: Record<string, string>): void {
+  _nameCache = names
+}
+
+export function readCachedProjectNamesBlock(): Record<string, string> {
+  return _nameCache
+}
+
+/** Rendered label for a canonical project key. Falls back to the key, which is
+ *  what every view showed before names existed. */
+export function projectLabelBlock(key: string): string {
+  return _nameCache[key] ?? key
 }

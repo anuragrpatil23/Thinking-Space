@@ -19,6 +19,7 @@ import {
   mergedDurationMsBlock,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import {
   AI_ACTIVITY_REST_DAYS_EVENT,
@@ -272,7 +273,9 @@ export default function AiActivityTrendChartBlock({
                               className="h-2 w-2 rounded-full"
                               style={{ background: color.stroke }}
                             />
-                            <span className="text-foreground/80">{String(row.dataKey)}</span>
+                            <span className="text-foreground/80">
+                              {projectLabelBlock(String(row.dataKey))}
+                            </span>
                             <span
                               className="ml-auto tabular-nums"
                               style={{ color: color.stroke }}

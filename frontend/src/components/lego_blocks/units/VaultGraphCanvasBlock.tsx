@@ -15,6 +15,7 @@
 //    canvas.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import type { VaultGraphData, VaultGraphNode } from '@/services/orchestrators/vaultGraphOrch'
 import { readFileTooltipMeta } from '@/services/orchestrators/fileSystemOrch'
 
@@ -270,8 +271,11 @@ function buildClusterRegionDefs(nodes: VaultGraphNode[]): ClusterRegionDef[] {
     // Pair project with folder ("sfdl / thoughts"); drop the folder when it just
     // restates the project (a project whose canonical name is its own folder,
     // e.g. kai-workspace/F9 → "F9") so the label never reads "F9 / F9".
+    const projectLabel = projectLabelBlock(project)
     const label =
-      folder && folder.toLowerCase() !== project.toLowerCase() ? `${project} / ${folder}` : project
+      folder && folder.toLowerCase() !== projectLabel.toLowerCase()
+        ? `${projectLabel} / ${folder}`
+        : projectLabel
     return { label, members, project }
   })
 }
@@ -1134,7 +1138,7 @@ export default function VaultGraphCanvasBlock({
                   backgroundColor: projectColors.get(detailNode.project) ?? VAULT_GRAPH_FALLBACK_COLOR,
                 }}
               />
-              {detailNode.project}
+              {projectLabelBlock(detailNode.project)}
             </span>
             <span className="font-mono tabular-nums">
               {detailNode.degree} {detailNode.degree === 1 ? 'link' : 'links'}

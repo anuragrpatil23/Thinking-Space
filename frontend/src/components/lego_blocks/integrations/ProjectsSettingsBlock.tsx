@@ -7,6 +7,7 @@ import {
   removeProjectBlock,
   updateProjectBlock,
 } from '@/services/lego_blocks/integrations/projectsStorageBlock'
+import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
 import {
   isValidProjectKeyBlock,
   suggestProjectKeyBlock,
@@ -167,6 +168,9 @@ export default function ProjectsSettingsBlock() {
         setError(CLOBBER_GUARD_MESSAGE)
         return
       }
+      // Re-warm the registry caches so a renamed project is labelled correctly
+      // the next time an activity view renders, without an app restart.
+      await loadProjectRegistryBlock()
       setMessage(`Saved "${draft.name.trim() || project.name}".`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save project.')
@@ -185,6 +189,7 @@ export default function ProjectsSettingsBlock() {
     setMessage(null)
     try {
       await removeProjectBlock(project.uuid)
+      await loadProjectRegistryBlock()
       setMessage(`Deleted "${project.name}".`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete project.')

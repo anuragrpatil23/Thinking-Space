@@ -10,6 +10,7 @@ import VaultGraphCanvasBlock, {
 } from '@/components/lego_blocks/units/VaultGraphCanvasBlock'
 import VaultGraphTimelineBlock from '@/components/lego_blocks/units/VaultGraphTimelineBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
@@ -384,6 +385,7 @@ export default function VaultGraphOrch() {
 
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           {data?.projects.map(project => {
+            const label = projectLabelBlock(project)
             const filtering = focusedProjects.size > 0
             const focused = focusedProjects.has(project)
             // Shown when nothing is isolated, or when this project is in focus.
@@ -396,10 +398,10 @@ export default function VaultGraphOrch() {
                 aria-pressed={focused}
                 title={
                   focused
-                    ? `Showing only ${project} — click to remove`
+                    ? `Showing only ${label} — click to remove`
                     : filtering
-                      ? `Add ${project} to the view`
-                      : `Show only ${project}`
+                      ? `Add ${label} to the view`
+                      : `Show only ${label}`
                 }
                 className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs transition-opacity ${
                   focused ? 'border-foreground/50' : 'border-border'
@@ -410,7 +412,7 @@ export default function VaultGraphOrch() {
                   className="h-2 w-2 rounded-full"
                   style={{ backgroundColor: projectColors.get(project) ?? VAULT_GRAPH_FALLBACK_COLOR }}
                 />
-                <span className="text-muted-foreground">{project}</span>
+                <span className="text-muted-foreground">{label}</span>
                 <span className="font-mono tabular-nums text-muted-foreground/70">
                   {projectCounts.get(project)?.toLocaleString()}
                 </span>
