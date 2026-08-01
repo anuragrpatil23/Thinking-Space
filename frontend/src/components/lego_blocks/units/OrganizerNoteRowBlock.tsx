@@ -67,28 +67,32 @@ export default function OrganizerNoteRowBlock({
               that consumed or produced this note, and as plain text it made
               half the index a dead end: you could read the edge but not
               follow it. `stopPropagation` so it stays its own target if the
-              row ever becomes clickable. */}
-          {link &&
-            (onOpenUndertaking ? (
-              <button
-                type="button"
-                onClick={event => {
-                  event.stopPropagation()
-                  onOpenUndertaking(link.key)
-                }}
-                className="max-w-[16rem] truncate text-[11px] text-muted-foreground/60 underline-offset-2 transition-colors hover:text-foreground hover:underline"
-                title={`${link.arrow} ${link.label}`}
-              >
-                {link.arrow} {link.label}
-              </button>
-            ) : (
-              <span
-                className="max-w-[16rem] truncate text-[11px] text-muted-foreground/60"
-                title={`${link.arrow} ${link.label}`}
-              >
-                {link.arrow} {link.label}
-              </span>
-            ))}
+              row ever becomes clickable.
+              It gets a fixed column rather than sitting wherever the tags
+              happen to end: left to float, the arrows landed at a different x
+              on every row, so a column that says the same thing each time read
+              as noise. Reserved even when empty — an arrow that shifts by row
+              is worse than a gap that doesn't. */}
+          <span className="hidden w-56 shrink-0 text-[11px] sm:block">
+            {link &&
+              (onOpenUndertaking ? (
+                <button
+                  type="button"
+                  onClick={event => {
+                    event.stopPropagation()
+                    onOpenUndertaking(link.key)
+                  }}
+                  className="block w-full truncate text-left text-muted-foreground/60 underline-offset-2 transition-colors hover:text-foreground hover:underline"
+                  title={`${link.arrow} ${link.label}`}
+                >
+                  {link.arrow} {link.label}
+                </button>
+              ) : (
+                <span className="block truncate text-muted-foreground/60" title={`${link.arrow} ${link.label}`}>
+                  {link.arrow} {link.label}
+                </span>
+              ))}
+          </span>
           {/* Same width as the undertaking row's duration, so the two kinds of
               row share one right edge instead of ending wherever they happen
               to end. */}
