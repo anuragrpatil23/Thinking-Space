@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Check, ChevronDown, Loader2, Plus, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, Copy, Loader2, Plus, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import DensitySparklineBlock from '@/components/lego_blocks/units/DensitySparklineBlock'
 import { bucketDensityBlock } from '@/services/lego_blocks/units/aiActivityDensityBlock'
@@ -83,6 +83,7 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
   const [tagDraft, setTagDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [removingIndex, setRemovingIndex] = useState<number | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const [sections, setSections] = useState<Array<{ key: string; title: string }>>([])
   const [allTitles, setAllTitles] = useState<Array<{ key: string; title: string }>>([])
@@ -236,6 +237,53 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
     })
   }, [tail?.firstDate, tail?.lastDate, tail?.density])
 
+  // The drawer as markdown — headed by the outcome, then the evidence, then the
+  // graph, then the notes. Same order the panel reads in, so what lands in the
+  // paste is recognisably the thing that was on screen.
+  const copyMarkdown = async () => {
+    if (!record || !tail) return
+    const lines: string[] = [`# ${record.title || record.key}`, '']
+    if (record.head) lines.push(record.head, '')
+    lines.push(
+      `- **Section:** ${record.section || '(unfiled)'}`,
+      `- **Trail:** ${humanDuration(tail.activeDurationMs)} active · ` +
+        `${tail.chainCount} session${tail.chainCount === 1 ? '' : 's'} · ` +
+        `${tail.dayCount} day${tail.dayCount === 1 ? '' : 's'}` +
+        (tail.firstDate ? ` · ${tail.firstDate}${tail.lastDate !== tail.firstDate ? ` → ${tail.lastDate}` : ''}` : ''),
+    )
+    if (record.tags.length) lines.push(`- **Tags:** ${record.tags.join(', ')}`)
+
+    const edgeLine = (label: string, refs: Array<{ key: string; title: string }>) => {
+      if (refs.length) lines.push(`- **${label}:** ${refs.map(r => r.title).join('; ')}`)
+    }
+    edgeLine('Grew out of', record.grewOutOf.map(k => ({ key: k, title: titleByKey.get(k) ?? k })))
+    edgeLine('Led to', links.ledTo)
+    edgeLine('Fed by', links.fedBy)
+    edgeLine('Answered', links.answered)
+    edgeLine('Produced', links.produced)
+
+    if (chains.length) {
+      lines.push('', '## Sessions', '')
+      for (const chain of chains) {
+        lines.push(
+          `- ${chain.date} — ${chain.title || '(untitled session)'} ` +
+            `(${humanDuration(chain.activeDurationMs > 0 ? chain.activeDurationMs : chain.durationMs)})`,
+        )
+      }
+    }
+    if (record.notes.length) {
+      lines.push('', '## Notes', '')
+      for (const note of record.notes) {
+        const by = [note.date, note.author].filter(Boolean).join(' · ')
+        lines.push(`- ${by ? `${by} — ` : ''}${note.text}`)
+      }
+    }
+
+    await navigator.clipboard.writeText(lines.join('\n'))
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1600)
+  }
+
   const dateRange = !tail?.firstDate
     ? null
     : tail.firstDate === tail.lastDate
@@ -261,14 +309,31 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Undertaking
             </span>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-              aria-label="Close"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <div className="flex items-center gap-1">
+              {/* Copies the whole undertaking as markdown, not just the title —
+                  the drawer is where you come to have the full picture, and
+                  taking it somewhere else meant hand-assembling it from six
+                  separate selections. */}
+              {record && tail && (
+                <button
+                  type="button"
+                  onClick={copyMarkdown}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  title="Copy this undertaking as markdown"
+                >
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
           {loading && (
@@ -361,9 +426,14 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                       <DensitySparklineBlock buckets={sparkBuckets} height={24} barWidth={5} className="mt-4" />
                     )}
 
-                    {tail.files.length > 0 && (
-                      <div className="mt-6">
-                        <RailLabel>Pages</RailLabel>
+                    {/* Always rendered, even empty. Hiding the block on an
+                        empty list made a captured gap look like a settled fact:
+                        an undertaking that wrote five vault pages read as one
+                        that produced nothing, and nothing on screen invited the
+                        question. A gap should look like a gap. */}
+                    <div className="mt-6">
+                      <RailLabel>Pages</RailLabel>
+                      {tail.files.length > 0 ? (
                         <ul className="mt-2 space-y-1">
                           {tail.files.map(f => (
                             <li key={f} className="truncate font-mono text-[11px] text-muted-foreground/70" title={f}>
@@ -371,8 +441,12 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                             </li>
                           ))}
                         </ul>
-                      </div>
-                    )}
+                      ) : (
+                        <p className="mt-2 text-[11px] text-muted-foreground/55">
+                          No file provenance captured.
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="min-w-0 lg:border-l lg:border-black/[0.06] lg:pl-10 dark:lg:border-white/[0.06]">

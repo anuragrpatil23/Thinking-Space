@@ -43,10 +43,14 @@ describe('noteCategoryCodeBlock', () => {
 })
 
 describe('noteCategoryLabelBlock', () => {
-  it('labels known codes and falls back to the code itself', () => {
+  it('labels known codes and title-cases an unlabelled one', () => {
     expect(noteCategoryLabelBlock('QT')).toBe('Questions to research')
     expect(noteCategoryLabelBlock('IC')).toBe('Interesting companies')
-    expect(noteCategoryLabelBlock('ZZ')).toBe('ZZ')
+    expect(noteCategoryLabelBlock('TAX')).toBe('Tax')
+    // Headings are names, so an unlabelled code must not read as a raw code
+    // sitting among them.
+    expect(noteCategoryLabelBlock('ZZ')).toBe('Zz')
+    expect(noteCategoryLabelBlock('')).toBe('Other')
   })
 })
 

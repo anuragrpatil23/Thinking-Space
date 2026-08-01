@@ -41,6 +41,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   ET: 'Execution to-dos',
   TD: 'Too difficult',
   TT: 'Things to remember',
+  TAX: 'Tax',
 }
 
 // Fold near-duplicate kinds onto one code: "Identified ideas" is just Ideas, and
@@ -69,8 +70,17 @@ export function noteTicketBlock(key: string): string {
   return (m ? m[0] : key).toUpperCase()
 }
 
+/** A kind's display name. An unlabelled code is title-cased rather than passed
+ *  through raw: headings are names now, and a bare `TAX` sitting among "Ideas"
+ *  and "Key things" reads as a bug, not as a kind. Uppercase headings used to
+ *  hide the gap — every label looked like a code, so a code looked like a
+ *  label. Add the kind to the table when one turns up; this only keeps the
+ *  unlabelled case from looking broken. */
 export function noteCategoryLabelBlock(code: string): string {
-  return CATEGORY_LABELS[code] ?? (code || 'Other')
+  const known = CATEGORY_LABELS[code]
+  if (known) return known
+  if (!code) return 'Other'
+  return code.charAt(0) + code.slice(1).toLowerCase()
 }
 
 // Reference kinds are captured knowledge — Key things, Things to remember,
