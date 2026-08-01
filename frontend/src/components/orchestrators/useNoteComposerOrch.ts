@@ -127,6 +127,9 @@ export interface NoteComposerOrch {
   todoDateStr: string
   dateHeader: boolean
   emotions: string[]
+  /** Freeform tags the user typed. Emotions end up in the same `tags` field on
+   *  disk under an `emotion/` namespace — these are the un-namespaced ones. */
+  tags: string[]
 
   // --- content ---
   content: string
@@ -158,6 +161,7 @@ export interface NoteComposerOrch {
   setUseCustomTitle: (enabled: boolean) => void
   setDateHeader: (enabled: boolean) => void
   setEmotions: (value: string[]) => void
+  setTags: (value: string[]) => void
   setTodoDateStr: (value: string) => void
   setNoteKind: (kind: NoteKindBlock) => void
   setMakeThisTodo: (checked: boolean) => void
@@ -216,6 +220,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   const makeThisTodo = noteKind === 'todo'
   const [todoDateStr, setTodoDateStr] = useState(todayDateStrBlock())
   const [emotions, setEmotions] = useState<string[]>([])
+  const [tags, setTags] = useState<string[]>([])
 
   // --- content ---
   const [content, setContent] = useState('')
@@ -594,8 +599,9 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     () => buildFrontmatterPreviewBlock({
       title: resolveNoteTitleBlock({ useCustomTitle, title, normalizedFilename }),
       emotions,
+      tags,
     }),
-    [emotions, normalizedFilename, title, useCustomTitle],
+    [emotions, tags, normalizedFilename, title, useCustomTitle],
   )
 
   const canSave = makeThisTodo
@@ -673,6 +679,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
             title: useCustomTitle ? (title.trim() || null) : null,
             date_header: dateHeader,
             emotions,
+            tags,
             note_kind: noteKind,
           },
           actor: THOUGHTS_ACTOR,
@@ -722,6 +729,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     destinationPath,
     destinationSegments,
     emotions,
+    tags,
     filename,
     loadingTargetContent,
     noteKind,
@@ -780,6 +788,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     todoDateStr,
     dateHeader,
     emotions,
+    tags,
 
     content,
     editorBody,
@@ -805,6 +814,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     setUseCustomTitle,
     setDateHeader,
     setEmotions,
+    setTags,
     setTodoDateStr,
     setNoteKind,
     setMakeThisTodo,

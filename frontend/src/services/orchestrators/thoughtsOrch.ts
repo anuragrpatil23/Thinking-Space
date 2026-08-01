@@ -54,6 +54,10 @@ export async function createThought(params: {
   title: string | null
   date_header: boolean
   emotions: string[]
+  /** Freeform tags. Emotions are *also* tags (`emotion/<slug>`) — this is the
+   *  same field, just the part the user typed rather than the part a picker
+   *  produced. */
+  tags?: string[]
   /** Written as a tag, not as `frontmatter.type`: that field is the
    *  hierarchy's `NodeType` (closed union + level mapping, ADR-004), so a
    *  `meeting` value there would need a schema change. Defaults to 'thought'
@@ -85,7 +89,9 @@ export async function createThought(params: {
   const noteTitle = customTitle || deriveTitleFromFilename(params.filename)
   const kind = params.note_kind ?? 'thought'
   const kindTags = kind === 'none' ? [] : [kind]
-  const tags = [...kindTags, ...emotions.map(emotionToTag)]
+  const freeformTags = (params.tags || []).map(tag => tag.trim()).filter(Boolean)
+  // De-duped: a user can type `thought` by hand, and the kind already added it.
+  const tags = [...new Set([...kindTags, ...freeformTags, ...emotions.map(emotionToTag)])]
   const note = createNote({
     type: 'thought',
     title: noteTitle,

@@ -231,6 +231,10 @@ export interface CapabilityInputMap {
     title: string | null
     date_header: boolean
     emotions: string[]
+    /** Freeform tags, merged with the kind tag and the `emotion/*` tags the
+     *  emotions list produces. Optional — everything on disk already spoke
+     *  `tags`, this just lets a caller add to it directly. */
+    tags?: string[]
     /** Note kind, written as a tag. Optional so existing callers (and agents)
      *  keep the historical 'thought' behaviour. */
     note_kind?: 'thought' | 'meeting' | 'none'

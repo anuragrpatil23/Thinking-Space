@@ -317,12 +317,21 @@ export function resolveNoteTitleBlock(options: {
 export function buildFrontmatterPreviewBlock(options: {
   title: string
   emotions: string[]
+  tags?: string[]
 }): string {
   const lines = [
     `title: ${JSON.stringify(options.title)}`,
     'type: thought',
     'status: active',
   ]
+  // Preview only shows what the user typed. The kind tag and the `emotion/*`
+  // ones are appended on save by `createThought`, so listing them here would
+  // claim more certainty than a preview has.
+  const tags = options.tags ?? []
+  if (tags.length > 0) {
+    lines.push('tags:')
+    for (const tag of tags) lines.push(`  - ${JSON.stringify(tag)}`)
+  }
   if (options.emotions.length > 0) {
     lines.push('emotions:')
     for (const emotion of options.emotions) lines.push(`  - ${JSON.stringify(emotion)}`)
