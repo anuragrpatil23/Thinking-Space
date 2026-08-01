@@ -84,11 +84,11 @@ interface Props {
   className?: string
 }
 
-/** The labelled ruler. Label above, tick below it, and the tick sits *on* the
- *  ruler's baseline — the caller draws that baseline as a hairline across the
- *  list, so the labels read as the header of a table rather than two words
- *  floating in the gap above it. The tick then descends past the line toward the
- *  gridlines it names. */
+/** The labelled ruler. Label above, tick below it, and the ticks run down to the
+ *  block's own bottom edge — the caller seats this directly on the top border of
+ *  the first row block, so each tick meets that border and continues as the
+ *  gridline inside the rows. It is the top edge of the list, not a floating
+ *  caption above it. */
 export default function DensityAxisBlock({ ticks, width, className }: Props) {
   if (ticks.length === 0) return null
   return (
@@ -106,7 +106,7 @@ export default function DensityAxisBlock({ ticks, width, className }: Props) {
         {ticks.map((t, i) => (
           <span
             key={i}
-            className="absolute -bottom-[3px] h-[7px] w-px bg-foreground/25"
+            className="absolute bottom-0 h-[6px] w-px bg-foreground/25"
             style={{ left: `${t.at * 100}%` }}
           />
         ))}

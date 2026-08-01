@@ -34,20 +34,20 @@ interface Props {
   onOpenUndertaking?: (key: string) => void
 }
 
-// The heading carries its section's colour token as a spine, sized and placed
-// like the rows' own spine directly beneath it — so the heading is visibly the
-// head of *that* block rather than a coloured caption near it. Bare uppercase
-// text at 13px was the quietest thing on a screen full of row titles, which is
-// backwards: the headings are the list's structure.
+// Bare uppercase text at 13px was the quietest thing on a screen full of row
+// titles, which is backwards: the headings are the list's structure. Size and
+// the section's own colour carry that — a coloured bar beside it only restated
+// what the row spines already say, twice, at a different size.
 function SectionHeading({ title, colorIndex }: { title: string; colorIndex: number }) {
-  const { spine, text } = organizerSectionColorBlock(colorIndex)
   return (
-    <div className="mb-2 flex items-center gap-2">
-      <span aria-hidden className={cn('h-[15px] w-[3px] shrink-0 rounded-full', spine)} />
-      <h2 className={cn('text-[15px] font-bold uppercase leading-none tracking-[0.11em]', text)}>
-        {title}
-      </h2>
-    </div>
+    <h2
+      className={cn(
+        'mb-2 px-1.5 text-[15px] font-bold uppercase leading-none tracking-[0.11em]',
+        organizerSectionColorBlock(colorIndex).text,
+      )}
+    >
+      {title}
+    </h2>
   )
 }
 
@@ -205,21 +205,18 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
         <p className="px-2 py-8 text-sm text-muted-foreground/70">Nothing matches these filters.</p>
       ) : (
         <div className="space-y-5">
-          {/* The baseline runs the full width so the ruler reads as the list's
-              header rule. Sat on nothing, its labels were two words floating in
-              the gap above the first section with no relationship to anything. */}
-          {axisTicks.length > 0 && undertakingSections.length > 0 && (
-            <div
-              className="flex justify-end border-b border-border/50"
-              style={{ paddingRight: STRIP_RIGHT_OFFSET }}
-            >
-              <DensityAxisBlock ticks={axisTicks} width={STRIP_WIDTH} />
-            </div>
-          )}
-
-          {undertakingSections.map(section => (
+          {undertakingSections.map((section, si) => (
             <section key={section.key}>
               <SectionHeading title={section.title} colorIndex={section.colorIndex} />
+              {/* Seated on the first row block's top border, ticks running down
+                  to meet it. On its own hairline above the list it was a rule
+                  belonging to nothing; here the border it lands on is the same
+                  edge the tracks below start from. */}
+              {si === 0 && axisTicks.length > 0 && (
+                <div className="flex justify-end" style={{ paddingRight: STRIP_RIGHT_OFFSET }}>
+                  <DensityAxisBlock ticks={axisTicks} width={STRIP_WIDTH} />
+                </div>
+              )}
               <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
                 {section.rows.map((row, i) => (
                   <UndertakingIndexRowBlock
