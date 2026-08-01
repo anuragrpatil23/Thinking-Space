@@ -1,5 +1,4 @@
-import { cloneElement, type ComponentType, type DragEvent as ReactDragEvent, forwardRef, isValidElement, type ReactElement, type ReactNode, type Ref, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { type ComponentType, type DragEvent as ReactDragEvent, forwardRef, type ReactElement, type ReactNode, type Ref, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import excalidrawLogo from '@/assets/excalidraw-logo.svg'
 
 function ExcalidrawIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -36,7 +35,6 @@ import {
   Loader2,
   Search,
 } from 'lucide-react'
-import { deviceCanHoverBlock } from '@/services/lego_blocks/units/hoverCapabilityBlock'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import NotebookTocBlock from '@/components/lego_blocks/integrations/NotebookTocBlock'
 import {
@@ -75,6 +73,7 @@ import {
   SelectValue,
 } from '@/components/lego_blocks/units/ui/select'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/lego_blocks/units/ui/tooltip'
+import CursorTooltipBlock from '@/components/lego_blocks/units/CursorTooltipBlock'
 import type { SessionTelemetry } from '@/services/orchestrators/sessionTelemetryOrch'
 import { writeSortOrdersBlock } from '@/services/lego_blocks/units/notebookOrderBlock'
 import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebookSidecarBlock'
@@ -145,13 +144,8 @@ function formatTooltipDate(value?: string): string | null {
   return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-const TOOLTIP_SHOW_DELAY_MS = 400
-const TOOLTIP_CURSOR_OFFSET = { x: 18, y: 32 }
-const TOOLTIP_VIEWPORT_PAD = 8
-
 /**
- * Hover tooltip for an explorer file row, anchored to the cursor (not the full-width
- * row, which would fling it far to the side). Combines several facts, all optional:
+ * Hover tooltip for an explorer file row. Combines several facts, all optional:
  *  - `Summary:` — the file's own frontmatter `summary:` (what the page is about),
  *    resolved lazily on first hover.
  *  - `Why here:` — the `_map.md` line's ` — ` text (why the page sits at this
@@ -159,6 +153,9 @@ const TOOLTIP_VIEWPORT_PAD = 8
  *  - A tiny footer with the frontmatter created/updated dates for recency context.
  * A fixed `staticText` (the pinned `_map.md` row) overrides all. Renders nothing
  * when there's nothing to show, so files with none of these get no tooltip.
+ *
+ * The card, its cursor anchoring, and its viewport clamping live in
+ * CursorTooltipBlock — this only decides what goes inside.
  */
 function ExplorerRowTooltip({
   filePath,
@@ -176,18 +173,6 @@ function ExplorerRowTooltip({
   const [meta, setMeta] = useState<FileTooltipMeta | null>(null)
   // staticText rows and rows with no resolver never need a fetch.
   const loadedRef = useRef<boolean>(staticText != null || !resolveMeta)
-  const [visible, setVisible] = useState(false)
-  const [pos, setPos] = useState({ x: 0, y: 0 })
-  const cursorRef = useRef({ x: 0, y: 0 })
-  const showTimerRef = useRef<number | null>(null)
-  const tipRef = useRef<HTMLDivElement>(null)
-
-  const clearShowTimer = () => {
-    if (showTimerRef.current != null) {
-      window.clearTimeout(showTimerRef.current)
-      showTimerRef.current = null
-    }
-  }
 
   const load = useCallback(() => {
     if (loadedRef.current || !resolveMeta) return
@@ -197,46 +182,6 @@ function ExplorerRowTooltip({
       .catch(() => setMeta(null))
   }, [filePath, resolveMeta])
 
-  const handleEnter = (event: React.MouseEvent) => {
-    // Touch surfaces synthesize mouseenter on tap and may never deliver the
-    // matching mouseleave — the tooltip would appear and stick. Hover-opened
-    // overlays are mouse/trackpad-only chrome.
-    if (!deviceCanHoverBlock()) return
-    cursorRef.current = { x: event.clientX, y: event.clientY }
-    clearShowTimer()
-    showTimerRef.current = window.setTimeout(() => {
-      load()
-      setPos(cursorRef.current)
-      setVisible(true)
-    }, TOOLTIP_SHOW_DELAY_MS)
-  }
-  const handleMove = (event: React.MouseEvent) => {
-    cursorRef.current = { x: event.clientX, y: event.clientY }
-  }
-  const handleLeave = () => {
-    clearShowTimer()
-    setVisible(false)
-  }
-
-  useEffect(() => () => clearShowTimer(), [])
-
-  // Clamp into the viewport once measured, before paint (no flicker).
-  useLayoutEffect(() => {
-    if (!visible || !tipRef.current) return
-    const rect = tipRef.current.getBoundingClientRect()
-    const pad = TOOLTIP_VIEWPORT_PAD
-    let x = pos.x + TOOLTIP_CURSOR_OFFSET.x
-    let y = pos.y + TOOLTIP_CURSOR_OFFSET.y
-    if (x + rect.width > window.innerWidth - pad) x = pos.x - rect.width - TOOLTIP_CURSOR_OFFSET.x
-    if (x < pad) x = pad
-    if (y + rect.height > window.innerHeight - pad) y = pos.y - rect.height - TOOLTIP_CURSOR_OFFSET.y
-    if (y < pad) y = pad
-    if (x !== pos.x + TOOLTIP_CURSOR_OFFSET.x || y !== pos.y + TOOLTIP_CURSOR_OFFSET.y) {
-      tipRef.current.style.left = `${x}px`
-      tipRef.current.style.top = `${y}px`
-    }
-  }, [visible, pos, meta, mapDescription, staticText])
-
   const summary = meta?.summary
   const createdLabel = formatTooltipDate(meta?.createdAt)
   const updatedLabel = formatTooltipDate(meta?.updatedAt)
@@ -245,64 +190,44 @@ function ExplorerRowTooltip({
   const hasDates = !!createdLabel || showUpdated
   const hasContent = staticText != null || !!summary || !!mapDescription || hasDates
 
-  const trigger = isValidElement(children)
-    ? cloneElement(children as ReactElement<Record<string, unknown>>, {
-        onMouseEnter: handleEnter,
-        onMouseMove: handleMove,
-        onMouseLeave: handleLeave,
-      })
-    : children
-
   return (
-    <>
-      {trigger}
-      {visible && hasContent
-        ? createPortal(
-            <div
-              ref={tipRef}
-              role="tooltip"
-              className="pointer-events-none fixed z-[70] max-w-[340px] space-y-2 rounded-lg border border-white/10 bg-zinc-900/95 px-3 py-2.5 text-[12.5px] leading-relaxed text-zinc-100 shadow-xl shadow-black/40 backdrop-blur-sm"
-              style={{
-                left: pos.x + TOOLTIP_CURSOR_OFFSET.x,
-                top: pos.y + TOOLTIP_CURSOR_OFFSET.y,
-              }}
-            >
-              {staticText != null ? (
-                <div className="text-zinc-300">{staticText}</div>
-              ) : (
-                <>
-                  {summary ? (
-                    <div>
-                      <span className="font-semibold uppercase tracking-wide text-[10.5px] text-emerald-300">
-                        Summary
-                      </span>
-                      <div className="mt-0.5 text-zinc-100">{summary}</div>
-                    </div>
-                  ) : null}
-                  {summary && mapDescription ? (
-                    <div className="border-t border-white/10" />
-                  ) : null}
-                  {mapDescription ? (
-                    <div>
-                      <span className="font-semibold uppercase tracking-wide text-[10.5px] text-amber-300">
-                        Why here
-                      </span>
-                      <div className="mt-0.5 text-zinc-300">{mapDescription}</div>
-                    </div>
-                  ) : null}
-                  {hasDates ? (
-                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 pt-0.5 text-[10px] text-zinc-500">
-                      {createdLabel ? <span>Created {createdLabel}</span> : null}
-                      {showUpdated ? <span>Updated {updatedLabel}</span> : null}
-                    </div>
-                  ) : null}
-                </>
-              )}
-            </div>,
-            document.body,
-          )
-        : null}
-    </>
+    <CursorTooltipBlock
+      onOpen={load}
+      className="space-y-2"
+      content={
+        !hasContent ? null : staticText != null ? (
+          <div className="text-zinc-300">{staticText}</div>
+        ) : (
+          <>
+            {summary ? (
+              <div>
+                <span className="font-semibold uppercase tracking-wide text-[10.5px] text-emerald-300">
+                  Summary
+                </span>
+                <div className="mt-0.5 text-zinc-100">{summary}</div>
+              </div>
+            ) : null}
+            {summary && mapDescription ? <div className="border-t border-white/10" /> : null}
+            {mapDescription ? (
+              <div>
+                <span className="font-semibold uppercase tracking-wide text-[10.5px] text-amber-300">
+                  Why here
+                </span>
+                <div className="mt-0.5 text-zinc-300">{mapDescription}</div>
+              </div>
+            ) : null}
+            {hasDates ? (
+              <div className="flex flex-wrap gap-x-2 gap-y-0.5 pt-0.5 text-[10px] text-zinc-500">
+                {createdLabel ? <span>Created {createdLabel}</span> : null}
+                {showUpdated ? <span>Updated {updatedLabel}</span> : null}
+              </div>
+            ) : null}
+          </>
+        )
+      }
+    >
+      {children}
+    </CursorTooltipBlock>
   )
 }
 
