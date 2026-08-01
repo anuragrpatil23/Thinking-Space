@@ -60,7 +60,10 @@ function SectionHeader({
     >
       <h2
         className={cn(
-          'px-1.5 pb-1 text-[16px] font-semibold leading-none tracking-[-0.01em]',
+          // The padding is on the heading, not the row: `items-end` keeps the
+          // ruler's ticks flush against the block's top border while the name
+          // lifts clear of it.
+          'px-1.5 pb-2.5 text-[16px] font-semibold leading-none tracking-[-0.01em]',
           organizerSectionColorBlock(colorIndex).text,
         )}
       >
