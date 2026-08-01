@@ -1,24 +1,59 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { readProjectsBlock } from '@/services/lego_blocks/integrations/projectsStorageBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   parseProjectRegistryMarkdownBlock,
+  projectAliasesFromProjectsBlock,
+  projectRegistryFromProjectsBlock,
+  setCachedProjectAliasesBlock,
+  setCachedProjectColorsBlock,
   setCachedProjectRegistryBlock,
 } from '@/services/lego_blocks/units/projectRegistryBlock'
 
-// Warms the project-registry cache from kai-workspace/projects.md. Called once
-// where AI-activity data loads, before project attribution resolves. Best-
-// effort: a missing or unreadable file leaves the cache empty, and attribution
-// falls back to the cwd basename — the pre-registry behaviour.
+// Warms the project-registry cache — the map from a session's working directory
+// to a canonical project — before AI-activity attribution resolves.
+//
+// The projects the user defined in Settings are the source. `projects.md` is a
+// fallback for one case only: a vault that was using the old hand-maintained
+// file and has not been imported yet. It is a hardcoded path under
+// `kai-workspace/`, which is why it cannot be the source — for anyone whose
+// vault has no such folder the registry was silently empty, and their projects
+// fragmented by cwd basename with nothing on screen to say why.
+//
+// Best-effort throughout: nothing readable leaves the cache empty and
+// attribution falls back to the basename, which is the pre-registry behaviour.
 
-const PROJECTS_MD_PATH = 'kai-workspace/projects.md'
+const LEGACY_PROJECTS_MD_PATH = 'kai-workspace/projects.md'
+
+async function legacyRegistryBlock(vaultRoot: string) {
+  try {
+    const fs = getVaultFS()
+    if (!(await fs.exists(LEGACY_PROJECTS_MD_PATH))) return []
+    return parseProjectRegistryMarkdownBlock(await fs.read(LEGACY_PROJECTS_MD_PATH), vaultRoot)
+  } catch {
+    return []
+  }
+}
 
 export async function loadProjectRegistryBlock(): Promise<void> {
   try {
-    const fs = getVaultFS()
-    if (!(await fs.exists(PROJECTS_MD_PATH))) return
-    const md = await fs.read(PROJECTS_MD_PATH)
     const vaultRoot = getStoredVaultRoot() ?? ''
-    setCachedProjectRegistryBlock(parseProjectRegistryMarkdownBlock(md, vaultRoot))
+    const projects = await readProjectsBlock()
+    const defined = projectRegistryFromProjectsBlock(projects, vaultRoot)
+    // Aliases come only from defined projects — `projects.md` has no way to
+    // express them, so a vault still on the fallback simply has none.
+    setCachedProjectAliasesBlock(projectAliasesFromProjectsBlock(projects))
+    setCachedProjectColorsBlock(
+      Object.fromEntries(
+        projects.filter(p => p.key && p.color).map(p => [p.key, p.color]),
+      ),
+    )
+    // Only fall back when the defined projects contribute *no* roots at all.
+    // Merging the two would let a stale markdown line quietly outrank an edit
+    // made in Settings, and longest-prefix would pick between them by accident.
+    setCachedProjectRegistryBlock(
+      defined.length > 0 ? defined : await legacyRegistryBlock(vaultRoot),
+    )
   } catch {
     // Leave whatever is cached; never let registry loading break the view.
   }

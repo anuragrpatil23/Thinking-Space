@@ -11,7 +11,10 @@
 
 import { getJsonStorageItem, setJsonStorageItem, STORAGE_KEYS } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
+  readCachedProjectAliasesBlock,
+  readCachedProjectColorsBlock,
   readCachedProjectRegistryBlock,
+  resolveProjectByAliasBlock,
   resolveProjectByCwdBlock,
 } from '@/services/lego_blocks/units/projectRegistryBlock'
 
@@ -136,6 +139,11 @@ export function resolveCanonicalProjectBlock(
     const canonical = resolveProjectByCwdBlock(cwd, readCachedProjectRegistryBlock())
     if (canonical) return canonical
   }
+  // Aliases last, and only on the detected name: a path is stronger evidence
+  // than a folder's spelling, so a session whose cwd is inside a registered root
+  // must never be pulled elsewhere by a name another project claimed.
+  const byAlias = resolveProjectByAliasBlock(rawProject, readCachedProjectAliasesBlock())
+  if (byAlias) return byAlias
   return rawProject
 }
 
@@ -160,13 +168,20 @@ export function autoInferProjectFromPathBlock(path: string): string | null {
   return null
 }
 
-/** Explicit color override (hex) for a canonical project, or null. */
+/**
+ * Explicit color override (hex) for a canonical project, or null.
+ *
+ * Two sources, and the order matters: a color set on the project itself is the
+ * definition, but a color set here is a per-device override the user typed on
+ * the mapping page, so it stays on top rather than being silently replaced the
+ * first time someone edits the project.
+ */
 export function resolveProjectColorOverrideBlock(
   canonical: string,
   settings?: AiActivityMappingSettings,
 ): string | null {
   const snapshot = settings ?? readAiActivityMappingBlock()
-  return snapshot.colors[canonical] ?? null
+  return snapshot.colors[canonical] ?? readCachedProjectColorsBlock()[canonical] ?? null
 }
 
 export function newRuleIdBlock(): string {

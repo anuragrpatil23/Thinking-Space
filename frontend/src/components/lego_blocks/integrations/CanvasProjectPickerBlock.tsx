@@ -28,7 +28,7 @@ export default function CanvasProjectPickerBlock({ surfaceId }: CanvasProjectPic
     void setBoundProjectId(value || null)
   }
 
-  const currentValue = boundProjectId ?? project?.id ?? ''
+  const currentValue = boundProjectId ?? project?.uuid ?? ''
 
   return (
     <div
@@ -63,7 +63,7 @@ export default function CanvasProjectPickerBlock({ surfaceId }: CanvasProjectPic
       >
         {projects.length === 0 && <option value="">No projects yet</option>}
         {projects.map(p => (
-          <option key={p.id} value={p.id}>{p.name}</option>
+          <option key={p.uuid} value={p.uuid}>{p.name}</option>
         ))}
         <option value={MANAGE_VALUE}>Manage projects…</option>
       </select>
