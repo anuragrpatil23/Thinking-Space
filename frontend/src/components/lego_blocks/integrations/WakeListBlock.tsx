@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { useWakeListBlock } from '@/components/lego_blocks/hooks/units/useWakeListBlock'
+import { noteAgeLabelBlock } from '@/services/lego_blocks/units/noteAgeBlock'
 import type { CanvasThemeTokens } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 
 // A quick Home card: the open questions — Questions-to-research (QT) notes from
@@ -17,17 +18,6 @@ interface Props {
   theme: CanvasThemeTokens
 }
 
-const DAY_MS = 86_400_000
-
-function ageLabel(openedDate: string): string {
-  if (!openedDate) return ''
-  const opened = Date.parse(openedDate)
-  if (Number.isNaN(opened)) return ''
-  const days = Math.max(0, Math.floor((Date.now() - opened) / DAY_MS))
-  if (days < 45) return `${days}d`
-  const months = days / 30.4
-  return `${months.toFixed(months < 10 ? 1 : 0)} mo`
-}
 
 export default function WakeListBlock({ theme }: Props) {
   const { projects, selected, select, notes, loadingProjects, loadingNotes, error } = useWakeListBlock()
@@ -94,7 +84,7 @@ export default function WakeListBlock({ theme }: Props) {
                 {q.title}
               </span>
               <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">
-                {ageLabel(q.openedDate)}
+                {noteAgeLabelBlock(q.openedDate)}
               </span>
             </li>
           ))}

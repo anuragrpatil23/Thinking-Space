@@ -286,6 +286,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
                     entry={entry}
                     colorIndex={section.colorIndex}
                     ordinal={i + 1}
+                    onOpenUndertaking={onOpenUndertaking}
                   />
                 ))}
               </div>
