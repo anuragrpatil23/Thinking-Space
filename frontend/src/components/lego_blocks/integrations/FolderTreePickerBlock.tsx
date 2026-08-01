@@ -218,33 +218,9 @@ export default function FolderTreePickerBlock({
   // folders above it, so clicking read as doing nothing. The ancestors get a
   // lighter treatment and the built path is spelled out above the tree.
   const ancestorSet = useMemo(() => new Set(ancestorsOf(value)), [value])
-  const valueSegments = value.split('/').filter(Boolean)
 
   return (
     <div className={cn('flex min-h-0 flex-col gap-2', className)}>
-      <div className="shrink-0 rounded-lg border border-border/60 bg-background px-2.5 py-1.5">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">
-          Destination
-        </div>
-        <div className="mt-0.5 break-all font-mono text-[11px] leading-relaxed">
-          {valueSegments.length === 0 ? (
-            <span className="text-muted-foreground/60">Pick a folder below</span>
-          ) : (
-            valueSegments.map((segment, index) => {
-              const isLeaf = index === valueSegments.length - 1
-              return (
-                <span key={`${segment}-${index}`}>
-                  {index > 0 && <span className="text-muted-foreground/40">/</span>}
-                  <span className={isLeaf ? 'font-semibold text-foreground' : 'text-muted-foreground/70'}>
-                    {segment}
-                  </span>
-                </span>
-              )
-            })
-          )}
-        </div>
-      </div>
-
       <div className="relative shrink-0">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
         <input

@@ -95,6 +95,8 @@ function CreateTab() {
     }
   }
 
+  const destinationSegments = composer.destinationPath.split('/').filter(Boolean)
+
   const jumpListBlock = (title: string, paths: string[]) => paths.length > 0 && (
     <div className="space-y-1">
       <div className={PANEL_LABEL_CLASS}>{title}</div>
@@ -106,12 +108,10 @@ function CreateTab() {
             type="button"
             onClick={() => composer.applyDestinationPath(path)}
             title={path}
-            className={cn(
-              'ltm-motion-fast block w-full break-all rounded-md border px-2 py-1 text-left font-mono text-[11px] transition-colors',
-              path === composer.destinationPath
-                ? 'border-foreground/40 bg-muted text-foreground'
-                : 'border-border/60 bg-background hover:border-foreground/30',
-            )}
+            // No selected state. These are jump targets, not a second place the
+            // current destination is displayed — the sticky strip above already
+            // says where you are, and highlighting a row here read as random.
+            className="ltm-motion-fast block w-full break-all rounded-md px-2 py-1 text-left font-mono text-[11px] transition-colors hover:bg-muted"
           >
             {segments.map((segment, index) => (
               <span key={`${segment}-${index}`}>
@@ -233,8 +233,36 @@ function CreateTab() {
   // identity, destination, options, emotions. Everything is a labelled row, so
   // the panel reads as a settings sheet rather than the pile of chips and
   // bordered boxes it used to be.
+  // The destination as a sticky strip at the very top of the panel while the
+  // browser is open. It has to outlive scrolling: the tree is taller than the
+  // panel, so by the time you are deep enough to click something the path had
+  // scrolled out of sight — which is exactly when you need to watch it change.
+  const stickyDestinationBlock = destinationBrowserOpen && (
+    <div className="sticky top-0 z-20 border-b border-border/60 bg-background/95 px-4 py-2.5 backdrop-blur">
+      <div className={PANEL_LABEL_CLASS}>Saving to</div>
+      <div className="mt-1 break-all font-mono text-sm leading-snug">
+        {destinationSegments.length === 0 ? (
+          <span className="text-muted-foreground/60">Pick a folder below</span>
+        ) : (
+          destinationSegments.map((segment, index) => (
+            <span key={`${segment}-${index}`}>
+              {index > 0 && <span className="text-muted-foreground/50">/</span>}
+              <span className={index === destinationSegments.length - 1
+                ? 'font-semibold text-foreground'
+                : 'text-muted-foreground'}
+              >
+                {segment}
+              </span>
+            </span>
+          ))
+        )}
+      </div>
+    </div>
+  )
+
   const noteConfigBlock = (
     <div className="divide-y divide-border/40 text-sm">
+      {stickyDestinationBlock}
       {/* --- identity --- */}
       <div className="space-y-2 p-4">
         <div className={PANEL_LABEL_CLASS}>{composer.makeThisTodo ? 'Todo date' : 'File name'}</div>
@@ -366,19 +394,16 @@ function CreateTab() {
             picking a folder is one click, not click-then-confirm. */}
         {destinationBrowserOpen && (
           <div className="space-y-2.5 rounded-lg border border-border/60 bg-muted/20 p-2.5">
-            <div className="grid gap-2.5 sm:grid-cols-[1fr_1.5fr]">
-              {/* Jump targets first, reading order left to right: the folder you
-                  want is usually one you have used before, so the tree is the
-                  fallback rather than the opening move. */}
-              <div className="min-w-0 space-y-3">
-                {jumpListBlock('Most used', composer.mostUsedDestinations.map(entry => entry.path))}
-                {jumpListBlock('Recent', composer.recentDestinations)}
-              </div>
+            <div className="grid gap-2.5 sm:grid-cols-[1.5fr_1fr]">
               <FolderTreePickerBlock
                 value={composer.destinationPath}
                 onChange={composer.applyDestinationPath}
                 maxHeightClassName="max-h-[34vh]"
               />
+              <div className="min-w-0 space-y-3">
+                {jumpListBlock('Most used', composer.mostUsedDestinations.map(entry => entry.path))}
+                {jumpListBlock('Recent', composer.recentDestinations)}
+              </div>
             </div>
             <div className="flex gap-1.5 border-t border-border/50 pt-2.5">
               <input
@@ -536,7 +561,11 @@ function CreateTab() {
           <div
             ref={panelRef}
             className={cn(
-              'ltm-animate-fade-in ltm-motion-fast absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 overflow-hidden rounded-xl border border-border/70 bg-background shadow-2xl transition-[width]',
+              // No entry animation. It was fading the whole panel to
+              // translucent mid-interaction (2026-07-31) — the trigger is still
+              // unidentified, but an opacity animation on a panel you interact
+              // with has no upside worth that risk.
+              'ltm-motion-fast absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 overflow-hidden rounded-xl border border-border/70 bg-background shadow-2xl transition-[width]',
               // Wide while browsing: the tree carries deeply nested names next
               // to a jump-target column, and at 34rem both were wrapping.
               destinationBrowserOpen
