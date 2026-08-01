@@ -35,6 +35,15 @@ import {
 //     recompute. Persisted ONLY as transport to devices that cannot derive
 //     chains locally. Any reader holding a chain must recompute them and ignore
 //     what is stored; see `projectChainFieldsBlock`.
+/** One member session's file writes, kept together so a chain that spans two
+ *  topics can still say which of them wrote what. */
+export interface ChainSessionFiles {
+  /** `sessionIdOf` — the uuid, or `<uuid>::w<n>` for a windowed session. */
+  session: string
+  /** Root-relative paths written during that session. */
+  files: string[]
+}
+
 export interface ProjectChainDigest {
   projectId: string
   /** IDENTITY. Minted once, on first write, and never recomputed — this is the
@@ -92,6 +101,19 @@ export interface ProjectChainDigest {
    *  here means only "this device had no chain to derive from"; it is never
    *  evidence that the chain wrote nothing. */
   filesWritten: string[]
+  /** MECHANICAL. The same writes, attributed to the session that made them.
+   *
+   *  A chain is a *time* grouping, so it can legitimately hold two unrelated
+   *  pieces of work — finish a conversation, run a skill twenty seconds later,
+   *  and both are one logical session. An undertaking is a *topic*, and it
+   *  points at one window. Flattening the writes into `filesWritten` loses which
+   *  session made them, so an undertaking bound to the first window inherited
+   *  the pages the second one wrote: "Broadcom — who designs a custom chip"
+   *  listing four Important Personalities notes.
+   *
+   *  `filesWritten` stays as the flattened union so readers on older builds keep
+   *  working, and is recomputable from this — prefer this when it is present. */
+  filesBySession?: ChainSessionFiles[]
   /** MECHANICAL. Same, for files read. Weaker signal but still a pointer. */
   filesRead: string[]
   /** HUMAN. Undertakings this chain belongs to, from the end-of-session ask. Plural:
@@ -207,9 +229,28 @@ function commonChainDigestFieldsBlock(
     model: toStringOrEmpty(parsed.model),
     generator: parseGenerationSourceBlock(parsed.generator),
     filesWritten: toStringArray(parsed.filesWritten),
+    filesBySession: toChainSessionFilesBlock(parsed.filesBySession),
     filesRead: toStringArray(parsed.filesRead),
     undertaking: toStringArrayLoose(parsed.undertaking),
   }
+}
+
+/** Parse `filesBySession`, dropping malformed entries rather than throwing —
+ *  this is a mechanical field, so a garbled one costs a recompute, not data.
+ *  Returns undefined (not []) when absent, so "written by a build that predates
+ *  the field" stays distinguishable from "this chain wrote nothing". */
+function toChainSessionFilesBlock(value: unknown): ChainSessionFiles[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const out: ChainSessionFiles[] = []
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue
+    const entry = raw as Record<string, unknown>
+    const session = toStringOrEmpty(entry.session)
+    if (!session) continue
+    const files = toStringArray(entry.files)
+    if (files.length > 0) out.push({ session, files })
+  }
+  return out.length > 0 ? out : undefined
 }
 
 /** Parse a chain digest markdown mirror back into a struct. Null on drift. */
@@ -265,6 +306,7 @@ export function stringifyProjectChainDigestMarkdownBlock(digest: ProjectChainDig
   // a build that predates a field, so the key may be absent rather than empty.
   if (digest.sessions?.length) frontmatter.sessions = digest.sessions
   if (digest.filesWritten?.length) frontmatter.filesWritten = digest.filesWritten
+  if (digest.filesBySession?.length) frontmatter.filesBySession = digest.filesBySession
   if (digest.filesRead?.length) frontmatter.filesRead = digest.filesRead
   if (digest.undertaking?.length) frontmatter.undertaking = digest.undertaking
 

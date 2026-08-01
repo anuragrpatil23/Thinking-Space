@@ -886,3 +886,122 @@ describe('recordAssignmentOrch', () => {
     expect(parsed.recordedAt).toBeTruthy()
   })
 })
+
+/**
+ * The Broadcom case. A chain groups by *time*, so it can hold two unrelated
+ * topics — a window ending 18:41:03 and a session starting 18:41:23 are one
+ * chain by the idle rule, and that grouping is correct. But an undertaking is a
+ * *topic* and its pointer names one sitting, so listing the whole chain's files
+ * under it put four notes about someone else's subject on the wrong page.
+ *
+ * Every guard below exists because the failure on the other side — a page that
+ * silently vanishes from an undertaking — is worse than one extra page.
+ */
+describe('pages are attributed to the sitting the undertaking points at', () => {
+  const POINTER =
+    'F9::native/claude/-Users-x-F9/7887fa8d-ae33-4f99-87d2-70c05ddf444d.jsonl#w1'
+
+  function twoTopicChain(over: Partial<ProjectChainDigest> = {}): ProjectChainDigest {
+    return makeChain({
+      chainKey: POINTER,
+      sessions: ['7887fa8d-ae33-4f99-87d2-70c05ddf444d::w1', '52d50fa7-1111-2222-3333-444455556666'],
+      filesWritten: ['F9/broadcom.md', 'F9/people/a.md', 'F9/people/b.md'],
+      filesBySession: [
+        { session: '7887fa8d-ae33-4f99-87d2-70c05ddf444d::w1', files: ['F9/broadcom.md'] },
+        { session: '52d50fa7-1111-2222-3333-444455556666', files: ['F9/people/a.md', 'F9/people/b.md'] },
+      ],
+      ...over,
+    })
+  }
+
+  it('shows only the pointed-at session’s pages when the chain spans two topics', async () => {
+    seedRecord(makeRecord({ chains: [POINTER], fedBy: [] }))
+    seedChain(twoTopicChain())
+
+    const { getUndertakingOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const view = await getUndertakingOrch('F9', 'f9-und-micron')
+
+    expect(view!.tail.files).toEqual(['F9/broadcom.md'])
+  })
+
+  it('keeps the full union when the digest carries no per-session attribution', async () => {
+    // Every digest written before this field existed. Narrowing on a chain we
+    // cannot attribute would delete pages we have no evidence against.
+    seedRecord(makeRecord({ chains: [POINTER], fedBy: [] }))
+    seedChain(twoTopicChain({ filesBySession: undefined }))
+
+    const { getUndertakingOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const view = await getUndertakingOrch('F9', 'f9-und-micron')
+
+    expect(view!.tail.files).toEqual(['F9/broadcom.md', 'F9/people/a.md', 'F9/people/b.md'])
+  })
+
+  it('keeps the full union when the chain is claimed by its own undertaking field', async () => {
+    // No pointer at all — the authoritative direction says "this whole chain
+    // served that undertaking", and it has no session granularity to offer.
+    seedRecord(makeRecord({ chains: [], fedBy: [] }))
+    seedChain(twoTopicChain({ undertaking: ['f9-und-micron'] }))
+
+    const { getUndertakingOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const view = await getUndertakingOrch('F9', 'f9-und-micron')
+
+    expect(view!.tail.files).toEqual(['F9/broadcom.md', 'F9/people/a.md', 'F9/people/b.md'])
+  })
+
+  it('keeps the full union when the only pointers are old organizer ids', async () => {
+    // `fed_by: [F9-IDE-E-991]` resolves to no session. That is "no information",
+    // not "no sessions".
+    seedRecord(makeRecord({ chains: [], fedBy: ['F9-IDE-E-991'] }))
+    seedChain(twoTopicChain({ undertaking: ['f9-und-micron'] }))
+
+    const { getUndertakingOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const view = await getUndertakingOrch('F9', 'f9-und-micron')
+
+    expect(view!.tail.files).toEqual(['F9/broadcom.md', 'F9/people/a.md', 'F9/people/b.md'])
+  })
+
+  it('keeps the full union when the pointers cover every session anyway', async () => {
+    seedRecord(makeRecord({
+      chains: [POINTER, 'F9::native/claude/-Users-x-F9/52d50fa7-1111-2222-3333-444455556666.jsonl'],
+      fedBy: [],
+    }))
+    seedChain(twoTopicChain())
+
+    const { getUndertakingOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const view = await getUndertakingOrch('F9', 'f9-und-micron')
+
+    expect(view!.tail.files).toEqual(['F9/broadcom.md', 'F9/people/a.md', 'F9/people/b.md'])
+  })
+
+  it('narrows the list view the same way as the detail view', async () => {
+    seedSection('F9', 'semis', 'Semis', 1)
+    seedRecord(makeRecord({ chains: [POINTER], fedBy: [] }))
+    seedChain(twoTopicChain())
+
+    const { listUndertakingsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const views = await listUndertakingsOrch('F9')
+
+    expect(views.find(v => v.record.key === 'f9-und-micron')!.tail.files).toEqual(['F9/broadcom.md'])
+  })
+})
+
+describe('pointerSessionIdBlock', () => {
+  it('reads the window suffix as part of the session id', async () => {
+    const { pointerSessionIdBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    expect(
+      pointerSessionIdBlock('F9::native/claude/-Users-x-F9/7887fa8d-ae33-4f99-87d2-70c05ddf444d.jsonl#w1'),
+    ).toBe('7887fa8d-ae33-4f99-87d2-70c05ddf444d::w1')
+  })
+
+  it('leaves window 0 unsuffixed, matching sessionIdOf', async () => {
+    const { pointerSessionIdBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    expect(
+      pointerSessionIdBlock('F9::native/claude/-Users-x-F9/7887fa8d-ae33-4f99-87d2-70c05ddf444d.jsonl'),
+    ).toBe('7887fa8d-ae33-4f99-87d2-70c05ddf444d')
+  })
+
+  it('returns null for a non-transcript pointer', async () => {
+    const { pointerSessionIdBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    expect(pointerSessionIdBlock('F9-IDE-E-991')).toBeNull()
+  })
+})

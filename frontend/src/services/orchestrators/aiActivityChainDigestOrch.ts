@@ -3,6 +3,7 @@ import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserB
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   isValidChainDigestDateBlock,
+  type ChainSessionFiles,
   type ProjectChainDigest,
 } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 import {
@@ -208,15 +209,45 @@ function chainStorageParts(chain: ActivityChain, chainId?: string): ChainStorage
  * to another machine; anything outside the vault stays absolute rather than
  * being guessed at.
  */
+function toVaultRelativeBlock(paths: readonly string[]): string[] {
+  const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
+  return paths.map(path =>
+    vaultRoot && path.startsWith(`${vaultRoot}/`) ? path.slice(vaultRoot.length + 1) : path,
+  )
+}
+
+/**
+ * The same writes, kept attributed to the session that made them.
+ *
+ * A chain groups by *time*, so one chain can legitimately hold two unrelated
+ * topics — a session that ends at 18:41 and the next that starts at 18:41 are
+ * one chain by the idle rule even when the second is about something else. An
+ * undertaking, by contrast, is a topic, and points at a single window. Flatten
+ * the writes into one chain-level list and the drawer has no way to tell which
+ * topic touched which file, so it shows the union and looks wrong.
+ *
+ * Nothing is lost here that `filesWritten` had: that stays as the flattened
+ * union (older readers depend on it) and is recomputable from this.
+ */
+function chainFilesBySessionBlock(chain: ActivityChain): ChainSessionFiles[] {
+  const out: ChainSessionFiles[] = []
+  for (const s of chain.sessions ?? []) {
+    const id = sessionIdOf(s)
+    if (!id) continue
+    const paths = s.touchedPaths ?? []
+    if (paths.length === 0) continue
+    const files = Array.from(new Set(toVaultRelativeBlock(paths))).sort()
+    if (files.length > 0) out.push({ session: id, files })
+  }
+  return out
+}
+
 function chainPointers(chain: ActivityChain): {
   filesWritten: string[]
   filesRead: string[]
   undertaking: string[]
 } {
-  const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
-  const written = (chain.touchedPaths ?? []).map(path =>
-    vaultRoot && path.startsWith(`${vaultRoot}/`) ? path.slice(vaultRoot.length + 1) : path,
-  )
+  const written = toVaultRelativeBlock(chain.touchedPaths ?? [])
   return {
     filesWritten: Array.from(new Set(written)).sort(),
     // Reads aren't captured by the native parser — it only tracks mutating
@@ -238,6 +269,20 @@ function sameStringSetBlock(a: string[] | undefined, b: string[] | undefined): b
   if (left.length !== right.length) return false
   const set = new Set(left)
   return right.every(v => set.has(v))
+}
+
+/** Same tolerance as `sameStringSetBlock`, one level deeper: a digest written
+ *  before this field existed simply has no key, which reads as "no attribution"
+ *  rather than "attributed to nothing". */
+function sameFilesBySessionBlock(
+  a: ChainSessionFiles[] | undefined,
+  b: ChainSessionFiles[] | undefined,
+): boolean {
+  const left = a ?? []
+  const right = b ?? []
+  if (left.length !== right.length) return false
+  const byId = new Map(left.map(e => [e.session, e.files]))
+  return right.every(e => sameStringSetBlock(byId.get(e.session), e.files))
 }
 
 /**
@@ -275,6 +320,11 @@ export function projectChainFieldsBlock(
     const { filesWritten, filesRead } = chainPointers(chain)
     next.filesWritten = filesWritten
     if (filesRead.length > 0) next.filesRead = filesRead
+    // Guarded by the same `touchedPaths` presence check: a device that cannot
+    // see the transcript has nothing to attribute, and must not blank a stored
+    // attribution synced from one that could.
+    const bySession = chainFilesBySessionBlock(chain)
+    if (bySession.length > 0) next.filesBySession = bySession
   }
   // `Number.isFinite`, not `typeof === 'number'`: NaN is a number, and a NaN
   // sum from one malformed session would be written over a good stored value.
@@ -307,6 +357,7 @@ export function projectChainFieldsBlock(
 export function chainFieldsDifferBlock(a: ProjectChainDigest, b: ProjectChainDigest): boolean {
   return (
     !sameStringSetBlock(a.filesWritten, b.filesWritten) ||
+    !sameFilesBySessionBlock(a.filesBySession, b.filesBySession) ||
     !sameStringSetBlock(a.filesRead, b.filesRead) ||
     !sameStringSetBlock(a.sessions, b.sessions) ||
     a.chainKey !== b.chainKey ||

@@ -221,6 +221,21 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
     })
   }, [tail?.firstDate, tail?.lastDate, tail?.density])
 
+  // Pages, attributed to the sitting that wrote them, so the Pages column and
+  // the Sessions column beside it line up. Grouped by chain rather than by raw
+  // session id because the chain is what the Sessions list shows — a heading
+  // naming something with no row next to it would be worse than no heading.
+  // `VaultPageListBlock` drops back to a flat list unless two chains wrote.
+  const pageGroups = useMemo(
+    () =>
+      chains.map(chain => ({
+        id: chain.chainId || chain.chainKey,
+        label: `${chain.date} · ${chain.title || '(untitled session)'}`,
+        files: chain.filesWritten ?? [],
+      })),
+    [chains],
+  )
+
   // The drawer as markdown — headed by the outcome, then the evidence, then the
   // graph, then the notes. Same order the panel reads in, so what lands in the
   // paste is recognisably the thing that was on screen.
@@ -394,7 +409,7 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                     <div className="mt-6">
                       <RailLabel>Pages</RailLabel>
                       {tail.files.length > 0 ? (
-                        <VaultPageListBlock files={tail.files} className="mt-1.5" />
+                        <VaultPageListBlock files={tail.files} groups={pageGroups} className="mt-1.5" />
                       ) : (
                         <p className="mt-2 text-[11px] text-muted-foreground/55">
                           No file provenance captured.

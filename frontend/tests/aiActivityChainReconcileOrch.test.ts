@@ -124,8 +124,24 @@ describe('listProjectChainsOrch', () => {
     await vi.waitFor(() => expect(put).toHaveBeenCalledTimes(1))
   })
 
+  it('attributes the writes to the session that made them, not just to the chain', async () => {
+    // A chain groups by time and can hold two topics; only the per-session
+    // breakdown can say which of them wrote what. Derived here, so it is right
+    // on every read regardless of what the stored copy says.
+    storedChains = [digest()]
+    const [chain] = await listProjectChainsOrch('F9')
+
+    expect(chain.filesBySession).toEqual([{ session: 's-1', files: [...WRITTEN].sort() }])
+  })
+
   it('does not write when the stored copy already matches the chain', async () => {
-    storedChains = [digest({ filesWritten: WRITTEN, activeDurationMs: 17_964_974 })]
+    storedChains = [
+      digest({
+        filesWritten: WRITTEN,
+        filesBySession: [{ session: 's-1', files: [...WRITTEN].sort() }],
+        activeDurationMs: 17_964_974,
+      }),
+    ]
     const [chain] = await listProjectChainsOrch('F9')
 
     expect(chain.filesWritten).toEqual(WRITTEN)
