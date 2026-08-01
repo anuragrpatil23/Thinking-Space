@@ -18,30 +18,37 @@ const QUADRANTS_BLOCK: {
   energy: string
   pleasantness: string
   dot: string
+  /** Selected-row wash. The same hue as the dot, at a strength that reads as a
+   *  highlight behind text rather than as a coloured block. */
+  row: string
 }[] = [
   {
     color: 'Red',
     energy: 'High energy',
     pleasantness: 'Unpleasant',
     dot: 'bg-red-400',
+    row: 'bg-red-400/15',
   },
   {
     color: 'Yellow',
     energy: 'High energy',
     pleasantness: 'Pleasant',
     dot: 'bg-amber-400',
+    row: 'bg-amber-400/15',
   },
   {
     color: 'Blue',
     energy: 'Low energy',
     pleasantness: 'Unpleasant',
     dot: 'bg-blue-400',
+    row: 'bg-blue-400/15',
   },
   {
     color: 'Green',
     energy: 'Low energy',
     pleasantness: 'Pleasant',
     dot: 'bg-emerald-400',
+    row: 'bg-emerald-400/15',
   },
 ]
 
@@ -163,7 +170,9 @@ export default function MoodPickerBlock({ selected, onChange, onClose }: MoodPic
               aria-pressed={active}
               className={cn(
                 'ltm-motion-fast group flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors',
-                active ? 'bg-muted' : 'hover:bg-muted/50',
+                // Same wash the rows below use when selected, so "filtered to
+                // red" and "this feeling is red" look like the same statement.
+                active ? entry.row : 'hover:bg-muted/50',
               )}
             >
               {/* Bigger than the list's dots on purpose — these four are the
@@ -207,12 +216,30 @@ export default function MoodPickerBlock({ selected, onChange, onClose }: MoodPic
                 // "Apprehensive", so a flex row started every definition at a
                 // different x and the second column zig-zagged down the page.
                 // Fixed first column means both are scannable straight down.
-                'ltm-motion-fast group grid w-full grid-cols-[1rem_7.5rem_1fr_1rem] items-baseline gap-x-2 rounded-lg px-2 py-1.5 text-left transition-colors',
-                isSelected ? 'bg-muted' : 'hover:bg-muted/60',
-                justPicked === item.label && 'ltm-bubble-pop',
+                // Nothing scales the row itself. `ltm-bubble-pop` used to live
+                // here and it settles at 1.08 `forwards` — so the row you picked
+                // stayed permanently enlarged, spilling past both edges of the
+                // popover (2026-07-31). The dot pops instead; a full-width row
+                // has no room to grow into.
+                'ltm-motion-fast group grid w-full grid-cols-[1rem_7.5rem_1fr_1rem] items-baseline gap-x-2 rounded-lg px-2 py-1.5 text-left outline-none transition-colors',
+                // Themed focus ring. The browser default is the system accent
+                // colour, and on a row wider than its clipping container only
+                // its top and bottom edges survive — two mystery lines.
+                'focus-visible:ring-1 focus-visible:ring-foreground/25',
+                // Selected rows wear their own quadrant's colour rather than a
+                // neutral grey: with several feelings picked across quadrants,
+                // the wash tells you *which kind* of feeling each one was
+                // without reading it back.
+                isSelected ? entry?.row ?? 'bg-muted' : 'hover:bg-muted/60',
               )}
             >
-              <span className={cn('h-2 w-2 translate-y-[1px] rounded-full transition-transform group-hover:scale-125', entry?.dot)} />
+              <span
+                className={cn(
+                  'h-2 w-2 translate-y-[1px] rounded-full transition-transform group-hover:scale-125',
+                  entry?.dot,
+                  justPicked === item.label && 'ltm-bubble-pop',
+                )}
+              />
               <span className="truncate text-xs font-medium text-foreground">{item.label}</span>
               {/* The definition is the reason this is a list rather than a grid
                   of identical circles — dimmed so it reads as support, never
