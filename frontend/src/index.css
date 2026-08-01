@@ -1579,6 +1579,18 @@ body.ltm-ruled-notebook-active .excalidraw .layer-ui__wrapper {
   animation: slide-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* The index row's inline peek unfolding — a short, quiet reveal. */
+@keyframes ltm-peek-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ltm-animate-peek-in {
+  animation: ltm-peek-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ltm-animate-peek-in { animation: none; }
+}
+
 .ltm-ruled-notebook-shell {
   position: relative;
   /* Tuned so a paragraph sits cleanly on each rule.

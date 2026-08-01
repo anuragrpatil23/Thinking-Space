@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import type { ActivityProject } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { fmtDurationMsBlock } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 
@@ -58,7 +59,7 @@ export default function AiActivityProjectChipsBlock({
               active && 'border-border/60 bg-card/60',
             )}
             style={{ background: active ? color.chipBg : undefined }}
-            title={`${p.name} · ${fmtDurationMsBlock(p.totalMs)} · ${p.totalSessions} sessions · ${p.totalMsgs.toLocaleString()} msgs`}
+            title={`${projectLabelBlock(p.name)} · ${fmtDurationMsBlock(p.totalMs)} · ${p.totalSessions} sessions · ${p.totalMsgs.toLocaleString()} msgs`}
           >
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full"
@@ -69,7 +70,7 @@ export default function AiActivityProjectChipsBlock({
               className="flex-1 truncate font-medium"
               style={{ color: color.stroke }}
             >
-              {p.name}
+              {projectLabelBlock(p.name)}
             </span>
             <span className="shrink-0 tabular-nums text-foreground/60">
               {fmtCoarseDurationBlock(p.totalMs)}

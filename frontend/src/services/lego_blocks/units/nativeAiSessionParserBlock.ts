@@ -19,6 +19,7 @@ import type {
   ParsedSession,
   SessionTokens,
 } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { IDLE_GAP_MS } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { autoInferProjectFromPathBlock } from '@/services/lego_blocks/units/aiActivityMappingBlock'
 
 export type NativeSource = 'claude' | 'codex'
@@ -155,12 +156,34 @@ interface ParseEnvelope {
 }
 
 /** Within a single session file, split into separate "active windows" wherever
- *  consecutive conversation events are this many hours apart. A 1h+ silence is
- *  almost always "stopped working, came back later" — counting it as one sitting
- *  inflates duration in the day table. Tuned by feel; bump if it splits too
- *  eagerly. */
-const WINDOW_GAP_HOURS = 1
-const WINDOW_GAP_MS = WINDOW_GAP_HOURS * 3_600_000
+ *  consecutive conversation events are this far apart. A 1h+ silence is almost
+ *  always "stopped working, came back later" — counting it as one sitting
+ *  inflates duration in the day table.
+ *
+ *  This is the same threshold `buildChains` uses to decide whether two sessions
+ *  belong to one chain, and it is deliberately the same constant: a file that
+ *  splits into windows here and re-merges into one chain there (or the reverse)
+ *  means the two copies have drifted, and nothing in the UI would say so. */
+const WINDOW_GAP_MS = IDLE_GAP_MS
+
+/** Cap on a single inter-event gap when summing *active* duration. Windowing
+ *  already removes 1h+ idle, but a 40-minute gap inside one sitting is still
+ *  mostly you doing something else, and wall-clock start→end counts it in full.
+ *  Active duration sums each consecutive gap clamped to this cap, so a long
+ *  pause contributes a bounded sliver rather than its whole length. This is the
+ *  honest input to the density sparkline, whose entire job is "how much work
+ *  happened" — not "how long was the tab open". */
+const ACTIVE_GAP_CAP_MS = 5 * 60_000
+
+/** Sum of consecutive event gaps, each clamped to ACTIVE_GAP_CAP_MS. A window
+ *  of one event has no gaps and therefore zero active duration. */
+function activeDurationOfWindow(win: ConvEvent[]): number {
+  let active = 0
+  for (let i = 1; i < win.length; i++) {
+    active += Math.min(win[i].ts - win[i - 1].ts, ACTIVE_GAP_CAP_MS)
+  }
+  return active
+}
 
 interface ConvEvent {
   ts: number          // unix ms
@@ -170,7 +193,7 @@ interface ConvEvent {
 
 /**
  * Parse a JSONL session file into one ParsedSession per active window. A file
- * with a long idle gap (>WINDOW_GAP_HOURS between consecutive conversation
+ * with a long idle gap (>WINDOW_GAP_MS between consecutive conversation
  * events) becomes multiple entries: `path` (window 0), `path#w1`, `path#w2`...
  * Returns [] when the file has no recognisable events.
  */
@@ -429,6 +452,7 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       model,
       sessionId: winSessionId,
       touchedPaths: touchedPaths.length > 0 ? touchedPaths : undefined,
+      activeDurationMs: activeDurationOfWindow(win),
     } as ParsedSession & { sessionId?: string } as ParsedSession)
   })
 

@@ -176,13 +176,39 @@ describe('buildVaultGraphBlock', () => {
     expect(result.links).toHaveLength(1)
     const a = result.nodes.find(n => n.id === 'acceleration_core/F9/a.md')!
     expect(a.degree).toBe(1)
-    // Container roots resolve to their second segment (the project).
-    expect(a.project).toBe('F9')
+    // No projects defined: every top-level folder is its own project. This used
+    // to be a hardcoded list of three folder names that exist in exactly one
+    // vault, which meant every other vault got a stranger's filing system.
+    expect(a.project).toBe('acceleration_core')
     expect(a.title).toBe('a')
     expect(result.nodes.find(n => n.id === 'lifeblood_systems/b.md')!.project).toBe(
       'lifeblood_systems',
     )
     expect(result.nodes.find(n => n.id === 'root-note.md')!.project).toBe('vault')
+  })
+
+  it("uses a defined project's folder as the project, longest root first", () => {
+    const result = buildVaultGraphBlock({
+      entries: [
+        entry('acceleration_core/F9/a.md', sec('2026-06-01T00:00:00Z')),
+        entry('acceleration_core/F9/F9-sim/b.md', sec('2026-06-01T00:00:00Z')),
+        entry('acceleration_core/loose.md', sec('2026-06-01T00:00:00Z')),
+      ],
+      links: [],
+      births: new Map(),
+      sessions: [],
+      vaultFolderName: VAULT,
+      nowMs: NOW,
+      projectRoots: ['acceleration_core/F9', 'acceleration_core/F9/F9-sim'],
+    })
+    const at = (id: string) => result.nodes.find(n => n.id === id)!
+    expect(at('acceleration_core/F9/a.md').projectPrefix).toBe('acceleration_core/F9')
+    // Nested roots are well-defined: the deeper one wins.
+    expect(at('acceleration_core/F9/F9-sim/b.md').projectPrefix).toBe('acceleration_core/F9/F9-sim')
+    // A note outside every root falls back — and `acceleration_core` is now a
+    // container (a root sits inside it), so it does not become its own project
+    // when a note lives two levels down.
+    expect(at('acceleration_core/loose.md').projectPrefix).toBe('acceleration_core')
   })
 
   it('routes project names through the injected canonical resolver', () => {

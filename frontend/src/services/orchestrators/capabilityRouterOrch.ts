@@ -35,7 +35,13 @@ import {
   searchYamlNodes,
   updateYamlNode,
 } from '@/services/lego_blocks/integrations/yamlHierarchyBlock'
-import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import {
+  getVaultFS,
+  peekVaultFSInstance,
+  resetVaultFSInstance,
+  setVaultFSInstance,
+  type VaultFS,
+} from '@/services/lego_blocks/integrations/fsBlock'
 import { startActivity } from '@/services/lego_blocks/units/backgroundActivityBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { getUserCommentAuthorBlock } from '@/services/lego_blocks/units/userProfileBlock'
@@ -63,6 +69,17 @@ import {
   closeConversationBlock,
   openConversationBlock,
 } from '@/services/lego_blocks/integrations/telegramConversationBlock'
+import {
+  getUndertakingOrch,
+  getUndertakingDensityOrch,
+  listChainsOrch,
+  listUndertakingsOrch,
+  recordAssignmentOrch,
+  setChainFilesOrch,
+  setChainProjectOrch,
+  tagUndertakingOrch,
+  updateUndertakingHeadOrch,
+} from './aiActivityUndertakingOrch'
 
 export interface CapabilityInvokeRequest<Name extends CapabilityName = CapabilityName> {
   capability: Name
@@ -203,6 +220,20 @@ export async function invokeCapabilityOrch<Name extends CapabilityName>(
     label: formatCapabilityLabel(request.capability),
     detail: dryRun ? 'Dry run' : undefined,
   })
+
+  // When the caller supplies an fs, point the singleton at it for the duration
+  // of this invoke. Most capabilities thread `fs` down explicitly, but several
+  // orchestrators (thoughts.create, todos.toggle, the ai_activity blocks) reach
+  // for `getVaultFS()` instead — which outside a browser hands back the web
+  // fallback and fails, or worse returns empty. The CLI and the parity harness
+  // both supply an fs precisely because the singleton is not the right answer
+  // there; honoring it here is what makes those two paths agree.
+  //
+  // Restored in the finally: the parity harness runs two adapters against two
+  // temp vaults in one process, so a singleton left pointing at a since-deleted
+  // vault breaks the next call.
+  const previousFs = peekVaultFSInstance()
+  if (fs) setVaultFSInstance(fs)
 
   try {
 
@@ -357,6 +388,10 @@ export async function invokeCapabilityOrch<Name extends CapabilityName>(
 
   } finally {
     activity.end()
+    if (fs) {
+      if (previousFs) setVaultFSInstance(previousFs)
+      else resetVaultFSInstance()
+    }
   }
 }
 
@@ -852,6 +887,88 @@ async function executeCapability<Name extends CapabilityName>(
         convId: payload.convId,
         reason: payload.reason,
         deleteClaudeSession: payload.deleteClaudeSession,
+      })
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'ai_activity.undertakings.list': {
+      const payload = input as CapabilityInputMap['ai_activity.undertakings.list']
+      assertNonEmptyString(payload.projectId, 'projectId')
+      const undertakings = await listUndertakingsOrch(payload.projectId, payload.section)
+      return { undertakings } as CapabilityOutputMap[Name]
+    }
+    case 'ai_activity.undertaking.get': {
+      const payload = input as CapabilityInputMap['ai_activity.undertaking.get']
+      assertNonEmptyString(payload.projectId, 'projectId')
+      assertNonEmptyString(payload.key, 'key')
+      const undertaking = await getUndertakingOrch(payload.projectId, payload.key)
+      return { undertaking } as CapabilityOutputMap[Name]
+    }
+    case 'ai_activity.undertaking.density': {
+      const payload = input as CapabilityInputMap['ai_activity.undertaking.density']
+      assertNonEmptyString(payload.projectId, 'projectId')
+      assertNonEmptyString(payload.key, 'key')
+      const result = await getUndertakingDensityOrch(payload.projectId, payload.key, {
+        buckets: payload.buckets ?? 10,
+        from: payload.from,
+        to: payload.to,
+      })
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'ai_activity.undertaking.update_head': {
+      const payload = input as CapabilityInputMap['ai_activity.undertaking.update_head']
+      assertNonEmptyString(payload.projectId, 'projectId')
+      assertNonEmptyString(payload.key, 'key')
+      assertNonEmptyString(payload.text, 'text')
+      const result = await updateUndertakingHeadOrch(payload.projectId, payload.key, payload.text)
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'ai_activity.undertaking.tag': {
+      const payload = input as CapabilityInputMap['ai_activity.undertaking.tag']
+      assertNonEmptyString(payload.projectId, 'projectId')
+      assertNonEmptyString(payload.key, 'key')
+      const result = await tagUndertakingOrch(payload.projectId, payload.key, {
+        add: payload.add,
+        remove: payload.remove,
+        accept: payload.accept,
+        reject: payload.reject,
+        allowNew: payload.allowNew,
+      })
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'ai_activity.assignment.record': {
+      const payload = input as CapabilityInputMap['ai_activity.assignment.record']
+      assertNonEmptyString(payload.sessionId, 'sessionId')
+      if (!Array.isArray(payload.undertakings) || payload.undertakings.length === 0) {
+        throw new Error('Missing required field: undertakings')
+      }
+      const result = await recordAssignmentOrch(payload)
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'ai_activity.chains.list': {
+      const payload = input as CapabilityInputMap['ai_activity.chains.list']
+      assertNonEmptyString(payload.projectId, 'projectId')
+      const chains = await listChainsOrch(payload)
+      return { chains } as CapabilityOutputMap[Name]
+    }
+    case 'ai_activity.chain.set_project': {
+      const payload = input as CapabilityInputMap['ai_activity.chain.set_project']
+      assertNonEmptyString(payload.projectId, 'projectId')
+      assertNonEmptyString(payload.chainKey, 'chainKey')
+      assertNonEmptyString(payload.toProjectId, 'toProjectId')
+      const result = await setChainProjectOrch(
+        payload.projectId,
+        payload.chainKey,
+        payload.toProjectId,
+      )
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'ai_activity.chain.set_files': {
+      const payload = input as CapabilityInputMap['ai_activity.chain.set_files']
+      assertNonEmptyString(payload.projectId, 'projectId')
+      assertNonEmptyString(payload.chainKey, 'chainKey')
+      const result = await setChainFilesOrch(payload.projectId, payload.chainKey, {
+        written: payload.written,
+        read: payload.read,
       })
       return result as CapabilityOutputMap[Name]
     }

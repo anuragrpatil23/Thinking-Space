@@ -5,7 +5,13 @@ import {
   dispatchSettingsSidebarChromeStateBlock,
   SETTINGS_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
 } from '@/services/lego_blocks/units/settingsSidebarChromeBlock'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import {
+  SETTINGS_CONTROL_CLASS_BLOCK,
+  SETTINGS_PANE_WIDTH_BLOCK,
+  SettingsGroupBlock,
+  SettingsRowBlock,
+  SettingsSectionHeaderBlock,
+} from '@/components/lego_blocks/units/SettingsGroupBlock'
 import { WorkspaceProfilesSettingsBlock } from '@/components/lego_blocks/integrations/WorkspaceProfilesSettingsBlock'
 import { NavRailSettingsBlock } from '@/components/lego_blocks/integrations/NavRailSettingsBlock'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
@@ -187,7 +193,7 @@ const TAB_GROUPS: Array<{ heading: string; items: Array<{ id: SettingsTabWithPro
       { id: 'profile', label: 'Profile' },
       { id: 'projects', label: 'Projects' },
       { id: 'vault', label: 'Select Thinking Space' },
-      { id: 'workspace_profiles', label: 'Profiles' },
+      { id: 'workspace_profiles', label: 'Thinking Space Profiles' },
     ],
   },
   {
@@ -991,11 +997,11 @@ export default function SettingsOrch({
     <div className="flex h-full min-h-0 w-full">
       <aside
         className={cn(
-          'flex flex-col self-stretch bg-background/40 overflow-y-auto overflow-x-hidden',
+          'flex flex-col self-stretch bg-background/40 overflow-y-auto overflow-x-hidden overscroll-contain',
           'shrink-0 transition-[width,opacity] duration-200 ease-out',
           sidebarCollapsed
             ? 'w-0 opacity-0 pointer-events-none border-r-0'
-            : 'w-[220px] opacity-100 lg:border-r lg:border-border/60',
+            : 'w-[258px] opacity-100 lg:border-r lg:border-border/60',
         )}
       >
         <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -1032,70 +1038,64 @@ export default function SettingsOrch({
         </nav>
       </aside>
 
-      <div className="flex-1 space-y-4 min-w-0 px-4 py-4 lg:px-6 overflow-y-auto">
-        <header className="mb-2">
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage profile, theme, scheduler jobs, markdown editor behavior, AI configuration, Webull execution storage, cache reset, and Thinking Space switching.
-          </p>
-        </header>
+      <div className="flex-1 space-y-4 min-w-0 px-4 py-6 lg:px-6 overflow-y-auto overscroll-contain">
       {activeTab === 'theme' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Theme</CardTitle>
-            <CardDescription>Pick the app-shell chrome (rail, menus, headers) and overall color mode.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="ltm-settings-theme-select" className="text-sm font-medium">
-                Chrome Theme
-              </label>
-              <select
-                id="ltm-settings-theme-select"
-                value={themeId}
-                onChange={(event) => setThemeId(event.target.value as typeof themeId)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              >
-                {UI_THEME_OPTIONS_BLOCK.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-muted-foreground">
-                {UI_THEME_OPTIONS_BLOCK.find((option) => option.id === themeId)?.description}
-              </p>
-            </div>
-            <div className="space-y-2 border-t border-border/50 pt-4">
-              <label htmlFor="ltm-settings-color-mode-select" className="text-sm font-medium">
-                Overall Color Mode
-              </label>
-              <select
-                id="ltm-settings-color-mode-select"
-                value={colorModeId}
-                onChange={(event) => setColorModeId(event.target.value as typeof colorModeId)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              >
-                {UI_COLOR_MODE_OPTIONS_BLOCK.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-muted-foreground">
-                {UI_COLOR_MODE_OPTIONS_BLOCK.find((option) => option.id === colorModeId)?.description}
-              </p>
-            </div>
-            <div className="space-y-2 border-t border-border/50 pt-4">
-              <h3 className="text-sm font-medium text-foreground">Markdown Editor</h3>
-              <p className="text-xs text-muted-foreground">
-                Configure how markdown is displayed in view mode.
-              </p>
-              <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-                <div className="space-y-0.5">
-                  <div className="text-sm text-foreground">Preserve spaces in view mode</div>
-                  <div className="text-xs text-muted-foreground">Keeps repeated and trailing spaces visible.</div>
-                </div>
+        <>
+          <SettingsSectionHeaderBlock
+            title="Theme"
+            description="How the app looks: shell chrome, color mode, and how documents are drawn."
+          />
+
+          <SettingsGroupBlock heading="Appearance">
+            <SettingsRowBlock
+              label="Chrome Theme"
+              description={UI_THEME_OPTIONS_BLOCK.find((option) => option.id === themeId)?.description}
+              control={(
+                <select
+                  id="ltm-settings-theme-select"
+                  value={themeId}
+                  onChange={(event) => setThemeId(event.target.value as typeof themeId)}
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-[140px]')}
+                  aria-label="Chrome Theme"
+                >
+                  {UI_THEME_OPTIONS_BLOCK.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+            />
+            <SettingsRowBlock
+              label="Overall Color Mode"
+              description={UI_COLOR_MODE_OPTIONS_BLOCK.find((option) => option.id === colorModeId)?.description}
+              control={(
+                <select
+                  id="ltm-settings-color-mode-select"
+                  value={colorModeId}
+                  onChange={(event) => setColorModeId(event.target.value as typeof colorModeId)}
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-[140px]')}
+                  aria-label="Overall Color Mode"
+                >
+                  {UI_COLOR_MODE_OPTIONS_BLOCK.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+            />
+          </SettingsGroupBlock>
+
+          <SettingsGroupBlock
+            heading="Markdown Editor"
+            description="How markdown is drawn while you read and write. None of these change the file on disk."
+          >
+            <SettingsRowBlock
+              as="label"
+              label="Preserve spaces in view mode"
+              description="Keeps repeated and trailing spaces visible."
+              control={(
                 <Switch
                   checked={markdownEditorSettings.preserveSpacesInViewMode}
                   onCheckedChange={(checked) => updateMarkdownEditorSettings({
@@ -1104,12 +1104,13 @@ export default function SettingsOrch({
                   })}
                   aria-label="Preserve spaces in view mode"
                 />
-              </label>
-              <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-                <div className="space-y-0.5">
-                  <div className="text-sm text-foreground">Preserve new lines in view mode</div>
-                  <div className="text-xs text-muted-foreground">Renders soft line breaks as visible line breaks.</div>
-                </div>
+              )}
+            />
+            <SettingsRowBlock
+              as="label"
+              label="Preserve new lines in view mode"
+              description="Renders soft line breaks as visible line breaks."
+              control={(
                 <Switch
                   checked={markdownEditorSettings.preserveNewlinesInViewMode}
                   onCheckedChange={(checked) => updateMarkdownEditorSettings({
@@ -1118,15 +1119,13 @@ export default function SettingsOrch({
                   })}
                   aria-label="Preserve new lines in view mode"
                 />
-              </label>
-              <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-                <div className="space-y-0.5">
-                  <div className="text-sm text-foreground">Live preview while editing</div>
-                  <div className="text-xs text-muted-foreground">
-                    Headings, bold, and links render as a document; the line under your cursor shows its raw
-                    markdown. Turn off for the plain typewriter feel — the file on disk is identical either way.
-                  </div>
-                </div>
+              )}
+            />
+            <SettingsRowBlock
+              as="label"
+              label="Live preview while editing"
+              description="Headings, bold, and links render as a document; the line under your cursor shows its raw markdown. Off gives the plain typewriter feel."
+              control={(
                 <Switch
                   checked={markdownEditorSettings.livePreviewSyntaxHiding}
                   onCheckedChange={(checked) => updateMarkdownEditorSettings({
@@ -1135,16 +1134,13 @@ export default function SettingsOrch({
                   })}
                   aria-label="Live preview while editing"
                 />
-              </label>
-              <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-                <div className="space-y-0.5">
-                  <div className="text-sm text-foreground">Keep the screen on while reading</div>
-                  <div className="text-xs text-muted-foreground">
-                    Stops the display dimming and locking while a document is open for reading, even in Low
-                    Power Mode. Only applies while you're actually reading — editing, other screens, and the
-                    app in the background all release it immediately.
-                  </div>
-                </div>
+              )}
+            />
+            <SettingsRowBlock
+              as="label"
+              label="Keep the screen on while reading"
+              description="Stops the display dimming while a document is open for reading, even in Low Power Mode. Editing, other screens, and the background all release it immediately."
+              control={(
                 <Switch
                   checked={readingKeepScreenAwake}
                   onCheckedChange={(checked) => {
@@ -1153,22 +1149,20 @@ export default function SettingsOrch({
                   }}
                   aria-label="Keep the screen on while reading"
                 />
-              </label>
-              <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-                <div className="space-y-0.5">
-                  <div className="text-sm text-foreground">Document font</div>
-                  <div className="text-xs text-muted-foreground">
-                    Applies to reading and editing alike — Mono recreates the typewriter feel.
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
+              )}
+            />
+            <SettingsRowBlock
+              label="Document font"
+              description="Applies to reading and editing alike — Mono recreates the typewriter feel."
+              control={(
+                <>
                   <select
                     value={markdownEditorSettings.documentFontFamily}
                     onChange={(event) => updateMarkdownEditorSettings({
                       ...markdownEditorSettings,
                       documentFontFamily: event.target.value as MarkdownEditorSettingsBlock['documentFontFamily'],
                     })}
-                    className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
+                    className={SETTINGS_CONTROL_CLASS_BLOCK}
                     aria-label="Document font family"
                   >
                     <option value="sans">Sans</option>
@@ -1184,357 +1178,329 @@ export default function SettingsOrch({
                       ...markdownEditorSettings,
                       documentFontSizePx: Number(event.target.value),
                     })}
-                    className="h-8 w-16 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
+                    className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-16')}
                     aria-label="Document font size in pixels"
                   />
-                  <span className="text-xs text-muted-foreground">px</span>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-2 border-t border-border/50 pt-4">
-              <h3 className="text-sm font-medium text-foreground">Home dashboard</h3>
-              <p className="text-xs text-muted-foreground">
-                Optional widgets on the home "What you did today" panel.
-              </p>
-              <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-                <div className="space-y-0.5">
-                  <div className="text-sm text-foreground">Show daily insight & memorization tiles</div>
-                  <div className="text-xs text-muted-foreground">
-                    Adds "Insights today" / "Memorized today" counters plus most-recent rows. Requires daily insight notes and memorization sessions to be meaningful — off by default.
-                  </div>
-                </div>
+                  <span className="text-[12px] text-muted-foreground">px</span>
+                </>
+              )}
+            />
+          </SettingsGroupBlock>
+
+          <SettingsGroupBlock
+            heading="Home dashboard"
+            footnote={'Needs daily insight notes and memorization sessions to be meaningful — off by default.'}
+          >
+            <SettingsRowBlock
+              as="label"
+              label="Show daily insight & memorization tiles"
+              description={'Adds "Insights today" / "Memorized today" counters plus most-recent rows.'}
+              control={(
                 <Switch
                   checked={showDailyHighlights}
                   onCheckedChange={updateShowDailyHighlights}
                   aria-label="Show daily insight and memorization tiles"
                 />
-              </label>
-            </div>
-          </CardContent>
-        </Card>
+              )}
+            />
+          </SettingsGroupBlock>
+        </>
       )}
 
       {activeTab === 'explorer' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Explorer</CardTitle>
-            <CardDescription>
-              Configure explorer icon style and custom folder color rules (saved in Thinking Space UI preferences).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="ltm-settings-explorer-icon-style-select" className="text-sm font-medium">
-                Explorer Icon Style
-              </label>
-              <select
-                id="ltm-settings-explorer-icon-style-select"
-                value={explorerIconStyle}
-                onChange={(event) => onExplorerIconStyleChange(event.target.value as ExplorerIconStyleBlock)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              >
-                <option value="outline">Outline</option>
-                <option value="filled">Filled</option>
-              </select>
-            </div>
+        <>
+          <SettingsSectionHeaderBlock
+            title="Explorer"
+            description="Icon style and folder colors for the file tree. Saved in your Thinking Space UI preferences."
+          />
 
-            <div className="space-y-2 border-t border-border/60 pt-3">
-              <div className="text-sm font-medium">Selected item color</div>
-              <div className="flex flex-wrap items-center gap-3">
-                <input
-                  type="color"
-                  aria-label="Selected item color"
-                  value={explorerSelectedColor || DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK}
-                  onChange={(event) => onExplorerSelectedColorChange(event.target.value)}
-                  className="h-9 w-14 cursor-pointer rounded-md border border-input bg-background p-1"
-                />
-                <span className="text-sm text-muted-foreground">{explorerSelectedColor}</span>
-                <button
-                  type="button"
-                  onClick={() => onExplorerSelectedColorChange(DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK)}
-                  disabled={explorerSelectedColor.toLowerCase() === DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK}
-                  className="rounded-md border border-input px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          <SettingsGroupBlock heading="Appearance">
+            <SettingsRowBlock
+              label="Icon style"
+              description="Outline reads lighter; filled reads denser."
+              control={(
+                <select
+                  id="ltm-settings-explorer-icon-style-select"
+                  value={explorerIconStyle}
+                  onChange={(event) => onExplorerIconStyleChange(event.target.value as ExplorerIconStyleBlock)}
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-[140px]')}
+                  aria-label="Explorer icon style"
                 >
-                  Reset to default
-                </button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                The highlight color for the selected file in the explorer (and the RSS feed list).
-              </p>
-            </div>
+                  <option value="outline">Outline</option>
+                  <option value="filled">Filled</option>
+                </select>
+              )}
+            />
+            <SettingsRowBlock
+              label="Selected item color"
+              description="Highlight color for the selected file in the explorer and the RSS feed list."
+              control={(
+                <>
+                  <input
+                    type="color"
+                    aria-label="Selected item color"
+                    value={explorerSelectedColor || DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK}
+                    onChange={(event) => onExplorerSelectedColorChange(event.target.value)}
+                    className="h-8 w-12 cursor-pointer rounded-md border border-input bg-background p-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onExplorerSelectedColorChange(DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK)}
+                    disabled={explorerSelectedColor.toLowerCase() === DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK}
+                    className="rounded-md border border-input px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Reset
+                  </button>
+                </>
+              )}
+            />
+          </SettingsGroupBlock>
 
-            <div className="space-y-2 border-t border-border/60 pt-3">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-medium text-foreground">Folder Color Rules</h3>
-                <div className="flex items-center gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={onLoadLegacyExplorerColorRules}>
-                    Load Legacy Preset
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={onAddExplorerColorRule}>
-                    Add Rule
+          <SettingsGroupBlock
+            heading="Folder color rules"
+            description="Each rule colors a folder icon by relative path. Enable descendants to apply the color to nested folders."
+          >
+            {explorerFolderColorRulesDraft.length === 0 && (
+              <SettingsRowBlock
+                label="No custom rules yet"
+                description="Add one to color explorer folders."
+              />
+            )}
+            {explorerFolderColorRulesDraft.map((rule) => (
+              <SettingsRowBlock key={rule.id} stacked className="gap-2">
+                <div className="grid gap-2 md:grid-cols-[1fr_auto_auto_auto] md:items-center">
+                  <input
+                    type="text"
+                    value={rule.folderPath}
+                    onChange={(event) => onUpdateExplorerColorRule(rule.id, { folderPath: event.target.value })}
+                    placeholder="example/folder/path"
+                    aria-label="Folder path"
+                    className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
+                  />
+                  <input
+                    type="color"
+                    value={rule.color}
+                    onChange={(event) => onUpdateExplorerColorRule(rule.id, { color: event.target.value })}
+                    className="h-8 w-12 cursor-pointer rounded-md border border-input bg-background p-1"
+                    aria-label={`Color for ${rule.folderPath || 'new rule'}`}
+                  />
+                  <label className="inline-flex h-8 items-center gap-2 text-[12px] text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={rule.includeDescendants}
+                      onChange={(event) => onUpdateExplorerColorRule(rule.id, { includeDescendants: event.target.checked })}
+                      className="h-4 w-4"
+                    />
+                    Descendants
+                  </label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-muted-foreground"
+                    onClick={() => onRemoveExplorerColorRule(rule.id)}
+                  >
+                    Remove
                   </Button>
                 </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Each rule colors a folder icon by relative path. Enable descendants to apply the color to nested folders.
-              </p>
+              </SettingsRowBlock>
+            ))}
+          </SettingsGroupBlock>
 
-              <div className="space-y-2">
-                {explorerFolderColorRulesDraft.length === 0 && (
-                  <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-                    No custom rules yet. Add one to color explorer folders.
-                  </div>
-                )}
-                {explorerFolderColorRulesDraft.map((rule) => (
-                  <div key={rule.id} className="grid gap-2 rounded-md border border-border/60 p-2 md:grid-cols-[1fr_auto_auto_auto] md:items-end">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-medium text-muted-foreground">Folder Path</label>
-                      <input
-                        type="text"
-                        value={rule.folderPath}
-                        onChange={(event) => onUpdateExplorerColorRule(rule.id, { folderPath: event.target.value })}
-                        placeholder="example/folder/path"
-                        className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-medium text-muted-foreground">Color</label>
-                      <input
-                        type="color"
-                        value={rule.color}
-                        onChange={(event) => onUpdateExplorerColorRule(rule.id, { color: event.target.value })}
-                        className="h-9 w-12 cursor-pointer rounded border border-input bg-background p-1"
-                        aria-label={`Color for ${rule.folderPath || 'new rule'}`}
-                      />
-                    </div>
-                    <label className="inline-flex h-9 items-center gap-2 text-xs text-foreground">
-                      <input
-                        type="checkbox"
-                        checked={rule.includeDescendants}
-                        onChange={(event) => onUpdateExplorerColorRule(rule.id, { includeDescendants: event.target.checked })}
-                        className="h-4 w-4"
-                      />
-                      Descendants
-                    </label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-9"
-                      onClick={() => onRemoveExplorerColorRule(rule.id)}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={() => { void onSaveExplorerColorRules() }}
-                disabled={busyAction === 'explorer' || !explorerRulesDirty}
-              >
-                {busyAction === 'explorer' ? 'Saving...' : 'Save Explorer Settings'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onResetExplorerColorRules}
-                disabled={busyAction === 'explorer' || !explorerRulesDirty}
-              >
-                Reset
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          <div className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'flex flex-wrap gap-2')}>
+            <Button
+              type="button"
+              onClick={() => { void onSaveExplorerColorRules() }}
+              disabled={busyAction === 'explorer' || !explorerRulesDirty}
+            >
+              {busyAction === 'explorer' ? 'Saving...' : 'Save Explorer Settings'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onAddExplorerColorRule}
+            >
+              Add Rule
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onLoadLegacyExplorerColorRules}
+            >
+              Load Legacy Preset
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onResetExplorerColorRules}
+              disabled={busyAction === 'explorer' || !explorerRulesDirty}
+            >
+              Reset
+            </Button>
+          </div>
+        </>
       )}
 
       {activeTab === 'moon_scene' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Moon Scene</CardTitle>
-            <CardDescription>
-              Schedule speech bubbles for the home-canvas moon scene. During a message's daily time window the
-              sprite shows your text (and optionally plays an animation) instead of its idle thought bubble.
-              Windows where start is after end wrap past midnight.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-              <div className="space-y-0.5">
-                <div className="text-sm text-foreground">Idle animation rotation</div>
-                <div className="text-xs text-muted-foreground">
-                  Between scheduled messages, the sprites occasionally play a random animation from the
-                  library (skateboard, wizard, float, ...). Saves immediately.
-                </div>
-              </div>
-              <Switch
-                checked={moonSceneIdleAnimationsEnabled}
-                onCheckedChange={updateMoonSceneIdleAnimationsEnabled}
-                aria-label="Idle animation rotation"
-              />
-            </label>
+        <>
+          <SettingsSectionHeaderBlock
+            title="Moon Scene"
+            description="Speech bubbles for the home-canvas moon scene. During a message's daily window the sprite shows your text instead of its idle thought bubble; windows where start is after end wrap past midnight."
+          />
 
-            <div className="flex items-center justify-between gap-2 border-t border-border/50 pt-4">
-              <h3 className="text-sm font-medium text-foreground">Scheduled Messages</h3>
-              <Button type="button" variant="outline" size="sm" onClick={onAddMoonSceneMessage}>
-                Add Message
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              {moonSceneMessagesDraft.length === 0 && (
-                <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-                  No scheduled messages yet. Add one to make the astronaut or Clawd talk.
-                </div>
+          <SettingsGroupBlock heading="Sprites">
+            <SettingsRowBlock
+              as="label"
+              label="Idle animation rotation"
+              description="Between scheduled messages, sprites occasionally play a random animation from the library (skateboard, wizard, float, …). Saves immediately."
+              control={(
+                <Switch
+                  checked={moonSceneIdleAnimationsEnabled}
+                  onCheckedChange={updateMoonSceneIdleAnimationsEnabled}
+                  aria-label="Idle animation rotation"
+                />
               )}
-              {moonSceneMessagesDraft.map(entry => (
-                <div
-                  key={entry.id}
-                  className="grid gap-2 rounded-md border border-border/60 p-2 md:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto_auto_auto] md:items-end"
-                >
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-muted-foreground">Speaker</label>
-                    <select
-                      value={entry.speaker}
-                      onChange={event => onUpdateMoonSceneMessage(entry.id, {
-                        speaker: event.target.value as MoonSceneMessagePreferenceBlock['speaker'],
-                      })}
-                      className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
-                    >
-                      {MOON_SCENE_SPEAKER_OPTIONS.map(option => (
-                        <option key={option.id} value={option.id}>{option.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-muted-foreground">Message</label>
-                    <input
-                      type="text"
-                      value={entry.text}
-                      maxLength={120}
-                      onChange={event => onUpdateMoonSceneMessage(entry.id, { text: event.target.value })}
-                      placeholder="e.g. time to wrap up and rest"
-                      className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-muted-foreground">From</label>
-                    <input
-                      type="time"
-                      step={60}
-                      value={entry.startTime}
-                      onChange={event => onUpdateMoonSceneMessage(entry.id, { startTime: event.target.value })}
-                      className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-muted-foreground">To</label>
-                    <input
-                      type="time"
-                      step={60}
-                      value={entry.endTime}
-                      onChange={event => onUpdateMoonSceneMessage(entry.id, { endTime: event.target.value })}
-                      className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-medium text-muted-foreground">Animation</label>
-                    <select
-                      value={entry.animation}
-                      onChange={event => onUpdateMoonSceneMessage(entry.id, {
-                        animation: event.target.value as MoonSceneMessagePreferenceBlock['animation'],
-                      })}
-                      className="h-9 rounded-md border border-input bg-background px-2 text-xs text-foreground outline-none focus:border-ring"
-                    >
-                      {MOON_SCENE_ANIMATION_IDS_BLOCK.map(id => (
-                        <option key={id} value={id}>{MOON_SCENE_ANIMATION_LABELS[id] ?? id}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <label className="inline-flex h-9 items-center gap-2 text-xs text-foreground">
+            />
+          </SettingsGroupBlock>
+
+          <SettingsGroupBlock
+            heading="Scheduled messages"
+            footnote="One message per sprite is shown at a time — if windows overlap, the first matching entry wins. Messages with empty text are dropped on save."
+          >
+            {moonSceneMessagesDraft.length === 0 && (
+              <SettingsRowBlock
+                label="No scheduled messages yet"
+                description="Add one to make the astronaut or Clawd talk."
+              />
+            )}
+            {moonSceneMessagesDraft.map(entry => (
+              <SettingsRowBlock key={entry.id} stacked className="gap-2">
+                <div className="grid gap-2 md:grid-cols-[auto_minmax(0,1fr)_auto_auto_auto_auto_auto] md:items-center">
+                  <select
+                    value={entry.speaker}
+                    onChange={event => onUpdateMoonSceneMessage(entry.id, {
+                      speaker: event.target.value as MoonSceneMessagePreferenceBlock['speaker'],
+                    })}
+                    className={SETTINGS_CONTROL_CLASS_BLOCK}
+                    aria-label="Speaker"
+                  >
+                    {MOON_SCENE_SPEAKER_OPTIONS.map(option => (
+                      <option key={option.id} value={option.id}>{option.label}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={entry.text}
+                    maxLength={120}
+                    onChange={event => onUpdateMoonSceneMessage(entry.id, { text: event.target.value })}
+                    placeholder="e.g. time to wrap up and rest"
+                    aria-label="Message"
+                    className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
+                  />
+                  <input
+                    type="time"
+                    step={60}
+                    value={entry.startTime}
+                    onChange={event => onUpdateMoonSceneMessage(entry.id, { startTime: event.target.value })}
+                    className={SETTINGS_CONTROL_CLASS_BLOCK}
+                    aria-label="From"
+                  />
+                  <input
+                    type="time"
+                    step={60}
+                    value={entry.endTime}
+                    onChange={event => onUpdateMoonSceneMessage(entry.id, { endTime: event.target.value })}
+                    className={SETTINGS_CONTROL_CLASS_BLOCK}
+                    aria-label="To"
+                  />
+                  <select
+                    value={entry.animation}
+                    onChange={event => onUpdateMoonSceneMessage(entry.id, {
+                      animation: event.target.value as MoonSceneMessagePreferenceBlock['animation'],
+                    })}
+                    className={SETTINGS_CONTROL_CLASS_BLOCK}
+                    aria-label="Animation"
+                  >
+                    {MOON_SCENE_ANIMATION_IDS_BLOCK.map(id => (
+                      <option key={id} value={id}>{MOON_SCENE_ANIMATION_LABELS[id] ?? id}</option>
+                    ))}
+                  </select>
+                  <label className="inline-flex h-8 items-center gap-2 text-[12px] text-muted-foreground">
                     <Switch
                       checked={entry.enabled}
                       onCheckedChange={checked => onUpdateMoonSceneMessage(entry.id, { enabled: checked })}
                       aria-label={`Enable message "${entry.text || 'new message'}"`}
                     />
-                    Enabled
+                    On
                   </label>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="h-9"
+                    className="h-8 text-muted-foreground"
                     onClick={() => onRemoveMoonSceneMessage(entry.id)}
                   >
                     Remove
                   </Button>
                 </div>
-              ))}
-            </div>
+              </SettingsRowBlock>
+            ))}
+          </SettingsGroupBlock>
 
-            <p className="text-xs text-muted-foreground">
-              One message per sprite is shown at a time — if windows overlap, the first matching entry in this
-              list wins. Messages with empty text are dropped on save.
-            </p>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={() => { void onSaveMoonSceneMessages() }}
-                disabled={busyAction === 'moon_scene' || !moonSceneMessagesDirty}
-              >
-                {busyAction === 'moon_scene' ? 'Saving...' : 'Save Moon Scene Settings'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onResetMoonSceneMessages}
-                disabled={busyAction === 'moon_scene' || !moonSceneMessagesDirty}
-              >
-                Reset
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          <div className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'flex flex-wrap gap-2')}>
+            <Button
+              type="button"
+              onClick={() => { void onSaveMoonSceneMessages() }}
+              disabled={busyAction === 'moon_scene' || !moonSceneMessagesDirty}
+            >
+              {busyAction === 'moon_scene' ? 'Saving...' : 'Save Moon Scene Settings'}
+            </Button>
+            <Button type="button" variant="outline" onClick={onAddMoonSceneMessage}>
+              Add Message
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onResetMoonSceneMessages}
+              disabled={busyAction === 'moon_scene' || !moonSceneMessagesDirty}
+            >
+              Reset
+            </Button>
+          </div>
+        </>
       )}
 
       {activeTab === 'activity' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Activity Tracker</CardTitle>
-            <CardDescription>
-              Configure which vault paths are excluded from file activity tracking.
-              Files under ignored paths will not appear in activity calendars or daily summaries.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <h4 className="text-sm font-medium mb-2">Ignored Paths</h4>
-              <p className="text-sm text-muted-foreground mb-3">
-                Vault-relative path prefixes to exclude. Any file whose path starts with an ignored prefix will be filtered out.
-              </p>
-              {activityIgnoredPaths.length > 0 && (
-                <div className="space-y-1.5 mb-3">
-                  {activityIgnoredPaths.map(path => (
-                    <div key={path} className="flex items-center gap-2 group rounded-md border border-border/40 px-3 py-1.5 text-sm">
-                      <code className="flex-1 truncate text-muted-foreground">{path}</code>
-                      <button
-                        onClick={() => handleActivityRemovePath(path)}
-                        className="text-muted-foreground/50 hover:text-destructive shrink-0 text-xs"
-                        title="Remove"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {activityIgnoredPaths.length === 0 && (
-                <p className="text-sm text-muted-foreground/60 mb-3">No ignored paths configured.</p>
-              )}
+        <>
+          <SettingsSectionHeaderBlock
+            title="Activity Tracker"
+            description="Vault paths excluded from file activity tracking. Files under an ignored prefix never appear in activity calendars or daily summaries."
+          />
+
+          <SettingsGroupBlock
+            heading="Ignored paths"
+            description="Vault-relative path prefixes. Any file whose path starts with one is filtered out."
+          >
+            {activityIgnoredPaths.length === 0 && (
+              <SettingsRowBlock label="No ignored paths configured" />
+            )}
+            {activityIgnoredPaths.map(path => (
+              <SettingsRowBlock
+                key={path}
+                label={<code className="font-mono text-[12px] font-normal text-muted-foreground">{path}</code>}
+                control={(
+                  <button
+                    type="button"
+                    onClick={() => handleActivityRemovePath(path)}
+                    className="text-[12px] text-muted-foreground/60 transition-colors hover:text-destructive"
+                    title="Remove"
+                  >
+                    Remove
+                  </button>
+                )}
+              />
+            ))}
+            <SettingsRowBlock stacked>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -1542,34 +1508,41 @@ export default function SettingsOrch({
                   onChange={e => setActivityNewPathInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleActivityAddPath() }}
                   placeholder="e.g. operations/F9/execution"
-                  className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+                  aria-label="New ignored path"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-0 flex-1')}
                 />
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="h-8"
                   onClick={handleActivityAddPath}
                   disabled={!activityNewPathInput.trim()}
                 >
                   Add
                 </Button>
               </div>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                onClick={handleActivitySave}
-                disabled={busyAction === 'activity' || !activityDirty}
-              >
-                {busyAction === 'activity' ? 'Saving...' : 'Save Activity Settings'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </SettingsRowBlock>
+          </SettingsGroupBlock>
+
+          <div className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'flex flex-wrap gap-2')}>
+            <Button
+              type="button"
+              onClick={handleActivitySave}
+              disabled={busyAction === 'activity' || !activityDirty}
+            >
+              {busyAction === 'activity' ? 'Saving...' : 'Save Activity Settings'}
+            </Button>
+          </div>
+        </>
       )}
 
       {activeTab === 'ai_activity' && (
-        <div className="space-y-6">
+        <>
+          <SettingsSectionHeaderBlock
+            title="AI Activity"
+            description="Where AI sessions come from, how they are grouped, and which surfaces they appear on."
+          />
           <AiActivitySessionSourcesSettingsBlock />
           <AiActivityProjectMappingSettingsBlock />
           <AiActivityHomePostItSettingsBlock />
@@ -1578,175 +1551,184 @@ export default function SettingsOrch({
           <AiActivityAiTitlesSettingsBlock />
           <AiActivityRangeSummaryProviderSettingsBlock />
           <AiActivityRestDaysSettingsBlock />
-        </div>
+        </>
       )}
 
       {activeTab === 'scheduler' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Scheduler</CardTitle>
-            <CardDescription>
-              Configure scheduled in-app jobs. Tasks run only while Thinking Space is open; {runtimeLabel} runtimes may pause timers when the app is backgrounded.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3">
-              {schedulerSettingsDraft.tasks.map((task) => {
-                const taskOption = schedulerActionOptionById.get(task.action)
-                const nextRunAt = schedulerNextRunByTaskId[task.id]
-                return (
-                  <div key={task.id} className="space-y-3 rounded-xl border border-border/60 bg-background p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="space-y-1">
-                        <div className="text-sm font-medium text-foreground">
-                          {taskOption?.label ?? task.action}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {taskOption?.description ?? 'Scheduled task'}
-                        </p>
-                      </div>
-                      <label className="flex items-center gap-3 rounded-md border border-border/60 px-3 py-2 text-sm text-foreground">
-                        <span>Enabled</span>
-                        <Switch
-                          checked={task.enabled}
-                          onCheckedChange={(checked) => onUpdateScheduledTask(task.id, { enabled: checked })}
-                          aria-label={`Enable ${taskOption?.label ?? task.action}`}
-                        />
-                      </label>
-                    </div>
+        <>
+          <SettingsSectionHeaderBlock
+            title="Scheduler"
+            description={`In-app scheduled jobs. Tasks run only while Thinking Space is open; ${runtimeLabel} runtimes may pause timers when the app is backgrounded.`}
+          />
 
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Scheduled Times</div>
-                      <div className="flex flex-wrap gap-2">
-                        {task.timesOfDay.map(time => (
-                          <div
-                            key={time}
-                            className="flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/20 px-2.5 py-1 text-sm"
-                          >
-                            <span className="font-mono">{time}</span>
-                            {task.timesOfDay.length > 1 && (
-                              <button
-                                onClick={() => onRemoveScheduledTime(task.id, time)}
-                                className="text-muted-foreground/50 hover:text-destructive text-xs ml-0.5"
-                                title="Remove time"
-                              >
-                                ×
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="time"
-                          step={60}
-                          value={schedulerNewTimeByTaskId[task.id] ?? ''}
-                          onChange={(e) => setSchedulerNewTimeByTaskId(prev => ({ ...prev, [task.id]: e.target.value }))}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              onAddScheduledTime(task.id, schedulerNewTimeByTaskId[task.id] ?? '')
-                              setSchedulerNewTimeByTaskId(prev => ({ ...prev, [task.id]: '' }))
-                            }
-                          }}
-                          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
+          {schedulerSettingsDraft.tasks.map((task) => {
+            const taskOption = schedulerActionOptionById.get(task.action)
+            const nextRunAt = schedulerNextRunByTaskId[task.id]
+            return (
+              <SettingsGroupBlock
+                key={task.id}
+                heading={taskOption?.label ?? task.action}
+                footnote={task.enabled && nextRunAt
+                  ? `Next run: ${new Date(nextRunAt).toLocaleString()}`
+                  : 'Task is disabled. Enable it to schedule runs.'}
+              >
+                <SettingsRowBlock
+                  as="label"
+                  label="Enabled"
+                  description={taskOption?.description ?? 'Scheduled task'}
+                  control={(
+                    <Switch
+                      checked={task.enabled}
+                      onCheckedChange={(checked) => onUpdateScheduledTask(task.id, { enabled: checked })}
+                      aria-label={`Enable ${taskOption?.label ?? task.action}`}
+                    />
+                  )}
+                />
+                <SettingsRowBlock
+                  label="Scheduled times"
+                  description={task.timesOfDay.length === 0 ? 'No times set.' : undefined}
+                  control={(
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      {task.timesOfDay.map(time => (
+                        <span
+                          key={time}
+                          className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/30 px-2 py-0.5 text-[12px]"
+                        >
+                          <span className="font-mono">{time}</span>
+                          {task.timesOfDay.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => onRemoveScheduledTime(task.id, time)}
+                              className="text-muted-foreground/50 transition-colors hover:text-destructive"
+                              title="Remove time"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                />
+                <SettingsRowBlock
+                  label="Add a time"
+                  control={(
+                    <>
+                      <input
+                        type="time"
+                        step={60}
+                        value={schedulerNewTimeByTaskId[task.id] ?? ''}
+                        onChange={(e) => setSchedulerNewTimeByTaskId(prev => ({ ...prev, [task.id]: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
                             onAddScheduledTime(task.id, schedulerNewTimeByTaskId[task.id] ?? '')
                             setSchedulerNewTimeByTaskId(prev => ({ ...prev, [task.id]: '' }))
-                          }}
-                          disabled={!schedulerNewTimeByTaskId[task.id]?.trim()}
-                        >
-                          Add Time
-                        </Button>
-                      </div>
-                    </div>
+                          }
+                        }}
+                        aria-label={`New time for ${taskOption?.label ?? task.action}`}
+                        className={SETTINGS_CONTROL_CLASS_BLOCK}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                        onClick={() => {
+                          onAddScheduledTime(task.id, schedulerNewTimeByTaskId[task.id] ?? '')
+                          setSchedulerNewTimeByTaskId(prev => ({ ...prev, [task.id]: '' }))
+                        }}
+                        disabled={!schedulerNewTimeByTaskId[task.id]?.trim()}
+                      >
+                        Add
+                      </Button>
+                    </>
+                  )}
+                />
+              </SettingsGroupBlock>
+            )
+          })}
 
-                    <div className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
-                      {task.enabled && nextRunAt
-                        ? `Next run: ${new Date(nextRunAt).toLocaleString()}`
-                        : 'Task is disabled. Enable it to schedule runs.'}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={() => { void onSaveSchedulerSettings() }}
-                disabled={busyAction === 'scheduler' || !schedulerDirty}
-              >
-                {busyAction === 'scheduler' ? 'Saving...' : 'Save Scheduler Settings'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onResetSchedulerSettings}
-                disabled={busyAction === 'scheduler' || !schedulerDirty}
-              >
-                Reset
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          <div className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'flex flex-wrap gap-2')}>
+            <Button
+              type="button"
+              onClick={() => { void onSaveSchedulerSettings() }}
+              disabled={busyAction === 'scheduler' || !schedulerDirty}
+            >
+              {busyAction === 'scheduler' ? 'Saving...' : 'Save Scheduler Settings'}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onResetSchedulerSettings}
+              disabled={busyAction === 'scheduler' || !schedulerDirty}
+            >
+              Reset
+            </Button>
+          </div>
+        </>
       )}
 
       {activeTab === 'profile' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Profile</CardTitle>
-            <CardDescription>
-              Your profile is stored in your Thinking Space folder at <span className="font-mono">{USER_PROFILE_FILE_PATH_BLOCK}</span>.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="ltm-settings-profile-name" className="text-sm font-medium">
-                Name
-              </label>
-              <input
-                id="ltm-settings-profile-name"
-                type="text"
-                value={profileNameInput}
-                onChange={(event) => {
-                  setProfileNameInput(event.target.value)
-                  setProfileDirty(true)
-                }}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              />
-            </div>
+        <>
+          <SettingsSectionHeaderBlock
+            title="Profile"
+            description={(
+              <>
+                Stored in your Thinking Space folder at{' '}
+                <span className="font-mono">{USER_PROFILE_FILE_PATH_BLOCK}</span>.
+              </>
+            )}
+          />
 
-            <div className="space-y-2">
-              <label htmlFor="ltm-settings-profile-symbol" className="text-sm font-medium">
-                Profile Symbol
-              </label>
-              <div className="flex items-center gap-2">
+          <SettingsGroupBlock heading="Identity">
+            <SettingsRowBlock
+              as="label"
+              htmlFor="ltm-settings-profile-name"
+              label="Name"
+              control={(
                 <input
-                  id="ltm-settings-profile-symbol"
+                  id="ltm-settings-profile-name"
                   type="text"
-                  value={profileSymbolInput}
+                  value={profileNameInput}
                   onChange={(event) => {
-                    setProfileSymbolInput(event.target.value)
+                    setProfileNameInput(event.target.value)
                     setProfileDirty(true)
                   }}
-                  placeholder={deriveUserProfileSymbolBlock(profileNameInput)}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[240px]')}
                 />
-                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border/70 bg-muted/25 text-sm font-semibold text-foreground">
-                  {profileSymbolInput.trim() || deriveUserProfileSymbolBlock(profileNameInput)}
-                </span>
-              </div>
-            </div>
+              )}
+            />
+            <SettingsRowBlock
+              as="label"
+              htmlFor="ltm-settings-profile-symbol"
+              label="Profile symbol"
+              description="Shown wherever the app needs a compact stand-in for you."
+              control={(
+                <>
+                  <input
+                    id="ltm-settings-profile-symbol"
+                    type="text"
+                    value={profileSymbolInput}
+                    onChange={(event) => {
+                      setProfileSymbolInput(event.target.value)
+                      setProfileDirty(true)
+                    }}
+                    placeholder={deriveUserProfileSymbolBlock(profileNameInput)}
+                    className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[180px]')}
+                  />
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/70 bg-muted/25 text-[13px] font-semibold text-foreground">
+                    {profileSymbolInput.trim() || deriveUserProfileSymbolBlock(profileNameInput)}
+                  </span>
+                </>
+              )}
+            />
+          </SettingsGroupBlock>
 
-            <div className="space-y-2">
-              <label htmlFor="ltm-settings-profile-memories" className="text-sm font-medium">
-                AI Memories
-              </label>
+          <SettingsGroupBlock
+            heading="AI memories"
+            footnote={profileLoading ? 'Loading profile…' : 'Stored as plain text lines in your profile. AI can append to these later.'}
+          >
+            <SettingsRowBlock stacked>
               <textarea
                 id="ltm-settings-profile-memories"
                 value={profileMemoriesInput}
@@ -1754,33 +1736,31 @@ export default function SettingsOrch({
                   setProfileMemoriesInput(event.target.value)
                   setProfileDirty(true)
                 }}
-                placeholder="One memory per line. AI can append to these later."
-                className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-ring"
+                placeholder="One memory per line."
+                aria-label="AI memories"
+                className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-[13px] text-foreground outline-none focus:border-ring"
               />
-              <p className="text-xs text-muted-foreground">
-                {profileLoading ? 'Loading profile…' : 'Memories are stored as plain text lines in your profile.'}
-              </p>
-            </div>
+            </SettingsRowBlock>
+          </SettingsGroupBlock>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={onSaveProfile}
-                disabled={busyProfileSave || (!profileDirty && !profileLoading)}
-              >
-                {busyProfileSave ? 'Saving...' : 'Save Profile'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => { void onReloadProfile() }}
-                disabled={busyProfileSave}
-              >
-                Reload from Thinking Space
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          <div className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'flex flex-wrap gap-2')}>
+            <Button
+              type="button"
+              onClick={onSaveProfile}
+              disabled={busyProfileSave || (!profileDirty && !profileLoading)}
+            >
+              {busyProfileSave ? 'Saving...' : 'Save Profile'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => { void onReloadProfile() }}
+              disabled={busyProfileSave}
+            >
+              Reload from Thinking Space
+            </Button>
+          </div>
+        </>
       )}
 
       {activeTab === 'ai' && (
@@ -1794,180 +1774,189 @@ export default function SettingsOrch({
       {activeTab === 'web_bookmarks' && <WebSettingsSection />}
 
       {activeTab === 'google_docs_sheets' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Google Docs and Sheets</CardTitle>
-            <CardDescription>
-              Optional setup for Drive picker. Opening/editing Docs and Sheets works from the in-app Google view without this.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              Sign in once inside a Google Doc/Sheet view and that session is reused. Add OAuth client ID only if you want Pick from Drive.
-            </p>
-            <div className="space-y-2">
-              <label htmlFor="ltm-settings-google-oauth-client-id" className="text-sm font-medium">
-                Google OAuth Client ID
-              </label>
-              <input
-                id="ltm-settings-google-oauth-client-id"
-                type="text"
-                value={googleOauthClientIdInput}
-                onChange={(event) => setGoogleOauthClientIdInput(event.target.value)}
-                placeholder="1234567890-xxxx.apps.googleusercontent.com"
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              />
-              <p className="text-xs text-muted-foreground">
-                Required only for Connect Google / Pick from Drive. The placeholder is an example format.
-              </p>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Drive picker status: {googleDriveConnected ? 'connected' : 'not connected'}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onSaveGoogleOauthClientId}
-              >
-                Save Client ID
-              </Button>
-              <Button
-                type="button"
-                onClick={() => { void onConnectGoogleDrive() }}
-                disabled={googleDriveAuthBusy}
-              >
-                {googleDriveAuthBusy ? 'Connecting...' : 'Connect Google'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onDisconnectGoogleDrive}
-                disabled={googleDriveAuthBusy || !googleDriveConnected}
-              >
-                Disconnect Google
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <>
+          <SettingsSectionHeaderBlock
+            title="Google Docs and Sheets"
+            description="Opening and editing Docs and Sheets works from the in-app Google view without any setup — sign in once inside a document and that session is reused. The client ID below is only for Pick from Drive."
+          />
+
+          <SettingsGroupBlock
+            heading="Drive picker"
+            footnote={`Status: ${googleDriveConnected ? 'connected' : 'not connected'}`}
+          >
+            <SettingsRowBlock
+              as="label"
+              htmlFor="ltm-settings-google-oauth-client-id"
+              label="OAuth client ID"
+              description="Required only for Connect Google / Pick from Drive."
+              control={(
+                <input
+                  id="ltm-settings-google-oauth-client-id"
+                  type="text"
+                  value={googleOauthClientIdInput}
+                  onChange={(event) => setGoogleOauthClientIdInput(event.target.value)}
+                  placeholder="1234567890-xxxx.apps.googleusercontent.com"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[280px]')}
+                />
+              )}
+            />
+          </SettingsGroupBlock>
+
+          <div className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'flex flex-wrap gap-2')}>
+            <Button type="button" variant="outline" onClick={onSaveGoogleOauthClientId}>
+              Save Client ID
+            </Button>
+            <Button
+              type="button"
+              onClick={() => { void onConnectGoogleDrive() }}
+              disabled={googleDriveAuthBusy}
+            >
+              {googleDriveAuthBusy ? 'Connecting...' : 'Connect Google'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onDisconnectGoogleDrive}
+              disabled={googleDriveAuthBusy || !googleDriveConnected}
+            >
+              Disconnect Google
+            </Button>
+          </div>
+        </>
       )}
 
       {activeTab === 'webull' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Webull Settings</CardTitle>
-            <CardDescription>
-              Configure the tab name, icon, Webull credentials, and execution storage for Webull.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-2 rounded-lg border border-border/60 p-3">
-              <h3 className="text-sm font-medium text-foreground">Tab Appearance</h3>
-              <p className="text-xs text-muted-foreground">
-                Customize the label and icon shown in the sidebar and tab strip. Changes sync across devices via your vault.
-              </p>
-              <div className="space-y-2">
-                <label htmlFor="ltm-settings-webull-tab-label" className="text-sm font-medium">
-                  Tab Label
-                </label>
+        <>
+          <SettingsSectionHeaderBlock
+            title="Webull"
+            description="Tab name and icon, API credentials, and where execution files are stored."
+          />
+
+          <SettingsGroupBlock
+            heading="Tab appearance"
+            description="The label and icon shown in the sidebar and tab strip. Changes sync across devices via your vault."
+          >
+            <SettingsRowBlock
+              as="label"
+              htmlFor="ltm-settings-webull-tab-label"
+              label="Tab label"
+              control={(
                 <input
                   id="ltm-settings-webull-tab-label"
                   type="text"
                   value={webullTabLabelInput}
                   onChange={(event) => setWebullTabLabelInput(event.target.value)}
                   placeholder="Webull"
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[220px]')}
                 />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="ltm-settings-webull-tab-icon" className="text-sm font-medium">
-                  Tab Icon (text or emoji)
-                </label>
+              )}
+            />
+            <SettingsRowBlock
+              as="label"
+              htmlFor="ltm-settings-webull-tab-icon"
+              label="Tab icon"
+              description="Text or emoji (e.g. 📈, W). Blank uses the Webull crescent icon."
+              control={(
                 <input
                   id="ltm-settings-webull-tab-icon"
                   type="text"
                   value={webullTabIconTextInput}
                   onChange={(event) => setWebullTabIconTextInput(event.target.value)}
-                  placeholder="Leave blank for Webull crescent icon"
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                  placeholder="Default"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[220px]')}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Leave blank to use the default Webull crescent icon, or enter text/emoji (e.g. 📈, W).
-                </p>
-              </div>
-              <Button
-                type="button"
-                onClick={() => { void onSaveWebullTabPreferences() }}
-                disabled={busyAction === 'webull' || !onWebullTabPreferencesChange}
-              >
-                {busyAction === 'webull' ? 'Saving...' : 'Save Tab Appearance'}
-              </Button>
-            </div>
-            <div className="space-y-2 rounded-lg border border-border/60 p-3">
-              <h3 className="text-sm font-medium text-foreground">Experimental Subtabs</h3>
-              <label className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-                <div className="space-y-0.5">
-                  <div className="text-sm text-foreground">Sim subtab</div>
-                  <div className="text-xs text-muted-foreground">
-                    Adds a Sim timeline of F9 practice reps across market history, beside Study. Reads the
-                    f9-sim folder next to your execution folder. Applied on next visit to the Webull tab.
-                  </div>
-                </div>
+              )}
+            />
+            <SettingsRowBlock
+              label="Apply"
+              control={(
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8"
+                  onClick={() => { void onSaveWebullTabPreferences() }}
+                  disabled={busyAction === 'webull' || !onWebullTabPreferencesChange}
+                >
+                  {busyAction === 'webull' ? 'Saving...' : 'Save Tab Appearance'}
+                </Button>
+              )}
+            />
+          </SettingsGroupBlock>
+
+          <SettingsGroupBlock
+            heading="Experimental subtabs"
+            footnote={(
+              <>
+                Vault-relative folder holding the Sim data (<code>cases/</code>, <code>eras.yaml</code>, <code>bench.md</code>).
+                {' '}
+                {webullSavedSimFolderPath
+                  ? <>Currently saved: <span className="font-mono">{webullSavedSimFolderPath}</span>.</>
+                  : deriveDefaultWebullSimRootBlock(webullSavedExecutionFolderPath)
+                    ? <>Blank uses the default <span className="font-mono">{deriveDefaultWebullSimRootBlock(webullSavedExecutionFolderPath)}</span>.</>
+                    : <>Blank uses an <span className="font-mono">F9-sim</span> folder beside the execution folder.</>}
+              </>
+            )}
+          >
+            <SettingsRowBlock
+              as="label"
+              label="Sim subtab"
+              description="Adds a Sim timeline of F9 practice reps across market history, beside Study. Applied on next visit to the Webull tab."
+              control={(
                 <Switch
                   checked={webullSimTabEnabled}
                   onCheckedChange={updateWebullSimTabEnabled}
                   aria-label="Enable the Webull Sim subtab"
                 />
-              </label>
-              <div className="space-y-2">
-                <label htmlFor="ltm-settings-webull-sim-folder" className="text-sm font-medium">
-                  Sim Folder Path
-                </label>
-                <input
-                  id="ltm-settings-webull-sim-folder"
-                  type="text"
-                  value={webullSimFolderPathInput}
-                  onChange={(event) => setWebullSimFolderPathInput(event.target.value)}
-                  placeholder={
-                    deriveDefaultWebullSimRootBlock(webullSavedExecutionFolderPath)
-                    || 'e.g. acceleration_core/F9/F9-sim'
-                  }
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Vault-relative folder holding the Sim data (<code>cases/</code>, <code>eras.yaml</code>, <code>bench.md</code>).
-                  {' '}
-                  {webullSavedSimFolderPath
-                    ? <>Current saved value: <span className="font-mono">{webullSavedSimFolderPath}</span>.</>
-                    : deriveDefaultWebullSimRootBlock(webullSavedExecutionFolderPath)
-                      ? <>Leave blank to use the default <span className="font-mono">{deriveDefaultWebullSimRootBlock(webullSavedExecutionFolderPath)}</span>.</>
-                      : <>Leave blank to use a <span className="font-mono">F9-sim</span> folder beside the execution folder.</>}
-                </p>
-                <Button
-                  type="button"
-                  onClick={() => { void onSaveWebullSimFolderPath() }}
-                  disabled={busyAction === 'webull'}
-                >
-                  {busyAction === 'webull' ? 'Saving...' : 'Save Sim Folder Path'}
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2 rounded-lg border border-border/60 p-3">
-              <h3 className="text-sm font-medium text-foreground">Webull API Credentials</h3>
-              {!webullCredentialEditingSupported && (
-                <p className="text-xs text-muted-foreground">
-                  Secure credential entry is currently available only in the Electron desktop app.
-                </p>
               )}
-              {webullCredentialEditingSupported && !webullSecureStorageAvailable && (
-                <p className="text-xs text-destructive">
-                  Secure storage is unavailable on this device/runtime. Webull credentials cannot be saved safely.
-                </p>
+            />
+            <SettingsRowBlock
+              as="label"
+              htmlFor="ltm-settings-webull-sim-folder"
+              label="Sim folder path"
+              control={(
+                <>
+                  <input
+                    id="ltm-settings-webull-sim-folder"
+                    type="text"
+                    value={webullSimFolderPathInput}
+                    onChange={(event) => setWebullSimFolderPathInput(event.target.value)}
+                    placeholder={
+                      deriveDefaultWebullSimRootBlock(webullSavedExecutionFolderPath)
+                      || 'e.g. acceleration_core/F9/F9-sim'
+                    }
+                    className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[280px]')}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => { void onSaveWebullSimFolderPath() }}
+                    disabled={busyAction === 'webull'}
+                  >
+                    Save
+                  </Button>
+                </>
               )}
-              <div className="space-y-2">
-                <label htmlFor="ltm-settings-webull-webull-app-key" className="text-sm font-medium">
-                  Webull App Key
-                </label>
+            />
+          </SettingsGroupBlock>
+
+          <SettingsGroupBlock
+            heading="API credentials"
+            description={
+              !webullCredentialEditingSupported
+                ? 'Secure credential entry is available only in the Electron desktop app.'
+                : !webullSecureStorageAvailable
+                  ? 'Secure storage is unavailable on this device — credentials cannot be saved safely.'
+                  : undefined
+            }
+            footnote={`Status: ${webullCredentialsConfigured ? `configured (${webullAppKeyHint ?? 'saved'})` : 'not configured'}`}
+          >
+            <SettingsRowBlock
+              as="label"
+              htmlFor="ltm-settings-webull-webull-app-key"
+              label="App key"
+              control={(
                 <input
                   id="ltm-settings-webull-webull-app-key"
                   type="text"
@@ -1975,13 +1964,15 @@ export default function SettingsOrch({
                   onChange={(event) => setWebullAppKeyInput(event.target.value)}
                   placeholder="Enter app key"
                   disabled={!webullCredentialEditingSupported}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring disabled:cursor-not-allowed disabled:opacity-60"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[280px] disabled:cursor-not-allowed disabled:opacity-60')}
                 />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="ltm-settings-webull-webull-app-secret" className="text-sm font-medium">
-                  Webull App Secret
-                </label>
+              )}
+            />
+            <SettingsRowBlock
+              as="label"
+              htmlFor="ltm-settings-webull-webull-app-secret"
+              label="App secret"
+              control={(
                 <input
                   id="ltm-settings-webull-webull-app-secret"
                   type="password"
@@ -1989,75 +1980,86 @@ export default function SettingsOrch({
                   onChange={(event) => setWebullAppSecretInput(event.target.value)}
                   placeholder="Enter app secret"
                   disabled={!webullCredentialEditingSupported}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring disabled:cursor-not-allowed disabled:opacity-60"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[280px] disabled:cursor-not-allowed disabled:opacity-60')}
                 />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Current status: {webullCredentialsConfigured ? `configured (${webullAppKeyHint ?? 'saved'})` : 'not configured'}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  onClick={() => { void onSaveWebullCredentials() }}
-                  disabled={busyAction === 'webull' || !webullCredentialEditingSupported}
-                >
-                  {busyAction === 'webull' ? 'Saving...' : 'Save Credentials'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => { void onClearWebullCredentials() }}
-                  disabled={busyAction === 'webull' || !webullCredentialEditingSupported || !webullCredentialsConfigured}
-                >
-                  Clear Credentials
-                </Button>
-              </div>
-            </div>
+              )}
+            />
+            <SettingsRowBlock
+              label="Stored credentials"
+              control={(
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => { void onSaveWebullCredentials() }}
+                    disabled={busyAction === 'webull' || !webullCredentialEditingSupported}
+                  >
+                    {busyAction === 'webull' ? 'Saving...' : 'Save'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={() => { void onClearWebullCredentials() }}
+                    disabled={busyAction === 'webull' || !webullCredentialEditingSupported || !webullCredentialsConfigured}
+                  >
+                    Clear
+                  </Button>
+                </>
+              )}
+            />
+          </SettingsGroupBlock>
 
-            <div className="space-y-2 border-t border-border/60 pt-3">
-              <h3 className="text-sm font-medium text-foreground">Execution Storage</h3>
-              <p className="text-xs text-muted-foreground">
-                Configure where Webull stores `overall.json`, company index files, and per-position markdown files.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="ltm-settings-webull-execution-folder" className="text-sm font-medium">
-                Execution Folder Path
-              </label>
-              <input
-                id="ltm-settings-webull-execution-folder"
-                type="text"
-                value={webullExecutionFolderPathInput}
-                onChange={(event) => setWebullExecutionFolderPathInput(event.target.value)}
-                placeholder="Optional. Leave blank to disable execution file sync."
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Current saved value:{' '}
-              {webullSavedExecutionFolderPath
-                ? <span className="font-mono">{webullSavedExecutionFolderPath}</span>
-                : <span className="italic">Not configured</span>}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={() => { void onSaveWebullSettings() }}
-                disabled={busyAction === 'webull'}
-              >
-                {busyAction === 'webull' ? 'Saving...' : 'Save Webull Path'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => { void onResetWebullSettings() }}
-                disabled={busyAction === 'webull'}
-              >
-                Reset to Default
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          <SettingsGroupBlock
+            heading="Execution storage"
+            description="Where Webull writes overall.json, company index files, and per-position markdown."
+            footnote={(
+              <>
+                Currently saved:{' '}
+                {webullSavedExecutionFolderPath
+                  ? <span className="font-mono">{webullSavedExecutionFolderPath}</span>
+                  : <span className="italic">not configured</span>}
+              </>
+            )}
+          >
+            <SettingsRowBlock
+              as="label"
+              htmlFor="ltm-settings-webull-execution-folder"
+              label="Execution folder path"
+              description="Blank disables execution file sync."
+              control={(
+                <input
+                  id="ltm-settings-webull-execution-folder"
+                  type="text"
+                  value={webullExecutionFolderPathInput}
+                  onChange={(event) => setWebullExecutionFolderPathInput(event.target.value)}
+                  placeholder="Optional"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[280px]')}
+                />
+              )}
+            />
+          </SettingsGroupBlock>
+
+          <div className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'flex flex-wrap gap-2')}>
+            <Button
+              type="button"
+              onClick={() => { void onSaveWebullSettings() }}
+              disabled={busyAction === 'webull'}
+            >
+              {busyAction === 'webull' ? 'Saving...' : 'Save Webull Path'}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => { void onResetWebullSettings() }}
+              disabled={busyAction === 'webull'}
+            >
+              Reset to Default
+            </Button>
+          </div>
+        </>
       )}
 
       {activeTab === 'rss' && (
@@ -2065,86 +2067,78 @@ export default function SettingsOrch({
       )}
 
       {activeTab === 'cache' && (
-        <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Faster Indexing</CardTitle>
-            <CardDescription>
-              Add a Thinking Space uuid to notes that don&apos;t have one, so they index reliably and show up
-              in features that read notes back (reading/memorization activity, related retrieval).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Only notes that already have YAML frontmatter but lack a uuid are touched — a single
-              <code className="mx-1">uuid:</code> line is inserted. Plain notes and harvested AI transcripts are left alone,
-              and nothing else in the file is reformatted. Safe to run repeatedly.
-            </p>
-            <Button type="button" onClick={onBackfillUuids} disabled={busyUuidBackfill}>
-              {busyUuidBackfill ? 'Stamping uuids...' : 'Add Thinking Space UUIDs'}
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Clear Cache</CardTitle>
-            <CardDescription>
-              Clears local app cache (IndexedDB + local settings cache) and reloads the app.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Thinking Space selection is preserved, but local caches will be rebuilt after refresh.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Clear Cache removes local API/OAuth credentials stored in app cache (for example AI and Google Drive),
-              so you may need to sign in again.
-            </p>
-            <Button type="button" onClick={onClearCache} disabled={busyAction === 'cache'}>
-              {busyAction === 'cache' ? 'Clearing cache...' : 'Clear Cache'}
-            </Button>
-            <div className="pt-4 border-t">
-              <p className="text-sm font-medium mb-1">Clear GPU Cache</p>
-              <p className="text-sm text-muted-foreground mb-3">
-                Deletes the GPU shader cache and restarts the app. Useful for fixing render
-                glitches, blank surfaces, or stale shader artifacts after a driver update.
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClearGpuCache}
-                disabled={busyGpuCache}
-              >
-                {busyGpuCache ? 'Clearing GPU cache...' : 'Clear GPU Cache & Restart'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-        </div>
+        <>
+          <SettingsSectionHeaderBlock
+            title="Index & Cache"
+            description="Rebuildable local state: the search index that makes notes findable, and the caches the app can always regenerate."
+          />
+
+          <SettingsGroupBlock
+            heading="Faster indexing"
+            footnote="Only notes that already have YAML frontmatter but lack a uuid are touched — one uuid: line is inserted. Plain notes and harvested AI transcripts are left alone, and nothing else is reformatted. Safe to run repeatedly."
+          >
+            <SettingsRowBlock
+              label="Add Thinking Space UUIDs"
+              description="Stamps a uuid on notes without one so they index reliably and show up in reading/memorization activity and related retrieval."
+              control={(
+                <Button type="button" size="sm" className="h-8" onClick={onBackfillUuids} disabled={busyUuidBackfill}>
+                  {busyUuidBackfill ? 'Stamping…' : 'Run'}
+                </Button>
+              )}
+            />
+          </SettingsGroupBlock>
+
+          <SettingsGroupBlock heading="Reset">
+            <SettingsRowBlock
+              label="Clear cache"
+              description="Clears IndexedDB and the local settings cache, then reloads. Your Thinking Space selection is kept, but locally stored API/OAuth credentials (AI, Google Drive) are removed — you may need to sign in again."
+              control={(
+                <Button type="button" size="sm" className="h-8" onClick={onClearCache} disabled={busyAction === 'cache'}>
+                  {busyAction === 'cache' ? 'Clearing…' : 'Clear'}
+                </Button>
+              )}
+            />
+            <SettingsRowBlock
+              label="Clear GPU cache"
+              description="Deletes the GPU shader cache and restarts the app. Fixes render glitches, blank surfaces, or stale shader artifacts after a driver update."
+              control={(
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8"
+                  onClick={onClearGpuCache}
+                  disabled={busyGpuCache}
+                >
+                  {busyGpuCache ? 'Clearing…' : 'Clear & Restart'}
+                </Button>
+              )}
+            />
+          </SettingsGroupBlock>
+        </>
       )}
 
       {activeTab === 'projects' && <ProjectsSettingsBlock />}
 
       {activeTab === 'vault' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Select Thinking Space</CardTitle>
-            <CardDescription>
-              Open the folder selector for this {runtimeLabel} runtime. The app reloads after selection.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Use this if you want to switch to a different Thinking Space folder or recover from stale folder context.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Switching Thinking Space folders does not delete API keys or credentials.
-            </p>
-            <Button type="button" onClick={onSwitchVault}>
-              Open Thinking Space Selector
-            </Button>
-          </CardContent>
-        </Card>
+        <>
+          <SettingsSectionHeaderBlock
+            title="Select Thinking Space"
+            description={`Open the folder selector for this ${runtimeLabel} runtime. The app reloads after selection.`}
+          />
+
+          <SettingsGroupBlock heading="Folder">
+            <SettingsRowBlock
+              label="Switch Thinking Space"
+              description="Use this to move to a different folder or recover from stale folder context. Switching does not delete API keys or credentials."
+              control={(
+                <Button type="button" size="sm" className="h-8" onClick={onSwitchVault}>
+                  Open Selector
+                </Button>
+              )}
+            />
+          </SettingsGroupBlock>
+        </>
       )}
 
       {activeTab === 'workspace_profiles' && <WorkspaceProfilesSettingsBlock />}
@@ -2154,22 +2148,18 @@ export default function SettingsOrch({
       {activeTab === 'about' && <AboutSection />}
 
       {activeTab === 'developer' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Customize This App</CardTitle>
-            <CardDescription>
-              Modify Thinking Space with AI assistance — see changes live, then build a permanent version.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-md border border-border/60 px-3 py-2.5">
-              <label className="flex items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <div className="text-sm text-foreground">Auto-heal YAML fields during sync</div>
-                  <div className="text-xs text-muted-foreground">
-                    When enabled, Thinking Space repairs known YAML field shapes and appends missing generated `wiki_links` on touched notes.
-                  </div>
-                </div>
+        <>
+          <SettingsSectionHeaderBlock
+            title="Developer"
+            description="Modify Thinking Space with AI assistance — see changes live, then build a permanent version."
+          />
+
+          <SettingsGroupBlock heading="Flags">
+            <SettingsRowBlock
+              as="label"
+              label="Auto-heal YAML fields during sync"
+              description="Repairs known YAML field shapes and appends missing generated wiki_links on touched notes."
+              control={(
                 <Switch
                   checked={yamlFieldsAutoHealEnabled}
                   onCheckedChange={(checked) => {
@@ -2178,16 +2168,13 @@ export default function SettingsOrch({
                   }}
                   aria-label="Auto-heal YAML fields during sync"
                 />
-              </label>
-            </div>
-            <div className="rounded-md border border-border/60 px-3 py-2.5">
-              <label className="flex items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <div className="text-sm text-foreground">Show console warnings</div>
-                  <div className="text-xs text-muted-foreground">
-                    When off, low-priority `console.log`/`info`/`warn`/`debug` messages are suppressed in DevTools. Errors are always shown.
-                  </div>
-                </div>
+              )}
+            />
+            <SettingsRowBlock
+              as="label"
+              label="Show console warnings"
+              description="When off, low-priority console.log/info/warn/debug messages are suppressed in DevTools. Errors are always shown."
+              control={(
                 <Switch
                   checked={consoleWarningsVisible}
                   onCheckedChange={(checked) => {
@@ -2196,15 +2183,18 @@ export default function SettingsOrch({
                   }}
                   aria-label="Show console warnings"
                 />
-              </label>
-            </div>
+              )}
+            />
+          </SettingsGroupBlock>
+
+          <div className={SETTINGS_PANE_WIDTH_BLOCK}>
             <DeveloperSetupBlock />
-          </CardContent>
-        </Card>
+          </div>
+        </>
       )}
 
-      {message && <p className="text-sm text-muted-foreground">{message}</p>}
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {message && <p className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'text-[13px] text-muted-foreground')}>{message}</p>}
+      {error && <p className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'text-[13px] text-destructive')}>{error}</p>}
       </div>
     </div>
   )
@@ -2222,26 +2212,20 @@ function AboutSection() {
   ] : []
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>About</CardTitle>
-        <CardDescription>Runtime and version information.</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <>
+      <SettingsSectionHeaderBlock title="About" description="Runtime and version information." />
+      <SettingsGroupBlock heading="Versions">
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Version info is only available in the Electron desktop app.</p>
-        ) : (
-          <dl className="space-y-2">
-            {rows.map(({ label, value }) => (
-              <div key={label} className="flex items-center gap-4">
-                <dt className="w-32 shrink-0 text-sm font-medium text-muted-foreground">{label}</dt>
-                <dd className="font-mono text-sm">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
-      </CardContent>
-    </Card>
+          <SettingsRowBlock label="Version info is only available in the Electron desktop app." />
+        ) : rows.map(({ label, value }) => (
+          <SettingsRowBlock
+            key={label}
+            label={label}
+            control={<span className="font-mono text-[13px] text-muted-foreground">{value}</span>}
+          />
+        ))}
+      </SettingsGroupBlock>
+    </>
   )
 }
 
@@ -2340,123 +2324,119 @@ function RssFeedSettingsSection() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>RSS Feeds</CardTitle>
-        <CardDescription>
-          Add RSS or Atom feed URLs. They appear in the RSS panel at the bottom of the explorer.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* ── Feed list ── */}
-        {feeds.length > 0 && (
-          <div className="space-y-2">
-            {feeds.map(feed => (
-              <div key={feed.id} className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2">
-                <div className="min-w-0 flex-1 space-y-1">
-                  <input
-                    defaultValue={feed.title}
-                    onBlur={e => { void handleUpdateFeedTitle(feed.id, e.target.value) }}
-                    className="block w-full bg-transparent text-sm font-medium outline-none placeholder:text-muted-foreground"
-                    placeholder="Feed title"
-                  />
-                  <div className="flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{feed.url}</span>
-                    <select
-                      value={feed.groupId ?? ''}
-                      onChange={e => { void handleUpdateFeedGroup(feed.id, e.target.value || null) }}
-                      className="shrink-0 rounded border border-border/70 bg-background px-1.5 py-0.5 text-[11px] text-muted-foreground outline-none"
-                    >
-                      <option value="">No group</option>
-                      {groups.map(g => (
-                        <option key={g.id} value={g.id}>{g.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+    <>
+      <SettingsSectionHeaderBlock
+        title="RSS Feeds"
+        description="RSS or Atom feed URLs. They appear in the RSS panel at the bottom of the explorer."
+      />
+
+      <SettingsGroupBlock heading="Feeds">
+        {feeds.length === 0 && <SettingsRowBlock label="No feeds configured yet." />}
+        {feeds.map(feed => (
+          <SettingsRowBlock
+            key={feed.id}
+            label={(
+              <input
+                defaultValue={feed.title}
+                onBlur={e => { void handleUpdateFeedTitle(feed.id, e.target.value) }}
+                className="block w-full bg-transparent text-[13px] font-medium outline-none placeholder:text-muted-foreground"
+                placeholder="Feed title"
+              />
+            )}
+            description={<span className="block truncate">{feed.url}</span>}
+            control={(
+              <>
+                <select
+                  value={feed.groupId ?? ''}
+                  onChange={e => { void handleUpdateFeedGroup(feed.id, e.target.value || null) }}
+                  className={SETTINGS_CONTROL_CLASS_BLOCK}
+                  aria-label="Feed group"
+                >
+                  <option value="">No group</option>
+                  {groups.map(g => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 shrink-0 px-2 text-destructive hover:text-destructive"
+                  className="h-8 px-2 text-destructive hover:text-destructive"
                   onClick={() => void handleRemoveFeed(feed.id)}
                 >
                   Remove
                 </Button>
-              </div>
-            ))}
-          </div>
-        )}
-        {feeds.length === 0 && (
-          <div className="rounded-md border border-dashed border-border/70 px-4 py-6 text-center text-sm text-muted-foreground">
-            No feeds configured yet.
-          </div>
-        )}
-
-        {/* ── Add feed ── */}
-        <div className="space-y-2 rounded-md border border-border/60 p-3">
-          <div className="text-xs font-medium text-muted-foreground">Add Feed</div>
-          <input
-            value={newUrl}
-            onChange={e => setNewUrl(e.target.value)}
-            placeholder="https://example.com/feed.xml"
-            className="block w-full rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring"
-            onKeyDown={e => { if (e.key === 'Enter') void handleAddFeed() }}
+              </>
+            )}
           />
-          <input
-            value={newTitle}
-            onChange={e => setNewTitle(e.target.value)}
-            placeholder="Title (optional — auto-detected from feed)"
-            className="block w-full rounded-md border border-border/70 bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring"
-            onKeyDown={e => { if (e.key === 'Enter') void handleAddFeed() }}
-          />
-          <Button size="sm" onClick={() => void handleAddFeed()} disabled={!newUrl.trim()}>
-            Add Feed
-          </Button>
-        </div>
+        ))}
+        <SettingsRowBlock stacked className="gap-2">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <input
+              value={newUrl}
+              onChange={e => setNewUrl(e.target.value)}
+              placeholder="https://example.com/feed.xml"
+              aria-label="New feed URL"
+              className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
+              onKeyDown={e => { if (e.key === 'Enter') void handleAddFeed() }}
+            />
+            <input
+              value={newTitle}
+              onChange={e => setNewTitle(e.target.value)}
+              placeholder="Title (optional — auto-detected)"
+              aria-label="New feed title"
+              className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
+              onKeyDown={e => { if (e.key === 'Enter') void handleAddFeed() }}
+            />
+            <Button size="sm" className="h-8" onClick={() => void handleAddFeed()} disabled={!newUrl.trim()}>
+              Add Feed
+            </Button>
+          </div>
+        </SettingsRowBlock>
+      </SettingsGroupBlock>
 
-        {/* ── Feed groups ── */}
-        <div className="space-y-2 rounded-md border border-border/60 p-3">
-          <div className="text-xs font-medium text-muted-foreground">Feed Groups</div>
-          {groups.length > 0 && (
-            <div className="space-y-1.5">
-              {groups.map(g => (
-                <div key={g.id} className="flex items-center gap-2 rounded border border-border/40 px-2 py-1.5">
-                  <input
-                    defaultValue={g.name}
-                    onBlur={e => { void handleRenameGroup(g.id, e.target.value) }}
-                    className="min-w-0 flex-1 bg-transparent text-xs font-medium outline-none"
-                    placeholder="Group name"
-                  />
-                  {g.parentGroupId && (
-                    <span className="shrink-0 text-[10px] text-muted-foreground">
-                      in {groups.find(p => p.id === g.parentGroupId)?.name ?? '?'}
-                    </span>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 shrink-0 px-1.5 text-[11px] text-destructive hover:text-destructive"
-                    onClick={() => void handleRemoveGroup(g.id)}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
+      <SettingsGroupBlock heading="Feed groups">
+        {groups.map(g => (
+          <SettingsRowBlock
+            key={g.id}
+            label={(
+              <input
+                defaultValue={g.name}
+                onBlur={e => { void handleRenameGroup(g.id, e.target.value) }}
+                className="block w-full bg-transparent text-[13px] font-medium outline-none"
+                placeholder="Group name"
+              />
+            )}
+            description={g.parentGroupId
+              ? `in ${groups.find(p => p.id === g.parentGroupId)?.name ?? '?'}`
+              : undefined}
+            control={(
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 px-2 text-destructive hover:text-destructive"
+                onClick={() => void handleRemoveGroup(g.id)}
+              >
+                Remove
+              </Button>
+            )}
+          />
+        ))}
+        <SettingsRowBlock stacked className="gap-2">
           <div className="flex items-center gap-2">
             <input
               value={newGroupName}
               onChange={e => setNewGroupName(e.target.value)}
               placeholder="New group name"
-              className="min-w-0 flex-1 rounded-md border border-border/70 bg-background px-2 py-1.5 text-xs outline-none focus:border-ring"
+              aria-label="New group name"
+              className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-0 flex-1')}
               onKeyDown={e => { if (e.key === 'Enter') void handleAddGroup() }}
             />
             {groups.length > 0 && (
               <select
                 value={newGroupParent ?? ''}
                 onChange={e => setNewGroupParent(e.target.value || null)}
-                className="shrink-0 rounded border border-border/70 bg-background px-1.5 py-1.5 text-xs outline-none"
+                className={SETTINGS_CONTROL_CLASS_BLOCK}
+                aria-label="Parent group"
               >
                 <option value="">Root level</option>
                 {groups.map(g => (
@@ -2464,19 +2444,19 @@ function RssFeedSettingsSection() {
                 ))}
               </select>
             )}
-            <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs" onClick={() => void handleAddGroup()} disabled={!newGroupName.trim()}>
+            <Button size="sm" variant="outline" className="h-8 shrink-0" onClick={() => void handleAddGroup()} disabled={!newGroupName.trim()}>
               Add
             </Button>
           </div>
-        </div>
+        </SettingsRowBlock>
+      </SettingsGroupBlock>
 
-        {/* ── Preset tags ── */}
-        <div className="space-y-2 rounded-md border border-border/60 p-3">
-          <div className="text-xs font-medium text-muted-foreground">Global Preset Tags</div>
-          <div className="text-[11px] text-muted-foreground">
-            Define tags here to make them available as one-click chips when tagging articles.
-          </div>
-          {presetTags.length > 0 && (
+      <SettingsGroupBlock
+        heading="Global preset tags"
+        description="Tags defined here become one-click chips when tagging articles."
+      >
+        {presetTags.length > 0 && (
+          <SettingsRowBlock stacked>
             <div className="flex flex-wrap gap-1.5">
               {presetTags.map(tag => (
                 <span
@@ -2499,48 +2479,51 @@ function RssFeedSettingsSection() {
                 </span>
               ))}
             </div>
-          )}
+          </SettingsRowBlock>
+        )}
+        <SettingsRowBlock stacked className="gap-2">
           <div className="flex items-center gap-2">
             <input
               value={newTagDraft}
               onChange={e => setNewTagDraft(e.target.value)}
               placeholder="Add tags (comma separated)"
-              className="min-w-0 flex-1 rounded-md border border-border/70 bg-background px-2 py-1.5 text-xs outline-none focus:border-ring"
+              aria-label="Add preset tags"
+              className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-0 flex-1')}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleAddPresetTag() } }}
             />
-            <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs" onClick={() => void handleAddPresetTag()} disabled={!newTagDraft.trim()}>
+            <Button size="sm" variant="outline" className="h-8 shrink-0" onClick={() => void handleAddPresetTag()} disabled={!newTagDraft.trim()}>
               Add
             </Button>
           </div>
-        </div>
+        </SettingsRowBlock>
+      </SettingsGroupBlock>
 
-        {/* ── Retention ── */}
-        <div className="flex items-center justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-          <div>
-            <div className="text-sm font-medium">Article Retention</div>
-            <div className="text-xs text-muted-foreground">
-              Articles older than this are auto-purged. Articles with tags or <code className="text-xs">keep: true</code> are kept forever.
-            </div>
-          </div>
-          <select
-            value={retentionDays}
-            onChange={e => {
-              const days = Number(e.target.value)
-              setRetentionDays(days)
-              setRssRetentionDaysOrch(days)
-            }}
-            className="shrink-0 rounded-md border border-border/70 bg-background px-2 py-1.5 text-sm outline-none focus:border-ring"
-          >
-            {RETENTION_OPTIONS.map(d => (
-              <option key={d} value={d}>{d} days</option>
-            ))}
-            {!RETENTION_OPTIONS.includes(retentionDays as typeof RETENTION_OPTIONS[number]) && (
-              <option value={retentionDays}>{retentionDays} days</option>
-            )}
-          </select>
-        </div>
-      </CardContent>
-    </Card>
+      <SettingsGroupBlock heading="Retention">
+        <SettingsRowBlock
+          label="Article retention"
+          description={<>Articles older than this are auto-purged. Articles with tags or <code>keep: true</code> are kept forever.</>}
+          control={(
+            <select
+              value={retentionDays}
+              onChange={e => {
+                const days = Number(e.target.value)
+                setRetentionDays(days)
+                setRssRetentionDaysOrch(days)
+              }}
+              className={SETTINGS_CONTROL_CLASS_BLOCK}
+              aria-label="Article retention"
+            >
+              {RETENTION_OPTIONS.map(d => (
+                <option key={d} value={d}>{d} days</option>
+              ))}
+              {!RETENTION_OPTIONS.includes(retentionDays as typeof RETENTION_OPTIONS[number]) && (
+                <option value={retentionDays}>{retentionDays} days</option>
+              )}
+            </select>
+          )}
+        />
+      </SettingsGroupBlock>
+    </>
   )
 }
 
@@ -2581,82 +2564,76 @@ function AiWebsitesSettingsSection() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>AI Websites</CardTitle>
-        <CardDescription>
-          Add AI chat websites (like grok.com, chatgpt.com) to the Chat tab.
-          Each entry gets its own isolated login session — add the same site twice for two different accounts.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          {sites.length === 0 && (
-            <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-              No AI websites added yet.
-            </div>
-          )}
-          {sites.map(site => (
-            <div key={site.id} className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2">
-              {editingId === site.id ? (
+    <>
+      <SettingsSectionHeaderBlock
+        title="AI Websites"
+        description="AI chat websites (grok.com, chatgpt.com, …) shown in the Chat tab. Each entry gets its own isolated login session — add the same site twice for two accounts."
+      />
+
+      <SettingsGroupBlock heading="Websites">
+        {sites.length === 0 && <SettingsRowBlock label="No AI websites added yet." />}
+        {sites.map(site => (
+          editingId === site.id ? (
+            <SettingsRowBlock
+              key={site.id}
+              stacked
+              className="gap-2"
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={editNameDraft}
+                  onChange={e => setEditNameDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(site.id) }}
+                  aria-label="Website name"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-0 flex-1')}
+                  autoFocus
+                />
+                <Button size="sm" variant="outline" className="h-8" onClick={() => handleSaveEdit(site.id)}>Save</Button>
+                <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingId(null)}>Cancel</Button>
+              </div>
+            </SettingsRowBlock>
+          ) : (
+            <SettingsRowBlock
+              key={site.id}
+              label={<span className="block truncate">{site.name}</span>}
+              description={<span className="block truncate">{site.url}</span>}
+              control={(
                 <>
-                  <input
-                    type="text"
-                    value={editNameDraft}
-                    onChange={e => setEditNameDraft(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(site.id) }}
-                    className="h-8 flex-1 rounded border border-input bg-background px-2 text-sm outline-none focus:border-ring"
-                    autoFocus
-                  />
-                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleSaveEdit(site.id)}>
-                    Save
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setEditingId(null)}>
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{site.name}</div>
-                    <div className="truncate text-xs text-muted-foreground">{site.url}</div>
-                  </div>
-                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => handleStartEdit(site)}>
-                    Rename
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => handleRemove(site.id)}>
-                    Remove
-                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8" onClick={() => handleStartEdit(site)}>Rename</Button>
+                  <Button size="sm" variant="ghost" className="h-8 text-destructive hover:text-destructive" onClick={() => handleRemove(site.id)}>Remove</Button>
                 </>
               )}
-            </div>
-          ))}
-        </div>
-
-        <div className="space-y-2 border-t border-border/60 pt-3">
-          <h3 className="text-sm font-medium">Add Website</h3>
-          <input
-            type="text"
-            value={newUrl}
-            onChange={e => setNewUrl(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
-            placeholder="https://grok.com"
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-ring"
-          />
-          <input
-            type="text"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
-            placeholder="Display name (optional, e.g. Grok - Work Account)"
-            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-ring"
-          />
-          <Button type="button" onClick={handleAdd} disabled={!newUrl.trim()}>
-            Add Website
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+            />
+          )
+        ))}
+        <SettingsRowBlock stacked className="gap-2">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <input
+              type="text"
+              value={newUrl}
+              onChange={e => setNewUrl(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
+              placeholder="https://grok.com"
+              aria-label="New website URL"
+              className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
+            />
+            <input
+              type="text"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleAdd() }}
+              placeholder="Display name (optional)"
+              aria-label="New website name"
+              className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
+            />
+            <Button type="button" size="sm" className="h-8" onClick={handleAdd} disabled={!newUrl.trim()}>
+              Add Website
+            </Button>
+          </div>
+        </SettingsRowBlock>
+      </SettingsGroupBlock>
+    </>
   )
 }
 
@@ -2731,64 +2708,64 @@ function WebSettingsSection() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Groups */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Groups</CardTitle>
-          <CardDescription>Organise your web sites into groups (like folders).</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            {prefs.groups.length === 0 && (
-              <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-                No groups yet.
+    <>
+      <SettingsSectionHeaderBlock
+        title="Web"
+        description="Websites available in the Web tab, optionally organised into groups. Each entry gets its own isolated login session — add the same site twice for two accounts."
+      />
+
+      <SettingsGroupBlock heading="Groups" description="Groups work like folders for your sites.">
+        {prefs.groups.length === 0 && <SettingsRowBlock label="No groups yet." />}
+        {prefs.groups.map(group => (
+          editingGroupId === group.id ? (
+            <SettingsRowBlock key={group.id} stacked className="gap-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={editingGroupName}
+                  onChange={e => setEditingGroupName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSaveGroupName(group.id) }}
+                  aria-label="Group name"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-0 flex-1')}
+                  autoFocus
+                />
+                <Button size="sm" variant="outline" className="h-8" onClick={() => handleSaveGroupName(group.id)}>Save</Button>
+                <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingGroupId(null)}>Cancel</Button>
               </div>
-            )}
-            {prefs.groups.map(group => (
-              <div key={group.id} className="flex items-center gap-2 rounded-md border border-border/40 px-2 py-1.5">
-                {editingGroupId === group.id ? (
-                  <>
-                    <input
-                      type="text"
-                      value={editingGroupName}
-                      onChange={e => setEditingGroupName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleSaveGroupName(group.id) }}
-                      className="h-8 flex-1 rounded border border-input bg-background px-2 text-sm outline-none focus:border-ring"
-                      autoFocus
-                    />
-                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleSaveGroupName(group.id)}>Save</Button>
-                    <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setEditingGroupId(null)}>Cancel</Button>
-                  </>
-                ) : (
-                  <>
-                    <span className="min-w-0 flex-1 truncate text-xs font-medium">{group.name}</span>
-                    {group.parentGroupId && (
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
-                        in {prefs.groups.find(p => p.id === group.parentGroupId)?.name ?? '?'}
-                      </span>
-                    )}
-                    <Button size="sm" variant="ghost" className="h-6 shrink-0 px-1.5 text-[11px]" onClick={() => { setEditingGroupId(group.id); setEditingGroupName(group.name) }}>Rename</Button>
-                    <Button size="sm" variant="ghost" className="h-6 shrink-0 px-1.5 text-[11px] text-destructive hover:text-destructive" onClick={() => handleRemoveGroup(group.id)}>Remove</Button>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 border-t border-border/60 pt-3">
+            </SettingsRowBlock>
+          ) : (
+            <SettingsRowBlock
+              key={group.id}
+              label={<span className="block truncate">{group.name}</span>}
+              description={group.parentGroupId
+                ? `in ${prefs.groups.find(p => p.id === group.parentGroupId)?.name ?? '?'}`
+                : undefined}
+              control={(
+                <>
+                  <Button size="sm" variant="ghost" className="h-8" onClick={() => { setEditingGroupId(group.id); setEditingGroupName(group.name) }}>Rename</Button>
+                  <Button size="sm" variant="ghost" className="h-8 text-destructive hover:text-destructive" onClick={() => handleRemoveGroup(group.id)}>Remove</Button>
+                </>
+              )}
+            />
+          )
+        ))}
+        <SettingsRowBlock stacked className="gap-2">
+          <div className="flex items-center gap-2">
             <input
               type="text"
               value={newGroupName}
               onChange={e => setNewGroupName(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAddGroup() }}
               placeholder="New group name"
-              className="min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-xs outline-none focus:border-ring"
+              aria-label="New group name"
+              className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-0 flex-1')}
             />
             {prefs.groups.length > 0 && (
               <select
                 value={newGroupParent ?? ''}
                 onChange={e => setNewGroupParent(e.target.value || null)}
-                className="shrink-0 rounded border border-border/70 bg-background px-1.5 py-1.5 text-xs outline-none"
+                className={SETTINGS_CONTROL_CLASS_BLOCK}
+                aria-label="Parent group"
               >
                 <option value="">Root level</option>
                 {prefs.groups.map(g => (
@@ -2796,68 +2773,63 @@ function WebSettingsSection() {
                 ))}
               </select>
             )}
-            <Button size="sm" variant="outline" className="h-7 shrink-0 text-xs" onClick={handleAddGroup} disabled={!newGroupName.trim()}>Add</Button>
+            <Button size="sm" variant="outline" className="h-8 shrink-0" onClick={handleAddGroup} disabled={!newGroupName.trim()}>Add</Button>
           </div>
-        </CardContent>
-      </Card>
+        </SettingsRowBlock>
+      </SettingsGroupBlock>
 
-      {/* Bookmarks */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Web Sites</CardTitle>
-          <CardDescription>
-            Add any website. Each entry gets its own isolated login session — add the same site twice for two accounts.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            {prefs.bookmarks.length === 0 && (
-              <div className="rounded-md border border-dashed border-border/70 px-3 py-2 text-xs text-muted-foreground">
-                No sites yet.
+      <SettingsGroupBlock heading="Sites">
+        {prefs.bookmarks.length === 0 && <SettingsRowBlock label="No sites yet." />}
+        {prefs.bookmarks.map(bm => (
+          editingSiteId === bm.id ? (
+            <SettingsRowBlock key={bm.id} stacked className="gap-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={editingSiteName}
+                  onChange={e => setEditingSiteName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSaveSiteName(bm.id) }}
+                  aria-label="Site name"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-0 flex-1')}
+                  autoFocus
+                />
+                <Button size="sm" variant="outline" className="h-8" onClick={() => handleSaveSiteName(bm.id)}>Save</Button>
+                <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingSiteId(null)}>Cancel</Button>
               </div>
-            )}
-            {prefs.bookmarks.map(bm => (
-              <div key={bm.id} className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2">
-                {editingSiteId === bm.id ? (
-                  <>
-                    <input
-                      type="text"
-                      value={editingSiteName}
-                      onChange={e => setEditingSiteName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleSaveSiteName(bm.id) }}
-                      className="h-8 flex-1 rounded border border-input bg-background px-2 text-sm outline-none focus:border-ring"
-                      autoFocus
-                    />
-                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleSaveSiteName(bm.id)}>Save</Button>
-                    <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setEditingSiteId(null)}>Cancel</Button>
-                  </>
-                ) : (
-                  <>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{bm.name}</div>
-                      <div className="truncate text-xs text-muted-foreground">{bm.url}</div>
-                      {bm.groupId && (
-                        <div className="text-[11px] text-muted-foreground/60">
-                          {prefs.groups.find(g => g.id === bm.groupId)?.name ?? ''}
-                        </div>
-                      )}
-                    </div>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingSiteId(bm.id); setEditingSiteName(bm.name) }}>Rename</Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => handleRemoveSite(bm.id)}>Remove</Button>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="space-y-2 border-t border-border/60 pt-3">
-            <h3 className="text-sm font-medium">Add Site</h3>
+            </SettingsRowBlock>
+          ) : (
+            <SettingsRowBlock
+              key={bm.id}
+              label={<span className="block truncate">{bm.name}</span>}
+              description={(
+                <>
+                  <span className="block truncate">{bm.url}</span>
+                  {bm.groupId && (
+                    <span className="block text-muted-foreground/60">
+                      {prefs.groups.find(g => g.id === bm.groupId)?.name ?? ''}
+                    </span>
+                  )}
+                </>
+              )}
+              control={(
+                <>
+                  <Button size="sm" variant="ghost" className="h-8" onClick={() => { setEditingSiteId(bm.id); setEditingSiteName(bm.name) }}>Rename</Button>
+                  <Button size="sm" variant="ghost" className="h-8 text-destructive hover:text-destructive" onClick={() => handleRemoveSite(bm.id)}>Remove</Button>
+                </>
+              )}
+            />
+          )
+        ))}
+        <SettingsRowBlock stacked className="gap-2">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
             <input
               type="url"
               value={newSiteUrl}
               onChange={e => setNewSiteUrl(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAddSite() }}
               placeholder="https://github.com"
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-ring"
+              aria-label="New site URL"
+              className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
             />
             <input
               type="text"
@@ -2865,13 +2837,18 @@ function WebSettingsSection() {
               onChange={e => setNewSiteName(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAddSite() }}
               placeholder="Name (optional)"
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-ring"
+              aria-label="New site name"
+              className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
             />
+            <Button size="sm" className="h-8" onClick={handleAddSite} disabled={!newSiteUrl.trim()}>
+              Add Site
+            </Button>
             {prefs.groups.length > 0 && (
               <select
                 value={newSiteGroupId}
                 onChange={e => setNewSiteGroupId(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-ring"
+                className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
+                aria-label="Group for new site"
               >
                 <option value="__none__">No group</option>
                 {prefs.groups.map(g => (
@@ -2879,12 +2856,9 @@ function WebSettingsSection() {
                 ))}
               </select>
             )}
-            <Button onClick={handleAddSite} disabled={!newSiteUrl.trim()} className="w-full">
-              Add Site
-            </Button>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </SettingsRowBlock>
+      </SettingsGroupBlock>
+    </>
   )
 }

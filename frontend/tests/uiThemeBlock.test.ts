@@ -8,9 +8,11 @@ import {
 } from '@/services/lego_blocks/units/uiThemeBlock'
 
 describe('uiThemeBlock', () => {
-  it('exposes classic light as the default theme', () => {
+  it('exposes classic auto as the default theme', () => {
     expect(DEFAULT_UI_THEME_ID_BLOCK).toBe('classic')
-    expect(DEFAULT_UI_COLOR_MODE_ID_BLOCK).toBe('light')
+    // `auto`, not `light`: a fresh profile window follows the canvas day/night
+    // rather than forcing itself bright regardless of the time of day.
+    expect(DEFAULT_UI_COLOR_MODE_ID_BLOCK).toBe('auto')
   })
 
   it('accepts every listed theme option id', () => {

@@ -73,6 +73,7 @@ Read the file before touching that area. Each one exists because something alrea
 | Energy | No unconditional periodic timers; reading holds the display awake, nothing else does. | [docs/contracts/ENERGY.md](docs/contracts/ENERGY.md) |
 | Code architecture | Units / integrations / hooks / orchestrators, with mandatory `*Block` / `use*` / `*Orch` naming. | [docs/contracts/CODE-ARCHITECTURE.md](docs/contracts/CODE-ARCHITECTURE.md) |
 | Editor | One CM6 engine + decorations; markdown on disk stays byte-identical. | [docs/contracts/EDITOR.md](docs/contracts/EDITOR.md) |
+| Derivation | AI-activity strata are re-derivable from raw sessions; a freshness hash must cover every input; derived layers fail loudly; hooks capture, the app derives. | [docs/contracts/DERIVATION.md](docs/contracts/DERIVATION.md) |
 | iOS native chrome | Locked chrome/sync-indicator/settings-roaming design; do not resurrect rejected variants. | [docs/contracts/IOS-NATIVE-CHROME.md](docs/contracts/IOS-NATIVE-CHROME.md) |
 
 ## Where Things Live

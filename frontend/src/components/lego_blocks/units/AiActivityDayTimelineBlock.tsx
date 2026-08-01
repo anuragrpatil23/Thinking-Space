@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { useWheelScrollCaptureBlock } from '@/components/lego_blocks/hooks/shared/useWheelScrollCaptureBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 
@@ -299,8 +300,8 @@ export default function AiActivityDayTimelineBlock({
                     ? `inset 0 0 0 1.5px ${ringStyle}`
                     : undefined,
                 }}
-                title={`${fmtTime(pill.startedIso)}–${fmtTime(pill.endedIso)} · ${pill.project} · ${pill.msgCount} msgs — ${pill.topic}`}
-                aria-label={`${pill.project} · ${pill.msgCount} msgs at ${fmtTime(pill.startedIso)}`}
+                title={`${fmtTime(pill.startedIso)}–${fmtTime(pill.endedIso)} · ${projectLabelBlock(pill.project)} · ${pill.msgCount} msgs — ${pill.topic}`}
+                aria-label={`${projectLabelBlock(pill.project)} · ${pill.msgCount} msgs at ${fmtTime(pill.startedIso)}`}
               />
             )
           })}

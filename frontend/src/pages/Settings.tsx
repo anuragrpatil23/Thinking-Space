@@ -63,7 +63,10 @@ export default function Settings({
               : 'theme'
 
   return (
-    <div className="ltm-page">
+    // h-full pins the page to the shell's viewport box so the outer app scroller
+    // never engages — the sidebar and the detail pane then scroll independently
+    // (app chrome), instead of the whole page sliding as one web document.
+    <div className="ltm-page h-full">
       <SettingsOrch
         explorerIconStyle={explorerIconStyle}
         onExplorerIconStyleChange={onExplorerIconStyleChange}

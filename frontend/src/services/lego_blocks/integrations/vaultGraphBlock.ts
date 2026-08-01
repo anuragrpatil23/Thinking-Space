@@ -18,6 +18,10 @@ export interface VaultGraphNode {
   title: string
   /** Canonical project (same buckets and colors as the AI activity card). */
   project: string
+  /** The leading path segments that name this note's project — `roots[]` when
+   *  one matched. Carried on the node so the canvas's region clustering reads
+   *  the answer instead of re-deriving it from a second copy of the rules. */
+  projectPrefix: string
   /** In+out link count — drives node radius. */
   degree: number
   /** When the note came into existence (git birth, fs ctime fallback), ms. */
@@ -68,16 +72,44 @@ function isExcluded(path: string): boolean {
   return EXCLUDED_PREFIXES.some(prefix => path.startsWith(prefix))
 }
 
-// The three life containers hold projects one level down; everything else
-// (kai-workspace, Excalidraw, …) is its own project.
-const CONTAINER_ROOTS = new Set(['acceleration_core', 'lifeblood_systems', 'operations'])
-
-/** Raw project guess from a note's path, before canonical mapping rules. */
-function rawProjectOf(path: string): string {
+/**
+ * The leading path segments that name a note's project.
+ *
+ * A defined project's folder wins outright, longest first — that is the whole
+ * point of `roots[]`, and it makes a note and a session sitting in the same
+ * folder agree on which project they belong to instead of reaching that answer
+ * through two unrelated rules.
+ *
+ * The fallback used to be a hardcoded `['acceleration_core', 'lifeblood_systems',
+ * 'operations']` — one user's three folders, duplicated in this file and in the
+ * canvas. Now a "container" is derived: any first segment that some project root
+ * sits *inside*. A vault with no projects defined has none, so every top-level
+ * folder is its own project, which is the honest universal default rather than
+ * a stranger's filing system.
+ */
+export function projectPrefixOfBlock(path: string, roots: readonly string[]): string {
   const segs = path.split('/')
   if (segs.length === 1) return 'vault'
-  if (CONTAINER_ROOTS.has(segs[0]) && segs.length >= 3) return segs[1]
+  let best = ''
+  for (const root of roots) {
+    if (root.length <= best.length) continue
+    if (path === root || path.startsWith(`${root}/`)) best = root
+  }
+  if (best) return best
+  const containers = new Set<string>()
+  for (const root of roots) {
+    const parts = root.split('/')
+    if (parts.length >= 2) containers.add(parts[0])
+  }
+  if (containers.has(segs[0]) && segs.length >= 3) return `${segs[0]}/${segs[1]}`
   return segs[0]
+}
+
+/** Raw project guess from a note's path, before canonical mapping rules: the
+ *  last segment of its project prefix. */
+function rawProjectOf(path: string, roots: readonly string[]): string {
+  const prefix = projectPrefixOfBlock(path, roots)
+  return prefix.split('/').pop() || prefix
 }
 
 function titleOf(path: string): string {
@@ -249,9 +281,13 @@ export function buildVaultGraphBlock(input: {
   /** Canonical project mapping (the AI activity card's rules); identity when
    *  absent so the block stays pure and testable. */
   resolveProject?: (rawProject: string, path: string) => string
+  /** Vault-relative folders of the defined projects. Empty is fine — the block
+   *  then falls back to top-level folders (see projectPrefixOfBlock). */
+  projectRoots?: readonly string[]
 }): VaultGraphData {
   const { entries, links, births, sessions, vaultFolderName, nowMs } = input
   const resolveProject = input.resolveProject ?? ((raw: string) => raw)
+  const projectRoots = input.projectRoots ?? []
   const nodeExtensions = input.nodeExtensions ?? ['.md']
 
   const windows = buildVaultSessionWindowsBlock(sessions, vaultFolderName)
@@ -272,10 +308,12 @@ export function buildVaultGraphBlock(input: {
     }
     const aiBorn = windows.length > 0 && inAnyWindow(windows, birthMs)
 
+    const projectPrefix = projectPrefixOfBlock(entry.path, projectRoots)
     nodeByPath.set(entry.path, {
       id: entry.path,
       title: titleOf(entry.path),
-      project: resolveProject(rawProjectOf(entry.path), entry.path),
+      project: resolveProject(rawProjectOf(entry.path, projectRoots), entry.path),
+      projectPrefix,
       degree: 0,
       birthMs,
       heat,

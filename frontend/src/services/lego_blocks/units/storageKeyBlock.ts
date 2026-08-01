@@ -4,7 +4,6 @@ export const STORAGE_KEYS = {
   thinkingOrganizerRecentTemplates: 'ltm-thinking-organizer-recent-templates',
   thinkingOrganizerNodeKinds: 'ltm-thinking-organizer-node-kinds',
   thinkingOrganizerFolderRoots: 'ltm-thinking-organizer-folder-roots',
-  thinkingOrganizerProjectRoots: 'ltm-thinking-organizer-project-roots',
   thinkingOrganizerSelectedProjectRoot: 'ltm-thinking-organizer-selected-project-root',
   thinkingOrganizerProjects: 'ltm-thinking-organizer-projects',
   thinkingOrganizerProjectPresetTags: 'ltm-thinking-organizer-project-preset-tags',

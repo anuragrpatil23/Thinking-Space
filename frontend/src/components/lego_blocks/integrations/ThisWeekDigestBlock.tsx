@@ -7,6 +7,7 @@ import {
   projectDigestBlock,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import AiActivityRangeSummaryBlock from '@/components/lego_blocks/integrations/AiActivityRangeSummaryBlock'
 import { cn } from '@/lib/utils'
@@ -344,7 +345,7 @@ export default function ThisWeekDigestBlock() {
                                 className="h-1.5 w-1.5 rounded-full"
                                 style={{ background: color.stroke }}
                               />
-                              {d.project}
+                              {projectLabelBlock(d.project)}
                             </span>
                             <span className="tabular-nums text-foreground/70">
                               {fmtDurationMsBlock(d.durationMs)}
@@ -357,7 +358,7 @@ export default function ThisWeekDigestBlock() {
                             <div className="pl-3.5">
                               <AiActivityRangeSummaryBlock
                                 projectId={d.project}
-                                projectLabel={d.project}
+                                projectLabel={projectLabelBlock(d.project)}
                                 rangeStartDate={section.rangeStartDate}
                                 rangeEndDate={section.rangeEndDate}
                                 chains={projectChains}

@@ -23,6 +23,7 @@ import {
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { formatTokens, formatUsd } from '@/services/lego_blocks/units/aiPriceTableBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import {
   AI_ACTIVITY_SET_MODE_EVENT,
@@ -460,7 +461,9 @@ export default function AiActivityAggregateBlock({
                                   className="h-2 w-2 rounded-full"
                                   style={{ background: stroke }}
                                 />
-                                <span className="text-foreground/80">{key}</span>
+                                <span className="text-foreground/80">
+                                  {key === OTHER_KEY ? key : projectLabelBlock(key)}
+                                </span>
                                 <span
                                   className="ml-auto pl-3 tabular-nums"
                                   style={{ color: stroke }}
@@ -512,7 +515,7 @@ export default function AiActivityAggregateBlock({
                   className="inline-flex items-center gap-1.5 text-[10px] text-foreground/70"
                 >
                   <span className="h-1.5 w-1.5 rounded-full" style={{ background: color.stroke }} />
-                  {s.project}
+                  {projectLabelBlock(s.project)}
                   <span className="tabular-nums text-muted-foreground/70">
                     {fmtMetricValue(metric, s.total)}
                   </span>
@@ -663,7 +666,7 @@ export default function AiActivityAggregateBlock({
                                       className="h-1.5 w-1.5 rounded-full"
                                       style={{ background: color.stroke }}
                                     />
-                                    {d.project}
+                                    {projectLabelBlock(d.project)}
                                   </span>
                                   <span className="tabular-nums text-foreground/70">
                                     {fmtDurationMsBlock(d.durationMs)}

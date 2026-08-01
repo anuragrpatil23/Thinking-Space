@@ -8,6 +8,7 @@ import VaultGraphCanvasBlock, {
 import { loadVaultGraph, type VaultGraphData, type VaultGraphNode } from '@/services/orchestrators/vaultGraphOrch'
 import { selectGraphNodesForChainsBlock } from '@/services/lego_blocks/integrations/vaultGraphBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
@@ -124,7 +125,7 @@ export default function SessionGraphSlideOverBlock({ chain, onClose }: SessionGr
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/40 px-5 py-3">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-foreground">
-              {chain.project} · in graph
+              {projectLabelBlock(chain.project)} · in graph
             </div>
             <div className="truncate text-[11px] text-muted-foreground">
               {chain.topic || '(no topic)'}

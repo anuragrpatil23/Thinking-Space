@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Check, FolderTree, LayoutDashboard, List, Loader2, Pencil, Plus, X } from 'lucide-react'
+import { BookText, Check, FolderTree, LayoutDashboard, List, Loader2, Network, Pencil, Plus, X } from 'lucide-react'
+import UndertakingIndexBlock from '@/components/lego_blocks/integrations/UndertakingIndexBlock'
+import UndertakingDagBlock from '@/components/lego_blocks/integrations/UndertakingDagBlock'
+import UndertakingDetailDrawerBlock from '@/components/lego_blocks/integrations/UndertakingDetailDrawerBlock'
+import NoteDetailDrawerBlock from '@/components/lego_blocks/integrations/NoteDetailDrawerBlock'
 import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
 import {
   STORAGE_KEYS,
   getJsonStorageItem,
-  getStorageItem,
   setJsonStorageItem,
   setStorageItem,
 } from '@/services/orchestrators/storageOrch'
@@ -22,8 +25,6 @@ import {
 import BacklogOrch, {
   ORGANIZER_OPEN_CREATE_PROJECT_EVENT,
   ORGANIZER_PROJECTS_UPDATED_EVENT,
-  parseBacklogView,
-  type BacklogView,
   type OrganizerProjectsUpdatedDetail,
 } from '@/components/orchestrators/BacklogOrch'
 import { cn } from '@/lib/utils'
@@ -43,6 +44,17 @@ function normalizePath(value: string): string {
 }
 
 const ORGANIZER_SIDEBAR_COLLAPSED_KEY = 'organizer_sidebar_collapsed'
+const ORGANIZER_PRIMARY_VIEW_KEY = 'organizer_primary_view'
+
+// The org tab's top-level view. 'index' is the Thinking Organizer index (the
+// new primary); 'list'/'canvas' are the existing backlog sub-views, kept during
+// the transition off the work-item model.
+type OrgView = 'index' | 'lineage' | 'list' | 'canvas'
+function parseOrgView(value: string | null): OrgView {
+  return value === 'index' || value === 'lineage' || value === 'list' || value === 'canvas'
+    ? value
+    : 'index'
+}
 
 interface ProjectEntry {
   name: string
@@ -93,15 +105,19 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     const stored = window.localStorage.getItem(ORGANIZER_SIDEBAR_COLLAPSED_KEY)
     return stored === '1'
   })
-  const [backlogView, setBacklogViewState] = useState<BacklogView>(
-    () => parseBacklogView(
-      getStorageItem(STORAGE_KEYS.thinkingOrganizerBacklogView),
-      isCapacitorNative() ? 'list' : 'canvas',
-    ),
-  )
-  const setBacklogView = useCallback((next: BacklogView) => {
-    setBacklogViewState(next)
-    setStorageItem(STORAGE_KEYS.thinkingOrganizerBacklogView, next)
+  const [orgView, setOrgViewState] = useState<OrgView>(() => {
+    if (typeof window === 'undefined') return 'index'
+    return parseOrgView(window.localStorage.getItem(ORGANIZER_PRIMARY_VIEW_KEY))
+  })
+  const setOrgView = useCallback((next: OrgView) => {
+    setOrgViewState(next)
+    setOpenUndertaking(null)
+    if (typeof window !== 'undefined') window.localStorage.setItem(ORGANIZER_PRIMARY_VIEW_KEY, next)
+    // Keep the backlog's own persisted sub-view in sync for list/canvas, so the
+    // existing BacklogOrch reads the same choice.
+    if (next === 'list' || next === 'canvas') {
+      setStorageItem(STORAGE_KEYS.thinkingOrganizerBacklogView, next)
+    }
   }, [])
 
   // Project context
@@ -110,6 +126,24 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
   )
   const projectRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
+  // The ai-activity project id the index/lineage views key on. Today it's the
+  // project-root basename, matching how chains are attributed; the registry
+  // (D9) will canonicalize this so folder variants collapse to one project.
+  const aiProjectId = projectRoot ? projectRoot.split('/').pop() ?? null : null
+  // Which undertaking's detail page is open (null = the list/lineage view). The
+  // index and lineage both drill into the same page.
+  const [openUndertaking, setOpenUndertaking] = useState<string | null>(null)
+  // The two drawers are one slot: a note's drawer links to the doing that fed
+  // on it and back, so opening one has to close the other or they stack.
+  const [openNote, setOpenNote] = useState<string | null>(null)
+  const openUndertakingDrawer = useCallback((key: string) => {
+    setOpenNote(null)
+    setOpenUndertaking(key)
+  }, [])
+  const openNoteDrawer = useCallback((key: string) => {
+    setOpenUndertaking(null)
+    setOpenNote(key)
+  }, [])
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -141,6 +175,8 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
 
 
   useEffect(() => {
+    // A different project's undertaking must not stay open across a switch.
+    setOpenUndertaking(null)
     if (!projectRoot) { setProjectUiState(null); return }
     let cancelled = false
     void readOrganizerUiStateOrch(projectRoot).then(state => {
@@ -289,7 +325,12 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
         {!phoneDetailMode && (
           <aside
             className={cn(
-              'ltm-organizer-shell-nav bg-background/40 overflow-y-auto overflow-x-hidden',
+              // `overscroll-none`: WebKit rubber-bands an overflow:auto pane on
+              // a wheel gesture even when its content fits, so the project list
+              // bounced under the cursor and read as a scrolling web page rather
+              // than a fixed sidebar. It still scrolls when it genuinely
+              // overflows — it just no longer moves when there is nowhere to go.
+              'ltm-organizer-shell-nav bg-background/40 overflow-y-auto overflow-x-hidden overscroll-none',
               phoneListMode
                 ? 'flex-1 px-3 py-4 opacity-100'
                 : cn(
@@ -344,27 +385,57 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
         <div className={cn(
           'relative min-w-0',
           phoneListMode ? 'hidden' : 'flex-1',
-          backlogView === 'canvas'
+          orgView === 'canvas'
             ? 'overflow-hidden'
             : 'overflow-y-auto px-6 py-5',
         )}>
           <div className="absolute right-3 top-3 z-40">
             <SegmentedToggleBlock
-              value={backlogView}
-              onChange={setBacklogView}
-              ariaLabel="Backlog view"
+              value={orgView}
+              onChange={setOrgView}
+              ariaLabel="Organizer view"
               options={[
-                { value: 'list', label: 'List', icon: List, title: 'List view' },
+                { value: 'index', label: 'Index', icon: BookText, title: 'Thinking Organizer index' },
+                { value: 'lineage', label: 'Lineage', icon: Network, title: 'grew_out_of lineage' },
+                { value: 'list', label: 'List', icon: List, title: 'Backlog list view' },
                 { value: 'canvas', label: 'Canvas', icon: LayoutDashboard, title: 'Canvas view' },
               ]}
             />
           </div>
-          {backlogView !== 'canvas' && headerBlock}
-          <BacklogOrch
-            view={backlogView}
-            canvasProjectName={projectName}
-            canvasMissionStatement={missionStatement}
-          />
+          {orgView !== 'canvas' && headerBlock}
+          {/* The index/lineage stay mounted; the detail opens as a drawer over
+              them so a peek never costs your place in the scan. */}
+          {orgView === 'index' ? (
+            <UndertakingIndexBlock
+              projectId={aiProjectId}
+              onOpenUndertaking={openUndertakingDrawer}
+              onOpenNote={openNoteDrawer}
+            />
+          ) : orgView === 'lineage' ? (
+            <UndertakingDagBlock projectId={aiProjectId} onOpenUndertaking={openUndertakingDrawer} />
+          ) : (
+            <BacklogOrch
+              view={orgView === 'canvas' ? 'canvas' : 'list'}
+              canvasProjectName={projectName}
+              canvasMissionStatement={missionStatement}
+            />
+          )}
+          {(orgView === 'index' || orgView === 'lineage') && openUndertaking && aiProjectId && (
+            <UndertakingDetailDrawerBlock
+              projectId={aiProjectId}
+              undertakingKey={openUndertaking}
+              onOpen={openUndertakingDrawer}
+              onClose={() => setOpenUndertaking(null)}
+            />
+          )}
+          {orgView === 'index' && openNote && aiProjectId && (
+            <NoteDetailDrawerBlock
+              projectId={aiProjectId}
+              noteKey={openNote}
+              onOpenUndertaking={openUndertakingDrawer}
+              onClose={() => setOpenNote(null)}
+            />
+          )}
         </div>
       </div>
     </div>

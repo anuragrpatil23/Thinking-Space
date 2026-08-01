@@ -1,5 +1,5 @@
 import { Button } from '@/components/lego_blocks/units/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import { SettingsGroupBlock, SettingsRowBlock } from '@/components/lego_blocks/units/SettingsGroupBlock'
 import type { AiTelemetryEvent } from '@/services/orchestrators/aiTelemetryOrch'
 
 interface AiTelemetryPanelBlockProps {
@@ -47,31 +47,28 @@ export default function AiTelemetryPanelBlock({
   onClear,
 }: AiTelemetryPanelBlockProps) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <CardTitle className="text-sm">AI Telemetry</CardTitle>
-            <CardDescription>
-              Latest AI actions across chat, assist, and steward workflows.
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
+    <SettingsGroupBlock
+      heading="AI telemetry"
+      description="Latest AI actions across chat, assist, and steward workflows."
+    >
+      <SettingsRowBlock
+        label="Recorded events"
+        description={`${events.length} event${events.length === 1 ? '' : 's'} kept on this device.`}
+        control={(
+          <>
             <Button size="sm" variant="outline" onClick={onRefresh} disabled={loading}>
               Refresh
             </Button>
             <Button size="sm" variant="outline" onClick={onClear} disabled={events.length === 0 || loading}>
               Clear
             </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {events.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border/70 px-3 py-4 text-sm text-muted-foreground">
-            No telemetry events yet.
-          </div>
-        ) : (
+          </>
+        )}
+      />
+      {events.length === 0 ? (
+        <SettingsRowBlock label="No telemetry events yet." />
+      ) : (
+        <SettingsRowBlock stacked>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-xs">
               <thead>
@@ -107,8 +104,8 @@ export default function AiTelemetryPanelBlock({
               </tbody>
             </table>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </SettingsRowBlock>
+      )}
+    </SettingsGroupBlock>
   )
 }

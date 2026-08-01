@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { fmtDurationMsBlock, mergedDurationMsBlock } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 
@@ -54,6 +55,7 @@ export default function AiActivityDrillProjectTotalsBlock({
     <div ref={hostRef} className="flex flex-wrap items-center gap-x-4 gap-y-1">
       {totals.map(({ project, ms, sessions }) => {
         const color = getProjectColor(project, isDark)
+        const label = projectLabelBlock(project)
         const active = activeProject === project
         const dimmed = activeProject != null && !active
         return (
@@ -66,10 +68,10 @@ export default function AiActivityDrillProjectTotalsBlock({
               onSelectProject && 'cursor-pointer',
               dimmed && 'opacity-45',
             )}
-            title={`${project} · ${sessions} session${sessions === 1 ? '' : 's'} · ${fmtDurationMsBlock(ms)}`}
+            title={`${label} · ${sessions} session${sessions === 1 ? '' : 's'} · ${fmtDurationMsBlock(ms)}`}
           >
             <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color.stroke }} />
-            <span className={cn('max-w-[12rem] truncate', active && 'font-semibold')} style={{ color: color.stroke }}>{project}</span>
+            <span className={cn('max-w-[12rem] truncate', active && 'font-semibold')} style={{ color: color.stroke }}>{label}</span>
             <span className="tabular-nums text-foreground/70">{fmtDurationMsBlock(ms)}</span>
           </button>
         )

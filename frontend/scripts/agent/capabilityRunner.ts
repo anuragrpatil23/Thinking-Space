@@ -201,9 +201,9 @@ export class NodeVaultFS implements VaultFS {
 
 // ── CLI arg parsing for direct capability invocation ──
 
-const NUMBER_FIELDS = new Set(['limit', 'lineNumber'])
-const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments', 'derived_from', 'changed_paths', 'concept_subpath', 'insights', 'files_touched', 'linked_notes'])
-const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header', 'text-stdin', 'overwrite', 'deleteClaudeSession'])
+const NUMBER_FIELDS = new Set(['limit', 'lineNumber', 'buckets'])
+const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments', 'derived_from', 'changed_paths', 'concept_subpath', 'insights', 'files_touched', 'linked_notes', 'add', 'remove', 'accept', 'reject', 'written', 'read', 'undertakings'])
+const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header', 'text-stdin', 'overwrite', 'deleteClaudeSession', 'allowNew'])
 const JSON_FIELDS = new Set(['frontmatter', 'set', 'append_unique'])
 const GREEDY_TEXT_FIELDS = new Set([
   'text',
@@ -218,6 +218,7 @@ const GREEDY_TEXT_FIELDS = new Set([
   'headings_text',
   'title',
   'conversation',
+  'head',
 ])
 
 const COMMAND_SHORTCUTS: Record<string, string> = {
@@ -839,6 +840,41 @@ const CAPABILITY_EXAMPLES: Record<string, string[]> = {
     'thinkspc telegram.close_conversation --convId "conv-20260529-..." --reason wrap_up',
     'thinkspc telegram.close_conversation --convId "conv-20260529-..." --reason ttl --deleteClaudeSession false',
   ],
+  'ai_activity.undertakings.list': [
+    'thinkspc ai_activity.undertakings.list --projectId F9',
+    'thinkspc ai_activity.undertakings.list --projectId F9 --section "Semis"',
+  ],
+  'ai_activity.undertaking.get': [
+    'thinkspc ai_activity.undertaking.get --projectId F9 --key f9-und-micron-memory-cycle',
+  ],
+  'ai_activity.undertaking.density': [
+    'thinkspc ai_activity.undertaking.density --projectId F9 --key f9-und-micron-memory-cycle --buckets 12',
+    'thinkspc ai_activity.undertaking.density --projectId F9 --key f9-und-micron-memory-cycle --buckets 12 --from 2026-05-01 --to 2026-07-31',
+  ],
+  'ai_activity.undertaking.update_head': [
+    'thinkspc ai_activity.undertaking.update_head --projectId F9 --key f9-und-micron-memory-cycle --text "HBM is the whole thesis; the commodity DRAM cycle is noise around it."',
+  ],
+  'ai_activity.undertaking.tag': [
+    'thinkspc ai_activity.undertaking.tag --projectId F9 --key f9-und-micron-memory-cycle --add "held,bucket 1"',
+    'thinkspc ai_activity.undertaking.tag --projectId F9 --key f9-und-micron-memory-cycle --accept "machinery" --reject "source"',
+    'thinkspc ai_activity.undertaking.tag --projectId F9 --key f9-und-micron-memory-cycle --add "fab-equipment" --allowNew',
+  ],
+  'ai_activity.assignment.record': [
+    'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-micron-memory-cycle',
+    'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings "f9-und-tsmc,f9-und-semiconductor-physics"',
+    'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-new-thing --newTitle "Coherent optics teardown" --projectId F9',
+    'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-micron-memory-cycle --head HBM capacity is the whole thesis; the DRAM cycle is noise',
+  ],
+  'ai_activity.chains.list': [
+    'thinkspc ai_activity.chains.list --projectId F9 --from 2026-07-01',
+    'thinkspc ai_activity.chains.list --projectId F9 --undertaking f9-und-micron-memory-cycle',
+  ],
+  'ai_activity.chain.set_project': [
+    'thinkspc ai_activity.chain.set_project --projectId Thinking-Space --chainKey "2026-07-14-abc123" --toProjectId F9',
+  ],
+  'ai_activity.chain.set_files': [
+    'thinkspc ai_activity.chain.set_files --projectId F9 --chainKey "2026-07-14-abc123" --written "vault://F9/notes/micron.md"',
+  ],
 }
 
 function formatExamples(capability: string): string {
@@ -1059,6 +1095,60 @@ const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: bo
     { flag: 'convId', required: true },
     { flag: 'reason', required: false, note: 'wrap_up | ttl | error | manual' },
     { flag: 'deleteClaudeSession', required: false, note: 'default true; deletes ~/.claude/projects/*/<sessionId>.jsonl' },
+  ],
+  'ai_activity.undertakings.list': [
+    { flag: 'projectId', required: true },
+    { flag: 'section', required: false, note: 'filter to one section' },
+  ],
+  'ai_activity.undertaking.get': [
+    { flag: 'projectId', required: true },
+    { flag: 'key', required: true },
+  ],
+  'ai_activity.undertaking.density': [
+    { flag: 'projectId', required: true },
+    { flag: 'key', required: true },
+    { flag: 'buckets', required: false, note: 'number of equal-width buckets (default 10)' },
+    { flag: 'from', required: false, note: 'shared window start YYYY-MM-DD, to align a column of strips' },
+    { flag: 'to', required: false, note: 'shared window end YYYY-MM-DD' },
+  ],
+  'ai_activity.undertaking.update_head': [
+    { flag: 'projectId', required: true },
+    { flag: 'key', required: true },
+    { flag: 'text', required: true, note: 'the one-line head; prefer --text-file for long text' },
+  ],
+  'ai_activity.undertaking.tag': [
+    { flag: 'projectId', required: true },
+    { flag: 'key', required: true },
+    { flag: 'add', required: false, note: 'comma-separated; must exist in tags.yaml unless --allowNew' },
+    { flag: 'remove', required: false, note: 'comma-separated' },
+    { flag: 'accept', required: false, note: 'promote proposedTags to tags' },
+    { flag: 'reject', required: false, note: 'drop proposedTags' },
+    { flag: 'allowNew', required: false, note: 'boolean flag; extends tags.yaml with the new tags' },
+  ],
+  'ai_activity.assignment.record': [
+    { flag: 'sessionId', required: true, note: 'Claude Code session id, not the commit-footer slug' },
+    { flag: 'undertakings', required: true, note: 'comma-separated undertaking keys; a session can feed several' },
+    { flag: 'newTitle', required: false, note: 'set when the session opened a new undertaking' },
+    { flag: 'head', required: false, note: 'one line of what came out; greedy, so put it last, no quotes needed' },
+    { flag: 'section', required: false },
+    { flag: 'projectId', required: false },
+  ],
+  'ai_activity.chains.list': [
+    { flag: 'projectId', required: true },
+    { flag: 'from', required: false, note: 'inclusive YYYY-MM-DD' },
+    { flag: 'to', required: false, note: 'inclusive YYYY-MM-DD' },
+    { flag: 'undertaking', required: false },
+  ],
+  'ai_activity.chain.set_project': [
+    { flag: 'projectId', required: true, note: 'where the chain is now' },
+    { flag: 'chainKey', required: true },
+    { flag: 'toProjectId', required: true, note: 'where it belongs; moves the file' },
+  ],
+  'ai_activity.chain.set_files': [
+    { flag: 'projectId', required: true },
+    { flag: 'chainKey', required: true },
+    { flag: 'written', required: false, note: 'comma-separated root-relative pointers' },
+    { flag: 'read', required: false, note: 'comma-separated root-relative pointers' },
   ],
 }
 

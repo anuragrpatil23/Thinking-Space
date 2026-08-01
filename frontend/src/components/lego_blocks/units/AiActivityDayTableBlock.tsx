@@ -6,6 +6,7 @@ import { getManualSession } from '@/services/lego_blocks/integrations/manualSess
 import type { ManualSessionRecord } from '@/services/lego_blocks/units/manualSessionParserBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import {
   estimateCostUsd,
   formatTokens,
@@ -467,7 +468,9 @@ export default function AiActivityDayTableBlock({
                     <td className="px-3 py-1.5">
                       <span className="flex items-center gap-1.5" style={{ color: color.stroke }}>
                         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color.stroke }} />
-                        <span className="truncate" title={c.project}>{c.project}</span>
+                        <span className="truncate" title={projectLabelBlock(c.project)}>
+                          {projectLabelBlock(c.project)}
+                        </span>
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/80">

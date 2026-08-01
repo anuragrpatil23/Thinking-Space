@@ -3,6 +3,7 @@ import { Suspense, lazy, memo, useCallback, useEffect, useRef, useState } from '
 // Code-split boundary: keeps recharts out of the startup bundle.
 const DashboardChartsBlock = lazy(() => import('@/components/lego_blocks/integrations/DashboardChartsBlock'))
 import ThisWeekDigestBlock from '@/components/lego_blocks/integrations/ThisWeekDigestBlock'
+import WakeListBlock from '@/components/lego_blocks/integrations/WakeListBlock'
 import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
 import HomeWelcomeBlock from '@/components/lego_blocks/integrations/HomeWelcomeBlock'
@@ -30,6 +31,7 @@ const ANCHOR_ELEMENTS = {
   welcome: { w: 640, h: 200, offsetY: -540 },
   aiActivity: { w: 880, initialH: 620, offsetY: -380 },
   thisWeek: { w: 880, initialH: 700, gap: 40 },
+  wakeList: { w: 880, gap: 40 },
   charts: { w: 880, h: 360, gap: 40 },
   today: { w: 880, h: 440, gap: 40 },
 } as const
@@ -176,8 +178,14 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
   // reports the real value.
   const [aiActivityHeight, setAiActivityHeight] = useState<number>(ANCHOR_ELEMENTS.aiActivity.initialH)
   const [thisWeekHeight, setThisWeekHeight] = useState<number>(ANCHOR_ELEMENTS.thisWeek.initialH)
+  // The wake list ends the cascade and can render nothing (no ask-bearing
+  // project), so it's seeded at 0 and allowed to collapse — an empty card would
+  // leave a phantom gap at the bottom of the canvas world. Its measured height
+  // grows the world only when it actually has content.
+  const [wakeListHeight, setWakeListHeight] = useState<number>(0)
   const aiActivityRef = useRef<HTMLDivElement | null>(null)
   const thisWeekRef = useRef<HTMLDivElement | null>(null)
+  const wakeListRef = useRef<HTMLDivElement | null>(null)
   // Same measurement recipe for both intrinsic panels: borderBoxSize (with a
   // contentRect fallback) already includes FloatingPanel's own padding.
   const observeIntrinsicPanel = (
@@ -208,6 +216,21 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
     ),
     [],
   )
+  // The wake list gets its own observer rather than observeIntrinsicPanel: that
+  // helper floors measurements at 100px (so a mid-mount 0 can't corrupt a real
+  // panel), but here collapsing to 0 is the legitimate empty state.
+  useEffect(() => {
+    const el = wakeListRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const measured = Math.ceil(entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height)
+        setWakeListHeight(prev => (Math.abs(prev - measured) < 1 ? prev : measured))
+      }
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   // Legacy home tiles (the "Activity" charts panel + "What you did today" file-
   // activity panel) are hidden — the AI-Activity panel now covers this ground.
@@ -220,6 +243,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
   const aiSpec = ANCHOR_ELEMENTS.aiActivity
   const chartsSpec = ANCHOR_ELEMENTS.charts
   const thisWeekSpec = ANCHOR_ELEMENTS.thisWeek
+  const wakeListSpec = ANCHOR_ELEMENTS.wakeList
   const todaySpec = ANCHOR_ELEMENTS.today
 
   const welcome = {
@@ -232,6 +256,11 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
   const aiActivityBottom = aiActivityTop + aiActivityHeight
   const thisWeekTop = aiActivityBottom + thisWeekSpec.gap
   const thisWeekBottom = thisWeekTop + thisWeekHeight
+  // The wake list sits below This Week. When it renders nothing (height 0) it
+  // adds neither gap nor height, so the cascade — and the canvas world — end at
+  // This Week exactly, no phantom trailing space.
+  const wakeListTop = thisWeekBottom + wakeListSpec.gap
+  const wakeListBottom = wakeListHeight > 0 ? wakeListTop + wakeListHeight : thisWeekBottom
   const chartsTop = thisWeekBottom + chartsSpec.gap
   const chartsBottom = chartsTop + chartsSpec.h
   const todayTop = chartsBottom + todaySpec.gap
@@ -239,6 +268,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
 
   const aiActivity = { x: centerX - w / 2, y: aiActivityTop, w }
   const thisWeek = { x: centerX - w / 2, y: thisWeekTop, w }
+  const wakeList = { x: centerX - w / 2, y: wakeListTop, w }
   const charts = { x: centerX - w / 2, y: chartsTop, w, h: chartsSpec.h }
   const today = { x: centerX - w / 2, y: todayTop, w, h: todaySpec.h }
 
@@ -248,7 +278,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
   )
   // Canvas world height follows the last *visible* tile — This Week when the
   // secondary panels are hidden, otherwise the Today panel at the cascade end.
-  const contentBottom = SHOW_SECONDARY_PANELS ? todayBottom : thisWeekBottom
+  const contentBottom = SHOW_SECONDARY_PANELS ? todayBottom : wakeListBottom
   useEffect(() => { notifyBottom(contentBottom) }, [contentBottom, notifyBottom])
 
   return (
@@ -280,6 +310,13 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
         innerRef={thisWeekRef}
       >
         <ThisWeekDigestBlock />
+      </FloatingPanel>
+
+      {/* Uncapped intrinsic + text variant: the card brings its own section
+          chrome (like the flat home), grows the canvas world with its content,
+          and collapses to nothing when no project has open asks. */}
+      <FloatingPanel {...wakeList} variant="text" theme={theme} innerRef={wakeListRef}>
+        <WakeListBlock theme={theme} />
       </FloatingPanel>
 
       {SHOW_SECONDARY_PANELS && (

@@ -64,7 +64,7 @@ export function useCanvasProjectBindingBlock(surfaceId: string): UseCanvasProjec
 
   const resolvedProject = useMemo<ProjectBlock | null>(() => {
     if (boundProjectId) {
-      const found = projects.find(project => project.id === boundProjectId)
+      const found = projects.find(project => project.uuid === boundProjectId)
       if (found) return found
     }
     // Graceful default: if no binding (or binding points at a deleted project),

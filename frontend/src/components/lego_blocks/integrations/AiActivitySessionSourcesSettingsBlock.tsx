@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import { SettingsGroupBlock, SettingsRowBlock } from '@/components/lego_blocks/units/SettingsGroupBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import {
@@ -124,149 +124,110 @@ export default function AiActivitySessionSourcesSettingsBlock() {
     && prefixes.every((p, i) => p === DEFAULT_VAULT_SESSION_PREFIXES[i])
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Session sources</CardTitle>
-        <CardDescription>
-          Where AI activity reads session transcripts from. Native stores are the JSONL
-          transcripts each CLI writes on this machine; vault folders hold the markdown copies
-          saved into your vault. Changes apply on the next activity refresh.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium text-foreground">Native session stores</h3>
-          {rootsUnavailable && (
-            <p className="text-xs text-muted-foreground/70">
-              Not available on this platform — native stores can only be read by the desktop app.
-            </p>
-          )}
-          {!rootsUnavailable && !roots && (
-            <p className="text-xs text-muted-foreground">Loading…</p>
-          )}
-          {roots && (
-            <div className="space-y-1.5">
-              <NativeRootRow
-                label="Claude Code"
-                value={roots.claude}
-                defaultValue={roots.claudeDefault}
-                onSave={value => saveRoot('claude', value)}
-              />
-              <NativeRootRow
-                label="Codex"
-                value={roots.codex}
-                defaultValue={roots.codexDefault}
-                onSave={value => saveRoot('codex', value)}
-              />
-            </div>
-          )}
-          {error && <p className="text-xs text-destructive">{error}</p>}
-        </div>
+    <>
+      <SettingsGroupBlock
+        heading="Native session stores"
+        description="The JSONL transcripts each CLI writes on this machine. Changes apply on the next activity refresh."
+        footnote={error ?? undefined}
+      >
+        {rootsUnavailable && (
+          <SettingsRowBlock label="Not available on this platform — native stores can only be read by the desktop app." />
+        )}
+        {!rootsUnavailable && !roots && <SettingsRowBlock label="Loading…" />}
+        {roots && (
+          <>
+            <NativeRootRow
+              label="Claude Code"
+              value={roots.claude}
+              defaultValue={roots.claudeDefault}
+              onSave={value => saveRoot('claude', value)}
+            />
+            <NativeRootRow
+              label="Codex"
+              value={roots.codex}
+              defaultValue={roots.codexDefault}
+              onSave={value => saveRoot('codex', value)}
+            />
+          </>
+        )}
+      </SettingsGroupBlock>
 
-        <div className="space-y-2 border-t border-border/60 pt-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-foreground">Vault transcript folders</h3>
-            {!prefixesAreDefault && (
-              <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={resetPrefixes}>
-                Reset to defaults
-              </Button>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Vault-relative folder prefixes scanned for saved session markdown, one per line.
-          </p>
+      <SettingsGroupBlock
+        heading="Vault transcript folders"
+        description="Vault-relative folder prefixes scanned for saved session markdown, one per line."
+      >
+        <SettingsRowBlock stacked className="gap-2">
           <PrefixesEditor value={prefixes} onSave={savePrefixes} />
-        </div>
+          {!prefixesAreDefault && (
+            <Button type="button" size="sm" variant="ghost" className="h-7 self-start text-xs" onClick={resetPrefixes}>
+              Reset to defaults
+            </Button>
+          )}
+        </SettingsRowBlock>
+      </SettingsGroupBlock>
 
-        {vaultWritePrefsAvailable && (
-          <div className="space-y-2 border-t border-border/60 pt-4">
-            <h3 className="text-sm font-medium text-foreground">Vault writes</h3>
-            <p className="text-xs text-muted-foreground/70">
-              These toggles apply to this profile's vault only — each profile decides for itself.
-            </p>
-            <label className="flex items-start justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-              <div className="min-w-0 space-y-0.5">
-                <div className="text-sm font-medium text-foreground">
-                  Write raw activity signals to <span className="font-mono text-xs">ai-activity/raw-sessions/</span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Lets Thinking Space mirror macOS Screen Time streams and GoodNotes reading
-                  sessions into per-day JSONLs under your vault's <span className="font-mono">ai-activity/raw-sessions/</span>
-                  {' '}folder. Needed so activity history survives the macOS 28-day cliff and so the
-                  Reading pill has data. Off by default for new vaults; a vault that already
-                  holds harvested raw keeps it on. Requires Full Disk Access.
-                </p>
-              </div>
+      {vaultWritePrefsAvailable && (
+        <SettingsGroupBlock
+          heading="Vault writes"
+          description="These apply to this profile's vault only — each profile decides for itself."
+        >
+          <SettingsRowBlock
+            as="label"
+            label={<>Write raw activity signals to <span className="font-mono text-[12px]">ai-activity/raw-sessions/</span></>}
+            description="Mirrors macOS Screen Time streams and GoodNotes reading sessions into per-day JSONLs under your vault. Needed so activity history survives the macOS 28-day cliff and so the Reading pill has data. Requires Full Disk Access. Off by default for new vaults."
+            control={(
               <Switch
                 checked={writeAiRaw === true}
                 disabled={writeAiRaw === null}
                 onCheckedChange={checked => { void toggleWriteAiRaw(checked) }}
                 aria-label="Write raw activity signals to ai-activity/raw-sessions/"
               />
-            </label>
-            <label className="flex items-start justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-              <div className="min-w-0 space-y-0.5">
-                <div className="text-sm font-medium text-foreground">
-                  Mirror AI-derived digests to <span className="font-mono text-xs">ai-activity/</span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  AI Activity works without this — it reads your AI tools' own session logs and
-                  caches digests on this Mac. Turning it on additionally writes per-day project
-                  digests as browsable markdown under <span className="font-mono">ai-activity/atoms/</span>,
-                  which buys you two things: a durable record (most AI harnesses delete session
-                  logs after ~30 days — Claude Code's <span className="font-mono">cleanupPeriodDays</span> defaults
-                  to 30 — so older history can't be rebuilt from logs alone; alternatively, raise
-                  that retention window) and cross-device history (the vault syncs, the local cache
-                  doesn't, so another machine resumes the same timeline). Off by default.
-                </p>
-              </div>
+            )}
+          />
+          <SettingsRowBlock
+            as="label"
+            label={<>Mirror AI-derived digests to <span className="font-mono text-[12px]">ai-activity/</span></>}
+            description="AI Activity works without this — it reads your AI tools' own session logs and caches digests on this Mac. Turning it on also writes per-day project digests as browsable markdown, which buys a durable record (most harnesses delete session logs after ~30 days) and cross-device history (the vault syncs; the local cache doesn't). Off by default."
+            control={(
               <Switch
                 checked={writeAiActivity === true}
                 disabled={writeAiActivity === null}
                 onCheckedChange={checked => { void toggleWriteAiActivity(checked) }}
                 aria-label="Mirror AI-derived digests to ai-activity/"
               />
-            </label>
-          </div>
-        )}
+            )}
+          />
+        </SettingsGroupBlock>
+      )}
 
-        <div className="space-y-2 border-t border-border/60 pt-4">
-          <h3 className="text-sm font-medium text-foreground">Reading (GoodNotes)</h3>
-          <label className="flex items-start justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-            <div className="min-w-0 space-y-0.5">
-              <div className="text-sm font-medium text-foreground">Harvest GoodNotes reading sessions</div>
-              <p className="text-xs text-muted-foreground">
-                Reads GoodNotes' local database to attribute reading time to specific documents.
-                Off by default because it touches another app's container and triggers macOS's
-                "access data from other apps" prompt. Turn on only if you use GoodNotes and want
-                the Reading pill populated.
-              </p>
-            </div>
+      <SettingsGroupBlock heading="Reading (GoodNotes)">
+        <SettingsRowBlock
+          as="label"
+          label="Harvest GoodNotes reading sessions"
+          description={'Reads GoodNotes’ local database to attribute reading time to specific documents. Off by default because it touches another app’s container and triggers macOS’s "access data from other apps" prompt.'}
+          control={(
             <Switch
               checked={readingEnabled}
               onCheckedChange={toggleReadingEnabled}
               aria-label="Harvest GoodNotes reading sessions"
             />
-          </label>
-          <label className="flex items-start justify-between gap-4 rounded-md border border-border/60 px-3 py-2.5">
-            <div className="min-w-0 space-y-0.5">
-              <div className="text-sm font-medium text-foreground">Only count annotated reading</div>
-              <p className="text-xs text-muted-foreground">
-                Counts a GoodNotes session only when you actually marked up the document that day
-                (a stroke or date added). Filters out sessions where a PDF was just left open and
-                idle. Leave off if you often read without annotating.
-              </p>
-            </div>
+          )}
+        />
+        <SettingsRowBlock
+          as="label"
+          label="Only count annotated reading"
+          description="Counts a session only when you actually marked up the document that day (a stroke or date added), filtering out PDFs left open and idle. Leave off if you often read without annotating."
+          control={(
             <Switch
               checked={annotationGate}
               onCheckedChange={toggleAnnotationGate}
               aria-label="Only count annotated GoodNotes reading"
               disabled={!readingEnabled}
             />
-          </label>
-        </div>
-      </CardContent>
-    </Card>
+          )}
+        />
+      </SettingsGroupBlock>
+    </>
   )
 }
 
@@ -282,11 +243,11 @@ function NativeRootRow({ label, value, defaultValue, onSave }: NativeRootRowProp
   const [draft, setDraft] = useState(value)
   const isDefault = value === defaultValue
 
-  return (
-    <div className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2">
-      {editing ? (
-        <>
-          <span className="shrink-0 text-sm font-medium text-foreground">{label}</span>
+  if (editing) {
+    return (
+      <SettingsRowBlock stacked className="gap-2">
+        <div className="flex items-center gap-2">
+          <span className="shrink-0 text-[13px] font-medium text-foreground">{label}</span>
           <input
             type="text"
             value={draft}
@@ -296,7 +257,8 @@ function NativeRootRow({ label, value, defaultValue, onSave }: NativeRootRowProp
               if (e.key === 'Escape') { setDraft(value); setEditing(false) }
             }}
             placeholder={defaultValue}
-            className="h-8 min-w-0 flex-1 rounded border border-input bg-background px-2 font-mono text-xs outline-none focus:border-ring"
+            aria-label={`${label} session root`}
+            className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 font-mono text-xs outline-none focus:border-ring"
             autoFocus
           />
           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => { onSave(draft); setEditing(false) }}>
@@ -305,31 +267,37 @@ function NativeRootRow({ label, value, defaultValue, onSave }: NativeRootRowProp
           <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setDraft(value); setEditing(false) }}>
             Cancel
           </Button>
-        </>
-      ) : (
+        </div>
+      </SettingsRowBlock>
+    )
+  }
+
+  return (
+    <SettingsRowBlock
+      label={label}
+      description={(
         <>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-foreground">{label}</div>
-            <div className="truncate font-mono text-[11px] text-muted-foreground" title={value}>
-              {value}
-            </div>
-            {!isDefault && (
-              <div className="truncate font-mono text-[11px] text-muted-foreground/50" title={defaultValue}>
-                default: {defaultValue}
-              </div>
-            )}
-          </div>
+          <span className="block truncate font-mono text-[11px]" title={value}>{value}</span>
           {!isDefault && (
-            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => onSave(null)} title="Use the default location">
+            <span className="block truncate font-mono text-[11px] text-muted-foreground/50" title={defaultValue}>
+              default: {defaultValue}
+            </span>
+          )}
+        </>
+      )}
+      control={(
+        <>
+          {!isDefault && (
+            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => onSave(null)} title="Use the default location">
               Reset
             </Button>
           )}
-          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setDraft(value); setEditing(true) }}>
+          <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setDraft(value); setEditing(true) }}>
             Change
           </Button>
         </>
       )}
-    </div>
+    />
   )
 }
 

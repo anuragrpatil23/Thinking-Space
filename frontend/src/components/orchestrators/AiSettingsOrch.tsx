@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
+import {
+  SETTINGS_CONTROL_CLASS_BLOCK,
+  SETTINGS_PANE_WIDTH_BLOCK,
+  SettingsGroupBlock,
+  SettingsRowBlock,
+  SettingsSectionHeaderBlock,
+} from '@/components/lego_blocks/units/SettingsGroupBlock'
+import { cn } from '@/lib/utils'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import AiTelemetryPanelBlock from '@/components/lego_blocks/integrations/AiTelemetryPanelBlock'
 import IntelligenceDiagnosticsBlock from '@/components/lego_blocks/integrations/IntelligenceDiagnosticsBlock'
@@ -338,139 +345,138 @@ export default function AiSettingsOrch() {
   }
 
   return (
-    <div className="space-y-4">
-      {(message || error) && (
-        <div className="space-y-2">
-          {message && (
-            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/20 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
-              {message}
-            </div>
-          )}
-          {error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-        </div>
-      )}
+    <>
+      <SettingsSectionHeaderBlock
+        title="AI"
+        description="Providers, models and logins behind every AI action in the app."
+      />
+
+      {message && <p className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'text-[13px] text-emerald-700 dark:text-emerald-300')}>{message}</p>}
+      {error && <p className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'text-[13px] text-destructive')}>{error}</p>}
 
       {nativeRuntime && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Native App AI Logins</CardTitle>
-            <CardDescription>
-              Stored locally on this device for Electron/Capacitor runtime calls (no backend required).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Claude API Key</div>
-              <input
-                value={claudeApiKeyInput}
-                onChange={(event) => setClaudeApiKeyInput(event.target.value)}
-                type="password"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="sk-ant-..."
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">OpenAI API Key (Codex)</div>
-              <input
-                value={openAiApiKeyInput}
-                onChange={(event) => setOpenAiApiKeyInput(event.target.value)}
-                type="password"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="sk-..."
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Azure OpenAI API Key</div>
-              <input
-                value={azureApiKeyInput}
-                onChange={(event) => setAzureApiKeyInput(event.target.value)}
-                type="password"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Azure API key"
-              />
-            </div>
-            <div className="grid gap-2 md:grid-cols-3">
-              <input
-                value={azureEndpointInput}
-                onChange={(event) => setAzureEndpointInput(event.target.value)}
-                className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Azure endpoint"
-              />
-              <input
-                value={azureDeploymentInput}
-                onChange={(event) => setAzureDeploymentInput(event.target.value)}
-                className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Deployment"
-              />
-              <input
-                value={azureApiVersionInput}
-                onChange={(event) => setAzureApiVersionInput(event.target.value)}
-                className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="API version"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                Open Source AI (LM Studio/OpenAI-Compatible)
+        <>
+          <SettingsGroupBlock
+            heading="Native app AI logins"
+            description="Stored locally on this device for Electron/Capacitor runtime calls (no backend required)."
+          >
+            <SettingsRowBlock
+              label="Claude API key"
+              control={(
+                <input
+                  value={claudeApiKeyInput}
+                  onChange={(event) => setClaudeApiKeyInput(event.target.value)}
+                  type="password"
+                  aria-label="Claude API key"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-64')}
+                  placeholder="sk-ant-..."
+                />
+              )}
+            />
+            <SettingsRowBlock
+              label="OpenAI API key (Codex)"
+              control={(
+                <input
+                  value={openAiApiKeyInput}
+                  onChange={(event) => setOpenAiApiKeyInput(event.target.value)}
+                  type="password"
+                  aria-label="OpenAI API key"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-64')}
+                  placeholder="sk-..."
+                />
+              )}
+            />
+            <SettingsRowBlock
+              label="Azure OpenAI API key"
+              control={(
+                <input
+                  value={azureApiKeyInput}
+                  onChange={(event) => setAzureApiKeyInput(event.target.value)}
+                  type="password"
+                  aria-label="Azure OpenAI API key"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-64')}
+                  placeholder="Azure API key"
+                />
+              )}
+            />
+            <SettingsRowBlock label="Azure endpoint, deployment and API version" stacked className="gap-2">
+              <div className="grid gap-2 md:grid-cols-3">
+                <input
+                  value={azureEndpointInput}
+                  onChange={(event) => setAzureEndpointInput(event.target.value)}
+                  aria-label="Azure endpoint"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
+                  placeholder="Azure endpoint"
+                />
+                <input
+                  value={azureDeploymentInput}
+                  onChange={(event) => setAzureDeploymentInput(event.target.value)}
+                  aria-label="Azure deployment"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
+                  placeholder="Deployment"
+                />
+                <input
+                  value={azureApiVersionInput}
+                  onChange={(event) => setAzureApiVersionInput(event.target.value)}
+                  aria-label="Azure API version"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
+                  placeholder="API version"
+                />
               </div>
+            </SettingsRowBlock>
+            <SettingsRowBlock label="Open Source AI (LM Studio / OpenAI-compatible)" stacked className="gap-2">
               <div className="grid gap-2 md:grid-cols-3">
                 <input
                   value={openSourceAiBaseUrlInput}
                   onChange={(event) => setOpenSourceAiBaseUrlInput(event.target.value)}
-                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  aria-label="Open Source AI base URL"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
                   placeholder="http://127.0.0.1:1234/v1"
                 />
                 <input
                   value={openSourceAiApiKeyInput}
                   onChange={(event) => setOpenSourceAiApiKeyInput(event.target.value)}
                   type="password"
-                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  aria-label="Open Source AI API key"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
                   placeholder="Optional API key"
                 />
                 <input
                   value={openSourceAiModelInput}
                   onChange={(event) => setOpenSourceAiModelInput(event.target.value)}
-                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  aria-label="Open Source AI model id"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-full')}
                   placeholder="Model id (optional — auto-detected from server)"
                 />
               </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" onClick={() => { void onSaveNativeLogins() }}>
-                Save Native Logins
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => { void onClearNativeLogins() }}>
-                Clear Native Logins
-              </Button>
-            </div>
+            </SettingsRowBlock>
+          </SettingsGroupBlock>
 
-            <div className="h-px bg-border/70" />
+          <div className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'flex flex-wrap items-center gap-2')}>
+            <Button size="sm" onClick={() => { void onSaveNativeLogins() }}>
+              Save Native Logins
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { void onClearNativeLogins() }}>
+              Clear Native Logins
+            </Button>
+          </div>
 
-            <div className="space-y-2">
-              <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                Intelligence Subsystem
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Internal AI tasks (session titles, structured extracts, tool loops) run through a shared intelligence layer.
-                Pick the default provider and monitor recent activity below. This is not user chat.
-              </div>
+          <SettingsGroupBlock
+            heading="Intelligence subsystem"
+            description="Internal AI tasks (session titles, structured extracts, tool loops) run through a shared intelligence layer. Pick the default provider and monitor recent activity below. This is not user chat."
+          >
+            <SettingsRowBlock stacked>
               <IntelligenceDiagnosticsBlock />
-            </div>
+            </SettingsRowBlock>
+          </SettingsGroupBlock>
 
-            <div className="h-px bg-border/70" />
-
-            <div className="space-y-2">
-              <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                Desktop Login Transfer Code
-              </div>
+          <SettingsGroupBlock heading="Desktop login transfer code">
+            <SettingsRowBlock stacked className="gap-2">
               <textarea
                 value={transferCodeInput}
                 onChange={(event) => setTransferCodeInput(event.target.value)}
-                className="min-h-[110px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono"
+                aria-label="Desktop login transfer code"
+                className="min-h-[110px] w-full rounded-md border border-input bg-background px-2 py-2 font-mono text-xs outline-none focus:border-ring"
                 placeholder="Paste transfer code from Electron AI Settings"
               />
               <div className="flex flex-wrap items-center gap-2">
@@ -491,47 +497,35 @@ export default function AiSettingsOrch() {
                   Clear Imported Desktop Logins
                 </Button>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </SettingsRowBlock>
+          </SettingsGroupBlock>
+        </>
       )}
 
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <CardTitle className="text-sm">Global AI Defaults</CardTitle>
-              <CardDescription>
-                Provider + fallback model used across AI actions. You can override provider and model per tab below.
-              </CardDescription>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={loadingProviders || hardRefreshingProviders}
-              onClick={() => { void onHardRefreshProviders() }}
-            >
-              {hardRefreshingProviders ? 'Hard Refreshing…' : 'Hard Refresh Backend'}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {loadingProviders ? (
-            <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Detecting providers...
-            </div>
-          ) : providers.length === 0 ? (
-            <div className="rounded-md border border-dashed border-border/70 px-3 py-4 text-sm text-muted-foreground">
-              No providers detected.
-            </div>
-          ) : (
-            <>
-              <div className="space-y-2">
-                <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  Provider
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
+      <SettingsGroupBlock
+        heading="Global AI defaults"
+        description="Provider + fallback model used across AI actions. You can override provider and model per tab below."
+        footnote={!loadingProviders && providers.length > 0
+          ? `Available providers: ${availableProviders.map(item => item.provider).join(', ') || 'none'}`
+          : undefined}
+      >
+        {loadingProviders ? (
+          <SettingsRowBlock
+            label={(
+              <span className="inline-flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Detecting providers…
+              </span>
+            )}
+          />
+        ) : providers.length === 0 ? (
+          <SettingsRowBlock label="No providers detected." />
+        ) : (
+          <>
+            <SettingsRowBlock
+              label="Provider"
+              control={(
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   {providers.map((provider) => (
                     <Button
                       key={provider.provider}
@@ -545,74 +539,80 @@ export default function AiSettingsOrch() {
                     </Button>
                   ))}
                 </div>
-              </div>
+              )}
+            />
 
-              <div className="space-y-2">
-                <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  Model
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    value={modelInput}
-                    onChange={(event) => setModelInput(event.target.value)}
-                    disabled={!selectedProvider || savingModel}
-                    placeholder={
-                      selectedProvider === 'opensource-ai'
-                        ? 'LM Studio API Model Identifier (e.g. qwen/qwen3.5-35b-a3b)'
-                        : (selectedProviderStatus?.model || 'Select a provider first')
-                    }
-                    className="min-w-[18rem] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  />
-                  <Button size="sm" onClick={() => { void onSaveModel() }} disabled={!selectedProvider || savingModel}>
-                    {savingModel ? 'Saving...' : 'Save Model'}
-                  </Button>
-                </div>
-                {selectedKnownModels.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    Suggested:
-                    {selectedKnownModels.map(model => (
-                      <button
-                        key={model}
-                        type="button"
-                        className="rounded-md border border-border/70 px-2 py-0.5 text-foreground hover:bg-muted"
-                        onClick={() => setModelInput(model)}
-                      >
-                        {model}
-                      </button>
-                    ))}
-                  </div>
-                )}
+            <SettingsRowBlock label="Model" stacked className="gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={modelInput}
+                  onChange={(event) => setModelInput(event.target.value)}
+                  disabled={!selectedProvider || savingModel}
+                  aria-label="Global model"
+                  placeholder={
+                    selectedProvider === 'opensource-ai'
+                      ? 'LM Studio API Model Identifier (e.g. qwen/qwen3.5-35b-a3b)'
+                      : (selectedProviderStatus?.model || 'Select a provider first')
+                  }
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-[18rem] flex-1')}
+                />
+                <Button size="sm" onClick={() => { void onSaveModel() }} disabled={!selectedProvider || savingModel}>
+                  {savingModel ? 'Saving...' : 'Save Model'}
+                </Button>
               </div>
-
-              {selectedProvider === 'opensource-ai' && (
-                <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
-                  <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                    Open Source AI Thinking
-                  </div>
-                  <label className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background px-3 py-2">
-                    <span className="text-sm text-foreground">Enable thinking by default</span>
-                    <Switch
-                      checked={resolveAiThinkingForProviderOrch('opensource-ai')}
-                      onCheckedChange={(checked) => onToggleProviderThinking('opensource-ai', checked)}
-                    />
-                  </label>
-                  <div className="text-xs text-muted-foreground">
-                    Used when a scope does not define its own override.
-                  </div>
+              {selectedKnownModels.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  Suggested:
+                  {selectedKnownModels.map(model => (
+                    <button
+                      key={model}
+                      type="button"
+                      className="rounded-md border border-border/70 px-2 py-0.5 text-foreground hover:bg-muted"
+                      onClick={() => setModelInput(model)}
+                    >
+                      {model}
+                    </button>
+                  ))}
                 </div>
               )}
+            </SettingsRowBlock>
 
-              <div className="text-xs text-muted-foreground">
-                Available providers: {availableProviders.map(item => item.provider).join(', ') || 'none'}
-              </div>
+            {selectedProvider === 'opensource-ai' && (
+              <SettingsRowBlock
+                as="label"
+                label="Enable thinking by default"
+                description="Used when a scope does not define its own override."
+                control={(
+                  <Switch
+                    checked={resolveAiThinkingForProviderOrch('opensource-ai')}
+                    onCheckedChange={(checked) => onToggleProviderThinking('opensource-ai', checked)}
+                    aria-label="Enable Open Source AI thinking by default"
+                  />
+                )}
+              />
+            )}
+          </>
+        )}
+      </SettingsGroupBlock>
 
-              <div className="space-y-2">
-                <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  Per-Tab Provider + Model Overrides
-                </div>
-                <div className="space-y-2">
-                  {scopes.map((scope) => (
-                    <div key={scope} className="rounded-md border border-border/60 bg-muted/20 p-3">
+      <div className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'flex flex-wrap gap-2')}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={loadingProviders || hardRefreshingProviders}
+          onClick={() => { void onHardRefreshProviders() }}
+        >
+          {hardRefreshingProviders ? 'Hard Refreshing…' : 'Hard Refresh Backend'}
+        </Button>
+      </div>
+
+      {!loadingProviders && providers.length > 0 && (
+        <SettingsGroupBlock
+          heading="Per-tab provider + model overrides"
+          description="Each surface can pin its own provider and model; anything left alone follows the global defaults above."
+        >
+          {scopes.map((scope) => (
+            <SettingsRowBlock key={scope} stacked className="gap-0">
                       {(() => {
                         const selection = resolveAiSelectionFromProvidersOrch(providers, { scope })
                         const scopeProviderOverride = resolveAiProviderForScopeOrch(scope)
@@ -754,14 +754,10 @@ export default function AiSettingsOrch() {
                           </>
                         )
                       })()}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+            </SettingsRowBlock>
+          ))}
+        </SettingsGroupBlock>
+      )}
 
       <AiTelemetryPanelBlock
         events={telemetryEvents}
@@ -769,6 +765,6 @@ export default function AiSettingsOrch() {
         onRefresh={loadTelemetry}
         onClear={onClearTelemetry}
       />
-    </div>
+    </>
   )
 }

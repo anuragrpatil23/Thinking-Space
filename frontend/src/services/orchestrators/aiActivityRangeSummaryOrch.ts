@@ -71,7 +71,7 @@ import {
 
 // Bump these when the corresponding prompt is meaningfully changed — the
 // range hash includes them so cached bodies invalidate.
-const LOCAL_PIPELINE_PROMPT_VERSION = 2
+const LOCAL_PIPELINE_PROMPT_VERSION = 3
 const CLAUDE_PIPELINE_PROMPT_VERSION = 1
 const FALLBACK_PROMPT_VERSION = 2
 
@@ -242,6 +242,75 @@ function buildFallbackSummary(input: EnsureRangeSummaryInput): ProjectRangeSumma
   return { ...baseSummary(input), body, provider, model: '' }
 }
 
+// ── Stage 1: labeling, batched ───────────────────────────────────────────
+//
+// One label call per range does not scale. The model must emit an `S# -> N`
+// line for every chain, and a long list is the first thing a small local model
+// drops — silently, since an unlisted chain simply defaults to 'Misc'. Once
+// enough chains land in Misc it holds most of the range's duration, every real
+// theme falls under MISC_MIN_FRAC, the arc set empties, and the whole pipeline
+// returns the deterministic fallback. On real data that showed up as a cliff:
+// every range with 35+ chains produced `fallback-titles`, every range with
+// 10-34 produced `local-two-stage`.
+//
+// So: label in batches small enough that no single response has to be long,
+// and carry the theme names forward so a workstream spanning two batches comes
+// back under one name. Themes are merged by normalized name afterwards, which
+// is why each batch is free to number its own list.
+const LABEL_BATCH_SIZE_LOCAL = 24
+const LABEL_BATCH_SIZE_CLAUDE = 80
+
+interface LabelRangeMeta {
+  projectId: string
+  projectLabel?: string
+  rangeStartDate: string
+  rangeEndDate: string
+}
+
+/** shortKey → theme name for every chain. Null only when no batch succeeded;
+ *  a single failed batch contributes its chains as 'Misc' rather than sinking
+ *  the range. */
+async function labelChainsInBatches(
+  meta: LabelRangeMeta,
+  labelChains: RangeLabelChainInput[],
+  runOpts?: { provider: 'claude-cli' },
+): Promise<Map<string, string> | null> {
+  const batchSize = runOpts?.provider === 'claude-cli' ? LABEL_BATCH_SIZE_CLAUDE : LABEL_BATCH_SIZE_LOCAL
+  const themeNameByShort = new Map<string, string>()
+  // Normalized name → the first spelling seen, so "Editor Work" and
+  // "editor work" collapse to one bucket downstream.
+  const canonicalByNorm = new Map<string, string>()
+  let anyBatchSucceeded = false
+
+  for (let start = 0; start < labelChains.length; start += batchSize) {
+    const batch = labelChains.slice(start, start + batchSize)
+    const labelInput: RangeLabelContractInput = {
+      ...meta,
+      chains: batch,
+      existingThemes: [...canonicalByNorm.values()],
+    }
+    const result = await runContract(rangeLabelContract, labelInput, runOpts)
+    // Contract-typed generics through `runContract` widen to `{}`; the
+    // contract's finalize returns RangeLabelOutput, so this cast is safe.
+    const value = result.ok ? (result.value as RangeLabelOutput | undefined) : undefined
+    if (!value) {
+      for (const c of batch) themeNameByShort.set(c.shortKey, 'Misc')
+      continue
+    }
+    anyBatchSucceeded = true
+    for (const c of batch) {
+      const themeIdx = value.assignments[c.shortKey]
+      const raw = (themeIdx ? value.themes[themeIdx - 1] : '') || 'Misc'
+      const norm = raw.toLowerCase().trim()
+      const canonical = canonicalByNorm.get(norm) ?? raw
+      if (norm !== 'misc') canonicalByNorm.set(norm, canonical)
+      themeNameByShort.set(c.shortKey, canonical)
+    }
+  }
+
+  return anyBatchSucceeded ? themeNameByShort : null
+}
+
 // ── Local two-stage path ────────────────────────────────────────────────
 
 async function generateLocalTwoStage(input: EnsureRangeSummaryInput): Promise<ProjectRangeSummary> {
@@ -254,26 +323,18 @@ async function generateLocalTwoStage(input: EnsureRangeSummaryInput): Promise<Pr
     title: c.title,
     firstBulletHint: firstBulletOfSummary(c.summary),
   }))
-  const labelInput: RangeLabelContractInput = {
-    projectId: input.projectId,
-    projectLabel: input.projectLabel,
-    rangeStartDate: input.rangeStartDate,
-    rangeEndDate: input.rangeEndDate,
-    chains: labelChains,
-  }
-  const labelResult = await runContract(rangeLabelContract, labelInput)
-  if (!labelResult.ok || !labelResult.value) return buildFallbackSummary(input)
-  // Contract-typed generics through `runContract` widen to `{}`; the contract's
-  // finalize returns RangeLabelOutput, so this cast is safe.
-  const labelValue = labelResult.value as RangeLabelOutput
+  const themeNameByShort = await labelChainsInBatches(
+    {
+      projectId: input.projectId,
+      projectLabel: input.projectLabel,
+      rangeStartDate: input.rangeStartDate,
+      rangeEndDate: input.rangeEndDate,
+    },
+    labelChains,
+  )
+  if (!themeNameByShort) return buildFallbackSummary(input)
 
   // Stage 2: deterministic cluster
-  const themeNameByShort = new Map<string, string>()
-  for (const c of labelChains) {
-    const themeIdx = labelValue.assignments[c.shortKey]
-    const name = themeIdx ? labelValue.themes[themeIdx - 1] : 'Misc'
-    themeNameByShort.set(c.shortKey, name || 'Misc')
-  }
   const buckets = new Map<string, { label: string; chains: RangeSummaryDigestInput[]; shorts: string[] }>()
   input.chains.forEach((chain, i) => {
     const short = `S${i + 1}`
@@ -702,26 +763,21 @@ async function ensureMonthThemeSummaryOrch(
     title: c.title,
     firstBulletHint: firstBulletOfSummary(c.summary),
   }))
-  const labelInput: RangeLabelContractInput = {
-    projectId: input.projectId,
-    projectLabel: input.projectLabel,
-    rangeStartDate: input.rangeStartDate,
-    rangeEndDate: input.rangeEndDate,
-    chains: labelChains,
-  }
-  const labelResult = await runContract(rangeLabelContract, labelInput, runOpts)
-  if (!labelResult.ok || !labelResult.value) {
+  const themeNameByShort = await labelChainsInBatches(
+    {
+      projectId: input.projectId,
+      projectLabel: input.projectLabel,
+      rangeStartDate: input.rangeStartDate,
+      rangeEndDate: input.rangeEndDate,
+    },
+    labelChains,
+    runOpts,
+  )
+  if (!themeNameByShort) {
     return composeMonthFallbackBlock(input, perSubunit, contentFingerprint, inputHash)
   }
-  const labelValue = labelResult.value as RangeLabelOutput
 
   // Stage 2: deterministic clustering + per-theme aggregation.
-  const themeNameByShort = new Map<string, string>()
-  for (const c of labelChains) {
-    const themeIdx = labelValue.assignments[c.shortKey]
-    const name = themeIdx ? labelValue.themes[themeIdx - 1] : 'Misc'
-    themeNameByShort.set(c.shortKey, name || 'Misc')
-  }
   interface Bucket {
     label: string
     chains: RangeSummaryDigestInput[]

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { RefreshCw, Loader2 } from 'lucide-react'
+import { RefreshCw, Loader2, Sparkles } from 'lucide-react'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { loadChainDigestOrch } from '@/services/orchestrators/aiActivityChainDigestOrch'
 import { ensureRangeSummaryOrch } from '@/services/orchestrators/aiActivityRangeSummaryOrch'
+import type { AiActivityRangeSummaryProvider } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   rangeSummaryProviderToGenerationSourceBlock,
   type ProjectRangeSummary,
@@ -55,7 +56,7 @@ export default function AiActivityRangeSummaryBlock({
   )
 
   const run = useCallback(
-    async (refresh: boolean) => {
+    async (refresh: boolean, providerOverride?: AiActivityRangeSummaryProvider) => {
       if (chains.length === 0) return
       setLoading(true)
       setError(null)
@@ -85,6 +86,7 @@ export default function AiActivityRangeSummaryBlock({
           rangeEndDate,
           chains: enriched,
           refresh,
+          providerOverride,
         })
         setSummary(result)
       } catch (err) {
@@ -179,16 +181,34 @@ export default function AiActivityRangeSummaryBlock({
             />
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => void run(true)}
-          disabled={loading || chains.length === 0}
-          className="shrink-0 rounded-full border border-border/40 bg-card/50 p-1 text-muted-foreground hover:border-border/70 hover:text-foreground disabled:opacity-40"
-          title="Regenerate"
-          aria-label="Regenerate range summary"
-        >
-          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {/* Spend Claude on this one summary without changing the global
+              provider — the "sharpen this specific thing" path. Shown only when
+              the stored body isn't already Claude-tier, so it reads as an
+              upgrade rather than a redundant re-run. */}
+          {summary && summary.provider !== 'claude-cli' && (
+            <button
+              type="button"
+              onClick={() => void run(true, 'claude-cli')}
+              disabled={loading || chains.length === 0}
+              className="rounded-full border border-border/40 bg-card/50 p-1 text-muted-foreground hover:border-border/70 hover:text-foreground disabled:opacity-40"
+              title="Regenerate with Claude"
+              aria-label="Regenerate range summary with Claude"
+            >
+              <Sparkles className="h-3 w-3" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void run(true)}
+            disabled={loading || chains.length === 0}
+            className="rounded-full border border-border/40 bg-card/50 p-1 text-muted-foreground hover:border-border/70 hover:text-foreground disabled:opacity-40"
+            title="Regenerate"
+            aria-label="Regenerate range summary"
+          >
+            {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+          </button>
+        </div>
       </div>
       {error && (
         <p className="text-xs text-destructive">Range summary failed: {error}</p>

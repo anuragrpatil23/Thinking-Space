@@ -18,6 +18,7 @@ import {
   subscribeAiActivityMappingBlock,
 } from '@/services/lego_blocks/units/aiActivityMappingBlock'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
+import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
 import { mergedDurationMsBlock } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { registerProjectColors } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 // Local preset list — the shared DashboardRangePreset is tuned for the file
@@ -351,8 +352,10 @@ export function useAiActivityBlock(
     if (refreshKey > 0 || allSessions.length === 0) setLoading(true)
     setError(null)
     const fs = getVaultFS()
-    loadAiActivity(fs, { force: refreshKey > 0 })
-      .then(result => {
+    // Warm the project registry before sessions land, so the canonical-project
+    // memo downstream reads a populated cache and folder variants collapse.
+    Promise.all([loadProjectRegistryBlock(), loadAiActivity(fs, { force: refreshKey > 0 })])
+      .then(([, result]) => {
         if (cancelled) return
         setAllSessions(result.sessions)
         setLoading(false)
