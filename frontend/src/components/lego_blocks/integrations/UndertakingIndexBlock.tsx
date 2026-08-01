@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Loader2, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import UndertakingIndexRowBlock from '@/components/lego_blocks/units/UndertakingIndexRowBlock'
@@ -34,20 +34,39 @@ interface Props {
   onOpenUndertaking?: (key: string) => void
 }
 
+// A block's header row: the section name at one end, its ruler at the other,
+// both sitting on the block's top edge. Stacked instead — heading, then ruler,
+// then block — the ruler wedged a band between a heading and the rows it names,
+// leaving the heading floating equidistant between two blocks.
+//
 // Bare uppercase text at 13px was the quietest thing on a screen full of row
 // titles, which is backwards: the headings are the list's structure. Size and
 // the section's own colour carry that — a coloured bar beside it only restated
 // what the row spines already say, twice, at a different size.
-function SectionHeading({ title, colorIndex }: { title: string; colorIndex: number }) {
+function SectionHeader({
+  title,
+  colorIndex,
+  axis,
+}: {
+  title: string
+  colorIndex: number
+  axis?: ReactNode
+}) {
   return (
-    <h2
-      className={cn(
-        'mb-2 px-1.5 text-[15px] font-bold uppercase leading-none tracking-[0.11em]',
-        organizerSectionColorBlock(colorIndex).text,
-      )}
+    <div
+      className="flex items-end justify-between gap-4"
+      style={axis ? { paddingRight: STRIP_RIGHT_OFFSET } : undefined}
     >
-      {title}
-    </h2>
+      <h2
+        className={cn(
+          'px-1.5 pb-1 text-[15px] font-bold uppercase leading-none tracking-[0.11em]',
+          organizerSectionColorBlock(colorIndex).text,
+        )}
+      >
+        {title}
+      </h2>
+      {axis}
+    </div>
   )
 }
 
@@ -204,20 +223,26 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
       {nothingMatches ? (
         <p className="px-2 py-8 text-sm text-muted-foreground/70">Nothing matches these filters.</p>
       ) : (
-        <div className="space-y-5">
+        /* A heading now sits right on its own block, so the gap *between*
+           blocks has to be clearly bigger than that — otherwise a heading is
+           equidistant from the block above and the one it names. */
+        <div className="space-y-7">
           {undertakingSections.map(section => (
             <section key={section.key}>
-              <SectionHeading title={section.title} colorIndex={section.colorIndex} />
-              {/* Seated on the row block's top border, ticks running down to
-                  meet it — the same edge the tracks below start from. Every
-                  block with tracks gets one: stated only above the first, it
-                  read as a header for the whole page, and by the third section
-                  you were scrolling marks with the axis long gone off-screen. */}
-              {axisTicks.length > 0 && (
-                <div className="flex justify-end" style={{ paddingRight: STRIP_RIGHT_OFFSET }}>
-                  <DensityAxisBlock ticks={axisTicks} width={STRIP_WIDTH} />
-                </div>
-              )}
+              {/* The ruler seats on the row block's top border, ticks running
+                  down to meet it — the same edge the tracks below start from.
+                  Every block with tracks gets one: stated only above the first,
+                  it read as a header for the whole page, and by the third
+                  section you were scrolling marks with the axis off-screen. */}
+              <SectionHeader
+                title={section.title}
+                colorIndex={section.colorIndex}
+                axis={
+                  axisTicks.length > 0 ? (
+                    <DensityAxisBlock ticks={axisTicks} width={STRIP_WIDTH} />
+                  ) : undefined
+                }
+              />
               <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
                 {section.rows.map((row, i) => (
                   <UndertakingIndexRowBlock
@@ -244,7 +269,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
 
           {noteSections.map(section => (
             <section key={`note-${section.code}`}>
-              <SectionHeading title={section.title} colorIndex={section.colorIndex} />
+              <SectionHeader title={section.title} colorIndex={section.colorIndex} />
               <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
                 {section.notes.map((entry, i) => (
                   <OrganizerNoteRowBlock
