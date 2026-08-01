@@ -95,6 +95,41 @@ function CreateTab() {
     }
   }
 
+  const jumpListBlock = (title: string, paths: string[]) => paths.length > 0 && (
+    <div className="space-y-1">
+      <div className={PANEL_LABEL_CLASS}>{title}</div>
+      {paths.map((path) => {
+        const segments = path.split('/').filter(Boolean)
+        return (
+          <button
+            key={`${title}-${path}`}
+            type="button"
+            onClick={() => composer.applyDestinationPath(path)}
+            title={path}
+            className={cn(
+              'ltm-motion-fast block w-full break-all rounded-md border px-2 py-1 text-left font-mono text-[11px] transition-colors',
+              path === composer.destinationPath
+                ? 'border-foreground/40 bg-muted text-foreground'
+                : 'border-border/60 bg-background hover:border-foreground/30',
+            )}
+          >
+            {segments.map((segment, index) => (
+              <span key={`${segment}-${index}`}>
+                {index > 0 && <span className="text-muted-foreground/40">/</span>}
+                <span className={index === segments.length - 1
+                  ? 'font-semibold text-foreground'
+                  : 'text-muted-foreground/70'}
+                >
+                  {segment}
+                </span>
+              </span>
+            ))}
+          </button>
+        )
+      })}
+    </div>
+  )
+
   const handleRelatedThoughtOpenPath = (relatedPath: string) => {
     openFileInNewTabOrch(relatedPath)
     composer.setMessage(`Opened ${relatedPath} in a new tab.`)
@@ -281,31 +316,14 @@ function CreateTab() {
           </button>
         </div>
 
+        {/* Only the user's own chips. The built-in Thoughts / Meetings / To Do /
+            None shortcuts are gone from the row (2026-07-31): they duplicated
+            the Note type control word for word directly above while meaning
+            something entirely different (a folder, not a tag), which made the
+            panel look like it was asking the same question twice. They still
+            exist in the model — todo mode uses the `todo` one to reach the
+            todos folder — they are just not a thing you click here. */}
         <div className="flex flex-wrap gap-1.5">
-          {composer.allShortcuts.map((shortcut) => {
-            const active = composer.activeShortcutId === shortcut.id
-            return (
-              <span key={shortcut.id} className={cn(PANEL_CHIP_CLASS, active && PANEL_CHIP_ACTIVE_CLASS)}>
-                <button
-                  type="button"
-                  className="px-1"
-                  onClick={() => composer.selectShortcut(shortcut.id)}
-                >
-                  {shortcut.label}
-                </button>
-                {!shortcut.builtIn && (
-                  <button
-                    type="button"
-                    className="ltm-motion-fast rounded-full p-0.5 opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
-                    onClick={() => composer.deleteCustomShortcut(shortcut.id)}
-                    title={`Remove shortcut ${shortcut.label}`}
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                )}
-              </span>
-            )
-          })}
           {composer.quickDestinations.map((destination) => {
             const destinationPathValue = destination.pathSegments.join('/')
             const active = destinationPathValue === composer.destinationPath
@@ -347,12 +365,21 @@ function CreateTab() {
             panel and the whole thing went translucent. Inline also means
             picking a folder is one click, not click-then-confirm. */}
         {destinationBrowserOpen && (
-          <div className="ltm-animate-fade-in space-y-2.5 rounded-lg border border-border/60 bg-muted/20 p-2.5">
-            <FolderTreePickerBlock
-              value={composer.destinationPath}
-              onChange={composer.applyDestinationPath}
-              maxHeightClassName="max-h-[34vh]"
-            />
+          <div className="space-y-2.5 rounded-lg border border-border/60 bg-muted/20 p-2.5">
+            <div className="grid gap-2.5 sm:grid-cols-[1fr_1.5fr]">
+              {/* Jump targets first, reading order left to right: the folder you
+                  want is usually one you have used before, so the tree is the
+                  fallback rather than the opening move. */}
+              <div className="min-w-0 space-y-3">
+                {jumpListBlock('Most used', composer.mostUsedDestinations.map(entry => entry.path))}
+                {jumpListBlock('Recent', composer.recentDestinations)}
+              </div>
+              <FolderTreePickerBlock
+                value={composer.destinationPath}
+                onChange={composer.applyDestinationPath}
+                maxHeightClassName="max-h-[34vh]"
+              />
+            </div>
             <div className="flex gap-1.5 border-t border-border/50 pt-2.5">
               <input
                 value={quickDestinationLabel}
@@ -510,10 +537,10 @@ function CreateTab() {
             ref={panelRef}
             className={cn(
               'ltm-animate-fade-in ltm-motion-fast absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 overflow-hidden rounded-xl border border-border/70 bg-background shadow-2xl transition-[width]',
-              // The tree unfolds inside the panel, so it only needs enough
-              // extra width to keep nested folder names off the wrap.
+              // Wide while browsing: the tree carries deeply nested names next
+              // to a jump-target column, and at 34rem both were wrapping.
               destinationBrowserOpen
-                ? 'w-[min(34rem,calc(100vw-2rem))]'
+                ? 'w-[min(46rem,calc(100vw-2rem))]'
                 : 'w-[min(30rem,calc(100vw-2rem))]',
             )}
           >

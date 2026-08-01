@@ -81,6 +81,15 @@ import type { CascadingFolderPickerChange } from '@/components/lego_blocks/integ
  *  stepping away for a moment leaves the note on disk. */
 const AUTO_SAVE_DEBOUNCE_MS = 1200
 
+/** Recents off storage as flat paths, newest first. Stored as segment arrays by
+ *  `addRecent`, which is the shape the old cascading picker wanted. */
+function readRecentDestinationsBlock(): string[] {
+  return readJsonStorageBlock<string[][]>(DESTINATION_RECENTS_KEY_BLOCK, [])
+    .map(segments => (Array.isArray(segments) ? segments.filter(Boolean).join('/') : ''))
+    .filter(Boolean)
+    .slice(0, 5)
+}
+
 const THOUGHTS_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.new-note' }
 const TODO_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.new-note.todos' }
 
@@ -101,6 +110,8 @@ export interface NoteComposerOrch {
   allShortcuts: DestinationShortcutBlock[]
   quickDestinations: QuickDestinationBlock[]
   mostUsedDestinations: Array<{ path: string; count: number }>
+  /** Recently used destination folders, newest first. */
+  recentDestinations: string[]
   destinationPath: string
 
   // --- identity ---
@@ -344,10 +355,15 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     ? buildTargetPathBlock(destinationPath, todoDateStr.trim() ? `${todoDateStr.trim()}.md` : '')
     : buildTargetPathBlock(destinationPath, filename.trim() ? normalizedFilename : '')
 
+  // Recents are held in state, not read from storage at render time: the
+  // browser needs the list to move the moment you pick something.
+  const [recentDestinations, setRecentDestinations] = useState<string[]>(readRecentDestinationsBlock)
+
   const rememberDestinationUsage = useCallback((segments: string[]) => {
     const normalized = normalizeSegmentsBlock(segments)
     if (normalized.length === 0) return
     addRecent(DESTINATION_RECENTS_KEY_BLOCK, normalized)
+    setRecentDestinations(readRecentDestinationsBlock())
     setUsageCounts((previous) => {
       const key = normalized.join('/')
       const next = { ...previous, [key]: (previous[key] ?? 0) + 1 }
@@ -747,6 +763,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     allShortcuts,
     quickDestinations,
     mostUsedDestinations,
+    recentDestinations,
     destinationPath,
 
     filename,

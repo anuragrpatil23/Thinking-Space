@@ -31,6 +31,18 @@ interface TreeState {
   loading: Set<string>
 }
 
+// Expansion lives outside the component on purpose. Something in the New Note
+// panel remounts this picker on interaction (2026-07-31 — not yet root-caused),
+// and component-local state meant every click collapsed the tree back to the
+// selection, which read as "clicking is doing nothing". Module scope survives a
+// remount and dies with the reload, which is the right lifetime for "which
+// folders did I open" anyway.
+const persistedTreeState: TreeState = {
+  expanded: new Set<string>(),
+  children: new Map<string, string[]>(),
+  loading: new Set<string>(),
+}
+
 function joinPath(parent: string, name: string): string {
   return parent ? `${parent}/${name}` : name
 }
@@ -61,11 +73,23 @@ export default function FolderTreePickerBlock({
   maxHeightClassName = 'max-h-[46vh]',
   className,
 }: FolderTreePickerBlockProps) {
-  const [state, setState] = useState<TreeState>(() => ({
-    expanded: new Set<string>(),
-    children: new Map<string, string[]>(),
-    loading: new Set<string>(),
+  const [state, setStateRaw] = useState<TreeState>(() => ({
+    expanded: new Set(persistedTreeState.expanded),
+    children: new Map(persistedTreeState.children),
+    loading: new Set(persistedTreeState.loading),
   }))
+
+  // Mirror every update into module scope so the next mount starts where this
+  // one left off.
+  const setState = useCallback((update: (previous: TreeState) => TreeState) => {
+    setStateRaw((previous) => {
+      const next = update(previous)
+      persistedTreeState.expanded = next.expanded
+      persistedTreeState.children = next.children
+      persistedTreeState.loading = next.loading
+      return next
+    })
+  }, [])
   const [filter, setFilter] = useState('')
   const [creating, setCreating] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
@@ -99,7 +123,9 @@ export default function FolderTreePickerBlock({
     didSeedRef.current = true
 
     const toOpen = ['', ...ancestorsOf(value), ...(value ? [value] : [])]
-    setState(previous => ({ ...previous, expanded: new Set(toOpen) }))
+    // Union, not replace — anything already open from a previous mount stays
+    // open, so remounting cannot collapse the tree under you.
+    setState(previous => ({ ...previous, expanded: new Set([...previous.expanded, ...toOpen]) }))
     for (const path of toOpen) void loadChildren(path)
   }, [value, loadChildren])
 
@@ -187,8 +213,38 @@ export default function FolderTreePickerBlock({
 
   const rootLoading = state.loading.has('') && !state.children.has('')
 
+  // Everything on the way down to the selection. Selecting deep in the tree was
+  // hard to *see* — one dark row among many, with nothing tying it to the
+  // folders above it, so clicking read as doing nothing. The ancestors get a
+  // lighter treatment and the built path is spelled out above the tree.
+  const ancestorSet = useMemo(() => new Set(ancestorsOf(value)), [value])
+  const valueSegments = value.split('/').filter(Boolean)
+
   return (
     <div className={cn('flex min-h-0 flex-col gap-2', className)}>
+      <div className="shrink-0 rounded-lg border border-border/60 bg-background px-2.5 py-1.5">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60">
+          Destination
+        </div>
+        <div className="mt-0.5 break-all font-mono text-[11px] leading-relaxed">
+          {valueSegments.length === 0 ? (
+            <span className="text-muted-foreground/60">Pick a folder below</span>
+          ) : (
+            valueSegments.map((segment, index) => {
+              const isLeaf = index === valueSegments.length - 1
+              return (
+                <span key={`${segment}-${index}`}>
+                  {index > 0 && <span className="text-muted-foreground/40">/</span>}
+                  <span className={isLeaf ? 'font-semibold text-foreground' : 'text-muted-foreground/70'}>
+                    {segment}
+                  </span>
+                </span>
+              )
+            })
+          )}
+        </div>
+      </div>
+
       <div className="relative shrink-0">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
         <input
@@ -216,6 +272,7 @@ export default function FolderTreePickerBlock({
 
         {rows.map((row) => {
           const isSelected = row.path === value
+          const isAncestor = ancestorSet.has(row.path)
           const isExpanded = state.expanded.has(row.path)
           const isLoading = state.loading.has(row.path)
           return (
@@ -223,7 +280,14 @@ export default function FolderTreePickerBlock({
               key={row.path}
               className={cn(
                 'ltm-motion-fast flex items-center gap-1 rounded-md pr-1 transition-colors',
-                isSelected ? 'bg-foreground text-background' : 'hover:bg-muted',
+                isSelected
+                  ? 'bg-foreground text-background'
+                  // The trail down to the selection, lighter than the selection
+                  // itself — it shows the path being built without competing
+                  // with the folder actually chosen.
+                  : isAncestor
+                    ? 'bg-muted/70 font-medium text-foreground'
+                    : 'hover:bg-muted',
               )}
               style={{ paddingLeft: `${row.depth * 0.85}rem` }}
             >
