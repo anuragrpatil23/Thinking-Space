@@ -3,7 +3,9 @@ import { Loader2, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import UndertakingIndexRowBlock from '@/components/lego_blocks/units/UndertakingIndexRowBlock'
 import OrganizerNoteRowBlock from '@/components/lego_blocks/units/OrganizerNoteRowBlock'
-import OrganizerFilterBarBlock from '@/components/lego_blocks/units/OrganizerFilterBarBlock'
+import OrganizerFilterBarBlock, {
+  ORGANIZER_STRIP_PILL,
+} from '@/components/lego_blocks/units/OrganizerFilterBarBlock'
 import OrganizerSectionManagerBlock from '@/components/lego_blocks/integrations/OrganizerSectionManagerBlock'
 import { organizerSectionColorBlock } from '@/components/lego_blocks/units/OrganizerRowShellBlock'
 import {
@@ -128,25 +130,36 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-2">
-        <OrganizerFilterBarBlock groups={groups} active={filters} onToggle={toggle} />
-        {projectId && (
-          <button
-            type="button"
-            onClick={() => setManagingSections(v => !v)}
-            className={cn(
-              'ltm-motion-fast mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors',
-              managingSections
-                ? 'border-border bg-foreground text-background'
-                : 'border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground',
-            )}
-            title="Create, rename, reorder, or delete sections"
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            Sections
-          </button>
-        )}
-      </div>
+      {/* Sections rides the filter strip's own row rather than a sibling
+          container beside it. Parked outside it was a differently-shaped
+          control floating at a different height with nothing to belong to; in
+          the strip it shares the pills' geometry and baseline, and its distance
+          from them (pushed to the far end) is what says it acts on the list
+          rather than filtering it. */}
+      <OrganizerFilterBarBlock
+        groups={groups}
+        active={filters}
+        onToggle={toggle}
+        trailing={
+          projectId ? (
+            <button
+              type="button"
+              onClick={() => setManagingSections(v => !v)}
+              className={cn(
+                'ltm-motion-fast',
+                ORGANIZER_STRIP_PILL,
+                managingSections
+                  ? 'border-transparent bg-foreground text-background hover:bg-foreground/90'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              title="Create, rename, reorder, or delete sections"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Sections
+            </button>
+          ) : undefined
+        }
+      />
 
       {projectId && managingSections && (
         <OrganizerSectionManagerBlock projectId={projectId} onChanged={reload} />

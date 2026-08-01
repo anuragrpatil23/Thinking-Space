@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ContextMenuBlock from '@/components/lego_blocks/units/ui/ContextMenuBlock'
@@ -15,8 +15,13 @@ function chipLabel(f: OrganizerFilter): string {
   return f.attr === 'engagement' ? (ENGAGEMENT_LABELS[f.value] ?? f.value) : f.value
 }
 
+/** The filter strip's shared pill geometry — the trailing actions borrow it so
+ *  the whole row reads as one control strip. */
+export const ORGANIZER_STRIP_PILL =
+  'inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/60'
+
 // Dropdown buttons stay light; only a *selected* filter is dark (the chip).
-const DROPDOWN_PILL = 'inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/60'
+const DROPDOWN_PILL = ORGANIZER_STRIP_PILL
 const DROPDOWN_BADGE = 'rounded-full bg-muted px-1.5 py-0.5 text-[11px] leading-none tabular-nums text-muted-foreground'
 const CHIP_PILL = 'inline-flex items-center gap-2 rounded-xl bg-zinc-800 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-700 dark:hover:bg-zinc-600'
 
@@ -24,6 +29,10 @@ interface Props {
   groups: FilterGroup[]
   active: OrganizerFilter[]
   onToggle: (f: OrganizerFilter) => void
+  /** Actions that ride the far end of the same strip (Sections). They belong in
+   *  this row rather than a sibling container: parked outside, an action floats
+   *  as an unexplained lone control, and it can't share the pills' baseline. */
+  trailing?: ReactNode
 }
 
 function FilterDropdown({
@@ -76,8 +85,8 @@ function FilterDropdown({
   )
 }
 
-export default function OrganizerFilterBarBlock({ groups, active, onToggle }: Props) {
-  if (groups.length === 0) return null
+export default function OrganizerFilterBarBlock({ groups, active, onToggle, trailing }: Props) {
+  if (groups.length === 0 && !trailing) return null
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -99,6 +108,8 @@ export default function OrganizerFilterBarBlock({ groups, active, onToggle }: Pr
           <X className="h-4 w-4 text-zinc-400" />
         </button>
       ))}
+
+      {trailing && <div className="ml-auto flex items-center gap-2">{trailing}</div>}
     </div>
   )
 }
