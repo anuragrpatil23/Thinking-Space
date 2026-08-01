@@ -16,14 +16,21 @@ function chipLabel(f: OrganizerFilter): string {
 }
 
 /** The filter strip's shared pill geometry — the trailing actions borrow it so
- *  the whole row reads as one control strip. */
+ *  the whole row reads as one control strip.
+ *
+ *  These are chrome, not content: filled cards at `text-sm` in `rounded-xl`
+ *  competed with the row titles below them for weight. Quiet outlines that firm
+ *  up on hover say "controls" without shouting over the list they narrow. */
 export const ORGANIZER_STRIP_PILL =
-  'inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/60'
+  'inline-flex items-center gap-1.5 rounded-lg border border-border/50 bg-transparent px-2.5 py-1 text-[13px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-muted/40 hover:text-foreground'
 
 // Dropdown buttons stay light; only a *selected* filter is dark (the chip).
 const DROPDOWN_PILL = ORGANIZER_STRIP_PILL
-const DROPDOWN_BADGE = 'rounded-full bg-muted px-1.5 py-0.5 text-[11px] leading-none tabular-nums text-muted-foreground'
-const CHIP_PILL = 'inline-flex items-center gap-2 rounded-xl bg-zinc-800 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-700 dark:hover:bg-zinc-600'
+// The count rides bare beside the label. A filled badge inside an outlined pill
+// was a second container for one number.
+const DROPDOWN_BADGE = 'text-[11px] leading-none tabular-nums text-muted-foreground/50'
+const CHIP_PILL =
+  'inline-flex items-center gap-1.5 rounded-lg bg-foreground px-2.5 py-1 text-[13px] font-medium text-background transition-opacity hover:opacity-85'
 
 interface Props {
   groups: FilterGroup[]
@@ -64,11 +71,20 @@ function FilterDropdown({
           const rect = buttonRef.current?.getBoundingClientRect()
           if (rect) setPosition({ x: rect.left, y: rect.bottom + 6 })
         }}
-        className={cn(DROPDOWN_PILL, position !== null && 'bg-muted/60')}
+        className={cn(
+          DROPDOWN_PILL,
+          (position !== null || activeCount > 0) && 'border-border bg-muted/50 text-foreground',
+        )}
       >
-        <ChevronDown className="h-4 w-4 text-muted-foreground" />
         {group.label}
-        <span className={DROPDOWN_BADGE}>{activeCount > 0 ? activeCount : group.values.length}</span>
+        <span className={cn(DROPDOWN_BADGE, activeCount > 0 && 'text-foreground/70')}>
+          {activeCount > 0 ? activeCount : group.values.length}
+        </span>
+        {/* Chevron trails the label — leading, it read as a disclosure arrow for
+            the strip itself rather than the menu this one button opens. */}
+        <ChevronDown
+          className={cn('h-3.5 w-3.5 opacity-45 transition-transform', position !== null && 'rotate-180')}
+        />
       </button>
       {position && (
         <ContextMenuBlock
@@ -89,7 +105,7 @@ export default function OrganizerFilterBarBlock({ groups, active, onToggle, trai
   if (groups.length === 0 && !trailing) return null
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {groups.map(group => (
         <FilterDropdown key={group.attr} group={group} active={active} onToggle={onToggle} />
       ))}
@@ -105,7 +121,7 @@ export default function OrganizerFilterBarBlock({ groups, active, onToggle, trai
           title="Remove filter"
         >
           {chipLabel(f)}
-          <X className="h-4 w-4 text-zinc-400" />
+          <X className="h-3.5 w-3.5 opacity-60" />
         </button>
       ))}
 

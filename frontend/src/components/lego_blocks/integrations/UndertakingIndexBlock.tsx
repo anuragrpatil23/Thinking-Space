@@ -209,7 +209,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
               )}
               title="Create, rename, reorder, or delete sections"
             >
-              <SlidersHorizontal className="h-4 w-4" />
+              <SlidersHorizontal className="h-3.5 w-3.5" />
               Sections
             </button>
           ) : undefined
@@ -217,18 +217,21 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
       />
 
       {projectId && managingSections && (
-        <OrganizerSectionManagerBlock projectId={projectId} onChanged={reload} />
+        <div className="mt-4">
+          <OrganizerSectionManagerBlock projectId={projectId} onChanged={reload} />
+        </div>
       )}
 
       {nothingMatches ? (
-        <p className="px-2 py-8 text-sm text-muted-foreground/70">Nothing matches these filters.</p>
+        <p className="px-2 pb-8 pt-12 text-sm text-muted-foreground/70">Nothing matches these filters.</p>
       ) : (
         /* A heading sits right on its own block, so the gap *between* blocks
            has to be clearly bigger than that — otherwise a heading reads as
-           equidistant from the block above and the one it names. `mt-3`
-           completes the filter bar's own mb-4 to that same 28px, so the first
-           heading isn't the one crowded against the pills. */
-        <div className="mt-3 space-y-7">
+           equidistant from the block above and the one it names. The strip
+           above owns no bottom margin, so this one `mt-8` is the whole gap
+           between chrome and content: the boundary the eye needs most, and
+           the one the first heading was previously starved of. */
+        <div className="mt-8 space-y-7">
           {undertakingSections.map(section => (
             <section key={section.key}>
               {/* The ruler seats on the row block's top border, ticks running
