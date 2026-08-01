@@ -84,28 +84,31 @@ interface Props {
   className?: string
 }
 
-/** The labelled ruler. Labels are centred on their tick and clipped to the
- *  ruler's width, so a boundary near either end still reads. */
+/** The labelled ruler. Label above, tick below it, and the tick sits *on* the
+ *  ruler's baseline — the caller draws that baseline as a hairline across the
+ *  list, so the labels read as the header of a table rather than two words
+ *  floating in the gap above it. The tick then descends past the line toward the
+ *  gridlines it names. */
 export default function DensityAxisBlock({ ticks, width, className }: Props) {
   if (ticks.length === 0) return null
   return (
     <div className={cn('relative shrink-0 select-none', className)} style={{ width }} aria-hidden>
-      <div className="relative h-[9px]">
-        {ticks.map((t, i) => (
-          <span
-            key={i}
-            className="absolute top-0 h-[3px] w-px bg-foreground/20"
-            style={{ left: `${t.at * 100}%` }}
-          />
-        ))}
+      <div className="relative h-[14px]">
         {ticks.map((t, i) => (
           <span
             key={`l-${i}`}
-            className="absolute top-[3px] -translate-x-1/2 text-[8px] font-medium leading-none tracking-tight text-muted-foreground/50"
+            className="absolute top-0 -translate-x-1/2 text-[9px] font-medium leading-none tracking-tight text-muted-foreground/60"
             style={{ left: `${t.at * 100}%` }}
           >
             {t.label}
           </span>
+        ))}
+        {ticks.map((t, i) => (
+          <span
+            key={i}
+            className="absolute -bottom-[3px] h-[7px] w-px bg-foreground/25"
+            style={{ left: `${t.at * 100}%` }}
+          />
         ))}
       </div>
     </div>

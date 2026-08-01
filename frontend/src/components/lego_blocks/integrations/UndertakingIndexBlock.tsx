@@ -34,7 +34,22 @@ interface Props {
   onOpenUndertaking?: (key: string) => void
 }
 
-const HEADING = 'mb-1.5 px-2 text-[13px] font-bold uppercase tracking-[0.1em]'
+// The heading carries its section's colour token as a spine, sized and placed
+// like the rows' own spine directly beneath it — so the heading is visibly the
+// head of *that* block rather than a coloured caption near it. Bare uppercase
+// text at 13px was the quietest thing on a screen full of row titles, which is
+// backwards: the headings are the list's structure.
+function SectionHeading({ title, colorIndex }: { title: string; colorIndex: number }) {
+  const { spine, text } = organizerSectionColorBlock(colorIndex)
+  return (
+    <div className="mb-2 flex items-center gap-2">
+      <span aria-hidden className={cn('h-[15px] w-[3px] shrink-0 rounded-full', spine)} />
+      <h2 className={cn('text-[15px] font-bold uppercase leading-none tracking-[0.11em]', text)}>
+        {title}
+      </h2>
+    </div>
+  )
+}
 
 // The strip column's geometry, restated so the ruler can sit exactly over it:
 // the strip is 24 buckets × 4px, and to its right the row keeps the w-14
@@ -190,17 +205,21 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
         <p className="px-2 py-8 text-sm text-muted-foreground/70">Nothing matches these filters.</p>
       ) : (
         <div className="space-y-5">
+          {/* The baseline runs the full width so the ruler reads as the list's
+              header rule. Sat on nothing, its labels were two words floating in
+              the gap above the first section with no relationship to anything. */}
           {axisTicks.length > 0 && undertakingSections.length > 0 && (
-            <div className="flex justify-end" style={{ paddingRight: STRIP_RIGHT_OFFSET }}>
+            <div
+              className="flex justify-end border-b border-border/50"
+              style={{ paddingRight: STRIP_RIGHT_OFFSET }}
+            >
               <DensityAxisBlock ticks={axisTicks} width={STRIP_WIDTH} />
             </div>
           )}
 
           {undertakingSections.map(section => (
             <section key={section.key}>
-              <h2 className={cn(HEADING, organizerSectionColorBlock(section.colorIndex).text)}>
-                {section.title}
-              </h2>
+              <SectionHeading title={section.title} colorIndex={section.colorIndex} />
               <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
                 {section.rows.map((row, i) => (
                   <UndertakingIndexRowBlock
@@ -227,9 +246,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking }: 
 
           {noteSections.map(section => (
             <section key={`note-${section.code}`}>
-              <h2 className={cn(HEADING, organizerSectionColorBlock(section.colorIndex).text)}>
-                {section.title}
-              </h2>
+              <SectionHeading title={section.title} colorIndex={section.colorIndex} />
               <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
                 {section.notes.map((entry, i) => (
                   <OrganizerNoteRowBlock
