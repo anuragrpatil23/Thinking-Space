@@ -348,7 +348,13 @@ final class RootShellViewController: UIViewController {
 
             railHostingVC.view.leadingAnchor.constraint(equalTo: leftDrawerContainerView.leadingAnchor),
             railHostingVC.view.trailingAnchor.constraint(equalTo: leftDrawerContainerView.trailingAnchor),
-            railHostingVC.view.topAnchor.constraint(equalTo: leftDrawerContainerView.safeAreaLayoutGuide.topAnchor),
+            // Full height, NOT safeAreaLayoutGuide.topAnchor: RailView's material
+            // background is `.ignoresSafeArea()`, so it needs room above safe-top to
+            // bleed into. Pinned to the guide it started exactly at safe-top and the
+            // drawer container's flat background showed through above it as a
+            // horizontal seam under the status bar. SwiftUI still propagates the
+            // safe-area insets, so the MENU header content does not move.
+            railHostingVC.view.topAnchor.constraint(equalTo: leftDrawerContainerView.topAnchor),
             railHostingVC.view.bottomAnchor.constraint(equalTo: leftDrawerContainerView.bottomAnchor),
         ])
 
