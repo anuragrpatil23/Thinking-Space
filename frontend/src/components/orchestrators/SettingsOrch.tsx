@@ -12,6 +12,17 @@ import {
   SettingsRowBlock,
   SettingsSectionHeaderBlock,
 } from '@/components/lego_blocks/units/SettingsGroupBlock'
+import {
+  PhoneListGroupBlock,
+  PhoneListRowBlock,
+  PhoneListSectionHeaderBlock,
+} from '@/components/lego_blocks/units/PhoneListBlock'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
+import {
+  pushNativeWithForwardBlock,
+  setNativeNavigationStackBlock,
+} from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 import { WorkspaceProfilesSettingsBlock } from '@/components/lego_blocks/integrations/WorkspaceProfilesSettingsBlock'
 import { NavRailSettingsBlock } from '@/components/lego_blocks/integrations/NavRailSettingsBlock'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
@@ -378,9 +389,43 @@ export default function SettingsOrch({
     window.localStorage.setItem('settings_sidebar_collapsed', sidebarCollapsed ? '1' : '0')
   }, [sidebarCollapsed])
 
+  // iPhone list/detail (mirrors WebullWorkspaceBlock): the settings nav IS the
+  // page, and tapping a section pushes into it. Side by side, the detail pane
+  // got ~40% of a phone screen and wrapped its prose one word per line.
+  const { layout } = useUILayoutBlock()
+  const isIPhoneIosSurface = layout.surface === 'capacitor-ios' && layout.mode === 'phone'
+  const [phonePickedTab, setPhonePickedTab] = useState(false)
+  const phoneListMode = isIPhoneIosSurface && !phonePickedTab
+  const phoneDetailMode = isIPhoneIosSurface && phonePickedTab
+  useNativeBackHandlerBlock({
+    active: phoneDetailMode,
+    onBack: () => setPhonePickedTab(false),
+  })
+  const selectTab = useCallback((tabId: SettingsTabWithProfileId) => {
+    if (!(isCapacitorNative() && isIPhoneIosSurface)) {
+      setActiveTab(tabId)
+      return
+    }
+    void (async () => {
+      try {
+        await setNativeNavigationStackBlock(['/settings'])
+        await pushNativeWithForwardBlock('/settings', () => {
+          setActiveTab(tabId)
+          setPhonePickedTab(true)
+        })
+      } catch (err) {
+        console.warn('[Settings] phone push failed, falling back', err)
+        setActiveTab(tabId)
+        setPhonePickedTab(true)
+      }
+    })()
+  }, [isIPhoneIosSurface])
+
   useEffect(() => {
     dispatchSettingsSidebarChromeStateBlock({
-      enabled: true,
+      // The native sidebar toggle collapses a pane that no longer exists in
+      // list/detail mode — back is the only way out of a section there.
+      enabled: !isIPhoneIosSurface,
       collapsed: sidebarCollapsed,
       label: 'Settings',
     })
@@ -391,7 +436,7 @@ export default function SettingsOrch({
         label: 'Settings',
       })
     }
-  }, [sidebarCollapsed])
+  }, [sidebarCollapsed, isIPhoneIosSurface])
 
   useEffect(() => {
     const handler = () => setSidebarCollapsed(prev => !prev)
@@ -995,32 +1040,58 @@ export default function SettingsOrch({
 
   return (
     <div className="flex h-full min-h-0 w-full">
+      {!phoneDetailMode && (
       <aside
         className={cn(
           'flex flex-col self-stretch bg-background/40 overflow-y-auto overflow-x-hidden overscroll-contain',
-          'shrink-0 transition-[width,opacity] duration-200 ease-out',
-          sidebarCollapsed
-            ? 'w-0 opacity-0 pointer-events-none border-r-0'
-            : 'w-[258px] opacity-100 lg:border-r lg:border-border/60',
+          phoneListMode
+            ? 'w-full flex-1'
+            : cn(
+                'shrink-0 transition-[width,opacity] duration-200 ease-out',
+                sidebarCollapsed
+                  ? 'w-0 opacity-0 pointer-events-none border-r-0'
+                  : 'w-[258px] opacity-100 lg:border-r lg:border-border/60',
+              ),
         )}
       >
         <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           Settings
         </p>
-        <nav className="min-h-0 flex-1 px-2 pb-4">
+        <nav className={cn(
+          'min-h-0 flex-1 px-2 pb-4',
+          // The native dock floats over the web view (64pt above the home
+          // indicator) and nothing reserves room for it, so the last row
+          // could never be scrolled clear.
+          phoneListMode && 'px-3 pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
+        )}>
           {TAB_GROUPS.map((group, groupIdx) => (
-            <div key={group.heading} className={groupIdx === 0 ? undefined : 'mt-5'}>
-              <p className="mb-1 px-2.5 text-[11px] font-medium text-muted-foreground/60">
-                {group.heading}
-              </p>
-              <div className="space-y-0.5">
+            <div key={group.heading} className={groupIdx === 0 || phoneListMode ? undefined : 'mt-5'}>
+              {phoneListMode ? (
+                <PhoneListSectionHeaderBlock className={groupIdx === 0 ? 'pt-1' : undefined}>
+                  {group.heading}
+                </PhoneListSectionHeaderBlock>
+              ) : (
+                <p className="mb-1 px-2.5 text-[11px] font-medium text-muted-foreground/60">
+                  {group.heading}
+                </p>
+              )}
+              <PhoneListGroupBlock enabled={phoneListMode} className={phoneListMode ? undefined : 'space-y-0.5'}>
                 {group.items.map(tab => {
                   const active = activeTab === tab.id
+                  if (phoneListMode) {
+                    return (
+                      <PhoneListRowBlock
+                        key={tab.id}
+                        label={tab.label}
+                        onClick={() => selectTab(tab.id)}
+                      />
+                    )
+                  }
                   return (
                     <button
                       key={tab.id}
                       type="button"
-                      onClick={() => setActiveTab(tab.id)}
+                      onClick={() => selectTab(tab.id)}
                       className={cn(
                         'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors',
                         active
@@ -1032,13 +1103,18 @@ export default function SettingsOrch({
                     </button>
                   )
                 })}
-              </div>
+              </PhoneListGroupBlock>
             </div>
           ))}
         </nav>
       </aside>
+      )}
 
-      <div className="flex-1 space-y-4 min-w-0 px-4 py-6 lg:px-6 overflow-y-auto overscroll-contain">
+      <div className={cn(
+        'flex-1 space-y-4 min-w-0 px-4 py-6 lg:px-6 overflow-y-auto overscroll-contain',
+        phoneListMode && 'hidden',
+        phoneDetailMode && 'pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
+      )}>
       {activeTab === 'theme' && (
         <>
           <SettingsSectionHeaderBlock

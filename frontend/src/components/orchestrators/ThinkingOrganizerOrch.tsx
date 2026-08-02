@@ -29,6 +29,12 @@ import BacklogOrch, {
 } from '@/components/orchestrators/BacklogOrch'
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import {
+  PHONE_LIST_ICON_CLASS_BLOCK,
+  PhoneListGroupBlock,
+  PhoneListRowBlock,
+  PhoneListSectionHeaderBlock,
+} from '@/components/lego_blocks/units/PhoneListBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
 import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
@@ -332,7 +338,10 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
               // overflows — it just no longer moves when there is nowhere to go.
               'ltm-organizer-shell-nav bg-background/40 overflow-y-auto overflow-x-hidden overscroll-none',
               phoneListMode
-                ? 'flex-1 px-3 py-4 opacity-100'
+                // The native dock floats over the web view (64pt above the home
+                // indicator) and nothing reserves room for it, so the last
+                // project could never be scrolled clear.
+                ? 'flex-1 px-4 py-4 pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)] opacity-100'
                 : cn(
                     'shrink-0 transition-[width,opacity] duration-200 ease-out',
                     sidebarCollapsed
@@ -340,15 +349,32 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
                       : 'w-[220px] opacity-100 border-r border-border/60 px-3 py-4',
                   ),
             )}>
-            <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Thinking Organizer
-            </p>
-            <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Projects
-            </p>
-            <nav className="space-y-1">
+            {!phoneListMode && (
+              <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Thinking Organizer
+              </p>
+            )}
+            {phoneListMode ? (
+              <PhoneListSectionHeaderBlock className="pt-1">Projects</PhoneListSectionHeaderBlock>
+            ) : (
+              <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Projects
+              </p>
+            )}
+            <nav>
+              <PhoneListGroupBlock enabled={phoneListMode} className={phoneListMode ? undefined : 'space-y-1'}>
               {projectEntries.map((entry) => {
                 const active = projectRoot === entry.root
+                if (phoneListMode) {
+                  return (
+                    <PhoneListRowBlock
+                      key={entry.root}
+                      icon={<FolderTree className={PHONE_LIST_ICON_CLASS_BLOCK} />}
+                      label={entry.name}
+                      onClick={() => selectProject(entry.root)}
+                    />
+                  )
+                }
                 return (
                   <button
                     key={entry.root}
@@ -367,13 +393,17 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
                 )
               })}
               {projectEntries.length === 0 && (
-                <p className="px-2 py-1 text-xs text-muted-foreground/60">No projects yet.</p>
+                <p className={cn(
+                  'text-muted-foreground/60',
+                  phoneListMode ? 'px-4 py-3 text-[15px]' : 'px-2 py-1 text-xs',
+                )}>No projects yet.</p>
               )}
+              </PhoneListGroupBlock>
             </nav>
             <Button
               size="sm"
               variant="outline"
-              className="mt-3 w-full"
+              className={cn('mt-3 w-full', phoneListMode && 'h-11 text-[15px]')}
               onClick={() => window.dispatchEvent(new CustomEvent(ORGANIZER_OPEN_CREATE_PROJECT_EVENT))}
             >
               <Plus className="mr-1.5 h-4 w-4" />

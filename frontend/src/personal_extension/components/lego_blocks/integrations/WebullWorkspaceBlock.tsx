@@ -24,6 +24,12 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import {
+  PHONE_LIST_ICON_CLASS_BLOCK,
+  PhoneListGroupBlock,
+  PhoneListRowBlock,
+  PhoneListSectionHeaderBlock,
+} from '@/components/lego_blocks/units/PhoneListBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
 import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
@@ -2226,6 +2232,15 @@ export default function WebullWorkspaceBlock({
         ? 'F9 practice reps across market history, plotted on a timeline.'
         : 'Canonical overall positions from Webull sync.')
 
+  // Sidebar rows are a 220px desktop nav by origin — 32px tall, which is fine
+  // for a pointer and below the 44pt floor for a thumb. On the phone the same
+  // nav IS the page, so it gets iOS list metrics.
+  const navRowClass = cn(
+    'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+    phoneListMode && 'min-h-[44px] gap-3 rounded-xl px-3 py-2.5 text-[15px]',
+  )
+  const navIconClass = phoneListMode ? 'h-[18px] w-[18px]' : 'h-4 w-4'
+
   return (
     <div className="ltm-webull-shell flex h-full min-h-0 w-full">
       {/* On iPhone, the desktop collapse state is ignored — list/detail mode
@@ -2246,73 +2261,115 @@ export default function WebullWorkspaceBlock({
         <div className={cn(
           'h-full overflow-y-auto bg-background/40 px-3 py-4',
           phoneListMode ? 'w-full' : 'w-[220px] border-r border-border/60',
+          // The native dock floats over the web view (64pt above the home
+          // indicator) — nothing reserves room for it, so the last company
+          // row sat under it with no way to scroll clear.
+          phoneListMode && 'px-4 pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
           !phoneListMode && sideTabsCollapsed && 'pointer-events-none',
         )}>
-          <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Webull
-          </p>
-          <nav className="space-y-1">
+          {phoneListMode ? (
+            <PhoneListSectionHeaderBlock className="pt-1">Webull</PhoneListSectionHeaderBlock>
+          ) : (
+            <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Webull
+            </p>
+          )}
+          <nav className={phoneListMode ? undefined : 'space-y-1'}>
+            <PhoneListGroupBlock enabled={phoneListMode}>
             {subtabs.map((subtab) => {
               const active = activeSubtabId === subtab.id && !showCompanyView
               const Icon = WEBULL_SUBTAB_ICONS[subtab.id]
+              const onSelect = () => pushDetailIfPhone(() => {
+                onSelectSubtab(subtab.id)
+                setPreserveOverallContext(false)
+                onSelectCompanyTicker(null)
+              })
+              if (phoneListMode) {
+                return (
+                  <PhoneListRowBlock
+                    key={subtab.id}
+                    icon={<Icon className={PHONE_LIST_ICON_CLASS_BLOCK} />}
+                    label={subtab.label}
+                    onClick={onSelect}
+                  />
+                )
+              }
               return (
                 <button
                   key={subtab.id}
                   type="button"
-                  onClick={() => pushDetailIfPhone(() => {
-                    onSelectSubtab(subtab.id)
-                    setPreserveOverallContext(false)
-                    onSelectCompanyTicker(null)
-                  })}
+                  onClick={onSelect}
                   className={cn(
-                    'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                    active && !phoneListMode
+                    navRowClass,
+                    active
                       ? 'bg-foreground text-background'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                   )}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className={navIconClass} />
                   <span className="truncate">{subtab.label}</span>
                 </button>
               )
             })}
+            </PhoneListGroupBlock>
           </nav>
 
-          <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Companies
-          </p>
-          <nav className="space-y-1">
+          {phoneListMode ? (
+            <PhoneListSectionHeaderBlock>Companies</PhoneListSectionHeaderBlock>
+          ) : (
+            <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Companies
+            </p>
+          )}
+          <nav className={phoneListMode ? undefined : 'space-y-1'}>
+            <PhoneListGroupBlock enabled={phoneListMode}>
             {(executionOverview?.companies ?? []).map((company, companyIndex) => {
               const active = showCompanyView && activeCompanyTicker === company.companyTicker
+              const positionCount = company.positions
+                .filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length
+              const onSelect = () => pushDetailIfPhone(() => {
+                setPreserveOverallContext(false)
+                onSelectCompanyTicker(company.companyTicker)
+              })
+              if (phoneListMode) {
+                return (
+                  <PhoneListRowBlock
+                    key={company.companyTicker}
+                    icon={<Building2 className={PHONE_LIST_ICON_CLASS_BLOCK} />}
+                    label={company.companyTicker}
+                    trailing={positionCount}
+                    onClick={onSelect}
+                  />
+                )
+              }
               return (
                 <button
                   key={company.companyTicker}
                   type="button"
-                  onClick={() => pushDetailIfPhone(() => {
-                    setPreserveOverallContext(false)
-                    onSelectCompanyTicker(company.companyTicker)
-                  })}
+                  onClick={onSelect}
                   className={cn(
-                    'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                    active && !phoneListMode
+                    navRowClass,
+                    active
                       ? 'bg-foreground text-background'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                   )}
                 >
-                  <Building2 className="h-4 w-4 shrink-0" />
+                  <Building2 className={cn(navIconClass, 'shrink-0')} />
                   <sup className="-ml-1 inline-flex pt-0.5 align-super text-[9px] font-medium opacity-65 tabular-nums">
                     {companyIndex + 1}
                   </sup>
                   <span className="truncate">{company.companyTicker}</span>
-                  <span className="ml-auto text-xs opacity-80">
-                    {company.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length}
-                  </span>
+                  <span className="ml-auto text-xs opacity-80">{positionCount}</span>
                 </button>
               )
             })}
             {(executionOverview?.companies.length ?? 0) === 0 && (
-              <p className="px-2 py-1 text-xs text-muted-foreground/60">No companies yet.</p>
+              <p className={cn(
+                'text-xs text-muted-foreground/60',
+                phoneListMode ? 'px-4 py-3 text-[15px]' : 'px-2 py-1',
+              )}>No companies yet.</p>
             )}
+            </PhoneListGroupBlock>
           </nav>
 
           <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -2324,11 +2381,15 @@ export default function WebullWorkspaceBlock({
               value={newCompanyTicker}
               onChange={(event) => setNewCompanyTicker(event.target.value.toUpperCase())}
               placeholder="Ticker (e.g. TSLA)"
-              className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring"
+              className={cn(
+                'h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring',
+                // 16px minimum or iOS zooms the whole page on focus.
+                phoneListMode && 'h-11 rounded-lg px-3 text-base',
+              )}
             />
             <Button
               type="button"
-              className="w-full"
+              className={cn('w-full', phoneListMode && 'h-11 text-[15px]')}
               size="sm"
               variant="outline"
               disabled={workspaceBusy || !newCompanyTicker.trim()}
