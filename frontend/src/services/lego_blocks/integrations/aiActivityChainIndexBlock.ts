@@ -43,6 +43,24 @@ function withinRange(date: string, from?: string, to?: string): boolean {
   return true
 }
 
+/**
+ * Every project that has chains on disk.
+ *
+ * Deliberately the *chains* directory rather than the project registry: a
+ * session can land under a key nothing has adopted yet (that is what the
+ * `unknown` bucket was), and the assignment sweep has to be able to see those.
+ * Reading the registry here would make unadopted work invisible to the one pass
+ * whose job is to notice unclaimed work.
+ */
+export async function listChainProjectsBlock(): Promise<string[]> {
+  const fs = getVaultFS()
+  try {
+    return (await fs.list(CHAINS_ROOT)).folders.slice().sort((a, b) => a.localeCompare(b))
+  } catch {
+    return []
+  }
+}
+
 /** Legacy date buckets under a project, newest layout has none. */
 export async function listChainDatesBlock(projectId: string): Promise<string[]> {
   const fs = getVaultFS()
