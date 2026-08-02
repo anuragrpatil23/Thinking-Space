@@ -138,6 +138,34 @@ export function normalizeProjectRootBlock(value: unknown): string {
   return clean.startsWith('/') ? clean.replace(/^\/+/, '/') : clean.replace(/^\/+/, '')
 }
 
+/**
+ * Store a root that lives inside the vault as vault-relative.
+ *
+ * A root is a *portable* address. The vault sits at a different absolute path on
+ * every device — `/Users/…/Long-Term-Memory-iCloud` on the Mac, an app container
+ * on iOS — so an absolute path to something inside it is only true on the
+ * machine that typed it. Relative roots re-anchor per device; absolute ones are
+ * kept verbatim, which is correct and necessary for a code checkout *outside*
+ * the vault.
+ *
+ * Getting this wrong is not a near-miss, it is an inversion. The vault project
+ * once held the vault's own absolute Mac path: on iOS every sibling project's
+ * relative root anchored to the container and matched nothing, while that one
+ * absolute root still prefixed every Mac-recorded cwd — so it became the only
+ * match and swallowed F9, sfdl and every other vault project whole. Electron
+ * looked perfect throughout, because there the two spellings coincide.
+ *
+ * The vault root itself relativizes to '' and is dropped: "every session in the
+ * vault" is not a membership rule, it is the absence of one.
+ */
+export function relativizeProjectRootBlock(root: string, vaultRoot: string | null | undefined): string {
+  if (!root.startsWith('/')) return root
+  const base = (vaultRoot ?? '').replace(/\\/g, '/').replace(/\/+$/, '')
+  if (!base) return root
+  if (root === base) return ''
+  return root.startsWith(`${base}/`) ? root.slice(base.length + 1) : root
+}
+
 function normalizeStringListBlock(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   const out: string[] = []

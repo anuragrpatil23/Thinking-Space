@@ -5,10 +5,12 @@ import {
   isValidProjectKeyBlock,
   normalizeProjectRootBlock,
   normalizeProjectsFileBlock,
+  relativizeProjectRootBlock,
   type ProjectBlock,
   type ProjectsFileBlock,
 } from '@/services/lego_blocks/units/projectBlock'
 import { renderProjectsMarkdownBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 
 /**
  * projectsStorageBlock — read/write `.thinking-space/projects.json` and emit
@@ -55,8 +57,12 @@ export interface UpdateProjectInputBlock {
 function normalizeRootListBlock(value: string[] | undefined): string[] {
   const out: string[] = []
   const seen = new Set<string>()
+  // The adoption panel hands us the working directories the parser saw, which
+  // are absolute by nature. Anything inside the vault is stored relative so it
+  // survives the trip to a device that mounts the vault somewhere else.
+  const vaultRoot = getStoredVaultRoot()
   for (const raw of value ?? []) {
-    const root = normalizeProjectRootBlock(raw)
+    const root = relativizeProjectRootBlock(normalizeProjectRootBlock(raw), vaultRoot)
     if (!root || seen.has(root)) continue
     seen.add(root)
     out.push(root)

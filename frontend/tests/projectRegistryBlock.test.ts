@@ -10,6 +10,7 @@ import {
   resolveProjectByCwdBlock,
   setCachedProjectNamesBlock,
 } from '@/services/lego_blocks/units/projectRegistryBlock'
+import { relativizeProjectRootBlock } from '@/services/lego_blocks/units/projectBlock'
 
 const VAULT = '/Users/x/Vault'
 
@@ -218,5 +219,74 @@ describe('renderProjectsMarkdownBlock', () => {
 
   it('is stable across calls so the mirror is only rewritten on real changes', () => {
     expect(renderProjectsMarkdownBlock(projects)).toBe(renderProjectsMarkdownBlock(projects))
+  })
+})
+
+describe('relativizeProjectRootBlock', () => {
+  // The iOS regression this exists to prevent: the vault project held the
+  // vault's own absolute Mac path, so on a device that mounts the vault
+  // elsewhere it was the only root still matching Mac-recorded cwds and
+  // swallowed every sibling project.
+  it('drops a root that is the vault itself — that is not a membership rule', () => {
+    expect(relativizeProjectRootBlock(VAULT, VAULT)).toBe('')
+    expect(relativizeProjectRootBlock(VAULT, `${VAULT}/`)).toBe('')
+  })
+
+  it('stores a root inside the vault relative, so it re-anchors per device', () => {
+    expect(relativizeProjectRootBlock(`${VAULT}/acceleration_core/F9`, VAULT)).toBe('acceleration_core/F9')
+  })
+
+  // A code checkout outside the vault has no portable spelling, and it is the
+  // same absolute path on every device that reads these chains.
+  it('leaves an absolute root outside the vault alone', () => {
+    expect(relativizeProjectRootBlock('/Volumes/Code/Thinking-Space', VAULT)).toBe('/Volumes/Code/Thinking-Space')
+  })
+
+  it('leaves an already-relative root and a sibling prefix alone', () => {
+    expect(relativizeProjectRootBlock('acceleration_core/F9', VAULT)).toBe('acceleration_core/F9')
+    // Same prefix as a string, different folder — must not be relativized.
+    expect(relativizeProjectRootBlock(`${VAULT}-Backup/F9`, VAULT)).toBe(`${VAULT}-Backup/F9`)
+  })
+
+  it('keeps roots verbatim when no vault root is known', () => {
+    expect(relativizeProjectRootBlock('/Users/x/Vault/F9', null)).toBe('/Users/x/Vault/F9')
+  })
+})
+
+describe('the iOS attribution inversion', () => {
+  // End-to-end proof on the ladder's root rung: with the vault stored as an
+  // absolute root, a device whose vault lives elsewhere attributes an F9
+  // session to the vault. With it relativized, F9 no longer loses.
+  const IOS_VAULT = '/var/mobile/Containers/Data/Application/ABC/Documents/Vault'
+  const MAC_CWD = `${VAULT}/acceleration_core/F9`
+
+  it('reproduces the bug when the vault root is stored absolute', () => {
+    const entries = projectRegistryFromProjectsBlock(
+      [
+        { key: 'F9', roots: ['acceleration_core/F9'] },
+        { key: 'Vault', roots: [VAULT] },
+      ],
+      IOS_VAULT,
+    )
+    expect(resolveProjectByCwdBlock(MAC_CWD, entries)).toBe('Vault')
+  })
+
+  it('is gone once the vault root is relativized away', () => {
+    const roots = [VAULT].map(r => relativizeProjectRootBlock(r, VAULT)).filter(Boolean)
+    const entries = projectRegistryFromProjectsBlock(
+      [
+        { key: 'F9', roots: ['acceleration_core/F9'] },
+        { key: 'Vault', roots },
+      ],
+      IOS_VAULT,
+    )
+    // No root claims it, so the ladder falls through to the basename — which is
+    // "F9", the correct project. Fallback, not misattribution.
+    expect(resolveProjectByCwdBlock(MAC_CWD, entries)).toBeNull()
+  })
+
+  it('still resolves correctly on the device that recorded the cwd', () => {
+    const entries = projectRegistryFromProjectsBlock([{ key: 'F9', roots: ['acceleration_core/F9'] }], VAULT)
+    expect(resolveProjectByCwdBlock(MAC_CWD, entries)).toBe('F9')
   })
 })
