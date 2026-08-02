@@ -117,7 +117,11 @@ export default function HomeFlatOrch() {
           {theme.showNebula && (
             <div className="absolute inset-0" style={{ backgroundImage: theme.nebulaGradient }} />
           )}
-          {theme.showStars && <Starfield />}
+          {/* Pass the theme's star color, same as CanvasSurfaceOrch. Without
+              it the field falls back to Starfield's charcoal default, which on
+              the cream paper backdrop read as hard black specks bleeding
+              through the panels above (2026-08-02). */}
+          {theme.showStars && <Starfield starColor={theme.starColor} />}
           {theme.vignetteGradient && (
             <div className="absolute inset-0" style={{ background: theme.vignetteGradient }} />
           )}

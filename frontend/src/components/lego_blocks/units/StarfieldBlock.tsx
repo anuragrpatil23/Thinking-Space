@@ -27,6 +27,17 @@ interface StarfieldProps {
 const SHOOT_MIN_GAP_MS = 30_000
 const SHOOT_MAX_GAP_MS = 60_000
 
+/** `#rgb` / `#rrggbb` → [r, g, b], so the shooting-star gradient can build
+ *  rgba() stops from the same color the static stars use. Falls back to the
+ *  charcoal default for anything else — every caller passes a hex today. */
+function toRgbTriple(color: string): [number, number, number] {
+  const hex = color.trim().replace('#', '')
+  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex
+  if (full.length !== 6 || !/^[0-9a-f]{6}$/i.test(full)) return [31, 41, 55]
+  const value = Number.parseInt(full, 16)
+  return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff]
+}
+
 export default function Starfield({
   starColor = '#1f2937',
   shootingColor,
@@ -130,8 +141,12 @@ export default function Starfield({
           star.x - star.vx * (tail / 8),
           star.y - star.vy * (tail / 8),
         )
-        grad.addColorStop(0, `rgba(31,41,55,${0.55 * t})`)
-        grad.addColorStop(1, 'rgba(31,41,55,0)')
+        // Honor shootingColor/starColor. This used to hardcode the charcoal
+        // default, so a shooting star flashed near-black across the cream
+        // paper backdrop no matter what the theme asked for (2026-08-02).
+        const [sr, sg, sb] = toRgbTriple(shootingColorRef.current)
+        grad.addColorStop(0, `rgba(${sr},${sg},${sb},${0.55 * t})`)
+        grad.addColorStop(1, `rgba(${sr},${sg},${sb},0)`)
         ctx.strokeStyle = grad
         ctx.lineWidth = 2
         ctx.beginPath()

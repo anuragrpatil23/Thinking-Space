@@ -1296,18 +1296,21 @@
      + centered Files-style tab pill, nativeChromePadBarHeight in
      TopChromeView.swift), painted as bare `.ultraThinMaterial`.
 
-     The stage reserves NOTHING at the top: the page panel runs to the screen
-     edge and slides under the bar, Files-app style. Two things were tried and
-     reverted here (2026-08-02): stage padding, which exposed a band of shell
-     grey between the page and the bar, and an opaque card-colored strip
-     painted behind the bar, which read as a fixed grey slab content
-     disappeared behind.
+     Landscape (desktop mode) reserves the bar's height HERE, on the stage, so
+     the inset panel starts below the chrome and keeps its border — the same
+     floating-panel frame Electron draws, which is the point of desktop mode.
+     Zeroing this for landscape too was tried and reverted (2026-08-02): the
+     panel ran flush to the screen edge and lost its top border.
 
-     Clearance for CONTENT lives on `.ltm-app-main` below. Scoped by the
-     native-chrome attr, not mode, so it covers both portrait (tablet) and
-     landscape (desktop). */
+     Portrait (tablet) overrides this to 0 below and clears content on
+     `.ltm-app-main` instead: there is no rail and no panel frame there, so the
+     page runs to the edge and slides under the bar, Files-app style. Two other
+     things were tried and reverted for portrait: stage padding, which exposed
+     a band of shell grey between the page and the bar, and an opaque
+     card-colored strip painted behind the bar, which read as a fixed grey slab
+     content disappeared behind. */
   .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-native-chrome='true']:not([data-ltm-mode='phone']) .ltm-shell-stage {
-    padding-top: 0;
+    padding-top: calc(var(--ltm-safe-top) + 64px + 0.35rem);
   }
 
   /* iPad portrait (tablet mode) has no nav rail beside the content — the
@@ -1335,9 +1338,9 @@
 
   /* At-rest clearance for the frosted top-bar zone (status bar + 64pt native
      bar + breathing room); scrolled content passes beneath it through the
-     glass. This is the ONLY top reservation on iPad now that the stage is
-     zeroed above, so it is scoped `:not(phone)` — landscape (desktop mode)
-     needs it just as much as portrait.
+     glass. Portrait only: it is the only top reservation there, since the
+     tablet rule above zeroes the stage. Landscape reserves on the stage
+     instead, and padding here too would double it.
 
      Edge-bleed pages (Home backdrop) opt out, same as iPhone. Padding them
      here was tried and reverted (2026-08-02): it inset the page inside the
@@ -1345,7 +1348,7 @@
      glass bar, and the clearance it bought was never the ask — the breathing
      room people read as missing is the bar's own, below the buttons
      (nativeChromePadBarHeight). */
-  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-native-chrome='true']:not([data-ltm-mode='phone']) .ltm-app-main:not(:has(.ltm-page-edge-bleed)) {
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-native-chrome='true'][data-ltm-mode='tablet'] .ltm-app-main:not(:has(.ltm-page-edge-bleed)) {
     padding-top: calc(var(--ltm-safe-top) + 64px + 0.5rem);
   }
 

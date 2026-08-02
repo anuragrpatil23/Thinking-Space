@@ -42,6 +42,55 @@ function cleanPostItText(text: string): string {
   return text.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+$/gm, '').trim()
 }
 
+// Masonry columns, resolved in JS rather than CSS `columns-*`.
+//
+// The CSS multi-column version flickered constantly on iPad (2026-08-02):
+// WebKit re-fragments a multi-column container on every repaint, and with
+// translucent tiles (`tileBg` is rgba) each carrying a large blurred
+// box-shadow, that re-fragmentation is visible as flicker. It only showed on
+// iPad because the phone renders a single column, where there is nothing to
+// fragment. Laying the columns out as plain flex children removes the
+// fragmentation entirely; the packing is preserved by distributing tiles
+// shortest-column-first below.
+//
+// Mirrors Tailwind's sm/xl breakpoints, which is what `sm:columns-2
+// xl:columns-3` used.
+const BOARD_COLUMN_BREAKPOINTS = [
+  { query: '(min-width: 1280px)', columns: 3 },
+  { query: '(min-width: 640px)', columns: 2 },
+]
+
+function resolveBoardColumnCount(): number {
+  if (typeof window === 'undefined') return 1
+  for (const { query, columns } of BOARD_COLUMN_BREAKPOINTS) {
+    if (window.matchMedia(query).matches) return columns
+  }
+  return 1
+}
+
+function useBoardColumnCountBlock(): number {
+  const [count, setCount] = useState(resolveBoardColumnCount)
+
+  useEffect(() => {
+    const lists = BOARD_COLUMN_BREAKPOINTS.map(({ query }) => window.matchMedia(query))
+    const onChange = () => setCount(resolveBoardColumnCount())
+    lists.forEach((list) => list.addEventListener('change', onChange))
+    onChange()
+    return () => lists.forEach((list) => list.removeEventListener('change', onChange))
+  }, [])
+
+  return count
+}
+
+// Rough height proxy for balancing the columns — text length for post-its (the
+// only tiles whose height actually varies), a flat cost for note cards. Exact
+// heights would need measurement; this only has to keep the columns from
+// ending at wildly different depths.
+function estimateTileWeight(tile: CanvasTile): number {
+  if (tile.type !== 'post-it') return 90
+  return Math.min(cleanPostItText(tile.text).length, 620) + 60
+}
+
 // Mirrors CanvasTileBlock's post-it font sizing so a tile reads at the same
 // size on the board as it does on the canvas.
 function postItFontSizePx(tile: CanvasPostItTile): number {
@@ -148,6 +197,7 @@ function NoteCard({ tile, theme }: { tile: CanvasNoteTile; theme: CanvasThemeTok
 
 export default function HomeBoardFeedBlock() {
   const theme = useCanvasThemeBlock()
+  const columnCount = useBoardColumnCountBlock()
   const [tiles, setTiles] = useState<CanvasTile[] | null>(null)
 
   useEffect(() => {
@@ -172,6 +222,23 @@ export default function HomeBoardFeedBlock() {
       .sort((a, b) => tileOrder(b) - tileOrder(a))
   }, [tiles])
 
+  // Shortest-column-first, which is what CSS multi-column was doing for us.
+  // Reading order goes down each column rather than across rows; the feed is
+  // a board, not a ranked list, so that reads fine.
+  const columns = useMemo(() => {
+    const buckets: CanvasTile[][] = Array.from({ length: columnCount }, () => [])
+    const weights = new Array<number>(columnCount).fill(0)
+    for (const tile of feed) {
+      let target = 0
+      for (let i = 1; i < columnCount; i += 1) {
+        if (weights[i] < weights[target]) target = i
+      }
+      buckets[target].push(tile)
+      weights[target] += estimateTileWeight(tile)
+    }
+    return buckets
+  }, [feed, columnCount])
+
   if (!tiles || feed.length === 0) return null
 
   return (
@@ -187,16 +254,19 @@ export default function HomeBoardFeedBlock() {
       >
         Board
       </h2>
-      {/* CSS masonry: post-its keep their natural height, notes stay compact,
-          and the columns pack tightly instead of one wall-wide card per row. */}
-      <div className="[column-gap:0.75rem] columns-1 sm:columns-2 xl:columns-3">
-        {feed.map(tile => (
-          <div key={tile.id} className="mb-3 break-inside-avoid">
-            {tile.type === 'post-it' ? (
-              <PostItCard tile={tile} theme={theme} />
-            ) : (
-              <NoteCard tile={tile as CanvasNoteTile} theme={theme} />
-            )}
+      {/* Masonry: post-its keep their natural height, notes stay compact, and
+          the columns pack tightly instead of one wall-wide card per row. Flex
+          columns, not CSS `columns-*` — see BOARD_COLUMN_BREAKPOINTS. */}
+      <div className="flex items-start gap-3">
+        {columns.map((column, index) => (
+          <div key={index} className="flex min-w-0 flex-1 flex-col gap-3">
+            {column.map(tile => (
+              tile.type === 'post-it' ? (
+                <PostItCard key={tile.id} tile={tile} theme={theme} />
+              ) : (
+                <NoteCard key={tile.id} tile={tile as CanvasNoteTile} theme={theme} />
+              )
+            ))}
           </div>
         ))}
       </div>
