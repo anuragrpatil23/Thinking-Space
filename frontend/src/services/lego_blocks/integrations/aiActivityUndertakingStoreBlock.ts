@@ -161,14 +161,53 @@ export async function getUndertakingBlock(
   return all.find(record => record.key === key) ?? null
 }
 
+/**
+ * Find the file a key actually lives in, which is not always the file the key
+ * would derive.
+ *
+ * `getUndertakingBlock` already knows this — it falls back to a scan when the
+ * derived path misses — but the writer did not, and the asymmetry was a live
+ * duplication bug: every record in this vault is named `undertaking-<slug>.md`
+ * (the import's convention) while `undertakingPathBlock` derives
+ * `<key>.md`, so the first head edit or assignment on any imported record would
+ * have written a *second* file carrying the same key, and
+ * `listUndertakingsBlock` would have returned the undertaking twice. Read and
+ * write must resolve an address the same way, or the store forks.
+ *
+ * Returns null when the key is new, which is the only case that may mint a path.
+ */
+async function existingPathForKeyBlock(projectId: string, key: string): Promise<string | null> {
+  const fs = getVaultFS()
+  const derived = undertakingPathBlock(projectId, key)
+  try {
+    if (await fs.exists(derived)) return derived
+  } catch {
+    // Fall through to the scan; an exists() that throws is not an answer.
+  }
+  const dir = undertakingDirBlock(projectId)
+  let names: string[] = []
+  try {
+    names = (await fs.list(dir)).files.filter(name => name.endsWith('.md'))
+  } catch {
+    return null
+  }
+  for (const name of names) {
+    const content = await readIfPresent(`${dir}/${name}`)
+    if (!content) continue
+    if (parseUndertakingBlock(content)?.key === key) return `${dir}/${name}`
+  }
+  return null
+}
+
 export async function writeUndertakingBlock(
   projectId: string,
   record: UndertakingRecord,
 ): Promise<string> {
   const fs = getVaultFS()
-  const dir = undertakingDirBlock(projectId)
-  await fs.mkdir(dir)
-  const path = undertakingPathBlock(projectId, record.key)
+  await fs.mkdir(undertakingDirBlock(projectId))
+  const path =
+    (await existingPathForKeyBlock(projectId, record.key)) ??
+    undertakingPathBlock(projectId, record.key)
   await fs.write(path, serializeUndertakingBlock(record))
   return path
 }

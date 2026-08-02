@@ -205,6 +205,10 @@ const NUMBER_FIELDS = new Set(['limit', 'lineNumber', 'buckets'])
 const ARRAY_FIELDS = new Set(['tags', 'items', 'artifacts', 'relatedNodes', 'emotions', 'comments', 'derived_from', 'changed_paths', 'concept_subpath', 'insights', 'files_touched', 'linked_notes', 'add', 'remove', 'accept', 'reject', 'written', 'read', 'undertakings'])
 const BOOLEAN_FIELDS = new Set(['dryRun', 'dry-run', 'date_header', 'text-stdin', 'overwrite', 'deleteClaudeSession', 'allowNew'])
 const JSON_FIELDS = new Set(['frontmatter', 'set', 'append_unique'])
+/** Arrays of *objects*, unlike ARRAY_FIELDS which coerces every element to a
+ *  string. A batch of assignment proposals is structured — target, confidence,
+ *  rationale — so it arrives as JSON, normally via `--proposals-file`. */
+const JSON_ARRAY_FIELDS = new Set(['proposals'])
 const GREEDY_TEXT_FIELDS = new Set([
   'text',
   'note',
@@ -453,6 +457,17 @@ function coerceStringInputValue(key: string, value: string, source: 'flag' | 'fi
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         throw new Error('expected a JSON object')
       }
+      return parsed
+    } catch (error) {
+      const prefix = source === 'file' ? `${key}-file` : `--${key}`
+      throw new Error(`Invalid JSON for ${prefix}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  if (JSON_ARRAY_FIELDS.has(key)) {
+    try {
+      const parsed = JSON.parse(value)
+      if (!Array.isArray(parsed)) throw new Error('expected a JSON array')
       return parsed
     } catch (error) {
       const prefix = source === 'file' ? `${key}-file` : `--${key}`
@@ -865,6 +880,14 @@ const CAPABILITY_EXAMPLES: Record<string, string[]> = {
     'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-new-thing --newTitle "Coherent optics teardown" --projectId F9',
     'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-micron-memory-cycle --head HBM capacity is the whole thesis; the DRAM cycle is noise',
   ],
+  'ai_activity.assignment.queue': [
+    'thinkspc ai_activity.assignment.queue',
+    'thinkspc ai_activity.assignment.queue --projectId F9',
+  ],
+  'ai_activity.assignment.propose': [
+    'thinkspc ai_activity.assignment.propose --proposals-file ./proposals.json --proposedBy kai',
+    'thinkspc ai_activity.assignment.propose --proposals \'[{"chainId":"abc","projectId":"F9","target":{"kind":"existing","key":"f9-und-micron"},"confidence":0.9,"rationale":"same 10-K"}]\'',
+  ],
   'ai_activity.chains.list': [
     'thinkspc ai_activity.chains.list --projectId F9 --from 2026-07-01',
     'thinkspc ai_activity.chains.list --projectId F9 --undertaking f9-und-micron-memory-cycle',
@@ -1132,6 +1155,17 @@ const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: bo
     { flag: 'head', required: false, note: 'one line of what came out; greedy, so put it last, no quotes needed' },
     { flag: 'section', required: false },
     { flag: 'projectId', required: false },
+  ],
+  'ai_activity.assignment.queue': [
+    { flag: 'projectId', required: false, note: 'omit to sweep every project that has chains' },
+  ],
+  'ai_activity.assignment.propose': [
+    {
+      flag: 'proposals',
+      required: true,
+      note: 'JSON array; prefer --proposals-file. Each: {chainId, projectId, target, confidence, rationale}. target is {kind:"existing",key} | {kind:"new",title} | {kind:"bucket"}',
+    },
+    { flag: 'proposedBy', required: false, note: 'who is proposing; defaults to "agent"' },
   ],
   'ai_activity.chains.list': [
     { flag: 'projectId', required: true },

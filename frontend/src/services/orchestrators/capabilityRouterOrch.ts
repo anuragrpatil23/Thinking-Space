@@ -80,6 +80,7 @@ import {
   tagUndertakingOrch,
   updateUndertakingHeadOrch,
 } from './aiActivityUndertakingOrch'
+import { getAssignmentQueueOrch, proposeAssignmentsOrch } from './assignmentQueueOrch'
 
 export interface CapabilityInvokeRequest<Name extends CapabilityName = CapabilityName> {
   capability: Name
@@ -942,6 +943,26 @@ async function executeCapability<Name extends CapabilityName>(
         throw new Error('Missing required field: undertakings')
       }
       const result = await recordAssignmentOrch(payload)
+      return result as CapabilityOutputMap[Name]
+    }
+    case 'ai_activity.assignment.queue': {
+      const payload = input as CapabilityInputMap['ai_activity.assignment.queue']
+      const queue = await getAssignmentQueueOrch(payload.projectId)
+      return queue as CapabilityOutputMap[Name]
+    }
+    case 'ai_activity.assignment.propose': {
+      const payload = input as CapabilityInputMap['ai_activity.assignment.propose']
+      if (!Array.isArray(payload.proposals) || payload.proposals.length === 0) {
+        throw new Error('Missing required field: proposals')
+      }
+      const proposedBy = payload.proposedBy?.trim() || 'agent'
+      const result = await proposeAssignmentsOrch(
+        payload.proposals.map(proposal => {
+          assertNonEmptyString(proposal.chainId, 'chainId')
+          assertNonEmptyString(proposal.projectId, 'projectId')
+          return { ...proposal, proposedBy }
+        }),
+      )
       return result as CapabilityOutputMap[Name]
     }
     case 'ai_activity.chains.list': {

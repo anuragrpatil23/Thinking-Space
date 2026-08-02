@@ -34,6 +34,7 @@ const WRITE_CAPABILITIES = new Set<CapabilityName>([
   'ai_activity.undertaking.update_head',
   'ai_activity.undertaking.tag',
   'ai_activity.assignment.record',
+  'ai_activity.assignment.propose',
   'ai_activity.chain.set_project',
   'ai_activity.chain.set_files',
 ])

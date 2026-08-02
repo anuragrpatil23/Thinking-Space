@@ -21,6 +21,7 @@ import type { UndertakingRecord } from '@/services/lego_blocks/units/aiActivityU
 import type { ChainEntry } from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
 import type { UndertakingView } from '@/services/orchestrators/aiActivityUndertakingOrch'
 import type { DensityBucket } from '@/services/lego_blocks/units/aiActivityDensityBlock'
+import type { AssignmentQueue } from '@/services/orchestrators/assignmentQueueOrch'
 
 export interface CapabilityActor {
   kind: 'human' | 'agent' | 'system'
@@ -76,6 +77,8 @@ export type CapabilityName =
   | 'ai_activity.undertaking.update_head'
   | 'ai_activity.undertaking.tag'
   | 'ai_activity.assignment.record'
+  | 'ai_activity.assignment.queue'
+  | 'ai_activity.assignment.propose'
   | 'ai_activity.chains.list'
   | 'ai_activity.chain.set_project'
   | 'ai_activity.chain.set_files'
@@ -372,6 +375,27 @@ export interface CapabilityInputMap {
     section?: string
     projectId?: string
   }
+  'ai_activity.assignment.queue': {
+    /** Omit to sweep every project that has chains, unadopted keys included. */
+    projectId?: string
+  }
+  'ai_activity.assignment.propose': {
+    proposals: Array<{
+      chainId: string
+      projectId: string
+      target:
+        | { kind: 'existing'; key: string }
+        | { kind: 'new'; title: string; section?: string; head?: string }
+        | { kind: 'bucket' }
+      /** 0-1. Be honest: the verdict log grades these, and an inflated score
+       *  costs the band its right to auto-apply later. */
+      confidence: number
+      /** One line of why, checkable at a glance from the queue row. */
+      rationale: string
+    }>
+    /** Who is proposing, so a bad batch is attributable to a pass. */
+    proposedBy?: string
+  }
   'ai_activity.chains.list': {
     projectId: string
     from?: string
@@ -593,6 +617,15 @@ export interface CapabilityOutputMap {
   }
   'ai_activity.assignment.record': {
     path: string
+  }
+  /** The whole queue shape, not a restatement of it: a field added to
+   *  `AssignmentQueue` and forgotten here would silently stop crossing the
+   *  capability boundary, which is how `orphanedProposals` nearly shipped
+   *  invisible to every agent that reads the queue. */
+  'ai_activity.assignment.queue': AssignmentQueue
+  'ai_activity.assignment.propose': {
+    written: number
+    paths: string[]
   }
   'ai_activity.chains.list': {
     chains: ChainEntry[]
@@ -850,6 +883,18 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
   {
     name: 'ai_activity.assignment.record',
     description: 'Record which undertaking(s) a session belongs to, keyed on session id before the chain exists.',
+    readOnly: false,
+  },
+  {
+    name: 'ai_activity.assignment.queue',
+    description:
+      'List chains that still owe a disposition, with what has been proposed for each. Read this before proposing.',
+    readOnly: true,
+  },
+  {
+    name: 'ai_activity.assignment.propose',
+    description:
+      'Propose which undertaking each chain belongs to. A proposal is a claim awaiting a human verdict, never an assignment — it changes nothing a reader depends on, which is why a pass may write one unattended.',
     readOnly: false,
   },
   {

@@ -61,6 +61,21 @@ export interface UndertakingRecord {
   files: string[]
   /** Provenance: which pass created this record. */
   origin: string
+  /**
+   * This record is a *bucket*, not real work — the per-project
+   * "not an undertaking" pile that a chain lands in when the judgement was that
+   * it isn't worth an undertaking (a two-minute lookup, an abandoned attempt).
+   *
+   * Deliberately an ordinary undertaking with a flag rather than a `dismissed`
+   * boolean on the chain. A second axis would have to be learned by every
+   * reader, filter and count, and "where does this chain belong" would stop
+   * having one answer; un-dismissing would be its own operation instead of the
+   * remove-chain that every other retarget already is. What the flag buys is
+   * narrow and stated once: keep the pile out of calibration stats and out of
+   * the DAG, so it can't masquerade as throughput. See
+   * [ASSIGNMENT.md](../../../../../docs/contracts/ASSIGNMENT.md).
+   */
+  bucket: boolean
   /** The head. One line: what came out. The first paragraph of the body. */
   head: string
   /** Margin notes — Anurag's annotations over time. They live in the *body*
@@ -155,6 +170,35 @@ export function normalizeTagBlock(tag: string): string {
     .trim()
 }
 
+/**
+ * A key for a new undertaking: `<project>-und-<title-slug>`, matching the
+ * migration's form (`f9-und-cerebras-wafer-scale`).
+ *
+ * Minted once from the title and frozen there. The title is free to change
+ * afterwards and the key must not follow it: the key is the address — chains
+ * point at it, records file under it — so re-deriving it on a rename would
+ * orphan every pointer (DERIVATION.md, first rule). That is also why renaming
+ * is the queue's cheap correction and re-keying is not offered at all.
+ *
+ * De-duplicated against the keys already in use, so two undertakings that
+ * happen to be named alike get separate addresses rather than one shared file.
+ */
+export function undertakingKeyFromTitleBlock(
+  projectId: string,
+  title: string,
+  existingKeys: string[],
+): string {
+  const slug = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  const base = `${slug(projectId) || 'p'}-und-${slug(title) || 'undertaking'}`
+  const taken = new Set(existingKeys)
+  if (!taken.has(base)) return base
+  for (let n = 2; ; n++) {
+    const candidate = `${base}-${n}`
+    if (!taken.has(candidate)) return candidate
+  }
+}
+
 /** Parse an undertaking markdown file. Returns null if it isn't one. */
 export function parseUndertakingBlock(content: string): UndertakingRecord | null {
   const trimmed = content.trimStart()
@@ -213,6 +257,7 @@ export function parseUndertakingBlock(content: string): UndertakingRecord | null
     chains: asStringArray(parsed.chains),
     files: asStringArray(parsed.files),
     origin: asString(parsed.origin),
+    bucket: parsed.bucket === true,
     head,
     notes,
   }
@@ -251,6 +296,10 @@ export function serializeUndertakingBlock(record: UndertakingRecord): string {
   // ordinary case, not a gap worth a line on every record.
   if (record.fedBy.length) frontmatter.fed_by = record.fedBy
   if (record.produced.length) frontmatter.produced = record.produced
+  // Same reasoning: `bucket: false` is the ordinary case, not a recorded gap.
+  // Emitting it on every record would also make the flag look like a dimension
+  // records are expected to vary along, when there is exactly one per project.
+  if (record.bucket) frontmatter.bucket = true
 
   const yamlStr = yaml
     .dump(frontmatter, { lineWidth: -1, noRefs: true, sortKeys: false, quotingType: '"' })

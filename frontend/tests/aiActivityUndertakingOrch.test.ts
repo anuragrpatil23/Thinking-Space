@@ -98,6 +98,7 @@ function makeRecord(overrides: Partial<UndertakingRecord> = {}): UndertakingReco
     chains: ['c-1', 'c-2'],
     files: [],
     origin: 'manual',
+    bucket: false,
     head: 'HBM is the thesis.',
     notes: [],
     ...overrides,
