@@ -5,7 +5,12 @@ import { getVisibleToolsSubtabs } from '@/components/lego_blocks/units/toolsSubt
 import { useSessionStateBlock } from '@/components/lego_blocks/hooks/shared/useSessionStateBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
-import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
+import {
+  PHONE_LIST_ICON_CLASS_BLOCK,
+  PhoneLargeTitleBlock,
+  PhoneListGroupBlock,
+  PhoneListRowBlock,
+} from '@/components/lego_blocks/units/PhoneListBlock'
 import {
   pushNativeWithForwardBlock,
   setNativeNavigationStackBlock,
@@ -56,9 +61,9 @@ export default function ToolsShellBlock() {
     },
   })
 
-  const handlePhoneToolTap = useCallback((to: string) => (e: React.MouseEvent) => {
-    if (!(isCapacitorNative() && isIPhoneIosSurface)) return
-    e.preventDefault()
+  // The native push, independent of any DOM event — the phone list renders
+  // buttons (PhoneListRowBlock), the desktop nav renders Links.
+  const pushPhoneTool = useCallback((to: string) => {
     lastPushedPathRef.current = to
     void (async () => {
       try {
@@ -73,7 +78,7 @@ export default function ToolsShellBlock() {
         navigate(to)
       }
     })()
-  }, [isIPhoneIosSurface, navigate])
+  }, [navigate])
 
   useEffect(() => {
     dispatchToolsSidebarChromeStateBlock({ enabled: true, collapsed: sidebarCollapsed, label: 'Tools' })
@@ -108,34 +113,61 @@ export default function ToolsShellBlock() {
       <div
         className={cn(
           'h-full overflow-y-auto border-border/60 bg-background/40 px-3 py-4',
-          phoneListMode ? 'w-full' : 'w-[220px] border-r',
+          phoneListMode
+            // No padding of its own: the large-title bar spans edge to edge and
+            // the list card insets itself. Bottom pad clears the floating dock.
+            ? 'w-full px-0 py-0 pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]'
+            : 'w-[220px] border-r',
           !phoneListMode && sidebarCollapsed && 'pointer-events-none',
         )}
       >
-        <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Tools
-        </p>
-        <nav className="space-y-1">
-          {visibleSubtabs.map((tab) => {
-            const Icon = tab.icon
-            const active = tab.isActive(location.pathname)
-            return (
-              <Link
-                key={tab.id}
-                to={tab.to}
-                onClick={handlePhoneToolTap(tab.to)}
-                className={`ltm-motion-fast flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                  active && !phoneListMode
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                <span className="truncate">{tab.label}</span>
-              </Link>
-            )
-          })}
-        </nav>
+        {phoneListMode ? (
+          <>
+            <PhoneLargeTitleBlock title="Tools" />
+            <PhoneListGroupBlock>
+              {visibleSubtabs.map((tab) => {
+                const Icon = tab.icon
+                return (
+                  <PhoneListRowBlock
+                    key={tab.id}
+                    icon={<Icon className={PHONE_LIST_ICON_CLASS_BLOCK} />}
+                    label={tab.label}
+                    // No `selected` here: in list mode the detail pane isn't on
+                    // screen, so highlighting the last-opened tool reads as a
+                    // stuck row rather than a selection.
+                    onClick={() => pushPhoneTool(tab.to)}
+                  />
+                )
+              })}
+            </PhoneListGroupBlock>
+          </>
+        ) : (
+          <>
+            <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Tools
+            </p>
+            <nav className="space-y-1">
+              {visibleSubtabs.map((tab) => {
+                const Icon = tab.icon
+                const active = tab.isActive(location.pathname)
+                return (
+                  <Link
+                    key={tab.id}
+                    to={tab.to}
+                    className={`ltm-motion-fast flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+                      active
+                        ? 'bg-foreground text-background'
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="truncate">{tab.label}</span>
+                  </Link>
+                )
+              })}
+            </nav>
+          </>
+        )}
       </div>
       </aside>
       )}

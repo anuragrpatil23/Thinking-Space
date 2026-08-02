@@ -994,11 +994,16 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
 
   const inlineExplorerContent = useMemo(() => (
     <>
-      <div className="ltm-shell-segment-header ltm-thinking-space-explorer-chrome flex h-11 shrink-0 items-center px-2">
-        <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          {inlineExplorerTitle}
-        </span>
-      </div>
+      {/* On iPhone the title moves inside the explorer as an iOS large title
+          (see `phoneLargeTitle`) — it has to live in the scroller to scroll
+          away, so this fixed micro-label strip would only duplicate it. */}
+      {!isIPhoneIosSurface && (
+        <div className="ltm-shell-segment-header ltm-thinking-space-explorer-chrome flex h-11 shrink-0 items-center px-2">
+          <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            {inlineExplorerTitle}
+          </span>
+        </div>
+      )}
       {rssPanelOpen ? (
         <div className="min-h-0 flex-1">
           <RssFeedPanelBlock
@@ -1038,6 +1043,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
             onShowInGraph={handleExplorerShowInGraph}
             toolbarActionsSlot={rssExplorerToolbarButton}
             collapseSearchToButton={useTopRssExplorerToggle}
+            phoneLargeTitle={isIPhoneIosSurface ? inlineExplorerTitle : ''}
             draggableFiles
             draggableFolders
             title=""
@@ -1048,7 +1054,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
         <VaultFooterBar vaultRoot={vaultRootPath} onCollapse={handleExplorerCollapseAll} />
       ) : null}
     </>
-  ), [handleExplorerCollapseAll, handleExplorerCreateCsvFile, handleExplorerShowInGraph, inlinePath, openRuledNotebookView, rssExplorerToolbarButton, rssPanelOpen, ruledNotebookFilePath, setInlinePathAndSyncUrl, useTopRssExplorerToggle, vaultRootPath])
+  ), [handleExplorerCollapseAll, handleExplorerCreateCsvFile, handleExplorerShowInGraph, inlineExplorerTitle, inlinePath, isIPhoneIosSurface, openRuledNotebookView, rssExplorerToolbarButton, rssPanelOpen, ruledNotebookFilePath, setInlinePathAndSyncUrl, useTopRssExplorerToggle, vaultRootPath])
 
   const inlineDocumentContent = useMemo(() => {
     if (mountedInlinePaths.length === 0) return null

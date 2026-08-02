@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -41,7 +41,7 @@ export function PhoneListGroupBlock({ enabled = true, children, className }: {
   className?: string
 }) {
   return (
-    <div className={cn(enabled && 'overflow-hidden rounded-[10px] bg-card', className)}>
+    <div className={cn(enabled && 'mx-4 overflow-hidden rounded-[10px] bg-card', className)}>
       {children}
     </div>
   )
@@ -94,6 +94,109 @@ export function PhoneListRowBlock({
         <ChevronRight className="-mr-1 h-4 w-4 shrink-0 text-muted-foreground/45" />
       )}
     </button>
+  )
+}
+
+/**
+ * iOS large-title nav bar: a big title that scrolls away, and a compact blurred
+ * bar that materializes underneath the status bar as it goes.
+ *
+ * Deliberately not Swift. The scroller is the web view, so a UIKit nav bar would
+ * need the web scroll offset bridged to native on every frame — a JS->native hop
+ * in a 60fps path, for a bar that here is pure presentation. Sticky positioning
+ * collapses in the same layout pass as the scroll that caused it.
+ *
+ * It also fixes a plain bug: these phone pages reserved nothing at the top, so
+ * rows scrolled under the status bar with no backdrop and smeared into the clock.
+ *
+ * Render it as the FIRST child of the scrolling element. It returns a fragment,
+ * not a wrapper: `position: sticky` is confined to its parent's box, so a
+ * wrapper around the bar and the title made the bar scroll away the moment the
+ * title did. Its parent has to BE the scroller. That is also why these pages
+ * carry no top/side padding on their scroller — the bar spans edge to edge and
+ * the rows inset themselves (`PhoneListGroupBlock`).
+ *
+ * The bar reserves no safe-area inset of its own: the shell already pads
+ * `.ltm-app-main` by `--ltm-safe-top`, and padding here too stacked two status
+ * bars' worth of dead space above the title.
+ */
+export function PhoneLargeTitleBlock({ title, trailing }: {
+  title: ReactNode
+  /** Optional action rendered at the bar's trailing edge, always visible. */
+  trailing?: ReactNode
+}) {
+  const barRef = useRef<HTMLDivElement | null>(null)
+  const titleRef = useRef<HTMLHeadingElement | null>(null)
+  const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    const bar = barRef.current
+    const bigTitle = titleRef.current
+    if (!bar || !bigTitle) return
+
+    let scroller: HTMLElement | null = bar.parentElement
+    while (scroller) {
+      const overflowY = getComputedStyle(scroller).overflowY
+      if (overflowY === 'auto' || overflowY === 'scroll') break
+      scroller = scroller.parentElement
+    }
+    if (!scroller) return
+
+    let frame = 0
+    // Collapse when the large title has actually slid under the bar, not at a
+    // fixed scrollTop — that is what makes the handoff read as one motion
+    // instead of a bar blinking on while the big title is still in full view.
+    const measure = () => {
+      frame = 0
+      setCollapsed(bigTitle.getBoundingClientRect().bottom <= bar.getBoundingClientRect().bottom)
+    }
+    const onScroll = () => {
+      if (frame) return
+      frame = requestAnimationFrame(measure)
+    }
+
+    measure()
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      scroller?.removeEventListener('scroll', onScroll)
+    }
+  }, [])
+
+  return (
+    <>
+      {/* `isolate` + explicit z-order, not DOM order: `backdrop-filter` promotes
+          the frosted layer to its own compositing layer, and WebKit then paints
+          it OVER later siblings that only have `z-index: auto`. The compact
+          title appeared for a frame or two and was then covered by its own
+          backdrop (2026-08-02). */}
+      <div ref={barRef} className="sticky top-0 z-20 isolate">
+        <div
+          aria-hidden
+          className={cn(
+            'absolute inset-0 z-0 border-b border-border/60 bg-background/80 backdrop-blur-xl',
+            'transition-opacity duration-150 ease-out',
+            collapsed ? 'opacity-100' : 'opacity-0',
+          )}
+        />
+        <div className="relative z-10 flex h-11 items-center justify-center px-4">
+          <span className={cn(
+            'truncate text-[17px] font-semibold text-foreground',
+            'transition-opacity duration-150 ease-out',
+            collapsed ? 'opacity-100' : 'opacity-0',
+          )}>
+            {title}
+          </span>
+          {trailing && <div className="absolute right-2 flex items-center">{trailing}</div>}
+        </div>
+      </div>
+      <h1
+        ref={titleRef}
+        className="px-4 pb-1 text-[34px] font-bold leading-[1.15] tracking-[-0.02em] text-foreground"
+      >
+        {title}
+      </h1>
+    </>
   )
 }
 

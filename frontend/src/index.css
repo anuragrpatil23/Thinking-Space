@@ -1256,8 +1256,16 @@
        `--ltm-safe-top` as padding instead, so the strip is paper. Distinct
        from `ltm-page-edge-bleed`, which also drops the stage's side/bottom
        insets — this one touches nothing but the top. Declared after the rule
-       above so it wins on equal specificity. */
-    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-app-main:has(.ltm-page-flush-top) {
+       above so it wins on equal specificity.
+
+       Keyed off the shell's route-driven `data-ltm-page-top-inset`, NOT off
+       `:has(.ltm-page-flush-top)`. New Note is a persistent route mount — it
+       stays in the DOM behind `visibility: hidden` when you switch tabs, and
+       `:has()` has no notion of visibility, so the exemption latched on for
+       every other tab until the app was relaunched (2026-08-02). Any future
+       page-scoped shell rule has the same trap: match the active route, not
+       the presence of an element. */
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'][data-ltm-page-top-inset='flush'] .ltm-app-main {
       padding-top: 0;
     }
 
@@ -1268,7 +1276,7 @@
        editor pads its own content with `--ltm-focus-keyboard-inset`, so
        nothing is buried. `!important` because that padding is an inline
        style — the one place in this file where a CSS rule has to outrank one. */
-    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-app-main:has(.ltm-page-flush-top) {
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'][data-ltm-page-top-inset='flush'] .ltm-app-main {
       padding-bottom: 0 !important;
     }
   }
@@ -1337,16 +1345,20 @@
      is 1366px wide, outside the 1023px query). */
   @media (max-width: 1023px) {
 
-    /* When a page wants its backdrop to bleed to the screen edges (e.g. the
-       time-of-day Home backdrop on iPhone), the small inset + 1px border
-       around the content stage shows as a thin pale frame. Kill both when
-       the page opts in. */
-    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone']:has(.ltm-page-edge-bleed) .ltm-shell-stage {
+    /* The stage inset + the content stage's 1px border draw a floating panel
+       inside a window — a desktop idea. On iPhone there is no window, so the
+       frame reads as a thin pale border around the whole app (2026-08-02).
+       Home looked right only because it opts into `ltm-page-edge-bleed` and
+       took this exemption; every other tab wore the frame. It is now
+       unconditional on phone: an app fills the screen. Pages needing
+       home-indicator clearance pad their own scroller with
+       `--ltm-safe-bottom`, which is already the rule for clearing the dock. */
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-shell-stage {
       padding-left: 0;
       padding-right: 0;
       padding-bottom: 0;
     }
-    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone']:has(.ltm-page-edge-bleed) .ltm-shell-content-stage {
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-shell-content-stage {
       border: 0;
       background: transparent;
     }

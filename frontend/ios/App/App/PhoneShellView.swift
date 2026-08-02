@@ -46,7 +46,7 @@ struct PhoneShellView: View {
                         // when scrolled content frosts the band, the clock
                         // keeps a comfortable legibility margin under it.
                         .frame(height: isPad ? safeTop + nativeChromePadBarHeight + 26 : safeTop + 24, alignment: .top)
-                        .opacity(chromeState.isVisible ? 1 : 0)
+                        .opacity(chromeState.isVisible && !chromeState.isTopScrimHidden ? 1 : 0)
                         .offset(y: chromeState.isVisible ? 0 : -18)
                         // NEVER hit-tests, visible or not. TopChromeView is a
                         // scrim — a masked material rectangle with no controls

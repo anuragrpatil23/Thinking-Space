@@ -85,6 +85,7 @@ export function useNativeTopChromeBlock({
   activeNavItemId,
   topBarCollapsed,
   topBarDark,
+  topScrimHidden,
   bottomBarCollapsed,
   showSearch,
   showTools,
@@ -178,6 +179,7 @@ export function useNativeTopChromeBlock({
       activeNavItemId,
       topBarCollapsed,
       topBarDark,
+      topScrimHidden,
       bottomBarCollapsed,
       showSearch,
       showTools,
@@ -204,7 +206,7 @@ export function useNativeTopChromeBlock({
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps -- tabsJson is a stable serialization of tabs
   }, [
-    enabled, title, visible, activeNavItemId, topBarCollapsed, topBarDark, bottomBarCollapsed,
+    enabled, title, visible, activeNavItemId, topBarCollapsed, topBarDark, topScrimHidden, bottomBarCollapsed,
     showSearch, showTools, toolsBadgeCount,
     canToggleSidebar, sidebarToggleActive, sidebarToggleLabel,
     canToggleHeader, headerToggleLabel, tabsJson,

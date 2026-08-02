@@ -19,6 +19,10 @@ final class TopChromeState: ObservableObject {
     /// (Home's night backdrop, dark app theme). Flips the status-bar glyphs
     /// to light and renders the top scrim in its dark appearance.
     @Published var isTopBarDark: Bool = false
+    /// Suppresses the status-bar scrim for pages that paint their own opaque
+    /// strip up there (New Note). The scrim keeps the clock legible over
+    /// content scrolling beneath it; over opaque paper it is just a smudge.
+    @Published var isTopScrimHidden: Bool = false
     @Published var isBottomBarCollapsed: Bool = false
     @Published var showSearch: Bool = true
     @Published var showTools: Bool = true

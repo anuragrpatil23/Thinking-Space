@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import {
   PHONE_LIST_ICON_CLASS_BLOCK,
+  PhoneLargeTitleBlock,
   PhoneListGroupBlock,
   PhoneListRowBlock,
   PhoneListSectionHeaderBlock,
@@ -341,7 +342,9 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
                 // The native dock floats over the web view (64pt above the home
                 // indicator) and nothing reserves room for it, so the last
                 // project could never be scrolled clear.
-                ? 'flex-1 px-4 py-4 pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)] opacity-100'
+                // No padding of its own: the large-title bar spans edge to edge
+                // and the list cards inset themselves.
+                ? 'flex-1 pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)] opacity-100'
                 : cn(
                     'shrink-0 transition-[width,opacity] duration-200 ease-out',
                     sidebarCollapsed
@@ -349,7 +352,11 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
                       : 'w-[220px] opacity-100 border-r border-border/60 px-3 py-4',
                   ),
             )}>
-            {!phoneListMode && (
+            {phoneListMode ? (
+              // Negative margins cancel the scroller's own `px-4 py-4` so the
+              // blurred bar reaches the screen edges and the status bar.
+              <PhoneLargeTitleBlock title="Organizer" />
+            ) : (
               <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                 Thinking Organizer
               </p>
@@ -403,7 +410,7 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
             <Button
               size="sm"
               variant="outline"
-              className={cn('mt-3 w-full', phoneListMode && 'h-11 text-[15px]')}
+              className={cn('mt-3 w-full', phoneListMode && 'h-11 w-[calc(100%-2rem)] mx-4 text-[15px]')}
               onClick={() => window.dispatchEvent(new CustomEvent(ORGANIZER_OPEN_CREATE_PROJECT_EVENT))}
             >
               <Plus className="mr-1.5 h-4 w-4" />

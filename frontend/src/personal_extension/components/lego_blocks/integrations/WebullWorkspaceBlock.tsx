@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import {
   PHONE_LIST_ICON_CLASS_BLOCK,
+  PhoneLargeTitleBlock,
   PhoneListGroupBlock,
   PhoneListRowBlock,
   PhoneListSectionHeaderBlock,
@@ -2264,11 +2265,15 @@ export default function WebullWorkspaceBlock({
           // The native dock floats over the web view (64pt above the home
           // indicator) — nothing reserves room for it, so the last company
           // row sat under it with no way to scroll clear.
-          phoneListMode && 'px-4 pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
+          // No padding of its own: the large-title bar spans edge to edge and
+          // the list cards inset themselves.
+          phoneListMode && 'px-0 pt-0 pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
           !phoneListMode && sideTabsCollapsed && 'pointer-events-none',
         )}>
           {phoneListMode ? (
-            <PhoneListSectionHeaderBlock className="pt-1">Webull</PhoneListSectionHeaderBlock>
+            // Negative margins cancel this scroller's own `px-4 py-4` so the
+            // blurred bar reaches the screen edges and the status bar.
+            <PhoneLargeTitleBlock title="F9" />
           ) : (
             <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Webull
@@ -2372,10 +2377,14 @@ export default function WebullWorkspaceBlock({
             </PhoneListGroupBlock>
           </nav>
 
-          <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Add Company
-          </p>
-          <div className="space-y-2 px-1">
+          {phoneListMode ? (
+            <PhoneListSectionHeaderBlock>Add Company</PhoneListSectionHeaderBlock>
+          ) : (
+            <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Add Company
+            </p>
+          )}
+          <div className={cn('space-y-2', phoneListMode ? 'px-4' : 'px-1')}>
             <input
               type="text"
               value={newCompanyTicker}

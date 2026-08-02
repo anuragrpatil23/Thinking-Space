@@ -43,6 +43,11 @@ export interface TopChromeStateBlock {
   /** True when the content under the status bar is dark (night backdrop or
    *  dark app theme) — flips the native status-bar glyphs + top scrim. */
   topBarDark?: boolean
+  /** True when the active page paints its own opaque strip under the status
+   *  bar. The native scrim exists to keep the clock legible over content that
+   *  scrolls beneath it; over an opaque page it has nothing to refract and
+   *  reads as a grey smudge with a feathered edge (New Note, 2026-08-02). */
+  topScrimHidden?: boolean
 }
 
 export type TopChromeEventPayload = {

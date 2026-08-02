@@ -47,6 +47,7 @@ import {
 } from '@/components/lego_blocks/hooks/shared/useNotebookEntriesBlock'
 import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPathBlock'
 import TagChipListBlock from '@/components/lego_blocks/units/TagChipListBlock'
+import { PhoneLargeTitleBlock } from '@/components/lego_blocks/units/PhoneListBlock'
 import {
   EXPLORER_PERSISTENCE_PREFIX,
   getLeafName,
@@ -306,6 +307,17 @@ interface VaultExplorerBlockProps {
    */
   collapseSearchToButton?: boolean
   /**
+   * iPhone only: render an iOS large-title nav bar at the top and fold the
+   * whole component into ONE scroller, so the title scrolls away and hands off
+   * to a compact blurred bar (the same shape the other phone tabs got on
+   * 2026-08-02). Empty/undefined keeps the desktop two-box layout, where the
+   * search+toolbar strip is fixed and only the tree scrolls.
+   *
+   * It is also what gives the Explorer a status-bar backdrop — without it the
+   * tree scrolls under the clock with nothing behind it.
+   */
+  phoneLargeTitle?: string
+  /**
    * Latest AI-session telemetry: dots the touched files/folders and shows a
    * count strip above the tree. Ephemeral by design — the session's trail in
    * AI Activity is the durable record. Omit/null → no telemetry chrome.
@@ -433,6 +445,7 @@ function VaultExplorerBlockInner({
   belowToolbarSlot = null,
   toolbarActionsSlot = null,
   collapseSearchToButton = false,
+  phoneLargeTitle = '',
   sessionTelemetry = null,
 }: VaultExplorerBlockProps, ref: Ref<VaultExplorerHandle>) {
   const storageKey = `${EXPLORER_PERSISTENCE_PREFIX}:${persistenceKey}`
@@ -658,6 +671,8 @@ function VaultExplorerBlockInner({
 
   const normalizedQuery = query.trim().toLowerCase()
   const hasTitle = title.trim().length > 0
+  const largeTitle = phoneLargeTitle.trim()
+  const hasLargeTitle = largeTitle.length > 0
   const inlineRenameSession = inlineRename ? `${inlineRename.kind}:${inlineRename.path}` : null
 
   // Dexie content matches (title/tags/excerpt/metadata via precomputed
@@ -1718,8 +1733,23 @@ function VaultExplorerBlockInner({
 
 
   return (
-    <div className={cn('flex h-full min-h-0 flex-col', className)}>
-      <div className={cn('ltm-vault-explorer-search-wrap px-3', viewMode === 'compact' ? 'py-1.5' : 'py-2')}>
+    <div className={cn(
+      'flex h-full min-h-0 flex-col',
+      // Large-title mode makes THIS the scroller (see `phoneLargeTitle`):
+      // `position: sticky` is confined to its parent's box, so the bar only
+      // pins if its parent is the element that scrolls.
+      hasLargeTitle && 'overflow-auto',
+      className,
+    )}>
+      {hasLargeTitle && <PhoneLargeTitleBlock title={largeTitle} />}
+      <div className={cn(
+        'ltm-vault-explorer-search-wrap px-3',
+        // Second sticky row, parked directly under the compact bar's 44pt, so
+        // the search/new-file toolbar stays reachable after the big title has
+        // scrolled off. Needs its own opaque backdrop — the tree runs beneath.
+        hasLargeTitle && 'sticky top-11 z-10 shrink-0 bg-background',
+        viewMode === 'compact' ? 'py-1.5' : 'py-2',
+      )}>
         {hasTitle && (
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -1960,6 +1990,10 @@ function VaultExplorerBlockInner({
         className={cn(
           'min-h-0 flex-1 overflow-auto px-1.5 py-2',
           viewMode === 'grid' && 'px-0 py-0',
+          // In large-title mode the outer box scrolls, so this must not be a
+          // nested scroller — and it pads itself past the floating native dock.
+          // Kept last so the bottom pad survives grid mode's `py-0`.
+          hasLargeTitle && 'flex-none overflow-visible pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
           canDropOnRows && dropOverPath === '' && 'ring-2 ring-blue-500/60 bg-blue-500/5',
         )}
         onDragOver={canDropOnRows ? (event) => {

@@ -13,6 +13,7 @@ import {
   SettingsSectionHeaderBlock,
 } from '@/components/lego_blocks/units/SettingsGroupBlock'
 import {
+  PhoneLargeTitleBlock,
   PhoneListGroupBlock,
   PhoneListRowBlock,
   PhoneListSectionHeaderBlock,
@@ -1054,15 +1055,21 @@ export default function SettingsOrch({
               ),
         )}
       >
-        <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Settings
-        </p>
+        {phoneListMode ? (
+          <PhoneLargeTitleBlock title="Settings" />
+        ) : (
+          <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Settings
+          </p>
+        )}
         <nav className={cn(
           'min-h-0 flex-1 px-2 pb-4',
           // The native dock floats over the web view (64pt above the home
           // indicator) and nothing reserves room for it, so the last row
           // could never be scrolled clear.
-          phoneListMode && 'px-3 pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
+          // No padding of its own: the large-title bar spans edge to edge and
+          // the list cards inset themselves.
+          phoneListMode && 'px-0 pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
         )}>
           {TAB_GROUPS.map((group, groupIdx) => (
             <div key={group.heading} className={groupIdx === 0 || phoneListMode ? undefined : 'mt-5'}>

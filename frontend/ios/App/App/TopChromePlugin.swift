@@ -37,6 +37,7 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let activeNavItemId = call.getString("activeNavItemId")
         let topBarCollapsed = call.getBool("topBarCollapsed")
         let topBarDark = call.getBool("topBarDark")
+        let topScrimHidden = call.getBool("topScrimHidden")
         let bottomBarCollapsed = call.getBool("bottomBarCollapsed")
         let showSearch = call.getBool("showSearch")
         let showTools = call.getBool("showTools")
@@ -81,6 +82,9 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
             }
             if let topBarDark {
                 state.isTopBarDark = topBarDark
+            }
+            if let topScrimHidden {
+                state.isTopScrimHidden = topScrimHidden
             }
             if let bottomBarCollapsed {
                 state.isBottomBarCollapsed = bottomBarCollapsed

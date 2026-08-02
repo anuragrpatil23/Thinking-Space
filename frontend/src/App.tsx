@@ -2160,6 +2160,9 @@ function App() {
     activeNavItemId: nativeTopDrawerActiveNavItemId,
     topBarCollapsed: nativeTopBarCollapsed,
     topBarDark: nativeTopBarDark,
+    // New Note paints its own opaque strip under the status bar, so the native
+    // scrim has nothing to refract there and shows as a grey feathered band.
+    topScrimHidden: isNewThoughtRoute,
     bottomBarCollapsed: nativeBottomBarCollapsed,
     showSearch: true,
     showTools: true,
@@ -2566,6 +2569,12 @@ function App() {
       data-ltm-explorer-icon-style={explorerIconStyle}
       data-ltm-ios-phone={iPhoneHandsetMode ? 'true' : 'false'}
       data-ltm-native-chrome={useNativeTopChrome ? 'true' : 'false'}
+      // Which top inset the ACTIVE page wants. Driven by the route, not by a
+      // `:has(.ltm-page-flush-top)` probe on `.ltm-app-main`: persistent route
+      // mounts stay in the DOM behind `visibility: hidden`, and `:has()` cannot
+      // see that, so once New Note had been opened every other tab lost its top
+      // inset for the rest of the session (2026-08-02).
+      data-ltm-page-top-inset={isNewThoughtRoute ? 'flush' : undefined}
     >
       {explorerFolderColorCss && <style>{explorerFolderColorCss}</style>}
       <div className="ltm-shell-layer-base">
