@@ -1501,8 +1501,7 @@ function MarkdownTextDocumentRuntimeBlock({
     <div
       className={cn(
         // ts-md-viewer-root: a stable hook for surface-level padding
-        // overrides. iPad portrait zeroes the top inset here so the sticky
-        // Contents strip sits flush under the native bar (index.css).
+        // overrides from index.css.
         'ts-md-viewer-root flex h-full min-h-0 flex-col bg-card p-2',
         className,
       )}

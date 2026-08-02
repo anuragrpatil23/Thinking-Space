@@ -1360,16 +1360,6 @@
     padding-top: calc(var(--ltm-safe-top) + 64px);
   }
 
-  /* ...and the document viewer's own top inset goes with it. Those two pieces
-     of air (0.5rem here, `p-2` there) stacked into a visible white band
-     between the bar and the sticky Contents strip, which read as a gap rather
-     than as breathing room (2026-08-02). The bar already provides the air —
-     its buttons sit 10pt off its own bottom edge. Side/bottom padding stays:
-     only the top is the shared boundary with the bar. */
-  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-native-chrome='true'][data-ltm-mode='tablet'] .ts-md-viewer-root {
-    padding-top: 0;
-  }
-
   /* iPad tablet mode: same viewport-pinned backdrop as the iPhone rule
      below (which can't apply here — iPad Pro portrait is 1024px, outside
      the 1023px query). Native overscroll model: content rubber-bands, the
