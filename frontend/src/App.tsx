@@ -31,6 +31,14 @@ import Schedules from './pages/Schedules'
 import Web from './pages/Web'
 import Settings from './pages/Settings'
 
+// The assignment queue's entry point, next to the organizer's sidebar toggle.
+// Lazy without exception: it reaches chain derivation and the markdown
+// transcript reader, neither of which may be statically reachable from the
+// entry (see docs/contracts/STARTUP-PERFORMANCE.md).
+const AssignmentQueueDockBlock = lazy(
+  () => import('./components/lego_blocks/integrations/AssignmentQueueDockBlock'),
+)
+
 // Heavy / rarely-used pages — lazy loaded (code-split into separate chunks)
 const ExcalidrawPlus = lazy(() => import('./pages/ExcalidrawPlus'))
 const FormatExcalidraw = lazy(() => import('./pages/FormatExcalidraw'))
@@ -2659,6 +2667,17 @@ function App() {
                     variant={cfg.variant}
                     wrap={false}
                   />
+                  {/* The assignment queue rides next to the organizer's sidebar
+                      toggle, and only there. It is unscoped by design — chains
+                      land under project keys nothing has adopted yet — so it
+                      cannot hang off a project page, but it also has no meaning
+                      outside the organizer. `/file-organizer` shares the
+                      sidebar control and is deliberately excluded. */}
+                  {cfg.id === 'organizer' && location.pathname === '/thinking-organizer' && (
+                    <Suspense fallback={null}>
+                      <AssignmentQueueDockBlock />
+                    </Suspense>
+                  )}
                 </div>
               ))}
 

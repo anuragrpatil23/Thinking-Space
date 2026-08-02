@@ -36,6 +36,10 @@ import {
   readProposalsBlock,
 } from '@/services/lego_blocks/integrations/assignmentLogStoreBlock'
 import { newUuidBlock } from '@/services/lego_blocks/units/uuidBlock'
+import { deriveCanonicalChainsOrch } from '@/services/orchestrators/aiActivityChainReconcileOrch'
+import { chainSessionIdsBlock } from '@/services/orchestrators/aiActivityChainDigestOrch'
+import { resolveChainDigestsBlock } from '@/services/lego_blocks/units/aiActivityChainResolveBlock'
+import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 
 /**
  * The assignment queue: every chain that still owes a disposition, grouped by
@@ -128,6 +132,45 @@ export async function listUndisposedChainsOrch(projectId?: string): Promise<Chai
     out.push(...undisposedChainsBlock(await listChainsBlock({ projectId: project })))
   }
   return out
+}
+
+/**
+ * The live `ActivityChain` behind a queue row, so a proposal can be checked
+ * against the actual transcript instead of a title someone else wrote.
+ *
+ * Deliberately *not* a second matching rule. `listUndisposedChainsOrch` reads
+ * stored digests because `undertaking` is stored judgment, but a transcript
+ * needs session file pointers, which only the derived chain has. So this joins
+ * the two the same way `listProjectChainsOrch` does — on session membership,
+ * via `resolveChainDigestsBlock` — because the digest's key is what the grouping
+ * rule thought at write time, and matching on it would miss every chain whose
+ * grouping has since moved.
+ *
+ * Returns null when the chain cannot be derived (a device with no session
+ * cache), which the caller must render as "can't open" rather than as an error.
+ */
+export async function getQueueChainTranscriptSourceOrch(
+  projectId: string,
+  chainId: string,
+): Promise<ActivityChain | null> {
+  const stored = await listChainsBlock({ projectId })
+  if (stored.length === 0) return null
+
+  let chains: ActivityChain[]
+  try {
+    chains = (await deriveCanonicalChainsOrch()).filter(chain => chain.project === projectId)
+  } catch {
+    return null
+  }
+
+  const resolved = resolveChainDigestsBlock(
+    chains.map(chain => ({ key: chain.key, sessions: chainSessionIdsBlock(chain) })),
+    stored,
+  )
+  for (const chain of chains) {
+    if (resolved.get(chain.key)?.chainId === chainId) return chain
+  }
+  return null
 }
 
 export async function getAssignmentQueueOrch(projectId?: string): Promise<AssignmentQueue> {

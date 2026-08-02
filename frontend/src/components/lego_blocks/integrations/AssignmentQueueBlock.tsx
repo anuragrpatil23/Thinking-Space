@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronRight, Inbox, Loader2, SkipForward, Trash2, Undo2 } from 'lucide-react'
+import { Check, ChevronRight, Inbox, Loader2, SkipForward, Sparkles, Trash2, Undo2, X } from 'lucide-react'
 import {
+  detachChainOrch,
   disposeChainsOrch,
-  getAssignmentQueueOrch,
+  getQueueChainTranscriptSourceOrch,
   type AssignmentQueue,
+  type QueueChainBlock,
   type QueueItem,
 } from '@/services/orchestrators/assignmentQueueOrch'
+import ChainTranscriptSlideOverBlock from '@/components/lego_blocks/integrations/ChainTranscriptSlideOverBlock'
+import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { listUndertakingTitlesOrch } from '@/services/orchestrators/aiActivityUndertakingOrch'
 import {
   confidenceBandBlock,
   type ProposalTargetBlock,
 } from '@/services/lego_blocks/units/assignmentProposalBlock'
+import { cn } from '@/lib/utils'
 
 /**
  * The assignment queue — the surface the whole feature is judged by.
@@ -19,9 +24,9 @@ import {
  * aesthetics: "the moment I am involved things slow down." So everything here
  * is subordinate to how fast one person can clear a backlog.
  *
- * - **One row at a time, not a table.** A table invites reading; this invites
- *   deciding. The focused proposal shows its target, its reason and its chains
- *   in full, and the rest of the queue is a thin list you never have to read.
+ * - **One decision at a time, not a table.** A table invites reading; this
+ *   invites deciding. The focused proposal shows its target, its reason and its
+ *   chains in full; the rest of the queue is a rail you never have to read.
  * - **Grouped by proposal.** One keystroke disposes of every chain that was
  *   obviously the same piece of work. Six chains, one decision.
  * - **Confidence descending.** Abandoning halfway leaves the most good done.
@@ -33,11 +38,19 @@ import {
  *
  * Mint is deliberately the slowest path here (it types a title), because a key
  * is a permanent address and the friction is the point.
+ *
+ * This block is *controlled*: the dock above it owns the one queue read, so the
+ * count in the chrome and the cards in here can never disagree about how much
+ * work is left.
  */
 
 interface Props {
-  /** Omit to sweep every project that has chains, unadopted keys included. */
-  projectId?: string
+  queue: AssignmentQueue | null
+  loading: boolean
+  /** Re-read the vault. Called after every disposition, because a disposition
+   *  can mint an undertaking or move a chain. */
+  onReload: () => Promise<void>
+  onClose: () => void
 }
 
 interface UndoEntry {
@@ -47,20 +60,41 @@ interface UndoEntry {
   label: string
 }
 
-function bandToneBlock(confidence: number): string {
+/** Opening a transcript has to derive chains, which can take a beat and can
+ *  fail outright on a device with no session cache. Three states, so neither
+ *  case reads as a dead click. */
+type TranscriptState =
+  | { kind: 'closed' }
+  | { kind: 'loading'; title: string }
+  | { kind: 'open'; chain: ActivityChain }
+  | { kind: 'missing'; title: string }
+
+type BandTone = { text: string; bar: string; soft: string }
+
+function bandToneBlock(confidence: number): BandTone {
   switch (confidenceBandBlock(confidence)) {
     case 'high':
-      return 'text-emerald-600 dark:text-emerald-400'
+      return {
+        text: 'text-emerald-600 dark:text-emerald-400',
+        bar: 'bg-emerald-500',
+        soft: 'bg-emerald-500/15',
+      }
     case 'medium':
-      return 'text-amber-600 dark:text-amber-400'
+      return {
+        text: 'text-amber-600 dark:text-amber-400',
+        bar: 'bg-amber-500',
+        soft: 'bg-amber-500/15',
+      }
     default:
-      return 'text-slate-500 dark:text-slate-400'
+      return {
+        text: 'text-muted-foreground',
+        bar: 'bg-muted-foreground/50',
+        soft: 'bg-muted-foreground/10',
+      }
   }
 }
 
-export default function AssignmentQueueBlock({ projectId }: Props) {
-  const [queue, setQueue] = useState<AssignmentQueue | null>(null)
-  const [loading, setLoading] = useState(true)
+export default function AssignmentQueueBlock({ queue, loading, onReload, onClose }: Props) {
   const [cursor, setCursor] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,29 +102,24 @@ export default function AssignmentQueueBlock({ projectId }: Props) {
   const [retargetQuery, setRetargetQuery] = useState('')
   const [titles, setTitles] = useState<Array<{ key: string; title: string }>>([])
   const [undo, setUndo] = useState<UndoEntry | null>(null)
+  const [transcript, setTranscript] = useState<TranscriptState>({ kind: 'closed' })
   const retargetInputRef = useRef<HTMLInputElement | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      setQueue(await getAssignmentQueueOrch(projectId))
-      setCursor(0)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId])
-
-  useEffect(() => { void load() }, [load])
 
   const items = queue?.items ?? []
   const current: QueueItem | undefined = items[cursor]
 
+  // The cursor is an index into a list that shrinks under it. Clamping here
+  // rather than resetting to 0 keeps you where you were after a disposition,
+  // which is the difference between clearing a queue and re-finding your place
+  // in one.
+  useEffect(() => {
+    setCursor(index => Math.max(0, Math.min(index, items.length - 1)))
+  }, [items.length])
+
   // Titles are loaded for the project the *focused* item belongs to, not the
-  // page's project: with no projectId the queue spans projects, and offering
-  // F9's undertakings while retargeting a Thinking-Space chain would let one
-  // keystroke stamp across a boundary the row does not show.
+  // page's project: the queue spans projects, and offering F9's undertakings
+  // while retargeting a Thinking-Space chain would let one keystroke stamp
+  // across a boundary the card does not show.
   useEffect(() => {
     if (!current) return
     let alive = true
@@ -125,10 +154,7 @@ export default function AssignmentQueueBlock({ projectId }: Props) {
             label,
           })
         }
-        // Reload rather than splice the item out locally: a disposition can
-        // mint an undertaking or move a chain, and a hand-maintained copy of
-        // the queue would quietly disagree with the vault after the first one.
-        await load()
+        await onReload()
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
       } finally {
@@ -137,23 +163,32 @@ export default function AssignmentQueueBlock({ projectId }: Props) {
         setRetargetQuery('')
       }
     },
-    [current, busy, load],
+    [current, busy, onReload],
   )
 
   const undoLast = useCallback(async () => {
     if (!undo || busy) return
     setBusy(true)
     try {
-      const { detachChainOrch } = await import('@/services/orchestrators/assignmentQueueOrch')
       for (const chainId of undo.chainIds) {
         await detachChainOrch(undo.projectId, chainId, undo.undertakingKey)
       }
       setUndo(null)
-      await load()
+      await onReload()
     } finally {
       setBusy(false)
     }
-  }, [undo, busy, load])
+  }, [undo, busy, onReload])
+
+  const openChain = useCallback(async (chain: QueueChainBlock) => {
+    setTranscript({ kind: 'loading', title: chain.title })
+    try {
+      const derived = await getQueueChainTranscriptSourceOrch(chain.projectId, chain.chainId)
+      setTranscript(derived ? { kind: 'open', chain: derived } : { kind: 'missing', title: chain.title })
+    } catch {
+      setTranscript({ kind: 'missing', title: chain.title })
+    }
+  }, [])
 
   const matches = useMemo(() => {
     const q = retargetQuery.trim().toLowerCase()
@@ -170,9 +205,21 @@ export default function AssignmentQueueBlock({ projectId }: Props) {
       const tag = (event.target as HTMLElement | null)?.tagName
       const typing = tag === 'INPUT' || tag === 'TEXTAREA'
 
+      // While a transcript is open the reader owns the keyboard: `a` must not
+      // silently accept a proposal behind the panel you are still reading.
+      if (transcript.kind !== 'closed') {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          setTranscript({ kind: 'closed' })
+        }
+        return
+      }
+
       if (retargeting) {
         if (event.key === 'Escape') {
           event.preventDefault()
+          event.stopPropagation()
           setRetargeting(false)
           setRetargetQuery('')
         }
@@ -210,178 +257,306 @@ export default function AssignmentQueueBlock({ projectId }: Props) {
           break
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [current, items.length, busy, retargeting, dispose, undoLast])
-
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 py-10 text-sm text-slate-500">
-        <Loader2 className="h-4 w-4 animate-spin" /> Reading the queue…
-      </div>
-    )
-  }
+    // Capture, so the queue's own Escape handling for the retarget field runs
+    // before the dock's close-on-Escape: backing out of a retarget must not
+    // also close the panel.
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [current, items.length, busy, retargeting, transcript.kind, dispose, undoLast])
 
   const undisposed = queue?.undisposedCount ?? 0
   const unproposed = queue?.unproposed.length ?? 0
+  const orphaned = queue?.orphanedProposals ?? []
 
   return (
-    <div className="mx-auto max-w-3xl pb-16">
-      <header className="mb-5 flex items-baseline justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Assignment queue</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {undisposed} chain{undisposed === 1 ? '' : 's'} still owe a disposition
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex shrink-0 items-center gap-3 border-b border-border px-5 py-3">
+        <Inbox className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold leading-tight">Assignment queue</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {items.length > 0 && (
+              <>
+                <span className="font-medium text-foreground">{items.length}</span> to decide ·{' '}
+              </>
+            )}
+            {undisposed} undisposed
             {unproposed > 0 && <> · {unproposed} awaiting a proposal</>}
           </p>
         </div>
-        {undo && (
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {busy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          {undo && (
+            <button
+              onClick={() => void undoLast()}
+              className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <Undo2 className="h-3.5 w-3.5" /> Undo {undo.label}
+              <KbdBlock>u</KbdBlock>
+            </button>
+          )}
           <button
-            onClick={() => void undoLast()}
-            className="flex items-center gap-1.5 rounded-md border border-slate-300 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+            onClick={onClose}
+            aria-label="Close the queue"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            <Undo2 className="h-3.5 w-3.5" /> Undo {undo.label} <kbd className="ml-1 opacity-60">u</kbd>
+            <X className="h-4 w-4" />
           </button>
-        )}
+        </div>
       </header>
 
-      {error && (
-        <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          {error}
+      {(error || orphaned.length > 0) && (
+        <div className="shrink-0 space-y-2 border-b border-border px-5 py-2.5">
+          {error && (
+            <p className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+              {error}
+            </p>
+          )}
+          {/* A proposal naming a chain that does not exist produces an empty
+              queue and no reason for it. Loud, not silent — this is a proposing
+              pass with a bug, and it must not read as "nothing to do". */}
+          {orphaned.length > 0 && (
+            <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              {orphaned.length} proposal{orphaned.length === 1 ? '' : 's'} name a chain that does not
+              exist — a proposing pass sent bad chain ids (
+              {[...new Set(orphaned.map(p => p.proposedBy))].join(', ')}).
+            </p>
+          )}
         </div>
       )}
 
-      {/* A proposal naming a chain that does not exist produces an empty queue
-          and no reason for it. Loud, not silent — this is a proposing pass with
-          a bug, and it must not read as "nothing to do". */}
-      {(queue?.orphanedProposals.length ?? 0) > 0 && (
-        <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          {queue!.orphanedProposals.length} proposal
-          {queue!.orphanedProposals.length === 1 ? '' : 's'} name a chain that does not exist — a
-          proposing pass sent bad chain ids (
-          {[...new Set(queue!.orphanedProposals.map(p => p.proposedBy))].join(', ')}).
+      {loading && !queue ? (
+        <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Reading the queue…
         </div>
-      )}
-
-      {!current ? (
-        <div className="rounded-lg border border-dashed border-slate-300 px-6 py-12 text-center dark:border-slate-700">
-          <Inbox className="mx-auto h-6 w-6 text-slate-400" />
-          <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">
-            Nothing proposed right now.
-          </p>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {unproposed > 0
-              ? `${unproposed} chains are waiting on a proposing pass. Ask Kai to run one.`
-              : 'Every chain has a disposition.'}
-          </p>
-        </div>
+      ) : !current ? (
+        <EmptyBlock unproposed={unproposed} />
       ) : (
-        <>
-          <article className="rounded-lg border border-slate-300 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-xs uppercase tracking-wide text-slate-400">
-                {current.group.projectId}
-                {current.group.target.kind === 'new' && ' · would mint'}
-                {current.group.target.kind === 'bucket' && ' · not an undertaking'}
-              </span>
-              <span className={`text-xs font-medium ${bandToneBlock(current.group.confidence)}`}>
-                {Math.round(current.group.confidence * 100)}% confident
-              </span>
-            </div>
-
-            <h3 className="mt-2 text-base font-semibold text-slate-900 dark:text-slate-50">
-              {current.targetTitle}
-            </h3>
-            {current.group.proposals[0]?.rationale && (
-              <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300">
-                {current.group.proposals[0].rationale}
-              </p>
-            )}
-
-            <ul className="mt-4 space-y-1.5 border-t border-slate-200 pt-3 dark:border-slate-700">
-              {current.chains.map(chain => (
-                <li key={chain.chainId} className="flex items-baseline gap-2 text-sm">
-                  <ChevronRight className="h-3 w-3 shrink-0 translate-y-0.5 text-slate-400" />
-                  <span className="truncate text-slate-700 dark:text-slate-200">{chain.title}</span>
-                  <span className="ml-auto shrink-0 text-xs tabular-nums text-slate-400">
-                    {chain.date} · {chain.activeMinutes}m
-                  </span>
-                </li>
-              ))}
-            </ul>
-
-            {retargeting ? (
-              <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700">
-                <input
-                  ref={retargetInputRef}
-                  value={retargetQuery}
-                  onChange={event => setRetargetQuery(event.target.value)}
-                  placeholder="Filter undertakings, or type a new title…"
-                  className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-                />
-                <ul className="mt-2 space-y-1">
-                  {matches.map(entry => (
-                    <li key={entry.key}>
-                      <button
-                        onClick={() => void dispose({ kind: 'existing', key: entry.key }, 'retargeted')}
-                        className="w-full truncate rounded px-2 py-1 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
-                      >
-                        {entry.title}
-                      </button>
-                    </li>
-                  ))}
-                  {retargetQuery.trim() && (
-                    <li>
-                      {/* The mint. Last in the list and it costs a typed title,
-                          because a key is a permanent address. */}
-                      <button
-                        onClick={() =>
-                          void dispose({ kind: 'new', title: retargetQuery.trim() }, 'created')
-                        }
-                        className="w-full truncate rounded px-2 py-1 text-left text-sm font-medium text-sky-700 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-950"
-                      >
-                        Create “{retargetQuery.trim()}”
-                      </button>
-                    </li>
-                  )}
-                </ul>
-              </div>
-            ) : (
-              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
-                <ActionBlock icon={Check} label="Accept" hint="a" onClick={() => void dispose(current.group.target, 'accepted')} primary />
-                <ActionBlock icon={ChevronRight} label="Retarget" hint="r" onClick={() => setRetargeting(true)} />
-                <ActionBlock icon={Trash2} label="Not an undertaking" hint="b" onClick={() => void dispose({ kind: 'bucket' }, 'bucketed')} />
-                <ActionBlock icon={SkipForward} label="Skip" hint="s" onClick={() => setCursor(i => Math.min(i + 1, items.length - 1))} />
-                {busy && <Loader2 className="ml-1 h-4 w-4 animate-spin text-slate-400" />}
-              </div>
-            )}
-          </article>
-
+        <div className="flex min-h-0 flex-1">
           {items.length > 1 && (
-            <ol className="mt-4 space-y-0.5">
-              {items.map((item, index) => (
-                <li key={`${item.group.projectId}:${item.group.targetId}`}>
+            <nav className="hidden w-64 shrink-0 overflow-y-auto border-r border-border py-2 md:block">
+              {items.map((item, index) => {
+                const tone = bandToneBlock(item.group.confidence)
+                return (
                   <button
+                    key={`${item.group.projectId}:${item.group.targetId}`}
                     onClick={() => setCursor(index)}
-                    className={`flex w-full items-baseline gap-2 rounded px-2 py-1 text-left text-xs ${
-                      index === cursor
-                        ? 'bg-slate-100 font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-100'
-                        : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800/50'
-                    }`}
+                    className={cn(
+                      'flex w-full items-start gap-2 px-3 py-2 text-left text-xs',
+                      index === cursor ? 'bg-muted' : 'hover:bg-muted/50',
+                    )}
                   >
-                    <span className={`tabular-nums ${bandToneBlock(item.group.confidence)}`}>
+                    <span className={cn('mt-px w-8 shrink-0 tabular-nums font-medium', tone.text)}>
                       {Math.round(item.group.confidence * 100)}%
                     </span>
-                    <span className="truncate">{item.targetTitle}</span>
-                    <span className="ml-auto shrink-0 opacity-60">{item.chains.length}</span>
+                    <span
+                      className={cn(
+                        'line-clamp-2 min-w-0 flex-1',
+                        index === cursor ? 'font-medium text-foreground' : 'text-muted-foreground',
+                      )}
+                    >
+                      {item.targetTitle}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground/60">
+                      {item.chains.length}
+                    </span>
                   </button>
-                </li>
-              ))}
-            </ol>
+                )
+              })}
+            </nav>
           )}
-        </>
+
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <CardBlock
+                item={current}
+                position={cursor + 1}
+                total={items.length}
+                onOpenChain={openChain}
+              />
+            </div>
+
+            <footer className="shrink-0 border-t border-border px-6 py-3">
+              {retargeting ? (
+                <div>
+                  <input
+                    ref={retargetInputRef}
+                    value={retargetQuery}
+                    onChange={event => setRetargetQuery(event.target.value)}
+                    placeholder="Filter undertakings, or type a new title…"
+                    className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring"
+                  />
+                  <ul className="mt-2 max-h-52 space-y-0.5 overflow-y-auto">
+                    {matches.map(entry => (
+                      <li key={entry.key}>
+                        <button
+                          onClick={() => void dispose({ kind: 'existing', key: entry.key }, 'retargeted')}
+                          className="w-full truncate rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+                        >
+                          {entry.title}
+                        </button>
+                      </li>
+                    ))}
+                    {retargetQuery.trim() && (
+                      <li>
+                        {/* The mint. Last in the list and it costs a typed
+                            title, because a key is a permanent address. */}
+                        <button
+                          onClick={() =>
+                            void dispose({ kind: 'new', title: retargetQuery.trim() }, 'created')
+                          }
+                          className="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-sm font-medium text-sky-700 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-950"
+                        >
+                          <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">Create “{retargetQuery.trim()}”</span>
+                        </button>
+                      </li>
+                    )}
+                  </ul>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    <KbdBlock>esc</KbdBlock> to back out
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <ActionBlock icon={Check} label="Accept" hint="a" primary onClick={() => void dispose(current.group.target, 'accepted')} />
+                  <ActionBlock icon={ChevronRight} label="Retarget" hint="r" onClick={() => setRetargeting(true)} />
+                  <ActionBlock icon={Trash2} label="Not an undertaking" hint="b" onClick={() => void dispose({ kind: 'bucket' }, 'bucketed')} />
+                  <ActionBlock icon={SkipForward} label="Skip" hint="s" onClick={() => setCursor(i => Math.min(i + 1, items.length - 1))} />
+                </div>
+              )}
+            </footer>
+          </div>
+        </div>
+      )}
+
+      <ChainTranscriptSlideOverBlock
+        chain={transcript.kind === 'open' ? transcript.chain : null}
+        onClose={() => setTranscript({ kind: 'closed' })}
+      />
+      {(transcript.kind === 'loading' || transcript.kind === 'missing') && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[60] flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-border bg-background px-4 py-2 text-xs shadow-lg">
+            {transcript.kind === 'loading' ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                <span className="text-muted-foreground">Opening “{transcript.title}”…</span>
+              </>
+            ) : (
+              <>
+                {/* Not an error. The stored digest is real; the sessions behind
+                    it just aren't derivable here. Say which, and move on. */}
+                <span className="text-muted-foreground">
+                  No transcript available for “{transcript.title}” on this device.
+                </span>
+                <button
+                  onClick={() => setTranscript({ kind: 'closed' })}
+                  className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                  aria-label="Dismiss"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
+  )
+}
+
+function CardBlock({
+  item,
+  position,
+  total,
+  onOpenChain,
+}: {
+  item: QueueItem
+  position: number
+  total: number
+  onOpenChain: (chain: QueueChainBlock) => void
+}) {
+  const tone = bandToneBlock(item.group.confidence)
+  const pct = Math.round(item.group.confidence * 100)
+
+  return (
+    <article className="mx-auto max-w-2xl">
+      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+        <span className="rounded bg-muted px-1.5 py-0.5 font-medium">{item.group.projectId}</span>
+        {item.group.target.kind === 'new' && (
+          <span className="rounded bg-sky-500/15 px-1.5 py-0.5 font-medium text-sky-700 dark:text-sky-400">
+            would mint
+          </span>
+        )}
+        {item.group.target.kind === 'bucket' && (
+          <span className="rounded bg-muted px-1.5 py-0.5 font-medium">not an undertaking</span>
+        )}
+        <span className="ml-auto tabular-nums normal-case tracking-normal">
+          {position} of {total}
+        </span>
+      </div>
+
+      <h3 className="mt-3 text-xl font-semibold leading-snug tracking-tight">{item.targetTitle}</h3>
+
+      {item.group.proposals[0]?.rationale && (
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          {item.group.proposals[0].rationale}
+        </p>
+      )}
+
+      <div className="mt-4 flex items-center gap-2.5">
+        <div className={cn('h-1.5 w-28 overflow-hidden rounded-full', tone.soft)}>
+          <div className={cn('h-full rounded-full', tone.bar)} style={{ width: `${pct}%` }} />
+        </div>
+        <span className={cn('text-xs font-medium tabular-nums', tone.text)}>{pct}% confident</span>
+      </div>
+
+      {/* Each chain opens its transcript in the standard slide-over. For a chain
+          from months ago the title is not enough to judge a proposal on — being
+          able to remember what it actually was is the difference between an
+          answer and a guess. */}
+      <ul className="mt-5 space-y-px border-t border-border pt-4">
+        {item.chains.map(chain => (
+          <li key={chain.chainId}>
+            <button
+              onClick={() => onOpenChain(chain)}
+              className="flex w-full items-baseline gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted/50"
+              title="Open the transcript"
+            >
+              <ChevronRight className="h-3 w-3 shrink-0 translate-y-0.5 text-muted-foreground/60" />
+              <span className="min-w-0 flex-1 truncate">{chain.title}</span>
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {chain.date} · {chain.activeMinutes}m
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </article>
+  )
+}
+
+function EmptyBlock({ unproposed }: { unproposed: number }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+      <div className="rounded-full bg-muted p-3">
+        <Inbox className="h-6 w-6 text-muted-foreground" />
+      </div>
+      <p className="mt-4 text-sm font-medium">Nothing proposed right now.</p>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+        {unproposed > 0
+          ? `${unproposed} chains are waiting on a proposing pass. Ask Kai to run one.`
+          : 'Every chain has a disposition.'}
+      </p>
+    </div>
+  )
+}
+
+function KbdBlock({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="rounded border border-border bg-muted px-1 py-px font-mono text-[10px] leading-none text-muted-foreground">
+      {children}
+    </kbd>
   )
 }
 
@@ -401,15 +576,23 @@ function ActionBlock({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm ${
+      className={cn(
+        'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
         primary
-          ? 'bg-slate-900 text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white'
-          : 'border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800'
-      }`}
+          ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+          : 'border border-border hover:bg-muted',
+      )}
     >
       <Icon className="h-3.5 w-3.5" />
       {label}
-      <kbd className="ml-0.5 text-[10px] opacity-60">{hint}</kbd>
+      <kbd
+        className={cn(
+          'ml-0.5 rounded px-1 py-px font-mono text-[10px] leading-none',
+          primary ? 'bg-primary-foreground/20' : 'bg-muted-foreground/15',
+        )}
+      >
+        {hint}
+      </kbd>
     </button>
   )
 }

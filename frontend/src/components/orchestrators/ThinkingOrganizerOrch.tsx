@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BookText, Check, FolderTree, Inbox, LayoutDashboard, List, Loader2, Network, Pencil, Plus, X } from 'lucide-react'
+import { BookText, Check, FolderTree, LayoutDashboard, List, Loader2, Network, Pencil, Plus, X } from 'lucide-react'
 import UndertakingIndexBlock from '@/components/lego_blocks/integrations/UndertakingIndexBlock'
 import UndertakingDagBlock from '@/components/lego_blocks/integrations/UndertakingDagBlock'
-import AssignmentQueueBlock from '@/components/lego_blocks/integrations/AssignmentQueueBlock'
 import UndertakingDetailDrawerBlock from '@/components/lego_blocks/integrations/UndertakingDetailDrawerBlock'
 import NoteDetailDrawerBlock from '@/components/lego_blocks/integrations/NoteDetailDrawerBlock'
 import { useSearchParams } from 'react-router-dom'
@@ -57,9 +56,12 @@ const ORGANIZER_PRIMARY_VIEW_KEY = 'organizer_primary_view'
 // The org tab's top-level view. 'index' is the Thinking Organizer index (the
 // new primary); 'list'/'canvas' are the existing backlog sub-views, kept during
 // the transition off the work-item model.
-type OrgView = 'index' | 'lineage' | 'queue' | 'list' | 'canvas'
+type OrgView = 'index' | 'lineage' | 'list' | 'canvas'
 function parseOrgView(value: string | null): OrgView {
-  return value === 'index' || value === 'lineage' || value === 'queue' || value === 'list' || value === 'canvas'
+  // 'queue' was briefly a view here. Anyone whose last session left it stored
+  // lands on the index rather than on a blank fifth state — the queue is now
+  // the chrome badge, not a place you navigate to.
+  return value === 'index' || value === 'lineage' || value === 'list' || value === 'canvas'
     ? value
     : 'index'
 }
@@ -427,6 +429,9 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
             ? 'overflow-hidden'
             : 'overflow-y-auto px-6 py-5',
         )}>
+          {/* Four lenses onto the same undertakings. The queue used to sit here
+              as a fifth option, which was a category error — it is a chore, not
+              a lens — so it lives in the chrome beside the sidebar toggle. */}
           <div className="absolute right-3 top-3 z-40">
             <SegmentedToggleBlock
               value={orgView}
@@ -435,7 +440,6 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
               options={[
                 { value: 'index', label: 'Index', icon: BookText, title: 'Thinking Organizer index' },
                 { value: 'lineage', label: 'Lineage', icon: Network, title: 'grew_out_of lineage' },
-                { value: 'queue', label: 'Queue', icon: Inbox, title: 'Chains still owing a disposition' },
                 { value: 'list', label: 'List', icon: List, title: 'Backlog list view' },
                 { value: 'canvas', label: 'Canvas', icon: LayoutDashboard, title: 'Canvas view' },
               ]}
@@ -452,11 +456,6 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
             />
           ) : orgView === 'lineage' ? (
             <UndertakingDagBlock projectId={aiProjectId} onOpenUndertaking={openUndertakingDrawer} />
-          ) : orgView === 'queue' ? (
-            // Unscoped on purpose: the queue's job is that no chain is left
-            // unjudged, and scoping it to the selected project would hide the
-            // work landing under keys nothing has adopted yet.
-            <AssignmentQueueBlock />
           ) : (
             <BacklogOrch
               view={orgView === 'canvas' ? 'canvas' : 'list'}
