@@ -71,7 +71,10 @@ export default function AssignmentQueueDockBlock() {
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+          // shrink-0 + nowrap: the chrome row is a flex container that will
+          // happily squeeze this to its minimum width, and "60 to decide"
+          // wrapping to two lines makes the whole header taller.
+          'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs transition-colors',
           pending > 0
             ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300'
             : 'border-border text-muted-foreground hover:bg-muted',
