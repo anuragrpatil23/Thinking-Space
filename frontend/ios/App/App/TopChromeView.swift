@@ -5,13 +5,17 @@ import UIKit
 /// toolbar row: buttons + centered Files-style tab pill). Shared with
 /// RootShellViewController (container constraint) and PhoneShellView (veil
 /// depth) — keep the three in sync with the web's clearance rule in
-/// index.css (48px).
-let nativeChromePadBarHeight: CGFloat = 48
+/// index.css (54px).
+let nativeChromePadBarHeight: CGFloat = 54
 
 private enum NativeChromeMetrics {
     static let outerHorizontalPadding: CGFloat = 16
-    static let padCompactButtonSize: CGFloat = 38
-    static let padTabPillSegmentHeight: CGFloat = 30
+    /// 44pt — Safari's iPad toolbar button, and the HIG minimum tap target.
+    /// History: 52 read as "huge" (2026-07-19), the 38 that replaced it read
+    /// as undersized next to Safari (2026-08-02). 44 is the size Apple's own
+    /// bar uses; do not drift below it again.
+    static let padCompactButtonSize: CGFloat = 44
+    static let padTabPillSegmentHeight: CGFloat = 34
     static let padTabPillMaxWidth: CGFloat = 520
     static let bottomChromeBottomPadding: CGFloat = 0
     static let floatingControlHeight: CGFloat = 40
@@ -308,7 +312,7 @@ struct BottomChromeView: View {
             }
         }) {
             morphingDrawerOrBackIcon
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(state.drawerProgress > 0.01 ? Color.accentColor : .primary)
                 .frame(width: NativeChromeMetrics.padCompactButtonSize, height: NativeChromeMetrics.padCompactButtonSize)
                 .contentShape(Rectangle())
@@ -390,9 +394,9 @@ struct BottomChromeView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.primary)
-                .frame(width: 34, height: NativeChromeMetrics.padTabPillSegmentHeight)
+                .frame(width: 38, height: NativeChromeMetrics.padTabPillSegmentHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -437,9 +441,9 @@ struct BottomChromeView: View {
             if closable {
                 Button(action: { onCloseTab(tab.id) }) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 22, height: 22)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -447,7 +451,7 @@ struct BottomChromeView: View {
             }
 
             Text(tab.label)
-                .font(.system(size: 13, weight: active ? .semibold : .regular))
+                .font(.system(size: 15, weight: active ? .semibold : .regular))
                 .foregroundStyle(active ? Color.primary : Color.primary.opacity(0.7))
                 .lineLimit(1)
         }
@@ -510,7 +514,7 @@ struct BottomChromeView: View {
         } label: {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(.primary)
                     .frame(width: NativeChromeMetrics.padCompactButtonSize, height: NativeChromeMetrics.padCompactButtonSize)
                     .contentShape(Rectangle())
@@ -545,12 +549,12 @@ struct BottomChromeView: View {
             HStack(spacing: 6) {
                 SyncSpinIconView(
                     spinning: state.syncActive,
-                    size: 14,
+                    size: 17,
                     tint: state.syncActive
                         ? AnyShapeStyle(Color.accentColor)
                         : (state.canRefresh ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                 )
-                .frame(width: 24, height: NativeChromeMetrics.padCompactButtonSize)
+                .frame(width: 28, height: NativeChromeMetrics.padCompactButtonSize)
 
                 if state.syncActive, state.syncTotal > 0 {
                     Text("\(state.syncCompleted)/\(state.syncTotal)")
@@ -561,7 +565,7 @@ struct BottomChromeView: View {
             }
             .padding(.horizontal, state.syncActive && state.syncTotal > 0
                 ? 10
-                : (NativeChromeMetrics.padCompactButtonSize - 24) / 2)
+                : (NativeChromeMetrics.padCompactButtonSize - 28) / 2)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -583,9 +587,9 @@ struct BottomChromeView: View {
         .animation(.easeInOut(duration: 0.2), value: state.syncTotal > 0)
     }
 
-    /// Compact Safari-sized glass button — no outer padding halo; the glass
-    /// capsule IS the 38pt hit target (the earlier 52pt capsules read as
-    /// "huge", 2026-07-19).
+    /// Safari-sized glass button — no outer padding halo; the glass capsule
+    /// IS the hit target, at `padCompactButtonSize` (see its note for why
+    /// that number has moved twice).
     private func padGlassIconButton(
         systemName: String,
         action: @escaping () -> Void,
@@ -594,7 +598,7 @@ struct BottomChromeView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(enabled ? .primary : .secondary)
                 .frame(width: NativeChromeMetrics.padCompactButtonSize, height: NativeChromeMetrics.padCompactButtonSize)
                 .contentShape(Rectangle())
