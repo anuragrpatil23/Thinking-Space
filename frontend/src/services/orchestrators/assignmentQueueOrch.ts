@@ -14,6 +14,7 @@ import {
   type UndertakingRecord,
 } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
 import { listSectionsBlock } from '@/services/lego_blocks/integrations/aiActivityUndertakingStoreBlock'
+import { chainActiveDurationMsBlock } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 import { undisposedChainsBlock } from '@/services/lego_blocks/units/assignmentSweepBlock'
 import {
   buildQueueGroupsBlock,
@@ -80,6 +81,11 @@ export interface QueueItem {
   /** Present when the proposal points at an undertaking that exists, so the row
    *  can show what it would be joining rather than a bare key. */
   targetTitle: string
+  /** Where it lands in the index, as a section *title* — resolved here because
+   *  the proposal carries a section key, and a key is not something a human
+   *  should have to translate mid-decision. Null for the bucket, which has no
+   *  section, and for a mint whose section key names nothing. */
+  targetSection: string | null
 }
 
 export interface AssignmentQueue {
@@ -112,7 +118,7 @@ function toQueueChainBlock(chain: ChainEntry): QueueChainBlock {
     projectId: chain.projectId,
     title: chain.title,
     date: chain.date,
-    activeMinutes: Math.round((chain.activeDurationMs ?? 0) / 60000),
+    activeMinutes: Math.round(chainActiveDurationMsBlock(chain) / 60000),
   }
 }
 
@@ -180,6 +186,10 @@ export async function getAssignmentQueueOrch(projectId?: string): Promise<Assign
   const undisposed: ChainEntry[] = []
   const chainsById = new Map<string, ChainEntry>()
   const titlesByKey = new Map<string, string>()
+  // Both keyed by `${projectId}:${key}` — the queue spans projects, and section
+  // keys are only unique inside one.
+  const sectionKeyByUndertaking = new Map<string, string>()
+  const sectionTitles = new Map<string, string>()
   const proposedChainIds = new Set<string>()
   const orphanedProposals: AssignmentQueue['orphanedProposals'] = []
 
@@ -208,7 +218,21 @@ export async function getAssignmentQueueOrch(projectId?: string): Promise<Assign
 
     for (const record of await listUndertakingsBlock(project)) {
       titlesByKey.set(record.key, record.title)
+      sectionKeyByUndertaking.set(`${project}:${record.key}`, record.section)
     }
+    for (const section of await listSectionsBlock(project)) {
+      sectionTitles.set(`${project}:${section.key}`, section.title)
+    }
+  }
+
+  const sectionTitleOf = (projectId: string, group: QueueGroupBlock): string | null => {
+    const key =
+      group.target.kind === 'new'
+        ? group.target.section
+        : group.target.kind === 'existing'
+          ? sectionKeyByUndertaking.get(`${projectId}:${group.target.key}`)
+          : undefined
+    return key ? sectionTitles.get(`${projectId}:${key}`) ?? key : null
   }
 
   const items: QueueItem[] = buildQueueGroupsBlock(live).map(group => ({
@@ -221,6 +245,7 @@ export async function getAssignmentQueueOrch(projectId?: string): Promise<Assign
       group.target.kind === 'existing'
         ? titlesByKey.get(group.target.key) ?? group.target.key
         : targetLabelBlock(group.target),
+    targetSection: sectionTitleOf(group.projectId, group),
   }))
 
   return {
@@ -348,6 +373,19 @@ async function resolveTargetKeyBlock(
     case 'bucket':
       return (await ensureBucketUndertakingOrch(projectId)).key
     case 'new': {
+      // An exact title match is landed on, not minted beside. Dropping a chain
+      // from a group and accepting the rest leaves the dropped one carrying the
+      // same `{kind:'new', title}` proposal — without this, saying yes to it
+      // afterwards mints a second undertaking with an identical title and a
+      // `-2` key, and the work silently splits across two addresses. Matching
+      // on title is safe here precisely because it is *not* a rename path: the
+      // human typed or accepted this exact string a moment ago.
+      const wanted = target.title.trim().toLowerCase()
+      const twin = (await listUndertakingsBlock(projectId)).find(
+        record => !record.bucket && record.title.trim().toLowerCase() === wanted,
+      )
+      if (twin) return twin.key
+
       const { record } = await createUndertakingOrch(projectId, {
         title: target.title,
         section: target.section,

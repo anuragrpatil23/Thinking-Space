@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronRight, Inbox, Loader2, SkipForward, Sparkles, Trash2, Undo2, X } from 'lucide-react'
+import { Check, ChevronRight, Inbox, Loader2, Pencil, SkipForward, Sparkles, Trash2, Undo2, X } from 'lucide-react'
 import {
   detachChainOrch,
   disposeChainsOrch,
@@ -10,7 +10,10 @@ import {
 } from '@/services/orchestrators/assignmentQueueOrch'
 import ChainTranscriptSlideOverBlock from '@/components/lego_blocks/integrations/ChainTranscriptSlideOverBlock'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
-import { listUndertakingTitlesOrch } from '@/services/orchestrators/aiActivityUndertakingOrch'
+import {
+  listUndertakingSectionsOrch,
+  listUndertakingTitlesOrch,
+} from '@/services/orchestrators/aiActivityUndertakingOrch'
 import {
   confidenceBandBlock,
   type ProposalTargetBlock,
@@ -101,12 +104,53 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
   const [retargeting, setRetargeting] = useState(false)
   const [retargetQuery, setRetargetQuery] = useState('')
   const [titles, setTitles] = useState<Array<{ key: string; title: string }>>([])
+  const [sections, setSections] = useState<Array<{ key: string; title: string }>>([])
   const [undo, setUndo] = useState<UndoEntry | null>(null)
   const [transcript, setTranscript] = useState<TranscriptState>({ kind: 'closed' })
   const retargetInputRef = useRef<HTMLInputElement | null>(null)
 
+  // The two correction primitives, held as edits to the *focused proposal*
+  // rather than as separate flows. Renaming a proposed undertaking and dropping
+  // a chain that does not belong are the two things a person actually wants to
+  // do to a suggestion, and both are worthless if they cost more than the
+  // decision itself — so they live on the card and are spent by pressing
+  // Accept, not by a save button.
+  const [draftTitle, setDraftTitle] = useState<string | null>(null)
+  const [draftSection, setDraftSection] = useState<string | null>(null)
+  const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set())
+
   const items = queue?.items ?? []
   const current: QueueItem | undefined = items[cursor]
+  const focusKey = current ? `${current.group.projectId}:${current.group.targetId}` : ''
+
+  const clearEdits = useCallback(() => {
+    setDraftTitle(null)
+    setDraftSection(null)
+    setExcluded(new Set())
+  }, [])
+
+  // Edits belong to one proposal. Moving the cursor abandons them rather than
+  // carrying a title you typed for a different undertaking onto this one.
+  useEffect(() => { clearEdits() }, [focusKey, clearEdits])
+
+  const selectedChains = useMemo(
+    () => (current?.chains ?? []).filter(chain => !excluded.has(chain.chainId)),
+    [current, excluded],
+  )
+
+  /** What Accept would actually do, once the edits on the card are applied. */
+  const effectiveTarget: ProposalTargetBlock | null = useMemo(() => {
+    if (!current) return null
+    const target = current.group.target
+    if (target.kind !== 'new') return target
+    if (draftTitle === null && draftSection === null) return target
+    return {
+      kind: 'new',
+      title: (draftTitle ?? target.title).trim() || target.title,
+      section: draftSection ?? target.section,
+      head: target.head,
+    }
+  }, [current, draftTitle, draftSection])
 
   // The cursor is an index into a list that shrinks under it. Clamping here
   // rather than resetting to 0 keeps you where you were after a disposition,
@@ -126,6 +170,9 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
     void listUndertakingTitlesOrch(current.group.projectId).then(list => {
       if (alive) setTitles(list)
     })
+    void listUndertakingSectionsOrch(current.group.projectId).then(list => {
+      if (alive) setSections(list)
+    })
     return () => { alive = false }
   }, [current?.group.projectId])
 
@@ -135,12 +182,15 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
 
   const dispose = useCallback(
     async (target: ProposalTargetBlock | null, label: string) => {
-      if (!current || busy) return
+      if (!current || busy || selectedChains.length === 0) return
       setBusy(true)
       setError(null)
       try {
         const result = await disposeChainsOrch({
-          chainIds: current.chains.map(chain => chain.chainId),
+          // Only the chains still selected. A dropped chain is not disposed of
+          // — it keeps its proposal and comes back on its own, which is the
+          // point: "these five yes, that one no" should not cost six decisions.
+          chainIds: selectedChains.map(chain => chain.chainId),
           projectId: current.group.projectId,
           proposed: current.group.target,
           confidence: current.group.confidence,
@@ -161,9 +211,13 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
         setBusy(false)
         setRetargeting(false)
         setRetargetQuery('')
+        // Explicit, not left to the focus-change effect: accepting a subset
+        // leaves the same group focused, so the exclusions would otherwise
+        // persist onto the chains that just came back.
+        clearEdits()
       }
     },
-    [current, busy, onReload],
+    [current, busy, selectedChains, onReload, clearEdits],
   )
 
   const undoLast = useCallback(async () => {
@@ -230,7 +284,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
       switch (event.key) {
         case 'a':
           event.preventDefault()
-          if (current) void dispose(current.group.target, 'accepted')
+          if (effectiveTarget) void dispose(effectiveTarget, 'accepted')
           break
         case 'r':
           event.preventDefault()
@@ -376,6 +430,26 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
                 item={current}
                 position={cursor + 1}
                 total={items.length}
+                sections={sections}
+                title={draftTitle ?? current.targetTitle}
+                renamed={draftTitle !== null}
+                sectionKey={
+                  draftSection ??
+                  (current.group.target.kind === 'new' ? current.group.target.section ?? null : null)
+                }
+                sectionLabel={current.targetSection}
+                editable={current.group.target.kind === 'new'}
+                excluded={excluded}
+                onRename={setDraftTitle}
+                onSection={setDraftSection}
+                onToggleChain={chainId =>
+                  setExcluded(prev => {
+                    const next = new Set(prev)
+                    if (next.has(chainId)) next.delete(chainId)
+                    else next.add(chainId)
+                    return next
+                  })
+                }
                 onOpenChain={openChain}
               />
             </div>
@@ -423,7 +497,18 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-2">
-                  <ActionBlock icon={Check} label="Accept" hint="a" primary onClick={() => void dispose(current.group.target, 'accepted')} />
+                  <ActionBlock
+                    icon={Check}
+                    label={
+                      excluded.size > 0
+                        ? `Accept ${selectedChains.length} of ${current.chains.length}`
+                        : 'Accept'
+                    }
+                    hint="a"
+                    primary
+                    disabled={selectedChains.length === 0}
+                    onClick={() => effectiveTarget && void dispose(effectiveTarget, 'accepted')}
+                  />
                   <ActionBlock icon={ChevronRight} label="Retarget" hint="r" onClick={() => setRetargeting(true)} />
                   <ActionBlock icon={Trash2} label="Not an undertaking" hint="b" onClick={() => void dispose({ kind: 'bucket' }, 'bucketed')} />
                   <ActionBlock icon={SkipForward} label="Skip" hint="s" onClick={() => setCursor(i => Math.min(i + 1, items.length - 1))} />
@@ -473,19 +558,47 @@ function CardBlock({
   item,
   position,
   total,
+  sections,
+  title,
+  renamed,
+  sectionKey,
+  sectionLabel,
+  editable,
+  excluded,
+  onRename,
+  onSection,
+  onToggleChain,
   onOpenChain,
 }: {
   item: QueueItem
   position: number
   total: number
+  sections: Array<{ key: string; title: string }>
+  title: string
+  renamed: boolean
+  sectionKey: string | null
+  sectionLabel: string | null
+  /** Only a mint is editable. Joining an existing undertaking must not rename
+   *  it from here — that record is an address other chains already point at. */
+  editable: boolean
+  excluded: ReadonlySet<string>
+  onRename: (title: string | null) => void
+  onSection: (key: string) => void
+  onToggleChain: (chainId: string) => void
   onOpenChain: (chain: QueueChainBlock) => void
 }) {
   const tone = bandToneBlock(item.group.confidence)
   const pct = Math.round(item.group.confidence * 100)
+  const [editing, setEditing] = useState(false)
+  const [buffer, setBuffer] = useState(title)
+
+  const sectionTitle = sectionKey
+    ? sections.find(entry => entry.key === sectionKey)?.title ?? sectionKey
+    : sectionLabel
 
   return (
     <article className="mx-auto max-w-2xl">
-      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-muted-foreground">
         <span className="rounded bg-muted px-1.5 py-0.5 font-medium">{item.group.projectId}</span>
         {item.group.target.kind === 'new' && (
           <span className="rounded bg-sky-500/15 px-1.5 py-0.5 font-medium text-sky-700 dark:text-sky-400">
@@ -495,12 +608,78 @@ function CardBlock({
         {item.group.target.kind === 'bucket' && (
           <span className="rounded bg-muted px-1.5 py-0.5 font-medium">not an undertaking</span>
         )}
+        {/* Where it lands. A proposal that mints without saying which section it
+            mints into is asking for a decision with a third of the facts. */}
+        {editable && sections.length > 0 ? (
+          <label className="flex items-center gap-1 normal-case tracking-normal">
+            <span className="text-muted-foreground/70">in</span>
+            <select
+              value={sectionKey ?? ''}
+              onChange={event => onSection(event.target.value)}
+              className="rounded border border-transparent bg-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground outline-none hover:border-border focus:border-ring"
+            >
+              {!sectionKey && <option value="">Pick a section…</option>}
+              {sections.map(entry => (
+                <option key={entry.key} value={entry.key}>
+                  {entry.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          sectionTitle && (
+            <span className="normal-case tracking-normal">
+              in <span className="font-medium text-foreground">{sectionTitle}</span>
+            </span>
+          )
+        )}
         <span className="ml-auto tabular-nums normal-case tracking-normal">
           {position} of {total}
         </span>
       </div>
 
-      <h3 className="mt-3 text-xl font-semibold leading-snug tracking-tight">{item.targetTitle}</h3>
+      {/* The rename primitive, spent at the moment of decision. A suggested
+          title is usually 90% right, and re-typing it in the retarget field to
+          fix one word is the kind of friction that makes a queue get closed. */}
+      {editing ? (
+        <input
+          autoFocus
+          value={buffer}
+          onChange={event => setBuffer(event.target.value)}
+          onBlur={() => {
+            setEditing(false)
+            onRename(buffer.trim() && buffer !== item.targetTitle ? buffer.trim() : null)
+          }}
+          onKeyDown={event => {
+            if (event.key === 'Enter') event.currentTarget.blur()
+            if (event.key === 'Escape') {
+              event.stopPropagation()
+              setBuffer(title)
+              setEditing(false)
+            }
+          }}
+          className="mt-3 w-full rounded-md border border-ring bg-background px-2 py-1 text-xl font-semibold leading-snug tracking-tight outline-none"
+        />
+      ) : (
+        <div className="group/title mt-3 flex items-start gap-2">
+          <h3 className="text-xl font-semibold leading-snug tracking-tight">{title}</h3>
+          {editable && (
+            <button
+              onClick={() => { setBuffer(title); setEditing(true) }}
+              title="Rename before accepting"
+              aria-label="Rename before accepting"
+              className="mt-1.5 shrink-0 rounded p-1 text-muted-foreground/40 opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus:opacity-100 group-hover/title:opacity-100"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {renamed && (
+            <span className="mt-2 shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+              renamed
+            </span>
+          )}
+        </div>
+      )}
 
       {item.group.proposals[0]?.rationale && (
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
@@ -520,22 +699,50 @@ function CardBlock({
           able to remember what it actually was is the difference between an
           answer and a guess. */}
       <ul className="mt-5 space-y-px border-t border-border pt-4">
-        {item.chains.map(chain => (
-          <li key={chain.chainId}>
-            <button
-              onClick={() => onOpenChain(chain)}
-              className="flex w-full items-baseline gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted/50"
-              title="Open the transcript"
-            >
-              <ChevronRight className="h-3 w-3 shrink-0 translate-y-0.5 text-muted-foreground/60" />
-              <span className="min-w-0 flex-1 truncate">{chain.title}</span>
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {chain.date} · {chain.activeMinutes}m
-              </span>
-            </button>
-          </li>
-        ))}
+        {item.chains.map(chain => {
+          const dropped = excluded.has(chain.chainId)
+          return (
+            <li key={chain.chainId} className="group/chain flex items-center gap-1">
+              <button
+                onClick={() => onOpenChain(chain)}
+                className={cn(
+                  'flex min-w-0 flex-1 items-baseline gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted/50',
+                  dropped && 'text-muted-foreground/50 line-through',
+                )}
+                title="Open the transcript"
+              >
+                <ChevronRight className="h-3 w-3 shrink-0 translate-y-0.5 text-muted-foreground/60" />
+                <span className="min-w-0 flex-1 truncate">{chain.title}</span>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                  {chain.date} · {chain.activeMinutes}m
+                </span>
+              </button>
+              {/* Dropping a chain is not a disposition — it just takes it out of
+                  *this* answer and lets it come back on its own. One wrong chain
+                  in a group of six should not cost the other five. */}
+              <button
+                onClick={() => onToggleChain(chain.chainId)}
+                title={dropped ? 'Put it back in this group' : "Doesn't belong here"}
+                aria-label={dropped ? 'Put it back in this group' : 'Drop from this group'}
+                className={cn(
+                  'shrink-0 rounded p-1 transition-opacity hover:bg-muted',
+                  dropped
+                    ? 'text-muted-foreground opacity-100'
+                    : 'text-muted-foreground/40 opacity-0 hover:text-foreground focus:opacity-100 group-hover/chain:opacity-100',
+                )}
+              >
+                {dropped ? <Undo2 className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+              </button>
+            </li>
+          )
+        })}
       </ul>
+      {excluded.size > 0 && (
+        <p className="mt-3 px-2 text-xs text-muted-foreground">
+          {excluded.size} dropped — {excluded.size === 1 ? 'it stays' : 'they stay'} in the queue and
+          will come back on {excluded.size === 1 ? 'its' : 'their'} own.
+        </p>
+      )}
     </article>
   )
 }
@@ -572,18 +779,21 @@ function ActionBlock({
   hint,
   onClick,
   primary,
+  disabled,
 }: {
   icon: typeof Check
   label: string
   hint: string
   onClick: () => void
   primary?: boolean
+  disabled?: boolean
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={cn(
-        'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
+        'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40',
         primary
           ? 'bg-primary text-primary-foreground hover:bg-primary/90'
           : 'border border-border hover:bg-muted',

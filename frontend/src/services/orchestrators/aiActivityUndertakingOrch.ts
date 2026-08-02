@@ -26,6 +26,7 @@ import {
   patchChainBlock,
   type ChainEntry,
 } from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
+import { chainActiveDurationMsBlock } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 import { listProjectChainsOrch } from '@/services/orchestrators/aiActivityChainReconcileOrch'
 import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
 import { listNotesBlock, readNoteBlock } from '@/services/lego_blocks/integrations/aiActivityNoteStoreBlock'
@@ -133,10 +134,10 @@ export function collapseChainWindowsBlock(chains: ChainEntry[]): ChainEntry[] {
   return kept.sort((a, b) => a.startedIso.localeCompare(b.startedIso))
 }
 
-/** Active duration for one chain, falling back to wall-clock when the chain
- *  predates the field and hasn't been healed on read yet (0 ⇒ not measured). */
+/** Active duration for one chain. The rule lives in the digest block so every
+ *  reader of chain effort applies the same fallback. */
 function activeOf(chain: ChainEntry): number {
-  return chain.activeDurationMs > 0 ? chain.activeDurationMs : chain.durationMs
+  return chainActiveDurationMsBlock(chain)
 }
 
 function buildTail(chains: ChainEntry[]): UndertakingTail {

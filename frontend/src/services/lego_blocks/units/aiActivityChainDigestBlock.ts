@@ -148,6 +148,24 @@ export function isValidChainDigestDateBlock(value: string): boolean {
   return typeof value === 'string' && ISO_DATE_RE.test(value)
 }
 
+/**
+ * How much work a chain represents, in ms.
+ *
+ * `activeDurationMs` is the honest measure, but it postdates most of the corpus
+ * — every digest written before it existed carries 0, which is "not measured",
+ * not "no work". Falling back to wall-clock is what keeps a 2026-06 chain from
+ * rendering as `0m`.
+ *
+ * Shared rather than restated: the queue grew its own copy of this without the
+ * fallback, and showed every legacy chain as zero-effort right where the
+ * "was this worth an undertaking?" judgement is made.
+ */
+export function chainActiveDurationMsBlock(
+  digest: Pick<ProjectChainDigest, 'activeDurationMs' | 'durationMs'>,
+): number {
+  return digest.activeDurationMs > 0 ? digest.activeDurationMs : digest.durationMs
+}
+
 /** Intelligence-cache task id — namespaces the sidecar subdirectory. */
 export const AI_ACTIVITY_CHAIN_DIGEST_CACHE_TASK_ID = 'projectChainDigest'
 
