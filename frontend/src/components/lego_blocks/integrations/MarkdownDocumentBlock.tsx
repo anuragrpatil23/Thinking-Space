@@ -1500,7 +1500,10 @@ function MarkdownTextDocumentRuntimeBlock({
   return (
     <div
       className={cn(
-        'flex h-full min-h-0 flex-col bg-card p-2',
+        // ts-md-viewer-root: a stable hook for surface-level padding
+        // overrides. iPad portrait zeroes the top inset here so the sticky
+        // Contents strip sits flush under the native bar (index.css).
+        'ts-md-viewer-root flex h-full min-h-0 flex-col bg-card p-2',
         className,
       )}
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}

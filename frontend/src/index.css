@@ -865,8 +865,16 @@
 
   /* iPhone: the document stage IS the whole screen (push-detail view), so
      the Electron corner treatment (rounded right, flat left — shaped to sit
-     beside the explorer) reads as a glitch. Full-bleed square. */
+     beside the explorer) reads as a glitch. Full-bleed square.
+
+     iPad portrait (tablet) gets the same treatment for the same reason: no
+     explorer sits beside the document there either, so the rounded right
+     corner draws an arc in the band under the native top bar and the
+     `margin-left` leaves a pale sliver down the left edge — together they read
+     as a stray border around the document (2026-08-02). Landscape (desktop)
+     keeps the shape: the explorer IS beside it there. */
   .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'] .ltm-thinking-space-document-stage,
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='tablet'] .ltm-thinking-space-document-stage,
   .ltm-app-shell[data-ltm-ios-phone='true'] .ltm-thinking-space-document-stage {
     border-radius: 0;
     margin-left: 0;
@@ -1349,7 +1357,17 @@
      room people read as missing is the bar's own, below the buttons
      (nativeChromePadBarHeight). */
   .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-native-chrome='true'][data-ltm-mode='tablet'] .ltm-app-main:not(:has(.ltm-page-edge-bleed)) {
-    padding-top: calc(var(--ltm-safe-top) + 64px + 0.5rem);
+    padding-top: calc(var(--ltm-safe-top) + 64px);
+  }
+
+  /* ...and the document viewer's own top inset goes with it. Those two pieces
+     of air (0.5rem here, `p-2` there) stacked into a visible white band
+     between the bar and the sticky Contents strip, which read as a gap rather
+     than as breathing room (2026-08-02). The bar already provides the air —
+     its buttons sit 10pt off its own bottom edge. Side/bottom padding stays:
+     only the top is the shared boundary with the bar. */
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-native-chrome='true'][data-ltm-mode='tablet'] .ts-md-viewer-root {
+    padding-top: 0;
   }
 
   /* iPad tablet mode: same viewport-pinned backdrop as the iPhone rule
