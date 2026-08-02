@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, RefreshCw, ScanLine, ZoomIn, ZoomOut } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, Maximize2, RefreshCw, ScanLine, ZoomIn, ZoomOut } from 'lucide-react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import PdfJsWorkerBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
 import pdfWorkerSrcBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -9,13 +9,16 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
 import { readPdfDocumentOrch } from '@/services/orchestrators/pdfDocumentsOrch'
 import {
+  usePdfPageMetricsBlock,
+  type PdfDocumentProxyLikeBlock,
+} from '@/components/lego_blocks/hooks/shared/usePdfPageMetricsBlock'
+import {
   buildPdfRenderedWindowBlock,
   computeDisplayedPdfScaleBlock,
-  computeEstimatedPdfPageHeightBlock,
-  computePdfFitScaleBlock,
-  computePdfPageWidthBlock,
+  computePdfPageHeightBlock,
+  computeZoomScrollAnchorBlock,
   DEFAULT_PDF_NATURAL_PAGE_METRICS_BLOCK,
-  type PdfNaturalPageMetricsBlock,
+  type PdfZoomModeBlock,
 } from '@/services/lego_blocks/units/pdfViewportBlock'
 
 let activePdfWorkerBlock: Worker | null = null
@@ -100,11 +103,26 @@ export default function PdfDocumentBlock({
   const pinchTouchActiveRef = useRef(false)
   const pinchStartDistanceRef = useRef(0)
   const pinchStartScaleRef = useRef(1)
-  const fitWidthRef = useRef(true)
+  const zoomModeRef = useRef<PdfZoomModeBlock>('fit-width')
   const scaleRef = useRef(1)
   const pendingScaleRef = useRef<number | null>(null)
   const previewRafRef = useRef<number | null>(null)
   const commitTimerRef = useRef<number | null>(null)
+  /* Focal point of the in-flight zoom gesture, in viewport-local pixels, plus
+     the scroll/scale state the layout was in when the gesture started. Consumed
+     once by the post-commit layout effect to hold that point steady. */
+  const zoomAnchorRef = useRef<{
+    focalX: number
+    focalY: number
+    scrollTop: number
+    scrollLeft: number
+    prevScale: number
+    viewportWidth: number
+    viewportHeight: number
+    contentWidth: number
+    contentHeight: number
+  } | null>(null)
+  const pendingScrollAnchorRef = useRef<{ scrollTop: number; scrollLeft: number } | null>(null)
   const [fileBytes, setFileBytes] = useState<Uint8Array | null>(null)
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
@@ -112,13 +130,13 @@ export default function PdfDocumentBlock({
   const [numPages, setNumPages] = useState(0)
   const [pageNumber, setPageNumber] = useState(1)
   const [scale, setScale] = useState(1)
-  const [fitWidth, setFitWidth] = useState(true)
+  const [zoomMode, setZoomMode] = useState<PdfZoomModeBlock>('fit-width')
   const [viewportWidth, setViewportWidth] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(0)
   const [renderNonce, setRenderNonce] = useState(0)
-  const [naturalPageMetrics, setNaturalPageMetrics] = useState<PdfNaturalPageMetricsBlock>(
-    DEFAULT_PDF_NATURAL_PAGE_METRICS_BLOCK
-  )
-  const documentMeasurementTokenRef = useRef(0)
+  const [docProxy, setDocProxy] = useState<PdfDocumentProxyLikeBlock | null>(null)
+
+  const { metricsByPage, fallbackMetrics } = usePdfPageMetricsBlock(docProxy)
 
   useEffect(() => {
     let cancelled = false
@@ -129,8 +147,7 @@ export default function PdfDocumentBlock({
     setNumPages(0)
     setPageNumber(1)
     setRenderNonce(0)
-    setNaturalPageMetrics(DEFAULT_PDF_NATURAL_PAGE_METRICS_BLOCK)
-    documentMeasurementTokenRef.current += 1
+    setDocProxy(null)
     void readPdfDocumentOrch(path)
       .then((doc) => {
         if (cancelled) return
@@ -153,32 +170,53 @@ export default function PdfDocumentBlock({
     const target = viewportRef.current
     if (!target) return
     const observer = new ResizeObserver((entries) => {
-      const nextWidth = Math.floor(entries[0]?.contentRect.width ?? 0)
+      const rect = entries[0]?.contentRect
+      const nextWidth = Math.floor(rect?.width ?? 0)
+      const nextHeight = Math.floor(rect?.height ?? 0)
       setViewportWidth(nextWidth > 0 ? nextWidth : 0)
+      setViewportHeight(nextHeight > 0 ? nextHeight : 0)
     })
     observer.observe(target)
     return () => observer.disconnect()
   }, [])
 
   useEffect(() => {
-    fitWidthRef.current = fitWidth
-  }, [fitWidth])
+    zoomModeRef.current = zoomMode
+  }, [zoomMode])
 
   useEffect(() => {
     scaleRef.current = scale
   }, [scale])
 
-  const naturalPageWidth = naturalPageMetrics.width
-  const fitScale = useMemo(() => computePdfFitScaleBlock({
-    viewportWidth,
-    naturalPageWidth,
-  }), [naturalPageWidth, viewportWidth])
+  /* One scale for the whole document, derived from page 1. Each page then
+     renders at its own natural size times that scale, which is what makes a
+     mixed-size document lay out correctly. */
+  const documentMetrics = fallbackMetrics ?? DEFAULT_PDF_NATURAL_PAGE_METRICS_BLOCK
   const displayedScale = useMemo(() => computeDisplayedPdfScaleBlock({
-    fitWidth,
+    zoomMode,
     scale,
     viewportWidth,
-    naturalPageWidth,
-  }), [fitWidth, naturalPageWidth, scale, viewportWidth])
+    viewportHeight,
+    pageMetrics: documentMetrics,
+  }), [documentMetrics, scale, viewportHeight, viewportWidth, zoomMode])
+
+  const displayedScaleRef = useRef(displayedScale)
+  useEffect(() => {
+    displayedScaleRef.current = displayedScale
+  }, [displayedScale])
+
+  /* Runs after the scale-driven relayout but before paint, so the focal point
+     never visibly drifts. Page containers carry explicit per-page heights, so
+     the geometry here is already final even though pdf.js re-rasters async. */
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current
+    if (!anchor) return
+    pendingScrollAnchorRef.current = null
+    const viewport = viewportRef.current
+    if (!viewport) return
+    viewport.scrollTop = anchor.scrollTop
+    viewport.scrollLeft = anchor.scrollLeft
+  }, [displayedScale])
 
   const clearPreviewTransformBlock = () => {
     const previewTarget = previewContainerRef.current
@@ -191,12 +229,7 @@ export default function PdfDocumentBlock({
   const applyPreviewTransformBlock = (nextScale: number) => {
     const previewTarget = previewContainerRef.current
     if (!previewTarget) return
-    const baseScale = fitWidthRef.current
-      ? computePdfFitScaleBlock({
-        viewportWidth,
-        naturalPageWidth,
-      })
-      : scaleRef.current
+    const baseScale = displayedScaleRef.current
     if (!Number.isFinite(baseScale) || baseScale <= 0) return
     const transformScale = nextScale / baseScale
     if (!Number.isFinite(transformScale)) return
@@ -204,20 +237,50 @@ export default function PdfDocumentBlock({
       clearPreviewTransformBlock()
       return
     }
+
+    /* Scale about the gesture's focal point rather than the top of the page,
+       so the content under the fingers/cursor stays put during the preview —
+       the post-commit scroll anchor then preserves that same point. */
+    const anchor = zoomAnchorRef.current
+    const origin = anchor
+      ? `${anchor.scrollLeft + anchor.focalX - previewTarget.offsetLeft}px ${anchor.scrollTop + anchor.focalY - previewTarget.offsetTop}px`
+      : 'top center'
+
     previewTarget.style.transform = `scale(${transformScale})`
-    previewTarget.style.transformOrigin = 'top center'
+    previewTarget.style.transformOrigin = origin
     previewTarget.style.willChange = 'transform'
   }
 
+  /* Capture where the gesture is pointing, in viewport-local pixels, along
+     with the scroll/scale the layout currently sits at. */
+  const beginZoomGestureBlock = (focalClientX: number, focalClientY: number) => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    const rect = viewport.getBoundingClientRect()
+    /* Content dimensions are read now, before any preview transform is applied
+       — a transformed child perturbs scrollWidth/scrollHeight. */
+    zoomAnchorRef.current = {
+      focalX: focalClientX - rect.left,
+      focalY: focalClientY - rect.top,
+      scrollTop: viewport.scrollTop,
+      scrollLeft: viewport.scrollLeft,
+      prevScale: displayedScaleRef.current,
+      viewportWidth: viewport.clientWidth,
+      viewportHeight: viewport.clientHeight,
+      contentWidth: viewport.scrollWidth,
+      contentHeight: viewport.scrollHeight,
+    }
+  }
+
   useEffect(() => {
-    if (!fitWidth) return
+    if (zoomMode !== 'fit-width' && zoomMode !== 'fit-page') return
     pendingScaleRef.current = null
     if (previewRafRef.current !== null) {
       window.cancelAnimationFrame(previewRafRef.current)
       previewRafRef.current = null
     }
     clearPreviewTransformBlock()
-  }, [fitWidth])
+  }, [zoomMode])
 
   useEffect(() => {
     const target = viewportRef.current
@@ -236,10 +299,30 @@ export default function PdfDocumentBlock({
 
     const commitPreviewScaleBlock = () => {
       const nextScale = pendingScaleRef.current
+      const anchor = zoomAnchorRef.current
       clearPendingRenderHandlesBlock()
       pendingScaleRef.current = null
+      zoomAnchorRef.current = null
       clearPreviewTransformBlock()
       if (nextScale === null || Math.abs(scaleRef.current - nextScale) < 0.01) return
+
+      /* Queue the scroll correction for the layout effect that fires after the
+         relayout; assigning it here would be against the pre-zoom geometry. */
+      if (anchor) {
+        pendingScrollAnchorRef.current = computeZoomScrollAnchorBlock({
+          scrollTop: anchor.scrollTop,
+          scrollLeft: anchor.scrollLeft,
+          focalX: anchor.focalX,
+          focalY: anchor.focalY,
+          prevScale: anchor.prevScale,
+          nextScale,
+          viewportWidth: anchor.viewportWidth,
+          viewportHeight: anchor.viewportHeight,
+          contentWidth: anchor.contentWidth,
+          contentHeight: anchor.contentHeight,
+        })
+      }
+
       scaleRef.current = nextScale
       setScale(nextScale)
     }
@@ -281,20 +364,20 @@ export default function PdfDocumentBlock({
         commitTimerRef.current = null
       }
 
-      const currentInteractiveScale = fitWidthRef.current
-        ? computePdfFitScaleBlock({
-          viewportWidth,
-          naturalPageWidth,
-        })
-        : (pendingScaleRef.current ?? scaleRef.current)
+      const currentInteractiveScale = displayedScaleRef.current
+      const [firstTouch, secondTouch] = [event.touches[0], event.touches[1]]
+      beginZoomGestureBlock(
+        (firstTouch.clientX + secondTouch.clientX) / 2,
+        (firstTouch.clientY + secondTouch.clientY) / 2,
+      )
 
       pinchTouchActiveRef.current = true
       pinchStartDistanceRef.current = distance
       pinchStartScaleRef.current = currentInteractiveScale
 
-      if (fitWidthRef.current) {
-        fitWidthRef.current = false
-        setFitWidth(false)
+      if (zoomModeRef.current !== 'manual') {
+        zoomModeRef.current = 'manual'
+        setZoomMode('manual')
         scaleRef.current = currentInteractiveScale
         setScale(currentInteractiveScale)
       }
@@ -322,16 +405,17 @@ export default function PdfDocumentBlock({
       if (!event.ctrlKey || !Number.isFinite(event.deltaY) || event.deltaY === 0) return
       event.preventDefault()
 
-      const currentInteractiveScale = fitWidthRef.current
-        ? computePdfFitScaleBlock({
-          viewportWidth,
-          naturalPageWidth,
-        })
-        : (pendingScaleRef.current ?? scaleRef.current)
+      const currentInteractiveScale = pendingScaleRef.current ?? displayedScaleRef.current
 
-      if (fitWidthRef.current) {
-        fitWidthRef.current = false
-        setFitWidth(false)
+      /* First wheel tick of a burst establishes the anchor; later ticks keep
+         zooming about that same point until the debounced commit lands. */
+      if (!zoomAnchorRef.current) {
+        beginZoomGestureBlock(event.clientX, event.clientY)
+      }
+
+      if (zoomModeRef.current !== 'manual') {
+        zoomModeRef.current = 'manual'
+        setZoomMode('manual')
         scaleRef.current = currentInteractiveScale
         setScale(currentInteractiveScale)
       }
@@ -361,12 +445,9 @@ export default function PdfDocumentBlock({
       target.removeEventListener('touchcancel', handleTouchEndBlock)
       target.removeEventListener('wheel', handleWheelBlock)
     }
-  }, [naturalPageWidth, viewportWidth])
-
-  const pageWidth = useMemo(() => {
-    if (!fitWidth) return undefined
-    return computePdfPageWidthBlock(viewportWidth)
-  }, [fitWidth, viewportWidth])
+    /* Handlers read live state through refs, so the listeners are attached
+       once for the life of the viewport rather than on every zoom. */
+  }, [])
 
   const documentFile = useMemo(() => {
     if (!fileBytes) return null
@@ -387,12 +468,17 @@ export default function PdfDocumentBlock({
 
   const canGoPrev = pageNumber > 1
   const canGoNext = numPages > 0 && pageNumber < numPages
-  const estimatedPageHeight = useMemo(() => computeEstimatedPdfPageHeightBlock({
-    fitWidth,
+  /* Per-page, so placeholders for pages outside the render window reserve the
+     right space and the scrollbar stops lying on mixed-size documents. */
+  const pageHeightForBlock = useCallback((page: number) => computePdfPageHeightBlock({
+    page,
+    zoomMode,
     scale,
     viewportWidth,
-    naturalPageMetrics,
-  }), [fitWidth, naturalPageMetrics, scale, viewportWidth])
+    viewportHeight,
+    metricsByPage,
+    fallbackMetrics,
+  }), [fallbackMetrics, metricsByPage, scale, viewportHeight, viewportWidth, zoomMode])
   const renderWindow = useMemo(() => buildPdfRenderedWindowBlock({
     centerPage: pageNumber,
     numPages,
@@ -432,35 +518,96 @@ export default function PdfDocumentBlock({
     return () => observer.disconnect()
   }, [numPages, pageNumber])
 
+  /* Toolbar and keyboard zoom anchor at the viewport centre, which is the
+     closest equivalent to "the thing you were looking at" when there is no
+     cursor or pinch focal point to use. */
   const commitManualScaleBlock = useCallback((nextScale: number) => {
+    const normalized = normalizeScaleBlock(nextScale)
+    const viewport = viewportRef.current
+    if (viewport) {
+      pendingScrollAnchorRef.current = computeZoomScrollAnchorBlock({
+        scrollTop: viewport.scrollTop,
+        scrollLeft: viewport.scrollLeft,
+        focalX: viewport.clientWidth / 2,
+        focalY: viewport.clientHeight / 2,
+        prevScale: displayedScaleRef.current,
+        nextScale: normalized,
+        viewportWidth: viewport.clientWidth,
+        viewportHeight: viewport.clientHeight,
+        contentWidth: viewport.scrollWidth,
+        contentHeight: viewport.scrollHeight,
+      })
+    }
+
     pendingScaleRef.current = null
     clearPreviewTransformBlock()
-    fitWidthRef.current = false
-    setFitWidth(false)
-    scaleRef.current = nextScale
-    setScale(normalizeScaleBlock(nextScale))
+    zoomModeRef.current = 'manual'
+    setZoomMode('manual')
+    scaleRef.current = normalized
+    setScale(normalized)
   }, [])
 
   const adjustManualScaleBlock = useCallback((delta: number) => {
-    const baseScale = fitWidth ? fitScale : (pendingScaleRef.current ?? scaleRef.current)
-    commitManualScaleBlock(baseScale + delta)
-  }, [commitManualScaleBlock, fitScale, fitWidth])
+    commitManualScaleBlock(displayedScaleRef.current + delta)
+  }, [commitManualScaleBlock])
 
-  const toggleFitWidthBlock = useCallback(() => {
+  const applyZoomModeBlock = useCallback((mode: PdfZoomModeBlock) => {
     pendingScaleRef.current = null
     clearPreviewTransformBlock()
+    zoomModeRef.current = mode
+    setZoomMode(mode)
+    if (mode === 'manual') {
+      const current = normalizeScaleBlock(displayedScaleRef.current)
+      scaleRef.current = current
+      setScale(current)
+    }
+  }, [])
 
-    if (fitWidth) {
-      fitWidthRef.current = false
-      setFitWidth(false)
-      scaleRef.current = fitScale
-      setScale(normalizeScaleBlock(fitScale))
-      return
+  useEffect(() => {
+    const handleKeyDownBlock = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      /* Never steal keys from a focused field — the viewer shares the window
+         with the markdown editor and the command palette. */
+      if (target && (target.isContentEditable || /^(?:INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return
+
+      const zoomModifier = event.metaKey || event.ctrlKey
+
+      if (zoomModifier && (event.key === '=' || event.key === '+')) {
+        event.preventDefault()
+        adjustManualScaleBlock(0.1)
+        return
+      }
+      if (zoomModifier && event.key === '-') {
+        event.preventDefault()
+        adjustManualScaleBlock(-0.1)
+        return
+      }
+      if (zoomModifier && event.key === '0') {
+        event.preventDefault()
+        applyZoomModeBlock('actual')
+        return
+      }
+      if (zoomModifier && event.key === '9') {
+        event.preventDefault()
+        applyZoomModeBlock('fit-page')
+        return
+      }
+      if (!zoomModifier && event.key === 'Home') {
+        event.preventDefault()
+        setPageNumber(1)
+        scrollToPage(1)
+        return
+      }
+      if (!zoomModifier && event.key === 'End' && numPages > 0) {
+        event.preventDefault()
+        setPageNumber(numPages)
+        scrollToPage(numPages)
+      }
     }
 
-    fitWidthRef.current = true
-    setFitWidth(true)
-  }, [fitScale, fitWidth])
+    window.addEventListener('keydown', handleKeyDownBlock)
+    return () => window.removeEventListener('keydown', handleKeyDownBlock)
+  }, [adjustManualScaleBlock, applyZoomModeBlock, numPages, scrollToPage])
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col bg-card', className)}>
@@ -495,13 +642,32 @@ export default function PdfDocumentBlock({
 
         <Button
           type="button"
-          variant={fitWidth ? 'default' : 'outline'}
+          variant={zoomMode === 'fit-width' ? 'default' : 'outline'}
           size="sm"
-          onClick={toggleFitWidthBlock}
+          onClick={() => applyZoomModeBlock('fit-width')}
           title="Fit page to container width"
         >
           <ScanLine className="mr-1 h-3.5 w-3.5" />
           Fit Width
+        </Button>
+        <Button
+          type="button"
+          variant={zoomMode === 'fit-page' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => applyZoomModeBlock('fit-page')}
+          title="Fit whole page (⌘9)"
+        >
+          <Maximize2 className="mr-1 h-3.5 w-3.5" />
+          Fit Page
+        </Button>
+        <Button
+          type="button"
+          variant={zoomMode === 'actual' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => applyZoomModeBlock('actual')}
+          title="Actual size (⌘0)"
+        >
+          100%
         </Button>
         <Button
           type="button"
@@ -553,19 +719,11 @@ export default function PdfDocumentBlock({
               file={documentFile}
               options={PDFJS_DOCUMENT_OPTIONS_BLOCK}
               onLoadSuccess={(doc) => {
-                const measurementToken = documentMeasurementTokenRef.current
                 setNumPages(doc.numPages)
                 setPageNumber((prev) => clampPageBlock(prev, doc.numPages))
-                void doc.getPage(1)
-                  .then((page) => {
-                    if (documentMeasurementTokenRef.current !== measurementToken) return
-                    const viewport = page.getViewport({ scale: 1 })
-                    setNaturalPageMetrics({
-                      width: viewport.width,
-                      height: viewport.height,
-                    })
-                  })
-                  .catch(() => undefined)
+                /* Hand the proxy to the metrics hook, which measures every
+                   page's box on idle rather than blocking load here. */
+                setDocProxy(doc)
               }}
               onLoadError={(docError) => {
                 const message = docError instanceof Error ? docError.message : 'Failed to render PDF.'
@@ -593,22 +751,22 @@ export default function PdfDocumentBlock({
                   key={pageNum}
                   ref={(el) => { if (el) pageRefs.current.set(pageNum, el); else pageRefs.current.delete(pageNum) }}
                   data-page={pageNum}
-                  style={{ minHeight: `${estimatedPageHeight}px` }}
+                  style={{ minHeight: `${pageHeightForBlock(pageNum)}px` }}
                 >
                   {pageNum >= renderWindow.start && pageNum <= renderWindow.end ? (
                     <Page
                       pageNumber={pageNum}
-                      width={pageWidth}
-                      scale={fitWidth ? undefined : scale}
+                      scale={displayedScale}
                       devicePixelRatio={pageDevicePixelRatio}
-                      renderAnnotationLayer={!electronRuntime}
-                      renderTextLayer={!electronRuntime}
+                      renderAnnotationLayer
+                      renderTextLayer
                       className="overflow-hidden rounded-md border bg-background shadow-sm"
                     />
                   ) : (
                     <div
                       aria-hidden="true"
-                      className="flex h-full min-h-[160px] items-center justify-center rounded-md border border-dashed bg-background/70 text-xs text-muted-foreground shadow-sm"
+                      style={{ minHeight: `${pageHeightForBlock(pageNum)}px` }}
+                      className="flex items-center justify-center rounded-md border border-dashed bg-background/70 text-xs text-muted-foreground shadow-sm"
                     >
                       Page {pageNum}
                     </div>
