@@ -274,14 +274,18 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
         <Inbox className="h-4 w-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <h2 className="text-sm font-semibold leading-tight">Assignment queue</h2>
+          {/* Plain words on purpose. The code and the contract say "disposed"
+              because a chain's answer can be "not an undertaking", which is not
+              the same as filed — but nobody should have to learn that word to
+              read a header. */}
           <p className="mt-0.5 text-xs text-muted-foreground">
             {items.length > 0 && (
               <>
                 <span className="font-medium text-foreground">{items.length}</span> to decide ·{' '}
               </>
             )}
-            {undisposed} undisposed
-            {unproposed > 0 && <> · {unproposed} awaiting a proposal</>}
+            {undisposed} unsorted
+            {unproposed > 0 && <> · {unproposed} with nothing suggested yet</>}
           </p>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -542,11 +546,13 @@ function EmptyBlock({ unproposed }: { unproposed: number }) {
       <div className="rounded-full bg-muted p-3">
         <Inbox className="h-6 w-6 text-muted-foreground" />
       </div>
-      <p className="mt-4 text-sm font-medium">Nothing proposed right now.</p>
+      <p className="mt-4 text-sm font-medium">
+        {unproposed > 0 ? 'Nothing to decide yet.' : 'All sorted.'}
+      </p>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">
         {unproposed > 0
-          ? `${unproposed} chains are waiting on a proposing pass. Ask Kai to run one.`
-          : 'Every chain has a disposition.'}
+          ? `${unproposed} chains still need sorting, but nothing has been suggested for them yet. Ask Kai to take a pass.`
+          : 'Every chain has an answer.'}
       </p>
     </div>
   )

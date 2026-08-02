@@ -76,7 +76,11 @@ export default function AssignmentQueueDockBlock() {
             ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300'
             : 'border-border text-muted-foreground hover:bg-muted',
         )}
-        title="Open the assignment queue"
+        title={
+          pending > 0
+            ? `${pending} to decide · ${undisposed} chains unsorted`
+            : `${undisposed} chains unsorted, nothing suggested yet`
+        }
       >
         {loading && !queue ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
