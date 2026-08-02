@@ -108,6 +108,7 @@ import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocument
 import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
 import { isImageDocumentPathBlock } from '@/services/lego_blocks/units/imageDocumentPathBlock'
 import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPathBlock'
+import { dispatchPageTopInsetBlock } from '@/services/lego_blocks/units/pageTopInsetBlock'
 import { isHtmlDocumentPathBlock } from '@/services/lego_blocks/units/htmlDocumentPathBlock'
 import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
 import { useScreenWakeLockBlock } from '@/components/lego_blocks/hooks/useScreenWakeLockBlock'
@@ -320,6 +321,15 @@ function MarkdownTextDocumentRuntimeBlock({
   const [isHeaderHidden, setIsHeaderHidden] = useState(false)
   const [headerHeight, setHeaderHeight] = useState(0)
   const headerRenameInputRef = useRef<HTMLInputElement | null>(null)
+  // iPhone: this pane is card-white, so the shell's reserved status-bar inset
+  // shows as a grey band above it. Ask for a paper-colored inset while we're
+  // the active pane — and release it on unmount/deactivate, since document
+  // panes stay mounted behind `hidden` when you switch files.
+  useEffect(() => {
+    if (!isIosPhone || !active) return
+    dispatchPageTopInsetBlock({ mode: 'paper' })
+    return () => dispatchPageTopInsetBlock({ mode: 'default' })
+  }, [isIosPhone, active])
   const manualSaveFeedbackTimeoutRef = useRef<number | null>(null)
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)
   const excalidrawApiRef = useRef<ExcalidrawCanvasApiOrch | null>(null)
@@ -1489,7 +1499,10 @@ function MarkdownTextDocumentRuntimeBlock({
 
   return (
     <div
-      className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}
+      className={cn(
+        'flex h-full min-h-0 flex-col bg-card p-2',
+        className,
+      )}
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
       <div className="relative min-h-0 flex-1">
@@ -1530,10 +1543,12 @@ function MarkdownTextDocumentRuntimeBlock({
               hideTopBarInView && 'hidden',
             )}
           >
-            <div className={cn(
-              'ts-md-header ts-doc-header flex items-start justify-between gap-3 border-b border-border/50',
-              isIosPhone ? 'flex-col items-stretch px-4 py-3.5' : 'px-6 py-5',
-            )}>
+            <div
+              className={cn(
+                'ts-md-header ts-doc-header flex items-start justify-between gap-3 border-b border-border/50',
+                isIosPhone ? 'flex-col items-stretch px-4 py-3.5' : 'px-6 py-5',
+              )}
+            >
               <div className={cn('min-w-0 flex-1', isIosPhone && 'w-full')}>
                 <div className="flex w-full min-w-0 items-center gap-2">
                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1940,7 +1955,13 @@ function MarkdownTextDocumentRuntimeBlock({
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && !isCodeDoc && viewSurface === 'doc' && (
             <div>
               <div
-                className="sticky z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2"
+                className={cn(
+                  'sticky z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2',
+                  // iPhone: the document is one sheet of paper from the top
+                  // edge down, so this strip is card-white too — shell grey
+                  // between the header and the body reads as a seam.
+                  isIosPhone && 'bg-card',
+                )}
                 style={{ top: isHeaderHidden ? 0 : headerHeight }}
               >
                 <MarkdownTableOfContentsBlock

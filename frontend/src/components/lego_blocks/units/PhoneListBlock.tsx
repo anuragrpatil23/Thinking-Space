@@ -165,16 +165,21 @@ export function PhoneLargeTitleBlock({ title, trailing }: {
 
   return (
     <>
-      {/* `isolate` + explicit z-order, not DOM order: `backdrop-filter` promotes
-          the frosted layer to its own compositing layer, and WebKit then paints
-          it OVER later siblings that only have `z-index: auto`. The compact
-          title appeared for a frame or two and was then covered by its own
-          backdrop (2026-08-02). */}
+      {/* `isolate` + explicit z-order, not DOM order: the frosted variant of
+          this bar used `backdrop-filter`, which promotes the layer to its own
+          compositing context, and WebKit then painted it OVER later siblings
+          that only had `z-index: auto` — the compact title appeared for a frame
+          or two and was then covered by its own backdrop (2026-08-02). The blur
+          is gone now (see below) but the explicit order stays: it is what the
+          layout was debugged against. */}
       <div ref={barRef} className="sticky top-0 z-20 isolate">
+        {/* Opaque, not frosted (2026-08-02). Translucent + blurred read as
+            muddy against the list scrolling under it; a flat bar is cleaner and
+            matches the rest of the phone chrome. */}
         <div
           aria-hidden
           className={cn(
-            'absolute inset-0 z-0 border-b border-border/60 bg-background/80 backdrop-blur-xl',
+            'absolute inset-0 z-0 border-b border-border/60 bg-background',
             'transition-opacity duration-150 ease-out',
             collapsed ? 'opacity-100' : 'opacity-0',
           )}

@@ -178,6 +178,12 @@ import {
   type TopChromeAppearanceStateBlock,
 } from '@/services/lego_blocks/units/topChromeAppearanceBlock'
 import {
+  getPageTopInsetBlock,
+  PAGE_TOP_INSET_EVENT_BLOCK,
+  type PageTopInsetModeBlock,
+  type PageTopInsetStateBlock,
+} from '@/services/lego_blocks/units/pageTopInsetBlock'
+import {
   isNativeChromeImmersedBlock,
   subscribeNativeChromeImmersionBlock,
 } from '@/services/lego_blocks/units/nativeChromeImmersionBlock'
@@ -672,6 +678,21 @@ function App() {
     return () => window.removeEventListener(TOP_CHROME_APPEARANCE_EVENT_BLOCK, handler)
   }, [])
   const nativeTopBarDark = pageReportedDarkSurface || resolvedColorMode === 'dark'
+  // Pages that are card-white under the status bar (the document viewer on
+  // iPhone) ask for a paper-colored top inset here; same mount-order re-sync as
+  // the appearance signal above, since the publisher's effect runs before this
+  // listener binds.
+  const [pageTopInsetMode, setPageTopInsetMode] = useState<PageTopInsetModeBlock>(() => getPageTopInsetBlock().mode)
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<PageTopInsetStateBlock>).detail
+      setPageTopInsetMode(detail?.mode === 'paper' ? 'paper' : 'default')
+    }
+    window.addEventListener(PAGE_TOP_INSET_EVENT_BLOCK, handler)
+    setPageTopInsetMode(getPageTopInsetBlock().mode)
+    return () => window.removeEventListener(PAGE_TOP_INSET_EVENT_BLOCK, handler)
+  }, [])
+  const pageWantsPaperTopInset = pageTopInsetMode === 'paper'
   const debugToastTimerRef = useRef<number | null>(null)
   const commandInputRef = useRef<HTMLInputElement | null>(null)
   const gitCommitMessageInputRef = useRef<HTMLInputElement | null>(null)
@@ -2160,9 +2181,10 @@ function App() {
     activeNavItemId: nativeTopDrawerActiveNavItemId,
     topBarCollapsed: nativeTopBarCollapsed,
     topBarDark: nativeTopBarDark,
-    // New Note paints its own opaque strip under the status bar, so the native
-    // scrim has nothing to refract there and shows as a grey feathered band.
-    topScrimHidden: isNewThoughtRoute,
+    // New Note paints its own opaque strip under the status bar and the
+    // document viewer asks for a paper one, so the native scrim has nothing to
+    // refract over either and shows as a grey feathered band.
+    topScrimHidden: isNewThoughtRoute || pageWantsPaperTopInset,
     bottomBarCollapsed: nativeBottomBarCollapsed,
     showSearch: true,
     showTools: true,
@@ -2574,7 +2596,7 @@ function App() {
       // mounts stay in the DOM behind `visibility: hidden`, and `:has()` cannot
       // see that, so once New Note had been opened every other tab lost its top
       // inset for the rest of the session (2026-08-02).
-      data-ltm-page-top-inset={isNewThoughtRoute ? 'flush' : undefined}
+      data-ltm-page-top-inset={isNewThoughtRoute ? 'flush' : (pageWantsPaperTopInset ? 'paper' : undefined)}
     >
       {explorerFolderColorCss && <style>{explorerFolderColorCss}</style>}
       <div className="ltm-shell-layer-base">

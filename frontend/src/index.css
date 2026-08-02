@@ -1269,6 +1269,16 @@
       padding-top: 0;
     }
 
+    /* Card-white pages (the document viewer) keep the inset — their sticky
+       header and Contents bar need something to park against, and dropping it
+       left the Contents bar stuck under the clock once the header auto-hid
+       (2026-08-02) — but paint it paper so it isn't a grey seam above the
+       document. Reported by the page through `pageTopInsetBlock`, for the same
+       persistent-mount reason the flush rule is route-driven. */
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'][data-ltm-page-top-inset='paper'] .ltm-app-main {
+      background: hsl(var(--card));
+    }
+
     /* Same argument at the bottom edge. When the keyboard opens App.tsx pads
        the stage by the keyboard inset, which shrinks the card-white page and
        leaves a band of shell grey between the page and the keyboard
@@ -1281,14 +1291,23 @@
     }
   }
 
-  /* iPad under native chrome: the web top bar is gone and the native
-     SwiftUI chrome is a 54pt single-row TOP bar below the status bar
-     (toolbar buttons + centered Files-style tab pill,
-     nativeChromePadBarHeight in TopChromeView.swift) — the stage clears
-     both. Scoped by the native-chrome attr, not mode, so it covers both
-     portrait (tablet) and landscape (desktop). */
+  /* iPad under native chrome: the web top bar is gone and the native SwiftUI
+     chrome is a 64pt single-row TOP bar below the status bar (toolbar buttons
+     + centered Files-style tab pill, nativeChromePadBarHeight in
+     TopChromeView.swift), painted as bare `.ultraThinMaterial`.
+
+     The stage reserves NOTHING at the top: the page panel runs to the screen
+     edge and slides under the bar, Files-app style. Two things were tried and
+     reverted here (2026-08-02): stage padding, which exposed a band of shell
+     grey between the page and the bar, and an opaque card-colored strip
+     painted behind the bar, which read as a fixed grey slab content
+     disappeared behind.
+
+     Clearance for CONTENT lives on `.ltm-app-main` below. Scoped by the
+     native-chrome attr, not mode, so it covers both portrait (tablet) and
+     landscape (desktop). */
   .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-native-chrome='true']:not([data-ltm-mode='phone']) .ltm-shell-stage {
-    padding-top: calc(var(--ltm-safe-top) + 54px + 0.35rem);
+    padding-top: 0;
   }
 
   /* iPad portrait (tablet mode) has no nav rail beside the content — the
@@ -1314,11 +1333,20 @@
     box-shadow: none;
   }
 
-  /* At-rest clearance for the frosted top-bar zone (status bar + 54pt native
+  /* At-rest clearance for the frosted top-bar zone (status bar + 64pt native
      bar + breathing room); scrolled content passes beneath it through the
-     glass. Edge-bleed pages (Home backdrop) opt out, same as iPhone. */
-  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-native-chrome='true'][data-ltm-mode='tablet'] .ltm-app-main:not(:has(.ltm-page-edge-bleed)) {
-    padding-top: calc(var(--ltm-safe-top) + 54px + 0.5rem);
+     glass. This is the ONLY top reservation on iPad now that the stage is
+     zeroed above, so it is scoped `:not(phone)` — landscape (desktop mode)
+     needs it just as much as portrait.
+
+     Edge-bleed pages (Home backdrop) opt out, same as iPhone. Padding them
+     here was tried and reverted (2026-08-02): it inset the page inside the
+     backdrop's clip box and left a band of shell grey under the now-clear
+     glass bar, and the clearance it bought was never the ask — the breathing
+     room people read as missing is the bar's own, below the buttons
+     (nativeChromePadBarHeight). */
+  .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-native-chrome='true']:not([data-ltm-mode='phone']) .ltm-app-main:not(:has(.ltm-page-edge-bleed)) {
+    padding-top: calc(var(--ltm-safe-top) + 64px + 0.5rem);
   }
 
   /* iPad tablet mode: same viewport-pinned backdrop as the iPhone rule

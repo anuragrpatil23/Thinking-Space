@@ -4,9 +4,12 @@ import UIKit
 /// Total height of the iPad top chrome below the status bar (a single
 /// toolbar row: buttons + centered Files-style tab pill). Shared with
 /// RootShellViewController (container constraint) and PhoneShellView (veil
-/// depth) — keep the three in sync with the web's clearance rule in
-/// index.css (54px).
-let nativeChromePadBarHeight: CGFloat = 54
+/// depth) — keep the three in sync with the web's `.ltm-app-main` clearance
+/// rule in index.css (64px).
+///
+/// 64 = the 44pt buttons plus 10pt of air above and below. At 54 the buttons
+/// nearly filled the bar and it read as unrefined (2026-08-02).
+let nativeChromePadBarHeight: CGFloat = 64
 
 private enum NativeChromeMetrics {
     static let outerHorizontalPadding: CGFloat = 16
@@ -125,32 +128,64 @@ struct TopChromeView: View {
     @ObservedObject var state: TopChromeState
     @Environment(\.colorScheme) private var colorScheme
 
-    /// iPad (Files-app model, decided 2026-07-19): the veil is tall enough
-    /// to hold the whole top-bar button zone, so the mask stays solid much
-    /// deeper before feathering — content scrolls under the buttons through
-    /// frosted glass, not past a thin status strip.
+    /// iPad: this view covers the whole top-bar button zone, not just the
+    /// status strip — which since 2026-08-02 means it renders as Safari's flat
+    /// opaque toolbar (`padBar`) instead of a veil. The Files-app frosted
+    /// version it replaced read as a misty smear behind the buttons.
     var coversPadBarZone: Bool = false
 
-    /// Instagram model: the veil is GLASS, not frost — content color bleeds
-    /// through and the mask fades early. Same soft short mask at rest and
-    /// while scrolling.
+    /// Instagram model (iPhone): the veil is GLASS, not frost — content color
+    /// bleeds through and the mask fades early. Same soft short mask at rest
+    /// and while scrolling.
     private var maskStops: [Gradient.Stop] {
-        coversPadBarZone
-            ? [
-                .init(color: .black, location: 0.0),
-                .init(color: .black, location: 0.72),
-                .init(color: .black.opacity(0.5), location: 0.86),
-                .init(color: .clear, location: 1.0),
-            ]
-            : [
-                .init(color: .black, location: 0.0),
-                .init(color: .black, location: 0.3),
-                .init(color: .black.opacity(0.5), location: 0.6),
-                .init(color: .clear, location: 1.0),
-            ]
+        [
+            .init(color: .black, location: 0.0),
+            .init(color: .black, location: 0.3),
+            .init(color: .black.opacity(0.5), location: 0.6),
+            .init(color: .clear, location: 1.0),
+        ]
     }
 
     var body: some View {
+        if coversPadBarZone {
+            padBar
+        } else {
+            phoneVeil
+        }
+    }
+
+    /// iPad = Safari's toolbar (decided 2026-08-02): still a blur, but a FLAT
+    /// one — one uniform material across the whole bar, ending in a hard edge.
+    /// The Files-app version it replaced was progressive (solid under the
+    /// clock, feathering into the content), which read as a misty smear behind
+    /// the buttons rather than a bar.
+    ///
+    /// Bare material, NO tint of any kind. Four tints have now been tried and
+    /// all four read worse than this: `regularMaterial` + a scheme tint (an
+    /// opaque slab), an opaque card-colored web strip behind the bar (a fixed
+    /// grey slab content vanished behind), and the web-reported page surface
+    /// color underneath it — which was meant to stop the bar reading grey and
+    /// instead regressed it (2026-08-02).
+    ///
+    /// The bar does read slightly grey and that is understood, not an
+    /// oversight: `UIVisualEffectView` cannot sample a WKWebView (web content
+    /// renders out-of-process, so the material has no backdrop to read and
+    /// falls back to its flat base color). Bare material is the best-looking
+    /// point available on the native side. The only way to get a bar that
+    /// genuinely blurs the page is to paint it in the web layer with
+    /// `backdrop-filter` — deliberately NOT taken (2026-08-02), since it splits
+    /// the bar across two layers and adds a fourth place the bar height has to
+    /// be kept in sync.
+    ///
+    /// The iPhone keeps the progressive veil below: there the bar is only the
+    /// status strip, and a flat band would read as a reserved header the phone
+    /// layout doesn't have.
+    private var padBar: some View {
+        Rectangle()
+            .fill(.ultraThinMaterial)
+    }
+
+    private var phoneVeil: some View {
         ZStack {
             Rectangle()
                 .fill(.ultraThinMaterial)

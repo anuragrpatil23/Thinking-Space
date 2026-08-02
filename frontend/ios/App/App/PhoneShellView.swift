@@ -33,19 +33,19 @@ struct PhoneShellView: View {
 
                 // Top chrome overlay
                 VStack {
-                    // iPad: the veil deepens to hold the whole native
-                    // top-bar zone (58pt bar + feather room), Files-app
-                    // style — the buttons float in blurred space and
-                    // scrolled content passes beneath them. iPhone keeps
-                    // the short status-bar-only scrim.
+                    // iPad: an opaque Safari-style toolbar covering the whole
+                    // native top-bar zone, ending in a hairline. iPhone keeps
+                    // the short progressive status-bar veil.
                     let isPad = UIDevice.current.userInterfaceIdiom == .pad
                     TopChromeView(state: chromeState, coversPadBarZone: isPad)
-                        // Extra height past the safe area gives the
-                        // progressive blur room to feather out instead of
-                        // cutting off hard at the status-bar line — and
-                        // when scrolled content frosts the band, the clock
-                        // keeps a comfortable legibility margin under it.
-                        .frame(height: isPad ? safeTop + nativeChromePadBarHeight + 26 : safeTop + 24, alignment: .top)
+                        // iPad ends exactly at the bar's edge — no feather
+                        // room, since there is nothing to feather (2026-08-02);
+                        // the extra height would just push the hairline down
+                        // past the clearance the web reserves (index.css, 54px).
+                        // iPhone's extra height gives the progressive blur room
+                        // to fade out instead of cutting off hard at the
+                        // status-bar line.
+                        .frame(height: isPad ? safeTop + nativeChromePadBarHeight : safeTop + 24, alignment: .top)
                         .opacity(chromeState.isVisible && !chromeState.isTopScrimHidden ? 1 : 0)
                         .offset(y: chromeState.isVisible ? 0 : -18)
                         // NEVER hit-tests, visible or not. TopChromeView is a
