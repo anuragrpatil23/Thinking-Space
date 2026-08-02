@@ -107,14 +107,33 @@ interface CleanupModuleBlock {
   deleteClaudeSessionFilesBlock: (sessionId: string) => string[];
 }
 
+/**
+ * Import an ESM module by URL from this CommonJS bundle.
+ *
+ * A plain `await import(url)` here is a trap: electron/tsconfig.json compiles
+ * this file with `"module": "CommonJS"`, and TypeScript downlevels dynamic
+ * import into `Promise.resolve(url).then(s => require(s))`. `require` cannot
+ * load a `file://` URL, and cannot load `.mjs` at all — so the import threw on
+ * every call, the catch below swallowed it, and cleanup was a silent no-op for
+ * the entire Electron path. The scheduler's runner.mjs is real ESM and imports
+ * the same module fine, which is why its cleanup worked and this one didn't;
+ * the visible symptom was ~78 summarizer transcripts surfacing in the AI
+ * activity panel as sessions the user never ran.
+ *
+ * `new Function` keeps the `import` out of TypeScript's reach so it survives to
+ * runtime as a genuine ESM import, which Electron's Node supports from CJS.
+ */
+const importEsmModuleBlock = new Function('url', 'return import(url);') as
+  (url: string) => Promise<Record<string, unknown>>;
+
 let cachedCleanupModule: Promise<CleanupModuleBlock | null> | null = null;
 async function loadCleanupModuleBlock(): Promise<CleanupModuleBlock | null> {
   if (!cachedCleanupModule) {
     cachedCleanupModule = (async () => {
       try {
-        const mod = await import(resolveCleanupModuleUrlBlock());
+        const mod = await importEsmModuleBlock(resolveCleanupModuleUrlBlock());
         if (typeof mod.deleteClaudeSessionFilesBlock !== 'function') return null;
-        return mod as CleanupModuleBlock;
+        return mod as unknown as CleanupModuleBlock;
       } catch {
         // Provisioning hasn't run yet (first launch) or the file was
         // deleted. Cleanup silently degrades — the tradeoff is one stray
