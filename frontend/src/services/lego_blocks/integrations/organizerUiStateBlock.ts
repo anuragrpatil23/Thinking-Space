@@ -1,4 +1,4 @@
-import type { VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { THINKING_ORGANIZER_DIR } from '@/services/lego_blocks/integrations/projectStorageBlock'
 import { normalizeHexColorBlock, normalizeTagListBlock, tagLookupKeyBlock } from '@/services/lego_blocks/units/tagBlock'
 
@@ -145,9 +145,12 @@ export function organizerUiStatePathBlock(projectRoot: string): string {
   return `${normalizedRoot}/${THINKING_ORGANIZER_DIR}/${ORGANIZER_UI_STATE_FILE_BLOCK}`
 }
 
+// `fs` is injectable for tests and defaults to the live vault, which is what
+// every caller in the app wants. It used to be required, and the wrapper that
+// existed only to supply it was a file of its own.
 export async function readOrganizerUiStateBlock(
-  fs: VaultFS,
   projectRoot: string,
+  fs: VaultFS = getVaultFS(),
 ): Promise<OrganizerUiStateBlock | null> {
   try {
     const raw = await fs.read(organizerUiStatePathBlock(projectRoot))
@@ -158,9 +161,9 @@ export async function readOrganizerUiStateBlock(
 }
 
 export async function writeOrganizerUiStateBlock(
-  fs: VaultFS,
   projectRoot: string,
   input: OrganizerUiStateBlock,
+  fs: VaultFS = getVaultFS(),
 ): Promise<OrganizerUiStateBlock> {
   const normalized = normalizeOrganizerUiStateBlock(input)
   const normalizedRoot = normalizePath(projectRoot)

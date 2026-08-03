@@ -9,7 +9,6 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
 import {
   STORAGE_KEYS,
-  getJsonStorageItem,
   setJsonStorageItem,
   setStorageItem,
 } from '@/services/orchestrators/storageOrch'
@@ -18,15 +17,16 @@ import {
   ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
 } from '@/services/lego_blocks/units/organizerSidebarChromeBlock'
 import {
-  readOrganizerUiStateOrch,
-  writeOrganizerUiStateOrch,
-  type OrganizerUiStateOrch,
-} from '@/services/orchestrators/organizerUiStateOrch'
+  readOrganizerUiStateBlock,
+  writeOrganizerUiStateBlock,
+  type OrganizerUiStateBlock,
+} from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 import BacklogOrch, {
   ORGANIZER_OPEN_CREATE_PROJECT_EVENT,
   ORGANIZER_PROJECTS_UPDATED_EVENT,
   type OrganizerProjectsUpdatedDetail,
 } from '@/components/orchestrators/BacklogOrch'
+import { useOrganizerProjectsBlock } from '@/components/lego_blocks/hooks/shared/useOrganizerProjectsBlock'
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import {
@@ -64,12 +64,6 @@ function parseOrgView(value: string | null): OrgView {
   return value === 'index' || value === 'lineage' || value === 'list' || value === 'canvas'
     ? value
     : 'index'
-}
-
-interface ProjectEntry {
-  name: string
-  root: string
-  aiProjectId?: string
 }
 
 interface ThinkingOrganizerOrchProps {
@@ -132,10 +126,8 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   }, [])
 
   // Project context
-  const [projectUiState, setProjectUiState] = useState<OrganizerUiStateOrch | null>(null)
-  const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>(
-    () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
-  )
+  const [projectUiState, setProjectUiState] = useState<OrganizerUiStateBlock | null>(null)
+  const [projectEntries, setProjectEntries] = useOrganizerProjectsBlock()
   const projectRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
   // The ai-activity project id the index/lineage views key on. The project
   // entry carries it once discovery has resolved it, because the folder name
@@ -171,6 +163,7 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     window.addEventListener(ORGANIZER_PROJECTS_UPDATED_EVENT, handler)
     return () => window.removeEventListener(ORGANIZER_PROJECTS_UPDATED_EVENT, handler)
   }, [])
+
   const [editingMission, setEditingMission] = useState(false)
   const [missionDraft, setMissionDraft] = useState('')
   const [savingMission, setSavingMission] = useState(false)
@@ -197,7 +190,7 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     setOpenUndertaking(null)
     if (!projectRoot) { setProjectUiState(null); return }
     let cancelled = false
-    void readOrganizerUiStateOrch(projectRoot).then(state => {
+    void readOrganizerUiStateBlock(projectRoot).then(state => {
       if (!cancelled) setProjectUiState(state)
     })
     return () => { cancelled = true }
@@ -217,15 +210,15 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     if (!projectRoot) return
     setSavingMission(true)
     try {
-      const current = await readOrganizerUiStateOrch(projectRoot)
-      const base: OrganizerUiStateOrch = current ?? {
+      const current = await readOrganizerUiStateBlock(projectRoot)
+      const base: OrganizerUiStateBlock = current ?? {
         schemaVersion: 2,
         updatedAt: new Date().toISOString(),
         presetTags: [],
         tagColors: {},
         programGroups: [],
       }
-      const updated = await writeOrganizerUiStateOrch(projectRoot, {
+      const updated = await writeOrganizerUiStateBlock(projectRoot, {
         ...base,
         missionStatement: missionDraft.trim() || undefined,
       })

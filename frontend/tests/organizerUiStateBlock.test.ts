@@ -53,7 +53,7 @@ describe('organizerUiStateBlock', () => {
     const { fs, state } = makeMockVaultFs()
     const projectRoot = 'projects/demo'
 
-    const written = await writeOrganizerUiStateBlock(fs, projectRoot, {
+    const written = await writeOrganizerUiStateBlock(projectRoot, {
       schemaVersion: 999,
       updatedAt: '1999-01-01T00:00:00.000Z',
       projectName: '  Demo Project  ',
@@ -67,7 +67,7 @@ describe('organizerUiStateBlock', () => {
         { id: 'grp-1', name: '  Group 1  ', programIds: ['p-1', 'p-1', 'p-2'] },
         { id: 'grp-1', name: 'Duplicate', programIds: ['p-3'] },
       ],
-    })
+    }, fs)
 
     expect(state.mkdirs).toContain('projects/demo/thinking-organizer')
     // Writes always stamp the current schema version, ignoring the caller's value.
@@ -82,17 +82,17 @@ describe('organizerUiStateBlock', () => {
       { id: 'grp-1', name: 'Group 1', programIds: ['p-1', 'p-2'], collapsed: false },
     ])
 
-    const readBack = await readOrganizerUiStateBlock(fs, projectRoot)
+    const readBack = await readOrganizerUiStateBlock(projectRoot, fs)
     expect(readBack).toEqual(written)
   })
 
   it('returns null when state file is missing or invalid', async () => {
     const empty = makeMockVaultFs().fs
-    await expect(readOrganizerUiStateBlock(empty, 'projects/demo')).resolves.toBeNull()
+    await expect(readOrganizerUiStateBlock('projects/demo', empty)).resolves.toBeNull()
 
     const invalid = makeMockVaultFs({
       'projects/demo/thinking-organizer/organizer-ui-state.json': '{bad json}',
     }).fs
-    await expect(readOrganizerUiStateBlock(invalid, 'projects/demo')).resolves.toBeNull()
+    await expect(readOrganizerUiStateBlock('projects/demo', invalid)).resolves.toBeNull()
   })
 })

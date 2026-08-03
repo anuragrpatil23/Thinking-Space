@@ -1,7 +1,7 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { getVaultFileIndexPaths } from '@/services/lego_blocks/integrations/dbBlock'
 import { THINKING_ORGANIZER_DIR } from '@/services/lego_blocks/integrations/projectStorageBlock'
-import { readOrganizerUiStateOrch } from '@/services/orchestrators/organizerUiStateOrch'
+import { readOrganizerUiStateBlock } from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 
 /**
  * Finding the organizer's projects by looking, instead of remembering.
@@ -18,7 +18,9 @@ import { readOrganizerUiStateOrch } from '@/services/orchestrators/organizerUiSt
  * 1. **A named ui-state** — `<root>/thinking-organizer/organizer-ui-state.json`
  *    with a `projectName`. The name is the marker on purpose: that file also
  *    appears under folders that merely *had* organizer state once, and listing
- *    those as projects would be worse than listing none.
+ *    those as projects would be worse than listing none. Candidate roots come
+ *    from the path index and the ui-state is then read per candidate, because
+ *    the index only tracks markdown — looking the JSON up in it finds nothing.
  * 2. **A registry directory** — `ai-activity/thinking-organizer/<id>/`. Chains
  *    get attributed to a project long before anyone builds a node tree for it,
  *    so the registry is often the first evidence a project exists at all.
@@ -31,9 +33,9 @@ import { readOrganizerUiStateOrch } from '@/services/orchestrators/organizerUiSt
 
 export const AI_ACTIVITY_REGISTRY_ROOT_BLOCK = 'ai-activity/thinking-organizer'
 
-const UI_STATE_SUFFIX = `/${THINKING_ORGANIZER_DIR}/organizer-ui-state.json`
+const ORGANIZER_DIR_SEGMENT = `/${THINKING_ORGANIZER_DIR}/`
 
-export interface DiscoveredProjectOrch {
+export interface DiscoveredProjectBlock {
   /** Vault-relative project root. For a registry-only project this is the
    *  registry directory itself — a real path, unique, and one whose basename is
    *  already the project id. */
@@ -56,8 +58,8 @@ function humanize(value: string): string {
   return spaced.replace(/\b\w/g, char => char.toUpperCase())
 }
 
-export async function discoverOrganizerProjectsOrch(): Promise<DiscoveredProjectOrch[]> {
-  const byAiProjectId = new Map<string, DiscoveredProjectOrch>()
+export async function discoverOrganizerProjectsBlock(): Promise<DiscoveredProjectBlock[]> {
+  const byAiProjectId = new Map<string, DiscoveredProjectBlock>()
 
   // Key-only read of the file index rather than a directory walk: discovery
   // runs on mount, and a vault-wide walk on every organizer open is exactly the
@@ -69,14 +71,26 @@ export async function discoverOrganizerProjectsOrch(): Promise<DiscoveredProject
     paths = []
   }
 
+  // The index holds markdown only — asking it for the ui-state JSON directly
+  // returns nothing, always. So the index supplies *candidate roots* (any folder
+  // with organizer markdown under it) and the ui-state is read per candidate.
+  // There are a handful of candidates in a vault, so this is a few reads, not a
+  // walk.
+  const candidateRoots = new Set<string>()
   for (const path of paths) {
-    if (!path.endsWith(UI_STATE_SUFFIX)) continue
-    const root = path.slice(0, -UI_STATE_SUFFIX.length)
-    if (!root) continue
+    const at = path.indexOf(ORGANIZER_DIR_SEGMENT)
+    if (at <= 0) continue
+    const root = path.slice(0, at)
+    // ai-activity/thinking-organizer is the chain registry, not a project root;
+    // it gets its own pass below.
+    if (!root || root === 'ai-activity') continue
+    candidateRoots.add(root)
+  }
 
-    let state: Awaited<ReturnType<typeof readOrganizerUiStateOrch>> = null
+  for (const root of candidateRoots) {
+    let state: Awaited<ReturnType<typeof readOrganizerUiStateBlock>> = null
     try {
-      state = await readOrganizerUiStateOrch(root)
+      state = await readOrganizerUiStateBlock(root)
     } catch {
       continue
     }
@@ -106,3 +120,4 @@ export async function discoverOrganizerProjectsOrch(): Promise<DiscoveredProject
 
   return [...byAiProjectId.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
+

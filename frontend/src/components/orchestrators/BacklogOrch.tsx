@@ -48,24 +48,21 @@ import {
 } from '@/services/lego_blocks/units/tagBlock'
 import { getUserCommentAuthorBlock } from '@/services/lego_blocks/units/userProfileBlock'
 import {
-  readOrganizerUiStateOrch,
-  writeOrganizerUiStateOrch,
-  type OrganizerProgramGroupEntryOrch,
-  type OrganizerUiStateOrch,
-} from '@/services/orchestrators/organizerUiStateOrch'
+  readOrganizerUiStateBlock,
+  writeOrganizerUiStateBlock,
+  type OrganizerProgramGroupEntryBlock,
+  type OrganizerUiStateBlock,
+} from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
-import { discoverOrganizerProjectsOrch } from '@/services/orchestrators/organizerProjectDiscoveryOrch'
+import {
+  useOrganizerProjectsBlock,
+  type OrganizerProjectEntryBlock,
+} from '@/components/lego_blocks/hooks/shared/useOrganizerProjectsBlock'
 
-interface ProjectEntry {
-  name: string
-  root: string
-  /** Set once discovery has resolved it. Absent on entries cached by an older
-   *  build, which fall back to the root basename exactly as before. */
-  aiProjectId?: string
-}
+type ProjectEntry = OrganizerProjectEntryBlock
 type ProjectPresetTagsByRoot = Record<string, string[]>
 type ProjectTagColorsByRoot = Record<string, Record<string, string>>
-interface ProgramGroupEntry extends OrganizerProgramGroupEntryOrch {
+interface ProgramGroupEntry extends OrganizerProgramGroupEntryBlock {
   id: string
   name: string
   programIds: string[]
@@ -201,7 +198,7 @@ function normalizeTagColorMap(colors: Record<string, string>): Record<string, st
   return normalized
 }
 
-function projectUiStateSignature(state: OrganizerUiStateOrch): string {
+function projectUiStateSignature(state: OrganizerUiStateBlock): string {
   return JSON.stringify({
     projectName: state.projectName ?? null,
     presetTags: normalizeTagListBlock(state.presetTags ?? []),
@@ -210,7 +207,7 @@ function projectUiStateSignature(state: OrganizerUiStateOrch): string {
   })
 }
 
-function hasProjectUiStateData(state: OrganizerUiStateOrch): boolean {
+function hasProjectUiStateData(state: OrganizerUiStateBlock): boolean {
   return Boolean(
     (state.projectName && state.projectName.trim())
     || state.presetTags.length > 0
@@ -403,9 +400,7 @@ export default function BacklogOrch({
   const [focusRootCreateRequestNonce, setFocusRootCreateRequestNonce] = useState(0)
   const [completedEpicTimeline, setCompletedEpicTimeline] = useState<NodeRecord[]>([])
 
-  const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>(
-    () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
-  )
+  const [projectEntries, setProjectEntries] = useOrganizerProjectsBlock()
   const [projectPresetTagsByRoot, setProjectPresetTagsByRoot] = useState<ProjectPresetTagsByRoot>(
     () => getJsonStorageItem<ProjectPresetTagsByRoot>(STORAGE_KEYS.thinkingOrganizerProjectPresetTags, {}),
   )
@@ -440,7 +435,7 @@ export default function BacklogOrch({
   })
   const [creatingProject, setCreatingProject] = useState(false)
 
-  const buildProjectUiState = useCallback((projectRoot: string): OrganizerUiStateOrch => {
+  const buildProjectUiState = useCallback((projectRoot: string): OrganizerUiStateBlock => {
     const normalizedRoot = normalizePath(projectRoot)
     const projectEntry = projectEntries.find(entry => normalizePath(entry.root) === normalizedRoot)
     const projectPrograms = programs.filter(
@@ -462,21 +457,21 @@ export default function BacklogOrch({
 
   const persistProjectUiState = useCallback(async (
     projectRoot: string,
-    snapshot: OrganizerUiStateOrch,
-  ): Promise<OrganizerUiStateOrch> => {
+    snapshot: OrganizerUiStateBlock,
+  ): Promise<OrganizerUiStateBlock> => {
     const normalizedRoot = normalizePath(projectRoot)
-    const current = normalizedRoot ? await readOrganizerUiStateOrch(normalizedRoot) : null
-    return writeOrganizerUiStateOrch(normalizedRoot, {
+    const current = normalizedRoot ? await readOrganizerUiStateBlock(normalizedRoot) : null
+    return writeOrganizerUiStateBlock(normalizedRoot, {
       ...(current ?? {}),
       ...snapshot,
       missionStatement: snapshot.missionStatement ?? current?.missionStatement,
     })
   }, [])
 
-  const applyProjectUiStateToCache = useCallback((projectRoot: string, state: OrganizerUiStateOrch) => {
+  const applyProjectUiStateToCache = useCallback((projectRoot: string, state: OrganizerUiStateBlock) => {
     const normalizedRoot = normalizePath(projectRoot)
     if (!normalizedRoot) return
-    const normalizedState: OrganizerUiStateOrch = {
+    const normalizedState: OrganizerUiStateBlock = {
       ...state,
       presetTags: normalizeTagListBlock(state.presetTags ?? []),
       tagColors: normalizeTagColorMap(state.tagColors ?? {}),
@@ -537,7 +532,7 @@ export default function BacklogOrch({
     let cancelled = false
     void (async () => {
       try {
-        const fromVault = await readOrganizerUiStateOrch(normalizedRoot)
+        const fromVault = await readOrganizerUiStateBlock(normalizedRoot)
         if (cancelled) return
         if (fromVault) {
           applyProjectUiStateToCache(normalizedRoot, fromVault)
@@ -1008,58 +1003,6 @@ export default function BacklogOrch({
 
     return () => { cancelled = true }
   }, [selectedNode])
-
-  // Discovery runs once per mount and folds what the vault actually holds into
-  // the cached list. localStorage stays as the first-paint cache; it is no
-  // longer the only way a project can exist, which is what left a fully
-  // populated vault showing "no projects yet" with no way back in.
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      let discovered: Awaited<ReturnType<typeof discoverOrganizerProjectsOrch>> = []
-      try {
-        discovered = await discoverOrganizerProjectsOrch()
-      } catch {
-        return
-      }
-      if (cancelled || discovered.length === 0) return
-
-      setProjectEntries((prev) => {
-        const byRoot = new Map<string, ProjectEntry>()
-        for (const entry of prev) {
-          const root = normalizePath(entry.root)
-          if (root) byRoot.set(root, { ...entry, root })
-        }
-
-        let changed = false
-        for (const project of discovered) {
-          const root = normalizePath(project.root)
-          if (!root) continue
-          const existing = byRoot.get(root)
-          // A name the user typed outranks one discovery derived from a folder
-          // name; the id is discovery's to own either way.
-          const next: ProjectEntry = {
-            root,
-            name: existing?.name?.trim() || project.name,
-            aiProjectId: project.aiProjectId,
-          }
-          if (
-            existing
-            && existing.name === next.name
-            && existing.aiProjectId === next.aiProjectId
-          ) continue
-          byRoot.set(root, next)
-          changed = true
-        }
-        if (!changed) return prev
-
-        const merged = [...byRoot.values()].sort((a, b) => a.name.localeCompare(b.name))
-        setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjects, merged)
-        return merged
-      })
-    })()
-    return () => { cancelled = true }
-  }, [])
 
   const availableProjects = useMemo(() => {
     const byRoot = new Map<string, ProjectEntry>()
