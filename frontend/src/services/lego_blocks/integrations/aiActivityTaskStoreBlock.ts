@@ -1,10 +1,18 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { taskBodyBlock, parseTaskMarkdownBlock, type Task } from '@/services/lego_blocks/units/aiActivityTaskBlock'
 
-// Reads the old organizer's tasks. They live beside the project, under its vault
-// path — `<projectRoot>/thinking-organizer/epics/` — not in `ai-activity/`,
-// because they are Anurag's hand-written records, the other half of the loop.
-// Read-only here: the seam never edits the old store.
+// Reads the old organizer's tasks, and creates new ones. They live beside the
+// project, under its vault path — `<projectRoot>/thinking-organizer/epics/` —
+// not in `ai-activity/`, because they are Anurag's hand-written records, the
+// other half of the loop.
+//
+// This used to be read-only, on the reasoning that the seam should never edit
+// the hand-written half. Creating is not editing: the index could show 325
+// authored records and offer no way to author the 326th, so the one surface
+// built for reading this corpus was the one place you could not add to it. The
+// line still holds for *existing* records — nothing here rewrites a file
+// Anurag or the CLI already wrote, and `createTaskFileBlock` refuses a path
+// that exists rather than overwriting it.
 
 /**
  * Which directory a project's authored records live in.
@@ -59,6 +67,37 @@ export interface TaskFile {
   body: string
   /** Vault-relative path, so the drawer can name the file it is showing. */
   path: string
+  /** The file exactly as it sits on disk. The composer reads a sibling's whole
+   *  frontmatter to mint in its image, and only the raw text has the fields the
+   *  parsed `Task` deliberately drops. */
+  raw: string
+}
+
+/**
+ * Write a new record, refusing to touch one that already exists.
+ *
+ * The exists check is the whole safety story: a ticket collision with a record
+ * the CLI minted between the index load and the save would otherwise land as a
+ * silent overwrite of somebody's work. Throwing lets the caller take the next
+ * ticket and try again, which is what it does.
+ */
+export async function createTaskFileBlock(
+  projectRoot: string,
+  dirName: string,
+  key: string,
+  content: string,
+): Promise<string> {
+  const fs = getVaultFS()
+  const dir = taskDirBlock(projectRoot, dirName)
+  const path = `${dir}/${filePrefixBlock(dirName)}-${key}.md`
+  if (await fs.exists(path)) throw new Error(`A record already exists at ${path}`)
+  try {
+    await fs.mkdir(dir)
+  } catch {
+    // Already there — the only case that matters, and the one the index proves.
+  }
+  await fs.write(path, content)
+  return path
 }
 
 /**
@@ -76,7 +115,7 @@ export async function readTaskBlock(
 
   const parse = (raw: string, path: string): TaskFile | null => {
     const task = parseTaskMarkdownBlock(raw)
-    return task ? { task, body: taskBodyBlock(raw), path } : null
+    return task ? { task, body: taskBodyBlock(raw), path, raw } : null
   }
 
   const direct = `${dir}/${filePrefixBlock(dirName)}-${key}.md`

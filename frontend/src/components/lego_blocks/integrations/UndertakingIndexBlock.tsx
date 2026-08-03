@@ -3,6 +3,7 @@ import { Loader2, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import UndertakingIndexRowBlock from '@/components/lego_blocks/units/UndertakingIndexRowBlock'
 import OrganizerTaskRowBlock from '@/components/lego_blocks/units/OrganizerTaskRowBlock'
+import OrganizerTaskComposerBlock from '@/components/lego_blocks/units/OrganizerTaskComposerBlock'
 import OrganizerFilterBarBlock, {
   ORGANIZER_STRIP_PILL,
 } from '@/components/lego_blocks/units/OrganizerFilterBarBlock'
@@ -19,6 +20,7 @@ import {
   type OrganizerFilter,
 } from '@/services/lego_blocks/units/organizerIndexFilterBlock'
 import { useUndertakingIndexBlock } from '@/components/lego_blocks/hooks/units/useUndertakingIndexBlock'
+import { createTaskOrch } from '@/services/orchestrators/aiActivityUndertakingOrch'
 import type { LinkedUndertakings } from '@/components/lego_blocks/units/UndertakingIndexRowBlock'
 import type { TaskRef } from '@/services/orchestrators/aiActivityUndertakingOrch'
 
@@ -156,6 +158,19 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
     })
     return resolve
   }, [index])
+
+  // Reload after a mint rather than splicing the new row in locally: the record
+  // has to come back through the same read path as every other row, or the
+  // freshly added one would be the only row in the list the app hasn't actually
+  // read off disk — and a save that silently didn't land would still look right.
+  const createTask = useCallback(
+    async (categoryCode: string, draft: { title: string; description: string }) => {
+      if (!projectId) throw new Error('No project selected.')
+      await createTaskOrch({ projectId, categoryCode, ...draft })
+      reload()
+    },
+    [projectId, reload],
+  )
 
   const toggle = useCallback((f: OrganizerFilter) => {
     setFilters(prev =>
@@ -323,6 +338,13 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
                           onOpen={onOpenTask}
                         />
                       ))}
+                      {projectId && (
+                        <OrganizerTaskComposerBlock
+                          colorIndex={section.colorIndex}
+                          sectionTitle={section.title}
+                          onCreate={draft => createTask(section.code, draft)}
+                        />
+                      )}
                     </div>
                   </section>
                 ))}

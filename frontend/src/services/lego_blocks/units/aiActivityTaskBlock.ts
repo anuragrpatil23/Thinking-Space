@@ -143,8 +143,12 @@ function asStringArray(value: unknown): string[] {
 // MSFT is great value"). The ticket now lives on the detail page, so strip it
 // for the row — but only when real text follows, so a title that is *only* a
 // ticket doesn't collapse to nothing.
+//
+// Any type letter, not a literal `e`, for the same reason `taskTicketBlock`
+// takes any: pinned to `e` this only stripped F9's epics, so every one of
+// Thinking Space's task rows printed its own address in front of its title.
 function stripTicketPrefix(title: string): string {
-  const stripped = title.replace(/^[a-z0-9]+-[a-z]+-e-\d+\s*[-–—:]\s*/i, '').trim()
+  const stripped = title.replace(/^[a-z0-9]+-[a-z]+-[a-z]-\d+\s*[-–—:]\s*/i, '').trim()
   return stripped || title
 }
 

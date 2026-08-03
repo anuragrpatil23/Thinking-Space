@@ -29,8 +29,22 @@ import {
 import { chainActiveDurationMsBlock } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 import { listProjectChainsOrch } from '@/services/orchestrators/aiActivityChainReconcileOrch'
 import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
-import { DEFAULT_TASK_DIR_BLOCK, listTasksBlock, readTaskBlock } from '@/services/lego_blocks/integrations/aiActivityTaskStoreBlock'
-import { parseOrganizerBodySections } from '@/services/lego_blocks/integrations/organizerBodyBlock'
+import {
+  DEFAULT_TASK_DIR_BLOCK,
+  createTaskFileBlock,
+  listTasksBlock,
+  readTaskBlock,
+} from '@/services/lego_blocks/integrations/aiActivityTaskStoreBlock'
+import {
+  nextTaskTicketBlock,
+  renderTaskMarkdownBlock,
+  taskFileKeyBlock,
+  taskTemplateFromMarkdownBlock,
+} from '@/services/lego_blocks/units/taskDraftBlock'
+import {
+  parseOrganizerBodySections,
+  upsertOrganizerBodySections,
+} from '@/services/lego_blocks/integrations/organizerBodyBlock'
 import type { YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { taskCategoryLabelBlock, type Task } from '@/services/lego_blocks/units/aiActivityTaskBlock'
 import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
@@ -920,6 +934,100 @@ export async function getTaskDetailOrch(projectId: string, taskKey: string): Pro
     fedInto,
     producedBy,
   }
+}
+
+export interface CreatedTask {
+  key: string
+  ticket: string
+  /** Vault-relative path of the file just written. */
+  path: string
+}
+
+/**
+ * Mint one new authored record, in the image of the section it lands in.
+ *
+ * Nothing here decides what a record looks like. The ticket stem, the parent,
+ * the type and level, the kind — all of it is read off the records already in
+ * that section, because that is the only place a project's conventions are
+ * written down. A section with no records to copy is a refusal, not a default:
+ * inventing `TP-XX-T-1` under no parent would put a record in the store that
+ * the organizer CLI cannot place.
+ *
+ * The ticket race is real — the CLI can mint between the index load and the
+ * save — so a taken path retries with the next number rather than overwriting.
+ */
+export async function createTaskOrch(params: {
+  projectId: string
+  /** The section the composer is sitting in ('' for a project whose records
+   *  carry no kind). Its records are the template. */
+  categoryCode: string
+  title: string
+  description: string
+}): Promise<CreatedTask> {
+  const title = params.title.trim()
+  if (!title) throw new Error('A record needs a title.')
+  const source = await taskSourceForProjectBlock(params.projectId)
+  if (!source) throw new Error(`No records directory is configured for ${params.projectId}.`)
+
+  const all = await listTasksBlock(source.root, source.dir)
+  const inSection = all.filter(t => t.categoryCode === params.categoryCode)
+  // Fall back to the whole project only for the ticket scheme, never for the
+  // template: a stem is a project-wide fact, but a parent and a kind belong to
+  // the section, and borrowing them across sections files the record wrong.
+  const pool = inSection.length > 0 ? inSection : all
+  if (pool.length === 0) throw new Error('No existing record to derive an address from.')
+
+  const sibling = inSection.length > 0 ? newestTaskBlock(inSection) : null
+  const template = sibling
+    ? taskTemplateFromMarkdownBlock((await readTaskBlock(source.root, sibling.key, source.dir))?.raw ?? '')
+    : {}
+
+  const body = upsertOrganizerBodySections('', {
+    description: params.description.trim(),
+    comments: [],
+  })
+  const nowIso = new Date().toISOString()
+  const taken = new Set(all.map(t => t.ticket.toUpperCase()))
+
+  let ticket = nextTaskTicketBlock(pool.map(t => t.ticket))
+  if (!ticket) throw new Error('No existing ticket to derive the next address from.')
+  // Bounded: each attempt takes the next number, so five covers a burst of
+  // concurrent mints and still terminates instead of spinning on a broken fs.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (taken.has(ticket)) {
+      ticket = nextTaskTicketBlock([...pool.map(t => t.ticket), ticket])
+      continue
+    }
+    const key = taskFileKeyBlock(ticket, title)
+    try {
+      const path = await createTaskFileBlock(
+        source.root,
+        source.dir,
+        key,
+        renderTaskMarkdownBlock({
+          template,
+          uuid: crypto.randomUUID(),
+          key,
+          ticket,
+          title,
+          description: params.description.trim(),
+          nowIso,
+          body,
+        }),
+      )
+      return { key, ticket, path }
+    } catch {
+      ticket = nextTaskTicketBlock([...pool.map(t => t.ticket), ticket])
+    }
+  }
+  throw new Error('Could not find a free ticket — try again.')
+}
+
+/** The section's most recent record, which is the one whose shape a new record
+ *  should copy: conventions drift, and the newest is the current one. Undated
+ *  records lose to dated ones rather than sorting first as the empty string. */
+function newestTaskBlock(tasks: Task[]): Task {
+  return tasks.reduce((best, t) => ((t.openedDate || '') > (best.openedDate || '') ? t : best))
 }
 
 /** Lightweight {key,title} for every undertaking in a project — the candidate

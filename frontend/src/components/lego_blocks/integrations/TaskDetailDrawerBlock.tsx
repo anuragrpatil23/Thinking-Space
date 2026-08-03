@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Check, Copy, Loader2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Check, Copy, FileText, Loader2 } from 'lucide-react'
 import {
   DRAWER_HEADER_BUTTON,
   DrawerShellBlock,
@@ -27,6 +28,12 @@ import { getTaskDetailOrch, type TaskDetail } from '@/services/orchestrators/aiA
 // Read-only, deliberately. These tasks are the old organizer's store, Anurag's
 // hand-written half, and nothing in the seam has ever written to it; a drawer
 // that quietly started editing them would be the first thing to.
+//
+// "Open file" is the escape hatch that makes that stance liveable rather than a
+// dead end: the vault is one keystroke away, and the editor there is the one
+// CM6 engine the whole app edits markdown through. Building a second editing
+// surface in this drawer would have meant a second thing that can corrupt these
+// files, to save a click.
 
 interface Props {
   projectId: string
@@ -42,6 +49,7 @@ export default function TaskDetailDrawerBlock({ projectId, taskKey, onOpenUndert
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const navigate = useNavigate()
 
   useEffect(() => {
     let cancelled = false
@@ -99,6 +107,16 @@ export default function TaskDetailDrawerBlock({ projectId, taskKey, onOpenUndert
       onClose={onClose}
       actions={
         detail ? (
+          <>
+          <button
+            type="button"
+            onClick={() => navigate(`/thinking-space?file=${encodeURIComponent(detail.path)}`)}
+            className={DRAWER_HEADER_BUTTON}
+            title={detail.path}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Open file
+          </button>
           <button
             type="button"
             onClick={copyMarkdown}
@@ -108,6 +126,7 @@ export default function TaskDetailDrawerBlock({ projectId, taskKey, onOpenUndert
             {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? 'Copied' : 'Copy'}
           </button>
+          </>
         ) : undefined
       }
     >
