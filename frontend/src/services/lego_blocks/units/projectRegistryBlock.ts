@@ -283,6 +283,32 @@ export function readCachedProjectTaskSourcesBlock(): Record<string, { dir: strin
   return _taskSourceCache
 }
 
+/**
+ * Registry entries with their roots made vault-relative, dropping roots that
+ * can't hold vault content (a code-repo checkout, absolute and outside).
+ *
+ * Shared because three call sites need the same key→root map and each one that
+ * rebuilt it locally got it subtly different — the organizer index matched
+ * folder basenames, discovery read a per-project JSON. The key is the id, and
+ * this is the one place that says so.
+ */
+export function relativizeRegistryEntriesBlock(
+  entries: ProjectRegistryEntry[],
+  vaultRoot: string,
+): Array<{ project: string; root: string }> {
+  const root = (vaultRoot ?? '').replace(/\/+$/, '')
+  const out: Array<{ project: string; root: string }> = []
+  for (const entry of entries) {
+    for (const abs of entry.paths) {
+      if (root && abs === root) out.push({ project: entry.project, root: '' })
+      else if (root && abs.startsWith(`${root}/`)) {
+        out.push({ project: entry.project, root: abs.slice(root.length + 1) })
+      } else if (!abs.startsWith('/')) out.push({ project: entry.project, root: abs })
+    }
+  }
+  return out
+}
+
 export function projectTaskSourcesFromProjectsBlock(
   projects: Array<{ key: string; taskDir?: string; taskLabel?: string }>,
 ): Record<string, { dir: string; label: string }> {

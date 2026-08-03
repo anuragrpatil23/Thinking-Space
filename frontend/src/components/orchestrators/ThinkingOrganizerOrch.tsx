@@ -129,16 +129,17 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   const [projectUiState, setProjectUiState] = useState<OrganizerUiStateBlock | null>(null)
   const [projectEntries, setProjectEntries] = useOrganizerProjectsBlock()
   const projectRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
-  // The ai-activity project id the index/lineage views key on. The project
-  // entry carries it once discovery has resolved it, because the folder name
-  // and the id are allowed to differ — `lifeblood_systems/thinkingspace.ai`
-  // files its chains under `Thinking-Space`, and guessing from the basename
-  // asked the index for a project that does not exist. The basename remains the
-  // fallback so every project whose names already agree behaves as before.
+  // The ai-activity project id the index/lineage views key on. Discovery reads
+  // it from the project registry, where it *is* the key — the folder name and
+  // the id are allowed to differ (`lifeblood_systems/thinkingspace.ai` files its
+  // chains under `Thinking-Space`), so guessing from the basename asked the
+  // index for a project that does not exist. No fallback: an unregistered root
+  // has no id to guess at, and the index would return nothing for the guess
+  // anyway, but silently — as an empty project rather than an unknown one.
   const aiProjectId = useMemo(() => {
     if (!projectRoot) return null
     const entry = projectEntries.find(project => normalizePath(project.root) === projectRoot)
-    return entry?.aiProjectId?.trim() || projectRoot.split('/').pop() || null
+    return entry?.aiProjectId?.trim() || null
   }, [projectEntries, projectRoot])
   // Which undertaking's detail page is open (null = the list/lineage view). The
   // index and lineage both drill into the same page.

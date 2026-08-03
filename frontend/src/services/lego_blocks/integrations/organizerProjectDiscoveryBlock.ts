@@ -1,7 +1,6 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { getVaultFileIndexPaths } from '@/services/lego_blocks/integrations/dbBlock'
 import { THINKING_ORGANIZER_DIR } from '@/services/lego_blocks/integrations/projectStorageBlock'
-import { readOrganizerUiStateBlock } from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 
 /**
  * Finding the organizer's projects by looking, instead of remembering.
@@ -25,11 +24,20 @@ import { readOrganizerUiStateBlock } from '@/services/lego_blocks/integrations/o
  *    get attributed to a project long before anyone builds a node tree for it,
  *    so the registry is often the first evidence a project exists at all.
  *
- * Merged on the **AI-activity project id**, not the path, because those are two
- * names for one project and the whole point of `aiProjectId` is that they are
- * allowed to differ. A node-tree root wins over a registry-only one: it is the
- * richer record, and it is where the ui-state lives.
+ * Merged on the **AI-activity project id** — the registry `key`, which is by
+ * definition the folder chains are filed under, and is allowed to differ from
+ * the folder name (`lifeblood_systems/thinkingspace.ai` files under
+ * `Thinking-Space`). A node-tree root wins over a registry-only one: it is the
+ * richer record.
  */
+
+import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
+import {
+  readCachedProjectNamesBlock,
+  readCachedProjectRegistryBlock,
+  relativizeRegistryEntriesBlock,
+} from '@/services/lego_blocks/units/projectRegistryBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 
 export const AI_ACTIVITY_REGISTRY_ROOT_BLOCK = 'ai-activity/thinking-organizer'
 
@@ -46,11 +54,6 @@ export interface DiscoveredProjectBlock {
   /** False when the only evidence is a registry directory, so a caller can tell
    *  "no node tree yet" apart from "node tree failed to load". */
   hasNodeTree: boolean
-}
-
-function basename(path: string): string {
-  const parts = path.split('/').filter(Boolean)
-  return parts[parts.length - 1] ?? ''
 }
 
 function humanize(value: string): string {
@@ -76,7 +79,9 @@ export async function discoverOrganizerProjectsBlock(): Promise<DiscoveredProjec
   // with organizer markdown under it) and the ui-state is read per candidate.
   // There are a handful of candidates in a vault, so this is a few reads, not a
   // walk.
-  const candidateRoots = new Set<string>()
+  // Which roots actually carry a node tree. The index holds markdown only, which
+  // is exactly the question being asked here, so this is a key scan, not a read.
+  const rootsWithTree = new Set<string>()
   for (const path of paths) {
     const at = path.indexOf(ORGANIZER_DIR_SEGMENT)
     if (at <= 0) continue
@@ -84,21 +89,32 @@ export async function discoverOrganizerProjectsBlock(): Promise<DiscoveredProjec
     // ai-activity/thinking-organizer is the chain registry, not a project root;
     // it gets its own pass below.
     if (!root || root === 'ai-activity') continue
-    candidateRoots.add(root)
+    rootsWithTree.add(root)
   }
 
-  for (const root of candidateRoots) {
-    let state: Awaited<ReturnType<typeof readOrganizerUiStateBlock>> = null
-    try {
-      state = await readOrganizerUiStateBlock(root)
-    } catch {
-      continue
-    }
-    const name = state?.projectName?.trim()
-    if (!name) continue
-
-    const aiProjectId = state?.aiProjectId?.trim() || basename(root)
-    byAiProjectId.set(aiProjectId, { root, name, aiProjectId, hasNodeTree: true })
+  // Identity comes from the registry, never from a per-project file. It used to
+  // read each candidate's `organizer-ui-state.json` for `projectName` and
+  // `aiProjectId` — a second copy of `name` and `key`, and a hard dependency on
+  // a file that is going away. It also meant a project whose ui-state happened
+  // to omit `projectName` vanished from this list entirely.
+  //
+  // Registration alone is not evidence of an organizer, though: most registered
+  // projects have no node tree and never will, and listing all of them would
+  // bury the few that do. So an entry appears only with evidence — markdown
+  // under its root here, or a chain directory in the pass below.
+  await loadProjectRegistryBlock()
+  const names = readCachedProjectNamesBlock()
+  for (const { project, root } of relativizeRegistryEntriesBlock(
+    readCachedProjectRegistryBlock(),
+    getStoredVaultRoot() ?? '',
+  )) {
+    if (!rootsWithTree.has(root)) continue
+    byAiProjectId.set(project, {
+      root,
+      name: names[project]?.trim() || project,
+      aiProjectId: project,
+      hasNodeTree: true,
+    })
   }
 
   let registryIds: string[] = []

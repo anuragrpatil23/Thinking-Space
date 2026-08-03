@@ -37,6 +37,7 @@ import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/pr
 import {
   readCachedProjectRegistryBlock,
   readCachedProjectTaskSourcesBlock,
+  relativizeRegistryEntriesBlock,
 } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
@@ -607,17 +608,7 @@ export async function getUndertakingIndexOrch(
  */
 async function projectRootsBlock(): Promise<Array<{ project: string; root: string }>> {
   await loadProjectRegistryBlock()
-  const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
-  const out: Array<{ project: string; root: string }> = []
-  for (const entry of readCachedProjectRegistryBlock()) {
-    for (const abs of entry.paths) {
-      if (vaultRoot && abs === vaultRoot) out.push({ project: entry.project, root: '' })
-      else if (vaultRoot && abs.startsWith(`${vaultRoot}/`)) {
-        out.push({ project: entry.project, root: abs.slice(vaultRoot.length + 1) })
-      } else if (!abs.startsWith('/')) out.push({ project: entry.project, root: abs })
-    }
-  }
-  return out
+  return relativizeRegistryEntriesBlock(readCachedProjectRegistryBlock(), getStoredVaultRoot() ?? '')
 }
 
 /**

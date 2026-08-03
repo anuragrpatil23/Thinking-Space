@@ -88,7 +88,10 @@ let taskSources: Record<string, { dir: string; label: string }> = {}
 vi.mock('@/services/lego_blocks/integrations/projectRegistryLoaderBlock', () => ({
   loadProjectRegistryBlock: async () => {},
 }))
-vi.mock('@/services/lego_blocks/units/projectRegistryBlock', () => ({
+// Only the caches are stubbed: `relativizeRegistryEntriesBlock` is pure and
+// shared with discovery, so the real one is what these tests should exercise.
+vi.mock('@/services/lego_blocks/units/projectRegistryBlock', async importActual => ({
+  ...(await importActual<typeof import('@/services/lego_blocks/units/projectRegistryBlock')>()),
   readCachedProjectRegistryBlock: () => registry,
   readCachedProjectTaskSourcesBlock: () => taskSources,
 }))

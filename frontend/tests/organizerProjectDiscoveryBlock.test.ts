@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const paths = vi.hoisted(() => ({ value: [] as string[] }))
-const files = vi.hoisted(() => ({ value: {} as Record<string, string> }))
 const registryFolders = vi.hoisted(() => ({ value: [] as string[] }))
+const registry = vi.hoisted(() => ({ value: [] as Array<{ project: string; paths: string[] }> }))
+const names = vi.hoisted(() => ({ value: {} as Record<string, string> }))
 
 vi.mock('@/services/lego_blocks/integrations/dbBlock', () => ({
   getVaultFileIndexPaths: async () => paths.value,
@@ -10,11 +11,6 @@ vi.mock('@/services/lego_blocks/integrations/dbBlock', () => ({
 
 vi.mock('@/services/lego_blocks/integrations/fsBlock', () => ({
   getVaultFS: () => ({
-    read: async (path: string) => {
-      const content = files.value[path]
-      if (content === undefined) throw new Error(`ENOENT ${path}`)
-      return content
-    },
     list: async (path: string) => {
       if (path === 'ai-activity/thinking-organizer') {
         return { files: [], folders: registryFolders.value }
@@ -24,32 +20,44 @@ vi.mock('@/services/lego_blocks/integrations/fsBlock', () => ({
   }),
 }))
 
+vi.mock('@/services/lego_blocks/integrations/projectRegistryLoaderBlock', () => ({
+  loadProjectRegistryBlock: async () => {},
+}))
+
+// Only the caches are stubbed. `relativizeRegistryEntriesBlock` is pure and
+// shared with the organizer index, so the real one is what this should exercise.
+vi.mock('@/services/lego_blocks/units/projectRegistryBlock', async importActual => ({
+  ...(await importActual<typeof import('@/services/lego_blocks/units/projectRegistryBlock')>()),
+  readCachedProjectRegistryBlock: () => registry.value,
+  readCachedProjectNamesBlock: () => names.value,
+}))
+
+vi.mock('@/services/lego_blocks/units/storageKeyBlock', () => ({
+  getStoredVaultRoot: () => '',
+}))
+
 const { discoverOrganizerProjectsBlock } = await import(
   '@/services/lego_blocks/integrations/organizerProjectDiscoveryBlock'
 )
 
-function uiState(path: string, body: Record<string, unknown>): void {
-  files.value[path] = JSON.stringify(body)
-}
-
 beforeEach(() => {
   paths.value = []
-  files.value = {}
   registryFolders.value = []
+  registry.value = []
+  names.value = {}
 })
 
 describe('discoverOrganizerProjectsBlock', () => {
-  it('finds a project whose ui-state names it, keyed on its ai-activity id', async () => {
-    // The index holds markdown only. A discovery that looked the JSON up in the
-    // index directly found nothing, always — this is the regression guard.
+  it('finds a registered project with a node tree, keyed on its ai-activity id', async () => {
+    // The key and the folder name are allowed to differ, and here they do:
+    // `lifeblood_systems/thinkingspace.ai` files its chains under
+    // `Thinking-Space`. Identity comes from the registry, not from the folder.
     paths.value = [
       'lifeblood_systems/thinkingspace.ai/thinking-organizer/sections/section-vault.md',
       'lifeblood_systems/thinkingspace.ai/thinking-organizer/undertakings/und-a.md',
     ]
-    uiState('lifeblood_systems/thinkingspace.ai/thinking-organizer/organizer-ui-state.json', {
-      projectName: 'Thinking Space',
-      aiProjectId: 'Thinking-Space',
-    })
+    registry.value = [{ project: 'Thinking-Space', paths: ['lifeblood_systems/thinkingspace.ai'] }]
+    names.value = { 'Thinking-Space': 'Thinking Space' }
 
     expect(await discoverOrganizerProjectsBlock()).toEqual([
       {
@@ -61,26 +69,29 @@ describe('discoverOrganizerProjectsBlock', () => {
     ])
   })
 
-  it('falls back to the root basename when no ai id is stored', async () => {
+  it('falls back to the key as the display name when the project sets none', async () => {
     paths.value = ['acceleration_core/F9/thinking-organizer/programs/p.md']
-    uiState('acceleration_core/F9/thinking-organizer/organizer-ui-state.json', {
-      projectName: 'F9',
-    })
+    registry.value = [{ project: 'F9', paths: ['acceleration_core/F9'] }]
 
     const found = await discoverOrganizerProjectsBlock()
     expect(found).toHaveLength(1)
     expect(found[0].aiProjectId).toBe('F9')
+    expect(found[0].name).toBe('F9')
   })
 
-  it('ignores organizer folders whose ui-state has no project name', async () => {
+  it('ignores an organizer folder that belongs to no registered project', async () => {
+    // Registration is the membership test. An unregistered folder with organizer
+    // markdown is a stray, and listing it would put a project in the switcher
+    // that nothing else in the app agrees exists.
     paths.value = ['scratch/thinking-organizer/notes/n.md']
-    uiState('scratch/thinking-organizer/organizer-ui-state.json', { presetTags: [] })
 
     expect(await discoverOrganizerProjectsBlock()).toEqual([])
   })
 
-  it('ignores an organizer folder with no ui-state at all', async () => {
-    paths.value = ['scratch/thinking-organizer/notes/n.md']
+  it('does not list a registered project that has no organizer evidence at all', async () => {
+    // Most registered projects never grow a node tree. Listing every one of them
+    // would bury the few that have.
+    registry.value = [{ project: 'sfbooks', paths: ['lifeblood_systems/sfbooks'] }]
 
     expect(await discoverOrganizerProjectsBlock()).toEqual([])
   })
@@ -100,15 +111,13 @@ describe('discoverOrganizerProjectsBlock', () => {
 
   it('does not list a project twice when it has both a node tree and a registry entry', async () => {
     paths.value = ['lifeblood_systems/thinkingspace.ai/thinking-organizer/sections/s.md']
-    uiState('lifeblood_systems/thinkingspace.ai/thinking-organizer/organizer-ui-state.json', {
-      projectName: 'Thinking Space',
-      aiProjectId: 'Thinking-Space',
-    })
+    registry.value = [{ project: 'Thinking-Space', paths: ['lifeblood_systems/thinkingspace.ai'] }]
+    names.value = { 'Thinking-Space': 'Thinking Space' }
     registryFolders.value = ['Thinking-Space']
 
     const found = await discoverOrganizerProjectsBlock()
     expect(found).toHaveLength(1)
-    // The node-tree root wins: it is where the ui-state lives.
+    // The node-tree root wins: it is the richer record.
     expect(found[0].root).toBe('lifeblood_systems/thinkingspace.ai')
     expect(found[0].hasNodeTree).toBe(true)
   })
