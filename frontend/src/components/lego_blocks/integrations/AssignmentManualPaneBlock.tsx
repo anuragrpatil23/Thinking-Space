@@ -680,14 +680,10 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
               </span>
               {busy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
               <div className="ml-auto flex flex-wrap items-center gap-2">
-                <ActionBlock
-                  icon={drafting ? Loader2 : Wand2}
-                  label={drafting ? 'Drafting…' : 'Draft with AI'}
-                  primary
-                  disabled={drafting || busy}
-                  onClick={propose}
-                />
-                <ActionBlock icon={Sparkles} label="New undertaking" onClick={() => setStage({ kind: 'mint' })} />
+                {/* Drafting is not its own decision — it is help with the one
+                    decision the mint form asks for, so it lives inside that
+                    form rather than competing with it out here. */}
+                <ActionBlock icon={Sparkles} label="New undertaking" primary onClick={() => setStage({ kind: 'mint' })} />
                 <ActionBlock icon={ChevronRight} label="Add to existing" onClick={() => setStage({ kind: 'file' })} />
                 {/* Not a delete. This chain keeps existing and keeps its
                     transcript — "not an undertaking" is a disposition, and a
