@@ -96,38 +96,6 @@ describe('organizerUiStateBlock', () => {
     await expect(readOrganizerUiStateBlock('projects/demo', invalid)).resolves.toBeNull()
   })
 
-  it('carries taskDir through, so a project can name its own records directory', async () => {
-    // Not sniffable: Thinking Space has both `tasks/` (live) and `epics/`
-    // (stale DEV-era), so a probe that takes whichever exists reads the wrong
-    // corpus and the pane looks populated with the wrong 34 rows.
-    const { fs } = makeMockVaultFs({
-      'projects/demo/thinking-organizer/organizer-ui-state.json': JSON.stringify({
-        schemaVersion: 3,
-        taskDir: '  tasks  ',
-      }),
-    })
-    const state = await readOrganizerUiStateBlock('projects/demo', fs)
-    expect(state?.taskDir).toBe('tasks')
-  })
 
-  it('carries taskLabel through, so a project can name its authored half', async () => {
-    // "Task" is the type's name, not every project's word for its records. F9's
-    // are Ideas and Questions — heading that half "Tasks" mislabels every row.
-    const { fs } = makeMockVaultFs({
-      'projects/demo/thinking-organizer/organizer-ui-state.json': JSON.stringify({
-        schemaVersion: 3,
-        taskLabel: '  Thinking  ',
-      }),
-    })
-    const state = await readOrganizerUiStateBlock('projects/demo', fs)
-    expect(state?.taskLabel).toBe('Thinking')
-  })
 
-  it('leaves taskDir undefined when the project never set one', async () => {
-    const { fs } = makeMockVaultFs({
-      'projects/demo/thinking-organizer/organizer-ui-state.json': JSON.stringify({ schemaVersion: 3 }),
-    })
-    const state = await readOrganizerUiStateBlock('projects/demo', fs)
-    expect(state?.taskDir).toBeUndefined()
-  })
 })

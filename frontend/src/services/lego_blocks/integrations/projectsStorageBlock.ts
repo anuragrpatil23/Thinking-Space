@@ -179,6 +179,10 @@ export async function addProjectBlock(input: CreateProjectInputBlock): Promise<P
     roots: normalizeRootListBlock(input.roots),
     group: (input.group ?? '').trim(),
     aliases: normalizeAliasListBlock(input.aliases),
+    // Organizer config: chosen later, in the project's own settings, never at
+    // creation. Empty means the defaults (`epics`, "Tasks").
+    taskDir: '',
+    taskLabel: '',
     color: (input.color ?? '').trim(),
   }
   await writeProjectsBlock([...projects, next])

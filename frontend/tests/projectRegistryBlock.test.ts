@@ -3,6 +3,7 @@ import {
   parseProjectRegistryMarkdownBlock,
   projectLabelBlock,
   projectAliasesFromProjectsBlock,
+  projectTaskSourcesFromProjectsBlock,
   projectRegistryFromProjectsBlock,
   renderProjectsMarkdownBlock,
   PROJECTS_MARKDOWN_BANNER_BLOCK,
@@ -288,5 +289,25 @@ describe('the iOS attribution inversion', () => {
   it('still resolves correctly on the device that recorded the cwd', () => {
     const entries = projectRegistryFromProjectsBlock([{ key: 'F9', roots: ['acceleration_core/F9'] }], VAULT)
     expect(resolveProjectByCwdBlock(MAC_CWD, entries)).toBe('F9')
+  })
+})
+
+describe('project task sources', () => {
+  it('maps a key to where its authored records live and what it calls them', () => {
+    const sources = projectTaskSourcesFromProjectsBlock([
+      { key: 'Thinking-Space', taskDir: '  tasks  ', taskLabel: 'Tasks' },
+      { key: 'F9', taskLabel: '  Thinking  ' },
+    ])
+    expect(sources['Thinking-Space']).toEqual({ dir: 'tasks', label: 'Tasks' })
+    // F9 keeps the default directory but names its half itself.
+    expect(sources.F9).toEqual({ dir: '', label: 'Thinking' })
+  })
+
+  it('omits projects that configure neither, so the defaults apply', () => {
+    const sources = projectTaskSourcesFromProjectsBlock([
+      { key: 'sfw' },
+      { key: '', taskDir: 'tasks' },
+    ])
+    expect(sources).toEqual({})
   })
 })

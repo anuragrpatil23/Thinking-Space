@@ -4,6 +4,8 @@ import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock
 import {
   parseProjectRegistryMarkdownBlock,
   projectAliasesFromProjectsBlock,
+  projectTaskSourcesFromProjectsBlock,
+  setCachedProjectTaskSourcesBlock,
   projectRegistryFromProjectsBlock,
   setCachedProjectAliasesBlock,
   setCachedProjectColorsBlock,
@@ -66,6 +68,7 @@ export async function loadProjectRegistryBlock(): Promise<void> {
           .map(p => [p.key, p.name.trim()]),
       ),
     )
+    setCachedProjectTaskSourcesBlock(projectTaskSourcesFromProjectsBlock(projects))
     // Only fall back when the defined projects contribute *no* roots at all.
     // Merging the two would let a stale markdown line quietly outrank an edit
     // made in Settings, and longest-prefix would pick between them by accident.

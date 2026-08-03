@@ -25,25 +25,6 @@ export interface OrganizerUiStateBlock {
    * state and this is the per-project state file.
    */
   aiProjectId?: string
-  /**
-   * The directory under `<root>/thinking-organizer/` holding this project's
-   * authored records. Defaults to `epics` (F9's). Thinking Space sets `tasks`.
-   *
-   * Per-project because the two corpora disagree and nothing derivable tells
-   * them apart: Thinking Space has *both* directories, so any rule that sniffs
-   * for one picks the stale DEV-era `epics/` half the time.
-   */
-  taskDir?: string
-  /**
-   * What to call the authored half of the organizer index — the heading above
-   * this project's own records, opposite "Undertakings".
-   *
-   * Per-project because "task" is the *type's* name, not every project's word
-   * for its records. Thinking Space's 325 really are tasks. F9's are Ideas,
-   * Questions to research, Key things — calling that half "Tasks" mislabels
-   * every row under it, so F9 names it "Thinking": the half opposite doing.
-   */
-  taskLabel?: string
   missionStatement?: string
   presetTags: string[]
   tagColors: Record<string, string>
@@ -151,8 +132,6 @@ export function normalizeOrganizerUiStateBlock(raw: unknown): OrganizerUiStateBl
     updatedAt: normalizeUpdatedAt(record.updatedAt),
     projectName: normalizeProjectName(record.projectName),
     aiProjectId: normalizeProjectName(record.aiProjectId),
-    taskDir: normalizeProjectName(record.taskDir),
-    taskLabel: normalizeProjectName(record.taskLabel),
     missionStatement: normalizeMissionStatement(record.missionStatement),
     presetTags: normalizePresetTags(record.presetTags),
     tagColors: normalizeTagColors(record.tagColors),

@@ -225,6 +225,7 @@ let _cache: ProjectRegistryEntry[] = []
 let _aliasCache: ProjectAliasMapBlock = new Map()
 let _colorCache: Record<string, string> = {}
 let _nameCache: Record<string, string> = {}
+let _taskSourceCache: Record<string, { dir: string; label: string }> = {}
 
 export function setCachedProjectRegistryBlock(entries: ProjectRegistryEntry[]): void {
   _cache = entries
@@ -262,6 +263,38 @@ export function setCachedProjectNamesBlock(names: Record<string, string>): void 
 
 export function readCachedProjectNamesBlock(): Record<string, string> {
   return _nameCache
+}
+
+/** Canonical key → where this project's authored records live and what it calls
+ *  them. Same warm-once shape as colors and names.
+ *
+ *  This is registry data, not per-project file data: the organizer index is
+ *  keyed by `key` (it *is* the folder under `ai-activity/thinking-organizer/`),
+ *  so the thing that maps a key to a root already has to be consulted. Keeping
+ *  the directory and label beside the roots means one lookup instead of a
+ *  per-project JSON read on the index path. */
+export function setCachedProjectTaskSourcesBlock(
+  sources: Record<string, { dir: string; label: string }>,
+): void {
+  _taskSourceCache = sources
+}
+
+export function readCachedProjectTaskSourcesBlock(): Record<string, { dir: string; label: string }> {
+  return _taskSourceCache
+}
+
+export function projectTaskSourcesFromProjectsBlock(
+  projects: Array<{ key: string; taskDir?: string; taskLabel?: string }>,
+): Record<string, { dir: string; label: string }> {
+  const out: Record<string, { dir: string; label: string }> = {}
+  for (const project of projects) {
+    if (!project.key) continue
+    const dir = (project.taskDir ?? '').trim()
+    const label = (project.taskLabel ?? '').trim()
+    if (!dir && !label) continue
+    out[project.key] = { dir, label }
+  }
+  return out
 }
 
 /** Rendered label for a canonical project key. Falls back to the key, which is

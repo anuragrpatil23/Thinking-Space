@@ -30,12 +30,14 @@ import { chainActiveDurationMsBlock } from '@/services/lego_blocks/units/aiActiv
 import { listProjectChainsOrch } from '@/services/orchestrators/aiActivityChainReconcileOrch'
 import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
 import { DEFAULT_TASK_DIR_BLOCK, listTasksBlock, readTaskBlock } from '@/services/lego_blocks/integrations/aiActivityTaskStoreBlock'
-import { readOrganizerUiStateBlock } from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 import { parseOrganizerBodySections } from '@/services/lego_blocks/integrations/organizerBodyBlock'
 import type { YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { taskCategoryLabelBlock, type Task } from '@/services/lego_blocks/units/aiActivityTaskBlock'
 import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
-import { readCachedProjectRegistryBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
+import {
+  readCachedProjectRegistryBlock,
+  readCachedProjectTaskSourcesBlock,
+} from '@/services/lego_blocks/units/projectRegistryBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   bucketDensityBlock,
@@ -278,7 +280,7 @@ export async function listTaskProjectsOrch(): Promise<TaskProject[]> {
       else if (vaultRoot && abs.startsWith(`${vaultRoot}/`)) rel = abs.slice(vaultRoot.length + 1)
       else if (!abs.startsWith('/')) rel = abs
       if (rel === null) continue
-      const tasks = await listTasksBlock(rel, (await taskSettingsForRootBlock(rel)).dir)
+      const tasks = await listTasksBlock(rel, await taskDirForRootBlock(rel))
       if (tasks.length === 0) continue
       const projectId = rel.split('/').pop() || entry.project
       if (seen.has(projectId)) continue
@@ -303,7 +305,7 @@ export async function getOpenTasksOrch(params: {
   projectRoot: string
 }): Promise<OpenTasksResult> {
   const [tasks, undertakings] = await Promise.all([
-    taskSettingsForRootBlock(params.projectRoot).then(({ dir }) => listTasksBlock(params.projectRoot, dir)),
+    taskDirForRootBlock(params.projectRoot).then(dir => listTasksBlock(params.projectRoot, dir)),
     listUndertakingsBlock(params.projectId),
   ])
   const fed = new Set<string>()
@@ -600,64 +602,55 @@ export async function getUndertakingIndexOrch(
 }
 
 /**
- * Every registered project root, vault-relative. Roots outside the vault (a
- * code repo, absolute) can't hold an organizer and are dropped.
+ * Every registered project, with its root vault-relative. Roots outside the
+ * vault (a code repo, absolute) can't hold an organizer and are dropped.
  */
-async function projectRootsBlock(): Promise<string[]> {
+async function projectRootsBlock(): Promise<Array<{ project: string; root: string }>> {
   await loadProjectRegistryBlock()
   const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
-  const roots: string[] = []
+  const out: Array<{ project: string; root: string }> = []
   for (const entry of readCachedProjectRegistryBlock()) {
     for (const abs of entry.paths) {
-      if (vaultRoot && abs === vaultRoot) roots.push('')
-      else if (vaultRoot && abs.startsWith(`${vaultRoot}/`)) roots.push(abs.slice(vaultRoot.length + 1))
-      else if (!abs.startsWith('/')) roots.push(abs)
+      if (vaultRoot && abs === vaultRoot) out.push({ project: entry.project, root: '' })
+      else if (vaultRoot && abs.startsWith(`${vaultRoot}/`)) {
+        out.push({ project: entry.project, root: abs.slice(vaultRoot.length + 1) })
+      } else if (!abs.startsWith('/')) out.push({ project: entry.project, root: abs })
     }
   }
-  return roots
+  return out
 }
 
 /**
  * Where a project's authored records live: its root, plus which directory under
- * the organizer holds them. Null when nothing registered resolves.
+ * the organizer holds them and what the project calls them. Null when nothing
+ * registered resolves.
  *
  * `projectId` is the id the chains are filed under (`ai-activity/thinking-
- * organizer/<id>/`). The folder basename usually *is* that id, which is why
- * matching on it alone worked for F9 — and silently returned nothing for
- * Thinking Space, whose records sit under `lifeblood_systems/thinkingspace.ai`
- * while its chains are filed under `Thinking-Space`. The project already
- * records that mapping in `aiProjectId`; the basename is only the fast path.
+ * organizer/<id>/`) — which is exactly the registry's `key`, by that field's own
+ * definition. So the match is one comparison against data already in memory.
  *
- * The directory is per-project state for the same reason, and cannot be
- * sniffed: Thinking Space has both a `tasks/` (its 325 live rows) and an
- * `epics/` (34 stale DEV-era items), so a probe that takes whichever exists
- * picks the wrong one.
+ * It used to compare the *folder basename* instead, which is only incidentally
+ * the same string. That worked for F9 and silently returned nothing for Thinking
+ * Space, whose records sit under `lifeblood_systems/thinkingspace.ai` while its
+ * chains are filed under `Thinking-Space`. The first fix for that read every
+ * project's organizer JSON looking for an `aiProjectId` field duplicating the
+ * key — a second copy of a mapping the registry already had.
+ *
+ * The directory can't be sniffed: Thinking Space carries both a `tasks/` (its
+ * live rows) and an `epics/` (stale DEV-era items), so a probe that takes
+ * whichever exists picks the wrong one. It is registry config for that reason.
  */
 async function taskSourceForProjectBlock(
   projectId: string,
 ): Promise<TaskSource | null> {
-  const roots = await projectRootsBlock()
-
-  for (const root of roots) {
-    if ((root.split('/').pop() || '') === projectId) {
-      return { root, ...(await taskSettingsForRootBlock(root)) }
-    }
+  const entry = (await projectRootsBlock()).find(e => e.project === projectId)
+  if (!entry) return null
+  const configured = readCachedProjectTaskSourcesBlock()[projectId]
+  return {
+    root: entry.root,
+    dir: configured?.dir || DEFAULT_TASK_DIR_BLOCK,
+    label: configured?.label || DEFAULT_TASK_LABEL_BLOCK,
   }
-
-  // No basename match: ask each project what id it files its chains under. One
-  // small JSON read per project, and only on the path that would otherwise
-  // return nothing at all.
-  for (const root of roots) {
-    const state = await readOrganizerUiStateBlock(root)
-    if (state?.aiProjectId?.trim() !== projectId) continue
-    return {
-      root,
-      dir: state.taskDir?.trim() || DEFAULT_TASK_DIR_BLOCK,
-      label: state.taskLabel?.trim() || DEFAULT_TASK_LABEL_BLOCK,
-    }
-  }
-
-  return null
 }
 
 interface TaskSource {
@@ -666,12 +659,14 @@ interface TaskSource {
   label: string
 }
 
-async function taskSettingsForRootBlock(root: string): Promise<{ dir: string; label: string }> {
-  const state = await readOrganizerUiStateBlock(root)
-  return {
-    dir: state?.taskDir?.trim() || DEFAULT_TASK_DIR_BLOCK,
-    label: state?.taskLabel?.trim() || DEFAULT_TASK_LABEL_BLOCK,
+/** The records directory for a project identified by root rather than key —
+ *  what the two root-keyed callers below have in hand. */
+async function taskDirForRootBlock(root: string): Promise<string> {
+  const sources = readCachedProjectTaskSourcesBlock()
+  for (const entry of await projectRootsBlock()) {
+    if (entry.root === root) return sources[entry.project]?.dir || DEFAULT_TASK_DIR_BLOCK
   }
+  return DEFAULT_TASK_DIR_BLOCK
 }
 
 /**

@@ -73,6 +73,25 @@ export interface ProjectBlock {
   aliases: string[]
   /** Explicit display color (`#34d399`). Empty means "derive one". */
   color: string
+  /**
+   * The directory under `<root>/thinking-organizer/` holding this project's
+   * authored records. Empty means the default (`epics`).
+   *
+   * Not sniffable: Thinking Space carries both a `tasks/` (its live rows) and an
+   * `epics/` (stale DEV-era items), so a probe that takes whichever exists reads
+   * the wrong corpus.
+   */
+  taskDir: string
+  /**
+   * What to call the authored half of the organizer index — the heading over
+   * this project's own records, opposite "Undertakings". Empty means "Tasks".
+   *
+   * Per-project because "task" is the *type's* name, not every project's word
+   * for its records. Thinking Space's really are tasks. F9's are Ideas,
+   * Questions to research, Key things — calling that half "Tasks" mislabels
+   * every row under it, so F9 names it "Thinking": the half opposite doing.
+   */
+  taskLabel: string
 }
 
 /**
@@ -260,6 +279,8 @@ function upgradeProjectBlock(value: unknown): ProjectBlock {
     group: typeof candidate.group === 'string' ? candidate.group.trim() : '',
     aliases: normalizeStringListBlock(candidate.aliases),
     color: typeof candidate.color === 'string' ? candidate.color.trim() : '',
+    taskDir: typeof candidate.taskDir === 'string' ? candidate.taskDir.trim() : '',
+    taskLabel: typeof candidate.taskLabel === 'string' ? candidate.taskLabel.trim() : '',
   }
 }
 
