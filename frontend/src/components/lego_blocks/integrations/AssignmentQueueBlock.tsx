@@ -10,6 +10,7 @@ import {
 } from '@/services/orchestrators/assignmentQueueOrch'
 import ChainTranscriptSlideOverBlock from '@/components/lego_blocks/integrations/ChainTranscriptSlideOverBlock'
 import AssignmentManualPaneBlock from '@/components/lego_blocks/integrations/AssignmentManualPaneBlock'
+import ActionBlock, { KbdBlock } from '@/components/lego_blocks/units/AssignmentActionBlock'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import {
   listUndertakingSectionsOrch,
@@ -134,42 +135,9 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set())
 
   const [mode, setMode] = useState<'proposed' | 'unsorted'>('proposed')
-  const [project, setProject] = useState<string | null>(null)
 
-  const allItems = queue?.items ?? []
-  const allUnproposed = useMemo(() => queue?.unproposed ?? [], [queue])
-
-  /** Every project with anything owing, with what it owes. Built from both
-   *  halves so a project that only has unsorted chains still gets a chip — it is
-   *  precisely the project nobody has looked at. */
-  const projects = useMemo(() => {
-    const counts = new Map<string, { proposed: number; unsorted: number }>()
-    const bump = (id: string, half: 'proposed' | 'unsorted', n = 1) => {
-      const entry = counts.get(id) ?? { proposed: 0, unsorted: 0 }
-      entry[half] += n
-      counts.set(id, entry)
-    }
-    for (const item of allItems) bump(item.group.projectId, 'proposed')
-    for (const chain of allUnproposed) bump(chain.projectId, 'unsorted')
-    return [...counts.entries()]
-      .map(([id, counts]) => ({ id, ...counts }))
-      .sort((a, b) => b.proposed + b.unsorted - (a.proposed + a.unsorted))
-  }, [allItems, allUnproposed])
-
-  // A filter that has outlived its project (its last chain was just disposed of)
-  // would show an empty pane with no way back. Drop it.
-  useEffect(() => {
-    if (project && !projects.some(entry => entry.id === project)) setProject(null)
-  }, [project, projects])
-
-  const items = useMemo(
-    () => (project ? allItems.filter(item => item.group.projectId === project) : allItems),
-    [allItems, project],
-  )
-  const unproposedChains = useMemo(
-    () => (project ? allUnproposed.filter(chain => chain.projectId === project) : allUnproposed),
-    [allUnproposed, project],
-  )
+  const items = queue?.items ?? []
+  const unproposedChains = useMemo(() => queue?.unproposed ?? [], [queue])
   const current: QueueItem | undefined = items[cursor]
   const focusKey = current ? `${current.group.projectId}:${current.group.targetId}` : ''
 
@@ -389,7 +357,6 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
               read a header. */}
           <p className="mt-0.5 text-xs text-muted-foreground">
             {undisposed} chain{undisposed === 1 ? '' : 's'} still owe an answer
-            {project && <> · showing {project}</>}
           </p>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -413,38 +380,19 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
         </div>
       </header>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-5 py-2">
-        <div className="flex items-center gap-0.5 rounded-md bg-muted p-0.5">
-          <TabBlock
-            active={mode === 'proposed'}
-            onClick={() => setMode('proposed')}
-            label="Suggested"
-            count={items.length}
-          />
-          <TabBlock
-            active={mode === 'unsorted'}
-            onClick={() => setMode('unsorted')}
-            label="Unsorted"
-            count={unproposed}
-          />
-        </div>
-        {/* Filter, not scope: every project stays on screen with its count, so
-            a project nothing has adopted can never be filtered out of
-            existence. */}
-        {projects.length > 1 && (
-          <div className="flex flex-wrap items-center gap-1">
-            <ChipBlock active={project === null} onClick={() => setProject(null)} label="All" />
-            {projects.map(entry => (
-              <ChipBlock
-                key={entry.id}
-                active={project === entry.id}
-                onClick={() => setProject(entry.id)}
-                label={entry.id}
-                count={mode === 'proposed' ? entry.proposed : entry.unsorted}
-              />
-            ))}
-          </div>
-        )}
+      <div className="flex shrink-0 items-center gap-0.5 border-b border-border px-5 py-2">
+        <TabBlock
+          active={mode === 'proposed'}
+          onClick={() => setMode('proposed')}
+          label="Suggested"
+          count={items.length}
+        />
+        <TabBlock
+          active={mode === 'unsorted'}
+          onClick={() => setMode('unsorted')}
+          label="Unsorted"
+          count={unproposed}
+        />
       </div>
 
       {(error || orphaned.length > 0) && (
@@ -866,6 +814,9 @@ function EmptyBlock({ unproposed, onShowUnsorted }: { unproposed: number; onShow
   )
 }
 
+/** An underlined tab rather than a pill group: the panel already has a pill for
+ *  every project id in the rail, and two competing pill vocabularies in the same
+ *  40 vertical pixels is what made this read as a control panel. */
 function TabBlock({
   active,
   onClick,
@@ -881,86 +832,17 @@ function TabBlock({
     <button
       onClick={onClick}
       className={cn(
-        'rounded px-2.5 py-1 text-xs transition-colors',
-        active ? 'bg-background font-medium text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-      )}
-    >
-      {label} <span className="tabular-nums opacity-70">{count}</span>
-    </button>
-  )
-}
-
-function ChipBlock({
-  active,
-  onClick,
-  label,
-  count,
-}: {
-  active: boolean
-  onClick: () => void
-  label: string
-  count?: number
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+        'relative flex items-center gap-1.5 px-2.5 py-1.5 text-xs transition-colors after:absolute after:inset-x-2.5 after:-bottom-2 after:h-px',
         active
-          ? 'border-foreground/20 bg-muted font-medium text-foreground'
-          : 'border-transparent text-muted-foreground hover:bg-muted/60',
+          ? 'font-medium text-foreground after:bg-foreground'
+          : 'text-muted-foreground hover:text-foreground',
       )}
     >
       {label}
-      {count !== undefined && <span className="ml-1 tabular-nums opacity-70">{count}</span>}
+      <span className={cn('tabular-nums', active ? 'text-muted-foreground' : 'text-muted-foreground/60')}>
+        {count}
+      </span>
     </button>
   )
 }
 
-function KbdBlock({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="rounded border border-border bg-muted px-1 py-px font-mono text-[10px] leading-none text-muted-foreground">
-      {children}
-    </kbd>
-  )
-}
-
-function ActionBlock({
-  icon: Icon,
-  label,
-  hint,
-  onClick,
-  primary,
-  disabled,
-}: {
-  icon: typeof Check
-  label: string
-  hint: string
-  onClick: () => void
-  primary?: boolean
-  disabled?: boolean
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-        primary
-          ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-          : 'border border-border hover:bg-muted',
-      )}
-    >
-      <Icon className="h-3.5 w-3.5" />
-      {label}
-      <kbd
-        className={cn(
-          'ml-0.5 rounded px-1 py-px font-mono text-[10px] leading-none',
-          primary ? 'bg-primary-foreground/20' : 'bg-muted-foreground/15',
-        )}
-      >
-        {hint}
-      </kbd>
-    </button>
-  )
-}
