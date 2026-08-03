@@ -34,7 +34,9 @@ import {
   createTaskFileBlock,
   listTasksBlock,
   readTaskBlock,
+  writeTaskFileBlock,
 } from '@/services/lego_blocks/integrations/aiActivityTaskStoreBlock'
+import { applyTaskEditBlock, type TaskEdit } from '@/services/lego_blocks/integrations/taskEditBlock'
 import {
   nextTaskTicketBlock,
   renderTaskMarkdownBlock,
@@ -951,6 +953,31 @@ export async function getTaskDetailOrch(projectId: string, taskKey: string): Pro
     fedInto,
     producedBy,
   }
+}
+
+/**
+ * Edit one authored record in place — the write half of the task drawer.
+ *
+ * Reads the file, applies the edit to its raw markdown, writes it back to the
+ * path it actually came from. It never derives the path a second time: a record
+ * whose file was hand-renamed still resolves by its frontmatter key on read,
+ * and writing to the derived name instead would fork it into two files.
+ *
+ * Only what a human typed is editable — `applyTaskEditBlock` decides that, and
+ * the reasoning lives there. This adds nothing to the set.
+ */
+export async function updateTaskOrch(
+  projectId: string,
+  taskKey: string,
+  edit: TaskEdit,
+): Promise<{ path: string }> {
+  const source = await taskSourceForProjectBlock(projectId)
+  if (!source) throw new Error(`No records directory is configured for ${projectId}.`)
+  const file = await readTaskBlock(source.root, taskKey, source.dir)
+  if (!file) throw new Error(`Record not found: ${taskKey}`)
+  const next = applyTaskEditBlock(file.raw, edit, new Date().toISOString())
+  if (next !== file.raw) await writeTaskFileBlock(file.path, next)
+  return { path: file.path }
 }
 
 export interface CreatedTask {

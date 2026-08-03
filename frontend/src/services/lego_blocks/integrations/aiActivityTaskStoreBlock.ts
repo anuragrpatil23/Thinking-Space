@@ -101,6 +101,25 @@ export async function createTaskFileBlock(
 }
 
 /**
+ * Overwrite an existing record.
+ *
+ * The mirror of `createTaskFileBlock`'s refusal: this one insists the file is
+ * already there. A write that lands on a missing path would mean the drawer is
+ * editing a record the store can no longer find — a rename or a delete between
+ * the read and the save — and creating it fresh would resurrect a file Anurag
+ * just moved, under the old name, with only the fields the drawer happened to
+ * be holding.
+ *
+ * The caller passes the path it read, not a derived one, so a hand-renamed file
+ * is written back where it actually lives.
+ */
+export async function writeTaskFileBlock(path: string, content: string): Promise<void> {
+  const fs = getVaultFS()
+  if (!(await fs.exists(path))) throw new Error(`No record at ${path} — it may have been moved or renamed.`)
+  await fs.write(path, content)
+}
+
+/**
  * Read a single task by key. The store names files `epic-<key>.md`, so the
  * common case is one read; the directory scan behind it is the fallback for a
  * hand-renamed file, where the key in the frontmatter is still the truth.

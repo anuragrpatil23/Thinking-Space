@@ -35,13 +35,14 @@ export default function OrganizerTaskRowBlock({
 }: Props) {
   const { task, fedInto, producedBy } = entry
   const engaged = Boolean(fedInto || producedBy)
-  // Done is not engaged. Engagement says the task belongs to an undertaking;
-  // disposition says it is finished — 48 Thinking Space tasks are attached and
-  // still open, because you attach work when it starts. A finished task drops
-  // the open-loop glyph entirely and takes a check instead.
+  // Done is not engaged, and the two get their own ends of the row. Engagement
+  // says the task belongs to an undertaking; disposition says it is finished —
+  // 48 Thinking Space tasks are attached and still open, because you attach
+  // work when it starts. Folding done into the lead glyph made one slot answer
+  // two questions and silently dropped the link signal on 274 rows.
   const done = taskIsDoneBlock(task.disposition)
   // Reference kinds (captured knowledge) never wear the open/engaged glyph.
-  const showGlyph = !done && !taskIsReferenceBlock(task.categoryCode)
+  const showGlyph = !taskIsReferenceBlock(task.categoryCode)
 
   const link = fedInto
     ? { arrow: '→', label: fedInto.title, key: fedInto.key }
@@ -66,11 +67,7 @@ export default function OrganizerTaskRowBlock({
       colorIndex={colorIndex}
       ordinal={ordinal}
       leadGlyph={
-        done ? (
-          <span className="text-muted-foreground/45" title={`Done${task.openedDate ? ` · opened ${task.openedDate}` : ''}`}>
-            ✓
-          </span>
-        ) : showGlyph ? (
+        showGlyph ? (
           <span
             className={engaged ? 'text-foreground/70' : 'text-muted-foreground/50'}
             title={engaged ? 'Engaged — it fed or came from a doing' : 'Untouched'}
@@ -116,16 +113,30 @@ export default function OrganizerTaskRowBlock({
           </span>
           {/* Same width as the undertaking row's duration, so the two kinds of
               row share one right edge instead of ending wherever they happen
-              to end. */}
-          <span
-            className={cn(
-              'w-14 text-right text-xs tabular-nums text-muted-foreground/60',
-              !age && 'invisible',
-            )}
-            title={task.openedDate ? `Open since ${task.openedDate}` : undefined}
-          >
-            {age || '—'}
-          </span>
+              to end.
+              Done takes this column rather than a thirteenth one of its own:
+              it is exactly the slot the age would have used, and a finished
+              task has no age worth printing — so the check lands where the eye
+              already goes for "how is this record doing", opposite the glyph
+              that says what it is attached to. */}
+          {done ? (
+            <span
+              className="w-14 text-right text-xs text-muted-foreground/50"
+              title={`Done${task.openedDate ? ` · opened ${task.openedDate}` : ''}`}
+            >
+              ✓
+            </span>
+          ) : (
+            <span
+              className={cn(
+                'w-14 text-right text-xs tabular-nums text-muted-foreground/60',
+                !age && 'invisible',
+              )}
+              title={task.openedDate ? `Open since ${task.openedDate}` : undefined}
+            >
+              {age || '—'}
+            </span>
+          )}
         </>
       }
     />
