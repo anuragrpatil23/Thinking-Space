@@ -328,6 +328,18 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
                       <SectionHeader title={section.title} colorIndex={section.colorIndex} />
                     )}
                     <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
+                      {/* First line, not last. At the foot of a section it was
+                          a scroll away from the heading that names it, so
+                          adding to a long block meant finding its end; at the
+                          top it is where the eye already is when it decides to
+                          add something. */}
+                      {projectId && (
+                        <OrganizerTaskComposerBlock
+                          colorIndex={section.colorIndex}
+                          sectionTitle={section.title}
+                          onCreate={draft => createTask(section.code, draft)}
+                        />
+                      )}
                       {section.tasks.map((entry, i) => (
                         <OrganizerTaskRowBlock
                           key={entry.task.key}
@@ -338,13 +350,6 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
                           onOpen={onOpenTask}
                         />
                       ))}
-                      {projectId && (
-                        <OrganizerTaskComposerBlock
-                          colorIndex={section.colorIndex}
-                          sectionTitle={section.title}
-                          onCreate={draft => createTask(section.code, draft)}
-                        />
-                      )}
                     </div>
                   </section>
                 ))}
