@@ -305,7 +305,10 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
+        {/* z-20 and opaque: it sits above a scroll container whose own sticky
+            headers are z-10, and a header a row can paint through is the
+            artifact this replaced. */}
+        <div className="relative z-20 flex shrink-0 items-center gap-2 border-b border-border bg-background px-4 py-2">
           <h3 className="truncate text-sm font-medium">{folder ?? 'All chains'}</h3>
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
             {visible.length}
@@ -334,16 +337,22 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
           </p>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
+        {/* No top padding. A sticky child pins to the container's padding edge,
+            so any `pt` here leaves a strip above the group header that rows
+            scroll through — which is what made this look broken. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {visible.length === 0 ? (
             <p className="px-3 py-8 text-center text-sm text-muted-foreground">
               Nothing that long here. Try a shorter floor.
             </p>
           ) : (
             groups.map(group => (
-              <section key={group.id} className="group/section mb-2">
+              <section key={group.id} className="group/section">
                 {!folder && (
-                  <div className="sticky top-0 z-10 flex items-center gap-2 bg-background/95 px-3 py-1.5 backdrop-blur">
+                  // Bled to the container's edges (`-mx-2 px-5`) and fully
+                  // opaque. A translucent sticky header over a scrolling list is
+                  // the compositing artifact that had rows ghosting through it.
+                  <div className="sticky top-0 z-10 -mx-2 flex items-center gap-2 border-b border-border/60 bg-background px-5 pb-1.5 pt-2.5">
                     <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                       {group.id}
                     </span>
@@ -352,7 +361,7 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
                     </span>
                   </div>
                 )}
-                <ul>
+                <ul className={cn(folder ? 'pt-1.5' : 'pt-1')}>
                   {group.rows.map(chain => {
                     const picked = selected.has(chain.chainId) && chain.projectId === projectId
                     return (
