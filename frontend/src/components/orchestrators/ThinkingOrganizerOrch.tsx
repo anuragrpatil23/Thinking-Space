@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BookText, Check, FolderTree, LayoutDashboard, List, Loader2, Network, Pencil, Plus, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { BookText, FolderTree, LayoutDashboard, List, Network, Plus } from 'lucide-react'
 import UndertakingIndexBlock from '@/components/lego_blocks/integrations/UndertakingIndexBlock'
 import UndertakingDagBlock from '@/components/lego_blocks/integrations/UndertakingDagBlock'
 import UndertakingDetailDrawerBlock from '@/components/lego_blocks/integrations/UndertakingDetailDrawerBlock'
@@ -17,11 +17,8 @@ import {
   ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
 } from '@/services/lego_blocks/units/organizerSidebarChromeBlock'
 import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
+import { PROJECTS_CHANGE_EVENT_BLOCK } from '@/services/lego_blocks/integrations/projectsStorageBlock'
 import { readCachedProjectMissionsBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
-import {
-  readProjectsBlock,
-  updateProjectBlock,
-} from '@/services/lego_blocks/integrations/projectsStorageBlock'
 import BacklogOrch, {
   ORGANIZER_OPEN_CREATE_PROJECT_EVENT,
   ORGANIZER_PROJECTS_UPDATED_EVENT,
@@ -165,11 +162,6 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     return () => window.removeEventListener(ORGANIZER_PROJECTS_UPDATED_EVENT, handler)
   }, [])
 
-  const [editingMission, setEditingMission] = useState(false)
-  const [missionDraft, setMissionDraft] = useState('')
-  const [savingMission, setSavingMission] = useState(false)
-  const missionTextareaRef = useRef<HTMLTextAreaElement | null>(null)
-
   const selectProject = useCallback((root: string) => {
     const normalized = normalizePath(root)
     setSearchParams((prev) => {
@@ -198,41 +190,27 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   // drifted from the one Settings edits.
   const projectName = projectEntries.find(p => normalizePath(p.root) === projectRoot)?.name
     || (projectRoot ? (projectRoot.split('/').pop() ?? projectRoot) : '')
-  // Local state, not a straight cache read: the cache is module-level and a
-  // save has to repaint the header.
+  // Local state, not a straight cache read: the registry cache is module-level,
+  // so nothing re-renders when it is rewarmed. Rewarmed on the projects-changed
+  // event because the edit now happens in Settings, in a tab that leaves this
+  // one mounted — without it the header would show the old mission until the
+  // next project switch.
   const [missionStatement, setMissionStatement] = useState('')
   useEffect(() => {
     if (!aiProjectId) { setMissionStatement(''); return }
     let cancelled = false
-    void loadProjectRegistryBlock().then(() => {
-      if (!cancelled) setMissionStatement(readCachedProjectMissionsBlock()[aiProjectId] ?? '')
-    })
-    return () => { cancelled = true }
-  }, [aiProjectId])
-
-  const startEditMission = useCallback(() => {
-    setMissionDraft(missionStatement)
-    setEditingMission(true)
-    setTimeout(() => missionTextareaRef.current?.focus(), 0)
-  }, [missionStatement])
-
-  // Edits land on the project registry, so Settings and the organizer header
-  // are editing one field rather than two that look alike.
-  const saveMission = useCallback(async () => {
-    if (!aiProjectId) return
-    setSavingMission(true)
-    try {
-      const project = (await readProjectsBlock()).find(p => p.key === aiProjectId)
-      if (!project) return
-      const mission = missionDraft.trim()
-      await updateProjectBlock(project.uuid, { mission })
-      await loadProjectRegistryBlock()
-      setMissionStatement(mission)
-      setEditingMission(false)
-    } finally {
-      setSavingMission(false)
+    const refresh = () => {
+      void loadProjectRegistryBlock().then(() => {
+        if (!cancelled) setMissionStatement(readCachedProjectMissionsBlock()[aiProjectId] ?? '')
+      })
     }
-  }, [aiProjectId, missionDraft])
+    refresh()
+    window.addEventListener(PROJECTS_CHANGE_EVENT_BLOCK, refresh)
+    return () => {
+      cancelled = true
+      window.removeEventListener(PROJECTS_CHANGE_EVENT_BLOCK, refresh)
+    }
+  }, [aiProjectId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -271,65 +249,12 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
         {projectName || 'Thinking Organizer'}
       </h1>
 
-      {projectRoot && (
-          <div className="mt-1.5">
-            {editingMission ? (
-              <div className="flex flex-col gap-1.5">
-                <textarea
-                  ref={missionTextareaRef}
-                  value={missionDraft}
-                  onChange={e => setMissionDraft(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Escape') { setEditingMission(false) }
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { void saveMission() }
-                  }}
-                  placeholder="Project mission statement..."
-                  rows={2}
-                  className="w-full resize-none rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring"
-                />
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => void saveMission()}
-                    disabled={savingMission}
-                    className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    {savingMission ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingMission(false)}
-                    className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted/70"
-                  >
-                    <X className="h-3 w-3" />
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : missionStatement ? (
-              <div className="group flex items-start gap-1.5">
-                <p className="text-sm text-foreground/80">{missionStatement}</p>
-                <button
-                  type="button"
-                  onClick={startEditMission}
-                  className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/60 hover:!text-muted-foreground"
-                  title="Edit mission statement"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={startEditMission}
-                className="text-xs text-muted-foreground/50 hover:text-muted-foreground"
-              >
-                + Add mission statement
-              </button>
-            )}
-          </div>
-        )}
+      {/* Read-only. The mission is a project property and Settings → Projects
+          is where project properties are edited; a second editor here meant two
+          places to look when it was wrong, which is how it drifted. */}
+      {projectRoot && missionStatement && (
+        <p className="mt-1.5 text-sm text-foreground/80">{missionStatement}</p>
+      )}
       </div>
   )
 
