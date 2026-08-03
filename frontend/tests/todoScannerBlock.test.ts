@@ -45,6 +45,21 @@ class FakeVaultFS implements VaultFS {
   async process(): Promise<void> {
     throw new Error('Not implemented in test')
   }
+
+  // Binary reads/writes and delete: no test here exercises them. They exist so
+  // the double actually satisfies VaultFS — a double that doesn't is invisible
+  // to the typechecker, which is what let renames rot in tests unnoticed.
+  async readBytes(): Promise<Uint8Array> {
+    throw new Error('readBytes is not implemented by this test double')
+  }
+
+  async writeBytes(): Promise<void> {
+    throw new Error('writeBytes is not implemented by this test double')
+  }
+
+  async delete(_p: string): Promise<void> {
+    throw new Error('delete is not implemented by this test double')
+  }
 }
 
 class MutableVaultFS implements VaultFS {
@@ -166,6 +181,21 @@ class MutableVaultFS implements VaultFS {
       if (filePath.startsWith(`${path}/`)) return true
     }
     return false
+  }
+
+  // Binary reads/writes and delete: no test here exercises them. They exist so
+  // the double actually satisfies VaultFS — a double that doesn't is invisible
+  // to the typechecker, which is what let renames rot in tests unnoticed.
+  async readBytes(): Promise<Uint8Array> {
+    throw new Error('readBytes is not implemented by this test double')
+  }
+
+  async writeBytes(): Promise<void> {
+    throw new Error('writeBytes is not implemented by this test double')
+  }
+
+  async delete(_p: string): Promise<void> {
+    throw new Error('delete is not implemented by this test double')
   }
 }
 

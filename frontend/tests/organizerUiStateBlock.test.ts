@@ -95,4 +95,26 @@ describe('organizerUiStateBlock', () => {
     }).fs
     await expect(readOrganizerUiStateBlock('projects/demo', invalid)).resolves.toBeNull()
   })
+
+  it('carries taskDir through, so a project can name its own records directory', async () => {
+    // Not sniffable: Thinking Space has both `tasks/` (live) and `epics/`
+    // (stale DEV-era), so a probe that takes whichever exists reads the wrong
+    // corpus and the pane looks populated with the wrong 34 rows.
+    const { fs } = makeMockVaultFs({
+      'projects/demo/thinking-organizer/organizer-ui-state.json': JSON.stringify({
+        schemaVersion: 3,
+        taskDir: '  tasks  ',
+      }),
+    })
+    const state = await readOrganizerUiStateBlock('projects/demo', fs)
+    expect(state?.taskDir).toBe('tasks')
+  })
+
+  it('leaves taskDir undefined when the project never set one', async () => {
+    const { fs } = makeMockVaultFs({
+      'projects/demo/thinking-organizer/organizer-ui-state.json': JSON.stringify({ schemaVersion: 3 }),
+    })
+    const state = await readOrganizerUiStateBlock('projects/demo', fs)
+    expect(state?.taskDir).toBeUndefined()
+  })
 })

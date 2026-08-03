@@ -20,8 +20,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const LINE_CEILING = 34
 
 const runContract = vi.fn()
-const putProjectRangeSummaryBlock = vi.fn(async () => {})
-const getProjectRangeSummaryBlock = vi.fn(async () => null)
+const putProjectRangeSummaryBlock = vi.fn(async (..._args: unknown[]) => {})
+const getProjectRangeSummaryBlock = vi.fn(async (..._args: unknown[]) => null)
 
 vi.mock('@/services/orchestrators/intelligenceOrch', () => ({
   runContract: (...args: unknown[]) => runContract(...args),

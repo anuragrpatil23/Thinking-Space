@@ -3,7 +3,6 @@ import type { VaultFS, ListedFiles, VaultStat, VaultEntry } from '@/services/leg
 import {
   createNote,
   stringifyNote,
-  type YAMLNote,
 } from '@/services/lego_blocks/units/yamlNoteBlock'
 
 function createMemoryLocalStorage(): Storage {
@@ -107,6 +106,21 @@ class FakeVaultFS implements VaultFS {
   async process(path: string, fn: (data: string) => string): Promise<void> {
     const content = await this.read(path)
     await this.write(path, fn(content))
+  }
+
+  // Binary reads/writes and delete: no test here exercises them. They exist so
+  // the double actually satisfies VaultFS — a double that doesn't is invisible
+  // to the typechecker, which is what let renames rot in tests unnoticed.
+  async readBytes(p: string): Promise<Uint8Array> {
+    return new TextEncoder().encode(await this.read(p))
+  }
+
+  async writeBytes(p: string, data: Uint8Array): Promise<void> {
+    await this.write(p, new TextDecoder().decode(data))
+  }
+
+  async delete(_p: string): Promise<void> {
+    throw new Error('delete is not implemented by this test double')
   }
 }
 

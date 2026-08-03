@@ -42,6 +42,8 @@ const { ensureChainDigestOrch } = await import(
 type ActivityChain = Parameters<typeof ensureChainDigestOrch>[0]
 
 function digest(over: Partial<ProjectChainDigest> = {}): ProjectChainDigest {
+  // Cast because spreading a Partial re-optionalizes required fields; every one
+  // of them is supplied by the literal below.
   return {
     projectId: 'F9',
     chainKey: 'c-1',
@@ -64,7 +66,7 @@ function digest(over: Partial<ProjectChainDigest> = {}): ProjectChainDigest {
     undertaking: [],
     activeDurationMs: 0,
     ...over,
-  }
+  } as ProjectChainDigest
 }
 
 function chain(touchedPaths?: string[], activeDurationMs?: number): ActivityChain {

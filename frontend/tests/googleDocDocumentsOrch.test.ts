@@ -89,6 +89,11 @@ class FakeVaultFS implements VaultFS {
     const current = await this.read(path)
     await this.write(path, fn(current))
   }
+
+  // Not exercised here; present so the double satisfies VaultFS.
+  async delete(_p: string): Promise<void> {
+    throw new Error('delete is not implemented by this test double')
+  }
 }
 
 let fakeFs = new FakeVaultFS()

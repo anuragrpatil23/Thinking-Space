@@ -493,7 +493,7 @@ describe('getUndertakingOrch', () => {
 
     expect(view).not.toBeNull()
     expect(view!.tail.chainCount).toBe(1)
-    expect(view!.chains.map(c => c.chainKey)).toEqual(['c-1'])
+    expect((view!.chains ?? []).map(c => c.chainKey)).toEqual(['c-1'])
   })
 
   it('never writes the derived tail back into the record', async () => {

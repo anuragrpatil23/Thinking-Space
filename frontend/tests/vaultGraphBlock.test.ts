@@ -40,6 +40,7 @@ function graphNode(id: string, aiTouchMs = 0): VaultGraphNode {
     id,
     title: id.split('/').pop()!.replace(/\.md$/, ''),
     project: 'p',
+    projectPrefix: 'p',
     degree: 0,
     birthMs: 0,
     heat: 0,

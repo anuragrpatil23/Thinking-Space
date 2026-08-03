@@ -6,13 +6,34 @@ import { taskBodyBlock, parseTaskMarkdownBlock, type Task } from '@/services/leg
 // because they are Anurag's hand-written records, the other half of the loop.
 // Read-only here: the seam never edits the old store.
 
-export function taskDirBlock(projectRoot: string): string {
-  return `${projectRoot.replace(/\/+$/, '')}/thinking-organizer/epics`
+/**
+ * Which directory a project's authored records live in.
+ *
+ * `epics` is the default because F9 — the only project this read when it was
+ * written — files them there. Thinking Space files 325 of them under `tasks/`
+ * and keeps a stale `epics/` holding DEV-era work items, so a hardcoded `epics`
+ * pointed the pane at the wrong corpus rather than at nothing, which is the
+ * harder failure to notice.
+ */
+export const DEFAULT_TASK_DIR_BLOCK = 'epics'
+
+export function taskDirBlock(projectRoot: string, dir: string = DEFAULT_TASK_DIR_BLOCK): string {
+  return `${projectRoot.replace(/\/+$/, '')}/thinking-organizer/${dir.replace(/^\/+|\/+$/g, '')}`
 }
 
-export async function listTasksBlock(projectRoot: string): Promise<Task[]> {
+/** The store names files `<singular>-<key>.md` after their directory: `epics/`
+ *  holds `epic-…`, `tasks/` holds `task-…`. Only used as the fast path — the
+ *  directory scan behind it is what actually decides. */
+function filePrefixBlock(dir: string): string {
+  return dir.replace(/s$/, '')
+}
+
+export async function listTasksBlock(
+  projectRoot: string,
+  dirName: string = DEFAULT_TASK_DIR_BLOCK,
+): Promise<Task[]> {
   const fs = getVaultFS()
-  const dir = taskDirBlock(projectRoot)
+  const dir = taskDirBlock(projectRoot, dirName)
   let names: string[] = []
   try {
     names = (await fs.list(dir)).files.filter(name => name.endsWith('.md'))
@@ -45,16 +66,20 @@ export interface TaskFile {
  * common case is one read; the directory scan behind it is the fallback for a
  * hand-renamed file, where the key in the frontmatter is still the truth.
  */
-export async function readTaskBlock(projectRoot: string, key: string): Promise<TaskFile | null> {
+export async function readTaskBlock(
+  projectRoot: string,
+  key: string,
+  dirName: string = DEFAULT_TASK_DIR_BLOCK,
+): Promise<TaskFile | null> {
   const fs = getVaultFS()
-  const dir = taskDirBlock(projectRoot)
+  const dir = taskDirBlock(projectRoot, dirName)
 
   const parse = (raw: string, path: string): TaskFile | null => {
     const task = parseTaskMarkdownBlock(raw)
     return task ? { task, body: taskBodyBlock(raw), path } : null
   }
 
-  const direct = `${dir}/epic-${key}.md`
+  const direct = `${dir}/${filePrefixBlock(dirName)}-${key}.md`
   try {
     const hit = parse(await fs.read(direct), direct)
     if (hit && hit.task.key === key) return hit

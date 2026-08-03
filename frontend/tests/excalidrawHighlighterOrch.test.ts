@@ -16,6 +16,9 @@ function createFsMock(readImpl: (path: string) => Promise<string>): VaultFS {
     exists: async () => false,
     mkdir: async () => {},
     process: async () => {},
+    readBytes: async () => new Uint8Array(),
+    writeBytes: async () => {},
+    delete: async () => {},
   }
 }
 

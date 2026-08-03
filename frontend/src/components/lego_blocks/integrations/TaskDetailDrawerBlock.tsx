@@ -51,7 +51,7 @@ export default function TaskDetailDrawerBlock({ projectId, taskKey, onOpenUndert
       .then(next => {
         if (cancelled) return
         setDetail(next)
-        if (!next) setError('Task not found in this project’s organizer.')
+        if (!next) setError('Not found in this project’s organizer.')
       })
       .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e))
@@ -90,10 +90,12 @@ export default function TaskDetailDrawerBlock({ projectId, taskKey, onOpenUndert
 
   return (
     <DrawerShellBlock
-      // The kind *is* what this is — "Idea", "Question to research" — so it
-      // carries the eyebrow rather than a generic "Task" with the kind repeated
-      // as a field below.
-      eyebrow={detail?.task.category ?? 'Task'}
+      // The kind *is* what this is — "Idea", "Question to research", "Tasks"
+      // where a project has no kinds — so it carries the eyebrow rather than a
+      // generic noun with the kind repeated as a field below. No hardcoded
+      // fallback: every project names its own records, and the only moment this
+      // is empty is the flicker before the read lands.
+      eyebrow={detail?.task.category ?? ''}
       onClose={onClose}
       actions={
         detail ? (
@@ -101,7 +103,7 @@ export default function TaskDetailDrawerBlock({ projectId, taskKey, onOpenUndert
             type="button"
             onClick={copyMarkdown}
             className={DRAWER_HEADER_BUTTON}
-            title="Copy this task as markdown"
+            title="Copy as markdown"
           >
             {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? 'Copied' : 'Copy'}

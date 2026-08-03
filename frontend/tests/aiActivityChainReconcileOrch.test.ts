@@ -12,14 +12,14 @@ import type { ProjectChainDigest } from '@/services/lego_blocks/units/aiActivity
 // the chain, and the on-disk write is a side effect nothing depends on.
 
 let storedChains: Array<ProjectChainDigest & { path: string }> = []
-const listChainsBlock = vi.fn(async () => storedChains)
+const listChainsBlock = vi.fn(async (_query?: unknown) => storedChains)
 
 vi.mock('@/services/lego_blocks/integrations/aiActivityChainIndexBlock', () => ({
   listChainsBlock: (q: unknown) => listChainsBlock(q as never),
   listChainDatesBlock: async () => ['2026-07-14'],
 }))
 
-const put = vi.fn(async () => undefined)
+const put = vi.fn(async (_digest?: unknown) => undefined)
 vi.mock('@/services/lego_blocks/integrations/aiActivityChainDigestStoreBlock', () => ({
   getProjectChainDigestBlock: async () => null,
   putProjectChainDigestBlock: (d: unknown) => put(d as never),

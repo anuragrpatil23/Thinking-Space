@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
-import { findSimilarNodesBlock } from '@/services/lego_blocks/integrations/similarityBlock'
+import { findSimilarNodesBlock, type SimilarityQuery } from '@/services/lego_blocks/integrations/similarityBlock'
 import { findSimilarGroupedMatchesOrch } from '@/services/orchestrators/similarityOrch'
 
-const getAllNodesMock = vi.fn<[], Promise<NodeRecord[]>>()
+const getAllNodesMock = vi.fn<() => Promise<NodeRecord[]>>()
 
 vi.mock('@/services/lego_blocks/integrations/dbBlock', async () => {
   const actual = await vi.importActual<typeof import('@/services/lego_blocks/integrations/dbBlock')>('@/services/lego_blocks/integrations/dbBlock')
@@ -70,10 +70,10 @@ describe('similarity lexical foundation', () => {
       }),
     ]
 
-    const query = {
+    const query: SimilarityQuery = {
       text: 'cell evolution mitochondria atp',
       sourceFilePath: 'biology/cell-evolution/source.md',
-      preferredTypes: ['epic', 'idea', 'thought'] as const,
+      preferredTypes: ['epic', 'idea', 'thought'],
       limit: 10,
     }
 

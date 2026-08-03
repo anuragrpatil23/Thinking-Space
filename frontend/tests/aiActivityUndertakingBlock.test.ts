@@ -7,7 +7,6 @@ import {
   resolveTagBlock,
   serializeUndertakingBlock,
   type TagVocabulary,
-  type UndertakingRecord,
 } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
 
 // A real Phase 1 record, trimmed.

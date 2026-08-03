@@ -151,6 +151,21 @@ class FakeVaultFS implements VaultFS {
     }
     return false
   }
+
+  // Binary reads/writes and delete: no test here exercises them. They exist so
+  // the double actually satisfies VaultFS — a double that doesn't is invisible
+  // to the typechecker, which is what let renames rot in tests unnoticed.
+  async readBytes(p: string): Promise<Uint8Array> {
+    return new TextEncoder().encode(await this.read(p))
+  }
+
+  async writeBytes(p: string, data: Uint8Array): Promise<void> {
+    await this.write(p, new TextDecoder().decode(data))
+  }
+
+  async delete(_p: string): Promise<void> {
+    throw new Error('delete is not implemented by this test double')
+  }
 }
 
 function manifestWithActions(): string {
@@ -218,6 +233,8 @@ describe('extensionUiOrch', () => {
       fastapi_capability_adapter_enabled: false,
       extension_host_enabled: true,
       extension_builder_enabled: true,
+      yaml_fields_auto_heal_enabled: false,
+      hybrid_sync_reconciliation_enabled: false,
     })
     clearExtensionRegistryOrch()
     setElectronApiMock(undefined)
@@ -259,6 +276,8 @@ describe('extensionUiOrch', () => {
       fastapi_capability_adapter_enabled: false,
       extension_host_enabled: false,
       extension_builder_enabled: true,
+      yaml_fields_auto_heal_enabled: false,
+      hybrid_sync_reconciliation_enabled: false,
     })
     const resolved = resolveExtensionSlotActionsOrch('sidebar-bottom')
     expect(resolved).toEqual({
@@ -283,6 +302,8 @@ describe('extensionUiOrch', () => {
       fastapi_capability_adapter_enabled: false,
       extension_host_enabled: false,
       extension_builder_enabled: true,
+      yaml_fields_auto_heal_enabled: false,
+      hybrid_sync_reconciliation_enabled: false,
     })
 
     await expect(
@@ -313,7 +334,7 @@ describe('extensionUiOrch', () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok || 'blocked' in result) return
-    expect(result.data.frontmatter?.title).toBe('Sample')
+    expect((result.data as { frontmatter?: { title?: string } }).frontmatter?.title).toBe('Sample')
   })
 
   it('routes runtime actions through electron runtime adapter', async () => {

@@ -16,7 +16,7 @@ function undertakingRow(over: { lastDate?: string; tags?: string[]; proposedTags
     record: { tags: over.tags ?? [], proposedTags: over.proposedTags ?? [], updatedAt: '', createdAt: '' } as UndertakingIndexRow['record'],
     tail: { lastDate: over.lastDate ?? '', firstDate: '' } as UndertakingIndexRow['tail'],
     buckets: [],
-    fedNotes: [],
+    fedTasks: [],
   }
 }
 

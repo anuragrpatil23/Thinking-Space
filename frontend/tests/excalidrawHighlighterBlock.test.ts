@@ -47,7 +47,7 @@ describe('excalidrawHighlighterBlock', () => {
   })
 
   it('builds highlighter patch that switches tool to freedraw with highlighter options', () => {
-    const preset = EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK.find((item) => item.id === 'yellow')
+    const preset = EXCALIDRAW_HIGHLIGHTER_PRESETS_BLOCK.find((item) => item.id === 'yellow')!
     expect(preset).toBeDefined()
     const patch = buildExcalidrawHighlighterAppStatePatchBlock(preset, {
       activeTool: {

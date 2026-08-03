@@ -1,0 +1,23 @@
+// The app's tsconfig covers `src` only, which is right for the build — tests are
+// never bundled. But it also meant `npm run typecheck` was silently blind to
+// `tests/`, so a rename that broke a test file came back clean and only failed
+// later under vitest. This config exists purely so the fast check sees them too.
+//
+// It has to be looser than the app's in three ways, because the test surface
+// reaches code the app's config never compiles:
+//   - `lib` gains ES2021: `scripts/agent/` runs under node, not the browser.
+//   - `types` gains node + vitest globals, for the same reason.
+//   - `electron` is pinned to the package, because `baseUrl: "."` otherwise
+//     resolves the bare specifier to this repo's own `electron/` directory.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "electron": ["./node_modules/electron"]
+    }
+  },
+  "include": ["src", "tests"]
+}

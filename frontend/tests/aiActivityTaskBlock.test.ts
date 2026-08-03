@@ -51,7 +51,9 @@ describe('taskCategoryLabelBlock', () => {
     // Headings are names, so an unlabelled code must not read as a raw code
     // sitting among them.
     expect(taskCategoryLabelBlock('ZZ')).toBe('Zz')
-    expect(taskCategoryLabelBlock('')).toBe('Other')
+    // No code at all is a project whose records have no kinds (Thinking Space),
+    // not a record that lost one — so the heading names the corpus.
+    expect(taskCategoryLabelBlock('')).toBe('Tasks')
   })
 })
 

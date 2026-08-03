@@ -117,7 +117,9 @@ export class NodeVaultFS implements VaultFS {
     const results: VaultEntry[] = []
 
     const walk = async (dir: string): Promise<void> => {
-      let entries: Awaited<ReturnType<typeof fsPromises.readdir>>
+      // Spelled out rather than inferred from `readdir`: its overloads resolve
+      // to the Buffer-name variant, and `entry.name` then isn't a string.
+      let entries: import('node:fs').Dirent[]
       try {
         entries = await fsPromises.readdir(dir, { withFileTypes: true })
       } catch {
@@ -183,6 +185,20 @@ export class NodeVaultFS implements VaultFS {
   async process(relPath: string, fn: (data: string) => string): Promise<void> {
     const content = await this.read(relPath)
     await this.write(relPath, fn(content))
+  }
+
+  async readBytes(relPath: string): Promise<Uint8Array> {
+    return new Uint8Array(await fsPromises.readFile(this.assertInsideVault(relPath)))
+  }
+
+  async writeBytes(relPath: string, data: Uint8Array): Promise<void> {
+    const full = this.assertInsideVault(relPath)
+    await fsPromises.mkdir(path.dirname(full), { recursive: true })
+    await fsPromises.writeFile(full, data)
+  }
+
+  async delete(relPath: string): Promise<void> {
+    await fsPromises.rm(this.assertInsideVault(relPath), { recursive: true, force: true })
   }
 
   private assertInsideVault(relPath: string): string {

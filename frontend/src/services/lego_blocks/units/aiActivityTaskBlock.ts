@@ -100,7 +100,11 @@ export function taskTicketBlock(key: string): string {
 export function taskCategoryLabelBlock(code: string): string {
   const known = CATEGORY_LABELS[code]
   if (known) return known
-  if (!code) return 'Other'
+  // No code at all is not a gap — it is a project whose records simply have no
+  // kinds. Thinking Space is one: 325 rows that are all just tasks, where F9 has
+  // twelve species. "Other" was right when every record was expected to carry a
+  // code and a blank meant something had gone wrong.
+  if (!code) return 'Tasks'
   return code.charAt(0) + code.slice(1).toLowerCase()
 }
 

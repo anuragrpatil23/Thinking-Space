@@ -29,7 +29,8 @@ import {
 import { chainActiveDurationMsBlock } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 import { listProjectChainsOrch } from '@/services/orchestrators/aiActivityChainReconcileOrch'
 import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
-import { listTasksBlock, readTaskBlock } from '@/services/lego_blocks/integrations/aiActivityTaskStoreBlock'
+import { DEFAULT_TASK_DIR_BLOCK, listTasksBlock, readTaskBlock } from '@/services/lego_blocks/integrations/aiActivityTaskStoreBlock'
+import { readOrganizerUiStateBlock } from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 import { parseOrganizerBodySections } from '@/services/lego_blocks/integrations/organizerBodyBlock'
 import type { YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { taskCategoryLabelBlock, type Task } from '@/services/lego_blocks/units/aiActivityTaskBlock'
@@ -277,7 +278,7 @@ export async function listTaskProjectsOrch(): Promise<TaskProject[]> {
       else if (vaultRoot && abs.startsWith(`${vaultRoot}/`)) rel = abs.slice(vaultRoot.length + 1)
       else if (!abs.startsWith('/')) rel = abs
       if (rel === null) continue
-      const tasks = await listTasksBlock(rel)
+      const tasks = await listTasksBlock(rel, await taskDirForRootBlock(rel))
       if (tasks.length === 0) continue
       const projectId = rel.split('/').pop() || entry.project
       if (seen.has(projectId)) continue
@@ -302,7 +303,7 @@ export async function getOpenTasksOrch(params: {
   projectRoot: string
 }): Promise<OpenTasksResult> {
   const [tasks, undertakings] = await Promise.all([
-    listTasksBlock(params.projectRoot),
+    taskDirForRootBlock(params.projectRoot).then(dir => listTasksBlock(params.projectRoot, dir)),
     listUndertakingsBlock(params.projectId),
   ])
   const fed = new Set<string>()
@@ -502,12 +503,12 @@ export async function getUndertakingIndexOrch(
   projectId: string,
   options?: { buckets?: number },
 ): Promise<UndertakingIndex> {
-  const [views, sections, taskRoot] = await Promise.all([
+  const [views, sections, source] = await Promise.all([
     listUndertakingsOrch(projectId),
     listSectionsBlock(projectId),
-    taskRootForProjectBlock(projectId),
+    taskSourceForProjectBlock(projectId),
   ])
-  const tasks = taskRoot !== null ? await listTasksBlock(taskRoot) : []
+  const tasks = source ? await listTasksBlock(source.root, source.dir) : []
   const seam = buildTaskSeamBlock(tasks, views.map(v => v.record), Date.now())
 
   // Shared window across every dated entry, so all strips align.
@@ -607,6 +608,28 @@ async function taskRootForProjectBlock(projectId: string): Promise<string | null
     }
   }
   return null
+}
+
+/**
+ * Where a project's authored records live: its root, plus which directory under
+ * the organizer holds them.
+ *
+ * The directory is per-project state and comes from `organizer-ui-state.json`,
+ * next to `projectName`/`aiProjectId`. It cannot be sniffed: Thinking Space has
+ * both a `tasks/` (325 live rows) and an `epics/` (34 stale DEV-era items), so a
+ * probe that takes whichever exists picks the wrong one.
+ */
+async function taskSourceForProjectBlock(
+  projectId: string,
+): Promise<{ root: string; dir: string } | null> {
+  const root = await taskRootForProjectBlock(projectId)
+  if (root === null) return null
+  return { root, dir: await taskDirForRootBlock(root) }
+}
+
+async function taskDirForRootBlock(root: string): Promise<string> {
+  const state = await readOrganizerUiStateBlock(root)
+  return state?.taskDir?.trim() || DEFAULT_TASK_DIR_BLOCK
 }
 
 /**
@@ -777,11 +800,11 @@ export async function getUndertakingLinksOrch(
   projectId: string,
   key: string,
 ): Promise<UndertakingLinks> {
-  const [records, taskRoot] = await Promise.all([
+  const [records, source] = await Promise.all([
     listUndertakingsBlock(projectId),
-    taskRootForProjectBlock(projectId),
+    taskSourceForProjectBlock(projectId),
   ])
-  const tasks = taskRoot !== null ? await listTasksBlock(taskRoot) : []
+  const tasks = source ? await listTasksBlock(source.root, source.dir) : []
   const seam = buildTaskSeamBlock(tasks, records, Date.now())
   const record = records.find(r => r.key === key)
 
@@ -841,9 +864,9 @@ export interface TaskDetail {
  * half and the seam has never written to it.
  */
 export async function getTaskDetailOrch(projectId: string, taskKey: string): Promise<TaskDetail | null> {
-  const taskRoot = await taskRootForProjectBlock(projectId)
-  if (taskRoot === null) return null
-  const file = await readTaskBlock(taskRoot, taskKey)
+  const source = await taskSourceForProjectBlock(projectId)
+  if (!source) return null
+  const file = await readTaskBlock(source.root, taskKey, source.dir)
   if (!file) return null
 
   const records = await listUndertakingsBlock(projectId)

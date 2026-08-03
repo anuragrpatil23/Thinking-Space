@@ -159,6 +159,21 @@ class FakeVaultFS implements VaultFS {
     }
     return false
   }
+
+  // Binary reads/writes and delete: no test here exercises them. They exist so
+  // the double actually satisfies VaultFS — a double that doesn't is invisible
+  // to the typechecker, which is what let renames rot in tests unnoticed.
+  async readBytes(p: string): Promise<Uint8Array> {
+    return new TextEncoder().encode(await this.read(p))
+  }
+
+  async writeBytes(p: string, data: Uint8Array): Promise<void> {
+    await this.write(p, new TextDecoder().decode(data))
+  }
+
+  async delete(_p: string): Promise<void> {
+    throw new Error('delete is not implemented by this test double')
+  }
 }
 
 describe('extensionBuilderOrch', () => {
@@ -170,6 +185,8 @@ describe('extensionBuilderOrch', () => {
       fastapi_capability_adapter_enabled: false,
       extension_host_enabled: true,
       extension_builder_enabled: true,
+      yaml_fields_auto_heal_enabled: false,
+      hybrid_sync_reconciliation_enabled: false,
     })
     clearExtensionRegistryOrch()
   })
@@ -213,9 +230,12 @@ describe('extensionBuilderOrch', () => {
     })
 
     if (!result.ok) {
+      // Both failure shapes carry a human message, in different places, and `in`
+      // doesn't narrow this union — the assertion only reaches for the string.
+      const failure = result as { message?: string; error?: { message?: string } }
       throw new Error(
         'Extension action invocation failed: '
-        + ('blocked' in result ? result.message : result.error.message),
+        + (failure.message ?? failure.error?.message ?? 'unknown'),
       )
     }
     expect(result.ok).toBe(true)
@@ -245,6 +265,8 @@ describe('extensionBuilderOrch', () => {
       fastapi_capability_adapter_enabled: false,
       extension_host_enabled: true,
       extension_builder_enabled: false,
+      yaml_fields_auto_heal_enabled: false,
+      hybrid_sync_reconciliation_enabled: false,
     })
     const fs = new FakeVaultFS()
     await expect(
@@ -262,6 +284,8 @@ describe('extensionBuilderOrch', () => {
       fastapi_capability_adapter_enabled: false,
       extension_host_enabled: false,
       extension_builder_enabled: true,
+      yaml_fields_auto_heal_enabled: false,
+      hybrid_sync_reconciliation_enabled: false,
     })
     const fs = new FakeVaultFS()
     await expect(

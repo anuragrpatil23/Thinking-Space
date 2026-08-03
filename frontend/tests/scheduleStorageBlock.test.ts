@@ -191,7 +191,7 @@ describe('sanitizeScheduleSpecBlock', () => {
       [{ hour: 9, minute: 60 }, 'minute > 59'],
       [{ hour: 9, minute: -1 }, 'minute < 0'],
       [{ hour: 'nine', minute: 0 }, 'hour non-numeric'],
-    ])('rejects out-of-range calendar entry %j (%s)', async (entry) => {
+    ])('rejects out-of-range calendar entry %j (%s)', async (entry, _label) => {
       const { sanitizeScheduleSpecBlock } = await loadBlock()
       expect(sanitizeScheduleSpecBlock(baseSpec({
         schedule: { kind: 'calendar', entries: [entry] },

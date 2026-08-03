@@ -106,6 +106,24 @@ class FakeVaultFS implements VaultFS {
     await this.write(path, fn(current))
   }
 
+  // Binary and delete ride the same string map: no test here reads a real
+  // binary file, and a double that satisfies the interface is what keeps the
+  // typechecker able to see a renamed method.
+  async readBytes(path: string): Promise<Uint8Array> {
+    return new TextEncoder().encode(await this.read(path))
+  }
+
+  async writeBytes(path: string, data: Uint8Array): Promise<void> {
+    await this.write(path, new TextDecoder().decode(data))
+  }
+
+  async delete(path: string): Promise<void> {
+    const normalized = this.normalize(path)
+    this.files.delete(normalized)
+    this.mtimes.delete(normalized)
+    this.dirs.delete(normalized)
+  }
+
   private normalize(path: string): string {
     return path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/')
   }
@@ -256,7 +274,7 @@ describe('capabilityRouterOrch', () => {
     win.electronAPI = {
       isElectron: true,
       capabilitiesList: listMock,
-    }
+    } as unknown as typeof win.electronAPI
 
     const response = await capabilityOrch!.listCapabilitiesViaElectronAdapterOrch()
     expect(listMock).toHaveBeenCalledWith()
@@ -290,7 +308,7 @@ describe('capabilityRouterOrch', () => {
     win.electronAPI = {
       isElectron: true,
       capabilitiesInvoke: invokeMock,
-    }
+    } as unknown as typeof win.electronAPI
 
     const request = {
       capability: 'organizer.nodes.list_roots' as const,
@@ -1186,6 +1204,7 @@ describe('capabilityRouterOrch', () => {
     const fs = new FakeVaultFS()
     await expect(capabilityOrch!.invokeCapabilityOrThrow({
       capability: 'handoff.create',
+      // @ts-expect-error — the missing `summary` is the point of this test.
       input: {
         title: 'Invalid Handoff',
         projectRoot: 'coding-projects/thinking-space',
@@ -1281,11 +1300,13 @@ function installWindowAndStorageShims(): void {
   }
 
   if (!globalRecord.window) {
-    globalRecord.window = {}
+    globalRecord.window = {} as typeof globalRecord.window
   }
 
   const store = new Map<string, string>()
   globalRecord.localStorage = {
+    // A four-method stand-in, not the full Storage surface.
+    ...({} as Storage),
     getItem(key: string) {
       return store.has(key) ? store.get(key)! : null
     },
