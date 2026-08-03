@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   collectFilterGroupsBlock,
-  noteEntryAttrsBlock,
+  taskEntryAttrsBlock,
   rowMatchesFiltersBlock,
   undertakingRowAttrsBlock,
 } from '@/services/lego_blocks/units/organizerIndexFilterBlock'
 import type {
-  NoteEntry,
+  TaskEntry,
   UndertakingIndex,
   UndertakingIndexRow,
 } from '@/services/orchestrators/aiActivityUndertakingOrch'
@@ -20,9 +20,9 @@ function undertakingRow(over: { lastDate?: string; tags?: string[]; proposedTags
   }
 }
 
-function note(over: { code: string; openedDate?: string; tags?: string[]; fed?: boolean }): NoteEntry {
+function task(over: { code: string; openedDate?: string; tags?: string[]; fed?: boolean }): TaskEntry {
   return {
-    note: { categoryCode: over.code, openedDate: over.openedDate ?? '', tags: over.tags ?? [] } as NoteEntry['note'],
+    task: { categoryCode: over.code, openedDate: over.openedDate ?? '', tags: over.tags ?? [] } as TaskEntry['task'],
     fedInto: over.fed ? { key: 'u', title: 'U' } : undefined,
   }
 }
@@ -39,11 +39,11 @@ describe('rowMatchesFiltersBlock', () => {
     expect(rowMatchesFiltersBlock(attrs, [{ attr: 'engagement', value: 'open' }])).toBe(false)
   })
 
-  it('reads note engagement, with reference kinds having none', () => {
-    expect(noteEntryAttrsBlock(note({ code: 'QT' }), 'Questions').engagement).toBe('open')
-    expect(noteEntryAttrsBlock(note({ code: 'QT', fed: true }), 'Questions').engagement).toBe('engaged')
+  it('reads task engagement, with reference kinds having none', () => {
+    expect(taskEntryAttrsBlock(task({ code: 'QT' }), 'Questions').engagement).toBe('open')
+    expect(taskEntryAttrsBlock(task({ code: 'QT', fed: true }), 'Questions').engagement).toBe('engaged')
     // MIDE is a reference kind — no engagement, so 'open'/'engaged' filters skip it.
-    expect(noteEntryAttrsBlock(note({ code: 'MIDE' }), 'Missed ideas').engagement).toBeUndefined()
+    expect(taskEntryAttrsBlock(task({ code: 'MIDE' }), 'Missed ideas').engagement).toBeUndefined()
   })
 })
 
@@ -51,7 +51,7 @@ describe('collectFilterGroupsBlock', () => {
   it('gathers distinct years, kinds, tags, and states across both zones', () => {
     const index: UndertakingIndex = {
       sections: [{ key: 's1', title: 'Company Studies', rows: [undertakingRow({ lastDate: '2026-06-01', tags: ['held'] })] }],
-      noteSections: [{ code: 'QT', title: 'Questions', notes: [note({ code: 'QT', openedDate: '2025-02-01', tags: ['watchlist'] })] }],
+      taskSections: [{ code: 'QT', title: 'Questions', tasks: [task({ code: 'QT', openedDate: '2025-02-01', tags: ['watchlist'] })] }],
       windowStart: '',
       windowEnd: '',
     }

@@ -29,10 +29,10 @@ import {
 import { chainActiveDurationMsBlock } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 import { listProjectChainsOrch } from '@/services/orchestrators/aiActivityChainReconcileOrch'
 import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
-import { listNotesBlock, readNoteBlock } from '@/services/lego_blocks/integrations/aiActivityNoteStoreBlock'
+import { listTasksBlock, readTaskBlock } from '@/services/lego_blocks/integrations/aiActivityTaskStoreBlock'
 import { parseOrganizerBodySections } from '@/services/lego_blocks/integrations/organizerBodyBlock'
 import type { YAMLCommentEntry } from '@/services/lego_blocks/units/yamlNoteBlock'
-import { noteCategoryLabelBlock, type Note } from '@/services/lego_blocks/units/aiActivityNoteBlock'
+import { taskCategoryLabelBlock, type Task } from '@/services/lego_blocks/units/aiActivityTaskBlock'
 import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
 import { readCachedProjectRegistryBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
@@ -236,39 +236,39 @@ export async function getUndertakingOrch(
   return { record, tail: buildTail(chains), chains }
 }
 
-// ── The wake list (open notes from the old organizer) ──────────────────────
+// ── The wake list (open tasks from the old organizer) ──────────────────────
 
-export interface OpenNotesResult {
-  /** Notes no undertaking has fed on — the wake list, oldest first. */
-  open: Note[]
-  /** Notes the seam edges account for (fed), for a "N of M answered" read. */
+export interface OpenTasksResult {
+  /** Tasks no undertaking has fed on — the wake list, oldest first. */
+  open: Task[]
+  /** Tasks the seam edges account for (fed), for a "N of M answered" read. */
   answeredCount: number
-  totalNotes: number
+  totalTasks: number
 }
 
-export interface NoteProject {
+export interface TaskProject {
   /** Registry display name. */
   name: string
   /** ai-activity project id (undertakings dir) — the project-root basename. */
   projectId: string
   /** Vault-relative root holding the old organizer (`<root>/thinking-organizer`). */
   projectRoot: string
-  /** Total notes in the old organizer — cheap signal for chip ordering. */
-  askCount: number
+  /** Total tasks in the old organizer — cheap signal for chip ordering. */
+  taskCount: number
 }
 
 /**
- * Projects that have an old organizer with notes — the chips for the wake list.
+ * Projects that have an old organizer with tasks — the chips for the wake list.
  * Discovered off the project registry: for each registered project, the first
- * vault-relative path whose `thinking-organizer/epics` holds notes. Code-repo
+ * vault-relative path whose `thinking-organizer/epics` holds tasks. Code-repo
  * roots (absolute, outside the vault) can't hold an organizer, so they're
  * skipped. Empty when no project has been given a registry path yet.
  */
-export async function listNoteProjectsOrch(): Promise<NoteProject[]> {
+export async function listTaskProjectsOrch(): Promise<TaskProject[]> {
   await loadProjectRegistryBlock()
   const entries = readCachedProjectRegistryBlock()
   const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
-  const out: NoteProject[] = []
+  const out: TaskProject[] = []
   const seen = new Set<string>()
   for (const entry of entries) {
     for (const abs of entry.paths) {
@@ -277,43 +277,43 @@ export async function listNoteProjectsOrch(): Promise<NoteProject[]> {
       else if (vaultRoot && abs.startsWith(`${vaultRoot}/`)) rel = abs.slice(vaultRoot.length + 1)
       else if (!abs.startsWith('/')) rel = abs
       if (rel === null) continue
-      const notes = await listNotesBlock(rel)
-      if (notes.length === 0) continue
+      const tasks = await listTasksBlock(rel)
+      if (tasks.length === 0) continue
       const projectId = rel.split('/').pop() || entry.project
       if (seen.has(projectId)) continue
       seen.add(projectId)
-      out.push({ name: entry.project, projectId, projectRoot: rel, askCount: notes.length })
+      out.push({ name: entry.project, projectId, projectRoot: rel, taskCount: tasks.length })
       break
     }
   }
-  out.sort((a, b) => b.askCount - a.askCount || a.name.localeCompare(b.name))
+  out.sort((a, b) => b.taskCount - a.taskCount || a.name.localeCompare(b.name))
   return out
 }
 
 /**
- * The wake list: old-organizer notes that no undertaking has fed on. Open is
- * derived, never stored — add a `fed_by` edge and the note drops off the
+ * The wake list: old-organizer tasks that no undertaking has fed on. Open is
+ * derived, never stored — add a `fed_by` edge and the task drops off the
  * list on the next read. Keys are compared case-insensitively because the old
  * store lowercases them (`f9-qt-e-318`) while the seam edges carry the display
  * form (`F9-QT-E-318`).
  */
-export async function getOpenNotesOrch(params: {
+export async function getOpenTasksOrch(params: {
   projectId: string
   projectRoot: string
-}): Promise<OpenNotesResult> {
-  const [notes, undertakings] = await Promise.all([
-    listNotesBlock(params.projectRoot),
+}): Promise<OpenTasksResult> {
+  const [tasks, undertakings] = await Promise.all([
+    listTasksBlock(params.projectRoot),
     listUndertakingsBlock(params.projectId),
   ])
   const fed = new Set<string>()
   for (const u of undertakings) {
     for (const key of u.fedBy) {
-      if (!key.includes('::')) fed.add(key.toUpperCase()) // note tickets only, not chains
+      if (!key.includes('::')) fed.add(key.toUpperCase()) // task tickets only, not chains
     }
   }
-  const open = notes.filter(a => !fed.has(a.ticket))
+  const open = tasks.filter(a => !fed.has(a.ticket))
   open.sort((a, b) => (a.openedDate || '').localeCompare(b.openedDate || ''))
-  return { open, answeredCount: notes.length - open.length, totalNotes: notes.length }
+  return { open, answeredCount: tasks.length - open.length, totalTasks: tasks.length }
 }
 
 // ── The lineage view (grew_out_of DAG) ────────────────────────────────────
@@ -343,8 +343,8 @@ export async function getUndertakingDagOrch(projectId: string): Promise<Undertak
 
 // ── The index view ───────────────────────────────────────────────────────
 
-/** A note (old-organizer question/idea) resolved to its title, for display. */
-export interface NoteRef {
+/** A task (old-organizer question/idea) resolved to its title, for display. */
+export interface TaskRef {
   key: string
   title: string
 }
@@ -356,10 +356,10 @@ export interface UndertakingIndexRow {
    *  strips is comparable — a flat zero-count strip reads as "written down,
    *  never worked on" against its neighbours. */
   buckets: DensityBucket[]
-  /** Migrating notes (Questions) that fed this undertaking, resolved to titles.
+  /** Migrating tasks (Questions) that fed this undertaking, resolved to titles.
    *  Rendered as `◇→` sublines: the question, under the doing that answered it.
    *  Empty when nothing migrating fed it. */
-  fedNotes: NoteRef[]
+  fedTasks: TaskRef[]
 }
 
 export interface UndertakingIndexSection {
@@ -368,122 +368,122 @@ export interface UndertakingIndexSection {
   rows: UndertakingIndexRow[]
 }
 
-/** One hand-written note (from the old organizer). A note is "engaged" when it
+/** One hand-written task (from the old organizer). A task is "engaged" when it
  *  either fed an undertaking (`fedInto`) or was produced by one (`producedBy`);
- *  a note with neither is still untouched — the wake list. */
-export interface NoteEntry {
-  note: Note
-  /** Set when a standing note fed an undertaking — a `→` link to what it fed. */
+ *  a task with neither is still untouched — the wake list. */
+export interface TaskEntry {
+  task: Task
+  /** Set when a standing task fed an undertaking — a `→` link to what it fed. */
   fedInto?: { key: string; title: string }
-  /** Set when the note was produced by an undertaking — a `←` link to its
-   *  source. The forward arm of the loop: the work threw up this note. */
+  /** Set when the task was produced by an undertaking — a `←` link to its
+   *  source. The forward arm of the loop: the work threw up this task. */
   producedBy?: { key: string; title: string }
 }
 
-/** Notes of one kind (Ideas, Questions, Missed Ideas, …), in their own section
+/** Tasks of one kind (Ideas, Questions, Missed Ideas, …), in their own section
  *  — the other taxonomy, sitting as a peer beside the undertaking sections. */
-export interface NoteSection {
+export interface TaskSection {
   code: string
   title: string
-  notes: NoteEntry[]
+  tasks: TaskEntry[]
 }
 
 export interface UndertakingIndex {
   sections: UndertakingIndexSection[]
-  /** The note taxonomy — the hand-written half — as peer sections after the
+  /** The task taxonomy — the hand-written half — as peer sections after the
    *  undertaking zone. Empty when the project has no old organizer. */
-  noteSections: NoteSection[]
+  taskSections: TaskSection[]
   /** The shared window every strip is bucketed over (`YYYY-MM-DD`), or '' when
    *  there is no dated activity anywhere in the index. */
   windowStart: string
   windowEnd: string
 }
 
-// Note kinds that MIGRATE when worked: a researched question stops being an open
+// Task kinds that MIGRATE when worked: a researched question stops being an open
 // question, so it leaves its section and shows under the undertaking that
 // answered it. Every other kind is STANDING — an idea is a thesis, a missed idea
 // a permanent lesson, a learning is knowledge — so it stays in its section when
-// worked and only gains a link to what it fed. (Category codes from the note key:
+// worked and only gains a link to what it fed. (Category codes from the task key:
 // QT = Questions to research.)
-const MIGRATING_NOTE_CODES = new Set(['QT', 'IC', 'ET', 'EO', 'TD'])
+const MIGRATING_TASK_CODES = new Set(['QT', 'IC', 'ET', 'EO', 'TD'])
 
-export interface NoteSeam {
-  noteSections: NoteSection[]
-  /** Undertaking key → the *migrating* notes that fed it (rendered as ◇→
-   *  sublines under the doing). Standing notes are not here — they stay in their
+export interface TaskSeam {
+  taskSections: TaskSection[]
+  /** Undertaking key → the *migrating* tasks that fed it (rendered as ◇→
+   *  sublines under the doing). Standing tasks are not here — they stay in their
    *  own section, carrying a link back instead. */
-  fedNotes: Map<string, NoteRef[]>
+  fedTasks: Map<string, TaskRef[]>
 }
 
 /**
- * The note↔undertaking join, derived — never stored. An undertaking's `fedBy`
- * holds both note keys and chain keys; only the notes matter here (chain keys
+ * The task↔undertaking join, derived — never stored. An undertaking's `fedBy`
+ * holds both task keys and chain keys; only the tasks matter here (chain keys
  * carry `::`). Split by kind:
  *
- * - A **migrating** note (a Question) that fed an undertaking leaves its section
+ * - A **migrating** task (a Question) that fed an undertaking leaves its section
  *   and is handed back as a subline under the undertaking it fed.
- * - A **standing** note (Idea, Missed Idea, learning…) always keeps its row in
+ * - A **standing** task (Idea, Missed Idea, learning…) always keeps its row in
  *   its own section; if it fed an undertaking it carries a link (`fedInto`)
  *   rather than vacating — because a thesis or a lesson doesn't stop existing
  *   once it's been acted on.
  *
- * So the wake list needs no label: it's simply the notes still sitting in their
+ * So the wake list needs no label: it's simply the tasks still sitting in their
  * sections with no link. Keys compare case-insensitively — the old store
  * lowercases them, the seam edges carry the display form.
  */
-export function buildNoteSeamBlock(notes: Note[], records: UndertakingRecord[], _nowMs: number): NoteSeam {
+export function buildTaskSeamBlock(tasks: Task[], records: UndertakingRecord[], _nowMs: number): TaskSeam {
   // Keyed on the ticket (`F9-QT-E-541`), not the slugged key — edges reference
-  // the ticket, the note's key carries a title slug the edges don't have.
-  const byKey = new Map<string, Note>()
-  for (const note of notes) byKey.set(note.ticket, note)
+  // the ticket, the task's key carries a title slug the edges don't have.
+  const byKey = new Map<string, Task>()
+  for (const task of tasks) byKey.set(task.ticket, task)
 
   const migratedAway = new Set<string>()
-  const fedNotes = new Map<string, NoteRef[]>()
+  const fedTasks = new Map<string, TaskRef[]>()
   const fedInto = new Map<string, { key: string; title: string }>()
   const producedBy = new Map<string, { key: string; title: string }>()
   for (const record of records) {
-    const refs: NoteRef[] = []
+    const refs: TaskRef[] = []
     for (const raw of record.fedBy) {
-      if (raw.includes('::')) continue // a chain-strand, not a note
+      if (raw.includes('::')) continue // a chain-strand, not a task
       const up = raw.toUpperCase()
-      const note = byKey.get(up)
-      // A dangling edge (no matching note) is treated as migrating — shown as a
+      const task = byKey.get(up)
+      // A dangling edge (no matching task) is treated as migrating — shown as a
       // subline, never a phantom section-dweller.
-      const migrating = note ? MIGRATING_NOTE_CODES.has(note.categoryCode) : true
+      const migrating = task ? MIGRATING_TASK_CODES.has(task.categoryCode) : true
       if (migrating) {
-        refs.push({ key: note?.key ?? raw, title: note?.title ?? raw })
+        refs.push({ key: task?.key ?? raw, title: task?.title ?? raw })
         migratedAway.add(up)
       } else {
         fedInto.set(up, { key: record.key, title: record.title })
       }
     }
-    if (refs.length) fedNotes.set(record.key, refs)
-    // Notes this undertaking produced stay in their own sections, tagged with a
+    if (refs.length) fedTasks.set(record.key, refs)
+    // Tasks this undertaking produced stay in their own sections, tagged with a
     // back-link to their source.
     for (const raw of record.produced) {
       producedBy.set(raw.toUpperCase(), { key: record.key, title: record.title })
     }
   }
 
-  const byCategory = new Map<string, NoteEntry[]>()
-  for (const note of notes) {
-    if (migratedAway.has(note.ticket)) continue
-    const list = byCategory.get(note.categoryCode) ?? []
-    list.push({ note, fedInto: fedInto.get(note.ticket), producedBy: producedBy.get(note.ticket) })
-    byCategory.set(note.categoryCode, list)
+  const byCategory = new Map<string, TaskEntry[]>()
+  for (const task of tasks) {
+    if (migratedAway.has(task.ticket)) continue
+    const list = byCategory.get(task.categoryCode) ?? []
+    list.push({ task, fedInto: fedInto.get(task.ticket), producedBy: producedBy.get(task.ticket) })
+    byCategory.set(task.categoryCode, list)
   }
 
-  const noteSections: NoteSection[] = [...byCategory.entries()].map(([code, list]) => ({
+  const taskSections: TaskSection[] = [...byCategory.entries()].map(([code, list]) => ({
     code,
-    title: noteCategoryLabelBlock(code),
-    notes: list.sort((a, b) => (a.note.openedDate || '').localeCompare(b.note.openedDate || '')),
+    title: taskCategoryLabelBlock(code),
+    tasks: list.sort((a, b) => (a.task.openedDate || '').localeCompare(b.task.openedDate || '')),
   }))
-  // Kinds ordered by their oldest note, so the arrangement is stable.
-  noteSections.sort(
-    (a, b) => (a.notes[0]?.note.openedDate || '').localeCompare(b.notes[0]?.note.openedDate || ''),
+  // Kinds ordered by their oldest task, so the arrangement is stable.
+  taskSections.sort(
+    (a, b) => (a.tasks[0]?.task.openedDate || '').localeCompare(b.tasks[0]?.task.openedDate || ''),
   )
 
-  return { noteSections, fedNotes }
+  return { taskSections, fedTasks }
 }
 
 const INDEX_SPARKLINE_BUCKETS = 24
@@ -502,13 +502,13 @@ export async function getUndertakingIndexOrch(
   projectId: string,
   options?: { buckets?: number },
 ): Promise<UndertakingIndex> {
-  const [views, sections, askRoot] = await Promise.all([
+  const [views, sections, taskRoot] = await Promise.all([
     listUndertakingsOrch(projectId),
     listSectionsBlock(projectId),
-    noteRootForProjectBlock(projectId),
+    taskRootForProjectBlock(projectId),
   ])
-  const notes = askRoot !== null ? await listNotesBlock(askRoot) : []
-  const seam = buildNoteSeamBlock(notes, views.map(v => v.record), Date.now())
+  const tasks = taskRoot !== null ? await listTasksBlock(taskRoot) : []
+  const seam = buildTaskSeamBlock(tasks, views.map(v => v.record), Date.now())
 
   // Shared window across every dated entry, so all strips align.
   let windowStart = ''
@@ -526,7 +526,7 @@ export async function getUndertakingIndexOrch(
   const rowFor = (view: UndertakingView): UndertakingIndexRow => ({
     record: view.record,
     tail: view.tail,
-    fedNotes: seam.fedNotes.get(view.record.key) ?? [],
+    fedTasks: seam.fedTasks.get(view.record.key) ?? [],
     buckets: windowStart
       ? bucketDensityBlock(
           view.tail.density.map(d => ({
@@ -581,7 +581,7 @@ export async function getUndertakingIndexOrch(
     ordered.push({ key, title, rows })
   }
 
-  return { sections: ordered, noteSections: seam.noteSections, windowStart, windowEnd }
+  return { sections: ordered, taskSections: seam.taskSections, windowStart, windowEnd }
 }
 
 /**
@@ -589,10 +589,10 @@ export async function getUndertakingIndexOrch(
  * organizer`), resolved off the registry by matching the chain-directory id
  * (the path's basename) to `projectId`. Null when no registered path resolves —
  * a code-repo root (absolute, outside the vault) or a project with no registry
- * entry. Kept lean (no note reads) because the index loads on every tab open;
- * listNoteProjectsOrch does the same resolution but also counts notes per project.
+ * entry. Kept lean (no task reads) because the index loads on every tab open;
+ * listTaskProjectsOrch does the same resolution but also counts tasks per project.
  */
-async function noteRootForProjectBlock(projectId: string): Promise<string | null> {
+async function taskRootForProjectBlock(projectId: string): Promise<string | null> {
   await loadProjectRegistryBlock()
   const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
   for (const entry of readCachedProjectRegistryBlock()) {
@@ -719,7 +719,7 @@ export interface UndertakingFieldPatch {
   section?: string
   /** Undertaking keys this one grew out of — its causes. */
   grewOutOf?: string[]
-  /** Note keys this undertaking produced. */
+  /** Task keys this undertaking produced. */
   produced?: string[]
 }
 
@@ -755,16 +755,16 @@ export async function listUndertakingSectionsOrch(
  *  but has no way to know what grew out of it. */
 export interface UndertakingLinks {
   /** Undertakings whose `grewOutOf` names this one. */
-  ledTo: NoteRef[]
-  /** *Migrating* notes (Questions) this undertaking answered — they left their
+  ledTo: TaskRef[]
+  /** *Migrating* tasks (Questions) this undertaking answered — they left their
    *  section to sit under it. */
-  answered: NoteRef[]
-  /** *Standing* notes (Ideas, learnings, theses) that fed it. These keep their
+  answered: TaskRef[]
+  /** *Standing* tasks (Ideas, learnings, theses) that fed it. These keep their
    *  own rows — a thesis doesn't stop existing once it's been acted on — so
-   *  they never appear in the seam's fedNotes and were invisible here. */
-  fedBy: NoteRef[]
-  /** Notes this undertaking produced (`produced`). */
-  produced: NoteRef[]
+   *  they never appear in the seam's fedTasks and were invisible here. */
+  fedBy: TaskRef[]
+  /** Tasks this undertaking produced (`produced`). */
+  produced: TaskRef[]
 }
 
 /**
@@ -777,28 +777,28 @@ export async function getUndertakingLinksOrch(
   projectId: string,
   key: string,
 ): Promise<UndertakingLinks> {
-  const [records, askRoot] = await Promise.all([
+  const [records, taskRoot] = await Promise.all([
     listUndertakingsBlock(projectId),
-    noteRootForProjectBlock(projectId),
+    taskRootForProjectBlock(projectId),
   ])
-  const notes = askRoot !== null ? await listNotesBlock(askRoot) : []
-  const seam = buildNoteSeamBlock(notes, records, Date.now())
+  const tasks = taskRoot !== null ? await listTasksBlock(taskRoot) : []
+  const seam = buildTaskSeamBlock(tasks, records, Date.now())
   const record = records.find(r => r.key === key)
 
-  const noteByTicket = new Map<string, Note>()
-  for (const note of notes) noteByTicket.set(note.ticket, note)
-  const resolveNote = (raw: string): NoteRef => {
-    const note = noteByTicket.get(raw.toUpperCase())
-    return { key: note?.key ?? raw, title: note?.title ?? raw }
+  const taskByTicket = new Map<string, Task>()
+  for (const task of tasks) taskByTicket.set(task.ticket, task)
+  const resolveTask = (raw: string): TaskRef => {
+    const task = taskByTicket.get(raw.toUpperCase())
+    return { key: task?.key ?? raw, title: task?.title ?? raw }
   }
 
   // The migrating half of `fedBy` is what the seam already handed back; whatever
-  // is left (minus chain strands, which are sessions not notes) is standing.
-  const answered = seam.fedNotes.get(key) ?? []
+  // is left (minus chain strands, which are sessions not tasks) is standing.
+  const answered = seam.fedTasks.get(key) ?? []
   const answeredKeys = new Set(answered.map(r => r.key))
   const fedBy = (record?.fedBy ?? [])
     .filter(raw => !raw.includes('::'))
-    .map(resolveNote)
+    .map(resolveTask)
     .filter(ref => !answeredKeys.has(ref.key))
 
   return {
@@ -807,49 +807,49 @@ export async function getUndertakingLinksOrch(
       .map(r => ({ key: r.key, title: r.title || r.head || r.key })),
     answered,
     fedBy,
-    produced: (record?.produced ?? []).map(resolveNote),
+    produced: (record?.produced ?? []).map(resolveTask),
   }
 }
 
-/** One note, everything on it, plus the edges that name it — what the note
+/** One task, everything on it, plus the edges that name it — what the task
  *  drawer renders. The mirror of an undertaking's view across the seam. */
-export interface NoteDetail {
-  note: Note
+export interface TaskDetail {
+  task: Task
   /** The `## Description` section, or the preface when the file has no
-   *  headings — the note's own words either way. */
+   *  headings — the task's own words either way. */
   description: string
   /** The `## Comments` thread, the same one the organizer CLI appends to. */
   comments: YAMLCommentEntry[]
   /** Vault-relative path of the markdown this came from. */
   path: string
-  /** The undertaking this note fed, if one did. */
-  fedInto?: NoteRef
+  /** The undertaking this task fed, if one did. */
+  fedInto?: TaskRef
   /** The undertaking that produced it, if one did. */
-  producedBy?: NoteRef
+  producedBy?: TaskRef
 }
 
 /**
- * One note's page, assembled across the seam.
+ * One task's page, assembled across the seam.
  *
  * The index carries only what a row needs (title, kind, date, tags), so the
- * note's own writing — the thing it was captured for — was in the vault and
+ * task's own writing — the thing it was captured for — was in the vault and
  * nowhere in the app. This reads the file for the body and re-derives the two
- * undertaking edges from the records, because a note never stores them: the
- * undertaking owns `fed_by`/`produced`, and the note is only ever named by them.
+ * undertaking edges from the records, because a task never stores them: the
+ * undertaking owns `fed_by`/`produced`, and the task is only ever named by them.
  *
  * Read-only by construction. The old organizer's store is Anurag's hand-written
  * half and the seam has never written to it.
  */
-export async function getNoteDetailOrch(projectId: string, noteKey: string): Promise<NoteDetail | null> {
-  const askRoot = await noteRootForProjectBlock(projectId)
-  if (askRoot === null) return null
-  const file = await readNoteBlock(askRoot, noteKey)
+export async function getTaskDetailOrch(projectId: string, taskKey: string): Promise<TaskDetail | null> {
+  const taskRoot = await taskRootForProjectBlock(projectId)
+  if (taskRoot === null) return null
+  const file = await readTaskBlock(taskRoot, taskKey)
   if (!file) return null
 
   const records = await listUndertakingsBlock(projectId)
-  const ticket = file.note.ticket.toUpperCase()
-  let fedInto: NoteRef | undefined
-  let producedBy: NoteRef | undefined
+  const ticket = file.task.ticket.toUpperCase()
+  let fedInto: TaskRef | undefined
+  let producedBy: TaskRef | undefined
   for (const record of records) {
     const ref = { key: record.key, title: record.title || record.head || record.key }
     if (!fedInto && record.fedBy.some(raw => raw.toUpperCase() === ticket)) fedInto = ref
@@ -858,10 +858,10 @@ export async function getNoteDetailOrch(projectId: string, noteKey: string): Pro
 
   const sections = parseOrganizerBodySections(file.body)
   return {
-    note: file.note,
+    task: file.task,
     // No `## Description` heading means the whole body is the description —
-    // plenty of these notes are a paragraph under the frontmatter and nothing
-    // else, and dropping them would make the drawer look empty for the notes
+    // plenty of these tasks are a paragraph under the frontmatter and nothing
+    // else, and dropping them would make the drawer look empty for the tasks
     // that have the most to say.
     description: sections.description ?? (file.body.includes('## ') ? '' : file.body.trim()),
     comments: sections.comments,

@@ -1,6 +1,6 @@
-import { noteIsReferenceBlock } from '@/services/lego_blocks/units/aiActivityNoteBlock'
+import { taskIsReferenceBlock } from '@/services/lego_blocks/units/aiActivityTaskBlock'
 import type {
-  NoteEntry,
+  TaskEntry,
   UndertakingIndex,
   UndertakingIndexRow,
 } from '@/services/orchestrators/aiActivityUndertakingOrch'
@@ -22,7 +22,7 @@ export interface RowAttrs {
   year: string
   tags: string[]
   kind: string
-  /** Only open-loop notes have this; undertakings and reference notes don't. */
+  /** Only open-loop tasks have this; undertakings and reference tasks don't. */
   engagement?: 'open' | 'engaged'
 }
 
@@ -43,11 +43,11 @@ export function undertakingRowAttrsBlock(row: UndertakingIndexRow, kind: string)
   }
 }
 
-export function noteEntryAttrsBlock(entry: NoteEntry, kind: string): RowAttrs {
-  const reference = noteIsReferenceBlock(entry.note.categoryCode)
+export function taskEntryAttrsBlock(entry: TaskEntry, kind: string): RowAttrs {
+  const reference = taskIsReferenceBlock(entry.task.categoryCode)
   return {
-    year: yearOf(entry.note.openedDate),
-    tags: entry.note.tags,
+    year: yearOf(entry.task.openedDate),
+    tags: entry.task.tags,
     kind,
     engagement: reference ? undefined : entry.fedInto || entry.producedBy ? 'engaged' : 'open',
   }
@@ -88,9 +88,9 @@ export function collectFilterGroupsBlock(index: UndertakingIndex): FilterGroup[]
     kinds.push(section.title)
     for (const row of section.rows) take(undertakingRowAttrsBlock(row, section.title))
   }
-  for (const section of index.noteSections) {
+  for (const section of index.taskSections) {
     kinds.push(section.title)
-    for (const entry of section.notes) take(noteEntryAttrsBlock(entry, section.title))
+    for (const entry of section.tasks) take(taskEntryAttrsBlock(entry, section.title))
   }
 
   const groups: FilterGroup[] = []

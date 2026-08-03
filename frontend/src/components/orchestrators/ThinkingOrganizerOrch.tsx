@@ -3,7 +3,7 @@ import { BookText, Check, FolderTree, LayoutDashboard, List, Loader2, Network, P
 import UndertakingIndexBlock from '@/components/lego_blocks/integrations/UndertakingIndexBlock'
 import UndertakingDagBlock from '@/components/lego_blocks/integrations/UndertakingDagBlock'
 import UndertakingDetailDrawerBlock from '@/components/lego_blocks/integrations/UndertakingDetailDrawerBlock'
-import NoteDetailDrawerBlock from '@/components/lego_blocks/integrations/NoteDetailDrawerBlock'
+import TaskDetailDrawerBlock from '@/components/lego_blocks/integrations/TaskDetailDrawerBlock'
 import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
@@ -143,16 +143,16 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   // Which undertaking's detail page is open (null = the list/lineage view). The
   // index and lineage both drill into the same page.
   const [openUndertaking, setOpenUndertaking] = useState<string | null>(null)
-  // The two drawers are one slot: a note's drawer links to the doing that fed
+  // The two drawers are one slot: a task's drawer links to the doing that fed
   // on it and back, so opening one has to close the other or they stack.
-  const [openNote, setOpenNote] = useState<string | null>(null)
+  const [openTask, setOpenTask] = useState<string | null>(null)
   const openUndertakingDrawer = useCallback((key: string) => {
-    setOpenNote(null)
+    setOpenTask(null)
     setOpenUndertaking(key)
   }, [])
-  const openNoteDrawer = useCallback((key: string) => {
+  const openTaskDrawer = useCallback((key: string) => {
     setOpenUndertaking(null)
-    setOpenNote(key)
+    setOpenTask(key)
   }, [])
 
   useEffect(() => {
@@ -453,7 +453,7 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
             <UndertakingIndexBlock
               projectId={aiProjectId}
               onOpenUndertaking={openUndertakingDrawer}
-              onOpenNote={openNoteDrawer}
+              onOpenTask={openTaskDrawer}
             />
           ) : orgView === 'lineage' ? (
             <UndertakingDagBlock projectId={aiProjectId} onOpenUndertaking={openUndertakingDrawer} />
@@ -472,12 +472,12 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
               onClose={() => setOpenUndertaking(null)}
             />
           )}
-          {orgView === 'index' && openNote && aiProjectId && (
-            <NoteDetailDrawerBlock
+          {orgView === 'index' && openTask && aiProjectId && (
+            <TaskDetailDrawerBlock
               projectId={aiProjectId}
-              noteKey={openNote}
+              taskKey={openTask}
               onOpenUndertaking={openUndertakingDrawer}
-              onClose={() => setOpenNote(null)}
+              onClose={() => setOpenTask(null)}
             />
           )}
         </div>

@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import DensitySparklineBlock from '@/components/lego_blocks/units/DensitySparklineBlock'
 import OrganizerRowShellBlock from '@/components/lego_blocks/units/OrganizerRowShellBlock'
 import { useUndertakingDetailBlock } from '@/components/lego_blocks/hooks/units/useUndertakingDetailBlock'
-import type { NoteRef, UndertakingIndexRow } from '@/services/orchestrators/aiActivityUndertakingOrch'
+import type { TaskRef, UndertakingIndexRow } from '@/services/orchestrators/aiActivityUndertakingOrch'
 
 // One undertaking (a doing) in the index, rendered through the shared row shell
 // — the List row's look, minus its work-item chrome. The head is the title; the
@@ -16,16 +16,16 @@ import type { NoteRef, UndertakingIndexRow } from '@/services/orchestrators/aiAc
 // grew out of, what grew out of it, the questions it answered). The peek is the
 // "see the linked rows in the row" affordance — visual grouping read off the
 // edge graph, never a hand-built tree. Going deeper (editing the head, writing
-// notes) is the drawer, opened from the peek. The peek keeps the row's spine
+// tasks) is the drawer, opened from the peek. The peek keeps the row's spine
 // width so its edge stays aligned, but the spine goes neutral there — colour
 // marks rows, and running it down the panel made the two read as one long row.
 
 /** An undertaking this row links to, resolved to a title for display. */
 export interface LinkedUndertakings {
   /** Undertakings this one grew out of (its causes). */
-  parents: NoteRef[]
+  parents: TaskRef[]
   /** Undertakings that grew out of this one (its effects). */
-  children: NoteRef[]
+  children: TaskRef[]
 }
 
 interface Props {
@@ -102,12 +102,12 @@ export default function UndertakingIndexRowBlock({
       }
       subRows={
         <>
-          {row.fedNotes.length > 0 && !expanded && (
+          {row.fedTasks.length > 0 && !expanded && (
             <ul className="mb-0.5 ml-6 mt-px space-y-px">
-              {row.fedNotes.map(note => (
-                <li key={note.key} className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground/60">
+              {row.fedTasks.map(task => (
+                <li key={task.key} className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground/60">
                   <span className="shrink-0 text-muted-foreground/50" aria-hidden>◆→</span>
-                  <span className="truncate" title={`${note.key} — ${note.title}`}>{note.title}</span>
+                  <span className="truncate" title={`${task.key} — ${task.title}`}>{task.title}</span>
                 </li>
               ))}
             </ul>
@@ -150,7 +150,7 @@ function PeekPanel({
   onOpenDrawer?: (key: string) => void
 }) {
   const { record, tail } = row
-  const answered = row.fedNotes
+  const answered = row.fedTasks
   // `head` is the field's internal name; the peek labels it by what it holds.
   const hasHeadPreview = Boolean(record.head) && record.head !== record.title
 
@@ -265,7 +265,7 @@ function LinkGroup({
   muted = false,
 }: {
   label: string
-  refs: NoteRef[]
+  refs: TaskRef[]
   onOpen?: (key: string) => void
   muted?: boolean
 }) {

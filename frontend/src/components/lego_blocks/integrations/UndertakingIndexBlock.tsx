@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Loader2, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import UndertakingIndexRowBlock from '@/components/lego_blocks/units/UndertakingIndexRowBlock'
-import OrganizerNoteRowBlock from '@/components/lego_blocks/units/OrganizerNoteRowBlock'
+import OrganizerTaskRowBlock from '@/components/lego_blocks/units/OrganizerTaskRowBlock'
 import OrganizerFilterBarBlock, {
   ORGANIZER_STRIP_PILL,
 } from '@/components/lego_blocks/units/OrganizerFilterBarBlock'
@@ -13,16 +13,16 @@ import DensityAxisBlock, {
 } from '@/components/lego_blocks/units/DensityAxisBlock'
 import {
   collectFilterGroupsBlock,
-  noteEntryAttrsBlock,
+  taskEntryAttrsBlock,
   rowMatchesFiltersBlock,
   undertakingRowAttrsBlock,
   type OrganizerFilter,
 } from '@/services/lego_blocks/units/organizerIndexFilterBlock'
 import { useUndertakingIndexBlock } from '@/components/lego_blocks/hooks/units/useUndertakingIndexBlock'
 import type { LinkedUndertakings } from '@/components/lego_blocks/units/UndertakingIndexRowBlock'
-import type { NoteRef } from '@/services/orchestrators/aiActivityUndertakingOrch'
+import type { TaskRef } from '@/services/orchestrators/aiActivityUndertakingOrch'
 
-// The Thinking Organizer index view: undertakings and notes grouped under their
+// The Thinking Organizer index view: undertakings and tasks grouped under their
 // section headings, one dense line each — a *view* over the derived index. The
 // filter bar narrows the rows by attribute (year, kind, tag, state) without
 // regrouping: kind stays the section spine.
@@ -32,7 +32,7 @@ interface Props {
    *  registry will canonicalize this — D9). Null renders the empty state. */
   projectId: string | null
   onOpenUndertaking?: (key: string) => void
-  onOpenNote?: (key: string) => void
+  onOpenTask?: (key: string) => void
 }
 
 // A block's header row: the section name at one end, its ruler at the other,
@@ -81,7 +81,7 @@ function SectionHeader({
 const STRIP_WIDTH = 96
 const STRIP_RIGHT_OFFSET = 56 + 8 + 12
 
-export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, onOpenNote }: Props) {
+export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, onOpenTask }: Props) {
   const { index, loading, error, reload } = useUndertakingIndexBlock(projectId)
   const [filters, setFilters] = useState<OrganizerFilter[]>([])
   const [managingSections, setManagingSections] = useState(false)
@@ -112,7 +112,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
   // filtered-out row still reads as a title, not a bare key.
   const linkedByKey = useMemo(() => {
     const titleByKey = new Map<string, string>()
-    const childrenByKey = new Map<string, NoteRef[]>()
+    const childrenByKey = new Map<string, TaskRef[]>()
     if (index) {
       for (const section of index.sections) {
         for (const { record } of section.rows) titleByKey.set(record.key, record.title || record.head || record.key)
@@ -145,10 +145,10 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
 
   // Narrow each section, keeping a stable per-section colour (indexed over the
   // full order so filtering never recolours a section), and drop empties.
-  const { undertakingSections, noteSections } = useMemo(() => {
+  const { undertakingSections, taskSections } = useMemo(() => {
     const uts: Array<{ key: string; title: string; colorIndex: number; rows: NonNullable<typeof index>['sections'][number]['rows'] }> = []
-    const nts: Array<{ code: string; title: string; colorIndex: number; notes: NonNullable<typeof index>['noteSections'][number]['notes'] }> = []
-    if (!index) return { undertakingSections: uts, noteSections: nts }
+    const nts: Array<{ code: string; title: string; colorIndex: number; tasks: NonNullable<typeof index>['taskSections'][number]['tasks'] }> = []
+    if (!index) return { undertakingSections: uts, taskSections: nts }
     let colorIndex = 0
     for (const section of index.sections) {
       const c = colorIndex++
@@ -157,14 +157,14 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
       )
       if (rows.length) uts.push({ key: section.key, title: section.title, colorIndex: c, rows })
     }
-    for (const section of index.noteSections) {
+    for (const section of index.taskSections) {
       const c = colorIndex++
-      const notes = section.notes.filter(entry =>
-        rowMatchesFiltersBlock(noteEntryAttrsBlock(entry, section.title), filters),
+      const tasks = section.tasks.filter(entry =>
+        rowMatchesFiltersBlock(taskEntryAttrsBlock(entry, section.title), filters),
       )
-      if (notes.length) nts.push({ code: section.code, title: section.title, colorIndex: c, notes })
+      if (tasks.length) nts.push({ code: section.code, title: section.title, colorIndex: c, tasks })
     }
-    return { undertakingSections: uts, noteSections: nts }
+    return { undertakingSections: uts, taskSections: nts }
   }, [index, filters])
 
   if (loading) {
@@ -178,7 +178,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
   if (error) {
     return <div className="px-2 py-8 text-sm text-destructive">Could not load the index: {error}</div>
   }
-  if (!index || (index.sections.length === 0 && index.noteSections.length === 0)) {
+  if (!index || (index.sections.length === 0 && index.taskSections.length === 0)) {
     return (
       <div className="px-2 py-8 text-sm text-muted-foreground/70">
         No undertakings yet. They fill in as sessions get filed at the end-of-session ask.
@@ -186,7 +186,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
     )
   }
 
-  const nothingMatches = undertakingSections.length === 0 && noteSections.length === 0
+  const nothingMatches = undertakingSections.length === 0 && taskSections.length === 0
 
   return (
     <div>
@@ -272,23 +272,23 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
             </section>
           ))}
 
-          {/* Plain divider between the two taxonomies — doings above, notes below. */}
-          {undertakingSections.length > 0 && noteSections.length > 0 && (
+          {/* Plain divider between the two taxonomies — doings above, tasks below. */}
+          {undertakingSections.length > 0 && taskSections.length > 0 && (
             <div className="border-t border-border/50" aria-hidden />
           )}
 
-          {noteSections.map(section => (
-            <section key={`note-${section.code}`}>
+          {taskSections.map(section => (
+            <section key={`task-${section.code}`}>
               <SectionHeader title={section.title} colorIndex={section.colorIndex} />
               <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
-                {section.notes.map((entry, i) => (
-                  <OrganizerNoteRowBlock
-                    key={entry.note.key}
+                {section.tasks.map((entry, i) => (
+                  <OrganizerTaskRowBlock
+                    key={entry.task.key}
                     entry={entry}
                     colorIndex={section.colorIndex}
                     ordinal={i + 1}
                     onOpenUndertaking={onOpenUndertaking}
-                    onOpen={onOpenNote}
+                    onOpen={onOpenTask}
                   />
                 ))}
               </div>

@@ -6,7 +6,7 @@ import {
 } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
 import { serializeUndertakingBlock, type UndertakingRecord } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
 import { serializeSectionBlock, type SectionRecord } from '@/services/lego_blocks/units/aiActivitySectionBlock'
-import type { Note } from '@/services/lego_blocks/units/aiActivityNoteBlock'
+import type { Task } from '@/services/lego_blocks/units/aiActivityTaskBlock'
 
 /**
  * The seam these tests guard: an undertaking's head is stored and its tail is
@@ -383,8 +383,8 @@ describe('listUndertakingsOrch', () => {
   })
 })
 
-describe('buildNoteSeamBlock', () => {
-  const ask = (key: string, title: string, categoryCode: string, openedDate: string): Note => ({
+describe('buildTaskSeamBlock', () => {
+  const ask = (key: string, title: string, categoryCode: string, openedDate: string): Task => ({
     key,
     title,
     categoryCode,
@@ -396,34 +396,34 @@ describe('buildNoteSeamBlock', () => {
   const NOW = Date.parse('2026-07-30T00:00:00.000Z')
 
   it('migrates a Question that fed an undertaking out of its section, keeps a standing Idea in place with a link', async () => {
-    const notes = [
+    const tasks = [
       ask('f9-ide-e-534', 'MU hits $100B revenue', 'IDE', '2026-04-01'),
       ask('f9-ic-e-499', 'LAM Research — learn more', 'IC', '2026-03-01'),
       ask('f9-qt-e-672', 'What are TSMC margins?', 'QT', '2026-02-20'),
     ]
-    // fed_by holds both notes and chain keys; the chain key must be ignored.
+    // fed_by holds both tasks and chain keys; the chain key must be ignored.
     const records = [
       makeRecord({ key: 'u-micron', title: 'Micron — the memory cycle', fedBy: ['F9-IDE-E-534', 'F9::native/claude/x.jsonl'] }),
       makeRecord({ key: 'u-tide', title: 'The Cognition Tide', fedBy: ['F9-QT-E-672'] }),
     ]
 
-    const { buildNoteSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    const seam = buildNoteSeamBlock(notes, records, NOW)
+    const { buildTaskSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const seam = buildTaskSeamBlock(tasks, records, NOW)
 
     // The Question that fed an undertaking migrated: subline under it, gone from sections.
-    expect(seam.fedNotes.get('u-tide')?.[0].title).toBe('What are TSMC margins?')
-    expect(seam.noteSections.some(s => s.code === 'QT')).toBe(false)
+    expect(seam.fedTasks.get('u-tide')?.[0].title).toBe('What are TSMC margins?')
+    expect(seam.taskSections.some(s => s.code === 'QT')).toBe(false)
     // The Idea is standing: it stays in its section, carrying a link, not a subline.
-    expect(seam.fedNotes.has('u-micron')).toBe(false)
-    const ideas = seam.noteSections.find(s => s.code === 'IDE')
-    expect(ideas?.notes[0].fedInto?.title).toBe('Micron — the memory cycle')
-    // The untouched company note is just present, no link.
-    const companies = seam.noteSections.find(s => s.code === 'IC')
-    expect(companies?.notes[0].fedInto).toBeUndefined()
+    expect(seam.fedTasks.has('u-micron')).toBe(false)
+    const ideas = seam.taskSections.find(s => s.code === 'IDE')
+    expect(ideas?.tasks[0].fedInto?.title).toBe('Micron — the memory cycle')
+    // The untouched company task is just present, no link.
+    const companies = seam.taskSections.find(s => s.code === 'IC')
+    expect(companies?.tasks[0].fedInto).toBeUndefined()
   })
 
-  it('joins fed_by edges to slugged note keys via the ticket (shows title, not the raw ticket)', async () => {
-    const notes: Note[] = [{
+  it('joins fed_by edges to slugged task keys via the ticket (shows title, not the raw ticket)', async () => {
+    const tasks: Task[] = [{
       key: 'f9-qt-e-541-history-of-silicon-chips',
       title: 'History of silicon chips',
       categoryCode: 'QT',
@@ -433,29 +433,29 @@ describe('buildNoteSeamBlock', () => {
       ticket: 'F9-QT-E-541',
     }]
     const records = [makeRecord({ key: 'u-tsmc', title: 'TSMC study', fedBy: ['F9-QT-E-541'] })]
-    const { buildNoteSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    const seam = buildNoteSeamBlock(notes, records, NOW)
+    const { buildTaskSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const seam = buildTaskSeamBlock(tasks, records, NOW)
 
-    // The subline shows the note's title (join succeeded), not the raw ticket.
-    expect(seam.fedNotes.get('u-tsmc')?.[0].title).toBe('History of silicon chips')
+    // The subline shows the task's title (join succeeded), not the raw ticket.
+    expect(seam.fedTasks.get('u-tsmc')?.[0].title).toBe('History of silicon chips')
     // And the migrating QT actually left its section.
-    expect(seam.noteSections.some(s => s.code === 'QT')).toBe(false)
+    expect(seam.taskSections.some(s => s.code === 'QT')).toBe(false)
   })
 
-  it('orders note kinds by their oldest note', async () => {
-    const notes = [
+  it('orders task kinds by their oldest task', async () => {
+    const tasks = [
       ask('f9-ide-e-1', 'newer idea', 'IDE', '2026-06-01'),
       ask('f9-mide-e-1', 'older missed idea', 'MIDE', '2026-02-01'),
     ]
-    const { buildNoteSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    const seam = buildNoteSeamBlock(notes, [], NOW)
+    const { buildTaskSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const seam = buildTaskSeamBlock(tasks, [], NOW)
 
-    // Missed Ideas lead — their oldest note predates Ideas'.
-    expect(seam.noteSections.map(s => s.code)).toEqual(['MIDE', 'IDE'])
+    // Missed Ideas lead — their oldest task predates Ideas'.
+    expect(seam.taskSections.map(s => s.code)).toEqual(['MIDE', 'IDE'])
   })
 
-  it('migrates an Interesting-company note that fed a study, and back-links a produced note', async () => {
-    const notes = [
+  it('migrates an Interesting-company task that fed a study, and back-links a produced task', async () => {
+    const tasks = [
       ask('f9-ic-e-499', 'LAM Research — learn more', 'IC', '2026-03-01'),
       ask('f9-el-e-412', 'exit above the round number', 'EL', '2026-06-20'),
     ]
@@ -463,15 +463,15 @@ describe('buildNoteSeamBlock', () => {
       makeRecord({ key: 'u-lam', title: 'LAM — the study', fedBy: ['F9-IC-E-499'] }),
       makeRecord({ key: 'u-review', title: 'June review', produced: ['F9-EL-E-412'] }),
     ]
-    const { buildNoteSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    const seam = buildNoteSeamBlock(notes, records, NOW)
+    const { buildTaskSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const seam = buildTaskSeamBlock(tasks, records, NOW)
 
     // IC now migrates: the studied company leaves its section, tucks under the study.
-    expect(seam.fedNotes.get('u-lam')?.[0].title).toBe('LAM Research — learn more')
-    expect(seam.noteSections.some(s => s.code === 'IC')).toBe(false)
+    expect(seam.fedTasks.get('u-lam')?.[0].title).toBe('LAM Research — learn more')
+    expect(seam.taskSections.some(s => s.code === 'IC')).toBe(false)
     // The produced learning stays in its section with a back-link to its source.
-    const learnings = seam.noteSections.find(s => s.code === 'EL')
-    expect(learnings?.notes[0].producedBy?.title).toBe('June review')
+    const learnings = seam.taskSections.find(s => s.code === 'EL')
+    expect(learnings?.tasks[0].producedBy?.title).toBe('June review')
   })
 })
 
@@ -846,28 +846,28 @@ describe('getUndertakingIndexOrch', () => {
   })
 })
 
-describe('getOpenNotesOrch', () => {
-  it('returns notes no undertaking fed on, oldest first, case-insensitive on keys', () => {
+describe('getOpenTasksOrch', () => {
+  it('returns tasks no undertaking fed on, oldest first, case-insensitive on keys', () => {
     seedAsk('acceleration_core/F9', 'f9-qt-e-318', 'history of silicon chips?', '2026-03-17')
     seedAsk('acceleration_core/F9', 'f9-ic-e-499', 'learn more about LAM Research', '2026-03-01')
     seedAsk('acceleration_core/F9', 'f9-ide-e-800', 'wafer supply short', '2026-03-18')
-    // An undertaking fed on the silicon-chips note (display-case key).
+    // An undertaking fed on the silicon-chips task (display-case key).
     seedRecord(makeRecord({ key: 'u-phys', fedBy: ['F9-QT-E-318'] }))
 
     return import('@/services/orchestrators/aiActivityUndertakingOrch').then(async m => {
-      const result = await m.getOpenNotesOrch({ projectId: 'F9', projectRoot: 'acceleration_core/F9' })
+      const result = await m.getOpenTasksOrch({ projectId: 'F9', projectRoot: 'acceleration_core/F9' })
       // f9-qt-e-318 was fed on → not open. The other two remain, oldest first.
       expect(result.open.map(a => a.key)).toEqual(['f9-ic-e-499', 'f9-ide-e-800'])
       expect(result.answeredCount).toBe(1)
-      expect(result.totalNotes).toBe(3)
+      expect(result.totalTasks).toBe(3)
     })
   })
 
   it('returns everything open when nothing fed on', async () => {
     seedAsk('acceleration_core/F9', 'f9-mi-e-503', 'rare earths bottleneck', '2026-02-26')
     seedRecord(makeRecord({ key: 'u-x', fedBy: [] }))
-    const { getOpenNotesOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    const result = await getOpenNotesOrch({ projectId: 'F9', projectRoot: 'acceleration_core/F9' })
+    const { getOpenTasksOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const result = await getOpenTasksOrch({ projectId: 'F9', projectRoot: 'acceleration_core/F9' })
     expect(result.open).toHaveLength(1)
     expect(result.answeredCount).toBe(0)
   })

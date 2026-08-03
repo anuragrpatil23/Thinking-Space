@@ -1,26 +1,27 @@
 import yaml from 'js-yaml'
 
-// A "note" is a record from the OLD organizer — a question, idea, missed idea,
+// A "task" is a record from the OLD organizer — a question, idea, missed idea,
 // or company-to-study that Anurag wrote by hand, mostly before the chains
-// begin (2026-05-18). Notes are the hand-written half of the loop; undertakings
+// begin (2026-05-18). Tasks are the hand-written half of the loop; undertakings
 // are the derived doing half. They are never migrated into undertakings (that
-// would give them permanently empty tails and destroy the fact that a note can
+// would give them permanently empty tails and destroy the fact that a task can
 // stay open). They are read here and joined to undertakings by `fed_by` edges.
 //
-// The category is encoded in the key: `F9-QT-E-318` → QT → "Questions to
-// research". That is more reliable than the old `status` field, which the
-// design found stuck permanently on "active".
+// The kind lives in `task_kind` on the record, falling back to the code encoded
+// in the key (`F9-QT-E-318` → QT → "Questions to research") for anything not yet
+// backfilled. Either beats the old `status` field, which the design found stuck
+// permanently on "active".
 
-export interface Note {
+export interface Task {
   key: string
   title: string
   /** Normalized category code from the key (QT, IDE, MIDE, IC, …). */
   categoryCode: string
   /** Human label for the category. */
   category: string
-  /** ISO date the note was opened (`created_at`). */
+  /** ISO date the task was opened (`created_at`). */
   openedDate: string
-  /** The note's own tags (`project_preset_tags`) — Anurag's confidence grid
+  /** The task's own tags (`project_preset_tags`) — Anurag's confidence grid
    *  (`for sure for value`, `bucket 1`, …). Shown as pills on the row. */
   tags: string[]
   /** The plain ticket (`F9-QT-E-541`), derived from the slugged key. This is
@@ -52,10 +53,30 @@ const CODE_ALIASES: Record<string, string> = {
   MI: 'MIDE',
 }
 
-/** Category code embedded in a note key (`f9-qt-e-318` → `QT`), folded onto its
+/**
+ * The kind, read from the record rather than from its name.
+ *
+ * The code used to live only in the key, which is fine while keys are never
+ * rewritten and every record is legacy — and stops being fine at exactly the
+ * moment of migration. A re-minted record has no `F9-QT-E-###` shape to parse,
+ * so its kind would evaporate silently, and a record created tomorrow could not
+ * carry a kind at all. Deriving meaning out of an address is the mirror of the
+ * rule that forbids deriving the address itself.
+ *
+ * So `task_kind` in the frontmatter is the truth, and the key parse stays as
+ * the fallback for anything not yet backfilled. Aliases fold on both paths, so
+ * a declared `II` and a parsed `II` land on the same `IDE`.
+ */
+export function taskKindCodeBlock(declared: unknown, key: string): string {
+  const raw = (typeof declared === 'string' ? declared : '').trim().toUpperCase()
+  if (raw) return CODE_ALIASES[raw] ?? raw
+  return taskCategoryCodeBlock(key)
+}
+
+/** Category code embedded in a task key (`f9-qt-e-318` → `QT`), folded onto its
  *  canonical form, or '' if the key doesn't match the `<project>-<CODE>-E-<n>`
  *  shape. */
-export function noteCategoryCodeBlock(key: string): string {
+export function taskCategoryCodeBlock(key: string): string {
   const m = /^[a-z0-9]+-([a-z]+)-e-\d+/i.exec(key)
   if (!m) return ''
   const raw = m[1].toUpperCase()
@@ -64,8 +85,8 @@ export function noteCategoryCodeBlock(key: string): string {
 
 /** The plain ticket embedded in a slugged key (`f9-qt-e-541-history…` →
  *  `F9-QT-E-541`) — the form `fed_by`/`produced` edges use. Falls back to the
- *  whole key uppercased when it doesn't match the note shape. */
-export function noteTicketBlock(key: string): string {
+ *  whole key uppercased when it doesn't match the task shape. */
+export function taskTicketBlock(key: string): string {
   const m = /^[a-z0-9]+-[a-z]+-e-\d+/i.exec(key)
   return (m ? m[0] : key).toUpperCase()
 }
@@ -76,7 +97,7 @@ export function noteTicketBlock(key: string): string {
  *  hide the gap — every label looked like a code, so a code looked like a
  *  label. Add the kind to the table when one turns up; this only keeps the
  *  unlabelled case from looking broken. */
-export function noteCategoryLabelBlock(code: string): string {
+export function taskCategoryLabelBlock(code: string): string {
   const known = CATEGORY_LABELS[code]
   if (known) return known
   if (!code) return 'Other'
@@ -88,12 +109,12 @@ export function noteCategoryLabelBlock(code: string): string {
 // have an open→worked lifecycle, so they don't wear the ◇/◆ engagement glyph
 // (an "open" mark would be meaningless on a record). Every other kind is an
 // open loop that can sit untouched (◇) or be engaged (◆).
-const REFERENCE_NOTE_CODES = new Set(['KT', 'TT', 'EL', 'EM', 'MIDE'])
+const REFERENCE_TASK_CODES = new Set(['KT', 'TT', 'EL', 'EM', 'MIDE'])
 
-/** True when the note is captured knowledge rather than an open loop — so the
+/** True when the task is captured knowledge rather than an open loop — so the
  *  row shows no open/engaged glyph (its `→`/`←` link, if any, still shows). */
-export function noteIsReferenceBlock(code: string): boolean {
-  return REFERENCE_NOTE_CODES.has(code)
+export function taskIsReferenceBlock(code: string): boolean {
+  return REFERENCE_TASK_CODES.has(code)
 }
 
 function asString(value: unknown): string {
@@ -114,9 +135,9 @@ function stripTicketPrefix(title: string): string {
   return stripped || title
 }
 
-/** Parse one old-organizer epic file into an Note. Null when it isn't an epic
+/** Parse one old-organizer epic file into a Task. Null when it isn't an epic
  *  or has no key — hand-editable files must not take the reader down. */
-export function parseNoteMarkdownBlock(content: string): Note | null {
+export function parseTaskMarkdownBlock(content: string): Task | null {
   const trimmed = content.trimStart()
   if (!trimmed.startsWith('---')) return null
   const afterOpen = trimmed.indexOf('\n')
@@ -135,31 +156,34 @@ export function parseNoteMarkdownBlock(content: string): Note | null {
 
   const key = asString(parsed.key)
   if (!key) return null
-  // Only epics are notes; programs/thoughts/idea_buckets are structure.
-  if (asString(parsed.record_kind) && asString(parsed.record_kind) !== 'epic') return null
+  // Only epics are tasks; programs/thoughts/idea_buckets are structure. `task`
+  // is accepted alongside `epic` so the record_kind migration can run without
+  // this reader going blind on the day it flips.
+  const recordKind = asString(parsed.record_kind)
+  if (recordKind && recordKind !== 'epic' && recordKind !== 'task') return null
 
-  const code = noteCategoryCodeBlock(key)
+  const code = taskKindCodeBlock(parsed.task_kind, key)
   return {
     key,
     title: stripTicketPrefix(asString(parsed.title) || key),
     categoryCode: code,
-    category: noteCategoryLabelBlock(code),
+    category: taskCategoryLabelBlock(code),
     openedDate: asString(parsed.created_at).slice(0, 10),
     // One universal tag field. `project_preset_tags` was retired — the vault
     // migration merged it into `tags`.
     tags: asStringArray(parsed.tags),
-    ticket: noteTicketBlock(key),
+    ticket: taskTicketBlock(key),
   }
 }
 
 /**
- * The markdown after the frontmatter — a note's own words.
+ * The markdown after the frontmatter — a task's own words.
  *
- * Separate from `parseNoteMarkdownBlock` because the index reads every note in
+ * Separate from `parseTaskMarkdownBlock` because the index reads every task in
  * the project on every load and never wants the body; only the drawer, opening
- * one note, does.
+ * one task, does.
  */
-export function noteBodyBlock(content: string): string {
+export function taskBodyBlock(content: string): string {
   const trimmed = content.trimStart()
   if (!trimmed.startsWith('---')) return trimmed
   const afterOpen = trimmed.indexOf('\n')

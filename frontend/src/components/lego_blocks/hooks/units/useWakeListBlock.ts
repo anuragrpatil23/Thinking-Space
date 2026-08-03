@@ -1,37 +1,37 @@
 import { useEffect, useState } from 'react'
 import {
-  getOpenNotesOrch,
-  listNoteProjectsOrch,
-  type NoteProject,
-  type OpenNotesResult,
+  getOpenTasksOrch,
+  listTaskProjectsOrch,
+  type TaskProject,
+  type OpenTasksResult,
 } from '@/services/orchestrators/aiActivityUndertakingOrch'
 
-// Loads the wake list for Home: which projects have an old organizer with notes
-// (the chips), and the open notes for whichever is selected. Selection defaults
-// to the project with the most notes. Thin — all derivation is in the orch.
+// Loads the wake list for Home: which projects have an old organizer with tasks
+// (the chips), and the open tasks for whichever is selected. Selection defaults
+// to the project with the most tasks. Thin — all derivation is in the orch.
 
 export interface WakeListState {
-  projects: NoteProject[]
+  projects: TaskProject[]
   selected: string | null
   select: (projectId: string) => void
-  notes: OpenNotesResult | null
+  tasks: OpenTasksResult | null
   loadingProjects: boolean
-  loadingNotes: boolean
+  loadingTasks: boolean
   error: string | null
 }
 
 export function useWakeListBlock(): WakeListState {
-  const [projects, setProjects] = useState<NoteProject[]>([])
+  const [projects, setProjects] = useState<TaskProject[]>([])
   const [selected, setSelected] = useState<string | null>(null)
-  const [notes, setNotes] = useState<OpenNotesResult | null>(null)
+  const [tasks, setTasks] = useState<OpenTasksResult | null>(null)
   const [loadingProjects, setLoadingProjects] = useState(true)
-  const [loadingNotes, setLoadingAsks] = useState(false)
+  const [loadingTasks, setLoadingTasks] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setLoadingProjects(true)
-    void listNoteProjectsOrch()
+    void listTaskProjectsOrch()
       .then(found => {
         if (cancelled) return
         setProjects(found)
@@ -51,21 +51,21 @@ export function useWakeListBlock(): WakeListState {
   useEffect(() => {
     const project = projects.find(p => p.projectId === selected)
     if (!project) {
-      setNotes(null)
+      setTasks(null)
       return
     }
     let cancelled = false
-    setLoadingAsks(true)
-    void getOpenNotesOrch({ projectId: project.projectId, projectRoot: project.projectRoot })
+    setLoadingTasks(true)
+    void getOpenTasksOrch({ projectId: project.projectId, projectRoot: project.projectRoot })
       .then(result => {
         if (cancelled) return
-        setNotes(result)
-        setLoadingAsks(false)
+        setTasks(result)
+        setLoadingTasks(false)
       })
       .catch((err: unknown) => {
         if (cancelled) return
         setError(err instanceof Error ? err.message : String(err))
-        setLoadingAsks(false)
+        setLoadingTasks(false)
       })
     return () => {
       cancelled = true
@@ -76,9 +76,9 @@ export function useWakeListBlock(): WakeListState {
     projects,
     selected,
     select: setSelected,
-    notes,
+    tasks,
     loadingProjects,
-    loadingNotes,
+    loadingTasks,
     error,
   }
 }
