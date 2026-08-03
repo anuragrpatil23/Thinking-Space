@@ -75,6 +75,28 @@ function SectionHeader({
   )
 }
 
+/**
+ * Names one of the index's two halves.
+ *
+ * The page holds two different kinds of thing and never said so: undertakings
+ * are the derived doing half, tasks the authored half, and both arrived as
+ * unlabelled colored sections that looked like one taxonomy with a rule through
+ * it. Neutral and a size up, against section headings that are colored and
+ * smaller — so the hierarchy is read from weight and color, not from indent.
+ */
+function TaxonomyHeading({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="px-1.5 pb-5 text-xl font-semibold tracking-tight text-foreground">
+      {children}
+    </h2>
+  )
+}
+
+/** The task half's own name. A section whose kind label repeats it (a project
+ *  whose records carry no kinds at all) drops its header rather than printing
+ *  the word twice down the page. */
+const TASKS_HEADING = 'Tasks'
+
 // The strip column's geometry, restated so the ruler can sit exactly over it:
 // the strip is 24 buckets × 4px, and to its right the row keeps the w-14
 // duration (56px), the gap-2 between them (8px), and its own pr-3 (12px).
@@ -236,64 +258,76 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
            above owns no bottom margin, so this one `mt-8` is the whole gap
            between chrome and content: the boundary the eye needs most, and
            the one the first heading was previously starved of. */
-        <div className="mt-8 space-y-7">
-          {undertakingSections.map(section => (
-            <section key={section.key}>
-              {/* The ruler seats on the row block's top border, ticks running
-                  down to meet it — the same edge the tracks below start from.
-                  Every block with tracks gets one: stated only above the first,
-                  it read as a header for the whole page, and by the third
-                  section you were scrolling marks with the axis off-screen. */}
-              <SectionHeader
-                title={section.title}
-                colorIndex={section.colorIndex}
-                axis={
-                  axisTicks.length > 0 ? (
-                    <DensityAxisBlock ticks={axisTicks} width={STRIP_WIDTH} />
-                  ) : undefined
-                }
-              />
-              <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
-                {section.rows.map((row, i) => (
-                  <UndertakingIndexRowBlock
-                    key={row.record.key}
-                    row={row}
-                    projectId={projectId}
-                    colorIndex={section.colorIndex}
-                    ordinal={i + 1}
-                    expanded={expandedKey === row.record.key}
-                    onToggle={() => toggleExpand(row.record.key)}
-                    onOpenDrawer={onOpenUndertaking}
-                    linked={linkedByKey(row.record.key)}
-                    gridlines={gridlines}
-                  />
+        <div className="mt-8 space-y-12">
+          {undertakingSections.length > 0 && (
+            <div>
+              <TaxonomyHeading>Undertakings</TaxonomyHeading>
+              <div className="space-y-7">
+                {undertakingSections.map(section => (
+                  <section key={section.key}>
+                    {/* The ruler seats on the row block's top border, ticks
+                        running down to meet it — the same edge the tracks below
+                        start from. Every block with tracks gets one: stated only
+                        above the first, it read as a header for the whole page,
+                        and by the third section you were scrolling marks with
+                        the axis off-screen. */}
+                    <SectionHeader
+                      title={section.title}
+                      colorIndex={section.colorIndex}
+                      axis={
+                        axisTicks.length > 0 ? (
+                          <DensityAxisBlock ticks={axisTicks} width={STRIP_WIDTH} />
+                        ) : undefined
+                      }
+                    />
+                    <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
+                      {section.rows.map((row, i) => (
+                        <UndertakingIndexRowBlock
+                          key={row.record.key}
+                          row={row}
+                          projectId={projectId}
+                          colorIndex={section.colorIndex}
+                          ordinal={i + 1}
+                          expanded={expandedKey === row.record.key}
+                          onToggle={() => toggleExpand(row.record.key)}
+                          onOpenDrawer={onOpenUndertaking}
+                          linked={linkedByKey(row.record.key)}
+                          gridlines={gridlines}
+                        />
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
-            </section>
-          ))}
-
-          {/* Plain divider between the two taxonomies — doings above, tasks below. */}
-          {undertakingSections.length > 0 && taskSections.length > 0 && (
-            <div className="border-t border-border/50" aria-hidden />
+            </div>
           )}
 
-          {taskSections.map(section => (
-            <section key={`task-${section.code}`}>
-              <SectionHeader title={section.title} colorIndex={section.colorIndex} />
-              <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
-                {section.tasks.map((entry, i) => (
-                  <OrganizerTaskRowBlock
-                    key={entry.task.key}
-                    entry={entry}
-                    colorIndex={section.colorIndex}
-                    ordinal={i + 1}
-                    onOpenUndertaking={onOpenUndertaking}
-                    onOpen={onOpenTask}
-                  />
+          {taskSections.length > 0 && (
+            <div>
+              <TaxonomyHeading>{TASKS_HEADING}</TaxonomyHeading>
+              <div className="space-y-7">
+                {taskSections.map(section => (
+                  <section key={`task-${section.code}`}>
+                    {section.title !== TASKS_HEADING && (
+                      <SectionHeader title={section.title} colorIndex={section.colorIndex} />
+                    )}
+                    <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">
+                      {section.tasks.map((entry, i) => (
+                        <OrganizerTaskRowBlock
+                          key={entry.task.key}
+                          entry={entry}
+                          colorIndex={section.colorIndex}
+                          ordinal={i + 1}
+                          onOpenUndertaking={onOpenUndertaking}
+                          onOpen={onOpenTask}
+                        />
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
-            </section>
-          ))}
+            </div>
+          )}
         </div>
       )}
     </div>
