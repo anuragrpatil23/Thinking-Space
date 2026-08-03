@@ -46,13 +46,13 @@ export interface UndertakingRecord {
   proposedTags: string[]
   /** The undertaking this one grew out of — doing→doing lineage. Sparse. */
   grewOutOf: string[]
-  /** Everything that fed this undertaking: the old organizer's notes it took up
+  /** Everything that fed this undertaking: the old organizer's tasks it took up
    *  (keys like `F9-QT-E-318`) and chain-strands filed elsewhere that carry work
-   *  for it (keys like `F9::native/…`). The two are told apart by shape. A note
+   *  for it (keys like `F9::native/…`). The two are told apart by shape. A task
    *  that fed no undertaking is, by that fact, still open — the wake list. */
   fedBy: string[]
-  /** Notes this undertaking produced — new questions or findings the work threw
-   *  up. Pointers to note keys; the note's own kind says whether it's still to
+  /** Tasks this undertaking produced — new questions or findings the work threw
+   *  up. Pointers to task keys; the task's own kind says whether it's still to
    *  explore. */
   produced: string[]
   /** Chains that primarily belong to this undertaking. Pointers, not content. */
@@ -78,65 +78,65 @@ export interface UndertakingRecord {
   bucket: boolean
   /** The head. One line: what came out. The first paragraph of the body. */
   head: string
-  /** Margin notes — Anurag's annotations over time. They live in the *body*
-   *  under a `## Notes` heading, not in YAML: they are prose he reads and edits
+  /** Margin comments — Anurag's annotations over time. They live in the *body*
+   *  under a `## Comments` heading, not in YAML: they are prose he reads and edits
    *  in Obsidian, and YAML is machine-only. Newest first. */
-  notes: UndertakingNote[]
+  comments: UndertakingComment[]
 }
 
-/** One margin note on an undertaking. Stored in the body as a paragraph led by
+/** One margin comment on an undertaking. Stored in the body as a paragraph led by
  *  `**YYYY-MM-DD**` (optionally `· Author`); a hand-typed paragraph with no such
- *  lead parses as an undated note so an Obsidian edit never breaks. */
-export interface UndertakingNote {
-  /** `YYYY-MM-DD`, or '' for a hand-typed undated note. */
+ *  lead parses as an undated comment so an Obsidian edit never breaks. */
+export interface UndertakingComment {
+  /** `YYYY-MM-DD`, or '' for a hand-typed undated comment. */
   date: string
   /** Author after the date (`· Kai`); '' means the default single user. */
   author: string
-  /** The note prose (markdown). */
+  /** The comment prose (markdown). */
   text: string
 }
 
 export const UNDERTAKING_RECORD_KIND = 'undertaking'
 
-/** The heading that splits head (above) from notes (below) in the body. */
-const NOTES_HEADING_RE = /^[ \t]*##[ \t]+Notes[ \t]*$/m
-/** A note paragraph's lead: `**2026-07-31** — text` or, with an author,
+/** The heading that splits head (above) from comments (below) in the body. */
+const COMMENTS_HEADING_RE = /^[ \t]*##[ \t]+Comments[ \t]*$/m
+/** A comment paragraph's lead: `**2026-07-31** — text` or, with an author,
  *  `**2026-07-31** · Kai — text`. The `—`/`-` separator is required so the
  *  author group binds to the whole name rather than its first letter; a block
- *  without this exact shape parses as an undated note. */
-const NOTE_LEAD_RE = /^\*\*(\d{4}-\d{2}-\d{2})\*\*(?:[ \t]*·[ \t]*(.+?))?[ \t]*[—-][ \t]+/
+ *  without this exact shape parses as an undated comment. */
+const COMMENT_LEAD_RE = /^\*\*(\d{4}-\d{2}-\d{2})\*\*(?:[ \t]*·[ \t]*(.+?))?[ \t]*[—-][ \t]+/
 
-/** Split a `## Notes` region into structured notes: one per blank-line-separated
+/** Split a `## Comments` region into structured comments: one per blank-line-separated
  *  paragraph. A `**date**` lead makes it dated; anything else — a paragraph typed
- *  straight into Obsidian — parses as an undated note rather than being dropped
- *  or glued to its neighbour. One block ⇒ one note keeps the round-trip exact. */
-function parseNotesRegionBlock(region: string): UndertakingNote[] {
+ *  straight into Obsidian — parses as an undated comment rather than being dropped
+ *  or glued to its neighbour. One block ⇒ one comment keeps the round-trip exact. */
+function parseCommentsRegionBlock(region: string): UndertakingComment[] {
   const blocks = region.split(/\n[ \t]*\n/).map(b => b.trim()).filter(Boolean)
   return blocks.map(block => {
-    const lead = NOTE_LEAD_RE.exec(block)
+    const lead = COMMENT_LEAD_RE.exec(block)
     return lead
       ? { date: lead[1], author: (lead[2] ?? '').trim(), text: block.slice(lead[0].length).trim() }
       : { date: '', author: '', text: block }
   })
 }
 
-/** Render one note back to its body paragraph. Internal blank lines are collapsed
- *  so a note stays a single block — the invariant `parseNotesRegionBlock` relies on
- *  (one block ⇒ one note), so a note can never split itself on the next read. */
-function serializeNoteBlock(note: UndertakingNote): string {
-  const text = note.text.replace(/\n[ \t]*\n+/g, '\n').trim()
-  if (!note.date && !note.author) return text
-  const prefix = note.author ? `**${note.date}** · ${note.author}` : `**${note.date}**`
+/** Render one comment back to its body paragraph. Internal blank lines are collapsed
+ *  so a comment stays a single block — the invariant `parseCommentsRegionBlock` relies on
+ *  (one block ⇒ one comment), so a comment can never split itself on the next read. */
+function serializeCommentBlock(comment: UndertakingComment): string {
+  const text = comment.text.replace(/\n[ \t]*\n+/g, '\n').trim()
+  if (!comment.date && !comment.author) return text
+  const prefix = comment.author ? `**${comment.date}** · ${comment.author}` : `**${comment.date}**`
   return `${prefix} — ${text}`
 }
 
-/** Assemble the body from its two halves: head on top, a `## Notes` section
+/** Assemble the body from its two halves: head on top, a `## Comments` section
  *  below when there are any. The one place the body's shape is defined. */
-export function buildUndertakingBodyBlock(head: string, notes: UndertakingNote[]): string {
+export function buildUndertakingBodyBlock(head: string, comments: UndertakingComment[]): string {
   const h = head.trim()
-  if (!notes.length) return h
-  const rendered = notes.map(serializeNoteBlock).join('\n\n')
-  return h ? `${h}\n\n## Notes\n\n${rendered}` : `## Notes\n\n${rendered}`
+  if (!comments.length) return h
+  const rendered = comments.map(serializeCommentBlock).join('\n\n')
+  return h ? `${h}\n\n## Comments\n\n${rendered}` : `## Comments\n\n${rendered}`
 }
 
 function asStringArray(value: unknown): string[] {
@@ -223,13 +223,13 @@ export function parseUndertakingBlock(content: string): UndertakingRecord | null
   if (asString(parsed.record_kind) !== UNDERTAKING_RECORD_KIND) return null
 
   const body = rest.slice(close.index + close[0].length).replace(/^\n+/, '')
-  // The body carries the head (first paragraph) and, below a `## Notes` heading,
-  // the margin notes. A record with no such heading is all head — which is every
-  // record written before notes existed, so they keep loading unchanged.
-  const notesHeading = NOTES_HEADING_RE.exec(body)
-  const head = (notesHeading ? body.slice(0, notesHeading.index) : body).trim()
-  const notes = notesHeading
-    ? parseNotesRegionBlock(body.slice(notesHeading.index + notesHeading[0].length))
+  // The body carries the head (first paragraph) and, below a `## Comments` heading,
+  // the margin comments. A record with no such heading is all head — which is every
+  // record written before comments existed, so they keep loading unchanged.
+  const commentsHeading = COMMENTS_HEADING_RE.exec(body)
+  const head = (commentsHeading ? body.slice(0, commentsHeading.index) : body).trim()
+  const comments = commentsHeading
+    ? parseCommentsRegionBlock(body.slice(commentsHeading.index + commentsHeading[0].length))
     : []
 
   return {
@@ -244,7 +244,7 @@ export function parseUndertakingBlock(content: string): UndertakingRecord | null
     tags: asStringArray(parsed.tags),
     proposedTags: asStringArray(parsed.proposed_tags),
     grewOutOf: asStringArray(parsed.grew_out_of),
-    // `fed_by` merges what were once two fields: `discharges` (notes) and
+    // `fed_by` merges what were once two fields: `discharges` (tasks) and
     // `also_fed_by` (chain-strands). Legacy names are still read so a record
     // written before the rename keeps loading; serialize only ever writes
     // `fed_by`, so it heals on the next save.
@@ -259,7 +259,7 @@ export function parseUndertakingBlock(content: string): UndertakingRecord | null
     origin: asString(parsed.origin),
     bucket: parsed.bucket === true,
     head,
-    notes,
+    comments,
   }
 }
 
@@ -305,7 +305,7 @@ export function serializeUndertakingBlock(record: UndertakingRecord): string {
     .dump(frontmatter, { lineWidth: -1, noRefs: true, sortKeys: false, quotingType: '"' })
     .trimEnd()
 
-  const body = buildUndertakingBodyBlock(record.head, record.notes)
+  const body = buildUndertakingBodyBlock(record.head, record.comments)
   return `---\n${yamlStr}\n---\n${body ? `\n${body}\n` : ''}`
 }
 

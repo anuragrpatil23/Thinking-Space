@@ -1,7 +1,7 @@
 import {
   applyTagsBlock,
   extendVocabularyBlock,
-  type UndertakingNote,
+  type UndertakingComment,
   type UndertakingRecord,
 } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
 import {
@@ -659,50 +659,50 @@ export async function updateUndertakingHeadOrch(
 }
 
 /**
- * Add a margin note to an undertaking.
+ * Add a margin comment to an undertaking.
  *
- * Notes are the annotation surface — Anurag's voice on an entry, the "edits are
- * signal" half of the design. They live in the body under `## Notes`, dated,
+ * Comments are the annotation surface — Anurag's voice on an entry, the "edits are
+ * signal" half of the design. They live in the body under `## Comments`, dated,
  * newest first, so they read and edit as prose in Obsidian. Unlike the head
- * (one line, replaced destructively) notes accumulate: append-only by intent,
+ * (one line, replaced destructively) comments accumulate: append-only by intent,
  * though any of them stays hand-editable in the vault file.
  */
-export async function addUndertakingNoteOrch(
+export async function addUndertakingCommentOrch(
   projectId: string,
   key: string,
   text: string,
   author = '',
 ): Promise<{ path: string; record: UndertakingRecord }> {
   const trimmed = text.trim()
-  if (!trimmed) throw new Error('Empty note')
+  if (!trimmed) throw new Error('Empty comment')
   const record = await getUndertakingBlock(projectId, key)
   if (!record) throw new Error(`Undertaking not found: ${key}`)
   const today = new Date().toISOString().slice(0, 10)
-  const note: UndertakingNote = { date: today, author: author.trim(), text: trimmed }
+  const comment: UndertakingComment = { date: today, author: author.trim(), text: trimmed }
   const next: UndertakingRecord = {
     ...record,
-    notes: [note, ...record.notes],
+    comments: [comment, ...record.comments],
     updatedAt: today,
   }
   return { path: await writeUndertakingBlock(projectId, next), record: next }
 }
 
 /**
- * Remove a note by its position in the newest-first list the UI shows. Index-
- * based rather than content-based because notes carry no id — position is the
+ * Remove a comment by its position in the newest-first list the UI shows. Index-
+ * based rather than content-based because comments carry no id — position is the
  * only handle, and the drawer's list is the same order this reads.
  */
-export async function removeUndertakingNoteOrch(
+export async function removeUndertakingCommentOrch(
   projectId: string,
   key: string,
   index: number,
 ): Promise<{ path: string; record: UndertakingRecord }> {
   const record = await getUndertakingBlock(projectId, key)
   if (!record) throw new Error(`Undertaking not found: ${key}`)
-  if (index < 0 || index >= record.notes.length) throw new Error(`No note at ${index}`)
+  if (index < 0 || index >= record.comments.length) throw new Error(`No comment at ${index}`)
   const next: UndertakingRecord = {
     ...record,
-    notes: record.notes.filter((_, i) => i !== index),
+    comments: record.comments.filter((_, i) => i !== index),
     updatedAt: new Date().toISOString().slice(0, 10),
   }
   return { path: await writeUndertakingBlock(projectId, next), record: next }
@@ -712,7 +712,7 @@ export async function removeUndertakingNoteOrch(
  *  judgment — title, where it files, and its relationship edges — so all of it
  *  stays hand-editable (the design's "nothing may depend on upkeep, but
  *  everything may be edited"). Tags go through `tagUndertakingOrch` for
- *  vocabulary validation; the head and notes have their own orchs. */
+ *  vocabulary validation; the head and comments have their own orchs. */
 export interface UndertakingFieldPatch {
   title?: string
   /** Section key (the record's `parent`). Re-files the undertaking. */

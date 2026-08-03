@@ -327,7 +327,7 @@ export async function createUndertakingOrch(
     origin: params.origin ?? 'assignment-queue',
     bucket: params.bucket === true,
     head: params.head?.trim() ?? '',
-    notes: [],
+    comments: [],
   }
   return { path: await writeUndertakingBlock(projectId, record), record }
 }

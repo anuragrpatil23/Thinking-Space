@@ -171,7 +171,7 @@ function makeRecord(overrides: Partial<UndertakingRecord> = {}): UndertakingReco
     origin: 'manual',
     bucket: false,
     head: 'HBM is the thesis.',
-    notes: [],
+    comments: [],
     ...overrides,
   }
 }

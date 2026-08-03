@@ -100,7 +100,7 @@ function makeRecord(overrides: Partial<UndertakingRecord> = {}): UndertakingReco
     origin: 'manual',
     bucket: false,
     head: 'HBM is the thesis.',
-    notes: [],
+    comments: [],
     ...overrides,
   }
 }
@@ -526,45 +526,45 @@ describe('updateUndertakingHeadOrch', () => {
   })
 })
 
-describe('undertaking notes', () => {
-  it('adds a dated note newest-first and persists it to the body', async () => {
+describe('undertaking comments', () => {
+  it('adds a dated comment newest-first and persists it to the body', async () => {
     seedRecord(makeRecord())
-    const { addUndertakingNoteOrch, getUndertakingOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const { addUndertakingCommentOrch, getUndertakingOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
 
-    await addUndertakingNoteOrch('F9', 'f9-und-micron', '  first note  ')
-    const { record } = await addUndertakingNoteOrch('F9', 'f9-und-micron', 'second note')
+    await addUndertakingCommentOrch('F9', 'f9-und-micron', '  first comment  ')
+    const { record } = await addUndertakingCommentOrch('F9', 'f9-und-micron', 'second comment')
 
-    expect(record.notes).toHaveLength(2)
-    expect(record.notes[0].text).toBe('second note') // newest first
-    expect(record.notes[1].text).toBe('first note') // trimmed
-    expect(record.notes[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(record.comments).toHaveLength(2)
+    expect(record.comments[0].text).toBe('second comment') // newest first
+    expect(record.comments[1].text).toBe('first comment') // trimmed
+    expect(record.comments[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
 
     // Round-trips through the store, not just the returned object.
     const reread = await getUndertakingOrch('F9', 'f9-und-micron')
-    expect(reread!.record.notes.map(n => n.text)).toEqual(['second note', 'first note'])
+    expect(reread!.record.comments.map(n => n.text)).toEqual(['second comment', 'first comment'])
   })
 
-  it('rejects an empty note', async () => {
+  it('rejects an empty comment', async () => {
     seedRecord(makeRecord())
-    const { addUndertakingNoteOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    await expect(addUndertakingNoteOrch('F9', 'f9-und-micron', '   ')).rejects.toThrow(/empty/i)
+    const { addUndertakingCommentOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    await expect(addUndertakingCommentOrch('F9', 'f9-und-micron', '   ')).rejects.toThrow(/empty/i)
   })
 
-  it('removes a note by its position in the newest-first list', async () => {
-    seedRecord(makeRecord({ notes: [
+  it('removes a comment by its position in the newest-first list', async () => {
+    seedRecord(makeRecord({ comments: [
       { date: '2026-07-31', author: '', text: 'newest' },
       { date: '2026-06-02', author: '', text: 'oldest' },
     ] }))
-    const { removeUndertakingNoteOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const { removeUndertakingCommentOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
 
-    const { record } = await removeUndertakingNoteOrch('F9', 'f9-und-micron', 0)
-    expect(record.notes.map(n => n.text)).toEqual(['oldest'])
+    const { record } = await removeUndertakingCommentOrch('F9', 'f9-und-micron', 0)
+    expect(record.comments.map(n => n.text)).toEqual(['oldest'])
   })
 
-  it('throws on an out-of-range note index rather than silently no-op', async () => {
+  it('throws on an out-of-range comment index rather than silently no-op', async () => {
     seedRecord(makeRecord())
-    const { removeUndertakingNoteOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    await expect(removeUndertakingNoteOrch('F9', 'f9-und-micron', 3)).rejects.toThrow(/no note/i)
+    const { removeUndertakingCommentOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    await expect(removeUndertakingCommentOrch('F9', 'f9-und-micron', 3)).rejects.toThrow(/no comment/i)
   })
 })
 

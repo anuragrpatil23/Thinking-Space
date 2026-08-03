@@ -87,12 +87,12 @@ describe('serializeUndertakingBlock', () => {
   })
 })
 
-describe('undertaking notes (body)', () => {
-  const WITH_NOTES = FILE.replace(
+describe('undertaking comments (body)', () => {
+  const WITH_COMMENTS = FILE.replace(
     'The memory cycle turned, and the turn was priced before the earnings confirmed it.\n',
     `The memory cycle turned, and the turn was priced before the earnings confirmed it.
 
-## Notes
+## Comments
 
 **2026-07-31** — reconsidered after the MU earnings; thesis held.
 
@@ -102,37 +102,37 @@ a paragraph typed straight into Obsidian with no date lead
 `,
   )
 
-  it('leaves notes empty and head whole when there is no ## Notes heading', () => {
+  it('leaves comments empty and head whole when there is no ## Comments heading', () => {
     const record = parseUndertakingBlock(FILE)!
-    expect(record.notes).toEqual([])
-    expect(record.head).not.toContain('## Notes')
+    expect(record.comments).toEqual([])
+    expect(record.head).not.toContain('## Comments')
   })
 
-  it('splits head from a dated notes section', () => {
-    const record = parseUndertakingBlock(WITH_NOTES)!
+  it('splits head from a dated comments section', () => {
+    const record = parseUndertakingBlock(WITH_COMMENTS)!
     expect(record.head).toBe(
       'The memory cycle turned, and the turn was priced before the earnings confirmed it.',
     )
-    expect(record.notes).toHaveLength(3)
-    expect(record.notes[0]).toEqual({ date: '2026-07-31', author: '', text: 'reconsidered after the MU earnings; thesis held.' })
-    expect(record.notes[1]).toEqual({ date: '2026-06-02', author: 'Kai', text: 'first flagged this.' })
+    expect(record.comments).toHaveLength(3)
+    expect(record.comments[0]).toEqual({ date: '2026-07-31', author: '', text: 'reconsidered after the MU earnings; thesis held.' })
+    expect(record.comments[1]).toEqual({ date: '2026-06-02', author: 'Kai', text: 'first flagged this.' })
   })
 
-  it('parses a lead-less paragraph as an undated note rather than dropping it', () => {
-    const record = parseUndertakingBlock(WITH_NOTES)!
-    expect(record.notes[2]).toEqual({ date: '', author: '', text: 'a paragraph typed straight into Obsidian with no date lead' })
+  it('parses a lead-less paragraph as an undated comment rather than dropping it', () => {
+    const record = parseUndertakingBlock(WITH_COMMENTS)!
+    expect(record.comments[2]).toEqual({ date: '', author: '', text: 'a paragraph typed straight into Obsidian with no date lead' })
   })
 
-  it('round-trips notes without loss', () => {
-    const record = parseUndertakingBlock(WITH_NOTES)!
+  it('round-trips comments without loss', () => {
+    const record = parseUndertakingBlock(WITH_COMMENTS)!
     const again = parseUndertakingBlock(serializeUndertakingBlock(record))!
-    expect(again.notes).toEqual(record.notes)
+    expect(again.comments).toEqual(record.comments)
     expect(again.head).toBe(record.head)
   })
 
-  it('writes a ## Notes section only when there are notes', () => {
-    expect(serializeUndertakingBlock(parseUndertakingBlock(FILE)!)).not.toContain('## Notes')
-    expect(serializeUndertakingBlock(parseUndertakingBlock(WITH_NOTES)!)).toContain('## Notes')
+  it('writes a ## Comments section only when there are comments', () => {
+    expect(serializeUndertakingBlock(parseUndertakingBlock(FILE)!)).not.toContain('## Comments')
+    expect(serializeUndertakingBlock(parseUndertakingBlock(WITH_COMMENTS)!)).toContain('## Comments')
   })
 })
 

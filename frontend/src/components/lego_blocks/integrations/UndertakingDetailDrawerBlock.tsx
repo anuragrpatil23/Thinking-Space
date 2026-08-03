@@ -25,11 +25,11 @@ import VaultPageListBlock from '@/components/lego_blocks/units/VaultPageListBloc
 import { bucketDensityBlock } from '@/services/lego_blocks/units/aiActivityDensityBlock'
 import { useUndertakingDetailBlock } from '@/components/lego_blocks/hooks/units/useUndertakingDetailBlock'
 import {
-  addUndertakingNoteOrch,
+  addUndertakingCommentOrch,
   getUndertakingLinksOrch,
   listUndertakingSectionsOrch,
   listUndertakingTitlesOrch,
-  removeUndertakingNoteOrch,
+  removeUndertakingCommentOrch,
   tagUndertakingOrch,
   updateUndertakingFieldsOrch,
   updateUndertakingHeadOrch,
@@ -39,7 +39,7 @@ import {
 // The page behind an index entry, as a right-hand drawer — the index stays
 // mounted behind it. Everything an undertaking carries that is Anurag's judgment
 // is editable here: title, section, tags, the head, its grew_out_of edges, and
-// the notes thread. The derived tail (sessions, density, pointers) is read-only
+// the comments thread. The derived tail (sessions, density, pointers) is read-only
 // by construction — it's re-derived from chains, never stored here.
 
 interface Props {
@@ -70,7 +70,7 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
   const [titleDraft, setTitleDraft] = useState('')
   const [headDraft, setHeadDraft] = useState('')
   const [savingHead, setSavingHead] = useState(false)
-  const [noteDraft, setNoteDraft] = useState('')
+  const [commentDraft, setCommentDraft] = useState('')
   const [tagDraft, setTagDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [removingIndex, setRemovingIndex] = useState<number | null>(null)
@@ -188,21 +188,21 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
     void runEdit(() => updateUndertakingFieldsOrch(projectId, record.key, { grewOutOf: record.grewOutOf.filter(k => k !== key) }))
   }
 
-  const addNote = async () => {
-    if (!record || !noteDraft.trim()) return
+  const addComment = async () => {
+    if (!record || !commentDraft.trim()) return
     setBusy(true)
     try {
-      await addUndertakingNoteOrch(projectId, record.key, noteDraft.trim())
-      setNoteDraft('')
+      await addUndertakingCommentOrch(projectId, record.key, commentDraft.trim())
+      setCommentDraft('')
       reload()
     } finally { setBusy(false) }
   }
 
-  const removeNote = async (index: number) => {
+  const removeComment = async (index: number) => {
     if (!record) return
     setRemovingIndex(index)
     try {
-      await removeUndertakingNoteOrch(projectId, record.key, index)
+      await removeUndertakingCommentOrch(projectId, record.key, index)
       reload()
     } finally { setRemovingIndex(null) }
   }
@@ -237,7 +237,7 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
   )
 
   // The drawer as markdown — headed by the outcome, then the evidence, then the
-  // graph, then the notes. Same order the panel reads in, so what lands in the
+  // graph, then the comments. Same order the panel reads in, so what lands in the
   // paste is recognisably the thing that was on screen.
   const copyMarkdown = async () => {
     if (!record || !tail) return
@@ -270,11 +270,11 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
         )
       }
     }
-    if (record.notes.length) {
-      lines.push('', '## Notes', '')
-      for (const note of record.notes) {
-        const by = [note.date, note.author].filter(Boolean).join(' · ')
-        lines.push(`- ${by ? `${by} — ` : ''}${note.text}`)
+    if (record.comments.length) {
+      lines.push('', '## Comments', '')
+      for (const comment of record.comments) {
+        const by = [comment.date, comment.author].filter(Boolean).join(' · ')
+        lines.push(`- ${by ? `${by} — ` : ''}${comment.text}`)
       }
     }
 
@@ -572,15 +572,15 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
 
                   {/* The rest of the graph. `grewOutOf` above is the only edge
                       this record owns; everything here is either another record
-                      naming it or a note edge, so the drawer has to be handed
+                      naming it or a task edge, so the drawer has to be handed
                       them — without them it showed a strictly poorer
                       relationship picture than the one-line peek behind it.
                       Read-only by construction: you edit an edge from the end
                       that owns it.
 
-                      Fed by and Answered are both note edges but not the same
+                      Fed by and Answered are both task edges but not the same
                       fact: a Question migrates out of its section to sit under
-                      the doing that answered it, while a standing note (an
+                      the doing that answered it, while a standing task (an
                       idea, a thesis, a lesson) keeps its own row and merely
                       fed this one. Collapsing them would claim this undertaking
                       closed something it only drew on. */}
@@ -591,18 +591,18 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                 </div>
               </Field>
 
-              {/* Notes live below the two columns, across the full panel. In
+              {/* Comments live below the two columns, across the full panel. In
                   the reading column they were a narrow box wedged between the
                   outcome and the sessions while the bottom half of the drawer
-                  sat empty — and notes are the one thing here you compose at
+                  sat empty — and comments are the one thing here you compose at
                   length, so they get the width and the room. The thread itself
                   reads as one: an authored entry with an avatar and a date. */}
               <Field
-                label="Notes"
+                label="Comments"
                 action={
-                  record.notes.length > 0 ? (
+                  record.comments.length > 0 ? (
                     <span className="text-xs tabular-nums text-muted-foreground/70">
-                      {record.notes.length}
+                      {record.comments.length}
                     </span>
                   ) : undefined
                 }
@@ -611,9 +611,9 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                     share a single well, divided by a hairline, rather than a
                     cramped box with controls floating under it. The avatar
                     moves out of the left gutter and into the footer bar — the
-                    note you are writing should be the widest thing on the page,
+                    comment you are writing should be the widest thing on the page,
                     and the attribution still has to be visible, because an
-                    agent writing through the CLI files notes into this same
+                    agent writing through the CLI files comments into this same
                     thread under its own name. */}
                 <div
                   className={cn(
@@ -624,14 +624,14 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                   )}
                 >
                   <textarea
-                    value={noteDraft}
-                    onChange={e => setNoteDraft(e.target.value)}
+                    value={commentDraft}
+                    onChange={e => setCommentDraft(e.target.value)}
                     onKeyDown={e => {
-                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void addNote() }
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void addComment() }
                     }}
                     rows={5}
-                    placeholder="Add a note…"
-                    aria-label="Add a note"
+                    placeholder="Add a comment…"
+                    aria-label="Add a comment"
                     className="block w-full resize-y bg-transparent px-3.5 py-3 text-sm leading-relaxed outline-none placeholder:text-muted-foreground/50"
                   />
                   <div className="flex items-center justify-between gap-2 border-t border-black/[0.05] px-3 py-2 dark:border-white/[0.06]">
@@ -643,40 +643,40 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                     </span>
                     <button
                       type="button"
-                      onClick={() => void addNote()}
-                      disabled={busy || !noteDraft.trim()}
+                      onClick={() => void addComment()}
+                      disabled={busy || !commentDraft.trim()}
                       className={PRIMARY_BUTTON}
                     >
                       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                      Add note
+                      Add comment
                     </button>
                   </div>
                 </div>
 
-                {record.notes.length === 0 ? (
+                {record.comments.length === 0 ? (
                   <p className="mt-4 text-[13px] text-muted-foreground/55">
-                    Nothing noted yet.
+                    No comments yet.
                   </p>
                 ) : (
                   <ol className="mt-6 space-y-5">
-                    {record.notes.map((note, index) => (
-                      <li key={`${note.date}-${index}`} className="group flex items-start gap-3">
-                        <NoteAvatar author={note.author} />
+                    {record.comments.map((comment, index) => (
+                      <li key={`${comment.date}-${index}`} className="group flex items-start gap-3">
+                        <NoteAvatar author={comment.author} />
                         <div className="min-w-0 flex-1">
                           <p className="flex items-baseline gap-2 text-[12px] leading-none">
-                            <span className="font-medium text-foreground/85">{note.author || 'You'}</span>
-                            <span className="tabular-nums text-muted-foreground/55">{note.date || 'undated'}</span>
+                            <span className="font-medium text-foreground/85">{comment.author || 'You'}</span>
+                            <span className="tabular-nums text-muted-foreground/55">{comment.date || 'undated'}</span>
                           </p>
                           <div className="prose prose-sm mt-1.5 max-w-none leading-relaxed dark:prose-invert prose-p:my-0">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.text}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{comment.text}</ReactMarkdown>
                           </div>
                         </div>
                         <button
                           type="button"
-                          onClick={() => void removeNote(index)}
+                          onClick={() => void removeComment(index)}
                           disabled={removingIndex === index}
                           className="-mr-1 shrink-0 rounded-md p-1.5 text-transparent transition-colors hover:bg-black/[0.04] hover:!text-destructive focus-visible:text-muted-foreground/60 group-hover:text-muted-foreground/50 dark:hover:bg-white/[0.05]"
-                          aria-label="Delete note"
+                          aria-label="Delete comment"
                         >
                           {removingIndex === index
                             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
