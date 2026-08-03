@@ -493,6 +493,14 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
                   placeholder="Add to which undertaking?"
                   className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring"
                 />
+                {/* Escape works, but a search box with no way out visible reads
+                    as a dead end to anyone who doesn't already know that. */}
+                <button
+                  onClick={() => setStage({ kind: 'idle' })}
+                  className="shrink-0 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  Cancel
+                </button>
               </div>
               <ul className="mt-2 max-h-64 space-y-0.5 overflow-y-auto">
                 {matches.map(entry => (
@@ -506,8 +514,13 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
                   </li>
                 ))}
                 {matches.length === 0 && (
-                  <li className="px-2 py-1.5 text-sm text-muted-foreground">
-                    Nothing matches — create one instead.
+                  <li>
+                    <button
+                      onClick={() => setStage({ kind: 'mint' })}
+                      className="w-full rounded px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      Nothing matches — create one instead.
+                    </button>
                   </li>
                 )}
               </ul>
