@@ -52,6 +52,7 @@ describe('collectFilterGroupsBlock', () => {
     const index: UndertakingIndex = {
       sections: [{ key: 's1', title: 'Company Studies', rows: [undertakingRow({ lastDate: '2026-06-01', tags: ['held'] })] }],
       taskSections: [{ code: 'QT', title: 'Questions', tasks: [task({ code: 'QT', openedDate: '2025-02-01', tags: ['watchlist'] })] }],
+      taskLabel: 'Thinking',
       windowStart: '',
       windowEnd: '',
     }

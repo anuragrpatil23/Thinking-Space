@@ -930,6 +930,23 @@ describe('resolving a project to its authored records', () => {
     expect(titles).toEqual(['Live row'])
     // No kinds in this corpus, so one flat section named for the corpus.
     expect(index.taskSections.map(section => section.title)).toEqual(['Tasks'])
+    // Unset: this project's records really are tasks, so the default holds.
+    expect(index.taskLabel).toBe('Tasks')
+  })
+
+  it("heads the authored half with the project's own word for it", async () => {
+    // F9's records are Ideas, Questions to research, Key things. Heading that
+    // half "Tasks" mislabels every row under it, so F9 names it itself.
+    registry = [{ project: 'F9', paths: ['acceleration_core/F9'] }]
+    seedUiState('acceleration_core/F9', { taskLabel: 'Thinking' })
+    seedTaskFile('acceleration_core/F9', 'epics', 'epic-f9-ide-e-1.md', 'f9-ide-e-1', 'MSFT is value')
+
+    const { getUndertakingIndexOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const index = await getUndertakingIndexOrch('F9')
+
+    expect(index.taskLabel).toBe('Thinking')
+    // The kind sections underneath are untouched — the label names the half.
+    expect(index.taskSections.map(section => section.title)).toEqual(['Ideas'])
   })
 
   it('still resolves by folder basename, and still defaults to epics/', async () => {

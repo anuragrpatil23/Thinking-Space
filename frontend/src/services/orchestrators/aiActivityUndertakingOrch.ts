@@ -278,7 +278,7 @@ export async function listTaskProjectsOrch(): Promise<TaskProject[]> {
       else if (vaultRoot && abs.startsWith(`${vaultRoot}/`)) rel = abs.slice(vaultRoot.length + 1)
       else if (!abs.startsWith('/')) rel = abs
       if (rel === null) continue
-      const tasks = await listTasksBlock(rel, await taskDirForRootBlock(rel))
+      const tasks = await listTasksBlock(rel, (await taskSettingsForRootBlock(rel)).dir)
       if (tasks.length === 0) continue
       const projectId = rel.split('/').pop() || entry.project
       if (seen.has(projectId)) continue
@@ -303,7 +303,7 @@ export async function getOpenTasksOrch(params: {
   projectRoot: string
 }): Promise<OpenTasksResult> {
   const [tasks, undertakings] = await Promise.all([
-    taskDirForRootBlock(params.projectRoot).then(dir => listTasksBlock(params.projectRoot, dir)),
+    taskSettingsForRootBlock(params.projectRoot).then(({ dir }) => listTasksBlock(params.projectRoot, dir)),
     listUndertakingsBlock(params.projectId),
   ])
   const fed = new Set<string>()
