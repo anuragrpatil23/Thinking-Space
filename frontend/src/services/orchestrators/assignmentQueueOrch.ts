@@ -294,7 +294,16 @@ export async function proposeAssignmentsOrch(
  */
 export async function createUndertakingOrch(
   projectId: string,
-  params: { title: string; section?: string; head?: string; bucket?: boolean; origin?: string },
+  params: {
+    title: string
+    section?: string
+    head?: string
+    bucket?: boolean
+    origin?: string
+    /** Task tickets this undertaking fed on, written at birth. Only ever set by
+     *  a human path — the seam derives the reverse edge, it never invents one. */
+    fedBy?: string[]
+  },
 ): Promise<{ path: string; record: UndertakingRecord }> {
   const title = params.title.trim()
   if (!title) throw new Error('Undertaking title cannot be empty')
@@ -320,7 +329,7 @@ export async function createUndertakingOrch(
     tags: [],
     proposedTags: [],
     grewOutOf: [],
-    fedBy: [],
+    fedBy: params.fedBy ?? [],
     produced: [],
     chains: [],
     files: [],
@@ -360,6 +369,7 @@ export async function ensureBucketUndertakingOrch(projectId: string): Promise<Un
 async function resolveTargetKeyBlock(
   projectId: string,
   target: ProposalTargetBlock,
+  origin?: string,
 ): Promise<string> {
   switch (target.kind) {
     case 'existing': {
@@ -390,6 +400,12 @@ async function resolveTargetKeyBlock(
         title: target.title,
         section: target.section,
         head: target.head,
+        // Where the mint came from, carried through rather than defaulted. A
+        // record minted off a human's own selection did not come from the
+        // assignment queue's suggestions, and saying it did would make the one
+        // field that records provenance lie about the only records whose
+        // provenance is unambiguous.
+        origin,
       })
       return record.key
     }
@@ -407,6 +423,9 @@ export interface DisposeParams {
    *  the queue. */
   target: ProposalTargetBlock | null
   decidedBy?: 'queue' | 'auto'
+  /** Provenance for an undertaking this disposition mints. Defaults to
+   *  `assignment-queue`; the manual pane passes `manual`. */
+  origin?: string
 }
 
 export interface DisposeResult {
@@ -442,7 +461,7 @@ export async function disposeChainsOrch(params: DisposeParams): Promise<DisposeR
   const stamped: string[] = []
 
   if (params.target) {
-    key = await resolveTargetKeyBlock(params.projectId, params.target)
+    key = await resolveTargetKeyBlock(params.projectId, params.target, params.origin)
     const chains = await listChainsBlock({ projectId: params.projectId })
     const wanted = new Set(params.chainIds)
     for (const chain of chains) {
@@ -469,6 +488,51 @@ export async function disposeChainsOrch(params: DisposeParams): Promise<DisposeR
   await appendVerdictsBlock(verdicts)
 
   return { stamped, undertaking: key, verdict: verdictKind }
+}
+
+/**
+ * Mint an undertaking from a human's own selection, then file the selected
+ * chains into it.
+ *
+ * The queue could only ever answer a question an AI pass had already asked. For
+ * the 251 chains nothing has proposed for, the sole remedy the UI offered was
+ * "ask Kai to take a pass" — which made an automated pass a prerequisite for
+ * human judgement, in a feature whose contract says the opposite: AI proposes, a
+ * human mints, and every chain gets a disposition. This is that missing path.
+ *
+ * It is a composition, not a fourth write path. The mint goes through
+ * `createUndertakingOrch` and the stamping through `disposeChainsOrch`, so the
+ * key rules (one minting path, every disposition logged) hold here without being
+ * restated — and the verdicts land with `proposed: null`, which
+ * `calibrateBandsBlock` already skips. A manual decision must not be read as
+ * evidence for or against a confidence band that never made a claim.
+ */
+export async function mintFromSelectionOrch(params: {
+  projectId: string
+  title: string
+  section?: string
+  head?: string
+  chainIds: string[]
+  /** Task tickets in display form (`TP-DA-T-514`) — the seam's edge vocabulary. */
+  fedBy?: string[]
+}): Promise<{ key: string; stamped: string[] }> {
+  const { record } = await createUndertakingOrch(params.projectId, {
+    title: params.title,
+    section: params.section,
+    head: params.head,
+    origin: 'manual',
+    fedBy: params.fedBy,
+  })
+  if (params.chainIds.length === 0) return { key: record.key, stamped: [] }
+  const result = await disposeChainsOrch({
+    chainIds: params.chainIds,
+    projectId: params.projectId,
+    proposed: null,
+    confidence: 0,
+    target: { kind: 'existing', key: record.key },
+    origin: 'manual',
+  })
+  return { key: record.key, stamped: result.stamped }
 }
 
 function targetsMatchBlock(a: ProposalTargetBlock, b: ProposalTargetBlock): boolean {

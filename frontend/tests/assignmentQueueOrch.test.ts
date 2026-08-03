@@ -105,6 +105,7 @@ const {
   getAssignmentQueueOrch,
   listRecentAutoAppliedOrch,
   listUndisposedChainsOrch,
+  mintFromSelectionOrch,
   proposeAssignmentsOrch,
 } = await import('@/services/orchestrators/assignmentQueueOrch')
 
@@ -424,6 +425,76 @@ describe('createUndertakingOrch', () => {
     seedRecord('F9', makeRecord({ key: 'f9-und-micron' }))
     const { record } = await createUndertakingOrch('F9', { title: 'Micron' })
     expect(record.key).toBe('f9-und-micron-2')
+  })
+})
+
+describe('mintFromSelectionOrch', () => {
+  // The path that exists because the queue could only ever answer a question an
+  // AI pass had already asked. What these guard is that a human's own decision
+  // is recorded *as* one — not laundered into evidence about a model.
+  it('mints with a manual origin and files the selection into it', async () => {
+    seedChain(makeChain({ chainId: 'c-1' }))
+    seedChain(makeChain({ chainId: 'c-2' }))
+    const result = await mintFromSelectionOrch({
+      projectId: 'F9',
+      title: 'Ghost sessions',
+      head: 'Sessions with no chain.',
+      chainIds: ['c-1', 'c-2'],
+    })
+    expect(result.key).toBe('f9-und-ghost-sessions')
+    expect(result.stamped.sort()).toEqual(['c-1', 'c-2'])
+    expect(listRecords('F9')[0].origin).toBe('manual')
+    expect(readChain('F9', 'c-1')?.undertaking).toEqual(['f9-und-ghost-sessions'])
+  })
+
+  it('logs the verdicts with no proposal, so calibration cannot count them', async () => {
+    seedChain(makeChain({ chainId: 'c-1' }))
+    await mintFromSelectionOrch({
+      projectId: 'F9',
+      title: 'Ghost sessions',
+      chainIds: ['c-1'],
+    })
+    const verdicts = readVerdicts()
+    expect(verdicts).toHaveLength(1)
+    expect(verdicts[0].proposed).toBeNull()
+    expect(verdicts[0].confidence).toBe(0)
+    expect(verdicts[0].correctedTo).toEqual({ kind: 'existing', key: 'f9-und-ghost-sessions' })
+    // No proposal means no band earned or lost anything.
+    await expect(getAssignmentCalibrationOrch().then(bands => bands.every(b => b.total === 0)))
+      .resolves.toBe(true)
+  })
+
+  it('carries the task edges the human picked onto the new record', async () => {
+    const { key } = await mintFromSelectionOrch({
+      projectId: 'F9',
+      title: 'Ghost sessions',
+      chainIds: [],
+      fedBy: ['F9-QT-E-318'],
+    })
+    expect(listRecords('F9').find(r => r.key === key)?.fedBy).toEqual(['F9-QT-E-318'])
+  })
+
+  it('mints without a chain, because an undertaking can start before any work', async () => {
+    const result = await mintFromSelectionOrch({
+      projectId: 'F9',
+      title: 'Ghost sessions',
+      chainIds: [],
+    })
+    expect(result.stamped).toEqual([])
+    expect(readVerdicts()).toHaveLength(0)
+    expect(listRecords('F9')).toHaveLength(1)
+  })
+
+  it('leaves an ordinary queue mint saying it came from the queue', async () => {
+    seedChain(makeChain({ chainId: 'c-1' }))
+    await disposeChainsOrch({
+      chainIds: ['c-1'],
+      projectId: 'F9',
+      proposed: { kind: 'new', title: 'Ghost sessions' },
+      confidence: 0.9,
+      target: { kind: 'new', title: 'Ghost sessions' },
+    })
+    expect(listRecords('F9')[0].origin).toBe('assignment-queue')
   })
 })
 

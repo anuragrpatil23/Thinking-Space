@@ -826,6 +826,35 @@ export async function updateUndertakingFieldsOrch(
   return { path: await writeUndertakingBlock(projectId, next), record: next }
 }
 
+/**
+ * Tasks in a project that no undertaking has fed on — the candidates for a
+ * `fed_by` edge, newest first.
+ *
+ * The same derivation as `getOpenTasksOrch`, keyed on the project id rather than
+ * a vault-relative root: the assignment queue knows a chain's project and
+ * nothing else, and making the picker take a path would have the UI resolving a
+ * mapping the registry already owns. Newest first because a manual mint is
+ * almost always about work from the last few weeks, whereas the wake list is
+ * about the oldest thing still unanswered.
+ */
+export async function listUnfedTasksOrch(projectId: string): Promise<Task[]> {
+  const source = await taskSourceForProjectBlock(projectId)
+  if (!source) return []
+  const [tasks, undertakings] = await Promise.all([
+    listTasksBlock(source.root, source.dir),
+    listUndertakingsBlock(projectId),
+  ])
+  const fed = new Set<string>()
+  for (const record of undertakings) {
+    for (const raw of record.fedBy) {
+      if (!raw.includes('::')) fed.add(raw.toUpperCase()) // task tickets only
+    }
+  }
+  return tasks
+    .filter(task => !fed.has(task.ticket))
+    .sort((a, b) => (b.openedDate || '').localeCompare(a.openedDate || ''))
+}
+
 /** The project's sections, for the re-file dropdown. */
 export async function listUndertakingSectionsOrch(
   projectId: string,
