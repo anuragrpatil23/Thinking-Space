@@ -54,10 +54,14 @@ import {
   type OrganizerUiStateOrch,
 } from '@/services/orchestrators/organizerUiStateOrch'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
+import { discoverOrganizerProjectsOrch } from '@/services/orchestrators/organizerProjectDiscoveryOrch'
 
 interface ProjectEntry {
   name: string
   root: string
+  /** Set once discovery has resolved it. Absent on entries cached by an older
+   *  build, which fall back to the root basename exactly as before. */
+  aiProjectId?: string
 }
 type ProjectPresetTagsByRoot = Record<string, string[]>
 type ProjectTagColorsByRoot = Record<string, Record<string, string>>
@@ -78,7 +82,9 @@ const PROJECT_ROOT_QUERY_PARAM = 'projectRoot'
 const SELECTED_NODE_QUERY_PARAM = 'selectedNode'
 export const ORGANIZER_OPEN_CREATE_PROJECT_EVENT = 'ltm:organizer:open-create-project'
 export const ORGANIZER_PROJECTS_UPDATED_EVENT = 'ltm:organizer:projects-updated'
-export interface OrganizerProjectsUpdatedDetail { projects: Array<{ name: string; root: string }> }
+export interface OrganizerProjectsUpdatedDetail {
+  projects: Array<{ name: string; root: string; aiProjectId?: string }>
+}
 function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
   if (typeof value === 'string' && value.trim()) return value
@@ -481,8 +487,13 @@ export default function BacklogOrch({
       setProjectEntries((prev) => {
         const next = [...prev]
         const idx = next.findIndex(project => normalizePath(project.root) === normalizedRoot)
-        if (idx >= 0) next[idx] = { root: normalizedRoot, name: normalizedState.projectName! }
-        else next.push({ root: normalizedRoot, name: normalizedState.projectName! })
+        // Keep whichever id is known: the ui-state's if it carries one, else the
+        // one discovery already resolved. Rebuilding the entry from scratch here
+        // is what would silently drop it on every project selection.
+        const aiProjectId = normalizedState.aiProjectId?.trim()
+          || (idx >= 0 ? next[idx].aiProjectId : undefined)
+        if (idx >= 0) next[idx] = { root: normalizedRoot, name: normalizedState.projectName!, aiProjectId }
+        else next.push({ root: normalizedRoot, name: normalizedState.projectName!, aiProjectId })
         next.sort((a, b) => a.name.localeCompare(b.name))
         setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjects, next)
         return next
@@ -998,6 +1009,58 @@ export default function BacklogOrch({
     return () => { cancelled = true }
   }, [selectedNode])
 
+  // Discovery runs once per mount and folds what the vault actually holds into
+  // the cached list. localStorage stays as the first-paint cache; it is no
+  // longer the only way a project can exist, which is what left a fully
+  // populated vault showing "no projects yet" with no way back in.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      let discovered: Awaited<ReturnType<typeof discoverOrganizerProjectsOrch>> = []
+      try {
+        discovered = await discoverOrganizerProjectsOrch()
+      } catch {
+        return
+      }
+      if (cancelled || discovered.length === 0) return
+
+      setProjectEntries((prev) => {
+        const byRoot = new Map<string, ProjectEntry>()
+        for (const entry of prev) {
+          const root = normalizePath(entry.root)
+          if (root) byRoot.set(root, { ...entry, root })
+        }
+
+        let changed = false
+        for (const project of discovered) {
+          const root = normalizePath(project.root)
+          if (!root) continue
+          const existing = byRoot.get(root)
+          // A name the user typed outranks one discovery derived from a folder
+          // name; the id is discovery's to own either way.
+          const next: ProjectEntry = {
+            root,
+            name: existing?.name?.trim() || project.name,
+            aiProjectId: project.aiProjectId,
+          }
+          if (
+            existing
+            && existing.name === next.name
+            && existing.aiProjectId === next.aiProjectId
+          ) continue
+          byRoot.set(root, next)
+          changed = true
+        }
+        if (!changed) return prev
+
+        const merged = [...byRoot.values()].sort((a, b) => a.name.localeCompare(b.name))
+        setJsonStorageItem(STORAGE_KEYS.thinkingOrganizerProjects, merged)
+        return merged
+      })
+    })()
+    return () => { cancelled = true }
+  }, [])
+
   const availableProjects = useMemo(() => {
     const byRoot = new Map<string, ProjectEntry>()
 
@@ -1007,6 +1070,7 @@ export default function BacklogOrch({
       byRoot.set(root, {
         name: project.name?.trim() || humanizeKey(root.split('/')[root.split('/').length - 1] || ''),
         root,
+        aiProjectId: project.aiProjectId,
       })
     }
 

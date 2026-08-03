@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookText, Check, FolderTree, LayoutDashboard, List, Loader2, Network, Pencil, Plus, X } from 'lucide-react'
 import UndertakingIndexBlock from '@/components/lego_blocks/integrations/UndertakingIndexBlock'
 import UndertakingDagBlock from '@/components/lego_blocks/integrations/UndertakingDagBlock'
@@ -69,6 +69,7 @@ function parseOrgView(value: string | null): OrgView {
 interface ProjectEntry {
   name: string
   root: string
+  aiProjectId?: string
 }
 
 interface ThinkingOrganizerOrchProps {
@@ -136,10 +137,17 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     () => getJsonStorageItem<ProjectEntry[]>(STORAGE_KEYS.thinkingOrganizerProjects, []),
   )
   const projectRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
-  // The ai-activity project id the index/lineage views key on. Today it's the
-  // project-root basename, matching how chains are attributed; the registry
-  // (D9) will canonicalize this so folder variants collapse to one project.
-  const aiProjectId = projectRoot ? projectRoot.split('/').pop() ?? null : null
+  // The ai-activity project id the index/lineage views key on. The project
+  // entry carries it once discovery has resolved it, because the folder name
+  // and the id are allowed to differ — `lifeblood_systems/thinkingspace.ai`
+  // files its chains under `Thinking-Space`, and guessing from the basename
+  // asked the index for a project that does not exist. The basename remains the
+  // fallback so every project whose names already agree behaves as before.
+  const aiProjectId = useMemo(() => {
+    if (!projectRoot) return null
+    const entry = projectEntries.find(project => normalizePath(project.root) === projectRoot)
+    return entry?.aiProjectId?.trim() || projectRoot.split('/').pop() || null
+  }, [projectEntries, projectRoot])
   // Which undertaking's detail page is open (null = the list/lineage view). The
   // index and lineage both drill into the same page.
   const [openUndertaking, setOpenUndertaking] = useState<string | null>(null)

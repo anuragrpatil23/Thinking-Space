@@ -13,6 +13,18 @@ export interface OrganizerUiStateBlock {
   schemaVersion: number
   updatedAt: string
   projectName?: string
+  /**
+   * The id this project's chains and undertakings are filed under in
+   * `ai-activity/`, when it differs from the project root's basename.
+   *
+   * The basename was the whole mapping, which works only while the folder
+   * happens to be named the same thing: `lifeblood_systems/thinkingspace.ai`
+   * carries a fully populated registry under `Thinking-Space` and resolved to
+   * `thinkingspace.ai`, so the index came up empty with nothing to say why.
+   * Stored rather than guessed, and stored *here* because it is per-project
+   * state and this is the per-project state file.
+   */
+  aiProjectId?: string
   missionStatement?: string
   presetTags: string[]
   tagColors: Record<string, string>
@@ -119,6 +131,7 @@ export function normalizeOrganizerUiStateBlock(raw: unknown): OrganizerUiStateBl
     schemaVersion: ORGANIZER_UI_STATE_SCHEMA_VERSION_BLOCK,
     updatedAt: normalizeUpdatedAt(record.updatedAt),
     projectName: normalizeProjectName(record.projectName),
+    aiProjectId: normalizeProjectName(record.aiProjectId),
     missionStatement: normalizeMissionStatement(record.missionStatement),
     presetTags: normalizePresetTags(record.presetTags),
     tagColors: normalizeTagColors(record.tagColors),
