@@ -471,6 +471,34 @@ describe('buildTaskSeamBlock', () => {
     expect(seam.taskSections.map(s => s.code)).toEqual(['MIDE', 'IDE'])
   })
 
+  it('orders the rows inside a kind newest first, undated last', async () => {
+    const tasks = [
+      ask('f9-ide-e-1', 'oldest', 'IDE', '2026-01-01'),
+      ask('f9-ide-e-2', 'undated', 'IDE', ''),
+      ask('f9-ide-e-3', 'newest', 'IDE', '2026-06-01'),
+    ]
+    const { buildTaskSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const seam = buildTaskSeamBlock(tasks, [], NOW)
+
+    // The composer sits at the head of the block, so what you just wrote has to
+    // land next to it — not at the far end of the list.
+    expect(seam.taskSections[0].tasks.map(t => t.task.title)).toEqual(['newest', 'oldest', 'undated'])
+  })
+
+  it('keeps kinds ordered by their oldest task even though the rows run newest first', async () => {
+    const tasks = [
+      // Ideas hold both the newest task overall and the oldest task overall.
+      ask('f9-ide-e-1', 'idea, oldest overall', 'IDE', '2026-01-01'),
+      ask('f9-ide-e-2', 'idea, newest overall', 'IDE', '2026-09-01'),
+      ask('f9-mide-e-1', 'missed idea', 'MIDE', '2026-05-01'),
+    ]
+    const { buildTaskSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const seam = buildTaskSeamBlock(tasks, [], NOW)
+
+    // Reading the block's first row (now the newest) would put Ideas last.
+    expect(seam.taskSections.map(s => s.code)).toEqual(['IDE', 'MIDE'])
+  })
+
   it('migrates an Interesting-company task that fed a study, and back-links a produced task', async () => {
     const tasks = [
       ask('f9-ic-e-499', 'LAM Research — learn more', 'IC', '2026-03-01'),

@@ -499,15 +499,32 @@ export function buildTaskSeamBlock(tasks: Task[], records: UndertakingRecord[], 
     byCategory.set(task.categoryCode, list)
   }
 
+  // Newest first, matching the undertaking rows above them and the composer at
+  // the head of each block: a record you just wrote has to appear where you
+  // wrote it, not at the far end of 300 rows. Undated records fall to the
+  // bottom rather than sorting as the empty string at the top.
   const taskSections: TaskSection[] = [...byCategory.entries()].map(([code, list]) => ({
     code,
     title: taskCategoryLabelBlock(code),
-    tasks: list.sort((a, b) => (a.task.openedDate || '').localeCompare(b.task.openedDate || '')),
+    tasks: list.sort((a, b) => {
+      const aDate = a.task.openedDate || ''
+      const bDate = b.task.openedDate || ''
+      if (aDate === bDate) return 0
+      if (!aDate) return 1
+      if (!bDate) return -1
+      return bDate.localeCompare(aDate)
+    }),
   }))
-  // Kinds ordered by their oldest task, so the arrangement is stable.
-  taskSections.sort(
-    (a, b) => (a.tasks[0]?.task.openedDate || '').localeCompare(b.tasks[0]?.task.openedDate || ''),
-  )
+  // Kinds still ordered by their *oldest* task, so flipping the rows inside a
+  // block doesn't rearrange the blocks. Read off the list rather than its first
+  // element, which stopped being the oldest the moment the rows flipped.
+  const oldestBlock = (section: TaskSection) =>
+    section.tasks.reduce(
+      (min, entry) => (entry.task.openedDate && (!min || entry.task.openedDate < min) ? entry.task.openedDate : min),
+      '',
+    )
+  const oldestByCode = new Map(taskSections.map(s => [s.code, oldestBlock(s)]))
+  taskSections.sort((a, b) => (oldestByCode.get(a.code) ?? '').localeCompare(oldestByCode.get(b.code) ?? ''))
 
   return { taskSections, fedTasks }
 }
