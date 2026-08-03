@@ -389,11 +389,19 @@ export interface TaskSection {
   tasks: TaskEntry[]
 }
 
+/** What the authored half is called when a project doesn't name it. "Task" is
+ *  the type's name and the right default, but not every project's word for its
+ *  own records — F9's are Ideas and Questions, so it sets `taskLabel`. */
+export const DEFAULT_TASK_LABEL_BLOCK = 'Tasks'
+
 export interface UndertakingIndex {
   sections: UndertakingIndexSection[]
   /** The task taxonomy — the hand-written half — as peer sections after the
    *  undertaking zone. Empty when the project has no old organizer. */
   taskSections: TaskSection[]
+  /** What this project calls its authored half — the heading over
+   *  `taskSections`. See `taskLabel` in the project's ui-state. */
+  taskLabel: string
   /** The shared window every strip is bucketed over (`YYYY-MM-DD`), or '' when
    *  there is no dated activity anywhere in the index. */
   windowStart: string
@@ -582,7 +590,13 @@ export async function getUndertakingIndexOrch(
     ordered.push({ key, title, rows })
   }
 
-  return { sections: ordered, taskSections: seam.taskSections, windowStart, windowEnd }
+  return {
+    sections: ordered,
+    taskSections: seam.taskSections,
+    taskLabel: source?.label || DEFAULT_TASK_LABEL_BLOCK,
+    windowStart,
+    windowEnd,
+  }
 }
 
 /**
@@ -621,12 +635,12 @@ async function projectRootsBlock(): Promise<string[]> {
  */
 async function taskSourceForProjectBlock(
   projectId: string,
-): Promise<{ root: string; dir: string } | null> {
+): Promise<TaskSource | null> {
   const roots = await projectRootsBlock()
 
   for (const root of roots) {
     if ((root.split('/').pop() || '') === projectId) {
-      return { root, dir: await taskDirForRootBlock(root) }
+      return { root, ...(await taskSettingsForRootBlock(root)) }
     }
   }
 
@@ -636,15 +650,28 @@ async function taskSourceForProjectBlock(
   for (const root of roots) {
     const state = await readOrganizerUiStateBlock(root)
     if (state?.aiProjectId?.trim() !== projectId) continue
-    return { root, dir: state.taskDir?.trim() || DEFAULT_TASK_DIR_BLOCK }
+    return {
+      root,
+      dir: state.taskDir?.trim() || DEFAULT_TASK_DIR_BLOCK,
+      label: state.taskLabel?.trim() || DEFAULT_TASK_LABEL_BLOCK,
+    }
   }
 
   return null
 }
 
-async function taskDirForRootBlock(root: string): Promise<string> {
+interface TaskSource {
+  root: string
+  dir: string
+  label: string
+}
+
+async function taskSettingsForRootBlock(root: string): Promise<{ dir: string; label: string }> {
   const state = await readOrganizerUiStateBlock(root)
-  return state?.taskDir?.trim() || DEFAULT_TASK_DIR_BLOCK
+  return {
+    dir: state?.taskDir?.trim() || DEFAULT_TASK_DIR_BLOCK,
+    label: state?.taskLabel?.trim() || DEFAULT_TASK_LABEL_BLOCK,
+  }
 }
 
 /**

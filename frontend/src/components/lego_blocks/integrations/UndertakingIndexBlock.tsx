@@ -92,10 +92,10 @@ function TaxonomyHeading({ children }: { children: ReactNode }) {
   )
 }
 
-/** The task half's own name. A section whose kind label repeats it (a project
- *  whose records carry no kinds at all) drops its header rather than printing
- *  the word twice down the page. */
-const TASKS_HEADING = 'Tasks'
+/** What the authored half is called when the project hasn't named it. A section
+ *  whose kind label repeats the heading (a project whose records carry no kinds
+ *  at all) drops its header rather than printing the word twice down the page. */
+const TASKS_HEADING_FALLBACK = 'Tasks'
 
 // The strip column's geometry, restated so the ruler can sit exactly over it:
 // the strip is 24 buckets × 4px, and to its right the row keeps the w-14
@@ -208,6 +208,7 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
     )
   }
 
+  const taskHeading = index.taskLabel || TASKS_HEADING_FALLBACK
   const nothingMatches = undertakingSections.length === 0 && taskSections.length === 0
 
   return (
@@ -304,11 +305,11 @@ export default function UndertakingIndexBlock({ projectId, onOpenUndertaking, on
 
           {taskSections.length > 0 && (
             <div>
-              <TaxonomyHeading>{TASKS_HEADING}</TaxonomyHeading>
+              <TaxonomyHeading>{taskHeading}</TaxonomyHeading>
               <div className="space-y-7">
                 {taskSections.map(section => (
                   <section key={`task-${section.code}`}>
-                    {section.title !== TASKS_HEADING && (
+                    {section.title !== taskHeading && (
                       <SectionHeader title={section.title} colorIndex={section.colorIndex} />
                     )}
                     <div className="divide-y divide-border/40 overflow-hidden rounded-lg border border-border/60">

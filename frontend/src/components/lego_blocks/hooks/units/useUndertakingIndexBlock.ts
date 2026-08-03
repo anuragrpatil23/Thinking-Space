@@ -16,7 +16,13 @@ export interface UndertakingIndexState {
   reload: () => void
 }
 
-const EMPTY: UndertakingIndex = { sections: [], taskSections: [], windowStart: '', windowEnd: '' }
+const EMPTY: UndertakingIndex = {
+  sections: [],
+  taskSections: [],
+  taskLabel: '',
+  windowStart: '',
+  windowEnd: '',
+}
 
 export function useUndertakingIndexBlock(projectId: string | null): UndertakingIndexState {
   const [state, setState] = useState<Omit<UndertakingIndexState, 'reload'>>({

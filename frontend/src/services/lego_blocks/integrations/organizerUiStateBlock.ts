@@ -34,6 +34,16 @@ export interface OrganizerUiStateBlock {
    * for one picks the stale DEV-era `epics/` half the time.
    */
   taskDir?: string
+  /**
+   * What to call the authored half of the organizer index — the heading above
+   * this project's own records, opposite "Undertakings".
+   *
+   * Per-project because "task" is the *type's* name, not every project's word
+   * for its records. Thinking Space's 325 really are tasks. F9's are Ideas,
+   * Questions to research, Key things — calling that half "Tasks" mislabels
+   * every row under it, so F9 names it "Thinking": the half opposite doing.
+   */
+  taskLabel?: string
   missionStatement?: string
   presetTags: string[]
   tagColors: Record<string, string>
@@ -142,6 +152,7 @@ export function normalizeOrganizerUiStateBlock(raw: unknown): OrganizerUiStateBl
     projectName: normalizeProjectName(record.projectName),
     aiProjectId: normalizeProjectName(record.aiProjectId),
     taskDir: normalizeProjectName(record.taskDir),
+    taskLabel: normalizeProjectName(record.taskLabel),
     missionStatement: normalizeMissionStatement(record.missionStatement),
     presetTags: normalizePresetTags(record.presetTags),
     tagColors: normalizeTagColors(record.tagColors),
