@@ -3,6 +3,7 @@ import {
   parseProjectRegistryMarkdownBlock,
   projectLabelBlock,
   projectAliasesFromProjectsBlock,
+  projectMissionsFromProjectsBlock,
   projectTaskSourcesFromProjectsBlock,
   projectRegistryFromProjectsBlock,
   renderProjectsMarkdownBlock,
@@ -309,5 +310,23 @@ describe('project task sources', () => {
       { key: '', taskDir: 'tasks' },
     ])
     expect(sources).toEqual({})
+  })
+})
+
+describe('project missions', () => {
+  it('maps a key to its mission', () => {
+    expect(
+      projectMissionsFromProjectsBlock([
+        { key: 'F9', mission: '  Maximize the number of good gaps identified.  ' },
+      ]),
+    ).toEqual({ F9: 'Maximize the number of good gaps identified.' })
+  })
+
+  it('omits a project with no mission, so the header offers to add one', () => {
+    // Blank and absent are one state. Storing '' would make the header render
+    // an empty paragraph where the "+ Add mission statement" button belongs.
+    expect(
+      projectMissionsFromProjectsBlock([{ key: 'sfw', mission: '   ' }, { key: 'nope' }]),
+    ).toEqual({})
   })
 })

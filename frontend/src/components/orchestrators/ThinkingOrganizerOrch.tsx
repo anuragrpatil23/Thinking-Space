@@ -16,11 +16,12 @@ import {
   dispatchOrganizerSidebarChromeStateBlock,
   ORGANIZER_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
 } from '@/services/lego_blocks/units/organizerSidebarChromeBlock'
+import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
+import { readCachedProjectMissionsBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import {
-  readOrganizerUiStateBlock,
-  writeOrganizerUiStateBlock,
-  type OrganizerUiStateBlock,
-} from '@/services/lego_blocks/integrations/organizerUiStateBlock'
+  readProjectsBlock,
+  updateProjectBlock,
+} from '@/services/lego_blocks/integrations/projectsStorageBlock'
 import BacklogOrch, {
   ORGANIZER_OPEN_CREATE_PROJECT_EVENT,
   ORGANIZER_PROJECTS_UPDATED_EVENT,
@@ -126,7 +127,6 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   }, [])
 
   // Project context
-  const [projectUiState, setProjectUiState] = useState<OrganizerUiStateBlock | null>(null)
   const [projectEntries, setProjectEntries] = useOrganizerProjectsBlock()
   const projectRoot = normalizePath(searchParams.get(PROJECT_ROOT_QUERY_PARAM) ?? '')
   // The ai-activity project id the index/lineage views key on. Discovery reads
@@ -189,17 +189,26 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
   useEffect(() => {
     // A different project's undertaking must not stay open across a switch.
     setOpenUndertaking(null)
-    if (!projectRoot) { setProjectUiState(null); return }
-    let cancelled = false
-    void readOrganizerUiStateBlock(projectRoot).then(state => {
-      if (!cancelled) setProjectUiState(state)
-    })
-    return () => { cancelled = true }
   }, [projectRoot])
 
-  const projectName = projectUiState?.projectName
+  // Name and mission both come from the project registry, keyed on the same id
+  // the index is keyed on. Discovery already resolved the display name; the
+  // mission is warmed into the registry cache beside it. Neither is read from
+  // `organizer-ui-state.json` any more — that file held a second copy that
+  // drifted from the one Settings edits.
+  const projectName = projectEntries.find(p => normalizePath(p.root) === projectRoot)?.name
     || (projectRoot ? (projectRoot.split('/').pop() ?? projectRoot) : '')
-  const missionStatement = projectUiState?.missionStatement ?? ''
+  // Local state, not a straight cache read: the cache is module-level and a
+  // save has to repaint the header.
+  const [missionStatement, setMissionStatement] = useState('')
+  useEffect(() => {
+    if (!aiProjectId) { setMissionStatement(''); return }
+    let cancelled = false
+    void loadProjectRegistryBlock().then(() => {
+      if (!cancelled) setMissionStatement(readCachedProjectMissionsBlock()[aiProjectId] ?? '')
+    })
+    return () => { cancelled = true }
+  }, [aiProjectId])
 
   const startEditMission = useCallback(() => {
     setMissionDraft(missionStatement)
@@ -207,28 +216,23 @@ export default function ThinkingOrganizerOrch({ active = true }: ThinkingOrganiz
     setTimeout(() => missionTextareaRef.current?.focus(), 0)
   }, [missionStatement])
 
+  // Edits land on the project registry, so Settings and the organizer header
+  // are editing one field rather than two that look alike.
   const saveMission = useCallback(async () => {
-    if (!projectRoot) return
+    if (!aiProjectId) return
     setSavingMission(true)
     try {
-      const current = await readOrganizerUiStateBlock(projectRoot)
-      const base: OrganizerUiStateBlock = current ?? {
-        schemaVersion: 2,
-        updatedAt: new Date().toISOString(),
-        presetTags: [],
-        tagColors: {},
-        programGroups: [],
-      }
-      const updated = await writeOrganizerUiStateBlock(projectRoot, {
-        ...base,
-        missionStatement: missionDraft.trim() || undefined,
-      })
-      setProjectUiState(updated)
+      const project = (await readProjectsBlock()).find(p => p.key === aiProjectId)
+      if (!project) return
+      const mission = missionDraft.trim()
+      await updateProjectBlock(project.uuid, { mission })
+      await loadProjectRegistryBlock()
+      setMissionStatement(mission)
       setEditingMission(false)
     } finally {
       setSavingMission(false)
     }
-  }, [projectRoot, missionDraft])
+  }, [aiProjectId, missionDraft])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

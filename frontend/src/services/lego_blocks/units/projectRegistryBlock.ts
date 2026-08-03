@@ -226,6 +226,7 @@ let _aliasCache: ProjectAliasMapBlock = new Map()
 let _colorCache: Record<string, string> = {}
 let _nameCache: Record<string, string> = {}
 let _taskSourceCache: Record<string, { dir: string; label: string }> = {}
+let _missionCache: Record<string, string> = {}
 
 export function setCachedProjectRegistryBlock(entries: ProjectRegistryEntry[]): void {
   _cache = entries
@@ -283,6 +284,21 @@ export function readCachedProjectTaskSourcesBlock(): Record<string, { dir: strin
   return _taskSourceCache
 }
 
+/** Canonical key → the project's mission, for projects that wrote one.
+ *
+ *  The mission is one sentence about a project, so a copy per surface looks
+ *  harmless until the copies disagree — which is what happened: the organizer
+ *  header read its own from `organizer-ui-state.json` while Settings and the
+ *  Webull canvas read `projects.json`, and F9 ended up with two different
+ *  missions and no way to tell which one was current. One key, one mission. */
+export function setCachedProjectMissionsBlock(missions: Record<string, string>): void {
+  _missionCache = missions
+}
+
+export function readCachedProjectMissionsBlock(): Record<string, string> {
+  return _missionCache
+}
+
 /**
  * Registry entries with their roots made vault-relative, dropping roots that
  * can't hold vault content (a code-repo checkout, absolute and outside).
@@ -319,6 +335,20 @@ export function projectTaskSourcesFromProjectsBlock(
     const label = (project.taskLabel ?? '').trim()
     if (!dir && !label) continue
     out[project.key] = { dir, label }
+  }
+  return out
+}
+
+/** Canonical key → mission, skipping projects that never wrote one. Blank is
+ *  omitted rather than stored: "has no mission" and "has an empty mission" are
+ *  the same state, and the header offers to add one in both. */
+export function projectMissionsFromProjectsBlock(
+  projects: Array<{ key: string; mission?: string }>,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const project of projects) {
+    const mission = (project.mission ?? '').trim()
+    if (project.key && mission) out[project.key] = mission
   }
   return out
 }

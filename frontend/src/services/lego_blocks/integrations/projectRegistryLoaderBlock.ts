@@ -5,6 +5,8 @@ import {
   parseProjectRegistryMarkdownBlock,
   projectAliasesFromProjectsBlock,
   projectTaskSourcesFromProjectsBlock,
+  projectMissionsFromProjectsBlock,
+  setCachedProjectMissionsBlock,
   setCachedProjectTaskSourcesBlock,
   projectRegistryFromProjectsBlock,
   setCachedProjectAliasesBlock,
@@ -69,6 +71,7 @@ export async function loadProjectRegistryBlock(): Promise<void> {
       ),
     )
     setCachedProjectTaskSourcesBlock(projectTaskSourcesFromProjectsBlock(projects))
+    setCachedProjectMissionsBlock(projectMissionsFromProjectsBlock(projects))
     // Only fall back when the defined projects contribute *no* roots at all.
     // Merging the two would let a stale markdown line quietly outrank an edit
     // made in Settings, and longest-prefix would pick between them by accident.
