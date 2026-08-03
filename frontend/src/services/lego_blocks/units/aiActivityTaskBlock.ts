@@ -83,11 +83,20 @@ export function taskCategoryCodeBlock(key: string): string {
   return CODE_ALIASES[raw] ?? raw
 }
 
-/** The plain ticket embedded in a slugged key (`f9-qt-e-541-history…` →
- *  `F9-QT-E-541`) — the form `fed_by`/`produced` edges use. Falls back to the
- *  whole key uppercased when it doesn't match the task shape. */
+/**
+ * The plain ticket embedded in a slugged key (`f9-qt-e-541-history…` →
+ * `F9-QT-E-541`) — the form `fed_by`/`produced` edges use. Falls back to the
+ * whole key uppercased when it doesn't match the task shape.
+ *
+ * The type segment is any single letter, not a literal `e`. F9 mints epics
+ * (`F9-QT-E-541`) and Thinking Space mints tasks (`TP-AF-T-108`); pinning the
+ * letter meant every Thinking Space ticket came back as the entire slug, so no
+ * `fed_by` edge could ever match one and 325 tasks silently failed to join the
+ * undertakings that fed on them. An address parser that works on one project's
+ * addresses is not a parser.
+ */
 export function taskTicketBlock(key: string): string {
-  const m = /^[a-z0-9]+-[a-z]+-e-\d+/i.exec(key)
+  const m = /^[a-z0-9]+-[a-z]+-[a-z]-\d+/i.exec(key)
   return (m ? m[0] : key).toUpperCase()
 }
 
@@ -176,7 +185,10 @@ export function parseTaskMarkdownBlock(content: string): Task | null {
     // One universal tag field. `project_preset_tags` was retired — the vault
     // migration merged it into `tags`.
     tags: asStringArray(parsed.tags),
-    ticket: taskTicketBlock(key),
+    // The record's own `ticket` wins over the one parsed out of its key. The
+    // ticket is an address, and a record that states its address is telling the
+    // truth about it; the key parse is the fallback for records that don't.
+    ticket: asString(parsed.ticket).trim().toUpperCase() || taskTicketBlock(key),
   }
 }
 

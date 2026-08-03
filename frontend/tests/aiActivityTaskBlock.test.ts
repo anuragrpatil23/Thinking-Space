@@ -26,6 +26,18 @@ describe('taskTicketBlock', () => {
     expect(taskTicketBlock('f9-qt-e-541-history-of-silicon-chips')).toBe('F9-QT-E-541')
     expect(taskTicketBlock('F9-IDE-E-429')).toBe('F9-IDE-E-429')
   })
+
+  it('reads any type letter, not just the epic E', () => {
+    // Thinking Space mints tasks (`-t-`), F9 mints epics (`-e-`). Pinning the
+    // letter returned the whole slug for every Thinking Space record, so no
+    // `fed_by` edge could match one.
+    expect(taskTicketBlock('tp-af-t-108-open-in-new-window-context-action')).toBe('TP-AF-T-108')
+    expect(taskTicketBlock('tp-da-t-856-ios-memory')).toBe('TP-DA-T-856')
+  })
+
+  it('falls back to the whole key when it carries no ticket shape', () => {
+    expect(taskTicketBlock('some-hand-written-note')).toBe('SOME-HAND-WRITTEN-NOTE')
+  })
 })
 
 describe('taskCategoryCodeBlock', () => {
@@ -131,5 +143,26 @@ describe('taskBodyBlock', () => {
   it('returns empty when the frontmatter never closes', () => {
     // Half-saved file: better a blank body than the YAML rendered as prose.
     expect(taskBodyBlock('---\nkey: x\n')).toBe('')
+  })
+})
+
+describe('parseTaskMarkdownBlock — the ticket', () => {
+  it("trusts the record's own ticket over the one in its key", () => {
+    // A Thinking Space task. Its key does not carry the epic shape, so deriving
+    // the ticket from it yields the whole slug — the record states its own
+    // address and that is what `fed_by` edges name it by.
+    const task = parseTaskMarkdownBlock(`---
+uuid: b2
+key: tp-af-t-108-open-in-new-window-context-action-available-everywhere
+title: TP-AF-T-108 - Open in New Window context action available everywhere
+record_kind: task
+ticket: TP-AF-T-108
+created_at: "2026-02-26T00:33:07.809Z"
+---
+Body.
+`)
+    expect(task!.ticket).toBe('TP-AF-T-108')
+    // No kind on the record and none in the key: these are simply tasks.
+    expect(task!.category).toBe('Tasks')
   })
 })
