@@ -80,6 +80,17 @@ vi.mock('@/services/lego_blocks/integrations/fsBlock', () => ({
   getVaultFS: () => fakeFs,
 }))
 
+// The registry is how a project's authored records get found at all. Empty by
+// default so most tests exercise only the derived half.
+let registry: Array<{ project: string; paths: string[] }> = []
+
+vi.mock('@/services/lego_blocks/integrations/projectRegistryLoaderBlock', () => ({
+  loadProjectRegistryBlock: async () => {},
+}))
+vi.mock('@/services/lego_blocks/units/projectRegistryBlock', () => ({
+  readCachedProjectRegistryBlock: () => registry,
+}))
+
 function makeRecord(overrides: Partial<UndertakingRecord> = {}): UndertakingRecord {
   return {
     uuid: 'u-1',
@@ -197,6 +208,7 @@ function seedSection(projectId: string, key: string, title: string, sortOrder: n
 
 beforeEach(() => {
   fakeFs.files.clear()
+  registry = []
 })
 
 describe('collapseChainWindowsBlock', () => {
@@ -885,5 +897,48 @@ describe('recordAssignmentOrch', () => {
     const parsed = JSON.parse(fakeFs.files.get(path)!)
     expect(parsed.undertakings).toEqual(['f9-und-micron', 'f9-und-semiconductor-physics'])
     expect(parsed.recordedAt).toBeTruthy()
+  })
+})
+
+describe('resolving a project to its authored records', () => {
+  // The failure this guards is silent: nothing errors, the pane just renders no
+  // task rows at all, which looks like "this project has none".
+  const seedUiState = (root: string, state: Record<string, unknown>) => {
+    fakeFs.seed(`${root}/thinking-organizer/organizer-ui-state.json`, JSON.stringify({ schemaVersion: 3, ...state }))
+  }
+  const seedTaskFile = (root: string, dir: string, name: string, key: string, title: string) => {
+    fakeFs.seed(
+      `${root}/thinking-organizer/${dir}/${name}`,
+      `---\nkey: ${key}\nrecord_kind: task\ntitle: ${title}\ncreated_at: '2026-03-01'\n---\n`,
+    )
+  }
+
+  it('finds records when the folder basename is not the id the chains are filed under', async () => {
+    // Thinking Space: records under `lifeblood_systems/thinkingspace.ai`,
+    // chains under `Thinking-Space`. Matching on the basename alone found
+    // nothing and the pane came up empty with nothing to say why.
+    registry = [{ project: 'Thinking Space', paths: ['lifeblood_systems/thinkingspace.ai'] }]
+    seedUiState('lifeblood_systems/thinkingspace.ai', { aiProjectId: 'Thinking-Space', taskDir: 'tasks' })
+    seedTaskFile('lifeblood_systems/thinkingspace.ai', 'tasks', 'task-ts-1.md', 'ts-1', 'Live row')
+    // The stale directory this project also carries must not be the one read.
+    seedTaskFile('lifeblood_systems/thinkingspace.ai', 'epics', 'epic-dev-9.md', 'dev-9', 'Stale DEV item')
+
+    const { getUndertakingIndexOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const index = await getUndertakingIndexOrch('Thinking-Space')
+
+    const titles = index.taskSections.flatMap(section => section.tasks.map(entry => entry.task.title))
+    expect(titles).toEqual(['Live row'])
+    // No kinds in this corpus, so one flat section named for the corpus.
+    expect(index.taskSections.map(section => section.title)).toEqual(['Tasks'])
+  })
+
+  it('still resolves by folder basename, and still defaults to epics/', async () => {
+    registry = [{ project: 'F9', paths: ['acceleration_core/F9'] }]
+    seedTaskFile('acceleration_core/F9', 'epics', 'epic-f9-ide-e-1.md', 'f9-ide-e-1', 'MSFT is value')
+
+    const { getUndertakingIndexOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const index = await getUndertakingIndexOrch('F9')
+
+    expect(index.taskSections.map(section => section.title)).toEqual(['Ideas'])
   })
 })

@@ -586,45 +586,60 @@ export async function getUndertakingIndexOrch(
 }
 
 /**
- * The vault-relative root of a project's old organizer (`<root>/thinking-
- * organizer`), resolved off the registry by matching the chain-directory id
- * (the path's basename) to `projectId`. Null when no registered path resolves —
- * a code-repo root (absolute, outside the vault) or a project with no registry
- * entry. Kept lean (no task reads) because the index loads on every tab open;
- * listTaskProjectsOrch does the same resolution but also counts tasks per project.
+ * Every registered project root, vault-relative. Roots outside the vault (a
+ * code repo, absolute) can't hold an organizer and are dropped.
  */
-async function taskRootForProjectBlock(projectId: string): Promise<string | null> {
+async function projectRootsBlock(): Promise<string[]> {
   await loadProjectRegistryBlock()
   const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
+  const roots: string[] = []
   for (const entry of readCachedProjectRegistryBlock()) {
     for (const abs of entry.paths) {
-      let rel: string | null = null
-      if (vaultRoot && abs === vaultRoot) rel = ''
-      else if (vaultRoot && abs.startsWith(`${vaultRoot}/`)) rel = abs.slice(vaultRoot.length + 1)
-      else if (!abs.startsWith('/')) rel = abs
-      if (rel === null) continue
-      const id = rel.split('/').pop() || entry.project
-      if (id === projectId) return rel
+      if (vaultRoot && abs === vaultRoot) roots.push('')
+      else if (vaultRoot && abs.startsWith(`${vaultRoot}/`)) roots.push(abs.slice(vaultRoot.length + 1))
+      else if (!abs.startsWith('/')) roots.push(abs)
     }
   }
-  return null
+  return roots
 }
 
 /**
  * Where a project's authored records live: its root, plus which directory under
- * the organizer holds them.
+ * the organizer holds them. Null when nothing registered resolves.
  *
- * The directory is per-project state and comes from `organizer-ui-state.json`,
- * next to `projectName`/`aiProjectId`. It cannot be sniffed: Thinking Space has
- * both a `tasks/` (325 live rows) and an `epics/` (34 stale DEV-era items), so a
- * probe that takes whichever exists picks the wrong one.
+ * `projectId` is the id the chains are filed under (`ai-activity/thinking-
+ * organizer/<id>/`). The folder basename usually *is* that id, which is why
+ * matching on it alone worked for F9 — and silently returned nothing for
+ * Thinking Space, whose records sit under `lifeblood_systems/thinkingspace.ai`
+ * while its chains are filed under `Thinking-Space`. The project already
+ * records that mapping in `aiProjectId`; the basename is only the fast path.
+ *
+ * The directory is per-project state for the same reason, and cannot be
+ * sniffed: Thinking Space has both a `tasks/` (its 325 live rows) and an
+ * `epics/` (34 stale DEV-era items), so a probe that takes whichever exists
+ * picks the wrong one.
  */
 async function taskSourceForProjectBlock(
   projectId: string,
 ): Promise<{ root: string; dir: string } | null> {
-  const root = await taskRootForProjectBlock(projectId)
-  if (root === null) return null
-  return { root, dir: await taskDirForRootBlock(root) }
+  const roots = await projectRootsBlock()
+
+  for (const root of roots) {
+    if ((root.split('/').pop() || '') === projectId) {
+      return { root, dir: await taskDirForRootBlock(root) }
+    }
+  }
+
+  // No basename match: ask each project what id it files its chains under. One
+  // small JSON read per project, and only on the path that would otherwise
+  // return nothing at all.
+  for (const root of roots) {
+    const state = await readOrganizerUiStateBlock(root)
+    if (state?.aiProjectId?.trim() !== projectId) continue
+    return { root, dir: state.taskDir?.trim() || DEFAULT_TASK_DIR_BLOCK }
+  }
+
+  return null
 }
 
 async function taskDirForRootBlock(root: string): Promise<string> {
