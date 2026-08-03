@@ -409,6 +409,7 @@ describe('buildTaskSeamBlock', () => {
     openedDate,
     tags: [],
     ticket: key.toUpperCase(),
+    disposition: '',
   })
   const NOW = Date.parse('2026-07-30T00:00:00.000Z')
 
@@ -448,6 +449,7 @@ describe('buildTaskSeamBlock', () => {
       openedDate: '2026-03-01',
       tags: [],
       ticket: 'F9-QT-E-541',
+      disposition: '',
     }]
     const records = [makeRecord({ key: 'u-tsmc', title: 'TSMC study', fedBy: ['F9-QT-E-541'] })]
     const { buildTaskSeamBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')

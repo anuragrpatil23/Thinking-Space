@@ -9,8 +9,26 @@ import yaml from 'js-yaml'
 //
 // The kind lives in `task_kind` on the record, falling back to the code encoded
 // in the key (`F9-QT-E-318` → QT → "Questions to research") for anything not yet
-// backfilled. Either beats the old `status` field, which the design found stuck
-// permanently on "active".
+// backfilled.
+//
+// Disposition is `task_status`, falling back to `status`. The reader used to
+// drop both, on a finding that `status` was stuck permanently on "active" —
+// true of F9's 49 records (46 active) and false of Thinking Space's 325, where
+// it reads 274 done / 41 in progress / 9 ready / 1 blocked. Those are two kinds
+// of record wearing one schema: F9's are thinking (an idea has no lifecycle to
+// finish), Thinking Space's are work. Dropping the field meant 274 finished
+// items rendering as open loops, each with an age quietly asking why it had
+// been sitting since February.
+//
+// The two status fields are one field. `status` was a strict coarsening of
+// `task_status` (completed↔done, active↔in_progress/ready, paused↔blocked) with
+// zero disagreements across all 325, so it is gone from the store and survives
+// here only as the fallback for F9, which never had `task_status`.
+//
+// Done is *not* the same as engaged. Engagement (◇/◆) says whether a task
+// belongs to an undertaking; disposition says whether it is finished. 48
+// Thinking Space tasks are attached to an undertaking and still open — you
+// attach a task when the work belongs to that strand, which is when it starts.
 
 export interface Task {
   key: string
@@ -28,6 +46,10 @@ export interface Task {
    *  what `fed_by`/`produced` edges reference, so it's the join key — the key
    *  itself carries a title slug that edges don't. */
   ticket: string
+  /** Where the task stands, lowercased and unmapped (`done`, `in_progress`,
+   *  `ready`, `blocked`). Empty for a record that states none — which is not
+   *  the same as open, and is why this isn't a boolean. */
+  disposition: string
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -130,6 +152,25 @@ export function taskIsReferenceBlock(code: string): boolean {
   return REFERENCE_TASK_CODES.has(code)
 }
 
+// The finished dispositions. Both words appear because the two stores name the
+// same state differently — Thinking Space's `task_status: done`, F9's fallback
+// `status: completed` — and neither is worth rewriting to agree.
+const DONE_DISPOSITIONS = new Set(['done', 'completed'])
+
+/** True when the task is finished. A finished task wears no age (it is not late
+ *  for anything) and no open-loop glyph. */
+export function taskIsDoneBlock(disposition: string): boolean {
+  return DONE_DISPOSITIONS.has(disposition)
+}
+
+/** The disposition, from `task_status` with `status` behind it. Lowercased so
+ *  the two stores' casing can't produce two states with one meaning. */
+export function taskDispositionBlock(taskStatus: unknown, status: unknown): string {
+  const primary = (typeof taskStatus === 'string' ? taskStatus : '').trim().toLowerCase()
+  if (primary) return primary
+  return (typeof status === 'string' ? status : '').trim().toLowerCase()
+}
+
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
@@ -193,6 +234,7 @@ export function parseTaskMarkdownBlock(content: string): Task | null {
     // ticket is an address, and a record that states its address is telling the
     // truth about it; the key parse is the fallback for records that don't.
     ticket: asString(parsed.ticket).trim().toUpperCase() || taskTicketBlock(key),
+    disposition: taskDispositionBlock(parsed.task_status, parsed.status),
   }
 }
 

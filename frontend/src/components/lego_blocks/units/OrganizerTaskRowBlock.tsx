@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 import OrganizerRowShellBlock from '@/components/lego_blocks/units/OrganizerRowShellBlock'
-import { taskIsReferenceBlock } from '@/services/lego_blocks/units/aiActivityTaskBlock'
+import { taskIsDoneBlock, taskIsReferenceBlock } from '@/services/lego_blocks/units/aiActivityTaskBlock'
 import { noteAgeLabelBlock } from '@/services/lego_blocks/units/noteAgeBlock'
 import type { TaskEntry } from '@/services/orchestrators/aiActivityUndertakingOrch'
 
@@ -35,8 +35,13 @@ export default function OrganizerTaskRowBlock({
 }: Props) {
   const { task, fedInto, producedBy } = entry
   const engaged = Boolean(fedInto || producedBy)
+  // Done is not engaged. Engagement says the task belongs to an undertaking;
+  // disposition says it is finished — 48 Thinking Space tasks are attached and
+  // still open, because you attach work when it starts. A finished task drops
+  // the open-loop glyph entirely and takes a check instead.
+  const done = taskIsDoneBlock(task.disposition)
   // Reference kinds (captured knowledge) never wear the open/engaged glyph.
-  const showGlyph = !taskIsReferenceBlock(task.categoryCode)
+  const showGlyph = !done && !taskIsReferenceBlock(task.categoryCode)
 
   const link = fedInto
     ? { arrow: '→', label: fedInto.title, key: fedInto.key }
@@ -51,7 +56,9 @@ export default function OrganizerTaskRowBlock({
   // answered; on those rows a number just reads as an accusation about a record
   // doing exactly what it is for. The column stays reserved so the rows keep
   // one right edge.
-  const age = engaged || !showGlyph ? '' : noteAgeLabelBlock(task.openedDate)
+  // …and a finished task least of all: 274 of these closed months ago, and an
+  // age on them read as an accusation about work that was already done.
+  const age = done || engaged || !showGlyph ? '' : noteAgeLabelBlock(task.openedDate)
 
   return (
     <OrganizerRowShellBlock
@@ -59,7 +66,11 @@ export default function OrganizerTaskRowBlock({
       colorIndex={colorIndex}
       ordinal={ordinal}
       leadGlyph={
-        showGlyph ? (
+        done ? (
+          <span className="text-muted-foreground/45" title={`Done${task.openedDate ? ` · opened ${task.openedDate}` : ''}`}>
+            ✓
+          </span>
+        ) : showGlyph ? (
           <span
             className={engaged ? 'text-foreground/70' : 'text-muted-foreground/50'}
             title={engaged ? 'Engaged — it fed or came from a doing' : 'Untouched'}

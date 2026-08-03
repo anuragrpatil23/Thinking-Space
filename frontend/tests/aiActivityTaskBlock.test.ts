@@ -6,6 +6,8 @@ import {
   taskIsReferenceBlock,
   taskTicketBlock,
   parseTaskMarkdownBlock,
+  taskDispositionBlock,
+  taskIsDoneBlock,
 } from '@/services/lego_blocks/units/aiActivityTaskBlock'
 
 describe('taskIsReferenceBlock', () => {
@@ -164,5 +166,43 @@ Body.
     expect(task!.ticket).toBe('TP-AF-T-108')
     // No kind on the record and none in the key: these are simply tasks.
     expect(task!.category).toBe('Tasks')
+  })
+})
+
+describe('the disposition', () => {
+  it('reads task_status, with status behind it', () => {
+    // Thinking Space states `task_status`; F9 has only ever had `status`.
+    expect(taskDispositionBlock('done', 'completed')).toBe('done')
+    expect(taskDispositionBlock(undefined, 'Active')).toBe('active')
+    expect(taskDispositionBlock('  In_Progress ', undefined)).toBe('in_progress')
+  })
+
+  it('is empty when the record states neither, which is not the same as open', () => {
+    // A thinking record has no lifecycle to be in. Calling it live would put
+    // ideas under a filter that means work.
+    expect(taskDispositionBlock(undefined, undefined)).toBe('')
+    expect(taskDispositionBlock('', '  ')).toBe('')
+  })
+
+  it('counts both stores’ words for finished', () => {
+    expect(taskIsDoneBlock('done')).toBe(true)
+    expect(taskIsDoneBlock('completed')).toBe(true)
+    expect(taskIsDoneBlock('in_progress')).toBe(false)
+    expect(taskIsDoneBlock('ready')).toBe(false)
+    expect(taskIsDoneBlock('blocked')).toBe(false)
+    expect(taskIsDoneBlock('')).toBe(false)
+  })
+
+  it('lands on the parsed task', () => {
+    const task = parseTaskMarkdownBlock(`---
+key: tp-da-t-902-x
+title: X
+record_kind: task
+task_status: done
+created_at: "2026-02-26T00:33:07.809Z"
+---
+Body.
+`)
+    expect(task!.disposition).toBe('done')
   })
 })

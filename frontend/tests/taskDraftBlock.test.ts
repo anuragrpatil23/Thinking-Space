@@ -148,3 +148,29 @@ describe('renderTaskMarkdownBlock', () => {
     expect(parsed.ticket).toBe('F9-TT-E-768')
   })
 })
+
+describe('the new record’s disposition', () => {
+  it('inherits the presence of a disposition, never the sibling’s value', () => {
+    // The newest sibling is almost always `done` — copying it would mint a
+    // record that arrives already finished.
+    const template = taskTemplateFromMarkdownBlock(`---
+key: tp-da-t-901-y
+task_status: done
+status: completed
+---
+body`)
+    expect(template.task_status).toBe('ready')
+    expect(template.status).toBe('active')
+  })
+
+  it('gives no disposition to a project whose records track none', () => {
+    // F9's thinking records: an idea has no lifecycle to be in.
+    const template = taskTemplateFromMarkdownBlock(`---
+key: f9-tt-e-767-x
+type: epic
+---
+body`)
+    expect(template.task_status).toBeUndefined()
+    expect(template.status).toBeUndefined()
+  })
+})

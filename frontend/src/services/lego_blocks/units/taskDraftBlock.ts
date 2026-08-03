@@ -27,6 +27,7 @@ const INHERITED_FIELDS = [
   'type',
   'level',
   'status',
+  'task_status',
   'parent',
   'parent_uuid',
   'parent_type',
@@ -59,8 +60,22 @@ export function taskTemplateFromMarkdownBlock(raw: string): Record<string, unkno
   for (const field of INHERITED_FIELDS) {
     if (source[field] !== undefined && source[field] !== null) out[field] = source[field]
   }
+  // Disposition inherits its *presence*, never its value: a project whose
+  // records track where work stands gives the new one that field too, but
+  // copying `done` off the newest sibling would mint a record already finished.
+  if (out.task_status !== undefined) out.task_status = NEW_TASK_DISPOSITION_BLOCK
+  if (out.status !== undefined) out.status = NEW_TASK_STATUS_BLOCK
   return out
 }
+
+/** Where a just-written record stands. `ready` is the project's own word for
+ *  work that exists and hasn't started — which is exactly what a record typed
+ *  into the composer is. */
+export const NEW_TASK_DISPOSITION_BLOCK = 'ready'
+
+/** The coarse node status, for the store that still carries one (F9). Dropped
+ *  from Thinking Space's records, where it duplicated `task_status`. */
+export const NEW_TASK_STATUS_BLOCK = 'active'
 
 /**
  * The next free ticket in the scheme the given tickets are already using.
