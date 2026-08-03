@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronRight, Inbox, Loader2, Pencil, SkipForward, Sparkles, Trash2, Undo2, X } from 'lucide-react'
+import { Check, ChevronRight, CircleSlash, Inbox, Loader2, Pencil, SkipForward, Sparkles, Undo2, X } from 'lucide-react'
 import {
   detachChainOrch,
   disposeChainsOrch,
@@ -265,10 +265,11 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
   const matches = useMemo(() => {
     const q = retargetQuery.trim().toLowerCase()
     const pool = titles.filter(entry => entry.key !== (current?.group.target as { key?: string })?.key)
-    if (!q) return pool.slice(0, 8)
-    return pool
-      .filter(entry => entry.title.toLowerCase().includes(q) || entry.key.toLowerCase().includes(q))
-      .slice(0, 8)
+    if (!q) return pool
+    // Uncapped: the list scrolls, and a cap reads as "these are all we have".
+    return pool.filter(
+      entry => entry.title.toLowerCase().includes(q) || entry.key.toLowerCase().includes(q),
+    )
   }, [titles, retargetQuery, current])
 
   useEffect(() => {
@@ -548,7 +549,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
                     onClick={() => effectiveTarget && void dispose(effectiveTarget, 'accepted')}
                   />
                   <ActionBlock icon={ChevronRight} label="Retarget" hint="r" onClick={() => setRetargeting(true)} />
-                  <ActionBlock icon={Trash2} label="Not an undertaking" hint="b" onClick={() => void dispose({ kind: 'bucket' }, 'bucketed')} />
+                  <ActionBlock icon={CircleSlash} label="Not an undertaking" hint="b" onClick={() => void dispose({ kind: 'bucket' }, 'bucketed')} />
                   <ActionBlock icon={SkipForward} label="Skip" hint="s" onClick={() => setCursor(i => Math.min(i + 1, items.length - 1))} />
                 </div>
               )}
@@ -752,7 +753,8 @@ function CardBlock({
                 <ChevronRight className="h-3 w-3 shrink-0 translate-y-0.5 text-muted-foreground/60" />
                 <span className="min-w-0 flex-1 truncate">{chain.title}</span>
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {chain.date} · {chain.activeMinutes}m
+                  {chain.date} · {chain.activeMinutes}m · {chain.sessions} session
+                  {chain.sessions === 1 ? '' : 's'}
                 </span>
               </button>
               {/* Dropping a chain is not a disposition — it just takes it out of

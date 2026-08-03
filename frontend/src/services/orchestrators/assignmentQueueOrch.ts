@@ -71,6 +71,10 @@ export interface QueueChainBlock {
   /** Minutes of active work, for the "is this worth an undertaking" judgement
    *  the human is being asked to make at a glance. */
   activeMinutes: number
+  /** How many sessions the chain merged. Shown because a disposition is really
+   *  a decision about sessions — a chain is just the grouping — and "one
+   *  session" and "nine sessions" are not the same call. */
+  sessions: number
 }
 
 export interface QueueItem {
@@ -119,6 +123,7 @@ function toQueueChainBlock(chain: ChainEntry): QueueChainBlock {
     title: chain.title,
     date: chain.date,
     activeMinutes: Math.round(chainActiveDurationMsBlock(chain) / 60000),
+    sessions: chain.sessions?.length ?? 0,
   }
 }
 

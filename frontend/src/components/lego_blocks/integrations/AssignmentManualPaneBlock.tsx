@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, ChevronRight, Link2, Loader2, Search, Sparkles, Trash2, X } from 'lucide-react'
+import { Check, ChevronRight, CircleSlash, Link2, Loader2, Search, Sparkles, Wand2, X } from 'lucide-react'
+import {
+  draftUndertakingForChainsOrch,
+  type AssignmentDraft,
+} from '@/services/orchestrators/assignmentDraftOrch'
 import {
   disposeChainsOrch,
   mintFromSelectionOrch,
@@ -66,6 +70,10 @@ type Stage =
   | { kind: 'file' }
   /** Minting a new one — title, where it lands, what it is, what fed it. */
   | { kind: 'mint' }
+  /** A drafted match against an undertaking that already exists, waiting on the
+   *  human. Its own stage rather than a pre-filled `file` search because the
+   *  answer to "is this the same work?" is yes/no, not a search box. */
+  | { kind: 'draft'; draft: AssignmentDraft }
 
 const DURATION_FLOORS = [
   { minutes: 0, label: 'Any' },
@@ -99,6 +107,10 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
   const [draftHead, setDraftHead] = useState('')
   const [taskQuery, setTaskQuery] = useState('')
   const [fedBy, setFedBy] = useState<ReadonlySet<string>>(new Set())
+  const [drafting, setDrafting] = useState(false)
+  /** The draft's own sentence about why, kept beside the fields it filled so a
+   *  pre-filled form never looks like something the human already wrote. */
+  const [draftNote, setDraftNote] = useState<string | null>(null)
 
   /** The folders: every project with anything unsorted, busiest first. Counted
    *  before the duration floor, so raising the floor never makes a project look
@@ -159,6 +171,7 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
     setDraftHead('')
     setTaskQuery('')
     setFedBy(new Set())
+    setDraftNote(null)
   }, [])
 
   const toggle = useCallback((chain: QueueChainBlock) => {
@@ -229,6 +242,28 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
       })
     })
 
+  /** Ask the configured AI-activity provider what this selection *is*.
+   *
+   *  It fills the form; it never submits it. Both of its answers land in front
+   *  of the human as a question — a matched undertaking as "is this the same
+   *  work?", a new one as a mint form with the fields already typed. That is
+   *  the contract's shape: AI proposes, a human mints. */
+  const propose = () => {
+    if (!projectId || drafting || busy || chainIds.length === 0) return
+    setDrafting(true)
+    setError(null)
+    void draftUndertakingForChainsOrch({ projectId, chainIds })
+      .then(draft => {
+        setDraftTitle(draft.title)
+        setDraftHead(draft.head)
+        if (draft.sectionKey) setDraftSection(draft.sectionKey)
+        setDraftNote(draft.rationale)
+        setStage(draft.kind === 'existing' && draft.existingKey ? { kind: 'draft', draft } : { kind: 'mint' })
+      })
+      .catch(err => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setDrafting(false))
+  }
+
   const mint = () =>
     void run(async () => {
       if (!projectId) return
@@ -242,22 +277,22 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
       })
     })
 
+  /** Uncapped on purpose: the list scrolls. A cap here once hid every
+   *  undertaking past the eighth, which reads as "we only have eight". */
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return titles.slice(0, 8)
-    return titles
-      .filter(entry => entry.title.toLowerCase().includes(q) || entry.key.toLowerCase().includes(q))
-      .slice(0, 8)
+    if (!q) return titles
+    return titles.filter(
+      entry => entry.title.toLowerCase().includes(q) || entry.key.toLowerCase().includes(q),
+    )
   }, [titles, query])
 
   const taskMatches = useMemo(() => {
     const q = taskQuery.trim().toLowerCase()
-    const pool = q
-      ? tasks.filter(
-          task => task.title.toLowerCase().includes(q) || task.ticket.toLowerCase().includes(q),
-        )
-      : tasks
-    return pool.slice(0, 8)
+    if (!q) return tasks
+    return tasks.filter(
+      task => task.title.toLowerCase().includes(q) || task.ticket.toLowerCase().includes(q),
+    )
   }, [tasks, taskQuery])
 
   /** In All, rows carry their project as a heading; inside a folder that would
@@ -393,6 +428,15 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
                           <span className="shrink-0 text-xs tabular-nums text-muted-foreground/70">
                             {chain.date}
                           </span>
+                          {/* The disposition is really about sessions; the chain
+                              is just how they were grouped. One and nine are not
+                              the same decision. */}
+                          <span
+                            className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground/70"
+                            title={`${chain.sessions} session${chain.sessions === 1 ? '' : 's'}`}
+                          >
+                            {chain.sessions} sess
+                          </span>
                           <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground/70">
                             {minutesLabelBlock(chain.activeMinutes)}
                           </span>
@@ -446,11 +490,11 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
                       setStage({ kind: 'idle' })
                     }
                   }}
-                  placeholder="Which undertaking?"
+                  placeholder="Add to which undertaking?"
                   className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring"
                 />
               </div>
-              <ul className="mt-2 max-h-48 space-y-0.5 overflow-y-auto">
+              <ul className="mt-2 max-h-64 space-y-0.5 overflow-y-auto">
                 {matches.map(entry => (
                   <li key={entry.key}>
                     <button
@@ -468,8 +512,50 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
                 )}
               </ul>
             </div>
+          ) : stage.kind === 'draft' ? (
+            <div className="space-y-2.5">
+              <div className="flex items-baseline gap-2">
+                <Wand2 className="h-3.5 w-3.5 shrink-0 translate-y-0.5 text-primary" />
+                <div className="min-w-0">
+                  <p className="text-sm">
+                    Looks like more of{' '}
+                    <span className="font-semibold">{stage.draft.existingTitle}</span>
+                  </p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                    {stage.draft.rationale}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <ActionBlock
+                  icon={ChevronRight}
+                  label={`File ${actionable.length} into it`}
+                  primary
+                  disabled={busy}
+                  onClick={() => fileInto(stage.draft.existingKey as string)}
+                />
+                <ActionBlock
+                  icon={Sparkles}
+                  label="No — new undertaking"
+                  disabled={busy}
+                  onClick={() => setStage({ kind: 'mint' })}
+                />
+                <button
+                  onClick={() => { setStage({ kind: 'idle' }); setDraftNote(null) }}
+                  className="rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           ) : stage.kind === 'mint' ? (
             <div className="space-y-2.5">
+              {draftNote && (
+                <p className="flex items-baseline gap-1.5 text-xs leading-relaxed text-muted-foreground">
+                  <Wand2 className="h-3 w-3 shrink-0 translate-y-0.5 text-primary" />
+                  <span className="min-w-0">{draftNote}</span>
+                </p>
+              )}
               <input
                 autoFocus
                 value={draftTitle}
@@ -567,6 +653,12 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
                   disabled={!draftTitle.trim() || !draftHead.trim() || busy}
                   onClick={mint}
                 />
+                <ActionBlock
+                  icon={drafting ? Loader2 : Wand2}
+                  label={drafting ? 'Drafting…' : 'Draft with AI'}
+                  disabled={drafting || busy}
+                  onClick={propose}
+                />
                 <button
                   onClick={() => setStage({ kind: 'idle' })}
                   className="rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -588,9 +680,19 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
               </span>
               {busy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
               <div className="ml-auto flex flex-wrap items-center gap-2">
-                <ActionBlock icon={Sparkles} label="New undertaking" primary onClick={() => setStage({ kind: 'mint' })} />
-                <ActionBlock icon={ChevronRight} label="File into…" onClick={() => setStage({ kind: 'file' })} />
-                <ActionBlock icon={Trash2} label="Not an undertaking" onClick={bucket} />
+                <ActionBlock
+                  icon={drafting ? Loader2 : Wand2}
+                  label={drafting ? 'Drafting…' : 'Draft with AI'}
+                  primary
+                  disabled={drafting || busy}
+                  onClick={propose}
+                />
+                <ActionBlock icon={Sparkles} label="New undertaking" onClick={() => setStage({ kind: 'mint' })} />
+                <ActionBlock icon={ChevronRight} label="Add to existing" onClick={() => setStage({ kind: 'file' })} />
+                {/* Not a delete. This chain keeps existing and keeps its
+                    transcript — "not an undertaking" is a disposition, and a
+                    trash can made an answer look like a destruction. */}
+                <ActionBlock icon={CircleSlash} label="Not an undertaking" onClick={bucket} />
                 <button
                   onClick={reset}
                   aria-label="Clear the selection"

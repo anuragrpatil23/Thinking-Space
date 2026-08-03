@@ -11,6 +11,7 @@ export type AiSettingsScope =
   | 'new_thought'
   | 'todos'
   | 'steward_metadata'
+  | 'ai_activity'
 
 export const AI_SETTINGS_SCOPE_ORDER: AiSettingsScope[] = [
   'chat',
@@ -18,6 +19,7 @@ export const AI_SETTINGS_SCOPE_ORDER: AiSettingsScope[] = [
   'new_thought',
   'todos',
   'steward_metadata',
+  'ai_activity',
 ]
 
 export interface AiSettings {
@@ -89,6 +91,7 @@ export function isAiSettingsScope(value: unknown): value is AiSettingsScope {
     || value === 'new_thought'
     || value === 'todos'
     || value === 'steward_metadata'
+    || value === 'ai_activity'
 }
 
 function scopeProviderKey(scope: AiSettingsScope, provider: AiProvider): string {
