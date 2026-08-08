@@ -40,7 +40,7 @@ These are architecture constraints, not optional positioning variants:
 
 `DEVELOPMENT.md` is source of truth for implementation phases and detailed architecture.
 
-Current status (v2.5) — DONE: Phase 0–5, Agent Capability Transport, EPIC-3 (Extension Platform), Live Source Mode + Rebuild Pipeline, Notebook workspace upgrades, native iPhone shell/chrome.
+Current status (v2.8) — DONE: Phase 0–5, Agent Capability Transport, EPIC-3 (Extension Platform), Live Source Mode + Rebuild Pipeline, Notebook workspace upgrades, native iPhone shell/chrome.
 
 Embedded Terminal (xterm.js + node-pty) is DONE but **slated for removal** (decided 2026-07-16: overkill; users run agents in their own terminal). Do not build new features on it; it is no longer advertised in the README.
 
