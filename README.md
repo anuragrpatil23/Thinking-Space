@@ -53,19 +53,31 @@ Use an existing notes folder or start a new one (a cloud-synced folder keeps it 
 <p align="center">
   <img src="docs/screenshots/home-dashboard.jpg" alt="Thinking Space home canvas" width="900" />
   <br />
-  <em>Home canvas — pixel-art ambient scene, draggable notes/widgets, and the AI Activity dashboard</em>
+  <em>Home canvas — pixel-art ambient scene, draggable notes and widgets, and the AI Activity panel</em>
 </p>
 
 <p align="center">
   <img src="docs/screenshots/explorer-workspace.jpg" alt="Thinking Space explorer workspace" width="900" />
   <br />
-  <em>The markdown workspace — file explorer and tabs</em>
+  <em>The markdown workspace — vault explorer with <code>_map.md</code> section headers, and a hover card showing a note's summary and why it's filed there</em>
 </p>
 
 <p align="center">
   <img src="docs/screenshots/organizer-workspace.jpg" alt="Thinking Space organizer workspace" width="900" />
   <br />
-  <em>The organizer — the Programs → Epics → Ideas → Thoughts tree</em>
+  <em>The Thinking Organizer — undertakings grouped into sections, each with its activity strip and time spent</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/vault-graph.jpg" alt="Thinking Space vault graph" width="900" />
+  <br />
+  <em>The vault graph — every file and link, clustered by project, with the AI Activity lens over the top</em>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/new-note.jpg" alt="Thinking Space new note composer" width="900" />
+  <br />
+  <em>New Note — a blank page, the destination path, and nothing else</em>
 </p>
 
 <details>
