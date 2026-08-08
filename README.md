@@ -53,7 +53,7 @@ Use an existing notes folder or start a new one (a cloud-synced folder keeps it 
 <p align="center">
   <img src="docs/screenshots/home-dashboard.jpg" alt="Thinking Space home canvas" width="900" />
   <br />
-  <em>Home canvas — pixel-art ambient scene, draggable notes and widgets, and the AI Activity panel</em>
+  <em>Home canvas — a pixel-art ambient scene over the AI Activity panel: what you and your agents did, by project, by day</em>
 </p>
 
 <p align="center">
