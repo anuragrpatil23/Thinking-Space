@@ -59,7 +59,7 @@ Use an existing notes folder or start a new one (a cloud-synced folder keeps it 
 <p align="center">
   <img src="docs/screenshots/explorer-workspace.jpg" alt="Thinking Space explorer workspace" width="900" />
   <br />
-  <em>The markdown workspace — vault explorer with <code>_map.md</code> section headers, and a hover card showing a note's summary and why it's filed there</em>
+  <em>The markdown workspace — vault explorer on the left, the rendered note on the right, with a contents outline and mindmap a click away</em>
 </p>
 
 <p align="center">
