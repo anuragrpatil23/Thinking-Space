@@ -77,7 +77,7 @@ Use an existing notes folder or start a new one (a cloud-synced folder keeps it 
 <p align="center">
   <img src="docs/screenshots/new-note.jpg" alt="Thinking Space new note composer" width="900" />
   <br />
-  <em>New Note — a blank page, the destination path, and nothing else</em>
+  <em>New Note — a monospace writing surface with the destination path overhead; AI, mindmap, tags, and save mode stay out of the way until you want them</em>
 </p>
 
 <details>
