@@ -214,7 +214,7 @@ function TimelineCard({
             {wasSeen && !selectionMode && <Eye className="ml-auto h-3.5 w-3.5 shrink-0 text-zinc-500" aria-label="Viewed" />}
           </div>
           <h3 className="mt-0.5 text-[17px] font-semibold leading-snug text-white">{item.title || '(Untitled)'}</h3>
-          {item.description && <div className={cn('mt-1 whitespace-pre-wrap text-[16px] leading-6 text-zinc-200', !expanded && 'line-clamp-6')}>{item.description}</div>}
+          {item.description && <div className={cn('mt-1 whitespace-pre-wrap text-[15px] leading-[1.45] text-zinc-300', !expanded && 'line-clamp-6')}>{item.description}</div>}
         </button>
         {hasMore && !expanded && <button type="button" onClick={() => setExpanded(true)} className="mt-0.5 text-[15px] text-sky-500">Show more</button>}
         {expanded && hasMore && <button type="button" onClick={() => setExpanded(false)} className="mt-0.5 text-[15px] text-sky-500">Show less</button>}
