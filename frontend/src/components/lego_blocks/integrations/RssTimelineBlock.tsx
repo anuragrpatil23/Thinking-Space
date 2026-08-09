@@ -213,7 +213,7 @@ function TimelineCard({
             {dateLabel && <time className="shrink-0 text-zinc-500">{dateLabel}</time>}
             {wasSeen && !selectionMode && <Eye className="ml-auto h-3.5 w-3.5 shrink-0 text-zinc-500" aria-label="Viewed" />}
           </div>
-          <h3 className="mt-0.5 text-[17px] font-semibold leading-snug text-white">{item.title || '(Untitled)'}</h3>
+          <h3 className="mt-0.5 text-[16px] font-medium leading-[1.4] text-white">{item.title || '(Untitled)'}</h3>
           {item.description && <div className={cn('mt-1 whitespace-pre-wrap text-[15px] leading-[1.45] text-zinc-300', !expanded && 'line-clamp-6')}>{item.description}</div>}
         </button>
         {hasMore && !expanded && <button type="button" onClick={() => setExpanded(true)} className="mt-0.5 text-[15px] text-sky-500">Show more</button>}
