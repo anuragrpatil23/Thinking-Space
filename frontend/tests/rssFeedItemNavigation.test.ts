@@ -20,6 +20,8 @@ function item(id: string, feedId: string, overrides: Partial<RssFeedItemBlock> =
     description: '',
     pubDate: null,
     read: false,
+    viewedAt: null,
+    dismissedAt: null,
     tags: [],
     keep: false,
     important: false,

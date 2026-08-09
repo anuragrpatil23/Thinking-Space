@@ -48,6 +48,8 @@ interface RssItemFrontmatter {
   pubDate: string | null
   fetchedAt: string
   read: boolean
+  viewedAt?: string | null
+  dismissedAt?: string | null
   tags?: string[]
   [key: string]: unknown
 }
@@ -66,6 +68,8 @@ function serializeRssItemFileBlock(
     pubDate: item.pubDate ?? null,
     fetchedAt,
     read: item.read,
+    viewedAt: item.viewedAt,
+    dismissedAt: item.dismissedAt,
     tags: item.tags ?? [],
     keep: item.keep ?? false,
     important: item.important ?? false,
@@ -95,6 +99,8 @@ function parseRssItemFileBlock(content: string): RssFeedItemBlock | null {
   const f = fm as Record<string, unknown>
   const id = typeof f.id === 'string' ? f.id : ''
   if (!id) return null
+  const viewedAt = typeof f.viewedAt === 'string' ? f.viewedAt : null
+  const dismissedAt = typeof f.dismissedAt === 'string' ? f.dismissedAt : null
   return {
     id,
     feedId: typeof f.feedId === 'string' ? f.feedId : '',
@@ -102,7 +108,11 @@ function parseRssItemFileBlock(content: string): RssFeedItemBlock | null {
     link: typeof f.link === 'string' ? f.link : '',
     description: body,
     pubDate: typeof f.pubDate === 'string' ? f.pubDate : null,
-    read: f.read === true,
+    // Legacy `read: true` meant that the reader had engaged with an item. Keep
+    // that history as a viewed event instead of silently resurrecting it as new.
+    read: f.read === true || viewedAt !== null || dismissedAt !== null,
+    viewedAt: viewedAt ?? (f.read === true ? (typeof f.fetchedAt === 'string' ? f.fetchedAt : new Date(0).toISOString()) : null),
+    dismissedAt,
     tags: Array.isArray(f.tags) ? (f.tags as unknown[]).filter((t): t is string => typeof t === 'string') : [],
     keep: f.keep === true,
     important: f.important === true,
@@ -246,8 +256,12 @@ async function patchRssItemFrontmatterOrch(
   } catch { /* file may not exist yet; silently ignore */ }
 }
 
-function updateRssItemReadOrch(itemId: string, read: boolean): void {
-  void patchRssItemFrontmatterOrch(itemId, { read })
+async function updateRssItemStateOrch(
+  itemId: string,
+  patch: { viewedAt?: string | null; dismissedAt?: string | null },
+): Promise<void> {
+  const read = Boolean(patch.viewedAt || patch.dismissedAt)
+  await patchRssItemFrontmatterOrch(itemId, { ...patch, read })
 }
 
 export async function updateRssItemMetaOrch(
@@ -411,20 +425,8 @@ export async function updateRssPresetTagsOrch(
 }
 
 // ---------------------------------------------------------------------------
-// Read-state persistence — localStorage for instant UI + vault files as truth
+// Article-state persistence — vault files are the sole cross-device authority
 // ---------------------------------------------------------------------------
-
-export function readRssReadItemIdsOrch(): Set<string> {
-  const arr = getJsonStorageItem<string[]>(STORAGE_KEYS.rssReadItemIds, [])
-  return new Set(arr)
-}
-
-function writeRssReadItemIdsOrch(ids: Set<string>): void {
-  // Cap at 5 000 entries to avoid unbounded localStorage growth
-  const arr = [...ids]
-  if (arr.length > 5000) arr.splice(0, arr.length - 5000)
-  setJsonStorageItem(STORAGE_KEYS.rssReadItemIds, arr)
-}
 
 /**
  * Moves an RSS article file from the RSS articles dir to a vault folder chosen
@@ -474,18 +476,21 @@ export async function removeRssItemsOrch(itemIds: string[]): Promise<void> {
   }))
 }
 
-export function markRssItemReadOrch(itemId: string): void {
-  const ids = readRssReadItemIdsOrch()
-  ids.add(itemId)
-  writeRssReadItemIdsOrch(ids)
-  void updateRssItemReadOrch(itemId, true)
+/** Explicit, intentional dismissal. This is the state bulk "Mark read" uses. */
+export async function markRssItemReadOrch(itemId: string): Promise<void> {
+  await updateRssItemStateOrch(itemId, { dismissedAt: new Date().toISOString() })
 }
 
-export function markRssItemsReadOrch(itemIds: string[]): void {
-  const ids = readRssReadItemIdsOrch()
-  for (const id of itemIds) ids.add(id)
-  writeRssReadItemIdsOrch(ids)
-  for (const id of itemIds) void updateRssItemReadOrch(id, true)
+export async function markRssItemsReadOrch(itemIds: string[]): Promise<void> {
+  const dismissedAt = new Date().toISOString()
+  await Promise.all(itemIds.map(itemId => updateRssItemStateOrch(itemId, { dismissedAt })))
+}
+
+/** Automatic, meaningful on-screen exposure. Kept separate from an explicit
+ * dismissal so the timeline can be effortless without pretending a glance was
+ * a deliberate skip. */
+export async function markRssItemViewedOrch(itemId: string): Promise<void> {
+  await updateRssItemStateOrch(itemId, { viewedAt: new Date().toISOString() })
 }
 
 // ---------------------------------------------------------------------------
@@ -526,7 +531,6 @@ export async function fetchAndParseRssFeedOrch(
   // Always load stored items first — used for merging and as offline fallback.
   const storedItems = await loadStoredFeedItemsOrch(config.id)
   options?.onStoredResult?.(buildStoredResultBlock(config, storedItems, null))
-  const readIds = readRssReadItemIdsOrch() // localStorage fallback for not-yet-stored items
 
   try {
     const response = await fetchRssFeedTextBlock(config.url)
@@ -554,10 +558,12 @@ export async function fetchAndParseRssFeedOrch(
       const titleRaw = item.title
       const title = typeof titleRaw === 'string' ? titleRaw
         : (typeof titleRaw === 'object' && titleRaw !== null ? String((titleRaw as { value?: unknown }).value ?? '') : '')
-      const summaryRaw = item.summary ?? item.content
-      const description = typeof item.description === 'string' ? item.description
-        : (typeof summaryRaw === 'string' ? summaryRaw
-          : (typeof summaryRaw === 'object' && summaryRaw !== null ? String((summaryRaw as { value?: unknown }).value ?? '') : ''))
+      // Prefer full feed content. The compact reader only showed a short
+      // excerpt, but the timeline's job is to let the feed itself carry the
+      // decision before someone opens the original page.
+      const bodyRaw = item.content ?? item.description ?? item.summary
+      const description = typeof bodyRaw === 'string' ? bodyRaw
+        : (typeof bodyRaw === 'object' && bodyRaw !== null ? String((bodyRaw as { value?: unknown }).value ?? '') : '')
       // Slashdot and other RSS 1.0/RDF feeds carry no <pubDate>; their date is
       // Dublin Core (`dc:date`), which feedsmith exposes under item.dc / dcterms.
       const pubDate = extractDateBlock(
@@ -566,9 +572,12 @@ export async function fetchAndParseRssFeedOrch(
       )
       const id = normalizeRssFeedItemIdBlock(config.id, guid, link, title)
 
-      // Vault state takes priority; localStorage is fallback for new items.
+      // Vault-backed state is the only authority. Device-local fallback state
+      // made a read action appear to sync only sometimes.
       const stored = storedItems.get(id)
-      const read = stored ? stored.read : readIds.has(id)
+      const viewedAt = stored?.viewedAt ?? null
+      const dismissedAt = stored?.dismissedAt ?? null
+      const read = Boolean(viewedAt || dismissedAt)
 
       return {
         id,
@@ -578,6 +587,8 @@ export async function fetchAndParseRssFeedOrch(
         description: stripHtmlBlock(description),
         pubDate,
         read,
+        viewedAt,
+        dismissedAt,
         tags: stored?.tags ?? [],
         keep: stored?.keep ?? false,
         important: stored?.important ?? false,

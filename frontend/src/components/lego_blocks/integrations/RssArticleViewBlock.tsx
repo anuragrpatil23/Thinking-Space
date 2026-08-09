@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bookmark, ChevronLeft, ChevronRight, FolderInput, Loader2, Star, X } from 'lucide-react'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import {
-  markRssItemReadOrch,
+  markRssItemViewedOrch,
   moveRssArticleToVaultOrch,
   updateRssItemMetaOrch,
 } from '@/services/orchestrators/rssFeedOrch'
@@ -80,11 +80,12 @@ export default function RssArticleViewBlock({
   // Read state is earned, not granted on open. Keyed by id so stepping to the
   // next article re-arms it, and so a re-render can't double-fire the write.
   const markedReadIdRef = useRef<string | null>(null)
-  const markRead = useCallback(() => {
+  const markViewed = useCallback(() => {
     if (item.read || markedReadIdRef.current === item.id) return
     markedReadIdRef.current = item.id
-    void markRssItemReadOrch(item.id)
-    onItemUpdate({ ...item, tags, keep, important, read: true })
+    const viewedAt = new Date().toISOString()
+    void markRssItemViewedOrch(item.id)
+    onItemUpdate({ ...item, tags, keep, important, read: true, viewedAt })
   }, [item, tags, keep, important, onItemUpdate])
 
   // Dwelling on an article counts as reading it. This is the only signal that
@@ -92,9 +93,9 @@ export default function RssArticleViewBlock({
   // host document can't observe it.
   useEffect(() => {
     if (item.read) return
-    const timer = setTimeout(markRead, DWELL_TO_MARK_READ_MS)
+    const timer = setTimeout(markViewed, DWELL_TO_MARK_READ_MS)
     return () => { clearTimeout(timer) }
-  }, [item.id, item.read, markRead])
+  }, [item.id, item.read, markViewed])
 
   // Once an article is open the keyboard goes modal: ←/→ walk the queue, ↑/↓
   // scroll the article body, Escape closes. That combination is what makes the
@@ -115,7 +116,7 @@ export default function RssArticleViewBlock({
         event.preventDefault()
         scroller(deltaPx)
         // Scrolling is unambiguous engagement — no need to wait out the dwell.
-        markRead()
+        markViewed()
       }
 
       switch (event.key) {
@@ -145,7 +146,7 @@ export default function RssArticleViewBlock({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => { window.removeEventListener('keydown', onKeyDown) }
-  }, [nav, showMoveDialog, onClose, markRead])
+  }, [nav, showMoveDialog, onClose, markViewed])
 
   const applyMeta = useCallback((
     nextTags: string[],

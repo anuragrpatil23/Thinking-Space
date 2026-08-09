@@ -8,6 +8,7 @@ import {
   Circle,
   FolderOpen,
   Loader2,
+  List,
   RefreshCw,
   Rss,
   Sparkles,
@@ -15,13 +16,17 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import RssTimelineBlock from './RssTimelineBlock'
 import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
 import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
 import {
   fetchAndParseRssFeedOrch,
+  markRssItemViewedOrch,
   markRssItemsReadOrch,
   readRssFeedPreferencesOrch,
   removeRssItemsOrch,
+  updateRssItemMetaOrch,
 } from '@/services/orchestrators/rssFeedOrch'
 import {
   RSS_UNREAD_INBOX_ID_BLOCK,
@@ -110,6 +115,16 @@ export default function RssFeedPanelBlock({
   articleOpen,
   className,
 }: RssFeedPanelBlockProps) {
+  const { layout } = useUILayoutBlock()
+  // This is intentionally device-local: iPhone gets the spacious timeline by
+  // default without changing a desktop user's compact explorer preference.
+  const [viewMode, setViewMode] = useState<'compact' | 'timeline'>(() => {
+    try {
+      const saved = localStorage.getItem('ltm-rss-view-mode')
+      if (saved === 'compact' || saved === 'timeline') return saved
+    } catch { /* storage is optional */ }
+    return layout.surface === 'capacitor-ios' ? 'timeline' : 'compact'
+  })
   const [feeds, setFeeds] = useState<RssFeedResultBlock[]>([])
   const [preferences, setPreferences] = useState<RssFeedPreferencesBlock | null>(null)
   const [loading, setLoading] = useState(true)
@@ -207,6 +222,17 @@ export default function RssFeedPanelBlock({
     void loadFeeds()
   }, [loadFeeds])
 
+  // There is deliberately no polling here (the reader is commonly open for a
+  // long time on battery). Returning to the app is the natural moment to pull
+  // vault-backed viewed/dismissed state written on another device.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void loadFeeds(true)
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [loadFeeds])
+
   const groupTree = useMemo<RssFeedGroupTreeNodeBlock[]>(() => {
     if (!preferences) return []
     return buildFeedGroupTreeBlock(preferences.groups, preferences.feeds)
@@ -262,12 +288,47 @@ export default function RssFeedPanelBlock({
       .filter(f => !feedId || f.feedId === feedId)
       .flatMap(f => f.items.filter(i => !i.read).map(i => i.id))
     if (itemIds.length === 0) return
-    markRssItemsReadOrch(itemIds)
+    const dismissedAt = new Date().toISOString()
+    void markRssItemsReadOrch(itemIds)
     setFeeds(prev => prev.map(f => {
       if (feedId && f.feedId !== feedId) return f
-      return { ...f, items: f.items.map(i => ({ ...i, read: true })) }
+      return { ...f, items: f.items.map(i => ({ ...i, read: true, dismissedAt })) }
     }))
   }, [feeds])
+
+  const setTimelineViewMode = useCallback((next: 'compact' | 'timeline') => {
+    setViewMode(next)
+    try { localStorage.setItem('ltm-rss-view-mode', next) } catch { /* optional */ }
+  }, [])
+
+  const updateTimelineItems = useCallback((itemIds: string[], patch: Partial<RssFeedItemBlock>) => {
+    const ids = new Set(itemIds)
+    setFeeds(previous => previous.map(feed => ({
+      ...feed,
+      items: feed.items.map(item => ids.has(item.id) ? { ...item, ...patch } : item),
+    })))
+  }, [])
+
+  const handleTimelineViewed = useCallback((item: RssFeedItemBlock) => {
+    if (item.viewedAt || item.dismissedAt) return
+    const viewedAt = new Date().toISOString()
+    updateTimelineItems([item.id], { viewedAt, read: true })
+    void markRssItemViewedOrch(item.id)
+  }, [updateTimelineItems])
+
+  const handleTimelineMarkRead = useCallback((items: RssFeedItemBlock[]) => {
+    const pending = items.filter(item => !item.dismissedAt)
+    if (pending.length === 0) return
+    const dismissedAt = new Date().toISOString()
+    updateTimelineItems(pending.map(item => item.id), { dismissedAt, read: true })
+    void markRssItemsReadOrch(pending.map(item => item.id))
+  }, [updateTimelineItems])
+
+  const handleTimelineToggleSaved = useCallback((item: RssFeedItemBlock) => {
+    const keep = !item.keep
+    updateTimelineItems([item.id], { keep })
+    void updateRssItemMetaOrch(item.id, { keep })
+  }, [updateTimelineItems])
 
   // First click: enter delete-preview mode, select all eligible items
   const handleEnterDeleteMode = useCallback((feedId?: string) => {
@@ -440,6 +501,8 @@ export default function RssFeedPanelBlock({
           onEnterDeleteMode={() => {}}
           onConfirmDelete={() => {}}
           onCancelDeleteMode={() => {}}
+          viewMode={viewMode}
+          onToggleViewMode={() => setTimelineViewMode(viewMode === 'compact' ? 'timeline' : 'compact')}
         />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <Rss className="h-8 w-8 text-muted-foreground/40" />
@@ -468,6 +531,8 @@ export default function RssFeedPanelBlock({
         onCancelDeleteMode={handleCancelDeleteMode}
         focusedFeedId={focusedFeedId}
         onClearFocus={() => setFocusedFeedId(null)}
+        viewMode={viewMode}
+        onToggleViewMode={() => setTimelineViewMode(viewMode === 'compact' ? 'timeline' : 'compact')}
       />
 
       {/* Delete-mode hint */}
@@ -479,7 +544,15 @@ export default function RssFeedPanelBlock({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {viewMode === 'timeline' ? (
+        <RssTimelineBlock
+          feeds={feeds}
+          onOpen={(item) => handleItemClick(item, rssRowIdBlock('__timeline__', item.id))}
+          onViewed={handleTimelineViewed}
+          onMarkRead={handleTimelineMarkRead}
+          onToggleSaved={handleTimelineToggleSaved}
+        />
+      ) : <div className="min-h-0 flex-1 overflow-y-auto">
         {/* Merged unread inbox — one flat queue across every source, so new
             articles can be read straight through without hunting per feed. */}
         {showUnreadInbox && (
@@ -557,7 +630,7 @@ export default function RssFeedPanelBlock({
             depth={0}
           />
         ))}
-      </div>
+      </div>}
     </div>
   )
 }
@@ -576,6 +649,8 @@ function PanelHeader({
   onCancelDeleteMode,
   focusedFeedId,
   onClearFocus,
+  viewMode,
+  onToggleViewMode,
 }: {
   title: string
   onClose: () => void
@@ -590,6 +665,8 @@ function PanelHeader({
   onCancelDeleteMode: () => void
   focusedFeedId?: string | null
   onClearFocus?: () => void
+  viewMode: 'compact' | 'timeline'
+  onToggleViewMode: () => void
 }) {
   return (
     <div className={cn(
@@ -608,6 +685,17 @@ function PanelHeader({
       )}
       <Rss className="h-3.5 w-3.5 shrink-0 text-orange-400" />
       <span className="min-w-0 flex-1 truncate text-xs font-medium">{title}</span>
+
+      {!deleteMode && (
+        <button
+          type="button"
+          onClick={onToggleViewMode}
+          className="shrink-0 rounded-md p-2 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+          title={viewMode === 'timeline' ? 'Use compact feed view' : 'Use timeline view'}
+        >
+          <List className="h-4 w-4" />
+        </button>
+      )}
 
       {!deleteMode && typeof totalUnread === 'number' && totalUnread > 0 && (
         <span className="shrink-0 text-[10px] text-muted-foreground">{totalUnread} unread</span>

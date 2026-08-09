@@ -33,6 +33,12 @@ export interface RssFeedItemBlock {
   description: string
   pubDate: string | null
   read: boolean
+  /** Automatic, meaningful exposure in the timeline. This is a durable fact,
+   * not a guess made from whether the article was opened. */
+  viewedAt: string | null
+  /** Explicit "I'm done with this" action. `read` is derived from either
+   * viewedAt or dismissedAt so existing list surfaces remain simple. */
+  dismissedAt: string | null
   tags: string[]
   keep: boolean
   important: boolean
