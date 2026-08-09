@@ -34,7 +34,7 @@ export default function RssTimelineBlock({
     .sort((a, b) => new Date(b.item.pubDate ?? 0).getTime() - new Date(a.item.pubDate ?? 0).getTime()), [feeds])
   const sources = useMemo(() => feeds.map(feed => ({ id: feed.feedId, title: feed.feedTitle })), [feeds])
   const filteredEntries = selectedSourceId === '__all__'
-    ? entries
+    ? entries.filter(({ item }) => !item.read && !item.viewedAt && !item.dismissedAt)
     : entries.filter(entry => entry.item.feedId === selectedSourceId)
   const visibleEntries = filteredEntries.slice(0, renderedCount)
 
@@ -160,6 +160,7 @@ function TimelineCard({
 }) {
   const ref = useRef<HTMLElement | null>(null)
   const timerRef = useRef<number | null>(null)
+  const markReadTimerRef = useRef<number | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [viewedDuringVisit, setViewedDuringVisit] = useState(false)
   const [markedRead, setMarkedRead] = useState(false)
@@ -183,6 +184,7 @@ function TimelineCard({
     return () => {
       observer.disconnect()
       if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+      if (markReadTimerRef.current !== null) window.clearTimeout(markReadTimerRef.current)
     }
   }, [item.viewedAt, item.dismissedAt, onViewed])
 
@@ -196,6 +198,14 @@ function TimelineCard({
     : ''
   const wasSeen = Boolean(item.viewedAt || item.dismissedAt || viewedDuringVisit)
   const hasMore = item.title.length > 150 || item.description.length > 280
+  const confirmMarkRead = () => {
+    if (markedRead) return
+    setMarkedRead(true)
+    markReadTimerRef.current = window.setTimeout(() => {
+      markReadTimerRef.current = null
+      onMarkRead()
+    }, 360)
+  }
 
   return (
     <article ref={ref} className={cn(
@@ -221,7 +231,7 @@ function TimelineCard({
         {hasMore && !expanded && <button type="button" onClick={() => setExpanded(true)} className="mt-0.5 text-[15px] text-sky-500">Show more</button>}
         {expanded && hasMore && <button type="button" onClick={() => setExpanded(false)} className="mt-0.5 text-[15px] text-sky-500">Show less</button>}
         {!selectionMode && <div className="mt-1.5 flex items-center gap-1 text-zinc-500">
-          <button type="button" onClick={() => { setMarkedRead(true); onMarkRead() }} className={cn('inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-[13px] transition-all duration-200 hover:bg-white/10 hover:text-white active:scale-95', markedRead && 'text-sky-400')} title="Mark read">
+          <button type="button" onClick={confirmMarkRead} className={cn('inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-[13px] transition-all duration-200 hover:bg-white/10 hover:text-white active:scale-95', markedRead && 'bg-white/10 text-white motion-safe:animate-[pulse_0.35s_ease-out_1]')} title="Mark read">
             <Check className={cn('h-4 w-4 transition-transform duration-200', markedRead && 'scale-110')} />
             {markedRead ? 'Marked' : 'Mark read'}
           </button>
