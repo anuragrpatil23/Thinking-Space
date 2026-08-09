@@ -27,6 +27,7 @@ export default function RssTimelineBlock({
 }: RssTimelineBlockProps) {
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [sessionViewedIds, setSessionViewedIds] = useState<Set<string>>(new Set())
   const [renderedCount, setRenderedCount] = useState(INITIAL_CARD_COUNT)
   const [selectedSourceId, setSelectedSourceId] = useState<string>('__all__')
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
@@ -34,7 +35,7 @@ export default function RssTimelineBlock({
     .sort((a, b) => new Date(b.item.pubDate ?? 0).getTime() - new Date(a.item.pubDate ?? 0).getTime()), [feeds])
   const sources = useMemo(() => feeds.map(feed => ({ id: feed.feedId, title: feed.feedTitle })), [feeds])
   const filteredEntries = selectedSourceId === '__all__'
-    ? entries.filter(({ item }) => !item.read && !item.viewedAt && !item.dismissedAt)
+    ? entries.filter(({ item }) => !item.read || sessionViewedIds.has(item.id))
     : entries.filter(entry => entry.item.feedId === selectedSourceId)
   const visibleEntries = filteredEntries.slice(0, renderedCount)
 
@@ -74,6 +75,11 @@ export default function RssTimelineBlock({
     onMarkRead(selectedItems)
     leaveSelection()
   }, [selectedItems, onMarkRead, leaveSelection])
+
+  const handleViewed = useCallback((item: RssFeedItemBlock) => {
+    setSessionViewedIds(previous => new Set(previous).add(item.id))
+    onViewed(item)
+  }, [onViewed])
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-black pb-20 text-zinc-100">
@@ -116,7 +122,7 @@ export default function RssTimelineBlock({
             selected={selectedIds.has(item.id)}
             onSelect={() => toggleSelection(item.id)}
             onOpen={() => onOpen(item)}
-            onViewed={() => onViewed(item)}
+            onViewed={() => handleViewed(item)}
             onMarkRead={() => onMarkRead([item])}
             onToggleSaved={() => onToggleSaved(item)}
           />
