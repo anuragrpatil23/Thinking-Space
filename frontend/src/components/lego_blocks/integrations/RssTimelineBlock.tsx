@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bookmark, Check, Eye, ListChecks, Rss, X } from 'lucide-react'
+import { Bookmark, Check, EyeOff, ListChecks, Rss, X } from 'lucide-react'
 import type { RssFeedItemBlock, RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { cn } from '@/lib/utils'
 
@@ -213,7 +213,7 @@ function TimelineCard({
             <span className="min-w-0 truncate font-semibold text-white">{feedTitle}</span>
             <span className="text-zinc-500">·</span>
             {dateLabel && <time className="shrink-0 text-zinc-500">{dateLabel}</time>}
-            {wasSeen && <Eye aria-label="Viewed" className={cn('ml-auto h-4 w-4 shrink-0 text-zinc-500 transition-all duration-300', viewedDuringVisit && 'motion-safe:animate-[ping_0.45s_ease-out_1] text-sky-400')} />}
+            {wasSeen && <EyeOff aria-label="Viewed" className="ml-auto h-4 w-4 shrink-0 text-zinc-500" />}
           </div>
           <h3 className={cn('mt-0.5 text-[16px] font-medium leading-[1.35] text-white', !expanded && 'line-clamp-3')}>{item.title || '(Untitled)'}</h3>
           {item.description && <div className={cn('mt-1 whitespace-pre-wrap text-[14px] leading-5 text-zinc-400', !expanded && 'line-clamp-3')}>{item.description}</div>}
