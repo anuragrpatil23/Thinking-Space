@@ -218,7 +218,7 @@ function TimelineCard({
           </button> : <SourceAvatar item={item} feedTitle={feedTitle} />}
       </div>
       <div className="min-w-0 flex-1">
-        <button type="button" onClick={selectionMode ? onSelect : onOpen} className="block w-full text-left active:opacity-75">
+        <button type="button" onClick={selectionMode ? onSelect : onOpen} className="block w-full text-left">
           <div className="flex items-center gap-1 text-[13px] leading-5">
             <span className="min-w-0 truncate font-semibold text-white">{feedTitle}</span>
             <span className="text-zinc-500">·</span>
