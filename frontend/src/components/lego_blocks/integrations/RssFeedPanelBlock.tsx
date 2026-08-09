@@ -168,6 +168,22 @@ export default function RssFeedPanelBlock({
     })
   }, [])
 
+  const mergeStoredPage = useCallback((feedConfigs: RssFeedConfigBlock[], page: RssFeedResultBlock) => {
+    setFeeds(previous => {
+      const byFeedId = new Map(previous.map(feed => [feed.feedId, feed]))
+      const current = byFeedId.get(page.feedId) ?? { feedId: page.feedId, feedTitle: page.feedTitle, items: [], error: null }
+      const items = new Map(current.items.map(item => [item.id, item]))
+      // The live result or an optimistic UI update wins over an older cached
+      // copy of the same article.
+      for (const item of page.items) if (!items.has(item.id)) items.set(item.id, item)
+      const merged = [...items.values()].sort((a, b) => new Date(b.pubDate ?? 0).getTime() - new Date(a.pubDate ?? 0).getTime())
+      byFeedId.set(page.feedId, { ...current, items: merged })
+      return feedConfigs.map(config => byFeedId.get(config.id) ?? {
+        feedId: config.id, feedTitle: config.title, items: [], error: null,
+      })
+    })
+  }, [])
+
   const loadFeeds = useCallback(async (isRefresh = false) => {
     const requestId = rssLoadRequestIdRef.current + 1
     rssLoadRequestIdRef.current = requestId
@@ -205,6 +221,10 @@ export default function RssFeedPanelBlock({
               if (requestId !== rssLoadRequestIdRef.current) return
               mergeFeedResult(feedConfigs, storedResult)
             },
+            onStoredPage: (storedPage) => {
+              if (requestId !== rssLoadRequestIdRef.current) return
+              mergeStoredPage(feedConfigs, storedPage)
+            },
           })
           if (requestId !== rssLoadRequestIdRef.current) return
           mergeFeedResult(feedConfigs, result)
@@ -225,7 +245,7 @@ export default function RssFeedPanelBlock({
       setLoading(false)
       setRefreshing(false)
     }
-  }, [mergeFeedResult])
+  }, [mergeFeedResult, mergeStoredPage])
 
   useEffect(() => {
     void loadFeeds()

@@ -126,26 +126,12 @@ async function ensureRssArticleDirOrch(feedId: string): Promise<void> {
   try { await fs.mkdir(`${RSS_ARTICLES_DIR}/${feedId}`) } catch { /* exists */ }
 }
 
-async function loadStoredFeedItemsOrch(
-  feedId: string,
-  itemIds?: string[],
+async function readStoredFeedFilesOrch(
+  dir: string,
+  files: string[],
 ): Promise<Map<string, RssFeedItemBlock>> {
   const fs = getVaultFS()
-  const dir = `${RSS_ARTICLES_DIR}/${feedId}`
   const result = new Map<string, RssFeedItemBlock>()
-  let files: string[]
-  if (itemIds) {
-    // A live RSS response normally contains a few dozen items; reading their
-    // state is cheap. Reading every retained item on every panel open was not.
-    files = [...new Set(itemIds.map(itemFilenameBlock))]
-  } else {
-    try {
-      const listed = await fs.list(dir)
-      files = listed.files.filter(f => f.endsWith('.md'))
-    } catch {
-      return result // directory doesn't exist yet
-    }
-  }
   // Capacitor filesystem calls resolve on the JS thread. Keep the work in
   // small batches so a large live window never monopolizes a scroll frame.
   for (let offset = 0; offset < files.length; offset += 8) {
@@ -159,6 +145,45 @@ async function loadStoredFeedItemsOrch(
     if (offset + 8 < files.length) await new Promise<void>(resolve => window.setTimeout(resolve, 0))
   }
   return result
+}
+
+async function listStoredFeedFilesOrch(feedId: string): Promise<string[]> {
+  const fs = getVaultFS()
+  const dir = `${RSS_ARTICLES_DIR}/${feedId}`
+  try {
+    const listed = await fs.list(dir)
+    return listed.files.filter(f => f.endsWith('.md'))
+  } catch {
+    return []
+  }
+}
+
+async function loadStoredFeedItemsOrch(feedId: string, itemIds?: string[]): Promise<Map<string, RssFeedItemBlock>> {
+  const dir = `${RSS_ARTICLES_DIR}/${feedId}`
+  const files = itemIds
+    // A live RSS response normally contains a few dozen items; reading their
+    // state is cheap. Reading every retained item on every panel open was not.
+    ? [...new Set(itemIds.map(itemFilenameBlock))]
+    : await listStoredFeedFilesOrch(feedId)
+  return readStoredFeedFilesOrch(dir, files)
+}
+
+/** Hydrate cached, feed-expired articles only after the live window is usable.
+ * The backlog is important (especially unread items), but it must never block
+ * the first scroll. Each page yields to the browser before the next begins. */
+async function streamStoredFeedItemsOrch(
+  feedId: string,
+  onPage: (items: RssFeedItemBlock[]) => void,
+): Promise<void> {
+  const files = await listStoredFeedFilesOrch(feedId)
+  const dir = `${RSS_ARTICLES_DIR}/${feedId}`
+  for (let offset = 0; offset < files.length; offset += 24) {
+    const page = await readStoredFeedFilesOrch(dir, files.slice(offset, offset + 24))
+    if (page.size > 0) onPage([...page.values()])
+    // This is a bounded, active feed-hydration task—not a periodic poll. The
+    // gap gives scrolling and input a frame between retained-cache pages.
+    if (offset + 24 < files.length) await new Promise<void>(resolve => window.setTimeout(resolve, 120))
+  }
 }
 
 async function writeRssItemFileOrch(
@@ -537,7 +562,10 @@ async function fetchRssFeedTextBlock(url: string): Promise<{ status: number; bod
 
 export async function fetchAndParseRssFeedOrch(
   config: RssFeedConfigBlock,
-  options?: { onStoredResult?: (result: RssFeedResultBlock) => void },
+  options?: {
+    onStoredResult?: (result: RssFeedResultBlock) => void
+    onStoredPage?: (result: RssFeedResultBlock) => void
+  },
 ): Promise<RssFeedResultBlock> {
   // On iOS, Capacitor can surface raw readdir plugin errors for missing folders
   // even when the rejection is handled. Create the per-feed cache directory first.
@@ -630,6 +658,15 @@ export async function fetchAndParseRssFeedOrch(
 
     // Purge old articles in the background — doesn't block the UI.
     void purgeOldRssItemsOrch(config.id, getRssRetentionDaysOrch())
+
+    // Restore the retained backlog opportunistically. The panel merges these
+    // pages as they arrive, so a 1,000-item inbox remains intact without the
+    // old eager all-file load on opening the reader.
+    if (options?.onStoredPage) {
+      void streamStoredFeedItemsOrch(config.id, (items) => {
+        options.onStoredPage?.({ feedId: config.id, feedTitle, items, error: null })
+      })
+    }
 
     return { feedId: config.id, feedTitle, items: liveItems, error: null }
   } catch (err) {

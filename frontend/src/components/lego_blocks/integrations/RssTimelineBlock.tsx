@@ -28,23 +28,28 @@ export default function RssTimelineBlock({
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [renderedCount, setRenderedCount] = useState(INITIAL_CARD_COUNT)
+  const [selectedSourceId, setSelectedSourceId] = useState<string>('__all__')
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const entries = useMemo(() => feeds.flatMap(feed => feed.items.map(item => ({ item, feedTitle: feed.feedTitle })))
     .sort((a, b) => new Date(b.item.pubDate ?? 0).getTime() - new Date(a.item.pubDate ?? 0).getTime()), [feeds])
-  const visibleEntries = entries.slice(0, renderedCount)
+  const sources = useMemo(() => feeds.map(feed => ({ id: feed.feedId, title: feed.feedTitle })), [feeds])
+  const filteredEntries = selectedSourceId === '__all__'
+    ? entries
+    : entries.filter(entry => entry.item.feedId === selectedSourceId)
+  const visibleEntries = filteredEntries.slice(0, renderedCount)
 
   useEffect(() => {
-    setRenderedCount(previous => Math.min(Math.max(INITIAL_CARD_COUNT, previous), entries.length || INITIAL_CARD_COUNT))
-  }, [entries.length])
+    setRenderedCount(INITIAL_CARD_COUNT)
+  }, [selectedSourceId, entries.length])
 
   useEffect(() => {
-    if (!loadMoreRef.current || renderedCount >= entries.length || typeof IntersectionObserver === 'undefined') return
+    if (!loadMoreRef.current || renderedCount >= filteredEntries.length || typeof IntersectionObserver === 'undefined') return
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) setRenderedCount(current => Math.min(current + CARD_PAGE_SIZE, entries.length))
+      if (entry.isIntersecting) setRenderedCount(current => Math.min(current + CARD_PAGE_SIZE, filteredEntries.length))
     }, { rootMargin: '900px' })
     observer.observe(loadMoreRef.current)
     return () => observer.disconnect()
-  }, [renderedCount, entries.length])
+  }, [renderedCount, filteredEntries.length])
 
   const toggleSelection = useCallback((id: string) => {
     setSelectedIds(previous => {
@@ -72,10 +77,11 @@ export default function RssTimelineBlock({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-muted/20 pb-20">
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border/50 bg-background/90 px-3 py-2 backdrop-blur">
-        <div className="text-xs text-muted-foreground">
-          {entries.length} article{entries.length === 1 ? '' : 's'} · scroll to mark viewed
-        </div>
+      <div className="sticky top-0 z-10 border-b border-border/50 bg-background/95 backdrop-blur">
+        <div className="flex min-w-0 items-center justify-between px-3 pt-2">
+          <div className="text-xs text-muted-foreground">
+            {filteredEntries.length} article{filteredEntries.length === 1 ? '' : 's'} · scroll to mark viewed
+          </div>
         {selectionMode ? (
           <div className="flex items-center gap-1">
             <button type="button" onClick={markSelectedRead} disabled={selectedItems.length === 0}
@@ -92,6 +98,13 @@ export default function RssTimelineBlock({
             <ListChecks className="h-4 w-4" />
           </button>
         )}
+        </div>
+        <div role="tablist" aria-label="RSS sources" className="mt-2 flex gap-5 overflow-x-auto px-3">
+          <SourceTab active={selectedSourceId === '__all__'} label="For you" onClick={() => setSelectedSourceId('__all__')} />
+          {sources.map(source => (
+            <SourceTab key={source.id} active={selectedSourceId === source.id} label={source.title} onClick={() => setSelectedSourceId(source.id)} />
+          ))}
+        </div>
       </div>
       <div className="mx-auto max-w-2xl space-y-3 p-3">
         {visibleEntries.map(({ item, feedTitle }) => (
@@ -108,9 +121,27 @@ export default function RssTimelineBlock({
             onToggleSaved={() => onToggleSaved(item)}
           />
         ))}
-        {renderedCount < entries.length && <div ref={loadMoreRef} className="h-px" aria-label="Load more articles" />}
+        {renderedCount < filteredEntries.length && <div ref={loadMoreRef} className="h-px" aria-label="Load more articles" />}
       </div>
     </div>
+  )
+}
+
+function SourceTab({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        'relative shrink-0 px-0.5 pb-3 text-[15px] font-semibold transition-colors',
+        active ? 'text-foreground' : 'text-muted-foreground',
+      )}
+    >
+      {label}
+      {active && <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-primary" />}
+    </button>
   )
 }
 
