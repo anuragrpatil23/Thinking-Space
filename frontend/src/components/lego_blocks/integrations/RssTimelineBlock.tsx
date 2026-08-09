@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bookmark, Check, EyeOff, ListChecks, Rss, X } from 'lucide-react'
+import { Bookmark, Check, Eye, ListChecks, Rss, X } from 'lucide-react'
 import type { RssFeedItemBlock, RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { cn } from '@/lib/utils'
 
@@ -208,10 +208,11 @@ function TimelineCard({
       hour: 'numeric', minute: '2-digit',
     })
     : ''
-  const wasSeen = Boolean(item.viewedAt || item.dismissedAt || viewedDuringVisit)
+  const wasViewed = Boolean(item.viewedAt || viewedDuringVisit)
+  const isMarkedRead = markedRead || Boolean(item.dismissedAt)
   const hasMore = item.title.length > 150 || item.description.length > 280
   const confirmMarkRead = () => {
-    if (markedRead) return
+    if (isMarkedRead) return
     setMarkedRead(true)
     markReadTimerRef.current = window.setTimeout(() => {
       markReadTimerRef.current = null
@@ -235,7 +236,7 @@ function TimelineCard({
             <span className="min-w-0 truncate font-semibold text-white">{feedTitle}</span>
             <span className="text-zinc-500">·</span>
             {dateLabel && <time className="shrink-0 text-zinc-500">{dateLabel}</time>}
-            {wasSeen && <EyeOff aria-label="Viewed" className="ml-auto h-4 w-4 shrink-0 text-zinc-500" />}
+            {wasViewed && <Eye aria-label="Viewed" className="ml-auto h-4 w-4 shrink-0 text-zinc-500" />}
           </div>
           <h3 className={cn('mt-0.5 text-[16px] font-medium leading-[1.35] text-white', !expanded && 'line-clamp-3')}>{item.title || '(Untitled)'}</h3>
           {item.description && <div className={cn('mt-1 whitespace-pre-wrap text-[14px] leading-5 text-zinc-400', !expanded && 'line-clamp-3')}>{item.description}</div>}
@@ -243,9 +244,9 @@ function TimelineCard({
         {hasMore && !expanded && <button type="button" onClick={() => setExpanded(true)} className="mt-0.5 text-[15px] text-sky-500">Show more</button>}
         {expanded && hasMore && <button type="button" onClick={() => setExpanded(false)} className="mt-0.5 text-[15px] text-sky-500">Show less</button>}
         {!selectionMode && <div className="mt-1.5 flex items-center gap-1 text-zinc-500">
-          <button type="button" onClick={confirmMarkRead} className={cn('inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-[13px] transition-all duration-200 hover:bg-white/10 hover:text-white active:scale-95', markedRead && 'bg-emerald-500/10 text-emerald-400 motion-safe:animate-[pulse_0.35s_ease-out_1]')} title="Mark read">
-            <Check className={cn('h-4 w-4 transition-transform duration-200', markedRead && 'scale-110')} />
-            {markedRead ? 'Marked' : 'Mark read'}
+          <button type="button" onClick={confirmMarkRead} className={cn('inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-[13px] transition-all duration-200 hover:bg-white/10 hover:text-white active:scale-95', isMarkedRead && 'bg-emerald-500/10 text-emerald-400 motion-safe:animate-[pulse_0.35s_ease-out_1]')} title="Mark read">
+            {isMarkedRead && <Check className="h-4 w-4 scale-110 transition-transform duration-200" />}
+            {isMarkedRead ? 'Marked read' : 'Mark read'}
           </button>
           <button type="button" onClick={onToggleSaved} className={cn('ml-auto rounded-full p-1.5 hover:bg-white/10', item.keep ? 'text-sky-500' : 'text-zinc-500')} title={item.keep ? 'Remove from saved' : 'Save article'}>
             <Bookmark className={cn('h-4 w-4', item.keep && 'fill-current')} />
