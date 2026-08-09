@@ -99,7 +99,7 @@ export default function RssTimelineBlock({
           </button>
         )}
         </div>
-        <div role="tablist" aria-label="RSS sources" className="mt-2 flex gap-5 overflow-x-auto px-3">
+        <div role="tablist" aria-label="RSS sources" className="mt-2 flex gap-5 overflow-x-auto overflow-y-hidden px-3 overscroll-x-contain touch-pan-x">
           <SourceTab active={selectedSourceId === '__all__'} label="For you" onClick={() => setSelectedSourceId('__all__')} />
           {sources.map(source => (
             <SourceTab key={source.id} active={selectedSourceId === source.id} label={source.title} onClick={() => setSelectedSourceId(source.id)} />
