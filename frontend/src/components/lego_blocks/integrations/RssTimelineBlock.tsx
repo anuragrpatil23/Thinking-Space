@@ -76,8 +76,8 @@ export default function RssTimelineBlock({
   }, [selectedItems, onMarkRead, leaveSelection])
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-black pb-20 pt-[calc(var(--ltm-safe-top,0px)+0.25rem)] text-zinc-100">
-      <div className="sticky top-[calc(var(--ltm-safe-top,0px)+0.25rem)] z-10 border-b border-white/10 bg-black/95 backdrop-blur">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-black pb-20 text-zinc-100">
+      <div className="sticky top-0 z-10 border-b border-white/10 bg-black/95 backdrop-blur">
         <div className="flex min-w-0 items-center justify-between px-3 pt-2">
           <div className="text-xs text-zinc-500">
             {filteredEntries.length} article{filteredEntries.length === 1 ? '' : 's'} · scroll to mark viewed
