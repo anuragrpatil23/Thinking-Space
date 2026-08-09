@@ -27,7 +27,7 @@ export default function RssTimelineBlock({
 }: RssTimelineBlockProps) {
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [sessionViewedIds, setSessionViewedIds] = useState<Set<string>>(new Set())
+  const [sessionHandledIds, setSessionHandledIds] = useState<Set<string>>(new Set())
   const [renderedCount, setRenderedCount] = useState(INITIAL_CARD_COUNT)
   const [selectedSourceId, setSelectedSourceId] = useState<string>('__all__')
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
@@ -35,7 +35,7 @@ export default function RssTimelineBlock({
     .sort((a, b) => new Date(b.item.pubDate ?? 0).getTime() - new Date(a.item.pubDate ?? 0).getTime()), [feeds])
   const sources = useMemo(() => feeds.map(feed => ({ id: feed.feedId, title: feed.feedTitle })), [feeds])
   const filteredEntries = selectedSourceId === '__all__'
-    ? entries.filter(({ item }) => !item.read || sessionViewedIds.has(item.id))
+    ? entries.filter(({ item }) => !item.read || sessionHandledIds.has(item.id))
     : entries.filter(entry => entry.item.feedId === selectedSourceId)
   const visibleEntries = filteredEntries.slice(0, renderedCount)
 
@@ -72,14 +72,20 @@ export default function RssTimelineBlock({
 
   const markSelectedRead = useCallback(() => {
     if (selectedItems.length === 0) return
+    setSessionHandledIds(previous => new Set([...previous, ...selectedItems.map(item => item.id)]))
     onMarkRead(selectedItems)
     leaveSelection()
   }, [selectedItems, onMarkRead, leaveSelection])
 
   const handleViewed = useCallback((item: RssFeedItemBlock) => {
-    setSessionViewedIds(previous => new Set(previous).add(item.id))
+    setSessionHandledIds(previous => new Set(previous).add(item.id))
     onViewed(item)
   }, [onViewed])
+
+  const handleMarkRead = useCallback((item: RssFeedItemBlock) => {
+    setSessionHandledIds(previous => new Set(previous).add(item.id))
+    onMarkRead([item])
+  }, [onMarkRead])
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-black pb-20 text-zinc-100">
@@ -123,7 +129,7 @@ export default function RssTimelineBlock({
             onSelect={() => toggleSelection(item.id)}
             onOpen={() => onOpen(item)}
             onViewed={() => handleViewed(item)}
-            onMarkRead={() => onMarkRead([item])}
+            onMarkRead={() => handleMarkRead(item)}
             onToggleSaved={() => onToggleSaved(item)}
           />
         ))}
@@ -237,7 +243,7 @@ function TimelineCard({
         {hasMore && !expanded && <button type="button" onClick={() => setExpanded(true)} className="mt-0.5 text-[15px] text-sky-500">Show more</button>}
         {expanded && hasMore && <button type="button" onClick={() => setExpanded(false)} className="mt-0.5 text-[15px] text-sky-500">Show less</button>}
         {!selectionMode && <div className="mt-1.5 flex items-center gap-1 text-zinc-500">
-          <button type="button" onClick={confirmMarkRead} className={cn('inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-[13px] transition-all duration-200 hover:bg-white/10 hover:text-white active:scale-95', markedRead && 'bg-white/10 text-white motion-safe:animate-[pulse_0.35s_ease-out_1]')} title="Mark read">
+          <button type="button" onClick={confirmMarkRead} className={cn('inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-[13px] transition-all duration-200 hover:bg-white/10 hover:text-white active:scale-95', markedRead && 'bg-emerald-500/10 text-emerald-400 motion-safe:animate-[pulse_0.35s_ease-out_1]')} title="Mark read">
             <Check className={cn('h-4 w-4 transition-transform duration-200', markedRead && 'scale-110')} />
             {markedRead ? 'Marked' : 'Mark read'}
           </button>
