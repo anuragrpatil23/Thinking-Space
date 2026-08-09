@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bookmark, Check, ListChecks, Rss, X } from 'lucide-react'
+import { Bookmark, Check, Eye, ListChecks, Rss, X } from 'lucide-react'
 import type { RssFeedItemBlock, RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { cn } from '@/lib/utils'
 
@@ -161,6 +161,8 @@ function TimelineCard({
   const ref = useRef<HTMLElement | null>(null)
   const timerRef = useRef<number | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [viewedDuringVisit, setViewedDuringVisit] = useState(false)
+  const [markedRead, setMarkedRead] = useState(false)
 
   useEffect(() => {
     if (item.viewedAt || item.dismissedAt || !ref.current || typeof IntersectionObserver === 'undefined') return
@@ -169,6 +171,7 @@ function TimelineCard({
       if (entry.isIntersecting && entry.intersectionRatio >= VIEW_RATIO) {
         if (timerRef.current === null) timerRef.current = window.setTimeout(() => {
           timerRef.current = null
+          setViewedDuringVisit(true)
           onViewed()
         }, VIEW_DWELL_MS)
       } else if (timerRef.current !== null) {
@@ -191,14 +194,13 @@ function TimelineCard({
       hour: 'numeric', minute: '2-digit',
     })
     : ''
-  const wasSeen = Boolean(item.viewedAt || item.dismissedAt)
+  const wasSeen = Boolean(item.viewedAt || item.dismissedAt || viewedDuringVisit)
   const hasMore = item.title.length > 150 || item.description.length > 280
 
   return (
     <article ref={ref} className={cn(
       'relative flex gap-3 border-b border-white/10 bg-black px-4 py-3 transition-colors',
       selected && 'bg-white/10',
-      wasSeen && !selected && 'opacity-70',
     )}>
       <div className="shrink-0 pt-0.5">
         {selectionMode ? <button type="button" onClick={onSelect} className={cn('grid h-8 w-8 place-items-center rounded-full border border-zinc-500', selected && 'border-sky-500 bg-sky-500 text-white')}>
@@ -211,6 +213,7 @@ function TimelineCard({
             <span className="min-w-0 truncate font-semibold text-white">{feedTitle}</span>
             <span className="text-zinc-500">·</span>
             {dateLabel && <time className="shrink-0 text-zinc-500">{dateLabel}</time>}
+            {wasSeen && <Eye aria-label="Viewed" className={cn('ml-auto h-4 w-4 shrink-0 text-zinc-500 transition-all duration-300', viewedDuringVisit && 'motion-safe:animate-[ping_0.45s_ease-out_1] text-sky-400')} />}
           </div>
           <h3 className={cn('mt-0.5 text-[16px] font-medium leading-[1.35] text-white', !expanded && 'line-clamp-3')}>{item.title || '(Untitled)'}</h3>
           {item.description && <div className={cn('mt-1 whitespace-pre-wrap text-[14px] leading-5 text-zinc-400', !expanded && 'line-clamp-3')}>{item.description}</div>}
@@ -218,8 +221,9 @@ function TimelineCard({
         {hasMore && !expanded && <button type="button" onClick={() => setExpanded(true)} className="mt-0.5 text-[15px] text-sky-500">Show more</button>}
         {expanded && hasMore && <button type="button" onClick={() => setExpanded(false)} className="mt-0.5 text-[15px] text-sky-500">Show less</button>}
         {!selectionMode && <div className="mt-1.5 flex items-center gap-1 text-zinc-500">
-          <button type="button" onClick={onMarkRead} className="rounded-full p-1.5 hover:bg-white/10 hover:text-white" title="Mark read">
-            <Check className="h-4 w-4" />
+          <button type="button" onClick={() => { setMarkedRead(true); onMarkRead() }} className={cn('inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-[13px] transition-all duration-200 hover:bg-white/10 hover:text-white active:scale-95', markedRead && 'text-sky-400')} title="Mark read">
+            <Check className={cn('h-4 w-4 transition-transform duration-200', markedRead && 'scale-110')} />
+            {markedRead ? 'Marked' : 'Mark read'}
           </button>
           <button type="button" onClick={onToggleSaved} className={cn('ml-auto rounded-full p-1.5 hover:bg-white/10', item.keep ? 'text-sky-500' : 'text-zinc-500')} title={item.keep ? 'Remove from saved' : 'Save article'}>
             <Bookmark className={cn('h-4 w-4', item.keep && 'fill-current')} />
