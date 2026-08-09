@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils'
 
 const VIEW_RATIO = 0.6
 const VIEW_DWELL_MS = 900
+const INITIAL_CARD_COUNT = 12
+const CARD_PAGE_SIZE = 8
 
 interface RssTimelineBlockProps {
   feeds: RssFeedResultBlock[]
@@ -25,8 +27,24 @@ export default function RssTimelineBlock({
 }: RssTimelineBlockProps) {
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [renderedCount, setRenderedCount] = useState(INITIAL_CARD_COUNT)
+  const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const entries = useMemo(() => feeds.flatMap(feed => feed.items.map(item => ({ item, feedTitle: feed.feedTitle })))
     .sort((a, b) => new Date(b.item.pubDate ?? 0).getTime() - new Date(a.item.pubDate ?? 0).getTime()), [feeds])
+  const visibleEntries = entries.slice(0, renderedCount)
+
+  useEffect(() => {
+    setRenderedCount(previous => Math.min(Math.max(INITIAL_CARD_COUNT, previous), entries.length || INITIAL_CARD_COUNT))
+  }, [entries.length])
+
+  useEffect(() => {
+    if (!loadMoreRef.current || renderedCount >= entries.length || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setRenderedCount(current => Math.min(current + CARD_PAGE_SIZE, entries.length))
+    }, { rootMargin: '900px' })
+    observer.observe(loadMoreRef.current)
+    return () => observer.disconnect()
+  }, [renderedCount, entries.length])
 
   const toggleSelection = useCallback((id: string) => {
     setSelectedIds(previous => {
@@ -76,7 +94,7 @@ export default function RssTimelineBlock({
         )}
       </div>
       <div className="mx-auto max-w-2xl space-y-3 p-3">
-        {entries.map(({ item, feedTitle }) => (
+        {visibleEntries.map(({ item, feedTitle }) => (
           <TimelineCard
             key={item.id}
             item={item}
@@ -90,6 +108,7 @@ export default function RssTimelineBlock({
             onToggleSaved={() => onToggleSaved(item)}
           />
         ))}
+        {renderedCount < entries.length && <div ref={loadMoreRef} className="h-px" aria-label="Load more articles" />}
       </div>
     </div>
   )

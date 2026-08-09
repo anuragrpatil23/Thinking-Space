@@ -126,24 +126,38 @@ async function ensureRssArticleDirOrch(feedId: string): Promise<void> {
   try { await fs.mkdir(`${RSS_ARTICLES_DIR}/${feedId}`) } catch { /* exists */ }
 }
 
-async function loadStoredFeedItemsOrch(feedId: string): Promise<Map<string, RssFeedItemBlock>> {
+async function loadStoredFeedItemsOrch(
+  feedId: string,
+  itemIds?: string[],
+): Promise<Map<string, RssFeedItemBlock>> {
   const fs = getVaultFS()
   const dir = `${RSS_ARTICLES_DIR}/${feedId}`
   const result = new Map<string, RssFeedItemBlock>()
   let files: string[]
-  try {
-    const listed = await fs.list(dir)
-    files = listed.files.filter(f => f.endsWith('.md'))
-  } catch {
-    return result // directory doesn't exist yet
-  }
-  await Promise.all(files.map(async filename => {
+  if (itemIds) {
+    // A live RSS response normally contains a few dozen items; reading their
+    // state is cheap. Reading every retained item on every panel open was not.
+    files = [...new Set(itemIds.map(itemFilenameBlock))]
+  } else {
     try {
-      const content = await fs.read(`${dir}/${filename}`)
-      const item = parseRssItemFileBlock(content)
-      if (item?.id) result.set(item.id, item)
-    } catch { /* skip unreadable files */ }
-  }))
+      const listed = await fs.list(dir)
+      files = listed.files.filter(f => f.endsWith('.md'))
+    } catch {
+      return result // directory doesn't exist yet
+    }
+  }
+  // Capacitor filesystem calls resolve on the JS thread. Keep the work in
+  // small batches so a large live window never monopolizes a scroll frame.
+  for (let offset = 0; offset < files.length; offset += 8) {
+    await Promise.all(files.slice(offset, offset + 8).map(async filename => {
+      try {
+        const content = await fs.read(`${dir}/${filename}`)
+        const item = parseRssItemFileBlock(content)
+        if (item?.id) result.set(item.id, item)
+      } catch { /* state file may not exist yet */ }
+    }))
+    if (offset + 8 < files.length) await new Promise<void>(resolve => window.setTimeout(resolve, 0))
+  }
   return result
 }
 
@@ -528,13 +542,10 @@ export async function fetchAndParseRssFeedOrch(
   // On iOS, Capacitor can surface raw readdir plugin errors for missing folders
   // even when the rejection is handled. Create the per-feed cache directory first.
   await ensureRssArticleDirOrch(config.id)
-  // Always load stored items first — used for merging and as offline fallback.
-  const storedItems = await loadStoredFeedItemsOrch(config.id)
-  options?.onStoredResult?.(buildStoredResultBlock(config, storedItems, null))
-
   try {
     const response = await fetchRssFeedTextBlock(config.url)
     if (response.status < 200 || response.status >= 300) {
+      const storedItems = await loadStoredFeedItemsOrch(config.id)
       return buildStoredResultBlock(config, storedItems, `HTTP ${response.status}`)
     }
 
@@ -549,7 +560,7 @@ export async function fetchAndParseRssFeedOrch(
     const feedTitleRaw = feedAny.title
     const feedTitle = (typeof feedTitleRaw === 'string' ? feedTitleRaw.trim() : '') || config.title
 
-    const liveItems: RssFeedItemBlock[] = entries.map(item => {
+    const parsedLiveItems: RssFeedItemBlock[] = entries.map(item => {
       const guidObj = item.guid as { value?: string } | undefined
       const guid = typeof item.id === 'string' ? item.id : guidObj?.value
       const linkRaw = item.link ?? item.url
@@ -572,13 +583,6 @@ export async function fetchAndParseRssFeedOrch(
       )
       const id = normalizeRssFeedItemIdBlock(config.id, guid, link, title)
 
-      // Vault-backed state is the only authority. Device-local fallback state
-      // made a read action appear to sync only sometimes.
-      const stored = storedItems.get(id)
-      const viewedAt = stored?.viewedAt ?? null
-      const dismissedAt = stored?.dismissedAt ?? null
-      const read = Boolean(viewedAt || dismissedAt)
-
       return {
         id,
         feedId: config.id,
@@ -586,7 +590,27 @@ export async function fetchAndParseRssFeedOrch(
         link: link ?? '',
         description: stripHtmlBlock(description),
         pubDate,
-        read,
+        read: false,
+        viewedAt: null,
+        dismissedAt: null,
+        tags: [],
+        keep: false,
+        important: false,
+      }
+    })
+
+    // Fetch/parse first; then only hydrate durable state for articles the feed
+    // still publishes. The old path eagerly opened every retained markdown
+    // file (often hundreds per feed) before showing one row.
+    const storedItems = await loadStoredFeedItemsOrch(config.id, parsedLiveItems.map(item => item.id))
+    options?.onStoredResult?.(buildStoredResultBlock(config, storedItems, null))
+    const liveItems = parsedLiveItems.map(item => {
+      const stored = storedItems.get(item.id)
+      const viewedAt = stored?.viewedAt ?? null
+      const dismissedAt = stored?.dismissedAt ?? null
+      return {
+        ...item,
+        read: Boolean(viewedAt || dismissedAt),
         viewedAt,
         dismissedAt,
         tags: stored?.tags ?? [],
@@ -602,18 +626,16 @@ export async function fetchAndParseRssFeedOrch(
       await Promise.all(newItems.map(item => writeRssItemFileOrch(config.id, feedTitle, item)))
     }
 
-    // Merge: live items (updated read state) + stored-only items (no longer in feed).
-    const liveIds = new Set(liveItems.map(i => i.id))
-    const storedOnlyItems = [...storedItems.values()].filter(i => !liveIds.has(i.id))
-    const allItems = [...liveItems, ...storedOnlyItems]
-    sortByPubDateDesc(allItems)
+    sortByPubDateDesc(liveItems)
 
     // Purge old articles in the background — doesn't block the UI.
     void purgeOldRssItemsOrch(config.id, getRssRetentionDaysOrch())
 
-    return { feedId: config.id, feedTitle, items: allItems, error: null }
+    return { feedId: config.id, feedTitle, items: liveItems, error: null }
   } catch (err) {
-    // Offline or fetch failed — return whatever we have stored.
+    // Offline is the only time we pay the full cache read. It preserves the
+    // previous offline reader without taxing the normal online timeline.
+    const storedItems = await loadStoredFeedItemsOrch(config.id)
     if (storedItems.size > 0) {
       return buildStoredResultBlock(config, storedItems, err instanceof Error ? err.message : 'Fetch failed')
     }

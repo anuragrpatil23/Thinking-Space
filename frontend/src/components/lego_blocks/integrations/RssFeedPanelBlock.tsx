@@ -192,7 +192,13 @@ export default function RssFeedPanelBlock({
       setLoadingFeedIds(new Set(feedConfigs.map((config) => config.id)))
       setLoading(false)
 
-      await Promise.all(feedConfigs.map(async (config) => {
+      // Network responses, XML parsing, and native filesystem state hydration
+      // all settle on the renderer. A feed-sized worker pool keeps the first
+      // cards responsive instead of starting every configured source at once.
+      let nextConfigIndex = 0
+      const loadOne = async () => {
+        const config = feedConfigs[nextConfigIndex++]
+        if (!config) return
         try {
           const result = await fetchAndParseRssFeedOrch(config, {
             onStoredResult: (storedResult) => {
@@ -211,7 +217,10 @@ export default function RssFeedPanelBlock({
             return next
           })
         }
-      }))
+        await new Promise<void>(resolve => window.setTimeout(resolve, 0))
+        await loadOne()
+      }
+      await Promise.all(Array.from({ length: Math.min(3, feedConfigs.length) }, loadOne))
     } finally {
       setLoading(false)
       setRefreshing(false)
