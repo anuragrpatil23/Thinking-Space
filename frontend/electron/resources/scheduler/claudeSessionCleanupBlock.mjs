@@ -12,6 +12,11 @@
 //
 // Given a session id, we remove:
 //
+//   - Its entries in `~/.claude/history.jsonl`. Native
+//     `--no-session-persistence` does not write this log on current Claude
+//     CLI versions, but legacy/plain invocations do; the activity importer
+//     reconstructs deleted sessions from it, so cleanup removes it too.
+//
 //   - The Claude Code transcript at
 //     `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`.
 //     The encoded-cwd segment is unknown to us (Claude Code derives it
@@ -28,13 +33,14 @@
 // so it works identically from runner.mjs (imported at load time) and
 // from the Electron main process (dynamic-imported at runtime).
 
-import { existsSync, readdirSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const HOME = homedir();
 
 export const CLAUDE_PROJECTS_DIR = join(HOME, '.claude', 'projects');
+export const CLAUDE_HISTORY_PATH = join(HOME, '.claude', 'history.jsonl');
 
 // Vault location where render-session.sh drops rendered session markdown.
 // Kept in one place so both runner.mjs and the summarizer path point at the
@@ -55,7 +61,39 @@ export function deleteClaudeSessionFilesBlock(sessionId) {
   const removed = [];
   if (!sessionId || typeof sessionId !== 'string') return removed;
 
-  // 1. JSONL transcripts under ~/.claude/projects/<encoded-cwd>/<sid>.jsonl.
+  // 1. Claude's permanent prompt log. Native no-persistence currently skips
+  // it, but legacy/plain CLI invocations write here. AI activity deliberately
+  // rebuilds missing transcripts from this log, so cleanup must remove any
+  // legacy entry before deleting the corresponding transcript.
+  // Preserve malformed lines rather than risking unrelated history if a
+  // future CLI version changes its record shape.
+  if (existsSync(CLAUDE_HISTORY_PATH)) {
+    try {
+      const source = readFileSync(CLAUDE_HISTORY_PATH, 'utf8');
+      const lines = source.split(/\r?\n/);
+      let changed = false;
+      const kept = lines.filter((line) => {
+        if (!line) return true;
+        try {
+          const entry = JSON.parse(line);
+          if (entry?.sessionId === sessionId) {
+            changed = true;
+            return false;
+          }
+        } catch { /* preserve unknown/malformed history lines */ }
+        return true;
+      });
+      if (changed) {
+        const next = kept.join('\n');
+        const temp = `${CLAUDE_HISTORY_PATH}.${process.pid}.tmp`;
+        writeFileSync(temp, next, 'utf8');
+        renameSync(temp, CLAUDE_HISTORY_PATH);
+        removed.push(CLAUDE_HISTORY_PATH);
+      }
+    } catch { /* best effort */ }
+  }
+
+  // 2. JSONL transcripts under ~/.claude/projects/<encoded-cwd>/<sid>.jsonl.
   if (existsSync(CLAUDE_PROJECTS_DIR)) {
     let projects;
     try { projects = readdirSync(CLAUDE_PROJECTS_DIR); } catch { projects = []; }
@@ -68,7 +106,7 @@ export function deleteClaudeSessionFilesBlock(sessionId) {
     }
   }
 
-  // 2. Vault md mirror keyed by `YYYY-MM-DD_<sid8>[_slug].md`. We don't
+  // 3. Vault md mirror keyed by `YYYY-MM-DD_<sid8>[_slug].md`. We don't
   // know the date/slug, so match on the 8-char short-id prefix.
   if (existsSync(VAULT_CLAUDE_SESSIONS_DIR)) {
     const shortId = sessionId.slice(0, 8);

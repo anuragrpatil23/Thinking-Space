@@ -1017,13 +1017,13 @@ function parseClaudeJsonOutput(stdout) {
 
 // One-shot incognito Claude call — the SAME recipe as the app's intelligence
 // claude-cli provider (frontend/electron/src/lego_blocks/claudeCliBlock.ts):
-// `--output-format json` to capture session_id, THINKSPC_INCOGNITO=1 so a
-// SessionEnd hook can early-exit, then a TWO-PASS cleanup (immediate + ~1.2s
-// later) to win the race against the hook writing the vault mirror. Any
-// scheduled job that needs generated text (commit messages, etc.) should
-// route through this instead of hand-rolling its own `claude -p` + cleanup.
+// `--no-session-persistence` is Claude's native incognito mode. Keep the
+// existing hook flag and two-pass cleanup as rollout defense-in-depth until
+// native no-persistence has proven itself across scheduled jobs. Any scheduled
+// job that needs generated text (commit messages, etc.) should route through
+// this instead of hand-rolling its own `claude -p` + cleanup.
 async function runClaudeIncognito({ model, system, prompt, timeoutMs = 60_000 }) {
-  const args = ['-p'];
+  const args = ['-p', '--no-session-persistence'];
   if (model) args.push('--model', model);
   if (system) args.push('--system-prompt', system);
   args.push('--output-format', 'json');

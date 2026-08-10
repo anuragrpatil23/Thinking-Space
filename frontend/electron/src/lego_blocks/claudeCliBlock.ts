@@ -18,7 +18,9 @@ import { readPersistedVaultRootBlock } from './vaultRootPersistenceBlock';
 //     tools or a JSON schema they should stay on the SDK provider.
 //   - `--model` accepts aliases (haiku/sonnet/opus) or full model ids.
 //
-// Incognito: every invocation is captured by Claude Code as a JSONL under
+// Incognito: `--no-session-persistence` is the primary boundary. The existing
+// cleanup fallback remains during rollout because older CLI versions may still
+// capture a JSONL under
 // `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`, and the user's
 // SessionEnd hook mirrors it into the vault at `ai-activity/raw-sessions/claude-code/`.
 // Because THIS caller is the AI-activity summarizer itself, letting those
@@ -190,7 +192,7 @@ export async function invokeClaudeCliChatBlock(
   request: ClaudeCliChatRequestBlock,
 ): Promise<ClaudeCliChatResponseBlock> {
   const started = Date.now();
-  const args = ['-p'];
+  const args = ['-p', '--no-session-persistence'];
   if (request.model) args.push('--model', request.model);
   if (request.system) args.push('--system-prompt', request.system);
   // json output gives us `session_id` + `result` in one buffered payload so
