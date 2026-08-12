@@ -28,6 +28,14 @@ const IGNORED_GLOBS: RegExp[] = [
   /(^|[\\/])\.DS_Store$/,
   /(^|[\\/])\.trash([\\/]|$)/,
   /(^|[\\/])\.thinkspc[\\/]cache/,
+  // App-managed state, not user content. `home-snapshot.json` in particular is
+  // regenerated after every vault sync, so watching it closed a feedback loop:
+  // sync writes the snapshot -> watcher reports it -> renderer syncs -> repeat.
+  // Self-write suppression was supposed to break that, but its window is 3s
+  // and polled events arrived at 2.3s+, so it missed intermittently and the
+  // loop sustained itself. Measured 2026-08-11: this file was being rewritten
+  // every ~2s (37KB, into an iCloud-synced folder) with the app fully idle.
+  /(^|[\\/])\.thinking-space([\\/]|$)/,
 ];
 
 function isIgnored(p: string): boolean {
@@ -54,21 +62,30 @@ export function startVaultWatcherBlock(
     return { ok: true };
   }
 
-  // iCloud-backed vaults don't reliably emit native FSEvents for external
-  // writes (e.g. CLI processes editing files while the app is open). Without
-  // polling, those changes only land in the renderer's IndexedDB cache when
-  // the user manually rebuilds or returns focus to the window — leaving
-  // titles/parents/new files visibly stale. Native paths skip polling.
-  const isICloudPath = /\/Library\/Mobile Documents\//.test(vaultRoot);
-
+  // NEVER enable polling here. This watcher previously forced
+  // `usePolling: true, interval: 2000, depth: 99` for iCloud vaults, on the
+  // belief that iCloud-backed paths don't emit native FSEvents for external
+  // writes (e.g. a CLI process editing files while the app is open).
+  //
+  // That belief was tested on 2026-08-11 against a real 20,842-file iCloud
+  // vault and is false for local external writes: an unrelated Node process
+  // creating, appending to, and deleting a file in the vault produced add /
+  // change / unlink events with polling off, at **0.1% of one core** at idle.
+  // With polling on, the main process sat at 67-84% CPU while completely idle
+  // — ~10k stat syscalls/second plus a full JS diff, forever, measured with
+  // `/usr/bin/sample` (libuv workers in scandir/stat, main thread in
+  // node::fs::AfterStat). That was the single largest energy cost in the app.
+  //
+  // The case FSEvents may still miss is a change syncing *down* from another
+  // device. That is covered by the focus/visibilitychange reconciliation in
+  // `vaultLiveRefreshOrch` — a full vault walk costs ~0.13s warm, so it is
+  // affordable on focus and ruinous at 2s intervals.
   try {
     const watcher = chokidar.watch(vaultRoot, {
       ignored: (p: string) => isIgnored(p),
       ignoreInitial: true,
       persistent: true,
-      usePolling: isICloudPath,
-      interval: 2000,
-      binaryInterval: 5000,
+      usePolling: false,
       awaitWriteFinish: {
         stabilityThreshold: 300,
         pollInterval: 100,
