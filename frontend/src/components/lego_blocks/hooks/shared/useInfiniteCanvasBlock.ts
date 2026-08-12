@@ -8,6 +8,27 @@ export interface CanvasTransform {
 
 export type CanvasEdge = 'top' | 'right' | 'bottom' | 'left'
 
+function prefersReducedMotionBlock(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+/**
+ * UIScrollView's resistance curve, used verbatim rather than reinvented.
+ *
+ * Asymptotic: you can drag forever and it approaches `c * dim` without ever
+ * reaching it, so there is no wall to hit and no travel cap to tune. The
+ * derivative at zero is `c`, meaning content moves at 55% of the pointer the
+ * instant you cross the edge and stiffens continuously from there — that
+ * "heavy from the first pixel" quality is most of what reads as native. Free
+ * travel followed by a sudden wall is what reads as a web page.
+ */
+function rubberBandBlock(distance: number, dimension: number, c = 0.55): number {
+  const sign = distance < 0 ? -1 : 1
+  const x = Math.abs(distance)
+  return sign * ((x * dimension * c) / (dimension + c * x))
+}
+
 export interface UseInfiniteCanvasOptions {
   worldWidth?: number
   worldHeight?: number
@@ -40,6 +61,10 @@ export interface UseInfiniteCanvasOptions {
 export interface UseInfiniteCanvasResult {
   transform: CanvasTransform
   containerRef: React.RefObject<HTMLDivElement>
+  /** Attach to a wrapper around the board. The hook writes the rubber-band
+   *  offset straight to its `style.transform`; it must carry no other
+   *  transform of its own. */
+  overscrollRef: React.RefObject<HTMLDivElement>
   resetZoom: () => void
   centerOnWorld: (worldX: number, worldY: number) => void
   worldWidth: number
@@ -64,6 +89,92 @@ export function useInfiniteCanvasBlock(
   const clampMinScaleToFit = opts.clampMinScaleToFit ?? false
 
   const containerRef = useRef<HTMLDivElement | null>(null)
+
+  // --- Rubber band -------------------------------------------------------
+  //
+  // Replaces the edge-flash aurora. Pushing past the board's limit stretches
+  // the content with resistance and springs it back on release, so the edge is
+  // reported through the pointer rather than through a light you might not be
+  // looking at.
+  //
+  // Presentation-only by construction: the overscroll offset is written
+  // straight to a wrapper element's `style.transform` and NEVER enters
+  // `transform` state. Tile culling, the minimap, coordinate math and
+  // persistence therefore keep seeing the clamped value and need to know
+  // nothing about this. It also means the release spring runs without a single
+  // React render — a 60fps spring routed through setState would re-render every
+  // tile for the duration, which is the cost this whole effort is removing.
+  const overscrollRef = useRef<HTMLDivElement | null>(null)
+  const overscrollRafRef = useRef<number | null>(null)
+  const overscrollRafActiveRef = useRef(false)
+  const overscrollValueRef = useRef({ x: 0, y: 0 })
+
+  const writeOverscroll = useCallback((x: number, y: number) => {
+    overscrollValueRef.current = { x, y }
+    const el = overscrollRef.current
+    if (!el) return
+    el.style.transform = x === 0 && y === 0 ? '' : `translate3d(${x}px, ${y}px, 0)`
+  }, [])
+
+  const cancelOverscrollSpring = useCallback(() => {
+    if (overscrollRafRef.current !== null) {
+      cancelAnimationFrame(overscrollRafRef.current)
+      overscrollRafRef.current = null
+    }
+    overscrollRafActiveRef.current = false
+  }, [])
+
+  /**
+   * Springs the overscroll offset back to zero.
+   *
+   * Critically damped (damping ratio exactly 1) so it settles without
+   * overshoot — a bouncy return is the single clearest tell of a web page
+   * imitating a native scroll view. Runs on rAF rather than a CSS transition
+   * because it has to be interruptible: grabbing the canvas mid-spring must
+   * pick up from wherever the content currently is, not snap or stutter.
+   */
+  const startOverscrollSpring = useCallback(() => {
+    cancelOverscrollSpring()
+    const start = overscrollValueRef.current
+    if (start.x === 0 && start.y === 0) return
+
+    if (prefersReducedMotionBlock()) {
+      writeOverscroll(0, 0)
+      return
+    }
+
+    const OMEGA = 22 // rad/s — ~300ms to visually settle
+    let last = performance.now()
+    let px = start.x
+    let py = start.y
+    let vx = 0
+    let vy = 0
+
+    overscrollRafActiveRef.current = true
+    const step = (now: number) => {
+      // Clamp dt so a dropped frame or a backgrounded tab cannot fling the
+      // spring past its rest position on resume.
+      const dt = Math.min(0.032, (now - last) / 1000)
+      last = now
+
+      const ax = -2 * OMEGA * vx - OMEGA * OMEGA * px
+      const ay = -2 * OMEGA * vy - OMEGA * OMEGA * py
+      vx += ax * dt
+      vy += ay * dt
+      px += vx * dt
+      py += vy * dt
+
+      if (Math.abs(px) < 0.1 && Math.abs(py) < 0.1 && Math.hypot(vx, vy) < 1) {
+        writeOverscroll(0, 0)
+        overscrollRafRef.current = null
+        overscrollRafActiveRef.current = false
+        return
+      }
+      writeOverscroll(px, py)
+      overscrollRafRef.current = requestAnimationFrame(step)
+    }
+    overscrollRafRef.current = requestAnimationFrame(step)
+  }, [cancelOverscrollSpring, writeOverscroll])
   const [transform, setTransform] = useState<CanvasTransform>(() => ({
     x: -worldWidth / 2 + (typeof window !== 'undefined' ? window.innerWidth / 2 : 0),
     y: -worldHeight / 2 + (typeof window !== 'undefined' ? window.innerHeight / 2 : 0),
@@ -282,6 +393,10 @@ export function useInfiniteCanvasBlock(
     }
 
     const onDown = (e: PointerEvent) => {
+      // Grabbing mid-spring must continue from wherever the content is now.
+      // A non-interruptible return animation is the clearest "this is a web
+      // page" tell there is.
+      cancelOverscrollSpring()
       const target = e.target as HTMLElement | null
       if (!target?.closest('[data-canvas-backdrop="true"]')) return
       if (
@@ -342,6 +457,25 @@ export function useInfiniteCanvasBlock(
         }
         const clamped = clampTransform(desired)
         setTransform(clamped)
+
+        // Whatever the clamp refused to give is the overscroll. Feed it through
+        // the resistance curve and hand it to the wrapper — the clamped value
+        // above is still what the rest of the canvas sees.
+        const { width: viewW, height: viewH } = viewportRef.current
+        const rawX = desired.x - clamped.x
+        const rawY = desired.y - clamped.y
+        if (rawX !== 0 || rawY !== 0) {
+          cancelOverscrollSpring()
+          writeOverscroll(
+            rubberBandBlock(rawX, viewW),
+            rubberBandBlock(rawY, viewH),
+          )
+        } else if (overscrollValueRef.current.x !== 0 || overscrollValueRef.current.y !== 0) {
+          // Dragged back inside the bounds without lifting — release the
+          // stretch immediately so it tracks the pointer instead of lagging.
+          writeOverscroll(0, 0)
+        }
+
         const cb = onEdgeHitRef.current
         if (cb) {
           if (clamped.x > desired.x) cb('right')
@@ -380,6 +514,9 @@ export function useInfiniteCanvasBlock(
       } else if (pointers.size === 0) {
         mode = 'idle'
       }
+      // Gesture over: let the stretch spring home. Safe to call unconditionally
+      // — it returns immediately when there is no overscroll to release.
+      if (mode === 'idle') startOverscrollSpring()
     }
 
     el.addEventListener('pointerdown', onDown)
@@ -394,7 +531,7 @@ export function useInfiniteCanvasBlock(
       el.removeEventListener('pointercancel', onUp)
       el.removeEventListener('pointerleave', onUp)
     }
-  }, [clampTransform, minScale, maxScale])
+  }, [clampTransform, minScale, maxScale, cancelOverscrollSpring, startOverscrollSpring, writeOverscroll])
 
   const resetZoom = useCallback(() => {
     setTransform(clampTransform({
@@ -416,6 +553,7 @@ export function useInfiniteCanvasBlock(
   return {
     transform,
     containerRef: containerRef as React.RefObject<HTMLDivElement>,
+    overscrollRef: overscrollRef as React.RefObject<HTMLDivElement>,
     resetZoom,
     centerOnWorld,
     worldWidth,

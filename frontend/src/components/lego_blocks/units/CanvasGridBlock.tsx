@@ -54,13 +54,7 @@ interface Props {
   borderRadius?: number
 }
 
-/**
- * Opacity of the always-present grid. Low enough to read as paper texture
- * rather than as UI, so the thickened dots under the pointer still register as
- * a response rather than just "more of the same".
- */
-const RESTING_GRID_OPACITY = 0.4
-/** Pointer-adjacent dots are drawn fatter, which is what reads as "thicken". */
+/** Revealed dots are drawn slightly fatter than a hairline so they read. */
 const POOL_DOT_SCALE = 1.6
 
 /**
@@ -81,7 +75,6 @@ function CanvasGridBlock({
   borderRadius = 0,
 }: Props) {
   const poolRef = useRef<HTMLDivElement | null>(null)
-  const baseRef = useRef<HTMLDivElement | null>(null)
   const rectRef = useRef(rect)
   rectRef.current = rect
 
@@ -145,8 +138,8 @@ function CanvasGridBlock({
     }
   }, [dotSpacing])
 
-  // Panning moves the board under a stationary pointer, so both layers have to
-  // be repositioned on rect changes too — not just on pointer movement.
+  // Panning moves the board under a stationary pointer, so the pool has to be
+  // repositioned on rect changes too — not just on pointer movement.
   useEffect(() => {
     const el = poolRef.current
     if (el) {
@@ -160,18 +153,6 @@ function CanvasGridBlock({
       el.style.opacity = inside ? '1' : '0'
     }
 
-    // The resting grid is viewport-sized, not board-sized, and rides the pan
-    // with a transform snapped to the dot lattice. Because the pattern repeats
-    // every `dotSpacing`, a layer parked at the nearest lattice point at or
-    // before the viewport's edge is indistinguishable from an infinite grid —
-    // so an infinite-looking grid costs one viewport of raster and a transform,
-    // instead of a 4500x4500 texture and a layout invalidation per frame.
-    const base = baseRef.current
-    if (base) {
-      const tx = Math.floor(-rect.left / dotSpacing) * dotSpacing
-      const ty = Math.floor(-rect.top / dotSpacing) * dotSpacing
-      base.style.transform = `translate3d(${tx}px, ${ty}px, 0)`
-    }
   }, [rect, dotSpacing])
 
   // Radius changes only on hover-a-card or press — never during movement — so
@@ -193,26 +174,9 @@ function CanvasGridBlock({
         pointerEvents: 'none',
       }}
     >
-      {/* Resting grid: always there, faint. Gives the board a surface even
-          when the pointer is elsewhere, so the canvas reads as a place rather
-          than as empty space that lights up. */}
-      <div
-        ref={baseRef}
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          width: `calc(100vw + ${dotSpacing * 2}px)`,
-          height: `calc(100vh + ${dotSpacing * 2}px)`,
-          opacity: RESTING_GRID_OPACITY,
-          backgroundImage: `radial-gradient(circle, ${dotColor} ${dotSize}px, transparent ${dotSize + 0.5}px)`,
-          backgroundSize: `${dotSpacing}px ${dotSpacing}px`,
-          willChange: 'transform',
-        }}
-      />
-
-      {/* Thickened dots that follow the pointer. Same lattice, fatter dots, so
-          the grid appears to respond rather than a second thing appearing. */}
+      {/* Dots revealed around the pointer. Tried an always-visible resting grid
+          underneath this (2026-08-12) and it read as clutter — the canvas wants
+          to be empty until you reach into it. */}
       <div
         ref={poolRef}
         style={{
