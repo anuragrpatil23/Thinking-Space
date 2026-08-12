@@ -341,6 +341,15 @@ export default function CanvasSurfaceOrch({
     )
   }
 
+  const bloomRect = useMemo(
+    () => ({
+      left: transform.x,
+      top: transform.y,
+      width: worldWidth * transform.scale,
+      height: worldHeight * transform.scale,
+    }),
+    [transform.x, transform.y, transform.scale, worldWidth, worldHeight],
+  )
   const minimapViewport = useMemo(() => ({ width: viewW, height: viewH }), [viewW, viewH])
 
   const toolbarPos = (() => {
@@ -493,12 +502,9 @@ export default function CanvasSurfaceOrch({
       <CanvasBloomBlock
         ref={bloomRef}
         dotColor={theme.bloomDot}
-        rect={{
-          left: transform.x,
-          top: transform.y,
-          width: worldWidth * transform.scale,
-          height: worldHeight * transform.scale,
-        }}
+        rect={bloomRect}
+        viewportWidth={viewW}
+        viewportHeight={viewH}
       />
 
       <div

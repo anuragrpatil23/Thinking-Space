@@ -8,7 +8,12 @@ interface ScreenRect {
 }
 
 interface Props {
+  /** Board rect in container coordinates. */
   rect: ScreenRect
+  /** Container viewport size, used to clip the board rect down to what's
+   * actually on screen. */
+  viewportWidth: number
+  viewportHeight: number
   baseRadius?: number
   intensifiedRadius?: number
   dotSize?: number
@@ -25,6 +30,8 @@ export interface CanvasBloomHandle {
 const CanvasBloomBlock = memo(
   forwardRef<CanvasBloomHandle, Props>(function CanvasBloomBlock({
   rect,
+  viewportWidth,
+  viewportHeight,
   baseRadius = 220,
   intensifiedRadius = 340,
   dotSize = 1,
@@ -49,6 +56,8 @@ const CanvasBloomBlock = memo(
   const target = useRef({ x: -9999, y: -9999, opacity: 0 })
   const rectRef = useRef(rect)
   rectRef.current = rect
+  // Element origin in container coords — the glow center is relative to it.
+  const originRef = useRef({ x: 0, y: 0 })
 
   useEffect(() => {
     const schedule = () => {
@@ -57,10 +66,10 @@ const CanvasBloomBlock = memo(
         rafRef.current = null
         const el = ref.current
         if (!el) return
-        const r = rectRef.current
-        // bloom coords are relative to the bloom element, which is positioned at the rect
-        el.style.setProperty('--bloom-x', `${target.current.x - r.left}px`)
-        el.style.setProperty('--bloom-y', `${target.current.y - r.top}px`)
+        const o = originRef.current
+        // bloom coords are relative to the bloom element's own top-left
+        el.style.setProperty('--bloom-x', `${target.current.x - o.x}px`)
+        el.style.setProperty('--bloom-y', `${target.current.y - o.y}px`)
         el.style.setProperty('--bloom-opacity', `${target.current.opacity}`)
       })
     }
@@ -87,6 +96,23 @@ const CanvasBloomBlock = memo(
     }
   }, [])
 
+  // Size the element to the *intersection* of the board and the viewport, not
+  // to either one alone. Sizing it to the world (4500 x 4500 = 20MP) repaints
+  // and re-masks an area that is transparent by construction outside the
+  // ~340px glow; sizing it to the viewport is worse when zoomed out, where the
+  // whole board is only ~1125px across. The intersection is never larger than
+  // either, so it is never worse than the original at any zoom.
+  const clamp = (v: number, max: number) => Math.min(Math.max(v, 0), max)
+  const x0 = clamp(rect.left, viewportWidth)
+  const y0 = clamp(rect.top, viewportHeight)
+  const x1 = clamp(rect.left + rect.width, viewportWidth)
+  const y1 = clamp(rect.top + rect.height, viewportHeight)
+  originRef.current = { x: x0, y: y0 }
+
+  // The dot grid repeats every `dotSpacing`, so anchoring modulo the spacing is
+  // pixel-identical to anchoring at the raw board origin.
+  const wrap = (v: number) => ((v % dotSpacing) + dotSpacing) % dotSpacing
+
   const mask = `radial-gradient(circle var(--bloom-radius, ${baseRadius}px) at var(--bloom-x, -9999px) var(--bloom-y, -9999px), rgba(0,0,0,1) 0%, rgba(0,0,0,0.65) 45%, rgba(0,0,0,0) 100%)`
 
   return (
@@ -95,15 +121,16 @@ const CanvasBloomBlock = memo(
       aria-hidden
       style={{
         position: 'absolute',
-        left: rect.left,
-        top: rect.top,
-        width: rect.width,
-        height: rect.height,
+        left: x0,
+        top: y0,
+        width: Math.max(0, x1 - x0),
+        height: Math.max(0, y1 - y0),
         pointerEvents: 'none',
         opacity: 'var(--bloom-opacity, 0)' as unknown as number,
         transition: 'opacity 250ms ease',
         backgroundImage: `radial-gradient(circle, ${dotColor} ${dotSize}px, transparent ${dotSize + 0.5}px)`,
         backgroundSize: `${dotSpacing}px ${dotSpacing}px`,
+        backgroundPosition: `${wrap(rect.left - x0)}px ${wrap(rect.top - y0)}px`,
         WebkitMaskImage: mask,
         maskImage: mask,
         overflow: 'hidden',
