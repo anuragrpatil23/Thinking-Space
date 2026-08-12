@@ -51,6 +51,7 @@ import {
   listAiTelemetryEventsOrch,
   type AiTelemetryEvent,
 } from '@/services/orchestrators/aiTelemetryOrch'
+import { useVisibleIntervalBlock } from '@/components/lego_blocks/hooks/shared/useVisibleIntervalBlock'
 
 function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
@@ -166,14 +167,7 @@ export default function AiSettingsOrch() {
     }
   }, [hydrateNativeLoginInputs, loadProviders, loadTelemetry, nativeRuntime])
 
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      loadTelemetry()
-    }, 3000)
-    return () => {
-      window.clearInterval(id)
-    }
-  }, [loadTelemetry])
+  useVisibleIntervalBlock(loadTelemetry, 3000)
 
   const onProviderChange = (provider: AiProvider) => {
     setAiSelectedProviderOrch(provider)

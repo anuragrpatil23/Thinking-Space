@@ -4,6 +4,7 @@ import {
   subscribeActivities,
   type BackgroundActivity,
 } from '../../../services/lego_blocks/units/backgroundActivityBlock'
+import { useVisibleIntervalBlock } from '../hooks/shared/useVisibleIntervalBlock'
 
 /**
  * Right-corner notification box that surfaces in-flight background work.
@@ -25,11 +26,10 @@ export default function BackgroundActivityBannerBlock({ visibilityDelayMs = 300 
 
   useEffect(() => subscribeActivities(setActivities), [])
 
-  useEffect(() => {
-    if (activities.length === 0) return
-    const id = window.setInterval(() => setNow(Date.now()), 500)
-    return () => window.clearInterval(id)
-  }, [activities.length])
+  useVisibleIntervalBlock(
+    () => setNow(Date.now()),
+    activities.length === 0 ? null : 500,
+  )
 
   // Ambient-channel activities (vault syncs) render in the top-edge hairline
   // (SyncProgressHairlineBlock), never here — the banner is for alerts.

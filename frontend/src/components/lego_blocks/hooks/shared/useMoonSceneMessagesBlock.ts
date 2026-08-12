@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
+import { useVisibleIntervalBlock } from './useVisibleIntervalBlock'
 import {
   isMoonSceneMessageActiveBlock,
   MOON_SCENE_MESSAGES_UPDATED_EVENT_BLOCK,
@@ -42,10 +43,7 @@ export function useMoonSceneMessagesBlock(): ActiveMoonSceneMessagesBlock {
     }
   }, [])
 
-  useEffect(() => {
-    const id = setInterval(() => setClockKey(k => k + 1), CLOCK_TICK_MS)
-    return () => clearInterval(id)
-  }, [])
+  useVisibleIntervalBlock(() => setClockKey(k => k + 1), CLOCK_TICK_MS)
 
   return useMemo(() => {
     void clockKey

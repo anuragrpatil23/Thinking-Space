@@ -3,6 +3,7 @@ import {
   subscribeActivities,
   type BackgroundActivity,
 } from '../../../services/lego_blocks/units/backgroundActivityBlock'
+import { useVisibleIntervalBlock } from './shared/useVisibleIntervalBlock'
 
 /**
  * Live view of ambient-channel background activities (vault syncs).
@@ -36,12 +37,13 @@ export function useAmbientSyncActivityBlock(
     setAmbient(all.filter(a => a.channel === 'ambient'))
   }), [])
 
-  // While syncs are in flight, tick so activities can cross the threshold.
-  useEffect(() => {
-    if (ambient.length === 0) return
-    const id = window.setInterval(() => setNow(Date.now()), 250)
-    return () => window.clearInterval(id)
-  }, [ambient.length])
+  // While syncs are in flight AND the document is visible, tick so activities
+  // can cross the threshold. Nothing renders while hidden, so the tick would
+  // only be re-deriving a progress fraction nobody can see.
+  useVisibleIntervalBlock(
+    () => setNow(Date.now()),
+    ambient.length === 0 ? null : 250,
+  )
 
   const visible = ambient.filter(a => now - a.startedAt >= visibilityDelayMs)
 

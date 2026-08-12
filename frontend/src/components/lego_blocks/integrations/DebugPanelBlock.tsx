@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { X, Trash2, Copy, Check, ChevronDown, ChevronRight, AlertCircle, AlertTriangle, Info, Bug, Cpu } from 'lucide-react'
 import type { DebugLogEntryBlock, DebugLogLevel } from '@/services/lego_blocks/units/debugLogBlock'
+import { useVisibleIntervalBlock } from '../hooks/shared/useVisibleIntervalBlock'
 
 interface DebugPanelBlockProps {
   entries: DebugLogEntryBlock[]
@@ -300,49 +301,48 @@ function PerformanceTab() {
   const [hostMetrics, setHostMetrics] = useState<DebugHostPerformanceSnapshotBlock | null>(null)
   const [hostMetricsError, setHostMetricsError] = useState<string | null>(null)
 
+  useVisibleIntervalBlock(() => setTick(t => t + 1), 1000)
+
+  const hasHostSnapshot = Boolean(window.electronAPI?.debugPerformanceSnapshot)
+  const disposedRef = useRef(false)
+  const pollingRef = useRef(false)
+
   useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 1000)
-    return () => clearInterval(id)
+    disposedRef.current = false
+    return () => { disposedRef.current = true }
+  }, [])
+
+  const loadHostMetrics = useCallback(async () => {
+    if (pollingRef.current) return
+    pollingRef.current = true
+    try {
+      const snapshot = await window.electronAPI?.debugPerformanceSnapshot?.()
+      if (!disposedRef.current && snapshot) {
+        setHostMetrics(snapshot)
+        setHostMetricsError(null)
+      }
+    } catch (error) {
+      if (!disposedRef.current) {
+        setHostMetricsError(error instanceof Error ? error.message : String(error))
+      }
+    } finally {
+      pollingRef.current = false
+    }
   }, [])
 
   useEffect(() => {
-    if (!window.electronAPI?.debugPerformanceSnapshot) {
+    if (!hasHostSnapshot) {
       setHostMetrics(null)
       setHostMetricsError(null)
       return
     }
-
-    let disposed = false
-    let polling = false
-
-    const loadHostMetrics = async () => {
-      if (polling) return
-      polling = true
-      try {
-        const snapshot = await window.electronAPI?.debugPerformanceSnapshot?.()
-        if (!disposed && snapshot) {
-          setHostMetrics(snapshot)
-          setHostMetricsError(null)
-        }
-      } catch (error) {
-        if (!disposed) {
-          setHostMetricsError(error instanceof Error ? error.message : String(error))
-        }
-      } finally {
-        polling = false
-      }
-    }
-
     void loadHostMetrics()
-    const id = window.setInterval(() => {
-      void loadHostMetrics()
-    }, 1000)
+  }, [hasHostSnapshot, loadHostMetrics])
 
-    return () => {
-      disposed = true
-      window.clearInterval(id)
-    }
-  }, [])
+  useVisibleIntervalBlock(
+    () => { void loadHostMetrics() },
+    hasHostSnapshot ? 1000 : null,
+  )
 
   const mem = perfMemory()
   const uptime = performance.now()

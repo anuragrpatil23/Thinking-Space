@@ -6,6 +6,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Plus, RefreshCw, Loader2, ChevronRight, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { cn } from '@/lib/utils'
+import { useVisibleIntervalBlock } from '../hooks/shared/useVisibleIntervalBlock'
 import {
   listSchedulesWithStatusOrch,
   listExternalLaunchdAgentsOrch,
@@ -65,9 +66,9 @@ export default function ScheduleListBlock({ onRefresh }: ScheduleListBlockProps)
 
   useEffect(() => {
     refresh()
-    const handle = setInterval(refresh, 15000)
-    return () => clearInterval(handle)
   }, [refresh])
+
+  useVisibleIntervalBlock(refresh, 15000)
 
   return (
     <div className="flex h-full min-h-0 flex-col">

@@ -460,7 +460,31 @@ function UrlDocumentBlock({
       }
     }
 
-    const intervalId = window.setInterval(() => { void probe() }, 700)
+    // 700ms `executeJavaScript` into a live webview is the most expensive
+    // recurring timer in the app, and it exists purely to notice that a login
+    // form appeared. Nothing can appear on a document nobody is looking at, so
+    // the timer stops while hidden and re-probes immediately on return.
+    let intervalId: number | null = null
+    const startProbing = () => {
+      if (intervalId !== null) return
+      intervalId = window.setInterval(() => { void probe() }, 700)
+    }
+    const stopProbing = () => {
+      if (intervalId === null) return
+      window.clearInterval(intervalId)
+      intervalId = null
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void probe()
+        startProbing()
+      } else {
+        stopProbing()
+      }
+    }
+    if (document.visibilityState === 'visible') startProbing()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
     const webview = getElectronWebviewBlock()
     const handleLoad = () => {
       setPasswordAutofillError(null)
@@ -472,7 +496,8 @@ function UrlDocumentBlock({
 
     return () => {
       cancelled = true
-      window.clearInterval(intervalId)
+      stopProbing()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
       webview?.removeEventListener('did-finish-load', handleLoad as EventListener)
       webview?.removeEventListener('did-navigate-in-page', handleLoad as EventListener)
     }

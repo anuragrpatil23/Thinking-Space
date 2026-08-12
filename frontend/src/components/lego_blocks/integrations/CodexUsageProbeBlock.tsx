@@ -108,7 +108,28 @@ const CodexUsageProbeGuestBlock = memo(function CodexUsageProbeGuestBlock({
     webview.addEventListener('did-navigate-in-page', handleLoad as EventListener)
     webview.addEventListener('did-fail-load', handleFailLoad as EventListener)
 
-    const intervalId = window.setInterval(() => { void runProbe() }, PROBE_INTERVAL_MS)
+    // Usage numbers only matter to someone reading them; don't drive a hidden
+    // webview on a timer. Re-probes on return so the panel is never stale.
+    let intervalId: number | null = null
+    const startProbing = () => {
+      if (intervalId !== null) return
+      intervalId = window.setInterval(() => { void runProbe() }, PROBE_INTERVAL_MS)
+    }
+    const stopProbing = () => {
+      if (intervalId === null) return
+      window.clearInterval(intervalId)
+      intervalId = null
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void runProbe()
+        startProbing()
+      } else {
+        stopProbing()
+      }
+    }
+    if (document.visibilityState === 'visible') startProbing()
+    document.addEventListener('visibilitychange', onVisibilityChange)
 
     // Skip immediate probe if we have a fresh cached result for this site
     if (!isFreshRef.current) {
@@ -117,7 +138,8 @@ const CodexUsageProbeGuestBlock = memo(function CodexUsageProbeGuestBlock({
 
     return () => {
       cancelled = true
-      window.clearInterval(intervalId)
+      stopProbing()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
       webview.removeEventListener('did-finish-load', handleLoad as EventListener)
       webview.removeEventListener('did-navigate-in-page', handleLoad as EventListener)
       webview.removeEventListener('did-fail-load', handleFailLoad as EventListener)
