@@ -1,4 +1,3 @@
-import { memo } from 'react'
 import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 
 interface Props {
@@ -8,7 +7,7 @@ interface Props {
   minimapHeight?: number
 }
 
-function ZoomIndicatorBlockImpl({
+export default function ZoomIndicatorBlock({
   scale,
   onReset,
   edgeInset = 24,
@@ -42,6 +41,3 @@ function ZoomIndicatorBlockImpl({
     </button>
   )
 }
-
-const ZoomIndicatorBlock = memo(ZoomIndicatorBlockImpl)
-export default ZoomIndicatorBlock

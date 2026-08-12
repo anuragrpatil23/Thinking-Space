@@ -1,4 +1,4 @@
-import { memo, useRef } from 'react'
+import { useRef } from 'react'
 import type { CanvasTile } from '@/components/lego_blocks/hooks/shared/useCanvasTilesBlock'
 import { useCanvasThemeBlock } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 import { POST_IT_PALETTE } from './postItPaletteBlock'
@@ -23,7 +23,7 @@ interface Props {
   edgeInset?: number
 }
 
-function CanvasMinimapBlockImpl({
+export default function CanvasMinimapBlock({
   tiles,
   worldWidth,
   worldHeight,
@@ -139,6 +139,3 @@ function CanvasMinimapBlockImpl({
     </div>
   )
 }
-
-const CanvasMinimapBlock = memo(CanvasMinimapBlockImpl)
-export default CanvasMinimapBlock
