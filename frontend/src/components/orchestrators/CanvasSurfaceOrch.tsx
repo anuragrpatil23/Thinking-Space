@@ -11,7 +11,9 @@ import {
   type CanvasTile,
 } from '@/components/lego_blocks/hooks/shared/useCanvasTilesBlock'
 import Starfield from '@/components/lego_blocks/units/StarfieldBlock'
-import CanvasBloomBlock from '@/components/lego_blocks/units/CanvasBloomBlock'
+import CanvasBloomBlock, {
+  type CanvasBloomHandle,
+} from '@/components/lego_blocks/units/CanvasBloomBlock'
 import CanvasTileBlock from '@/components/lego_blocks/units/CanvasTileBlock'
 import CanvasTileToolbarBlock from '@/components/lego_blocks/units/CanvasTileToolbarBlock'
 import CanvasSearchBarBlock from '@/components/lego_blocks/units/CanvasSearchBarBlock'
@@ -178,7 +180,13 @@ export default function CanvasSurfaceOrch({
     [navigate],
   )
 
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
+  // Hover only widens the bloom radius. Driving it imperatively through a CSS
+  // variable keeps a mouse crossing a tile from re-rendering the whole canvas.
+  const bloomRef = useRef<CanvasBloomHandle | null>(null)
+  const handleHoverChange = useCallback((id: string | null) => {
+    bloomRef.current?.setIntensified(id !== null)
+  }, [])
+
   const [loaded, setLoaded] = useState(false)
 
   // Stable identity: an inline arrow here defeated CanvasTileBlock's memo, so
@@ -483,7 +491,7 @@ export default function CanvasSurfaceOrch({
       </div>
 
       <CanvasBloomBlock
-        intensified={hoveredId !== null}
+        ref={bloomRef}
         dotColor={theme.bloomDot}
         rect={{
           left: transform.x,
@@ -523,7 +531,7 @@ export default function CanvasSurfaceOrch({
             reloadKey={widgetReloadKeys[tile.id] ?? 0}
             onFocus={focusTile}
             onBlur={handleTileBlur}
-            onHoverChange={setHoveredId}
+            onHoverChange={handleHoverChange}
             onChange={updateTileText}
             onResize={resizeTile}
             onRemove={removeTile}

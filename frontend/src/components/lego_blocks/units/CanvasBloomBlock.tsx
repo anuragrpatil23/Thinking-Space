@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { forwardRef, memo, useEffect, useImperativeHandle, useRef } from 'react'
 
 interface ScreenRect {
   left: number
@@ -11,22 +11,40 @@ interface Props {
   rect: ScreenRect
   baseRadius?: number
   intensifiedRadius?: number
-  intensified?: boolean
   dotSize?: number
   dotSpacing?: number
   dotColor?: string
 }
 
-export default function CanvasBloomBlock({
+export interface CanvasBloomHandle {
+  /** Widen the glow while a tile is hovered. Imperative so hovering a tile
+   * doesn't re-render the canvas tree — the radius is a CSS variable. */
+  setIntensified: (intensified: boolean) => void
+}
+
+const CanvasBloomBlock = memo(
+  forwardRef<CanvasBloomHandle, Props>(function CanvasBloomBlock({
   rect,
   baseRadius = 220,
   intensifiedRadius = 340,
-  intensified = false,
   dotSize = 1,
   dotSpacing = 24,
   dotColor = 'rgba(255,255,255,0.28)',
-}: Props) {
+}: Props, handleRef) {
   const ref = useRef<HTMLDivElement | null>(null)
+
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      setIntensified: (intensified: boolean) => {
+        ref.current?.style.setProperty(
+          '--bloom-radius',
+          `${intensified ? intensifiedRadius : baseRadius}px`,
+        )
+      },
+    }),
+    [baseRadius, intensifiedRadius],
+  )
   const rafRef = useRef<number | null>(null)
   const target = useRef({ x: -9999, y: -9999, opacity: 0 })
   const rectRef = useRef(rect)
@@ -69,8 +87,7 @@ export default function CanvasBloomBlock({
     }
   }, [])
 
-  const radius = intensified ? intensifiedRadius : baseRadius
-  const mask = `radial-gradient(circle ${radius}px at var(--bloom-x, -9999px) var(--bloom-y, -9999px), rgba(0,0,0,1) 0%, rgba(0,0,0,0.65) 45%, rgba(0,0,0,0) 100%)`
+  const mask = `radial-gradient(circle var(--bloom-radius, ${baseRadius}px) at var(--bloom-x, -9999px) var(--bloom-y, -9999px), rgba(0,0,0,1) 0%, rgba(0,0,0,0.65) 45%, rgba(0,0,0,0) 100%)`
 
   return (
     <div
@@ -93,4 +110,7 @@ export default function CanvasBloomBlock({
       }}
     />
   )
-}
+}),
+)
+
+export default CanvasBloomBlock
