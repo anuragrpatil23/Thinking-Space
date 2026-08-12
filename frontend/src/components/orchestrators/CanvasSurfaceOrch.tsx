@@ -11,7 +11,7 @@ import {
   type CanvasTile,
 } from '@/components/lego_blocks/hooks/shared/useCanvasTilesBlock'
 import Starfield from '@/components/lego_blocks/units/StarfieldBlock'
-import CanvasBloomBlock from '@/components/lego_blocks/units/CanvasBloomBlock'
+import CanvasGridBlock from '@/components/lego_blocks/units/CanvasGridBlock'
 import CanvasTileBlock from '@/components/lego_blocks/units/CanvasTileBlock'
 import CanvasTileToolbarBlock from '@/components/lego_blocks/units/CanvasTileToolbarBlock'
 import CanvasSearchBarBlock from '@/components/lego_blocks/units/CanvasSearchBarBlock'
@@ -437,9 +437,10 @@ export default function CanvasSurfaceOrch({
         )}
       </div>
 
-      <CanvasBloomBlock
+      <CanvasGridBlock
         intensified={hoveredId !== null}
         dotColor={theme.bloomDot}
+        borderRadius={isIos ? 0 : 16}
         rect={{
           left: transform.x,
           top: transform.y,

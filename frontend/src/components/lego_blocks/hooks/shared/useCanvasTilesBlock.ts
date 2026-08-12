@@ -78,8 +78,14 @@ const DEFAULT_TILE_W = 280
 const DEFAULT_TILE_H = 280
 export const MIN_TILE_W = 160
 export const MIN_TILE_H = 120
-export const MAX_TILE_W = 800
-export const MAX_TILE_H = 800
+// No maximum. Cards grow as large as the user drags them — a card holding a
+// long note or a captured page is only useful at the size its content needs,
+// and an 800px ceiling silently stopped the resize handle mid-drag with no
+// explanation. Minimums stay: a zero-size card is unrecoverable, since there
+// would be no handle left to grab.
+//
+// Nothing clamps on load (`setAllTiles` passes tiles through untouched), so
+// removing the ceiling frees already-created cards too, not just new ones.
 
 export interface UseCanvasTilesResult {
   tiles: CanvasTile[]
@@ -157,9 +163,9 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
       worldY: number,
     ) => {
       const id = nextTileId()
-      // tile defaults to the size of the captured region (clamped to sane bounds)
-      const w = Math.min(MAX_TILE_W, Math.max(MIN_TILE_W, spec.region.w))
-      const h = Math.min(MAX_TILE_H, Math.max(MIN_TILE_H, spec.region.h))
+      // tile defaults to the size of the captured region, floored at the minimum
+      const w = Math.max(MIN_TILE_W, spec.region.w)
+      const h = Math.max(MIN_TILE_H, spec.region.h)
       const tile: CanvasWebWidgetTile = {
         id,
         type: 'web-widget',
@@ -231,8 +237,8 @@ export function useCanvasTilesBlock(initial: CanvasTile[] = []): UseCanvasTilesR
   }, [])
 
   const resizeTile = useCallback((id: string, w: number, h: number) => {
-    const cw = Math.min(MAX_TILE_W, Math.max(MIN_TILE_W, Math.round(w)))
-    const ch = Math.min(MAX_TILE_H, Math.max(MIN_TILE_H, Math.round(h)))
+    const cw = Math.max(MIN_TILE_W, Math.round(w))
+    const ch = Math.max(MIN_TILE_H, Math.round(h))
     setTiles(prev => prev.map(t => (t.id === id ? { ...t, w: cw, h: ch, updatedAt: Date.now() } : t)))
   }, [])
 

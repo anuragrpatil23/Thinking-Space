@@ -2,6 +2,14 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { X, Trash2, Copy, Check, ChevronDown, ChevronRight, AlertCircle, AlertTriangle, Info, Bug, Cpu } from 'lucide-react'
 import type { DebugLogEntryBlock, DebugLogLevel } from '@/services/lego_blocks/units/debugLogBlock'
 import { useVisibleIntervalBlock } from '../hooks/shared/useVisibleIntervalBlock'
+import {
+  beginFrameRecordingBlock,
+  clearFrameRecordingsBlock,
+  endFrameRecordingBlock,
+  isFrameRecordingBlock,
+  listFrameRecordingsBlock,
+  type FrameRecordingBlock,
+} from '@/services/lego_blocks/units/frameTimingBlock'
 
 interface DebugPanelBlockProps {
   entries: DebugLogEntryBlock[]
@@ -296,6 +304,96 @@ function HeapBar({ used, limit }: { used: number; limit: number }) {
   )
 }
 
+/**
+ * Frame recorder. Deliberately manual: the measurement that matters is a
+ * pointer interaction (pan at min zoom, pan at max zoom, drag a card), and a
+ * button that records a fixed window while a human drives is the only honest
+ * way to capture that. Label it with what you did so two runs are comparable.
+ */
+function FrameRecorderSection() {
+  const [recordings, setRecordings] = useState<FrameRecordingBlock[]>(() => listFrameRecordingsBlock())
+  const [recording, setRecording] = useState(() => isFrameRecordingBlock())
+  const [label, setLabel] = useState('pan')
+
+  const start = () => {
+    beginFrameRecordingBlock(label.trim() || 'unlabelled')
+    setRecording(true)
+  }
+  const stop = () => {
+    endFrameRecordingBlock()
+    setRecording(false)
+    setRecordings([...listFrameRecordingsBlock()])
+  }
+
+  return (
+    <MetricSection title="Frame Timing">
+      <div className="flex items-center gap-1.5 pb-2">
+        <input
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          placeholder="what are you doing?"
+          disabled={recording}
+          className="min-w-0 flex-1 rounded border border-border/50 bg-background px-2 py-1 text-[11px] disabled:opacity-50"
+        />
+        <button
+          type="button"
+          onClick={recording ? stop : start}
+          className={`shrink-0 rounded px-2.5 py-1 text-[11px] font-medium ${
+            recording
+              ? 'bg-red-500/15 text-red-600 dark:text-red-300'
+              : 'bg-primary text-primary-foreground'
+          }`}
+        >
+          {recording ? 'Stop' : 'Record'}
+        </button>
+        {recordings.length > 0 && (
+          <button
+            type="button"
+            onClick={() => { clearFrameRecordingsBlock(); setRecordings([]) }}
+            className="shrink-0 rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent/60"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {recording && (
+        <div className="pb-2 text-[11px] text-muted-foreground">
+          Recording — pan or drag now, then press Stop.
+        </div>
+      )}
+
+      {recordings.length === 0 && !recording && (
+        <div className="pb-1 text-[11px] leading-relaxed text-muted-foreground">
+          Records rAF deltas while you drive the canvas. Nothing runs until you
+          press Record. Compare the same action at both zoom extremes.
+        </div>
+      )}
+
+      {recordings.map((r, i) => (
+        <div key={`${r.startedAt}-${i}`} className="border-b border-border/30 py-1.5 last:border-0">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="truncate text-[11px] font-medium">{r.label}</span>
+            <span className={`shrink-0 font-mono text-[11px] tabular-nums ${
+              r.fps >= 55 ? 'text-emerald-600 dark:text-emerald-400'
+                : r.fps >= 40 ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-red-600 dark:text-red-400'
+            }`}>
+              {r.fps.toFixed(0)} fps
+            </span>
+          </div>
+          <div className="mt-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
+            p50 {r.p50.toFixed(1)} · p95 {r.p95.toFixed(1)} · worst {r.worst.toFixed(0)}ms
+          </div>
+          <div className="font-mono text-[10px] tabular-nums text-muted-foreground">
+            {r.longFrames} dropped{r.hitches > 0 ? ` · ${r.hitches} hitches` : ''} of {r.frames}
+          </div>
+        </div>
+      ))}
+    </MetricSection>
+  )
+}
+
 function PerformanceTab() {
   const [tick, setTick] = useState(0)
   const [hostMetrics, setHostMetrics] = useState<DebugHostPerformanceSnapshotBlock | null>(null)
@@ -354,6 +452,7 @@ function PerformanceTab() {
 
   return (
     <div className="space-y-3 p-3">
+      <FrameRecorderSection />
       {hostMetrics && (
         <>
           <MetricSection title="App Health">
