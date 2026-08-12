@@ -23,6 +23,16 @@ import type { CanvasStorageAdapter } from '@/services/lego_blocks/integrations/c
 
 const WRITE_DEBOUNCE_MS = 500
 
+// Edge-flash timing. The aurora animation is gated on these instead of running
+// forever: `background-position` is a paint property, so four blurred,
+// blend-moded edge layers were repainting every frame while sitting at
+// opacity 0. ACTIVE is how long the edge holds full opacity; ANIM also covers
+// the 420ms fade-out, so the gradient never snaps while still visible.
+const EDGE_ACTIVE_MS = 160
+const EDGE_FADE_OUT_MS = 420
+const EDGE_ANIM_MS = EDGE_ACTIVE_MS + EDGE_FADE_OUT_MS + 40
+const AURORA_PERIOD_S = 9
+
 export interface CanvasSurfaceTilesApi {
   tiles: CanvasTile[]
   setAllTiles: (tiles: CanvasTile[]) => void
@@ -75,8 +85,15 @@ export default function CanvasSurfaceOrch({
   const edgeRightRef = useRef<HTMLDivElement | null>(null)
   const edgeBottomRef = useRef<HTMLDivElement | null>(null)
   const edgeLeftRef = useRef<HTMLDivElement | null>(null)
-  const edgeTimersRef = useRef<Record<CanvasEdge, ReturnType<typeof setTimeout> | null>>({
-    top: null, right: null, bottom: null, left: null,
+  type EdgeTimers = {
+    active: ReturnType<typeof setTimeout> | null
+    anim: ReturnType<typeof setTimeout> | null
+  }
+  const edgeTimersRef = useRef<Record<CanvasEdge, EdgeTimers>>({
+    top: { active: null, anim: null },
+    right: { active: null, anim: null },
+    bottom: { active: null, anim: null },
+    left: { active: null, anim: null },
   })
 
   const flashEdge = useCallback((edge: CanvasEdge) => {
@@ -87,18 +104,34 @@ export default function CanvasSurfaceOrch({
       edgeLeftRef.current
     )
     if (!el) return
+    const timers = edgeTimersRef.current[edge]
+
+    if (el.dataset.anim !== 'on') {
+      // Start at the phase a free-running 9s animation would be at right now,
+      // so a gated flash is indistinguishable from the old always-on one. Only
+      // on the transition into 'on' — re-applying the delay mid-animation
+      // would make the gradient jump.
+      el.style.animationDelay = `-${(performance.now() / 1000) % AURORA_PERIOD_S}s`
+      el.dataset.anim = 'on'
+    }
     el.dataset.active = 'true'
-    const existing = edgeTimersRef.current[edge]
-    if (existing) clearTimeout(existing)
-    edgeTimersRef.current[edge] = setTimeout(() => {
+
+    if (timers.active) clearTimeout(timers.active)
+    if (timers.anim) clearTimeout(timers.anim)
+    timers.active = setTimeout(() => {
       el.dataset.active = 'false'
-      edgeTimersRef.current[edge] = null
-    }, 160)
+      timers.active = null
+    }, EDGE_ACTIVE_MS)
+    timers.anim = setTimeout(() => {
+      el.dataset.anim = 'off'
+      timers.anim = null
+    }, EDGE_ANIM_MS)
   }, [])
 
   useEffect(() => () => {
     for (const t of Object.values(edgeTimersRef.current)) {
-      if (t) clearTimeout(t)
+      if (t.active) clearTimeout(t.active)
+      if (t.anim) clearTimeout(t.anim)
     }
   }, [])
 
@@ -371,6 +404,9 @@ export default function CanvasSurfaceOrch({
             rgba(94,234,212,0.7)   75%,
             rgba(125,211,252,0.65) 100%);
           background-size: 220% 100%;
+        }
+        [data-canvas-edge="top"][data-anim="on"],
+        [data-canvas-edge="bottom"][data-anim="on"] {
           animation: canvas-aurora-h 9s linear infinite;
         }
         [data-canvas-edge="top"] {
@@ -393,6 +429,9 @@ export default function CanvasSurfaceOrch({
             rgba(94,234,212,0.7)   75%,
             rgba(125,211,252,0.65) 100%);
           background-size: 100% 220%;
+        }
+        [data-canvas-edge="left"][data-anim="on"],
+        [data-canvas-edge="right"][data-anim="on"] {
           animation: canvas-aurora-v 9s linear infinite;
         }
         [data-canvas-edge="left"] {
@@ -562,10 +601,10 @@ export default function CanvasSurfaceOrch({
         minimapHeight={minimapHeight}
       />
 
-      <div ref={edgeTopRef} data-canvas-edge="top" data-active="false" aria-hidden />
-      <div ref={edgeRightRef} data-canvas-edge="right" data-active="false" aria-hidden />
-      <div ref={edgeBottomRef} data-canvas-edge="bottom" data-active="false" aria-hidden />
-      <div ref={edgeLeftRef} data-canvas-edge="left" data-active="false" aria-hidden />
+      <div ref={edgeTopRef} data-canvas-edge="top" data-active="false" data-anim="off" aria-hidden />
+      <div ref={edgeRightRef} data-canvas-edge="right" data-active="false" data-anim="off" aria-hidden />
+      <div ref={edgeBottomRef} data-canvas-edge="bottom" data-active="false" data-anim="off" aria-hidden />
+      <div ref={edgeLeftRef} data-canvas-edge="left" data-active="false" data-anim="off" aria-hidden />
 
       {TilesEffect && <TilesEffect tiles={tiles} setAllTiles={setAllTiles} loaded={loaded} />}
     </div>
