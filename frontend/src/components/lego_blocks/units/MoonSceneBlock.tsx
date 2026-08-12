@@ -501,6 +501,17 @@ export default function MoonSceneBlock({ x, y, showQuote = true }: { x: number; 
         height: surfaceH + 130,
         pointerEvents: 'none',
         zIndex: 1,
+        // Own compositing layer. Without this the scene's ~18 infinite
+        // animations repaint into the shared canvas world layer, which is
+        // 4500x4500 (docs/contracts/ENERGY.md) — so a 520x240 pixel-art scene
+        // dirties a 20-megapixel surface 60 times a second, and every sprite
+        // is a 1px div carrying up to 100 box-shadow entries to re-rasterize.
+        // Measured 2026-08-11: moon on screen 35.7% GPU, off screen 1.8%.
+        // A layer of its own confines the invalidation to this box.
+        //
+        // This is a rendering hint only — no keyframe, timing, geometry, or
+        // paint order changes, so the scene is pixel-identical.
+        willChange: 'transform',
       }}
     >
       <style>{`
