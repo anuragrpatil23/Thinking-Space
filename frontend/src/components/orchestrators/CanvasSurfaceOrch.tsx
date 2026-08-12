@@ -12,6 +12,7 @@ import {
 } from '@/components/lego_blocks/hooks/shared/useCanvasTilesBlock'
 import Starfield from '@/components/lego_blocks/units/StarfieldBlock'
 import CanvasGridBlock from '@/components/lego_blocks/units/CanvasGridBlock'
+import CanvasRippleBlock, { type CanvasRipple } from '@/components/lego_blocks/units/CanvasRippleBlock'
 import CanvasTileBlock from '@/components/lego_blocks/units/CanvasTileBlock'
 import CanvasTileToolbarBlock from '@/components/lego_blocks/units/CanvasTileToolbarBlock'
 import CanvasSearchBarBlock from '@/components/lego_blocks/units/CanvasSearchBarBlock'
@@ -146,6 +147,19 @@ export default function CanvasSurfaceOrch({
   )
 
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+
+  // Ripples are screen-space and short-lived; they intentionally do not survive
+  // a pan, since the ring marks "this happened here, just now" rather than
+  // marking a place on the board.
+  const [ripples, setRipples] = useState<CanvasRipple[]>([])
+  const rippleSeq = useRef(0)
+  const addRipple = useCallback((x: number, y: number) => {
+    const id = ++rippleSeq.current
+    setRipples(prev => [...prev, { id, x, y }])
+  }, [])
+  const removeRipple = useCallback((id: number) => {
+    setRipples(prev => prev.filter(r => r.id !== id))
+  }, [])
   const [loaded, setLoaded] = useState(false)
 
   type CanvasPopover =
@@ -212,6 +226,7 @@ export default function CanvasSurfaceOrch({
       return
     const { x, y } = screenToWorld(e.clientX, e.clientY)
     spawnPostIt(x, y)
+    addRipple(e.clientX, e.clientY)
   }
 
   const handleBackdropMouseDown = (e: React.MouseEvent) => {
@@ -447,6 +462,12 @@ export default function CanvasSurfaceOrch({
           width: worldWidth * transform.scale,
           height: worldHeight * transform.scale,
         }}
+      />
+
+      <CanvasRippleBlock
+        ripples={ripples}
+        onDone={removeRipple}
+        color={theme.bloomDot}
       />
 
       <div

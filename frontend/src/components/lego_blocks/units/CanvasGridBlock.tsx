@@ -55,6 +55,15 @@ interface Props {
 }
 
 /**
+ * Opacity of the always-present grid. Low enough to read as paper texture
+ * rather than as UI, so the thickened dots under the pointer still register as
+ * a response rather than just "more of the same".
+ */
+const RESTING_GRID_OPACITY = 0.4
+/** Pointer-adjacent dots are drawn fatter, which is what reads as "thicken". */
+const POOL_DOT_SCALE = 1.6
+
+/**
  * Fixed painted size. Must be at least 2x the largest radius; anything beyond
  * that is wasted raster. Constant across zoom so the cost never scales.
  */
@@ -72,6 +81,7 @@ function CanvasGridBlock({
   borderRadius = 0,
 }: Props) {
   const poolRef = useRef<HTMLDivElement | null>(null)
+  const baseRef = useRef<HTMLDivElement | null>(null)
   const rectRef = useRef(rect)
   rectRef.current = rect
 
@@ -135,19 +145,33 @@ function CanvasGridBlock({
     }
   }, [dotSpacing])
 
-  // Panning moves the board under a stationary pointer, so the pool has to be
-  // repositioned on rect changes too — not just on pointer movement.
+  // Panning moves the board under a stationary pointer, so both layers have to
+  // be repositioned on rect changes too — not just on pointer movement.
   useEffect(() => {
     const el = poolRef.current
-    if (!el) return
-    const r = rect
-    const { x, y } = pointerRef.current
-    const inside =
-      x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height
-    const snappedX = Math.round((x - r.left - POOL / 2) / dotSpacing) * dotSpacing
-    const snappedY = Math.round((y - r.top - POOL / 2) / dotSpacing) * dotSpacing
-    el.style.transform = `translate3d(${snappedX}px, ${snappedY}px, 0)`
-    el.style.opacity = inside ? '1' : '0'
+    if (el) {
+      const r = rect
+      const { x, y } = pointerRef.current
+      const inside =
+        x >= r.left && x <= r.left + r.width && y >= r.top && y <= r.top + r.height
+      const snappedX = Math.round((x - r.left - POOL / 2) / dotSpacing) * dotSpacing
+      const snappedY = Math.round((y - r.top - POOL / 2) / dotSpacing) * dotSpacing
+      el.style.transform = `translate3d(${snappedX}px, ${snappedY}px, 0)`
+      el.style.opacity = inside ? '1' : '0'
+    }
+
+    // The resting grid is viewport-sized, not board-sized, and rides the pan
+    // with a transform snapped to the dot lattice. Because the pattern repeats
+    // every `dotSpacing`, a layer parked at the nearest lattice point at or
+    // before the viewport's edge is indistinguishable from an infinite grid —
+    // so an infinite-looking grid costs one viewport of raster and a transform,
+    // instead of a 4500x4500 texture and a layout invalidation per frame.
+    const base = baseRef.current
+    if (base) {
+      const tx = Math.floor(-rect.left / dotSpacing) * dotSpacing
+      const ty = Math.floor(-rect.top / dotSpacing) * dotSpacing
+      base.style.transform = `translate3d(${tx}px, ${ty}px, 0)`
+    }
   }, [rect, dotSpacing])
 
   // Radius changes only on hover-a-card or press — never during movement — so
@@ -169,6 +193,26 @@ function CanvasGridBlock({
         pointerEvents: 'none',
       }}
     >
+      {/* Resting grid: always there, faint. Gives the board a surface even
+          when the pointer is elsewhere, so the canvas reads as a place rather
+          than as empty space that lights up. */}
+      <div
+        ref={baseRef}
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: `calc(100vw + ${dotSpacing * 2}px)`,
+          height: `calc(100vh + ${dotSpacing * 2}px)`,
+          opacity: RESTING_GRID_OPACITY,
+          backgroundImage: `radial-gradient(circle, ${dotColor} ${dotSize}px, transparent ${dotSize + 0.5}px)`,
+          backgroundSize: `${dotSpacing}px ${dotSpacing}px`,
+          willChange: 'transform',
+        }}
+      />
+
+      {/* Thickened dots that follow the pointer. Same lattice, fatter dots, so
+          the grid appears to respond rather than a second thing appearing. */}
       <div
         ref={poolRef}
         style={{
@@ -180,7 +224,7 @@ function CanvasGridBlock({
           opacity: 0,
           transform: 'translate3d(-99999px, -99999px, 0)',
           transition: 'opacity 250ms ease, -webkit-mask-image 200ms ease',
-          backgroundImage: `radial-gradient(circle, ${dotColor} ${dotSize}px, transparent ${dotSize + 0.5}px)`,
+          backgroundImage: `radial-gradient(circle, ${dotColor} ${dotSize * POOL_DOT_SCALE}px, transparent ${dotSize * POOL_DOT_SCALE + 0.5}px)`,
           backgroundSize: `${dotSpacing}px ${dotSpacing}px`,
           WebkitMaskImage: mask,
           maskImage: mask,
