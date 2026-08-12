@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   useInfiniteCanvasBlock,
@@ -181,6 +181,10 @@ export default function CanvasSurfaceOrch({
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
 
+  // Stable identity: an inline arrow here defeated CanvasTileBlock's memo, so
+  // every tile re-rendered on every pan frame.
+  const handleTileBlur = useCallback(() => focusTile(null), [focusTile])
+
   type CanvasPopover =
     | { kind: 'menu'; screenX: number; screenY: number; worldX: number; worldY: number }
     | { kind: 'search'; screenX: number; screenY: number; worldX: number; worldY: number }
@@ -328,6 +332,8 @@ export default function CanvasSurfaceOrch({
       tile.y > viewportRect.y + viewportRect.h
     )
   }
+
+  const minimapViewport = useMemo(() => ({ width: viewW, height: viewH }), [viewW, viewH])
 
   const toolbarPos = (() => {
     if (!focusedTile) return null
@@ -516,7 +522,7 @@ export default function CanvasSurfaceOrch({
             offscreen={isTileOffscreen(tile)}
             reloadKey={widgetReloadKeys[tile.id] ?? 0}
             onFocus={focusTile}
-            onBlur={() => focusTile(null)}
+            onBlur={handleTileBlur}
             onHoverChange={setHoveredId}
             onChange={updateTileText}
             onResize={resizeTile}
@@ -588,7 +594,7 @@ export default function CanvasSurfaceOrch({
         transformX={transform.x}
         transformY={transform.y}
         scale={transform.scale}
-        viewport={{ width: viewW, height: viewH }}
+        viewport={minimapViewport}
         onJump={centerOnWorld}
         width={minimapWidth}
         edgeInset={hudEdgeInset}
