@@ -1,13 +1,31 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, Loader2 } from 'lucide-react'
-import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
-import { getChainTranscriptBlock } from '@/services/lego_blocks/units/getChainTranscriptBlock'
+import { X, Loader2, AlertTriangle, History, FileText } from 'lucide-react'
+import type { ActivityChain, ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import {
+  countReadableSessionsBlock,
+  getChainSessionTranscriptsBlock,
+  type ChainSessionStatusBlock,
+  type ChainSessionTranscriptBlock,
+} from '@/services/lego_blocks/units/getChainTranscriptBlock'
+import { cn } from '@/lib/utils'
+
+/**
+ * A chain's transcript, session by session.
+ *
+ * The sessions are the navigation, not a detail: a chain merges work that ran
+ * hours apart, and the merged view is what let a session go missing unnoticed —
+ * the Aug 2 chain rendered its CSS work in full and reported the deleted
+ * session that wrote 220 assignment proposals as one line of italics halfway
+ * down a scroll. So the list is always visible when there is more than one
+ * session, every session states whether it is readable, and an unreadable one
+ * is a card you cannot scroll past rather than a sentence you can.
+ */
 
 interface ChainTranscriptSlideOverBlockProps {
-  /** The chain whose full transcript should render. `null` closes the panel. */
+  /** The chain whose transcript should render. `null` closes the panel. */
   chain: ActivityChain | null
   onClose: () => void
 }
@@ -36,14 +54,90 @@ function fmtChainWhen(startIso: string, endIso: string): string {
   return `${date} · ${span}`
 }
 
+function fmtSessionWhen(s: ParsedSession): string {
+  const a = fmtClock(s.startedIso)
+  if (!s.endedIso || s.endedIso === s.startedIso) return a
+  return `${a}–${fmtClock(s.endedIso)}`
+}
+
+/** Status presentation in one place: the list pill, the card, and the empty
+ *  state all have to agree about what a status means and looks like. */
+const STATUS_META: Record<
+  ChainSessionStatusBlock,
+  { label: string; tone: string; icon: typeof AlertTriangle | null }
+> = {
+  ok: { label: '', tone: '', icon: null },
+  empty: {
+    label: 'empty',
+    tone: 'border-border text-muted-foreground',
+    icon: FileText,
+  },
+  reconstructed: {
+    label: 'prompts only',
+    tone: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    icon: History,
+  },
+  unavailable: {
+    label: 'unavailable',
+    tone: 'border-destructive/40 bg-destructive/10 text-destructive',
+    icon: AlertTriangle,
+  },
+}
+
+function StatusPill({ status }: { status: ChainSessionStatusBlock }) {
+  const meta = STATUS_META[status]
+  if (!meta.icon) return null
+  const Icon = meta.icon
+  return (
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium',
+        meta.tone,
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {meta.label}
+    </span>
+  )
+}
+
+/** One session's body: its transcript, or an account of why there isn't one.
+ *  The unreadable case is deliberately a full card with the path on it — that
+ *  is the difference between "this is missing" and a line you scroll past. */
+function SessionBody({ part }: { part: ChainSessionTranscriptBlock }) {
+  if (part.status === 'ok') {
+    return (
+      <article className="prose prose-sm dark:prose-invert max-w-none" style={{ overflowWrap: 'anywhere' }}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.markdown}</ReactMarkdown>
+      </article>
+    )
+  }
+  const meta = STATUS_META[part.status]
+  const Icon = meta.icon ?? AlertTriangle
+  return (
+    <div className={cn('rounded-lg border p-4 text-sm', meta.tone)}>
+      <div className="mb-1.5 flex items-center gap-2 font-medium">
+        <Icon className="h-4 w-4" />
+        {part.status === 'reconstructed' ? 'No transcript for this session' : 'Transcript unavailable'}
+      </div>
+      <p className="mb-2 opacity-90">{part.note}</p>
+      <code className="block break-all rounded bg-background/50 px-2 py-1 text-[11px] opacity-80">
+        {part.session.path}
+      </code>
+    </div>
+  )
+}
+
 export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainTranscriptSlideOverBlockProps) {
-  const [markdown, setMarkdown] = useState<string | null>(null)
+  const [parts, setParts] = useState<ChainSessionTranscriptBlock[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  /** `'all'` or a 1-based session index. Resets with the chain. */
+  const [selected, setSelected] = useState<'all' | number>('all')
 
   useEffect(() => {
     if (!chain) {
-      setMarkdown(null)
+      setParts(null)
       setError(null)
       setLoading(false)
       return
@@ -51,9 +145,10 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
     let cancelled = false
     setLoading(true)
     setError(null)
-    setMarkdown(null)
-    getChainTranscriptBlock(chain)
-      .then(md => { if (!cancelled) setMarkdown(md) })
+    setParts(null)
+    setSelected('all')
+    getChainSessionTranscriptsBlock(chain)
+      .then(next => { if (!cancelled) setParts(next) })
       .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -67,6 +162,13 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [chain, onClose])
+
+  const readable = parts ? countReadableSessionsBlock(parts) : 0
+  const missing = parts ? parts.length - readable : 0
+  const shown = useMemo(
+    () => (!parts ? [] : selected === 'all' ? parts : parts.filter(p => p.index === selected)),
+    [parts, selected],
+  )
 
   if (!chain) return null
 
@@ -94,8 +196,17 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/40 px-5 py-3">
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-foreground">
-              {chain.project} · {chain.sessions.length} session{chain.sessions.length === 1 ? '' : 's'}
+            <div className="flex items-center gap-2 truncate text-sm font-semibold text-foreground">
+              <span className="truncate">
+                {chain.project} · {chain.sessions.length} session{chain.sessions.length === 1 ? '' : 's'}
+              </span>
+              {/* The count that would have made a deleted session obvious on
+                  the day it happened, rather than ten days later. */}
+              {missing > 0 && (
+                <span className="shrink-0 rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                  {missing} unreadable
+                </span>
+              )}
             </div>
             <div className="truncate text-[11px] text-muted-foreground">
               {chain.topic || '(no topic)'}
@@ -113,6 +224,46 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Session picker. Hidden for single-session chains, where it would be
+            chrome around one thing. */}
+        {parts && parts.length > 1 && (
+          <div className="shrink-0 overflow-x-auto border-b border-border/40 bg-muted/20 px-3 py-2">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSelected('all')}
+                className={cn(
+                  'shrink-0 rounded-full border px-2.5 py-1 text-[11px] transition-colors',
+                  selected === 'all'
+                    ? 'border-foreground/20 bg-foreground/10 font-medium text-foreground'
+                    : 'border-border text-muted-foreground hover:bg-muted/50',
+                )}
+              >
+                All {parts.length}
+              </button>
+              {parts.map(part => (
+                <button
+                  key={part.session.path}
+                  type="button"
+                  onClick={() => setSelected(part.index)}
+                  title={part.session.topic || '(no topic)'}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors',
+                    selected === part.index
+                      ? 'border-foreground/20 bg-foreground/10 font-medium text-foreground'
+                      : 'border-border text-muted-foreground hover:bg-muted/50',
+                  )}
+                >
+                  <span className="tabular-nums opacity-70">{part.index}</span>
+                  <span>{fmtSessionWhen(part.session)}</span>
+                  <StatusPill status={part.status} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
           {loading && (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -125,14 +276,28 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
               {error}
             </div>
           )}
-          {markdown && !loading && (
-            <article
-              className="prose prose-sm dark:prose-invert max-w-none"
-              style={{ overflowWrap: 'anywhere' }}
-            >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
-            </article>
-          )}
+          {parts && !loading && shown.map(part => (
+            <section key={part.session.path} className="mb-8 last:mb-0">
+              <header className="mb-3 border-b border-border/40 pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] tabular-nums text-muted-foreground">
+                    Session {part.index}
+                  </span>
+                  <StatusPill status={part.status} />
+                </div>
+                <div className="mt-0.5 text-sm font-medium text-foreground">
+                  {part.session.topic || '(no topic)'}
+                </div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  {fmtSessionWhen(part.session)}
+                  {' · '}
+                  {part.session.userMsgCount} msg{part.session.userMsgCount === 1 ? '' : 's'}
+                  {part.session.model ? ` · ${part.session.model}` : ''}
+                </div>
+              </header>
+              <SessionBody part={part} />
+            </section>
+          ))}
         </div>
       </div>
     </div>,
