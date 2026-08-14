@@ -214,7 +214,19 @@ function splitTitleAndSummary(raw: string): { title: string; summary: string } {
 
 export const sessionDigestContract = defineContractBlock({
   id: 'session-digest',
-  promptVersion: 1,
+  // v2: the extractor now clips a native transcript to the sitting's own time
+  // window. Nothing about the *prompt* changed, but the input it receives did,
+  // and `promptVersion` is the only lever in the freshness hash that can say so
+  // — `computeSessionInputHashBlock` covers message count, window bounds and
+  // mtime, all of which are identical before and after the fix.
+  //
+  // This is the case DERIVATION.md names: a derived record goes stale either
+  // because its input changed or because the deriving code changed, and a hash
+  // over inputs alone only ever catches the first. Every digest generated
+  // between the session-digest refactor and this fix describes its whole file
+  // rather than its window, and would match its own hash forever without this
+  // bump. Raise it whenever a change alters what the model sees.
+  promptVersion: 2,
   outputSchema: s.string({ description: 'TITLE line + blank line + summary body' }),
   buildRequest: (session: ParsedSession) => {
     // Fallback prompt for callers that skipped the async prepare step —

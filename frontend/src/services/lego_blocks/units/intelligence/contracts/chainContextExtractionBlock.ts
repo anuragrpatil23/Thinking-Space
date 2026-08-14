@@ -371,6 +371,34 @@ async function collectSessionTurnsBlock(
     return order
   }
 
+  // Clip to this sitting's window.
+  //
+  // One JSONL file can hold several sittings: `nativeAiSessionParserBlock`
+  // splits it at idle gaps into `<uuid>`, `<uuid>::w1`, `<uuid>::w2`, and
+  // `startedIso`/`endedIso` are exactly that window's first and last event. The
+  // `#wN` suffix is stripped above to find the file, so without this clip every
+  // window re-reads the WHOLE file and each one summarizes the entire day.
+  //
+  // That was survivable when a digest covered a whole chain; it is not now that
+  // each sitting gets its own. Two windows of one file were producing near
+  // identical summaries — a 14-minute sitting described as though it contained
+  // the 1h45m one that followed it.
+  //
+  // The chat-export branch above has always done this. So has the parser, which
+  // attributes file edits by `e.ts >= winStart && e.ts <= winEnd`. This is the
+  // same rule, finally applied to the turns as well.
+  const windowStart = Date.parse(s.startedIso)
+  const windowEnd = Date.parse(s.endedIso ?? s.startedIso)
+  const outsideWindow = (ev: Record<string, unknown>): boolean => {
+    if (!Number.isFinite(windowStart) || !Number.isFinite(windowEnd)) return false
+    const raw = typeof ev.timestamp === 'string' ? Date.parse(ev.timestamp) : NaN
+    // An event with no usable timestamp is kept: absence of evidence that it
+    // falls outside is not evidence that it does, and dropping it would lose
+    // real turns on any transcript that omits the field.
+    if (!Number.isFinite(raw)) return false
+    return raw < windowStart || raw > windowEnd
+  }
+
   for (const line of jsonl.split('\n')) {
     if (!line.trim()) continue
     let ev: Record<string, unknown>
@@ -380,11 +408,12 @@ async function collectSessionTurnsBlock(
       continue
     }
     if (ev.type !== 'user' && ev.type !== 'assistant') continue
+    if (outsideWindow(ev)) continue
     const msg = ev.message as Record<string, unknown> | undefined
     const content = msg?.content
 
-    // Count tool_use across every asst message, even ones we won't keep,
-    // so `session shape` reflects the true tool density.
+    // Count tool_use across every asst message in the window, even ones we
+    // won't keep, so `session shape` reflects the true tool density.
     if (ev.type === 'assistant') meta.toolCallCount += countToolUses(content)
 
     // User tool_result-only messages carry the tool output back to Claude
