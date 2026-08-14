@@ -4,6 +4,7 @@ import type {
 } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { readNativeAiSession } from '@/services/lego_blocks/integrations/nativeAiSessionsBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { getAiInputBudgetTokens } from '@/services/lego_blocks/units/storageKeyBlock'
 
 // Shared chain-context extraction.
 //
@@ -22,6 +23,9 @@ import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 // ~5K tokens on deep ideation chains like sfpi (per-turn truncation kicks
 // in). See empirical eval in tmp/extract_v2.py which was the design proto.
 
+// Per-turn budgets, as originally tuned. They are no longer used directly:
+// they define the SHAPE, and are scaled by the user's input budget so the
+// relative head/tail proportions survive when the budget moves.
 const USER_HEAD_CHARS = 300
 const USER_TAIL_CHARS = 200
 const USER_TRUNCATE_ABOVE = 600
@@ -29,6 +33,50 @@ const USER_TRUNCATE_ABOVE = 600
 const ASST_HEAD_CHARS = 250
 const ASST_TAIL_CHARS = 200
 const ASST_TRUNCATE_ABOVE = 600
+
+/** Token budget the constants above were empirically tuned against. */
+const TUNED_FOR_TOKENS = 5_000
+/** Rough chars-per-token; matches estimateTokensBlock. */
+const CHARS_PER_TOKEN = 4
+
+interface TurnBudgets {
+  userHead: number; userTail: number; userAbove: number
+  asstHead: number; asstTail: number; asstAbove: number
+}
+
+function turnBudgetsFor(budgetTokens: number): TurnBudgets {
+  const scale = Math.max(0.2, budgetTokens / TUNED_FOR_TOKENS)
+  const r = (n: number) => Math.round(n * scale)
+  return {
+    userHead: r(USER_HEAD_CHARS), userTail: r(USER_TAIL_CHARS), userAbove: r(USER_TRUNCATE_ABOVE),
+    asstHead: r(ASST_HEAD_CHARS), asstTail: r(ASST_TAIL_CHARS), asstAbove: r(ASST_TRUNCATE_ABOVE),
+  }
+}
+
+/** Enforce the TOTAL budget, which per-turn trimming alone never did — a
+ *  chain with hundreds of turns could blow far past it. Drops from the middle
+ *  outward: the opening turns say what the session set out to do and the
+ *  closing ones say how it ended, so the middle is the cheapest thing to
+ *  lose. Returns the kept turns and how many were dropped. */
+function fitToBudgetBlock(
+  turns: ExtractedTurnBlock[],
+  budgetTokens: number,
+): { turns: ExtractedTurnBlock[]; dropped: number } {
+  const budgetChars = budgetTokens * CHARS_PER_TOKEN
+  let total = turns.reduce((n, t) => n + t.text.length, 0)
+  if (total <= budgetChars) return { turns, dropped: 0 }
+
+  const kept = [...turns]
+  let dropped = 0
+  // Always keep at least the first and last turn, whatever the budget.
+  while (total > budgetChars && kept.length > 2) {
+    const mid = Math.floor(kept.length / 2)
+    total -= kept[mid].text.length
+    kept.splice(mid, 1)
+    dropped += 1
+  }
+  return { turns: kept, dropped }
+}
 /** Below this, the "prose" left after tool_use JSON is stripped is a
  *  mid-loop stub (e.g. "Now add the sort handler:") — pure noise. */
 const ASST_MIN_PROSE_CHARS = 300
@@ -61,6 +109,8 @@ export interface ChainContextMetaBlock {
   /** At least one turn was head+tail'd — flagged so the prompt can note
    *  that `[…Nc omitted…]` markers may appear. */
   hadTruncation: boolean
+  /** Whole turns dropped from the middle to fit the input budget. */
+  droppedTurns: number
 }
 
 export interface ChainContextBlock {
@@ -195,6 +245,7 @@ function emitChatExportTurnsBlock(
   startOrder: number,
   turns: ExtractedTurnBlock[],
   meta: ChainContextMetaBlock,
+  budgets: TurnBudgets,
 ): number {
   let order = startOrder
 
@@ -237,13 +288,13 @@ function emitChatExportTurnsBlock(
     if (cur.role === 'user') {
       const filtered = filterUserText(text)
       if (!filtered) continue
-      const trimmed = headTail(filtered, USER_HEAD_CHARS, USER_TAIL_CHARS, USER_TRUNCATE_ABOVE)
+      const trimmed = headTail(filtered, budgets.userHead, budgets.userTail, budgets.userAbove)
       if (trimmed.truncated) meta.hadTruncation = true
       turns.push({ role: 'user', text: trimmed.text, order })
     } else {
       const filtered = filterAssistantText(text)
       if (!filtered) continue
-      const trimmed = headTail(filtered, ASST_HEAD_CHARS, ASST_TAIL_CHARS, ASST_TRUNCATE_ABOVE)
+      const trimmed = headTail(filtered, budgets.asstHead, budgets.asstTail, budgets.asstAbove)
       if (trimmed.truncated) meta.hadTruncation = true
       turns.push({ role: 'assistant', text: trimmed.text, order })
     }
@@ -259,13 +310,18 @@ function emitChatExportTurnsBlock(
  * transcript for the chain-digest contract. Returns an empty `turns` array
  * for vault-md-only chains; callers fall back to `chain.topic`.
  */
-export async function extractChainContextBlock(chain: ActivityChain): Promise<ChainContextBlock> {
+export async function extractChainContextBlock(
+  chain: ActivityChain,
+  budgetTokens: number = getAiInputBudgetTokens(),
+): Promise<ChainContextBlock> {
+  const budgets = turnBudgetsFor(budgetTokens)
   const turns: ExtractedTurnBlock[] = []
   const meta: ChainContextMetaBlock = {
     turnCount: 0,
     toolCallCount: 0,
     hadClear: false,
     hadTruncation: false,
+    droppedTurns: 0,
   }
 
   const ordered = [...chain.sessions]
@@ -298,7 +354,7 @@ export async function extractChainContextBlock(chain: ActivityChain): Promise<Ch
         vaultMdCache.set(cleanPath, md)
       }
       if (!md) continue
-      const emitted = emitChatExportTurnsBlock(md, s, order, turns, meta)
+      const emitted = emitChatExportTurnsBlock(md, s, order, turns, meta, budgets)
       order = emitted
       continue
     }
@@ -344,20 +400,26 @@ export async function extractChainContextBlock(chain: ActivityChain): Promise<Ch
       if (ev.type === 'user') {
         const filtered = filterUserText(text)
         if (!filtered) continue
-        const trimmed = headTail(filtered, USER_HEAD_CHARS, USER_TAIL_CHARS, USER_TRUNCATE_ABOVE)
+        const trimmed = headTail(filtered, budgets.userHead, budgets.userTail, budgets.userAbove)
         if (trimmed.truncated) meta.hadTruncation = true
         turns.push({ role: 'user', text: trimmed.text, order })
       } else {
         const filtered = filterAssistantText(text)
         if (!filtered) continue
-        const trimmed = headTail(filtered, ASST_HEAD_CHARS, ASST_TAIL_CHARS, ASST_TRUNCATE_ABOVE)
+        const trimmed = headTail(filtered, budgets.asstHead, budgets.asstTail, budgets.asstAbove)
         if (trimmed.truncated) meta.hadTruncation = true
         turns.push({ role: 'assistant', text: trimmed.text, order })
       }
     }
   }
-  meta.turnCount = turns.length
-  return { turns, meta }
+  // Per-turn trimming bounds each turn but never the whole transcript, so a
+  // long chain could still blow past the budget the user chose. This is the
+  // only place the total is actually enforced.
+  const fitted = fitToBudgetBlock(turns, budgetTokens)
+  if (fitted.dropped > 0) meta.hadTruncation = true
+  meta.droppedTurns = fitted.dropped
+  meta.turnCount = fitted.turns.length
+  return { turns: fitted.turns, meta }
 }
 
 /** One-line metadata anchor for the prompt: `session: 12 turns · 32 tool calls · had /clear`. */
@@ -367,6 +429,7 @@ export function formatSessionShapeBlock(meta: ChainContextMetaBlock): string {
     `${meta.toolCallCount} tool ${meta.toolCallCount === 1 ? 'call' : 'calls'}`,
   ]
   if (meta.hadClear) parts.push('had /clear')
+  if (meta.droppedTurns > 0) parts.push(`${meta.droppedTurns} mid-session turns dropped for length`)
   if (meta.hadTruncation) parts.push('some turns truncated')
   return `session shape: ${parts.join(' · ')}`
 }

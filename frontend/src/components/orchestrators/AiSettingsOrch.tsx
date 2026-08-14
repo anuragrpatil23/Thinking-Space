@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import AiTelemetryPanelBlock from '@/components/lego_blocks/integrations/AiTelemetryPanelBlock'
 import IntelligenceDiagnosticsBlock from '@/components/lego_blocks/integrations/IntelligenceDiagnosticsBlock'
+import IntelligenceTuningBlock from '@/components/lego_blocks/integrations/IntelligenceTuningBlock'
 import { listProvidersOrch, type AiProvider, type AiProviderStatus } from '@/services/orchestrators/chatOrch'
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
 import {
@@ -524,6 +525,15 @@ export default function AiSettingsOrch() {
           >
             <SettingsRowBlock stacked>
               <IntelligenceDiagnosticsBlock />
+            </SettingsRowBlock>
+          </SettingsGroupBlock>
+
+          <SettingsGroupBlock
+            heading="Intelligence tuning"
+            description="What a local digest costs, and the measurements behind each choice. These are judgement calls that depend on your machine and model — not constants."
+          >
+            <SettingsRowBlock stacked>
+              <IntelligenceTuningBlock />
             </SettingsRowBlock>
           </SettingsGroupBlock>
 

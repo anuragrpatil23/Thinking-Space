@@ -50,6 +50,7 @@ export const STORAGE_KEYS = {
   aiActivityHomePostItEnabled: 'ltm-ai-activity-home-post-it-enabled',
   aiActivitySetMode: 'ltm-ai-activity-set-mode-enabled',
   aiActivityCalendarMode: 'ltm-ai-activity-calendar-mode-enabled',
+  aiInputBudgetTokens: 'ltm-ai-input-budget-tokens',
   aiActivityAiTitlesEnabled: 'ltm-ai-activity-ai-titles-enabled',
   aiActivityRangeSummaryProvider: 'ltm-ai-activity-range-summary-provider',
   aiActivityRestDays: 'ltm-ai-activity-rest-days',
@@ -377,4 +378,26 @@ export const AI_ACTIVITY_REST_DAYS_EVENT = 'thinkspc:ai-activity-rest-days-chang
 
 export function setStoredVaultRoot(path: string): void {
   setStorageItem(STORAGE_KEYS.vaultRoot, path)
+}
+
+// ── Intelligence tuning ─────────────────────────────────────────────────
+// How much transcript a digest may see. This is a LATENCY budget, not a
+// context-window one: prefill dominates and degrades as it grows — measured
+// on an M5 Max with a dense 27B at 4bit, ~1.8s at 1k prompt tokens, ~5.9s at
+// 5k, ~30s at 21k, ~147s at 64k. The model's context window is far larger
+// than anything worth waiting for.
+export const AI_INPUT_BUDGET_DEFAULT_TOKENS = 20_000
+export const AI_INPUT_BUDGET_MIN_TOKENS = 1_000
+export const AI_INPUT_BUDGET_MAX_TOKENS = 120_000
+
+export function getAiInputBudgetTokens(): number {
+  const raw = getLocalStorageItemBlock(STORAGE_KEYS.aiInputBudgetTokens)
+  const parsed = raw === null ? NaN : Number(raw)
+  if (!Number.isFinite(parsed)) return AI_INPUT_BUDGET_DEFAULT_TOKENS
+  return Math.min(AI_INPUT_BUDGET_MAX_TOKENS, Math.max(AI_INPUT_BUDGET_MIN_TOKENS, Math.round(parsed)))
+}
+
+export function setAiInputBudgetTokens(tokens: number): void {
+  const clamped = Math.min(AI_INPUT_BUDGET_MAX_TOKENS, Math.max(AI_INPUT_BUDGET_MIN_TOKENS, Math.round(tokens)))
+  setStorageItem(STORAGE_KEYS.aiInputBudgetTokens, String(clamped))
 }

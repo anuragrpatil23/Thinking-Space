@@ -22,7 +22,10 @@ import {
 } from '@/services/lego_blocks/units/intelligence/intelligenceTelemetryBlock'
 import { clearIntelligenceCacheBlock } from '@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
-import { resolveModelProfileBlock } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
+import {
+  resolveMaxOutputTokensBlock,
+  resolveModelProfileBlock,
+} from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 import {
   resolveAiThinkingOverrideForScopeProviderBlock,
   resolveContractThinkingBlock,
@@ -155,6 +158,22 @@ export default function IntelligenceDiagnosticsBlock() {
                         ? 'Set by the AI Activity scope override.'
                         : 'Off unless switched on — internal tasks are single-shot.'}
                     </div>
+                    {(() => {
+                      const profile = resolveModelProfileBlock(p.defaultModel!, p.id)
+                      const limit = resolveMaxOutputTokensBlock(profile, contractThinking)
+                      return (
+                        <div className="mt-1 text-muted-foreground">
+                          Stop-limit <code>{limit.toLocaleString()}</code> tok
+                          {contractThinking && profile.reasoningHeadroomTokens > 0
+                            ? ` (${profile.maxOutputTokens.toLocaleString()} + ${profile.reasoningHeadroomTokens.toLocaleString()} reasoning headroom)`
+                            : ''}
+                          {' · context '}<code>{profile.contextWindow.toLocaleString()}</code>
+                          <div className="mt-0.5 opacity-80">
+                            A runaway guard, not a length control — answer length comes from the task’s prompt.
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                   <Switch
                     checked={contractThinking}
