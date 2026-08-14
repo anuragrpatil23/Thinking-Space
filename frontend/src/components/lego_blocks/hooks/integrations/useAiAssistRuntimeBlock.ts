@@ -15,6 +15,7 @@ import {
   type AiAssistPromptHistoryEntryBlock,
 } from '@/services/orchestrators/aiAssistPromptHistoryOrch'
 import type { AiSettingsScope } from '@/services/lego_blocks/integrations/aiSettingsBlock'
+import { resolveModelProfileBlock } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 
 export interface AiAssistResultPill {
   tone: 'neutral' | 'success' | 'error'
@@ -62,35 +63,15 @@ function errorMessage(value: unknown, fallback: string): string {
   return fallback
 }
 
+/** Toggle visibility comes from the shared model quirks table rather than a
+ *  substring list local to this hook — one place to update when a family
+ *  lands. Unknown local models stay default-open via the unknownLocal entry's
+ *  thinkingToggleVisible. */
 function modelSupportsThinkingToggleBlock(provider: AiProvider | null, model: string | null): boolean {
   if (provider !== 'opensource-ai') return false
-  const normalized = (model ?? '').trim().toLowerCase()
-  if (!normalized || normalized === 'local-model') return true
-
-  // Local reasoning families currently known to honor enable_thinking toggles.
-  if (
-    normalized.includes('qwen3')
-    || normalized.includes('qwen-3')
-    || normalized.includes('qwq')
-    || normalized.includes('deepseek-r1')
-    || normalized.includes('reasoner')
-  ) {
-    return true
-  }
-
-  // Hide for common local non-reasoning model families.
-  if (
-    normalized.includes('llama')
-    || normalized.includes('mistral')
-    || normalized.includes('gemma')
-    || normalized.includes('phi')
-    || normalized.includes('instruct')
-  ) {
-    return false
-  }
-
-  // Default-open for unknown Open Source AI models.
-  return true
+  const normalized = (model ?? '').trim()
+  if (!normalized || normalized.toLowerCase() === 'local-model') return true
+  return resolveModelProfileBlock(normalized, 'openai-compat').thinkingToggleVisible
 }
 
 export function useAiAssistRuntimeBlock(options: UseAiAssistRuntimeBlockOptions): AiAssistRuntimeBlockState {

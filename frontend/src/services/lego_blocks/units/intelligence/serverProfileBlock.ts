@@ -8,6 +8,8 @@
 // Cache lifetime is short (60s) so restarting the local server with a
 // different backend picks up quickly.
 
+import quirks from '@/data/modelQuirks.json'
+
 const PROBE_TIMEOUT_MS = 5_000
 const CACHE_TTL_MS = 60_000
 
@@ -38,6 +40,22 @@ export interface ServerProfile {
   fingerprint: string | null
 }
 
+interface ServerFamilyQuirk {
+  reasoningToggleLocation: ServerProfile['reasoningToggleLocation']
+  supportsTools: boolean
+  supportsJsonSchema: boolean
+}
+
+// Both tables come from `src/data/modelQuirks.json` — see the notes there.
+// Fingerprint order is significant.
+const FINGERPRINTS: Array<{ match: RegExp; family: ServerFamily }> =
+  quirks.servers.fingerprints.map(entry => ({
+    match: new RegExp(entry.match, 'i'),
+    family: entry.family as ServerFamily,
+  }))
+
+const SERVER_FAMILIES = quirks.servers.families as unknown as Record<ServerFamily, ServerFamilyQuirk>
+
 interface CacheEntry { profile: ServerProfile | null; at: number }
 const cache = new Map<string, CacheEntry>()
 const inflight = new Map<string, Promise<ServerProfile | null>>()
@@ -59,11 +77,9 @@ export function invalidateServerProfileBlock(baseUrl?: string): void {
 function detectFamilyFromFingerprint(fingerprint: string | null): ServerFamily {
   if (!fingerprint) return 'unknown-openai-compat'
   const f = fingerprint.toLowerCase()
-  if (f.includes('mlx')) return 'mlx_lm'
-  if (f.includes('lm-studio') || f.includes('lmstudio')) return 'lm_studio'
-  if (f.includes('ollama')) return 'ollama'
-  if (f.includes('llama.cpp') || f.includes('llamacpp')) return 'llama_cpp'
-  if (f.includes('vllm')) return 'vllm'
+  for (const entry of FINGERPRINTS) {
+    if (entry.match.test(f)) return entry.family
+  }
   return 'unknown-openai-compat'
 }
 
@@ -75,26 +91,11 @@ function capabilitiesForFamily(family: ServerFamily): {
   // Conservative defaults; enable per known-good server. If a server we
   // haven't tagged actually supports more, contracts still fall back to
   // prompt-based JSON so nothing hard-breaks.
-  switch (family) {
-    case 'mlx_lm':
-      // mlx_lm.server accepts `response_format: json_schema` in the request
-      // but doesn't reliably steer the model to obey it (observed with Qwen
-      // 3.6: server accepts the field, model emits markdown). Advertise
-      // false so contracts with non-string schemas fall back to prompt-based
-      // JSON instructions instead of trusting native schema enforcement.
-      return { reasoningToggleLocation: 'top-level', supportsTools: true, supportsJsonSchema: false }
-    case 'lm_studio':
-      return { reasoningToggleLocation: 'top-level', supportsTools: true, supportsJsonSchema: true }
-    case 'ollama':
-      return { reasoningToggleLocation: null, supportsTools: true, supportsJsonSchema: false }
-    case 'llama_cpp':
-      return { reasoningToggleLocation: 'top-level', supportsTools: true, supportsJsonSchema: true }
-    case 'vllm':
-      return { reasoningToggleLocation: 'extra-body', supportsTools: true, supportsJsonSchema: true }
-    case 'openai':
-      return { reasoningToggleLocation: null, supportsTools: true, supportsJsonSchema: true }
-    default:
-      return { reasoningToggleLocation: null, supportsTools: false, supportsJsonSchema: false }
+  const entry = SERVER_FAMILIES[family] ?? SERVER_FAMILIES['unknown-openai-compat']
+  return {
+    reasoningToggleLocation: entry.reasoningToggleLocation,
+    supportsTools: entry.supportsTools,
+    supportsJsonSchema: entry.supportsJsonSchema,
   }
 }
 

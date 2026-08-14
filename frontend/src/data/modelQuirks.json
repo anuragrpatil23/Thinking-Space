@@ -1,0 +1,245 @@
+{
+  "$schema": "./modelQuirks.schema.md",
+  "version": 1,
+  "$comment": [
+    "Model and server quirks, as data. Adding support for a newly released",
+    "model should be an edit to this file — not a code change.",
+    "",
+    "`models` is ORDER SENSITIVE: first regex match wins, so specific patterns",
+    "must precede general ones (qwen3.8 before qwen3). Patterns are matched",
+    "case-insensitively against the model id the server reports.",
+    "",
+    "Fields:",
+    "  match                 regex source, matched case-insensitively",
+    "  hasReasoningMode      model hides a thinking trail we must actively",
+    "                        disable for single-shot contract runs",
+    "  thinkingToggleVisible optional; whether the UI offers a thinking switch.",
+    "                        Defaults to hasReasoningMode. Only set explicitly",
+    "                        where the two answers differ (see unknownLocal).",
+    "  recommendedMaxTokens  output budget; reasoning models need headroom",
+    "                        because content tokens come after the thought.",
+    "  contextWindow         approximate, for guarding oversized inputs."
+  ],
+  "models": [
+    {
+      "match": "qwen3\\.?8",
+      "family": "Qwen 3.8",
+      "provider": "openai-compat",
+      "supportsTools": true,
+      "supportsJsonSchema": true,
+      "hasReasoningMode": true,
+      "recommendedMaxTokens": 1024,
+      "contextWindow": 262144
+    },
+    {
+      "match": "qwen3\\.?6|qwen3-next|qwen-3-next",
+      "family": "Qwen 3.6 / Qwen3-Next",
+      "provider": "openai-compat",
+      "supportsTools": true,
+      "supportsJsonSchema": true,
+      "hasReasoningMode": true,
+      "recommendedMaxTokens": 1024,
+      "contextWindow": 128000
+    },
+    {
+      "match": "qwen[-_ ]?3",
+      "family": "Qwen 3",
+      "provider": "openai-compat",
+      "supportsTools": true,
+      "supportsJsonSchema": true,
+      "hasReasoningMode": true,
+      "recommendedMaxTokens": 1024,
+      "contextWindow": 32000
+    },
+    {
+      "match": "qwen[-_ ]?2",
+      "family": "Qwen 2",
+      "provider": "openai-compat",
+      "supportsTools": true,
+      "supportsJsonSchema": false,
+      "hasReasoningMode": false,
+      "recommendedMaxTokens": 512,
+      "contextWindow": 32000
+    },
+    {
+      "match": "qwq",
+      "family": "QwQ",
+      "provider": "openai-compat",
+      "supportsTools": false,
+      "supportsJsonSchema": false,
+      "hasReasoningMode": true,
+      "recommendedMaxTokens": 2048,
+      "contextWindow": 32000
+    },
+    {
+      "match": "gemma[-_ ]?[34]",
+      "family": "Gemma 3/4",
+      "provider": "openai-compat",
+      "supportsTools": false,
+      "supportsJsonSchema": false,
+      "hasReasoningMode": false,
+      "recommendedMaxTokens": 512,
+      "contextWindow": 128000
+    },
+    {
+      "match": "llama[-_ ]?3\\.[123]|llama[-_ ]?3\\.\\d",
+      "family": "Llama 3.x",
+      "provider": "openai-compat",
+      "supportsTools": true,
+      "supportsJsonSchema": true,
+      "hasReasoningMode": false,
+      "recommendedMaxTokens": 512,
+      "contextWindow": 128000
+    },
+    {
+      "match": "mistral|mixtral",
+      "family": "Mistral",
+      "provider": "openai-compat",
+      "supportsTools": true,
+      "supportsJsonSchema": false,
+      "hasReasoningMode": false,
+      "recommendedMaxTokens": 512,
+      "contextWindow": 32000
+    },
+    {
+      "match": "phi[-_ ]?\\d",
+      "family": "Phi",
+      "provider": "openai-compat",
+      "supportsTools": false,
+      "supportsJsonSchema": false,
+      "hasReasoningMode": false,
+      "recommendedMaxTokens": 512,
+      "contextWindow": 128000
+    },
+    {
+      "match": "deepseek[-_ ]?r1|r1[-_ ]?distill",
+      "family": "DeepSeek R1",
+      "provider": "openai-compat",
+      "supportsTools": false,
+      "supportsJsonSchema": false,
+      "hasReasoningMode": true,
+      "recommendedMaxTokens": 2048,
+      "contextWindow": 64000
+    },
+    {
+      "match": "claude[-_ ]?opus[-_ ]?4",
+      "family": "Claude Opus 4.x",
+      "provider": "anthropic",
+      "supportsTools": true,
+      "supportsJsonSchema": true,
+      "hasReasoningMode": true,
+      "recommendedMaxTokens": 4096,
+      "contextWindow": 200000
+    },
+    {
+      "match": "claude[-_ ]?sonnet[-_ ]?4|claude[-_ ]?4[-_ ]?sonnet",
+      "family": "Claude Sonnet 4.x",
+      "provider": "anthropic",
+      "supportsTools": true,
+      "supportsJsonSchema": true,
+      "hasReasoningMode": true,
+      "recommendedMaxTokens": 4096,
+      "contextWindow": 200000
+    },
+    {
+      "match": "claude[-_ ]?haiku[-_ ]?4|claude[-_ ]?4[-_ ]?haiku",
+      "family": "Claude Haiku 4.x",
+      "provider": "anthropic",
+      "supportsTools": true,
+      "supportsJsonSchema": true,
+      "hasReasoningMode": false,
+      "recommendedMaxTokens": 2048,
+      "contextWindow": 200000
+    },
+    {
+      "match": "claude",
+      "family": "Claude (unknown version)",
+      "provider": "anthropic",
+      "supportsTools": true,
+      "supportsJsonSchema": true,
+      "hasReasoningMode": false,
+      "recommendedMaxTokens": 2048,
+      "contextWindow": 200000
+    }
+  ],
+  "unknownLocal": {
+    "family": "Unknown (OpenAI-compatible)",
+    "provider": "openai-compat",
+    "supportsTools": false,
+    "supportsJsonSchema": false,
+    "hasReasoningMode": false,
+    "thinkingToggleVisible": true,
+    "recommendedMaxTokens": 512,
+    "contextWindow": 8000
+  },
+  "unknownAnthropic": {
+    "family": "Unknown Claude",
+    "provider": "anthropic",
+    "supportsTools": false,
+    "supportsJsonSchema": false,
+    "hasReasoningMode": false,
+    "recommendedMaxTokens": 512,
+    "contextWindow": 8000
+  },
+  "$serversComment": [
+    "Server-side quirks, keyed by the family sniffed from system_fingerprint.",
+    "`fingerprints` is order sensitive the same way `models` is.",
+    "reasoningToggleLocation: where enable_thinking has to go, or null to not",
+    "send it at all."
+  ],
+  "servers": {
+    "$discoveryComment": "Loopback ports probed by 'Detect local servers'. Adding a runtime here is all it takes to have it found.",
+    "discovery": [
+      { "port": 1234, "runtime": "LM Studio" },
+      { "port": 8080, "runtime": "rapid-mlx / llama.cpp" },
+      { "port": 11434, "runtime": "Ollama" },
+      { "port": 8000, "runtime": "vLLM" },
+      { "port": 5001, "runtime": "mlx_lm.server" }
+    ],
+    "fingerprints": [
+      { "match": "mlx", "family": "mlx_lm" },
+      { "match": "lm-studio|lmstudio", "family": "lm_studio" },
+      { "match": "ollama", "family": "ollama" },
+      { "match": "llama\\.cpp|llamacpp", "family": "llama_cpp" },
+      { "match": "vllm", "family": "vllm" }
+    ],
+    "families": {
+      "mlx_lm": {
+        "$comment": "Accepts response_format: json_schema but does not reliably steer the model to obey it (observed with Qwen 3.6: server accepts the field, model emits markdown). Advertising false makes non-string contracts fall back to prompt-based JSON instead of trusting native enforcement.",
+        "reasoningToggleLocation": "top-level",
+        "supportsTools": true,
+        "supportsJsonSchema": false
+      },
+      "lm_studio": {
+        "reasoningToggleLocation": "top-level",
+        "supportsTools": true,
+        "supportsJsonSchema": true
+      },
+      "ollama": {
+        "reasoningToggleLocation": null,
+        "supportsTools": true,
+        "supportsJsonSchema": false
+      },
+      "llama_cpp": {
+        "reasoningToggleLocation": "top-level",
+        "supportsTools": true,
+        "supportsJsonSchema": true
+      },
+      "vllm": {
+        "reasoningToggleLocation": "extra-body",
+        "supportsTools": true,
+        "supportsJsonSchema": true
+      },
+      "openai": {
+        "reasoningToggleLocation": null,
+        "supportsTools": true,
+        "supportsJsonSchema": true
+      },
+      "unknown-openai-compat": {
+        "reasoningToggleLocation": null,
+        "supportsTools": false,
+        "supportsJsonSchema": false
+      }
+    }
+  }
+}
