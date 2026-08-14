@@ -23,8 +23,7 @@ import type { IntelligenceProvider } from '@/services/lego_blocks/integrations/i
 import type { Contract } from '@/services/lego_blocks/units/intelligence/promptContractBlock'
 import { resolveModelProfileBlock, type ModelProfile, type ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 import {
-  readAiSettingsBlock,
-  resolveAiThinkingOverrideForScopeProviderBlock,
+  resolveContractThinkingBlock,
   type AiSettingsScope,
 } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 import {
@@ -92,12 +91,15 @@ function resolveDisableReasoningBlock(
 ): boolean | undefined {
   if (!profile.hasReasoningMode) return undefined
   if (!scope || providerId !== 'openai-compat') return true
+  return !resolveContractThinkingBlock(scope, 'opensource-ai')
+}
 
-  const scoped = resolveAiThinkingOverrideForScopeProviderBlock(scope, 'opensource-ai')
-  if (typeof scoped === 'boolean') return !scoped
-  const providerLevel = readAiSettingsBlock().selectedThinkingByProvider['opensource-ai']
-  if (typeof providerLevel === 'boolean') return !providerLevel
-  return true
+/** Telemetry label for a resolved reasoning state. undefined (no reasoning
+ *  mode on this model) stays undefined rather than reporting a misleading
+ *  "off" for a model that never had a toggle. */
+function reasoningLabelBlock(disableReasoning: boolean | undefined): 'on' | 'off' | undefined {
+  if (disableReasoning === undefined) return undefined
+  return disableReasoning ? 'off' : 'on'
 }
 
 export interface RunWithToolsOptions {
@@ -328,6 +330,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
           status: 'error',
           finishReason: response.finishReason,
           usage: response.usage,
+          reasoning: reasoningLabelBlock(disableReasoning),
           error: makeIntelligenceErrorBlock('empty-content', 'Contract discarded model output', {
             providerId: provider.id,
             model,
@@ -359,6 +362,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
         status: 'ok',
         finishReason: response.finishReason,
         usage: response.usage,
+        reasoning: reasoningLabelBlock(disableReasoning),
         cacheHit: false,
         responsePreview: response.content.slice(0, 200),
       })

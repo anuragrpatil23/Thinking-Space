@@ -20,6 +20,11 @@ export interface TelemetryEntry {
   finishReason?: IntelligenceFinishReason
   usage?: { promptTokens: number; completionTokens: number }
   cacheHit?: boolean
+  /** Whether hidden reasoning was left on for this run. Absent when the model
+   *  has no reasoning mode to toggle. Recorded because it is invisible in the
+   *  output yet changes both latency and how much of the token budget the
+   *  answer actually gets. */
+  reasoning?: 'on' | 'off'
   error?: IntelligenceError
   /** Kept for the diagnostics "replay" button — trimmed to reasonable size. */
   requestPreview?: string

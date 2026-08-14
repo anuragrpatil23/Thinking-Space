@@ -41,8 +41,13 @@ vi.mock('@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock
 }))
 
 const { runContract } = await import('@/services/orchestrators/intelligenceOrch')
-const { setSelectedAiThinkingForScopeBlock, setSelectedAiThinkingBlock } = await import(
-  '@/services/lego_blocks/integrations/aiSettingsBlock'
+const {
+  setSelectedAiThinkingForScopeBlock,
+  setSelectedAiThinkingBlock,
+  resolveContractThinkingBlock,
+} = await import('@/services/lego_blocks/integrations/aiSettingsBlock')
+const { clearTelemetryBlock, readTelemetryBlock } = await import(
+  '@/services/lego_blocks/units/intelligence/intelligenceTelemetryBlock'
 )
 
 const contract = {
@@ -116,6 +121,37 @@ describe('runContract reasoning resolution', () => {
   it('leaves reasoning unset for a model with no reasoning mode', async () => {
     await run({ scope: 'ai_activity', model: 'some-unknown-local-model' })
     expect(seen[0].disableReasoning).toBeUndefined()
+  })
+
+  it('records what actually ran in telemetry, so the diagnostics panel can show it', async () => {
+    clearTelemetryBlock()
+    await run({ scope: 'ai_activity' })
+    expect(readTelemetryBlock()[0].reasoning).toBe('off')
+
+    setSelectedAiThinkingForScopeBlock('ai_activity', 'opensource-ai', true)
+    clearTelemetryBlock()
+    await run({ scope: 'ai_activity' })
+    expect(readTelemetryBlock()[0].reasoning).toBe('on')
+  })
+
+  it('omits the telemetry label for a model with no reasoning mode', async () => {
+    clearTelemetryBlock()
+    await run({ scope: 'ai_activity', model: 'some-unknown-local-model' })
+    expect(readTelemetryBlock()[0].reasoning).toBeUndefined()
+  })
+
+  it('agrees with the shared rule the Settings UI reads', async () => {
+    // The switch used to display resolveAiThinkingForScopeProviderBlock, which
+    // defaults on, while runs were off — the UI confidently said the opposite
+    // of what happened. Both must now come from resolveContractThinkingBlock.
+    expect(resolveContractThinkingBlock('ai_activity', 'opensource-ai')).toBe(false)
+    await run({ scope: 'ai_activity' })
+    expect(seen[0].disableReasoning).toBe(true)
+
+    setSelectedAiThinkingBlock('opensource-ai', true)
+    expect(resolveContractThinkingBlock('ai_activity', 'opensource-ai')).toBe(true)
+    await run({ scope: 'ai_activity' })
+    expect(seen[0].disableReasoning).toBe(false)
   })
 
   it('varies the cache key by reasoning state so toggling does not serve stale output', async () => {

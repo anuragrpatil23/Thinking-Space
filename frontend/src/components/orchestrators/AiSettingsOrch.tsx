@@ -39,6 +39,7 @@ import {
   resolveAiThinkingForProviderOrch,
   resolveAiThinkingForScopeProviderOrch,
   resolveAiThinkingOverrideForScopeProviderOrch,
+  resolveContractThinkingOrch,
   resolveAiModelForScopeProviderOrch,
   resolveAiModelForProviderOrch,
   setAiProviderThinkingOrch,
@@ -772,6 +773,21 @@ export default function AiSettingsOrch() {
                                     checked={resolveAiThinkingForScopeProviderOrch(scope, 'opensource-ai')}
                                     onCheckedChange={(checked) => onToggleScopeThinking(scope, 'opensource-ai', checked)}
                                   />
+                                </div>
+                                <div className="mt-1 text-[11px] text-muted-foreground">
+                                  Chat and assist:{' '}
+                                  <strong className="font-medium text-foreground">
+                                    {resolveAiThinkingForScopeProviderOrch(scope, 'opensource-ai') ? 'on' : 'off'}
+                                  </strong>
+                                  {' · '}Internal tasks (digests, summaries):{' '}
+                                  <strong className="font-medium text-foreground">
+                                    {resolveContractThinkingOrch(scope, 'opensource-ai') ? 'on' : 'off'}
+                                  </strong>
+                                  {resolveAiThinkingOverrideForScopeProviderOrch(scope, 'opensource-ai') == null
+                                  && resolveAiThinkingForScopeProviderOrch(scope, 'opensource-ai')
+                                  && !resolveContractThinkingOrch(scope, 'opensource-ai')
+                                    ? ' — internal tasks stay off until you switch this explicitly, so a single-shot answer is not truncated by its own reasoning.'
+                                    : ''}
                                 </div>
                                 <div className="mt-2 flex items-center justify-between gap-2">
                                   <div className="text-xs text-muted-foreground">

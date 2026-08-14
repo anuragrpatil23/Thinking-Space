@@ -6,6 +6,7 @@ import {
   resolveAiThinkingForProviderBlock,
   resolveAiThinkingForScopeProviderBlock,
   resolveAiThinkingOverrideForScopeProviderBlock,
+  resolveContractThinkingBlock,
   resolveAiModelForScopeProviderBlock,
   resolveAiModelForProviderBlock,
   setSelectedAiThinkingBlock,
@@ -196,6 +197,14 @@ export function resolveAiThinkingForProviderOrch(provider: AiProvider): boolean 
 
 export function resolveAiThinkingForScopeProviderOrch(scope: AiSettingsScope, provider: AiProvider): boolean {
   return resolveAiThinkingForScopeProviderBlock(scope, provider)
+}
+
+/** Effective thinking state for INTERNAL contract runs in this scope — the
+ *  stricter, explicit-opt-in rule. Differs from
+ *  resolveAiThinkingForScopeProviderOrch, which answers for chat and defaults
+ *  on. Surfaced so the UI can show what will actually happen. */
+export function resolveContractThinkingOrch(scope: AiSettingsScope, provider: AiProvider): boolean {
+  return resolveContractThinkingBlock(scope, provider)
 }
 
 export function resolveAiThinkingOverrideForScopeProviderOrch(

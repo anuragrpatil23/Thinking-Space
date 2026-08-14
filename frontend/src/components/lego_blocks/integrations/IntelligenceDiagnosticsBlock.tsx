@@ -6,7 +6,7 @@
 // Not an orchestrator — it doesn't compose services, it just reflects state
 // from the orchestrator/telemetry unit.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { availability, diagnose, type DiagnosticsSnapshot } from '@/services/orchestrators/intelligenceOrch'
 import {
@@ -21,6 +21,17 @@ import {
   type TelemetryEntry,
 } from '@/services/lego_blocks/units/intelligence/intelligenceTelemetryBlock'
 import { clearIntelligenceCacheBlock } from '@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock'
+import { Switch } from '@/components/lego_blocks/units/ui/switch'
+import { resolveModelProfileBlock } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
+import {
+  resolveAiThinkingOverrideForScopeProviderBlock,
+  resolveContractThinkingBlock,
+  setSelectedAiThinkingBlock,
+} from '@/services/lego_blocks/integrations/aiSettingsBlock'
+
+// Internal contracts (chain digest, day atom, range summary) all run under the
+// ai_activity scope, so that's the scope this panel reports and controls.
+const DIAGNOSTICS_SCOPE = 'ai_activity' as const
 
 const PROVIDER_LABELS: Record<ProviderId, string> = {
   'openai-compat': 'Local (OpenAI-compatible)',
@@ -43,6 +54,12 @@ function statusPill(status: TelemetryEntry['status']): string {
 export default function IntelligenceDiagnosticsBlock() {
   const [snapshot, setSnapshot] = useState<DiagnosticsSnapshot | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  // Settings live outside React state, so bump this to re-read after a toggle.
+  const [thinkingTick, setThinkingTick] = useState(0)
+  const contractThinking = useMemo(
+    () => resolveContractThinkingBlock(DIAGNOSTICS_SCOPE, 'opensource-ai'),
+    [thinkingTick],
+  )
   const [defaultProvider, setDefaultProvider] = useState<ProviderId>(readDefaultProviderBlock())
   const [telemetry, setTelemetry] = useState<TelemetryEntry[]>(() => readTelemetryBlock(20))
   const [expandedId, setExpandedId] = useState<number | null>(null)
@@ -128,6 +145,27 @@ export default function IntelligenceDiagnosticsBlock() {
               {p.reason && !p.available && (
                 <div className="mt-1 text-xs text-red-500">{p.reason}</div>
               )}
+              {p.id === 'openai-compat' && p.defaultModel
+                && resolveModelProfileBlock(p.defaultModel, p.id).hasReasoningMode && (
+                <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-border/50 bg-muted/30 px-2 py-1.5">
+                  <div className="text-xs">
+                    <div className="font-medium">Thinking</div>
+                    <div className="text-muted-foreground">
+                      {resolveAiThinkingOverrideForScopeProviderBlock(DIAGNOSTICS_SCOPE, 'opensource-ai') !== null
+                        ? 'Set by the AI Activity scope override.'
+                        : 'Off unless switched on — internal tasks are single-shot.'}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={contractThinking}
+                    onCheckedChange={(checked) => {
+                      setSelectedAiThinkingBlock('opensource-ai', checked)
+                      setThinkingTick(t => t + 1)
+                    }}
+                    aria-label="Enable thinking for internal AI tasks"
+                  />
+                </div>
+              )}
               {Object.keys(p.details).length > 0 && (
                 <details className="mt-2 text-xs">
                   <summary className="cursor-pointer text-muted-foreground">Detected capabilities</summary>
@@ -174,6 +212,20 @@ export default function IntelligenceDiagnosticsBlock() {
                     <span className="text-muted-foreground">{entry.model || entry.providerId}</span>
                   </div>
                   <div className="flex items-center gap-3 text-muted-foreground">
+                    {entry.reasoning && (
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                          entry.reasoning === 'on'
+                            ? 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-500'
+                            : 'bg-muted text-muted-foreground'
+                        }`}
+                        title={entry.reasoning === 'on'
+                          ? 'Hidden reasoning ran — it shares this request’s token budget'
+                          : 'Hidden reasoning suppressed — single-shot answer'}
+                      >
+                        thinking {entry.reasoning}
+                      </span>
+                    )}
                     {entry.usage && (
                       <span>
                         {entry.usage.promptTokens}→{entry.usage.completionTokens} tok

@@ -308,3 +308,29 @@ export function resolveAiThinkingForScopeProviderBlock(
   if (typeof scoped === 'boolean') return scoped
   return resolveAiThinkingForProviderBlock(provider, settings)
 }
+
+/** Whether hidden reasoning runs for INTERNAL contract runs (chain digest, day
+ *  atom, range summary) in this scope.
+ *
+ *  Deliberately stricter than resolveAiThinkingForScopeProviderBlock, which
+ *  answers the same question for chat and defaults to ON. A contract run is a
+ *  single shot against a fixed token budget, so an untouched setting has to
+ *  mean OFF here or every digest silently gets slower and can be truncated by
+ *  its own reasoning trail. Only an explicit opt-in — at scope or provider
+ *  level — turns it on.
+ *
+ *  This is THE definition of that rule. Both the orchestrator that acts on it
+ *  and the Settings UI that displays it must call this, or the switch ends up
+ *  claiming "on" while runs are off. */
+export function resolveContractThinkingBlock(
+  scope: AiSettingsScope,
+  provider: AiProvider,
+  settings?: AiSettings,
+): boolean {
+  const snapshot = settings ?? readAiSettingsBlock()
+  const scoped = resolveAiThinkingOverrideForScopeProviderBlock(scope, provider, snapshot)
+  if (typeof scoped === 'boolean') return scoped
+  const providerLevel = snapshot.selectedThinkingByProvider[provider]
+  if (typeof providerLevel === 'boolean') return providerLevel
+  return false
+}
