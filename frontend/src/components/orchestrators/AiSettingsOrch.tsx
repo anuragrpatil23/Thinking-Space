@@ -29,6 +29,10 @@ import {
   importAiLoginTransferCodeOrch,
 } from '@/services/orchestrators/aiLoginTransferOrch'
 import {
+  discoverLocalServersBlock,
+  type DiscoveredLocalServer,
+} from '@/services/lego_blocks/units/intelligence/localServerDiscoveryBlock'
+import {
   listAiModelOptionsOrch,
   listAiModelScopesOrch,
   resolveAiProviderForScopeOrch,
@@ -75,6 +79,8 @@ export default function AiSettingsOrch() {
   const [azureDeploymentInput, setAzureDeploymentInput] = useState('')
   const [azureApiVersionInput, setAzureApiVersionInput] = useState('')
   const [openSourceAiBaseUrlInput, setOpenSourceAiBaseUrlInput] = useState('')
+  const [detectingServers, setDetectingServers] = useState(false)
+  const [discoveredServers, setDiscoveredServers] = useState<DiscoveredLocalServer[]>([])
   const [openSourceAiApiKeyInput, setOpenSourceAiApiKeyInput] = useState('')
   const [openSourceAiModelInput, setOpenSourceAiModelInput] = useState('')
   const [transferCodeInput, setTransferCodeInput] = useState('')
@@ -254,6 +260,24 @@ export default function AiSettingsOrch() {
     setError(null)
   }
 
+  const onDetectLocalServers = async () => {
+    setDetectingServers(true)
+    setError(null)
+    try {
+      const found = await discoverLocalServersBlock()
+      setDiscoveredServers(found)
+      setMessage(
+        found.length === 0
+          ? 'No local servers found on the usual ports. Enter a base URL manually.'
+          : `Found ${found.length} local server${found.length === 1 ? '' : 's'}. Pick one to fill in.`,
+      )
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to scan for local servers'))
+    } finally {
+      setDetectingServers(false)
+    }
+  }
+
   const onSaveNativeLogins = async () => {
     try {
       setNativeClaudeLoginOrch(claudeApiKeyInput)
@@ -420,7 +444,43 @@ export default function AiSettingsOrch() {
                 />
               </div>
             </SettingsRowBlock>
-            <SettingsRowBlock label="Open Source AI (LM Studio / OpenAI-compatible)" stacked className="gap-2">
+            <SettingsRowBlock
+              label="Open Source AI (LM Studio / OpenAI-compatible)"
+              stacked
+              className="gap-2"
+              description="Running a local server? Detect it instead of typing the URL."
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { void onDetectLocalServers() }}
+                  disabled={detectingServers}
+                >
+                  {detectingServers ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Scanning…
+                    </span>
+                  ) : 'Detect local servers'}
+                </Button>
+                {discoveredServers.map(server => (
+                  <button
+                    key={server.baseUrl}
+                    type="button"
+                    className="rounded-md border border-border/70 px-2 py-1 text-xs text-foreground hover:bg-muted"
+                    onClick={() => {
+                      setOpenSourceAiBaseUrlInput(server.baseUrl)
+                      setOpenSourceAiModelInput(server.models[0] ?? '')
+                      setMessage(`Filled in ${server.runtime}. Save Native Logins to apply.`)
+                    }}
+                  >
+                    <span className="font-medium">{server.runtime}</span>
+                    <span className="ml-1 opacity-70">{server.baseUrl}</span>
+                    <span className="ml-1 opacity-70">· {server.models[0]}</span>
+                  </button>
+                ))}
+              </div>
               <div className="grid gap-2 md:grid-cols-3">
                 <input
                   value={openSourceAiBaseUrlInput}
