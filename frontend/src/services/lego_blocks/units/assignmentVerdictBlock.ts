@@ -37,7 +37,7 @@ export type VerdictKindBlock =
   | 'reject'
 
 export interface AssignmentVerdictBlock {
-  chainId: string
+  sessionId: string
   projectId: string
   /** What was on the table. Null when a human dispositioned a chain the model
    *  never got to — a rarity worth telling apart from "proposed and accepted",
@@ -143,12 +143,12 @@ export function parseVerdictLogBlock(content: string): AssignmentVerdictBlock[] 
     } catch {
       continue
     }
-    const chainId = asStringBlock(raw.chainId).trim()
+    const sessionId = asStringBlock(raw.sessionId).trim()
     const verdict = raw.verdict
-    if (!chainId) continue
+    if (!sessionId) continue
     if (verdict !== 'accept' && verdict !== 'modify' && verdict !== 'reject') continue
     out.push({
-      chainId,
+      sessionId,
       projectId: asStringBlock(raw.projectId).trim(),
       proposed: parseTargetBlock(raw.proposed),
       confidence:

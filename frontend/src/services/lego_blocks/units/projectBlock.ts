@@ -218,7 +218,7 @@ function normalizeRootsBlock(value: unknown): string[] {
  * this vault is the counterexample: 17 chain digests carry
  * `projectId: Understanding Myself`, with a space, while their directory is
  * `Understanding_Myself`. The key is the canonical *project string* the parser
- * emits and groups by; `sanitizeSegment` (aiActivityChainDigestBlock) already
+ * emits and groups by; `sanitizeSegment` (aiActivitySessionDigestBlock) already
  * derives the filesystem name from it. Rejecting the space would have set that
  * project's key to '' and silently dropped it from the registry.
  *

@@ -305,10 +305,154 @@ function emitChatExportTurnsBlock(
 
 // ── public API ───────────────────────────────────────────────────────────
 
+function emptyMetaBlock(): ChainContextMetaBlock {
+  return {
+    turnCount: 0,
+    toolCallCount: 0,
+    hadClear: false,
+    hadTruncation: false,
+    droppedTurns: 0,
+  }
+}
+
+/**
+ * Append one session's turns to `turns` / `meta`, returning the next `order`.
+ *
+ * Shared by the per-session and per-chain extractors so there is exactly one
+ * definition of "what a transcript looks like to the model". The chain version
+ * calls this in a loop and splits one budget across the members; the session
+ * version calls it once and gives the whole budget to a single sitting.
+ *
+ * `vaultMdCache` is threaded in rather than owned here because chat-export
+ * windows (`#wN`) commonly slice one underlying conversation file — the chain
+ * caller fetches once and slices N times. A single-session caller passes a
+ * throwaway map and pays one read, which is the correct cost for one session.
+ */
+async function collectSessionTurnsBlock(
+  s: ParsedSession,
+  order: number,
+  turns: ExtractedTurnBlock[],
+  meta: ChainContextMetaBlock,
+  budgets: TurnBudgets,
+  vaultMdCache: Map<string, string | null>,
+): Promise<number> {
+  const cleanPath = s.path.replace(/#w\d+$/, '')
+
+  // Vault-md chat-export sittings (ChatGPT / Grok). No native JSONL exists
+  // for these — the transcript lives in the markdown file at `cleanPath`.
+  // We parse `## User\n*ts*\nbody` / `## Assistant\n*ts*\nbody` blocks
+  // and clip to the sitting's time window so `#wN` slices don't bleed
+  // into each other.
+  if (s.source === 'chatgpt' || s.source === 'grok') {
+    let md = vaultMdCache.get(cleanPath) ?? null
+    if (!vaultMdCache.has(cleanPath)) {
+      try {
+        const fs = getVaultFS()
+        md = await fs.read(cleanPath)
+      } catch {
+        md = null
+      }
+      vaultMdCache.set(cleanPath, md)
+    }
+    if (!md) return order
+    return emitChatExportTurnsBlock(md, s, order, turns, meta, budgets)
+  }
+
+  if (!cleanPath.startsWith('native/')) return order
+  const rest = cleanPath.slice('native/'.length)
+  const slash = rest.indexOf('/')
+  if (slash < 0) return order
+  const source = rest.slice(0, slash) as 'claude' | 'codex'
+  const relPath = rest.slice(slash + 1)
+  let jsonl: string
+  try {
+    jsonl = await readNativeAiSession(source, relPath)
+  } catch {
+    return order
+  }
+
+  for (const line of jsonl.split('\n')) {
+    if (!line.trim()) continue
+    let ev: Record<string, unknown>
+    try {
+      ev = JSON.parse(line)
+    } catch {
+      continue
+    }
+    if (ev.type !== 'user' && ev.type !== 'assistant') continue
+    const msg = ev.message as Record<string, unknown> | undefined
+    const content = msg?.content
+
+    // Count tool_use across every asst message, even ones we won't keep,
+    // so `session shape` reflects the true tool density.
+    if (ev.type === 'assistant') meta.toolCallCount += countToolUses(content)
+
+    // User tool_result-only messages carry the tool output back to Claude
+    // — pure noise for post-hoc summarization; drop before flatten.
+    if (ev.type === 'user' && containsOnlyToolResults(content)) continue
+
+    const text = flattenContent(content).trim()
+    if (!text) continue
+    if (CLEAR_CMD_RE.test(text)) meta.hadClear = true
+
+    order += 1
+    if (ev.type === 'user') {
+      const filtered = filterUserText(text)
+      if (!filtered) continue
+      const trimmed = headTail(filtered, budgets.userHead, budgets.userTail, budgets.userAbove)
+      if (trimmed.truncated) meta.hadTruncation = true
+      turns.push({ role: 'user', text: trimmed.text, order })
+    } else {
+      const filtered = filterAssistantText(text)
+      if (!filtered) continue
+      const trimmed = headTail(filtered, budgets.asstHead, budgets.asstTail, budgets.asstAbove)
+      if (trimmed.truncated) meta.hadTruncation = true
+      turns.push({ role: 'assistant', text: trimmed.text, order })
+    }
+  }
+  return order
+}
+
+/**
+ * Compact, ordered transcript for ONE session — the input to the session-digest
+ * contract.
+ *
+ * This is the only extractor that reads raw material, and it is deliberately
+ * the *narrow* one. The chain extractor below splits a single budget across up
+ * to five sittings and then drops turns from the middle of the merged stream to
+ * fit, so in a multi-session chain every member arrived at the model already
+ * thinned, and members past the fifth never arrived at all. Summarizing one
+ * sitting at a time gives each the whole budget, and the chain-level digest is
+ * then composed from complete summaries rather than shared scraps.
+ *
+ * Returns an empty `turns` array when the transcript can't be read (vault-md
+ * with no export, deleted JSONL); callers fall back to `session.topic`.
+ */
+export async function extractSessionContextBlock(
+  session: ParsedSession,
+  budgetTokens: number = getAiInputBudgetTokens(),
+): Promise<ChainContextBlock> {
+  const budgets = turnBudgetsFor(budgetTokens)
+  const turns: ExtractedTurnBlock[] = []
+  const meta = emptyMetaBlock()
+
+  await collectSessionTurnsBlock(session, 0, turns, meta, budgets, new Map())
+
+  const fitted = fitToBudgetBlock(turns, budgetTokens)
+  if (fitted.dropped > 0) meta.hadTruncation = true
+  meta.droppedTurns = fitted.dropped
+  meta.turnCount = fitted.turns.length
+  return { turns: fitted.turns, meta }
+}
+
 /**
  * Walk a chain's native-jsonl sessions and produce a compact, ordered
  * transcript for the chain-digest contract. Returns an empty `turns` array
  * for vault-md-only chains; callers fall back to `chain.topic`.
+ *
+ * Retained for the legacy whole-chain digest path. New work should summarize
+ * per session (`extractSessionContextBlock`) and compose upward — see the
+ * budget note there for why.
  */
 export async function extractChainContextBlock(
   chain: ActivityChain,
@@ -316,13 +460,7 @@ export async function extractChainContextBlock(
 ): Promise<ChainContextBlock> {
   const budgets = turnBudgetsFor(budgetTokens)
   const turns: ExtractedTurnBlock[] = []
-  const meta: ChainContextMetaBlock = {
-    turnCount: 0,
-    toolCallCount: 0,
-    hadClear: false,
-    hadTruncation: false,
-    droppedTurns: 0,
-  }
+  const meta = emptyMetaBlock()
 
   const ordered = [...chain.sessions]
     .sort((a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso))
@@ -335,82 +473,7 @@ export async function extractChainContextBlock(
 
   let order = 0
   for (const s of ordered) {
-    const cleanPath = s.path.replace(/#w\d+$/, '')
-
-    // Vault-md chat-export chains (ChatGPT / Grok). No native JSONL exists
-    // for these — the transcript lives in the markdown file at `cleanPath`.
-    // We parse `## User\n*ts*\nbody` / `## Assistant\n*ts*\nbody` blocks
-    // and clip to the sitting's time window so `#wN` slices don't bleed
-    // into each other.
-    if (s.source === 'chatgpt' || s.source === 'grok') {
-      let md = vaultMdCache.get(cleanPath) ?? null
-      if (!vaultMdCache.has(cleanPath)) {
-        try {
-          const fs = getVaultFS()
-          md = await fs.read(cleanPath)
-        } catch {
-          md = null
-        }
-        vaultMdCache.set(cleanPath, md)
-      }
-      if (!md) continue
-      const emitted = emitChatExportTurnsBlock(md, s, order, turns, meta, budgets)
-      order = emitted
-      continue
-    }
-
-    if (!cleanPath.startsWith('native/')) continue
-    const rest = cleanPath.slice('native/'.length)
-    const slash = rest.indexOf('/')
-    if (slash < 0) continue
-    const source = rest.slice(0, slash) as 'claude' | 'codex'
-    const relPath = rest.slice(slash + 1)
-    let jsonl: string
-    try {
-      jsonl = await readNativeAiSession(source, relPath)
-    } catch {
-      continue
-    }
-
-    for (const line of jsonl.split('\n')) {
-      if (!line.trim()) continue
-      let ev: Record<string, unknown>
-      try {
-        ev = JSON.parse(line)
-      } catch {
-        continue
-      }
-      if (ev.type !== 'user' && ev.type !== 'assistant') continue
-      const msg = ev.message as Record<string, unknown> | undefined
-      const content = msg?.content
-
-      // Count tool_use across every asst message, even ones we won't keep,
-      // so `session shape` reflects the true tool density.
-      if (ev.type === 'assistant') meta.toolCallCount += countToolUses(content)
-
-      // User tool_result-only messages carry the tool output back to Claude
-      // — pure noise for post-hoc summarization; drop before flatten.
-      if (ev.type === 'user' && containsOnlyToolResults(content)) continue
-
-      const text = flattenContent(content).trim()
-      if (!text) continue
-      if (CLEAR_CMD_RE.test(text)) meta.hadClear = true
-
-      order += 1
-      if (ev.type === 'user') {
-        const filtered = filterUserText(text)
-        if (!filtered) continue
-        const trimmed = headTail(filtered, budgets.userHead, budgets.userTail, budgets.userAbove)
-        if (trimmed.truncated) meta.hadTruncation = true
-        turns.push({ role: 'user', text: trimmed.text, order })
-      } else {
-        const filtered = filterAssistantText(text)
-        if (!filtered) continue
-        const trimmed = headTail(filtered, budgets.asstHead, budgets.asstTail, budgets.asstAbove)
-        if (trimmed.truncated) meta.hadTruncation = true
-        turns.push({ role: 'assistant', text: trimmed.text, order })
-      }
-    }
+    order = await collectSessionTurnsBlock(s, order, turns, meta, budgets, vaultMdCache)
   }
   // Per-turn trimming bounds each turn but never the whole transcript, so a
   // long chain could still blow past the budget the user chose. This is the

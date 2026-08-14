@@ -1,4 +1,4 @@
-import { listChainsBlock } from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
+import { listProjectSessionDigestsBlock } from '@/services/lego_blocks/integrations/aiActivitySessionDigestStoreBlock'
 import {
   listSectionsBlock,
   listUndertakingsBlock,
@@ -42,7 +42,7 @@ export interface AssignmentDraft {
 /** Enough of a chain for the model to tell work apart, and no more — the whole
  *  transcript would blow the context for a question the digest already answers. */
 interface ChainBrief {
-  chainId: string
+  sessionId: string
   title: string
   summary: string
   date: string
@@ -73,19 +73,19 @@ function heuristicDraftBlock(briefs: ChainBrief[]): AssignmentDraft {
   }
 }
 
-export async function draftUndertakingForChainsOrch(params: {
+export async function draftUndertakingForSessionsOrch(params: {
   projectId: string
-  chainIds: string[]
+  sessionIds: string[]
 }): Promise<AssignmentDraft> {
-  const wanted = new Set(params.chainIds)
-  const stored = await listChainsBlock({ projectId: params.projectId })
+  const wanted = new Set(params.sessionIds)
+  const stored = await listProjectSessionDigestsBlock(params.projectId)
   const briefs: ChainBrief[] = stored
-    .filter(chain => wanted.has(chain.chainId))
-    .map(chain => ({
-      chainId: chain.chainId,
-      title: chain.title || chain.chainKey,
-      summary: chain.summary || '',
-      date: chain.date,
+    .filter(digest => wanted.has(digest.sessionId))
+    .map(digest => ({
+      sessionId: digest.sessionId,
+      title: digest.title || digest.sessionId,
+      summary: digest.summary || '',
+      date: digest.date,
     }))
     .sort((a, b) => a.date.localeCompare(b.date))
 

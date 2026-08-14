@@ -1,9 +1,8 @@
 import {
-  listChainProjectsBlock,
-  listChainsBlock,
-  patchChainBlock,
-  type ChainEntry,
-} from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
+  listProjectSessionDigestsBlock,
+  listSessionProjectsBlock,
+  patchSessionUndertakingBlock,
+} from '@/services/lego_blocks/integrations/aiActivitySessionDigestStoreBlock'
 import {
   getUndertakingBlock,
   listUndertakingsBlock,
@@ -14,7 +13,11 @@ import {
   type UndertakingRecord,
 } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
 import { listSectionsBlock } from '@/services/lego_blocks/integrations/aiActivityUndertakingStoreBlock'
-import { chainActiveDurationMsBlock } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
+import {
+  groupSessionDigestsBlock,
+  sessionActiveDurationMsBlock,
+  type ProjectSessionDigest,
+} from '@/services/lego_blocks/units/aiActivitySessionDigestBlock'
 import { undisposedChainsBlock } from '@/services/lego_blocks/units/assignmentSweepBlock'
 import {
   buildQueueGroupsBlock,
@@ -37,21 +40,34 @@ import {
   readProposalsBlock,
 } from '@/services/lego_blocks/integrations/assignmentLogStoreBlock'
 import { newUuidBlock } from '@/services/lego_blocks/units/uuidBlock'
-import { deriveCanonicalChainsOrch } from '@/services/orchestrators/aiActivityChainReconcileOrch'
-import { chainSessionIdsBlock } from '@/services/orchestrators/aiActivityChainDigestOrch'
-import { resolveChainDigestsBlock } from '@/services/lego_blocks/units/aiActivityChainResolveBlock'
-import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { deriveCanonicalChainsOrch } from '@/services/orchestrators/aiActivityChainsOrch'
+import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
+import type { ActivityChain, ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
 
 /**
- * The assignment queue: every chain that still owes a disposition, grouped by
+ * The assignment queue: every session that still owes a disposition, grouped by
  * what an AI pass proposed for it, ordered so the cheapest judgements come
  * first.
  *
  * The queue is the product, not the index. The constraint that shapes every
  * decision here is that involvement is expensive — so grouping is by proposal
- * rather than by chain (one keystroke disposes of the six chains that were
+ * rather than by session (one keystroke disposes of the six sittings that were
  * obviously one piece of work), ordering is by confidence descending (abandon
- * the session at any point having done the most good), and skipping is free.
+ * the pass at any point having done the most good), and skipping is free.
+ *
+ * ## Why the session and not the chain
+ *
+ * This queue used to dispose of *chains*. A chain groups by time, so it can
+ * hold two unrelated topics — and an undertaking is a topic. That mismatch is
+ * how a Broadcom undertaking came to list four Important-Personalities notes as
+ * its pages: a 20-second gap made them one chain, and a chain-level disposition
+ * had no way to say "this half, not that half".
+ *
+ * The unit is now the session, which is the finest thing the transcript
+ * actually distinguishes, so that misattribution is no longer representable.
+ * The cost is roughly 1.5x the rows (chains average 1.49 sessions), which the
+ * UI absorbs by *displaying* rows grouped into their sitting via `chainKey`
+ * while *deciding* per session. Grouping is presentation; disposition is data.
  *
  * Contract: [ASSIGNMENT.md](../../../docs/contracts/ASSIGNMENT.md). The two
  * rules this file exists to enforce are that **minting is never automatic** —
@@ -62,8 +78,13 @@ import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParse
 
 const BUCKET_TITLE = 'Not an undertaking'
 
-export interface QueueChainBlock {
-  chainId: string
+export interface QueueSessionBlock {
+  /** The unit of disposition. Stratum-1 and immovable, which is what lets a
+   *  logged verdict still name the right thing after any regrouping. */
+  sessionId: string
+  /** Which sitting this session belongs to, for display grouping only. Derived
+   *  on read and never logged — a verdict keyed by this would rot the moment
+   *  the grouping changed, which is the whole defect this refactor removed. */
   chainKey: string
   projectId: string
   title: string
@@ -71,17 +92,13 @@ export interface QueueChainBlock {
   /** Minutes of active work, for the "is this worth an undertaking" judgement
    *  the human is being asked to make at a glance. */
   activeMinutes: number
-  /** How many sessions the chain merged. Shown because a disposition is really
-   *  a decision about sessions — a chain is just the grouping — and "one
-   *  session" and "nine sessions" are not the same call. */
-  sessions: number
 }
 
 export interface QueueItem {
   group: QueueGroupBlock
-  /** The chains in the group, joined to what they actually are — the queue has
-   *  to show enough to check a proposal without opening anything. */
-  chains: QueueChainBlock[]
+  /** The sessions in the group, joined to what they actually are — the queue
+   *  has to show enough to check a proposal without opening anything. */
+  sessions: QueueSessionBlock[]
   /** Present when the proposal points at an undertaking that exists, so the row
    *  can show what it would be joining rather than a bare key. */
   targetTitle: string
@@ -94,37 +111,53 @@ export interface QueueItem {
 
 export interface AssignmentQueue {
   items: QueueItem[]
-  /** Undisposed chains nothing has proposed for. Not an error and not hidden:
+  /** Undisposed sessions nothing has proposed for. Not an error and not hidden:
    *  this is the backlog the next proposing pass should look at, and it is the
    *  number that says whether the AI half is keeping up. */
-  unproposed: QueueChainBlock[]
-  /** Total chains still owing a disposition — the metric the whole feature is
+  unproposed: QueueSessionBlock[]
+  /** Total sessions still owing a disposition — the metric the whole feature is
    *  judged by, and the one that should trend to zero. */
   undisposedCount: number
   /**
-   * Proposals naming a chain that does not exist in the project at all.
+   * Proposals naming a session that does not exist in the project at all.
    *
    * Surfaced rather than dropped, because the two ways a proposal can vanish
-   * from the queue are not the same thing. One is history — the chain was
+   * from the queue are not the same thing. One is history — the session was
    * disposed of since, and the proposal has simply been answered. The other is
-   * a mistake: a truncated or mistyped `chainId`, which produces an empty queue
-   * and no explanation for it. That happened on the very first real run of this
-   * pass, and "0 groups" was indistinguishable from "nothing to do", which is
-   * exactly the silent degradation DERIVATION.md forbids.
+   * a mistake: a truncated or mistyped id, which produces an empty queue and no
+   * explanation for it. That happened on the very first real run of this pass,
+   * and "0 groups" was indistinguishable from "nothing to do", which is exactly
+   * the silent degradation DERIVATION.md forbids.
    */
-  orphanedProposals: Array<{ chainId: string; projectId: string; proposedBy: string }>
+  orphanedProposals: Array<{ sessionId: string; projectId: string; proposedBy: string }>
 }
 
-function toQueueChainBlock(chain: ChainEntry): QueueChainBlock {
+/** `chainKey` for display grouping. Computed from the sitting each session
+ *  falls into, so consecutive rows that were one sitting can be shown together
+ *  without any of them being *addressed* by it. */
+function toQueueSessionBlock(
+  digest: ProjectSessionDigest,
+  chainKeyBySession: Map<string, string>,
+): QueueSessionBlock {
   return {
-    chainId: chain.chainId,
-    chainKey: chain.chainKey,
-    projectId: chain.projectId,
-    title: chain.title,
-    date: chain.date,
-    activeMinutes: Math.round(chainActiveDurationMsBlock(chain) / 60000),
-    sessions: chain.sessions?.length ?? 0,
+    sessionId: digest.sessionId,
+    chainKey: chainKeyBySession.get(digest.sessionId) ?? digest.sessionId,
+    projectId: digest.projectId,
+    title: digest.title,
+    date: digest.date,
+    activeMinutes: Math.round(sessionActiveDurationMsBlock(digest) / 60000),
   }
+}
+
+/** Map every session to the sitting it belongs to, by running the one grouping
+ *  algorithm over the records. Display-only — see `QueueSessionBlock.chainKey`. */
+function chainKeysForBlock(digests: ProjectSessionDigest[]): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const group of groupSessionDigestsBlock(digests)) {
+    const key = `${group[0].projectId}::${group[0].sessionId}`
+    for (const d of group) out.set(d.sessionId, key)
+  }
+  return out
 }
 
 /**
@@ -136,89 +169,105 @@ function toQueueChainBlock(chain: ChainEntry): QueueChainBlock {
  * reconciling read would pay for chain derivation on every project to decide a
  * question the stored record already answers correctly.
  */
-export async function listUndisposedChainsOrch(projectId?: string): Promise<ChainEntry[]> {
-  const projects = projectId ? [projectId] : await listChainProjectsBlock()
-  const out: ChainEntry[] = []
+export async function listUndisposedChainsOrch(projectId?: string): Promise<ProjectSessionDigest[]> {
+  const projects = projectId ? [projectId] : await listSessionProjectsBlock()
+  const out: ProjectSessionDigest[] = []
   for (const project of projects) {
-    out.push(...undisposedChainsBlock(await listChainsBlock({ projectId: project })))
+    out.push(...undisposedChainsBlock(await listProjectSessionDigestsBlock(project)))
   }
   return out
 }
 
 /**
- * The live `ActivityChain` behind a queue row, so a proposal can be checked
- * against the actual transcript instead of a title someone else wrote.
+ * The transcript source behind a queue row, so a proposal can be checked
+ * against what actually happened instead of a title someone else wrote.
  *
- * Deliberately *not* a second matching rule. `listUndisposedChainsOrch` reads
- * stored digests because `undertaking` is stored judgment, but a transcript
- * needs session file pointers, which only the derived chain has. So this joins
- * the two the same way `listProjectChainsOrch` does — on session membership,
- * via `resolveChainDigestsBlock` — because the digest's key is what the grouping
- * rule thought at write time, and matching on it would miss every chain whose
- * grouping has since moved.
+ * A queue row is one session, so this returns that session wrapped as a
+ * one-member chain — `getChainTranscriptBlock` renders chains, and a session is
+ * simply the smallest one.
  *
- * Returns null when the chain cannot be derived (a device with no session
+ * Note how short this got. It used to derive every chain in the project, run
+ * two-pass membership-overlap resolution against the stored digests, and match
+ * on a frozen `chainId` — all to answer "which live thing is this row?" when
+ * the row's own id had been made unmatchable by being derived. A session id is
+ * the transcript's own id, so the answer is a lookup.
+ *
+ * Returns null when the session cannot be found (a device with no session
  * cache), which the caller must render as "can't open" rather than as an error.
  */
-export async function getQueueChainTranscriptSourceOrch(
+export async function getQueueSessionTranscriptSourceOrch(
   projectId: string,
-  chainId: string,
+  sessionId: string,
 ): Promise<ActivityChain | null> {
-  const stored = await listChainsBlock({ projectId })
-  if (stored.length === 0) return null
-
   let chains: ActivityChain[]
   try {
     chains = (await deriveCanonicalChainsOrch()).filter(chain => chain.project === projectId)
   } catch {
     return null
   }
-
-  const resolved = resolveChainDigestsBlock(
-    chains.map(chain => ({ key: chain.key, sessions: chainSessionIdsBlock(chain) })),
-    stored,
-  )
   for (const chain of chains) {
-    if (resolved.get(chain.key)?.chainId === chainId) return chain
+    const match = chain.sessions.find(s => sessionIdOf(s) === sessionId)
+    if (match) return oneSessionChainBlock(chain.project, match)
   }
   return null
 }
 
+/** Wrap a single session as a chain of one, for readers that render chains. */
+function oneSessionChainBlock(project: string, session: ParsedSession): ActivityChain {
+  return {
+    key: `${project}::${session.path}`,
+    project,
+    source: session.source,
+    startedIso: session.startedIso,
+    endedIso: session.endedIso ?? session.startedIso,
+    msgCount: session.userMsgCount,
+    topic: session.topic,
+    sessions: [session],
+    touchedPaths: session.touchedPaths,
+    activeDurationMs: session.activeDurationMs,
+  }
+}
+
 export async function getAssignmentQueueOrch(projectId?: string): Promise<AssignmentQueue> {
-  const projects = projectId ? [projectId] : await listChainProjectsBlock()
+  const projects = projectId ? [projectId] : await listSessionProjectsBlock()
 
   const live: AssignmentProposalBlock[] = []
-  const undisposed: ChainEntry[] = []
-  const chainsById = new Map<string, ChainEntry>()
+  const undisposed: ProjectSessionDigest[] = []
+  const digestsById = new Map<string, ProjectSessionDigest>()
   const titlesByKey = new Map<string, string>()
   // Both keyed by `${projectId}:${key}` — the queue spans projects, and section
   // keys are only unique inside one.
   const sectionKeyByUndertaking = new Map<string, string>()
   const sectionTitles = new Map<string, string>()
-  const proposedChainIds = new Set<string>()
+  const proposedSessionIds = new Set<string>()
   const orphanedProposals: AssignmentQueue['orphanedProposals'] = []
+  const chainKeys = new Map<string, string>()
 
   for (const project of projects) {
-    // Every chain, not just the undisposed ones: telling an answered proposal
-    // apart from a mistyped one needs to know whether the chain exists at all.
-    const all = await listChainsBlock({ projectId: project })
-    const known = new Set(all.map(chain => chain.chainId))
+    // Every session, not just the undisposed ones: telling an answered proposal
+    // apart from a mistyped one needs to know whether the session exists at all.
+    const all = await listProjectSessionDigestsBlock(project)
+    const known = new Set(all.map(d => d.sessionId))
+    // Display grouping is computed over ALL of the project's sessions, not just
+    // the undisposed ones — a sitting keeps its shape even when half of it has
+    // already been filed, so rows don't regroup as you work through the queue.
+    for (const [id, key] of chainKeysForBlock(all)) chainKeys.set(id, key)
     const mine = undisposedChainsBlock(all)
     undisposed.push(...mine)
-    for (const chain of mine) chainsById.set(chain.chainId, chain)
+    for (const digest of mine) digestsById.set(digest.sessionId, digest)
 
-    const undisposedIds = new Set(mine.map(chain => chain.chainId))
-    for (const [chainId, proposal] of latestProposalsBlock(await readProposalsBlock(project))) {
-      if (!known.has(chainId)) {
-        orphanedProposals.push({ chainId, projectId: project, proposedBy: proposal.proposedBy })
+    const undisposedIds = new Set(mine.map(d => d.sessionId))
+    for (const [sessionId, proposal] of latestProposalsBlock(await readProposalsBlock(project))) {
+      if (!known.has(sessionId)) {
+        orphanedProposals.push({ sessionId, projectId: project, proposedBy: proposal.proposedBy })
         continue
       }
-      // A proposal whose chain has since been stamped is history, not queue —
+      // A proposal whose session has since been stamped is history, not queue —
       // dropping it here is what keeps an accepted row from reappearing after a
-      // chain rebuild regenerates the digest.
-      if (!undisposedIds.has(chainId)) continue
+      // regeneration rewrites the digest.
+      if (!undisposedIds.has(sessionId)) continue
       live.push(proposal)
-      proposedChainIds.add(chainId)
+      proposedSessionIds.add(sessionId)
     }
 
     for (const record of await listUndertakingsBlock(project)) {
@@ -242,10 +291,10 @@ export async function getAssignmentQueueOrch(projectId?: string): Promise<Assign
 
   const items: QueueItem[] = buildQueueGroupsBlock(live).map(group => ({
     group,
-    chains: group.proposals
-      .map(proposal => chainsById.get(proposal.chainId))
-      .filter((chain): chain is ChainEntry => Boolean(chain))
-      .map(toQueueChainBlock),
+    sessions: group.proposals
+      .map(proposal => digestsById.get(proposal.sessionId))
+      .filter((digest): digest is ProjectSessionDigest => Boolean(digest))
+      .map(digest => toQueueSessionBlock(digest, chainKeys)),
     targetTitle:
       group.target.kind === 'existing'
         ? titlesByKey.get(group.target.key) ?? group.target.key
@@ -256,8 +305,8 @@ export async function getAssignmentQueueOrch(projectId?: string): Promise<Assign
   return {
     items,
     unproposed: undisposed
-      .filter(chain => !proposedChainIds.has(chain.chainId))
-      .map(toQueueChainBlock),
+      .filter(digest => !proposedSessionIds.has(digest.sessionId))
+      .map(digest => toQueueSessionBlock(digest, chainKeys)),
     undisposedCount: undisposed.length,
     orphanedProposals,
   }
@@ -418,7 +467,7 @@ async function resolveTargetKeyBlock(
 }
 
 export interface DisposeParams {
-  chainIds: string[]
+  sessionIds: string[]
   projectId: string
   /** What was on the table, for the log. Null when a human dispositioned a
    *  chain no pass had proposed for. */
@@ -454,7 +503,7 @@ export interface DisposeResult {
  * rather than a rewrite. That is what makes the whole pass safe to repeat after
  * a chain rebuild.
  */
-export async function disposeChainsOrch(params: DisposeParams): Promise<DisposeResult> {
+export async function disposeSessionsOrch(params: DisposeParams): Promise<DisposeResult> {
   const at = new Date().toISOString()
   const verdictKind: VerdictKindBlock = !params.target
     ? 'reject'
@@ -467,18 +516,21 @@ export async function disposeChainsOrch(params: DisposeParams): Promise<DisposeR
 
   if (params.target) {
     key = await resolveTargetKeyBlock(params.projectId, params.target, params.origin)
-    const chains = await listChainsBlock({ projectId: params.projectId })
-    const wanted = new Set(params.chainIds)
-    for (const chain of chains) {
-      if (!wanted.has(chain.chainId)) continue
-      if (chain.undertaking.includes(key)) continue
-      await patchChainBlock(chain, { undertaking: [...chain.undertaking, key] })
-      stamped.push(chain.chainId)
+    const digests = await listProjectSessionDigestsBlock(params.projectId)
+    const wanted = new Set(params.sessionIds)
+    for (const digest of digests) {
+      if (!wanted.has(digest.sessionId)) continue
+      if (digest.undertaking.includes(key)) continue
+      await patchSessionUndertakingBlock(digest.projectId, digest.sessionId, [
+        ...digest.undertaking,
+        key,
+      ])
+      stamped.push(digest.sessionId)
     }
   }
 
-  const verdicts: AssignmentVerdictBlock[] = params.chainIds.map(chainId => ({
-    chainId,
+  const verdicts: AssignmentVerdictBlock[] = params.sessionIds.map(sessionId => ({
+    sessionId,
     projectId: params.projectId,
     proposed: params.proposed,
     confidence: params.confidence,
@@ -506,7 +558,7 @@ export async function disposeChainsOrch(params: DisposeParams): Promise<DisposeR
  * human mints, and every chain gets a disposition. This is that missing path.
  *
  * It is a composition, not a fourth write path. The mint goes through
- * `createUndertakingOrch` and the stamping through `disposeChainsOrch`, so the
+ * `createUndertakingOrch` and the stamping through `disposeSessionsOrch`, so the
  * key rules (one minting path, every disposition logged) hold here without being
  * restated — and the verdicts land with `proposed: null`, which
  * `calibrateBandsBlock` already skips. A manual decision must not be read as
@@ -517,7 +569,7 @@ export async function mintFromSelectionOrch(params: {
   title: string
   section?: string
   head?: string
-  chainIds: string[]
+  sessionIds: string[]
   /** Task tickets in display form (`TP-DA-T-514`) — the seam's edge vocabulary. */
   fedBy?: string[]
 }): Promise<{ key: string; stamped: string[] }> {
@@ -528,9 +580,9 @@ export async function mintFromSelectionOrch(params: {
     origin: 'manual',
     fedBy: params.fedBy,
   })
-  if (params.chainIds.length === 0) return { key: record.key, stamped: [] }
-  const result = await disposeChainsOrch({
-    chainIds: params.chainIds,
+  if (params.sessionIds.length === 0) return { key: record.key, stamped: [] }
+  const result = await disposeSessionsOrch({
+    sessionIds: params.sessionIds,
     projectId: params.projectId,
     proposed: null,
     confidence: 0,
@@ -549,21 +601,23 @@ function targetsMatchBlock(a: ProposalTargetBlock, b: ProposalTargetBlock): bool
   return a.kind === 'bucket' && b.kind === 'bucket'
 }
 
-/** Remove a chain from an undertaking — the other half of the two-primitive
+/** Remove a session from an undertaking — the other half of the two-primitive
  *  correction surface, and the undo for every auto-applied stamp. Leaves the
- *  chain undisposed, which puts it back in the queue rather than losing it. */
-export async function detachChainOrch(
+ *  session undisposed, which puts it back in the queue rather than losing it. */
+export async function detachSessionOrch(
   projectId: string,
-  chainId: string,
+  sessionId: string,
   undertakingKey: string,
-): Promise<{ path: string } | null> {
-  const chains = await listChainsBlock({ projectId })
-  const chain = chains.find(entry => entry.chainId === chainId)
-  if (!chain || !chain.undertaking.includes(undertakingKey)) return null
-  const { path } = await patchChainBlock(chain, {
-    undertaking: chain.undertaking.filter(key => key !== undertakingKey),
-  })
-  return { path }
+): Promise<{ sessionId: string } | null> {
+  const digests = await listProjectSessionDigestsBlock(projectId)
+  const digest = digests.find(entry => entry.sessionId === sessionId)
+  if (!digest || !digest.undertaking.includes(undertakingKey)) return null
+  const patched = await patchSessionUndertakingBlock(
+    projectId,
+    sessionId,
+    digest.undertaking.filter(key => key !== undertakingKey),
+  )
+  return patched ? { sessionId: patched.sessionId } : null
 }
 
 /** How each confidence band has done so far, from human verdicts only. The

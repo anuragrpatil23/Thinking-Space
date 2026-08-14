@@ -36,7 +36,7 @@
 /** The fields of a chain digest this decision depends on. Narrow on purpose —
  *  the sweep should not be able to touch anything else. */
 export interface SweepChainBlock {
-  chainId: string
+  sessionId: string
   projectId: string
   /** `sessionIdOf` values: a uuid, or `<uuid>::w<n>` for a windowed session. */
   sessions: string[]
@@ -57,7 +57,7 @@ export interface SweepPendingBlock {
 }
 
 export interface SweepChainPatchBlock {
-  chainId: string
+  sessionId: string
   projectId: string
   /** The full field to write — a union, never a replacement. */
   undertaking: string[]
@@ -157,7 +157,7 @@ export function planAssignmentBlock(
     // Skip chains that already carry every key — a sweep that rewrites
     // unchanged files churns iCloud and muddies "what did this pass do".
     if (next.length === chain.undertaking.length) continue
-    patches.push({ chainId: chain.chainId, projectId: chain.projectId, undertaking: next })
+    patches.push({ sessionId: chain.sessionId, projectId: chain.projectId, undertaking: next })
   }
 
   const headText = pending.head?.trim() ?? ''

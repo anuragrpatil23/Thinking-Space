@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronRight, CircleSlash, Inbox, Loader2, Pencil, SkipForward, Sparkles, Undo2, X } from 'lucide-react'
 import {
-  detachChainOrch,
-  disposeChainsOrch,
-  getQueueChainTranscriptSourceOrch,
+  detachSessionOrch,
+  disposeSessionsOrch,
+  getQueueSessionTranscriptSourceOrch,
   type AssignmentQueue,
-  type QueueChainBlock,
+  type QueueSessionBlock,
   type QueueItem,
 } from '@/services/orchestrators/assignmentQueueOrch'
 import ChainTranscriptSlideOverBlock from '@/components/lego_blocks/integrations/ChainTranscriptSlideOverBlock'
@@ -31,9 +31,9 @@ import { cn } from '@/lib/utils'
  *
  * - **One decision at a time, not a table.** A table invites reading; this
  *   invites deciding. The focused proposal shows its target, its reason and its
- *   chains in full; the rest of the queue is a rail you never have to read.
- * - **Grouped by proposal.** One keystroke disposes of every chain that was
- *   obviously the same piece of work. Six chains, one decision.
+ *   sessions in full; the rest of the queue is a rail you never have to read.
+ * - **Grouped by proposal.** One keystroke disposes of every session that was
+ *   obviously the same piece of work. Six sessions, one decision.
  * - **Confidence descending.** Abandoning halfway leaves the most good done.
  * - **Skip is free.** No penalty, no re-prompt, no "are you sure" — a queue
  *   that punishes skipping is a queue that gets closed instead.
@@ -44,7 +44,7 @@ import { cn } from '@/lib/utils'
  * Mint is deliberately the slowest path here (it types a title), because a key
  * is a permanent address and the friction is the point.
  *
- * Two panes, because a chain arrives in one of two states and only one of them
+ * Two panes, because a session arrives in one of two states and only one of them
  * is a proposal. **Suggested** is the queue above. **Unsorted** is everything no
  * pass has had an opinion about — which was the larger half, counted in the
  * header and rendered nowhere, so the only remedy the UI offered for it was to
@@ -66,25 +66,25 @@ interface Props {
   queue: AssignmentQueue | null
   loading: boolean
   /** Re-read the vault. Called after every disposition, because a disposition
-   *  can mint an undertaking or move a chain. */
+   *  can mint an undertaking or move a session. */
   onReload: () => Promise<void>
   onClose: () => void
 }
 
 interface UndoEntry {
-  chainIds: string[]
+  sessionIds: string[]
   projectId: string
   undertakingKey: string
   label: string
 }
 
-/** Opening a transcript has to derive chains, which can take a beat and can
+/** Opening a transcript has to derive sessions, which can take a beat and can
  *  fail outright on a device with no session cache. Three states, so neither
  *  case reads as a dead click. */
 type TranscriptState =
   | { kind: 'closed' }
   | { kind: 'loading'; title: string }
-  | { kind: 'open'; chain: ActivityChain }
+  | { kind: 'open'; session: ActivityChain }
   | { kind: 'missing'; title: string }
 
 type BandTone = { text: string; bar: string; soft: string }
@@ -126,7 +126,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
 
   // The two correction primitives, held as edits to the *focused proposal*
   // rather than as separate flows. Renaming a proposed undertaking and dropping
-  // a chain that does not belong are the two things a person actually wants to
+  // a session that does not belong are the two things a person actually wants to
   // do to a suggestion, and both are worthless if they cost more than the
   // decision itself — so they live on the card and are spent by pressing
   // Accept, not by a save button.
@@ -152,7 +152,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
   useEffect(() => { clearEdits() }, [focusKey, clearEdits])
 
   const selectedChains = useMemo(
-    () => (current?.chains ?? []).filter(chain => !excluded.has(chain.chainId)),
+    () => (current?.sessions ?? []).filter(session => !excluded.has(session.sessionId)),
     [current, excluded],
   )
 
@@ -180,7 +180,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
 
   // Titles are loaded for the project the *focused* item belongs to, not the
   // page's project: the queue spans projects, and offering F9's undertakings
-  // while retargeting a Thinking-Space chain would let one keystroke stamp
+  // while retargeting a Thinking-Space session would let one keystroke stamp
   // across a boundary the card does not show.
   useEffect(() => {
     if (!current) return
@@ -204,11 +204,11 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
       setBusy(true)
       setError(null)
       try {
-        const result = await disposeChainsOrch({
-          // Only the chains still selected. A dropped chain is not disposed of
+        const result = await disposeSessionsOrch({
+          // Only the sessions still selected. A dropped session is not disposed of
           // — it keeps its proposal and comes back on its own, which is the
           // point: "these five yes, that one no" should not cost six decisions.
-          chainIds: selectedChains.map(chain => chain.chainId),
+          sessionIds: selectedChains.map(session => session.sessionId),
           projectId: current.group.projectId,
           proposed: current.group.target,
           confidence: current.group.confidence,
@@ -216,7 +216,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
         })
         if (result.undertaking && result.stamped.length) {
           setUndo({
-            chainIds: result.stamped,
+            sessionIds: result.stamped,
             projectId: current.group.projectId,
             undertakingKey: result.undertaking,
             label,
@@ -231,7 +231,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
         setRetargetQuery('')
         // Explicit, not left to the focus-change effect: accepting a subset
         // leaves the same group focused, so the exclusions would otherwise
-        // persist onto the chains that just came back.
+        // persist onto the sessions that just came back.
         clearEdits()
       }
     },
@@ -242,8 +242,8 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
     if (!undo || busy) return
     setBusy(true)
     try {
-      for (const chainId of undo.chainIds) {
-        await detachChainOrch(undo.projectId, chainId, undo.undertakingKey)
+      for (const sessionId of undo.sessionIds) {
+        await detachSessionOrch(undo.projectId, sessionId, undo.undertakingKey)
       }
       setUndo(null)
       await onReload()
@@ -252,13 +252,13 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
     }
   }, [undo, busy, onReload])
 
-  const openChain = useCallback(async (chain: QueueChainBlock) => {
-    setTranscript({ kind: 'loading', title: chain.title })
+  const openChain = useCallback(async (session: QueueSessionBlock) => {
+    setTranscript({ kind: 'loading', title: session.title })
     try {
-      const derived = await getQueueChainTranscriptSourceOrch(chain.projectId, chain.chainId)
-      setTranscript(derived ? { kind: 'open', chain: derived } : { kind: 'missing', title: chain.title })
+      const derived = await getQueueSessionTranscriptSourceOrch(session.projectId, session.sessionId)
+      setTranscript(derived ? { kind: 'open', session: derived } : { kind: 'missing', title: session.title })
     } catch {
-      setTranscript({ kind: 'missing', title: chain.title })
+      setTranscript({ kind: 'missing', title: session.title })
     }
   }, [])
 
@@ -291,7 +291,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
 
       // The unsorted pane is a selection surface, not a one-key queue: `b` there
       // has to be a letter you can type into a title, not a disposition for
-      // however many chains happen to be picked.
+      // however many sessions happen to be picked.
       if (mode !== 'proposed') return
 
       if (retargeting) {
@@ -353,11 +353,11 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
         <div className="min-w-0">
           <h2 className="text-sm font-semibold leading-tight">Assignment queue</h2>
           {/* Plain words on purpose. The code and the contract say "disposed"
-              because a chain's answer can be "not an undertaking", which is not
+              because a session's answer can be "not an undertaking", which is not
               the same as filed — but nobody should have to learn that word to
               read a header. */}
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {undisposed} chain{undisposed === 1 ? '' : 's'} still owe an answer
+            {undisposed} session{undisposed === 1 ? '' : 's'} still owe an answer
           </p>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -403,13 +403,13 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
               {error}
             </p>
           )}
-          {/* A proposal naming a chain that does not exist produces an empty
+          {/* A proposal naming a session that does not exist produces an empty
               queue and no reason for it. Loud, not silent — this is a proposing
               pass with a bug, and it must not read as "nothing to do". */}
           {orphaned.length > 0 && (
             <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-              {orphaned.length} proposal{orphaned.length === 1 ? '' : 's'} name a chain that does not
-              exist — a proposing pass sent bad chain ids (
+              {orphaned.length} proposal{orphaned.length === 1 ? '' : 's'} name a session that does not
+              exist — a proposing pass sent bad session ids (
               {[...new Set(orphaned.map(p => p.proposedBy))].join(', ')}).
             </p>
           )}
@@ -422,7 +422,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
         </div>
       ) : mode === 'unsorted' ? (
         <AssignmentManualPaneBlock
-          chains={unproposedChains}
+          sessions={unproposedChains}
           onReload={onReload}
           onOpenChain={openChain}
         />
@@ -455,7 +455,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
                       {item.targetTitle}
                     </span>
                     <span className="shrink-0 tabular-nums text-muted-foreground/60">
-                      {item.chains.length}
+                      {item.sessions.length}
                     </span>
                   </button>
                 )
@@ -481,11 +481,11 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
                 excluded={excluded}
                 onRename={setDraftTitle}
                 onSection={setDraftSection}
-                onToggleChain={chainId =>
+                onToggleChain={sessionId =>
                   setExcluded(prev => {
                     const next = new Set(prev)
-                    if (next.has(chainId)) next.delete(chainId)
-                    else next.add(chainId)
+                    if (next.has(sessionId)) next.delete(sessionId)
+                    else next.add(sessionId)
                     return next
                   })
                 }
@@ -540,7 +540,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
                     icon={Check}
                     label={
                       excluded.size > 0
-                        ? `Accept ${selectedChains.length} of ${current.chains.length}`
+                        ? `Accept ${selectedChains.length} of ${current.sessions.length}`
                         : 'Accept'
                     }
                     hint="a"
@@ -559,7 +559,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
       )}
 
       <ChainTranscriptSlideOverBlock
-        chain={transcript.kind === 'open' ? transcript.chain : null}
+        chain={transcript.kind === 'open' ? transcript.session : null}
         onClose={() => setTranscript({ kind: 'closed' })}
       />
       {(transcript.kind === 'loading' || transcript.kind === 'missing') && (
@@ -618,13 +618,13 @@ function CardBlock({
   sectionKey: string | null
   sectionLabel: string | null
   /** Only a mint is editable. Joining an existing undertaking must not rename
-   *  it from here — that record is an address other chains already point at. */
+   *  it from here — that record is an address other sessions already point at. */
   editable: boolean
   excluded: ReadonlySet<string>
   onRename: (title: string | null) => void
   onSection: (key: string) => void
-  onToggleChain: (chainId: string) => void
-  onOpenChain: (chain: QueueChainBlock) => void
+  onToggleChain: (sessionId: string) => void
+  onOpenChain: (session: QueueSessionBlock) => void
 }) {
   const tone = bandToneBlock(item.group.confidence)
   const pct = Math.round(item.group.confidence * 100)
@@ -733,17 +733,17 @@ function CardBlock({
         <span className={cn('text-xs font-medium tabular-nums', tone.text)}>{pct}% confident</span>
       </div>
 
-      {/* Each chain opens its transcript in the standard slide-over. For a chain
+      {/* Each session opens its transcript in the standard slide-over. For a session
           from months ago the title is not enough to judge a proposal on — being
           able to remember what it actually was is the difference between an
           answer and a guess. */}
       <ul className="mt-5 space-y-px border-t border-border pt-4">
-        {item.chains.map(chain => {
-          const dropped = excluded.has(chain.chainId)
+        {item.sessions.map(session => {
+          const dropped = excluded.has(session.sessionId)
           return (
-            <li key={chain.chainId} className="group/chain flex items-center gap-1">
+            <li key={session.sessionId} className="group/session flex items-center gap-1">
               <button
-                onClick={() => onOpenChain(chain)}
+                onClick={() => onOpenChain(session)}
                 className={cn(
                   'flex min-w-0 flex-1 items-baseline gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted/50',
                   dropped && 'text-muted-foreground/50 line-through',
@@ -751,24 +751,24 @@ function CardBlock({
                 title="Open the transcript"
               >
                 <ChevronRight className="h-3 w-3 shrink-0 translate-y-0.5 text-muted-foreground/60" />
-                <span className="min-w-0 flex-1 truncate">{chain.title}</span>
+                <span className="min-w-0 flex-1 truncate">{session.title}</span>
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {chain.date} · {chain.activeMinutes}m · {chain.sessions} session
-                  {chain.sessions === 1 ? '' : 's'}
+                  {session.date} · {session.activeMinutes}m · {1} session
+                  {1 === 1 ? '' : 's'}
                 </span>
               </button>
-              {/* Dropping a chain is not a disposition — it just takes it out of
-                  *this* answer and lets it come back on its own. One wrong chain
+              {/* Dropping a session is not a disposition — it just takes it out of
+                  *this* answer and lets it come back on its own. One wrong session
                   in a group of six should not cost the other five. */}
               <button
-                onClick={() => onToggleChain(chain.chainId)}
+                onClick={() => onToggleChain(session.sessionId)}
                 title={dropped ? 'Put it back in this group' : "Doesn't belong here"}
                 aria-label={dropped ? 'Put it back in this group' : 'Drop from this group'}
                 className={cn(
                   'shrink-0 rounded p-1 transition-opacity hover:bg-muted',
                   dropped
                     ? 'text-muted-foreground opacity-100'
-                    : 'text-muted-foreground/40 opacity-0 hover:text-foreground focus:opacity-100 group-hover/chain:opacity-100',
+                    : 'text-muted-foreground/40 opacity-0 hover:text-foreground focus:opacity-100 group-hover/session:opacity-100',
                 )}
               >
                 {dropped ? <Undo2 className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
@@ -801,8 +801,8 @@ function EmptyBlock({ unproposed, onShowUnsorted }: { unproposed: number; onShow
           of the backlog unreachable until a model had had an opinion about it. */}
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">
         {unproposed > 0
-          ? `${unproposed} chains still need an answer. Sort them yourself, or ask Kai to take a pass first.`
-          : 'Every chain has an answer.'}
+          ? `${unproposed} sessions still need an answer. Sort them yourself, or ask Kai to take a pass first.`
+          : 'Every session has an answer.'}
       </p>
       {unproposed > 0 && (
         <button

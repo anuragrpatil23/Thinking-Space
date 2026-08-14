@@ -480,16 +480,123 @@ export function inheritUnknownSessions(sessions: ParsedSession[]): ParsedSession
 }
 
 
-/** A chain still accepting sessions. One project can have several at once —
- *  that is the whole point (see `buildChains`). */
-interface OpenChain {
-  sessions: ParsedSession[]
-  /** Latest end across every member. A new session starting before this
+/**
+ * The minimum a thing must expose to be grouped into chains.
+ *
+ * Grouping asks only four questions — which project, when did it start, when
+ * did it end, did it `/clear` — and a `ParsedSession` is merely one thing that
+ * can answer them. A stored `ProjectSessionDigest` answers them too, which is
+ * what lets a device with no access to `~/.claude` (iPhone, web) re-derive the
+ * same chains from records alone instead of being shipped a chain-shaped file.
+ *
+ * That matters beyond convenience: a transport file for chains would have to be
+ * *addressed*, and every available address is an output of this very algorithm
+ * — the derived-address defect that docs/contracts/DERIVATION.md exists to
+ * document. Making the grouping reproducible everywhere means no such file has
+ * to exist.
+ */
+export interface ChainableBlock {
+  project: string
+  startedIso: string
+  /** Absent for sources with no per-message timing; treated as start, which is
+   *  what makes zero-length rows measure start-to-start rather than over-merge. */
+  endedIso?: string
+  hadClear: boolean
+  /** Stable tie-break for identical start instants. Must not depend on readdir
+   *  order or the filesystem decides chain membership, differently per device. */
+  chainSortKey: string
+}
+
+/** A chain still accepting members. One project can have several at once —
+ *  that is the whole point (see `groupChainableBlock`). */
+interface OpenChain<T> {
+  sessions: T[]
+  /** Latest end across every member. A new member starting before this
    *  overlaps the chain and therefore belongs to a different thread. */
   maxEndMs: number
   /** The most recent member ran `/clear`, so this chain is finished. Per-chain,
    *  not per-project: clearing in one terminal says nothing about another. */
   cleared: boolean
+}
+
+/**
+ * THE grouping algorithm. Same project, within IDLE_GAP_MS of the chain's last
+ * activity, not overlapping it, and not after a `/clear`.
+ *
+ * Generic over `ChainableBlock` so there is exactly one definition of "what
+ * counts as one logical sitting" in the codebase. The alternative — a second
+ * implementation over stored digests for devices that cannot parse transcripts
+ * — is two copies of the idle rule that can disagree, which is the same defect
+ * as the duplicated idle threshold that `IDLE_GAP_MS` was extracted to fix.
+ *
+ * Returns groups of members, each in ascending time order; the caller decides
+ * what to build from them. Every rule here is pinned by
+ * `tests/aiActivityBuildChains.test.ts` — add a failing test before changing
+ * any of it.
+ */
+export function groupChainableBlock<T extends ChainableBlock>(items: T[]): T[][] {
+  if (items.length === 0) return []
+
+  // Sort ascending so adjacency math works. `chainSortKey` breaks ties because
+  // the first member decides the chain's identity downstream: leaving two
+  // same-instant members in readdir order would let the filesystem decide, and
+  // it would decide differently on another device.
+  const sorted = [...items].sort(
+    (a, b) =>
+      Date.parse(a.startedIso) - Date.parse(b.startedIso) ||
+      a.chainSortKey.localeCompare(b.chainSortKey),
+  )
+
+  // Group by project, then chain within each project's time-ordered list.
+  const byProject = new Map<string, T[]>()
+  for (const s of sorted) {
+    const arr = byProject.get(s.project) ?? []
+    arr.push(s)
+    byProject.set(s.project, arr)
+  }
+
+  const groups: T[][] = []
+  for (const list of byProject.values()) {
+    let open: OpenChain<T>[] = []
+    for (const s of list) {
+      const sStartMs = Date.parse(s.startedIso)
+      const sEndMs = Date.parse(s.endedIso ?? s.startedIso)
+
+      // Retire anything this member is already too late to join. Members
+      // arrive in ascending start order, so nothing later can revive it either.
+      const stillOpen: OpenChain<T>[] = []
+      for (const chain of open) {
+        if (sStartMs - chain.maxEndMs > IDLE_GAP_MS) groups.push(chain.sessions)
+        else stillOpen.push(chain)
+      }
+      open = stillOpen
+
+      // Among the chains it may join, take the one active most recently — the
+      // shortest idle gap. `maxEndMs` is the chain's latest known end and falls
+      // back to the start for rows with no end, where measuring start-to-start
+      // is what stops zero-length members from over-merging.
+      //
+      // A member starting before a chain's end overlaps it: parallel work in
+      // two terminals, which must split so the second keeps its own row in the
+      // drill-down instead of vanishing into the first's topic.
+      let best: OpenChain<T> | null = null
+      for (const chain of open) {
+        if (chain.cleared) continue
+        if (sStartMs < chain.maxEndMs) continue
+        if (!best || chain.maxEndMs > best.maxEndMs) best = chain
+      }
+
+      if (best) {
+        best.sessions.push(s)
+        if (sEndMs > best.maxEndMs) best.maxEndMs = sEndMs
+        best.cleared = s.hadClear
+      } else {
+        open.push({ sessions: [s], maxEndMs: sEndMs, cleared: s.hadClear })
+      }
+    }
+    for (const chain of open) groups.push(chain.sessions)
+  }
+  return groups
 }
 
 /**
@@ -513,65 +620,13 @@ interface OpenChain {
 export function buildChains(sessions: ParsedSession[]): ActivityChain[] {
   if (sessions.length === 0) return []
 
-  // Sort ascending so adjacency math works. Path breaks ties because the first
-  // session's path becomes the chain's key: leaving two same-instant sessions in
-  // readdir order would let the filesystem decide a chain's identity, and it
-  // would decide differently on another device.
-  const sorted = [...sessions].sort(
-    (a, b) =>
-      Date.parse(a.startedIso) - Date.parse(b.startedIso) || a.path.localeCompare(b.path),
+  // A session's tie-break is its path: the first session's path becomes the
+  // chain's key, so this is what keeps that key from depending on readdir order.
+  const chainable = sessions.map(s => ({ session: s, ...s, chainSortKey: s.path }))
+
+  const chains = groupChainableBlock(chainable).map(group =>
+    makeChain(group[0].project, group.map(g => g.session)),
   )
-
-  // Group by project, then chain within each project's time-ordered list.
-  const byProject = new Map<string, ParsedSession[]>()
-  for (const s of sorted) {
-    const arr = byProject.get(s.project) ?? []
-    arr.push(s)
-    byProject.set(s.project, arr)
-  }
-
-  const chains: ActivityChain[] = []
-  for (const [project, list] of byProject.entries()) {
-    let open: OpenChain[] = []
-    for (const s of list) {
-      const sStartMs = Date.parse(s.startedIso)
-      const sEndMs = Date.parse(s.endedIso ?? s.startedIso)
-
-      // Retire anything this session is already too late to join. Sessions
-      // arrive in ascending start order, so nothing later can revive it either.
-      const stillOpen: OpenChain[] = []
-      for (const chain of open) {
-        if (sStartMs - chain.maxEndMs > IDLE_GAP_MS) chains.push(makeChain(project, chain.sessions))
-        else stillOpen.push(chain)
-      }
-      open = stillOpen
-
-      // Among the chains it may join, take the one active most recently — the
-      // shortest idle gap. `maxEndMs` is the chain's latest known end and falls
-      // back to the start for vault markdown rows, where `endedIso ===
-      // startedIso`; measuring those start-to-start is what stops zero-length
-      // sessions from over-merging.
-      //
-      // A session starting before a chain's end overlaps it: parallel work in
-      // two terminals, which must split so the second session keeps its own row
-      // in the drill-down instead of vanishing into the first's topic.
-      let best: OpenChain | null = null
-      for (const chain of open) {
-        if (chain.cleared) continue
-        if (sStartMs < chain.maxEndMs) continue
-        if (!best || chain.maxEndMs > best.maxEndMs) best = chain
-      }
-
-      if (best) {
-        best.sessions.push(s)
-        if (sEndMs > best.maxEndMs) best.maxEndMs = sEndMs
-        best.cleared = s.hadClear
-      } else {
-        open.push({ sessions: [s], maxEndMs: sEndMs, cleared: s.hadClear })
-      }
-    }
-    for (const chain of open) chains.push(makeChain(project, chain.sessions))
-  }
 
   chains.sort((a, b) => Date.parse(b.startedIso) - Date.parse(a.startedIso))
   return chains

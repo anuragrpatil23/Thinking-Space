@@ -13,21 +13,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const chains = [
   {
     projectId: 'F9',
-    chainId: 'c-2',
-    chainKey: 'c-2',
+    sessionId: 'c-2',
     date: '2026-06-03',
     title: 'HBM supply notes',
     summary: 'Read two supplier filings.',
-    sessions: ['s2'],
   },
   {
     projectId: 'F9',
-    chainId: 'c-1',
-    chainKey: 'c-1',
+    sessionId: 'c-1',
     date: '2026-06-01',
     title: 'Micron read',
     summary: 'Read the 10-K.',
-    sessions: ['s1'],
   },
 ]
 
@@ -37,8 +33,8 @@ const undertakings = [
 
 const sections = [{ key: 'f9-sec-semis', title: 'Semis' }]
 
-vi.mock('@/services/lego_blocks/integrations/aiActivityChainIndexBlock', () => ({
-  listChainsBlock: async () => chains,
+vi.mock('@/services/lego_blocks/integrations/aiActivitySessionDigestStoreBlock', () => ({
+  listProjectSessionDigestsBlock: async () => chains,
 }))
 
 vi.mock('@/services/lego_blocks/integrations/aiActivityUndertakingStoreBlock', () => ({
@@ -57,7 +53,7 @@ vi.mock('@/services/orchestrators/chatOrch', () => ({
   sendChatWithTelemetryOrch: (...args: unknown[]) => reply(...(args as [])),
 }))
 
-const { draftUndertakingForChainsOrch } = await import('@/services/orchestrators/assignmentDraftOrch')
+const { draftUndertakingForSessionsOrch } = await import('@/services/orchestrators/assignmentDraftOrch')
 
 function replyWith(payload: unknown): void {
   reply.mockResolvedValueOnce({
@@ -65,7 +61,7 @@ function replyWith(payload: unknown): void {
   } as never)
 }
 
-describe('draftUndertakingForChainsOrch', () => {
+describe('draftUndertakingForSessionsOrch', () => {
   beforeEach(() => {
     reply.mockClear()
     selection.mockClear()
@@ -81,7 +77,7 @@ describe('draftUndertakingForChainsOrch', () => {
       rationale: 'Same filings, same thesis.',
     })
 
-    const draft = await draftUndertakingForChainsOrch({ projectId: 'F9', chainIds: ['c-1', 'c-2'] })
+    const draft = await draftUndertakingForSessionsOrch({ projectId: 'F9', sessionIds: ['c-1', 'c-2'] })
 
     expect(draft.kind).toBe('existing')
     expect(draft.existingKey).toBe('f9-und-micron')
@@ -99,7 +95,7 @@ describe('draftUndertakingForChainsOrch', () => {
       rationale: 'New thread.',
     })
 
-    const draft = await draftUndertakingForChainsOrch({ projectId: 'F9', chainIds: ['c-2'] })
+    const draft = await draftUndertakingForSessionsOrch({ projectId: 'F9', sessionIds: ['c-2'] })
 
     expect(draft.kind).toBe('new')
     expect(draft.existingKey).toBeUndefined()
@@ -109,7 +105,7 @@ describe('draftUndertakingForChainsOrch', () => {
   it('drops a section key the project does not have', async () => {
     replyWith({ existing_key: '', title: 'T', head: 'H', section_key: 'nope', rationale: 'R' })
 
-    const draft = await draftUndertakingForChainsOrch({ projectId: 'F9', chainIds: ['c-1'] })
+    const draft = await draftUndertakingForSessionsOrch({ projectId: 'F9', sessionIds: ['c-1'] })
 
     expect(draft.sectionKey).toBeUndefined()
   })
@@ -117,7 +113,7 @@ describe('draftUndertakingForChainsOrch', () => {
   it('falls back to the digests when no provider is configured, and asks nothing', async () => {
     selection.mockResolvedValue(null as never)
 
-    const draft = await draftUndertakingForChainsOrch({ projectId: 'F9', chainIds: ['c-1', 'c-2'] })
+    const draft = await draftUndertakingForSessionsOrch({ projectId: 'F9', sessionIds: ['c-1', 'c-2'] })
 
     expect(reply).not.toHaveBeenCalled()
     expect(draft.usedAi).toBe(false)
@@ -132,7 +128,7 @@ describe('draftUndertakingForChainsOrch', () => {
       response: { content: 'I think this is about memory.', provider: 'claude', model: 'test-model' },
     } as never)
 
-    const draft = await draftUndertakingForChainsOrch({ projectId: 'F9', chainIds: ['c-1'] })
+    const draft = await draftUndertakingForSessionsOrch({ projectId: 'F9', sessionIds: ['c-1'] })
 
     expect(draft.kind).toBe('new')
     expect(draft.title).toBe('Micron read')
@@ -141,7 +137,7 @@ describe('draftUndertakingForChainsOrch', () => {
   it('sends only the selected chains', async () => {
     replyWith({ existing_key: '', title: 'T', head: 'H', section_key: '', rationale: 'R' })
 
-    await draftUndertakingForChainsOrch({ projectId: 'F9', chainIds: ['c-2'] })
+    await draftUndertakingForSessionsOrch({ projectId: 'F9', sessionIds: ['c-2'] })
 
     const prompt = (reply.mock.calls[0] as unknown as [string, Array<{ content: string }>])[1][0].content
     expect(prompt).toContain('HBM supply notes')

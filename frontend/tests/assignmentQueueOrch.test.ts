@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ProjectChainDigest } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
+import type { ProjectSessionDigest } from '@/services/lego_blocks/units/aiActivitySessionDigestBlock'
 import {
-  chainDigestVaultRelPathBlock,
-  parseProjectChainDigestMarkdownBlock,
-  stringifyProjectChainDigestMarkdownBlock,
-} from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
+  parseProjectSessionDigestMarkdownBlock,
+  sessionDigestVaultRelPathBlock,
+  stringifyProjectSessionDigestMarkdownBlock,
+} from '@/services/lego_blocks/units/aiActivitySessionDigestBlock'
 import {
   parseUndertakingBlock,
   serializeUndertakingBlock,
@@ -98,8 +98,8 @@ vi.mock('@/services/lego_blocks/integrations/fsBlock', () => ({
 
 const {
   createUndertakingOrch,
-  detachChainOrch,
-  disposeChainsOrch,
+  detachSessionOrch,
+  disposeSessionsOrch,
   ensureBucketUndertakingOrch,
   getAssignmentCalibrationOrch,
   getAssignmentQueueOrch,
@@ -113,13 +113,13 @@ const { writeUndertakingBlock } = await import(
   '@/services/lego_blocks/integrations/aiActivityUndertakingStoreBlock'
 )
 
-function makeChain(overrides: Partial<ProjectChainDigest> = {}): ProjectChainDigest {
-  const chainKey = overrides.chainKey ?? overrides.chainId ?? 'c-1'
+function makeChain(overrides: Partial<ProjectSessionDigest> = {}): ProjectSessionDigest {
+  const sessionId = overrides.sessionId ?? 'c-1'
   return {
     projectId: 'F9',
-    chainId: chainKey,
-    sessions: [chainKey],
-    chainKey,
+    sessionId,
+    path: `native/claude/${sessionId}.jsonl`,
+    hadClear: false,
     date: '2026-06-02',
     title: 'Micron read',
     summary: 'Read the 10-K.',
@@ -140,16 +140,16 @@ function makeChain(overrides: Partial<ProjectChainDigest> = {}): ProjectChainDig
   }
 }
 
-function seedChain(digest: ProjectChainDigest): void {
+function seedChain(digest: ProjectSessionDigest): void {
   fakeFs.seed(
-    chainDigestVaultRelPathBlock(digest.projectId, digest.chainId),
-    stringifyProjectChainDigestMarkdownBlock(digest),
+    sessionDigestVaultRelPathBlock(digest.projectId, digest.sessionId),
+    stringifyProjectSessionDigestMarkdownBlock(digest),
   )
 }
 
-function readChain(projectId: string, chainId: string): ProjectChainDigest | null {
-  const raw = fakeFs.files.get(chainDigestVaultRelPathBlock(projectId, chainId))
-  return raw ? parseProjectChainDigestMarkdownBlock(raw) : null
+function readChain(projectId: string, sessionId: string): ProjectSessionDigest | null {
+  const raw = fakeFs.files.get(sessionDigestVaultRelPathBlock(projectId, sessionId))
+  return raw ? parseProjectSessionDigestMarkdownBlock(raw) : null
 }
 
 function makeRecord(overrides: Partial<UndertakingRecord> = {}): UndertakingRecord {
@@ -211,22 +211,22 @@ beforeEach(() => {
 
 describe('listUndisposedChainsOrch', () => {
   it('counts a chain with no undertaking and skips one that has any', () => {
-    seedChain(makeChain({ chainId: 'c-1' }))
-    seedChain(makeChain({ chainId: 'c-2', undertaking: ['f9-und-micron'] }))
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-2', undertaking: ['f9-und-micron'] }))
     return expect(
-      listUndisposedChainsOrch('F9').then(chains => chains.map(c => c.chainId)),
+      listUndisposedChainsOrch('F9').then(chains => chains.map(c => c.sessionId)),
     ).resolves.toEqual(['c-1'])
   })
 
   it('sweeps every project on disk when given none, including unadopted keys', async () => {
-    seedChain(makeChain({ chainId: 'c-1', projectId: 'F9' }))
-    seedChain(makeChain({ chainId: 'c-2', projectId: 'unknown-cwd' }))
+    seedChain(makeChain({ sessionId: 'c-1', projectId: 'F9' }))
+    seedChain(makeChain({ sessionId: 'c-2', projectId: 'unknown-cwd' }))
     const chains = await listUndisposedChainsOrch()
     expect(chains.map(c => c.projectId).sort()).toEqual(['F9', 'unknown-cwd'])
   })
 
   it('treats a chain stamped with only whitespace as still owing a disposition', async () => {
-    seedChain(makeChain({ chainId: 'c-1', undertaking: ['   '] }))
+    seedChain(makeChain({ sessionId: 'c-1', undertaking: ['   '] }))
     expect(await listUndisposedChainsOrch('F9')).toHaveLength(1)
   })
 })
@@ -234,28 +234,28 @@ describe('listUndisposedChainsOrch', () => {
 describe('getAssignmentQueueOrch', () => {
   it('groups proposals and separates the chains nothing has proposed for', async () => {
     seedRecord('F9', makeRecord())
-    seedChain(makeChain({ chainId: 'c-1' }))
-    seedChain(makeChain({ chainId: 'c-2' }))
-    seedChain(makeChain({ chainId: 'c-3' }))
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-2' }))
+    seedChain(makeChain({ sessionId: 'c-3' }))
     await proposeAssignmentsOrch([
-      { chainId: 'c-1', projectId: 'F9', target: { kind: 'existing', key: 'f9-und-micron' }, confidence: 0.9, rationale: 'same 10-K', proposedBy: 'kai' },
-      { chainId: 'c-2', projectId: 'F9', target: { kind: 'existing', key: 'f9-und-micron' }, confidence: 0.8, rationale: 'same 10-K', proposedBy: 'kai' },
+      { sessionId: 'c-1', projectId: 'F9', target: { kind: 'existing', key: 'f9-und-micron' }, confidence: 0.9, rationale: 'same 10-K', proposedBy: 'kai' },
+      { sessionId: 'c-2', projectId: 'F9', target: { kind: 'existing', key: 'f9-und-micron' }, confidence: 0.8, rationale: 'same 10-K', proposedBy: 'kai' },
     ])
 
     const queue = await getAssignmentQueueOrch('F9')
     expect(queue.items).toHaveLength(1)
-    expect(queue.items[0].chains.map(c => c.chainId)).toEqual(['c-1', 'c-2'])
+    expect(queue.items[0].sessions.map(c => c.sessionId)).toEqual(['c-1', 'c-2'])
     // The row shows the undertaking's title, not the bare key it points at.
     expect(queue.items[0].targetTitle).toBe('Micron memory cycle')
-    expect(queue.unproposed.map(c => c.chainId)).toEqual(['c-3'])
+    expect(queue.unproposed.map(c => c.sessionId)).toEqual(['c-3'])
     expect(queue.undisposedCount).toBe(3)
   })
 
   it('drops a proposal whose chain has since been disposed of', async () => {
     seedRecord('F9', makeRecord())
-    seedChain(makeChain({ chainId: 'c-1', undertaking: ['f9-und-micron'] }))
+    seedChain(makeChain({ sessionId: 'c-1', undertaking: ['f9-und-micron'] }))
     await proposeAssignmentsOrch([
-      { chainId: 'c-1', projectId: 'F9', target: { kind: 'bucket' }, confidence: 0.9, rationale: 'noise', proposedBy: 'kai' },
+      { sessionId: 'c-1', projectId: 'F9', target: { kind: 'bucket' }, confidence: 0.9, rationale: 'noise', proposedBy: 'kai' },
     ])
     const queue = await getAssignmentQueueOrch('F9')
     expect(queue.items).toEqual([])
@@ -263,15 +263,15 @@ describe('getAssignmentQueueOrch', () => {
   })
 })
 
-describe('disposeChainsOrch', () => {
+describe('disposeSessionsOrch', () => {
   it('stamps the group and logs an accept when it lands where proposed', async () => {
     seedRecord('F9', makeRecord())
-    seedChain(makeChain({ chainId: 'c-1' }))
-    seedChain(makeChain({ chainId: 'c-2' }))
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-2' }))
 
     const target = { kind: 'existing', key: 'f9-und-micron' } as const
-    const result = await disposeChainsOrch({
-      chainIds: ['c-1', 'c-2'],
+    const result = await disposeSessionsOrch({
+      sessionIds: ['c-1', 'c-2'],
       projectId: 'F9',
       proposed: target,
       confidence: 0.9,
@@ -287,10 +287,10 @@ describe('disposeChainsOrch', () => {
   it('logs a modify — with both sides — when the human retargets', async () => {
     seedRecord('F9', makeRecord())
     seedRecord('F9', makeRecord({ uuid: 'u-2', key: 'f9-und-hbm', title: 'HBM', sortOrder: 2 }))
-    seedChain(makeChain({ chainId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-1' }))
 
-    const result = await disposeChainsOrch({
-      chainIds: ['c-1'],
+    const result = await disposeSessionsOrch({
+      sessionIds: ['c-1'],
       projectId: 'F9',
       proposed: { kind: 'existing', key: 'f9-und-micron' },
       confidence: 0.9,
@@ -305,10 +305,10 @@ describe('disposeChainsOrch', () => {
 
   it('leaves a rejected chain undisposed but records that it was judged', async () => {
     seedRecord('F9', makeRecord())
-    seedChain(makeChain({ chainId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-1' }))
 
-    const result = await disposeChainsOrch({
-      chainIds: ['c-1'],
+    const result = await disposeSessionsOrch({
+      sessionIds: ['c-1'],
       projectId: 'F9',
       proposed: { kind: 'existing', key: 'f9-und-micron' },
       confidence: 0.5,
@@ -324,10 +324,10 @@ describe('disposeChainsOrch', () => {
   it('stamps as a union, so a chain can feed two undertakings and a re-run is a no-op', async () => {
     seedRecord('F9', makeRecord())
     seedRecord('F9', makeRecord({ uuid: 'u-2', key: 'f9-und-hbm', title: 'HBM', sortOrder: 2 }))
-    seedChain(makeChain({ chainId: 'c-1', undertaking: ['f9-und-micron'] }))
+    seedChain(makeChain({ sessionId: 'c-1', undertaking: ['f9-und-micron'] }))
 
-    await disposeChainsOrch({
-      chainIds: ['c-1'],
+    await disposeSessionsOrch({
+      sessionIds: ['c-1'],
       projectId: 'F9',
       proposed: null,
       confidence: 0,
@@ -335,8 +335,8 @@ describe('disposeChainsOrch', () => {
     })
     expect(readChain('F9', 'c-1')?.undertaking).toEqual(['f9-und-micron', 'f9-und-hbm'])
 
-    const again = await disposeChainsOrch({
-      chainIds: ['c-1'],
+    const again = await disposeSessionsOrch({
+      sessionIds: ['c-1'],
       projectId: 'F9',
       proposed: null,
       confidence: 0,
@@ -347,10 +347,10 @@ describe('disposeChainsOrch', () => {
   })
 
   it('holds an attach to a key that does not exist rather than minting it', async () => {
-    seedChain(makeChain({ chainId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-1' }))
     await expect(
-      disposeChainsOrch({
-        chainIds: ['c-1'],
+      disposeSessionsOrch({
+        sessionIds: ['c-1'],
         projectId: 'F9',
         proposed: null,
         confidence: 0,
@@ -362,10 +362,10 @@ describe('disposeChainsOrch', () => {
   })
 
   it('files a bucket verdict into a real record, so the chain is disposed of and not blank', async () => {
-    seedChain(makeChain({ chainId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-1' }))
 
-    const result = await disposeChainsOrch({
-      chainIds: ['c-1'],
+    const result = await disposeSessionsOrch({
+      sessionIds: ['c-1'],
       projectId: 'F9',
       proposed: { kind: 'bucket' },
       confidence: 0.9,
@@ -381,9 +381,9 @@ describe('disposeChainsOrch', () => {
 
   it('logs a disposition even when no proposal was on the table', async () => {
     seedRecord('F9', makeRecord())
-    seedChain(makeChain({ chainId: 'c-1' }))
-    await disposeChainsOrch({
-      chainIds: ['c-1'],
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    await disposeSessionsOrch({
+      sessionIds: ['c-1'],
       projectId: 'F9',
       proposed: null,
       confidence: 0,
@@ -395,9 +395,9 @@ describe('disposeChainsOrch', () => {
   })
 
   it('records where a mint actually landed, not the title that was typed', async () => {
-    seedChain(makeChain({ chainId: 'c-1' }))
-    const result = await disposeChainsOrch({
-      chainIds: ['c-1'],
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    const result = await disposeSessionsOrch({
+      sessionIds: ['c-1'],
       projectId: 'F9',
       proposed: { kind: 'new', title: 'Ghost sessions' },
       confidence: 0.7,
@@ -433,13 +433,13 @@ describe('mintFromSelectionOrch', () => {
   // AI pass had already asked. What these guard is that a human's own decision
   // is recorded *as* one — not laundered into evidence about a model.
   it('mints with a manual origin and files the selection into it', async () => {
-    seedChain(makeChain({ chainId: 'c-1' }))
-    seedChain(makeChain({ chainId: 'c-2' }))
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-2' }))
     const result = await mintFromSelectionOrch({
       projectId: 'F9',
       title: 'Ghost sessions',
       head: 'Sessions with no chain.',
-      chainIds: ['c-1', 'c-2'],
+      sessionIds: ['c-1', 'c-2'],
     })
     expect(result.key).toBe('f9-und-ghost-sessions')
     expect(result.stamped.sort()).toEqual(['c-1', 'c-2'])
@@ -448,11 +448,11 @@ describe('mintFromSelectionOrch', () => {
   })
 
   it('logs the verdicts with no proposal, so calibration cannot count them', async () => {
-    seedChain(makeChain({ chainId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-1' }))
     await mintFromSelectionOrch({
       projectId: 'F9',
       title: 'Ghost sessions',
-      chainIds: ['c-1'],
+      sessionIds: ['c-1'],
     })
     const verdicts = readVerdicts()
     expect(verdicts).toHaveLength(1)
@@ -468,7 +468,7 @@ describe('mintFromSelectionOrch', () => {
     const { key } = await mintFromSelectionOrch({
       projectId: 'F9',
       title: 'Ghost sessions',
-      chainIds: [],
+      sessionIds: [],
       fedBy: ['F9-QT-E-318'],
     })
     expect(listRecords('F9').find(r => r.key === key)?.fedBy).toEqual(['F9-QT-E-318'])
@@ -478,7 +478,7 @@ describe('mintFromSelectionOrch', () => {
     const result = await mintFromSelectionOrch({
       projectId: 'F9',
       title: 'Ghost sessions',
-      chainIds: [],
+      sessionIds: [],
     })
     expect(result.stamped).toEqual([])
     expect(readVerdicts()).toHaveLength(0)
@@ -486,9 +486,9 @@ describe('mintFromSelectionOrch', () => {
   })
 
   it('leaves an ordinary queue mint saying it came from the queue', async () => {
-    seedChain(makeChain({ chainId: 'c-1' }))
-    await disposeChainsOrch({
-      chainIds: ['c-1'],
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    await disposeSessionsOrch({
+      sessionIds: ['c-1'],
       projectId: 'F9',
       proposed: { kind: 'new', title: 'Ghost sessions' },
       confidence: 0.9,
@@ -515,30 +515,30 @@ describe('ensureBucketUndertakingOrch', () => {
   })
 })
 
-describe('detachChainOrch', () => {
+describe('detachSessionOrch', () => {
   it('puts a chain back in the queue rather than losing it', async () => {
     seedRecord('F9', makeRecord())
-    seedChain(makeChain({ chainId: 'c-1', undertaking: ['f9-und-micron'] }))
-    await detachChainOrch('F9', 'c-1', 'f9-und-micron')
+    seedChain(makeChain({ sessionId: 'c-1', undertaking: ['f9-und-micron'] }))
+    await detachSessionOrch('F9', 'c-1', 'f9-und-micron')
     expect(readChain('F9', 'c-1')?.undertaking).toEqual([])
     expect(await listUndisposedChainsOrch('F9')).toHaveLength(1)
   })
 
   it('is a no-op when the chain was never stamped with that key', async () => {
-    seedChain(makeChain({ chainId: 'c-1' }))
-    expect(await detachChainOrch('F9', 'c-1', 'f9-und-micron')).toBeNull()
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    expect(await detachSessionOrch('F9', 'c-1', 'f9-und-micron')).toBeNull()
   })
 })
 
 describe('calibration', () => {
   it('grades only human verdicts, so an auto-applied band cannot confirm itself', async () => {
     seedRecord('F9', makeRecord())
-    seedChain(makeChain({ chainId: 'c-1' }))
-    seedChain(makeChain({ chainId: 'c-2' }))
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-2' }))
     const target = { kind: 'existing', key: 'f9-und-micron' } as const
 
-    await disposeChainsOrch({ chainIds: ['c-1'], projectId: 'F9', proposed: target, confidence: 0.9, target, decidedBy: 'auto' })
-    await disposeChainsOrch({ chainIds: ['c-2'], projectId: 'F9', proposed: target, confidence: 0.9, target })
+    await disposeSessionsOrch({ sessionIds: ['c-1'], projectId: 'F9', proposed: target, confidence: 0.9, target, decidedBy: 'auto' })
+    await disposeSessionsOrch({ sessionIds: ['c-2'], projectId: 'F9', proposed: target, confidence: 0.9, target })
 
     const high = (await getAssignmentCalibrationOrch()).find(row => row.band === 'high')!
     expect(high.total).toBe(1)
@@ -553,22 +553,22 @@ describe('calibration', () => {
 
   it('surfaces auto-applied stamps so none of them is invisible', async () => {
     seedRecord('F9', makeRecord())
-    seedChain(makeChain({ chainId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-1' }))
     const target = { kind: 'existing', key: 'f9-und-micron' } as const
-    await disposeChainsOrch({ chainIds: ['c-1'], projectId: 'F9', proposed: target, confidence: 0.9, target, decidedBy: 'auto' })
+    await disposeSessionsOrch({ sessionIds: ['c-1'], projectId: 'F9', proposed: target, confidence: 0.9, target, decidedBy: 'auto' })
     const recent = await listRecentAutoAppliedOrch()
     expect(recent).toHaveLength(1)
-    expect(recent[0].chainId).toBe('c-1')
+    expect(recent[0].sessionId).toBe('c-1')
   })
 })
 
 describe('the proposal log', () => {
   it('appends rather than replacing, keeping what the model used to think', async () => {
     await proposeAssignmentsOrch([
-      { chainId: 'c-1', projectId: 'F9', target: { kind: 'bucket' }, confidence: 0.4, rationale: 'noise', proposedBy: 'kai' },
+      { sessionId: 'c-1', projectId: 'F9', target: { kind: 'bucket' }, confidence: 0.4, rationale: 'noise', proposedBy: 'kai' },
     ])
     await proposeAssignmentsOrch([
-      { chainId: 'c-1', projectId: 'F9', target: { kind: 'new', title: 'Real work' }, confidence: 0.8, rationale: 'second look', proposedBy: 'kai' },
+      { sessionId: 'c-1', projectId: 'F9', target: { kind: 'new', title: 'Real work' }, confidence: 0.8, rationale: 'second look', proposedBy: 'kai' },
     ])
     const lines = parseProposalLogBlock(fakeFs.files.get('ai-activity/proposals/F9.jsonl')!)
     expect(lines).toHaveLength(2)
@@ -597,22 +597,22 @@ describe('the undertaking write path', () => {
 
 describe('a proposal that matches no chain', () => {
   it('is surfaced as an orphan, not silently dropped', async () => {
-    seedChain(makeChain({ chainId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-1' }))
     await proposeAssignmentsOrch([
-      { chainId: 'truncated-id', projectId: 'F9', target: { kind: 'bucket' }, confidence: 0.9, rationale: 'x', proposedBy: 'kai' },
+      { sessionId: 'truncated-id', projectId: 'F9', target: { kind: 'bucket' }, confidence: 0.9, rationale: 'x', proposedBy: 'kai' },
     ])
     const queue = await getAssignmentQueueOrch('F9')
     expect(queue.items).toEqual([])
     expect(queue.orphanedProposals).toEqual([
-      { chainId: 'truncated-id', projectId: 'F9', proposedBy: 'kai' },
+      { sessionId: 'truncated-id', projectId: 'F9', proposedBy: 'kai' },
     ])
   })
 
   it('does not confuse an answered proposal with a mistyped one', async () => {
     seedRecord('F9', makeRecord())
-    seedChain(makeChain({ chainId: 'c-1', undertaking: ['f9-und-micron'] }))
+    seedChain(makeChain({ sessionId: 'c-1', undertaking: ['f9-und-micron'] }))
     await proposeAssignmentsOrch([
-      { chainId: 'c-1', projectId: 'F9', target: { kind: 'bucket' }, confidence: 0.9, rationale: 'x', proposedBy: 'kai' },
+      { sessionId: 'c-1', projectId: 'F9', target: { kind: 'bucket' }, confidence: 0.9, rationale: 'x', proposedBy: 'kai' },
     ])
     const queue = await getAssignmentQueueOrch('F9')
     expect(queue.items).toEqual([])

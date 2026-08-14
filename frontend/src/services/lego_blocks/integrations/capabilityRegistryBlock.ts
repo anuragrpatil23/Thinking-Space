@@ -18,7 +18,7 @@ import type {
 } from '@/services/lego_blocks/units/typesBlock'
 import type { ExcalidrawHighlightsExtractBlock } from '@/services/lego_blocks/units/excalidrawHighlightExtractBlock'
 import type { UndertakingRecord } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
-import type { ChainEntry } from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
+import type { ProjectChainRollup } from '@/services/orchestrators/aiActivityChainsOrch'
 import type { UndertakingView } from '@/services/orchestrators/aiActivityUndertakingOrch'
 import type { DensityBucket } from '@/services/lego_blocks/units/aiActivityDensityBlock'
 import type { AssignmentQueue } from '@/services/orchestrators/assignmentQueueOrch'
@@ -80,8 +80,7 @@ export type CapabilityName =
   | 'ai_activity.assignment.queue'
   | 'ai_activity.assignment.propose'
   | 'ai_activity.chains.list'
-  | 'ai_activity.chain.set_project'
-  | 'ai_activity.chain.set_files'
+  | 'ai_activity.session.set_project'
 
 export interface CapabilityInputMap {
   'read_note': {
@@ -381,7 +380,7 @@ export interface CapabilityInputMap {
   }
   'ai_activity.assignment.propose': {
     proposals: Array<{
-      chainId: string
+      sessionId: string
       projectId: string
       target:
         | { kind: 'existing'; key: string }
@@ -402,16 +401,10 @@ export interface CapabilityInputMap {
     to?: string
     undertaking?: string
   }
-  'ai_activity.chain.set_project': {
+  'ai_activity.session.set_project': {
     projectId: string
-    chainKey: string
+    sessionId: string
     toProjectId: string
-  }
-  'ai_activity.chain.set_files': {
-    projectId: string
-    chainKey: string
-    written?: string[]
-    read?: string[]
   }
 }
 
@@ -628,13 +621,10 @@ export interface CapabilityOutputMap {
     paths: string[]
   }
   'ai_activity.chains.list': {
-    chains: ChainEntry[]
+    chains: ProjectChainRollup[]
   }
-  'ai_activity.chain.set_project': {
-    path: string
-  }
-  'ai_activity.chain.set_files': {
-    path: string
+  'ai_activity.session.set_project': {
+    sessionId: string
   }
 }
 
@@ -903,13 +893,8 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     readOnly: true,
   },
   {
-    name: 'ai_activity.chain.set_project',
-    description: 'Re-file a chain under the correct project — the repair path for projectId misattribution.',
-    readOnly: false,
-  },
-  {
-    name: 'ai_activity.chain.set_files',
-    description: 'Backfill file pointers onto a chain that predates structured extraction.',
+    name: 'ai_activity.session.set_project',
+    description: 'Re-file a session under the correct project — the repair path for projectId misattribution.',
     readOnly: false,
   },
 ]

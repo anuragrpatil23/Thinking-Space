@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, ChevronRight, CircleSlash, Link2, Loader2, Search, Sparkles, Wand2, X } from 'lucide-react'
 import {
-  draftUndertakingForChainsOrch,
+  draftUndertakingForSessionsOrch,
   type AssignmentDraft,
 } from '@/services/orchestrators/assignmentDraftOrch'
 import {
-  disposeChainsOrch,
+  disposeSessionsOrch,
   mintFromSelectionOrch,
-  type QueueChainBlock,
+  type QueueSessionBlock,
 } from '@/services/orchestrators/assignmentQueueOrch'
 import {
   listUndertakingSectionsOrch,
@@ -19,20 +19,20 @@ import type { Task } from '@/services/lego_blocks/units/aiActivityTaskBlock'
 import { cn } from '@/lib/utils'
 
 /**
- * The other half of the queue: the chains nothing has proposed for.
+ * The other half of the queue: the sessions nothing has proposed for.
  *
  * The queue proper could only ever answer a question an AI pass had already
- * asked. Everything else — 251 of 267 undisposed chains on the day this was
+ * asked. Everything else — 251 of 267 undisposed sessions on the day this was
  * written — was counted in the header and rendered nowhere, and the only remedy
  * offered was "ask Kai to take a pass". That made an automated pass a
  * prerequisite for human judgement in a feature whose contract says the
- * opposite: AI proposes, **a human mints**, and every chain gets a disposition.
+ * opposite: AI proposes, **a human mints**, and every session gets a disposition.
  * A backlog you are not allowed to touch until a model has had an opinion about
  * it is not a queue, it is a waiting room.
  *
  * It is shaped like an inbox, and that is not decoration. The first version put
  * the projects in a chip rail across the top; with 24 project keys it wrapped to
- * three lines and ate half the panel before a single chain, which turned a
+ * three lines and ate half the panel before a single session, which turned a
  * decision surface into a control panel. Folders on the left is the shape people
  * already know for "one list, many sources", it costs a fixed 224px instead of a
  * variable third of the height, and it makes the per-project pass the default
@@ -42,11 +42,11 @@ import { cn } from '@/lib/utils'
  *
  * - **Selection is scoped to one project**, always. A disposition is a
  *   per-project write, so a cross-project selection has no meaning it could be
- *   given. Picking a folder makes that structural; in All, touching a chain in
+ *   given. Picking a folder makes that structural; in All, touching a session in
  *   another project starts a fresh selection there rather than being a dead
  *   click.
  * - **Bulk affordances first.** At this scale a per-row pass is the thing that
- *   doesn't happen: select-all-shown plus a duration floor turn "251 chains"
+ *   doesn't happen: select-all-shown plus a duration floor turn "251 sessions"
  *   into a handful of decisions.
  * - **A mint here asks for the head.** Granularity is calibrated against it
  *   (ASSIGNMENT.md: 2–4 per active week), and an undertaking minted from a bare
@@ -59,9 +59,9 @@ import { cn } from '@/lib/utils'
 
 interface Props {
   /** The whole unproposed backlog, across every project. */
-  chains: QueueChainBlock[]
+  sessions: QueueSessionBlock[]
   onReload: () => Promise<void>
-  onOpenChain: (chain: QueueChainBlock) => void
+  onOpenChain: (session: QueueSessionBlock) => void
 }
 
 type Stage =
@@ -82,13 +82,13 @@ const DURATION_FLOORS = [
   { minutes: 45, label: '45m+' },
 ]
 
-/** A chain the digest clocked under a minute still happened. Rounding it to
+/** A session the digest clocked under a minute still happened. Rounding it to
  *  "0m" made a real session read as a broken row. */
 function minutesLabelBlock(minutes: number): string {
   return minutes < 1 ? '<1m' : `${minutes}m`
 }
 
-export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChain }: Props) {
+export default function AssignmentManualPaneBlock({ sessions, onReload, onOpenChain }: Props) {
   const [folder, setFolder] = useState<string | null>(null)
   const [projectId, setProjectId] = useState<string | null>(null)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
@@ -117,13 +117,13 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
    *  finished when it isn't. */
   const folders = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const chain of chains) counts.set(chain.projectId, (counts.get(chain.projectId) ?? 0) + 1)
+    for (const session of sessions) counts.set(session.projectId, (counts.get(session.projectId) ?? 0) + 1)
     return [...counts.entries()]
       .map(([id, count]) => ({ id, count }))
       .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id))
-  }, [chains])
+  }, [sessions])
 
-  // A folder whose last chain was just disposed of would leave an empty list
+  // A folder whose last session was just disposed of would leave an empty list
   // with no obvious way back. Fall to All.
   useEffect(() => {
     if (folder && !folders.some(entry => entry.id === folder)) setFolder(null)
@@ -131,10 +131,10 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
 
   const visible = useMemo(
     () =>
-      chains
-        .filter(chain => (!folder || chain.projectId === folder) && chain.activeMinutes >= floor)
+      sessions
+        .filter(session => (!folder || session.projectId === folder) && session.activeMinutes >= floor)
         .sort((a, b) => b.date.localeCompare(a.date)),
-    [chains, folder, floor],
+    [sessions, folder, floor],
   )
 
   // Only what is visible *and* in the selected project can be acted on. Derived
@@ -142,13 +142,13 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
   // without silently dropping them from a selection you already made — lower it
   // again and they are still picked.
   const actionable = useMemo(
-    () => visible.filter(chain => chain.projectId === projectId && selected.has(chain.chainId)),
+    () => visible.filter(session => session.projectId === projectId && selected.has(session.sessionId)),
     [visible, projectId, selected],
   )
 
   // The pickers belong to the project the selection is in, not the page's — the
   // same rule the proposal card follows, and for the same reason: offering one
-  // project's undertakings while filing another's chain lets one keystroke stamp
+  // project's undertakings while filing another's session lets one keystroke stamp
   // across a boundary nothing on screen shows.
   useEffect(() => {
     if (!projectId) return
@@ -174,25 +174,25 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
     setDraftNote(null)
   }, [])
 
-  const toggle = useCallback((chain: QueueChainBlock) => {
+  const toggle = useCallback((session: QueueSessionBlock) => {
     setStage({ kind: 'idle' })
     setSelected(prev => {
-      // A chain from a different project restarts the selection there rather
+      // A session from a different project restarts the selection there rather
       // than joining it: one disposition, one project.
-      if (chain.projectId !== projectId) {
-        setProjectId(chain.projectId)
-        return new Set([chain.chainId])
+      if (session.projectId !== projectId) {
+        setProjectId(session.projectId)
+        return new Set([session.sessionId])
       }
       const next = new Set(prev)
-      if (next.has(chain.chainId)) next.delete(chain.chainId)
-      else next.add(chain.chainId)
+      if (next.has(session.sessionId)) next.delete(session.sessionId)
+      else next.add(session.sessionId)
       return next
     })
   }, [projectId])
 
   const selectAllIn = useCallback((project: string) => {
     setProjectId(project)
-    setSelected(new Set(visible.filter(c => c.projectId === project).map(c => c.chainId)))
+    setSelected(new Set(visible.filter(c => c.projectId === project).map(c => c.sessionId)))
     setStage({ kind: 'idle' })
   }, [visible])
 
@@ -214,13 +214,13 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
     [busy, reset, onReload],
   )
 
-  const chainIds = actionable.map(chain => chain.chainId)
+  const sessionIds = actionable.map(session => session.sessionId)
 
   const fileInto = (key: string) =>
     void run(async () => {
       if (!projectId) return
-      await disposeChainsOrch({
-        chainIds,
+      await disposeSessionsOrch({
+        sessionIds,
         projectId,
         // No pass claimed these, so there is nothing to score the verdict
         // against. Null is the honest record, and calibration skips it.
@@ -233,8 +233,8 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
   const bucket = () =>
     void run(async () => {
       if (!projectId) return
-      await disposeChainsOrch({
-        chainIds,
+      await disposeSessionsOrch({
+        sessionIds,
         projectId,
         proposed: null,
         confidence: 0,
@@ -249,10 +249,10 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
    *  work?", a new one as a mint form with the fields already typed. That is
    *  the contract's shape: AI proposes, a human mints. */
   const propose = () => {
-    if (!projectId || drafting || busy || chainIds.length === 0) return
+    if (!projectId || drafting || busy || sessionIds.length === 0) return
     setDrafting(true)
     setError(null)
-    void draftUndertakingForChainsOrch({ projectId, chainIds })
+    void draftUndertakingForSessionsOrch({ projectId, sessionIds })
       .then(draft => {
         setDraftTitle(draft.title)
         setDraftHead(draft.head)
@@ -272,7 +272,7 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
         title: draftTitle.trim(),
         section: draftSection || undefined,
         head: draftHead.trim(),
-        chainIds,
+        sessionIds,
         fedBy: [...fedBy],
       })
     })
@@ -299,20 +299,20 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
    *  be the same word 72 times. */
   const groups = useMemo(() => {
     if (folder) return [{ id: folder, rows: visible }]
-    const byProject = new Map<string, QueueChainBlock[]>()
-    for (const chain of visible) {
-      const list = byProject.get(chain.projectId) ?? []
-      list.push(chain)
-      byProject.set(chain.projectId, list)
+    const byProject = new Map<string, QueueSessionBlock[]>()
+    for (const session of visible) {
+      const list = byProject.get(session.projectId) ?? []
+      list.push(session)
+      byProject.set(session.projectId, list)
     }
     return [...byProject.entries()].map(([id, rows]) => ({ id, rows }))
   }, [visible, folder])
 
-  if (chains.length === 0) {
+  if (sessions.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center px-6 py-12 text-center">
         <p className="max-w-sm text-sm text-muted-foreground">
-          Every chain here has either a suggestion waiting for you or an answer already.
+          Every session here has either a suggestion waiting for you or an answer already.
         </p>
       </div>
     )
@@ -324,8 +324,8 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
         <FolderBlock
           active={folder === null}
           onClick={() => setFolder(null)}
-          label="All chains"
-          count={chains.length}
+          label="All sessions"
+          count={sessions.length}
         />
         <div className="my-1.5 border-t border-border" />
         {folders.map(entry => (
@@ -344,7 +344,7 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
             headers are z-10, and a header a row can paint through is the
             artifact this replaced. */}
         <div className="relative z-20 flex shrink-0 items-center gap-2 border-b border-border bg-background px-4 py-2">
-          <h3 className="truncate text-sm font-medium">{folder ?? 'All chains'}</h3>
+          <h3 className="truncate text-sm font-medium">{folder ?? 'All sessions'}</h3>
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
             {visible.length}
           </span>
@@ -397,12 +397,12 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
                   </div>
                 )}
                 <ul className={cn(folder ? 'pt-1.5' : 'pt-1')}>
-                  {group.rows.map(chain => {
-                    const picked = selected.has(chain.chainId) && chain.projectId === projectId
+                  {group.rows.map(session => {
+                    const picked = selected.has(session.sessionId) && session.projectId === projectId
                     return (
-                      <li key={chain.chainId} className="group/row flex items-center">
+                      <li key={session.sessionId} className="group/row flex items-center">
                         <button
-                          onClick={() => toggle(chain)}
+                          onClick={() => toggle(session)}
                           aria-pressed={picked}
                           className={cn(
                             'flex min-w-0 flex-1 items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors',
@@ -423,31 +423,31 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
                             {picked && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
                           </span>
                           <span className={cn('min-w-0 flex-1 truncate', picked && 'font-medium')}>
-                            {chain.title}
+                            {session.title}
                           </span>
                           <span className="shrink-0 text-xs tabular-nums text-muted-foreground/70">
-                            {chain.date}
+                            {session.date}
                           </span>
-                          {/* The disposition is really about sessions; the chain
+                          {/* The disposition is really about sessions; the session
                               is just how they were grouped. One and nine are not
                               the same decision. */}
                           <span
                             className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground/70"
-                            title={`${chain.sessions} session${chain.sessions === 1 ? '' : 's'}`}
+                            title={`${1} session${1 === 1 ? '' : 's'}`}
                           >
-                            {chain.sessions} sess
+                            {1} sess
                           </span>
                           <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground/70">
-                            {minutesLabelBlock(chain.activeMinutes)}
+                            {minutesLabelBlock(session.activeMinutes)}
                           </span>
                         </button>
                         {/* The transcript, same slide-over the proposal card
-                            uses. For a chain from months ago the title alone is
+                            uses. For a session from months ago the title alone is
                             not enough to decide what it was. */}
                         <button
-                          onClick={() => onOpenChain(chain)}
+                          onClick={() => onOpenChain(session)}
                           title="Open the transcript"
-                          aria-label={`Open the transcript for ${chain.title}`}
+                          aria-label={`Open the transcript for ${session.title}`}
                           className="mr-1 shrink-0 rounded p-1 text-muted-foreground/40 opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus:opacity-100 group-hover/row:opacity-100"
                         >
                           <ChevronRight className="h-3.5 w-3.5" />
@@ -465,7 +465,7 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
           {actionable.length === 0 ? (
             <div className="flex items-center gap-3">
               <p className="text-xs text-muted-foreground">
-                Pick the chains that were one piece of work.
+                Pick the sessions that were one piece of work.
               </p>
               {visible.length > 0 && (
                 <button
@@ -601,7 +601,7 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
                   </select>
                 </label>
                 <span className="normal-case tracking-normal">
-                  {actionable.length} chain{actionable.length === 1 ? '' : 's'}
+                  {actionable.length} session{actionable.length === 1 ? '' : 's'}
                   {fedBy.size > 0 && <> · {fedBy.size} task{fedBy.size === 1 ? '' : 's'}</>}
                 </span>
               </div>
@@ -698,7 +698,7 @@ export default function AssignmentManualPaneBlock({ chains, onReload, onOpenChai
                     form rather than competing with it out here. */}
                 <ActionBlock icon={Sparkles} label="New undertaking" primary onClick={() => setStage({ kind: 'mint' })} />
                 <ActionBlock icon={ChevronRight} label="Add to existing" onClick={() => setStage({ kind: 'file' })} />
-                {/* Not a delete. This chain keeps existing and keeps its
+                {/* Not a delete. This session keeps existing and keeps its
                     transcript — "not an undertaking" is a disposition, and a
                     trash can made an answer look like a destruction. */}
                 <ActionBlock icon={CircleSlash} label="Not an undertaking" onClick={bucket} />

@@ -1,22 +1,34 @@
-import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import type { ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { defineContractBlock, type ContractOutput } from '../promptContractBlock'
 import { s } from '../schemaBlock'
 import {
   CHAIN_DIGEST_LEAK_PREFIX_RE,
   CHAIN_DIGEST_USER_QUOTE_LEAD_RE,
-  extractChainContextBlock,
+  extractSessionContextBlock,
   formatSessionShapeBlock,
   stripWrappersBlock,
 } from './chainContextExtractionBlock'
 
-// Contract that produces both a one-line TITLE and a 1-3 sentence SUMMARY
-// for one activity chain. Replaces the earlier `session-title` contract —
-// callers now get durable per-chain content instead of just a label.
+// Contract that produces a one-line TITLE and a numbered-bullet SUMMARY for ONE
+// session — the atom of the whole AI-activity stack.
 //
-// Output format is delimited plain text, not JSON. Small local models
-// (Qwen, Gemma, Llama-3-8B) reliably follow a "TITLE:" + blank line +
-// summary layout but stumble on strict JSON — string schema keeps this
-// contract portable across the openai-compat provider matrix.
+// This is the only contract that reads a transcript. Chain, day, and range
+// digests compose *these outputs*, never raw material. That is what makes the
+// layering honest: one model call per sitting, each with the full input budget,
+// and every higher layer a cheap composition over complete summaries.
+//
+// It replaces the chain-digest contract, whose own system prompt opened with
+// "You describe what an AI-assisted session was about" — the prompt was always
+// written for a session; only its input was a chain. Feeding it a chain meant
+// splitting one budget across up to five sittings and dropping turns from the
+// middle of the merged stream to fit, so in a multi-session chain every member
+// reached the model already thinned, and any member past the fifth never
+// reached it at all.
+//
+// Output format is delimited plain text, not JSON. Small local models (Qwen,
+// Gemma, Llama-3-8B) reliably follow a "TITLE:" + blank line + summary layout
+// but stumble on strict JSON — a string schema keeps this contract portable
+// across the openai-compat provider matrix.
 
 const MAX_TITLE_CHARS = 240
 // Deep ideation sessions (e.g. sfpi) legitimately produce 7 numbered bullets
@@ -43,7 +55,9 @@ function sanitizeTitle(raw: string, projectName: string): string | null {
     break
   }
   if (!pick) return null
-  pick = pick.replace(/^(topic( label)?|title|label|summary|description|project)\s*[:\-—]\s*/i, '').trim()
+  pick = pick
+    .replace(/^(topic( label)?|title|label|summary|description|project)\s*[:\-—]\s*/i, '')
+    .trim()
   pick = pick.replace(/[.!?;]+$/, '').trim()
   if (!pick) return null
   const normalize = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '')
@@ -57,9 +71,9 @@ function sanitizeTitle(raw: string, projectName: string): string | null {
 }
 
 function sanitizeSummary(raw: string): string {
-  // Preserve newlines — the summary body is numbered bullets, not prose,
-  // so collapsing whitespace would destroy the shape. Just strip leading
-  // labels the model sometimes emits and collapse >2 blank lines.
+  // Preserve newlines — the summary body is numbered bullets, not prose, so
+  // collapsing whitespace would destroy the shape. Just strip leading labels
+  // the model sometimes emits and collapse >2 blank lines.
   const cleaned = raw
     .split('\n')
     .map(l => l.replace(/^(summary|body|notes)\s*[:\-—]\s*/i, ''))
@@ -69,8 +83,8 @@ function sanitizeSummary(raw: string): string {
   if (!cleaned) return ''
   if (cleaned.length <= MAX_SUMMARY_CHARS) return cleaned
   const cut = cleaned.slice(0, MAX_SUMMARY_CHARS)
-  // Try to end at the last complete bullet (line starting with `N.`); fall
-  // back to the last sentence-terminating punctuation.
+  // Try to end at the last complete bullet (line starting with `N.`); fall back
+  // to the last sentence-terminating punctuation.
   const bulletEnds: number[] = []
   const re = /\n\d+\.\s/g
   let m: RegExpExecArray | null
@@ -146,10 +160,10 @@ const SYSTEM_PROMPT = [
   '    bullet noting that; stop there.',
 ].join('\n')
 
-async function buildUserPromptBlock(chain: ActivityChain): Promise<string> {
-  const ctx = await extractChainContextBlock(chain)
-  if (ctx.turns.length === 0 && chain.topic) {
-    ctx.turns.push({ role: 'user', text: chain.topic, order: 0 })
+async function buildUserPromptBlock(session: ParsedSession): Promise<string> {
+  const ctx = await extractSessionContextBlock(session)
+  if (ctx.turns.length === 0 && session.topic) {
+    ctx.turns.push({ role: 'user', text: session.topic, order: 0 })
   }
   const lines: string[] = [formatSessionShapeBlock(ctx.meta), '']
   for (const turn of ctx.turns) {
@@ -161,18 +175,17 @@ async function buildUserPromptBlock(chain: ActivityChain): Promise<string> {
   return lines.join('\n')
 }
 
-// The extraction step reads native JSONL from disk to find recaps. The
-// orchestrator's buildRequest hook is sync, so we pre-flight the extraction
-// here and stash the result on the input via WeakMap.
-const PREPARED = new WeakMap<ActivityChain, string>()
+// The extraction step reads native JSONL from disk. The orchestrator's
+// `buildRequest` hook is sync, so the extraction is pre-flighted here and the
+// result stashed on the input via WeakMap.
+const PREPARED = new WeakMap<ParsedSession, string>()
 
-export async function prepareChainDigestInputBlock(chain: ActivityChain): Promise<void> {
-  if (PREPARED.has(chain)) return
-  const prompt = await buildUserPromptBlock(chain)
-  PREPARED.set(chain, prompt)
+export async function prepareSessionDigestInputBlock(session: ParsedSession): Promise<void> {
+  if (PREPARED.has(session)) return
+  PREPARED.set(session, await buildUserPromptBlock(session))
 }
 
-export interface ChainDigestOutput {
+export interface SessionDigestOutput {
   title: string
   summary: string
 }
@@ -196,42 +209,42 @@ function splitTitleAndSummary(raw: string): { title: string; summary: string } {
   const titleRaw = lines[titleIdx].replace(/^title\s*[:\-—]\s*/i, '').trim()
   const titleMatch = TITLE_LINE_RE.exec(titleRaw)
   const title = titleMatch ? titleMatch[1].trim() : titleRaw
-  const summary = lines.slice(titleIdx + 1).join('\n').trim()
-  return { title, summary }
+  return { title, summary: lines.slice(titleIdx + 1).join('\n').trim() }
 }
 
-export const chainDigestContract = defineContractBlock({
-  id: 'chain-digest',
-  promptVersion: 2,
+export const sessionDigestContract = defineContractBlock({
+  id: 'session-digest',
+  promptVersion: 1,
   outputSchema: s.string({ description: 'TITLE line + blank line + summary body' }),
-  buildRequest: (chain: ActivityChain) => {
-    const userPrompt = PREPARED.get(chain)
+  buildRequest: (session: ParsedSession) => {
     // Fallback prompt for callers that skipped the async prepare step —
-    // matches the new interleaved-turns shape with just the topic as the
-    // sole user turn.
-    const prompt = userPrompt ?? [
-      'session shape: 1 substantive turn · 0 tool calls',
-      '',
-      `USER: ${chain.topic || '(none)'}`,
-      '',
-      '---',
-      'OUTPUT:',
-    ].join('\n')
+    // matches the interleaved-turns shape with just the topic as the sole
+    // user turn.
+    const prompt =
+      PREPARED.get(session) ??
+      [
+        'session shape: 1 substantive turn · 0 tool calls',
+        '',
+        `USER: ${session.topic || '(none)'}`,
+        '',
+        '---',
+        'OUTPUT:',
+      ].join('\n')
     return {
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user' as const, content: prompt }],
       temperature: 0.2,
     }
   },
-  finalize: (raw: string, chain: ActivityChain): ContractOutput<ChainDigestOutput> | null => {
+  finalize: (raw: string, session: ParsedSession): ContractOutput<SessionDigestOutput> | null => {
     const { title: rawTitle, summary: rawSummary } = splitTitleAndSummary(raw)
-    const title = sanitizeTitle(rawTitle, chain.project)
+    const title = sanitizeTitle(rawTitle, session.project)
     if (!title) return null
-    const summary = sanitizeSummary(rawSummary)
-    return { value: { title, summary }, meta: {} }
+    return { value: { title, summary: sanitizeSummary(rawSummary) }, meta: {} }
   },
-  cacheKey: (chain: ActivityChain) => {
-    const first = chain.sessions[0]?.sessionId ?? chain.key
-    return `${first}#${chain.msgCount}`
-  },
+  // A session's content is fixed once it ends, so its id plus message count is
+  // a complete key — no grouping input to invalidate it, which is the whole
+  // reason this layer is cheap to keep warm.
+  cacheKey: (session: ParsedSession) =>
+    `${session.sessionId ?? session.path}#${session.userMsgCount}`,
 })

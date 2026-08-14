@@ -75,8 +75,7 @@ import {
   listChainsOrch,
   listUndertakingsOrch,
   recordAssignmentOrch,
-  setChainFilesOrch,
-  setChainProjectOrch,
+  setSessionProjectOrch,
   tagUndertakingOrch,
   updateUndertakingHeadOrch,
 } from './aiActivityUndertakingOrch'
@@ -958,7 +957,7 @@ async function executeCapability<Name extends CapabilityName>(
       const proposedBy = payload.proposedBy?.trim() || 'agent'
       const result = await proposeAssignmentsOrch(
         payload.proposals.map(proposal => {
-          assertNonEmptyString(proposal.chainId, 'chainId')
+          assertNonEmptyString(proposal.sessionId, 'sessionId')
           assertNonEmptyString(proposal.projectId, 'projectId')
           return { ...proposal, proposedBy }
         }),
@@ -971,26 +970,16 @@ async function executeCapability<Name extends CapabilityName>(
       const chains = await listChainsOrch(payload)
       return { chains } as CapabilityOutputMap[Name]
     }
-    case 'ai_activity.chain.set_project': {
-      const payload = input as CapabilityInputMap['ai_activity.chain.set_project']
+    case 'ai_activity.session.set_project': {
+      const payload = input as CapabilityInputMap['ai_activity.session.set_project']
       assertNonEmptyString(payload.projectId, 'projectId')
-      assertNonEmptyString(payload.chainKey, 'chainKey')
+      assertNonEmptyString(payload.sessionId, 'sessionId')
       assertNonEmptyString(payload.toProjectId, 'toProjectId')
-      const result = await setChainProjectOrch(
+      const result = await setSessionProjectOrch(
         payload.projectId,
-        payload.chainKey,
+        payload.sessionId,
         payload.toProjectId,
       )
-      return result as CapabilityOutputMap[Name]
-    }
-    case 'ai_activity.chain.set_files': {
-      const payload = input as CapabilityInputMap['ai_activity.chain.set_files']
-      assertNonEmptyString(payload.projectId, 'projectId')
-      assertNonEmptyString(payload.chainKey, 'chainKey')
-      const result = await setChainFilesOrch(payload.projectId, payload.chainKey, {
-        written: payload.written,
-        read: payload.read,
-      })
       return result as CapabilityOutputMap[Name]
     }
     default:

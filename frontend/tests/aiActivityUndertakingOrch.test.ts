@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ProjectChainDigest } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
+import type { ProjectSessionDigest } from '@/services/lego_blocks/units/aiActivitySessionDigestBlock'
+import type { ProjectChainRollup } from '@/services/orchestrators/aiActivityChainsOrch'
 import {
-  chainDigestVaultRelPathBlock,
-  stringifyProjectChainDigestMarkdownBlock,
-} from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
+  sessionDigestVaultRelPathBlock,
+  stringifyProjectSessionDigestMarkdownBlock,
+} from '@/services/lego_blocks/units/aiActivitySessionDigestBlock'
 import { serializeUndertakingBlock, type UndertakingRecord } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
 import { serializeSectionBlock, type SectionRecord } from '@/services/lego_blocks/units/aiActivitySectionBlock'
 import type { Task } from '@/services/lego_blocks/units/aiActivityTaskBlock'
@@ -121,27 +122,45 @@ function makeRecord(overrides: Partial<UndertakingRecord> = {}): UndertakingReco
   }
 }
 
-function makeChain(overrides: Partial<ProjectChainDigest> = {}): ProjectChainDigest {
-  // chainId follows chainKey unless a test sets it explicitly — the two are
-  // equal for a freshly minted chain, and letting them drift apart silently
-  // would collide every fixture onto one flat filename.
-  const chainKey = overrides.chainKey ?? 'c-1'
+/**
+ * One session digest — and therefore, since chains are derived from these, one
+ * sitting per fixture unless two are deliberately placed close in time.
+ *
+ * The hour is derived from the key's numeric suffix (`c-1` → 10:00, `c-2` →
+ * 14:00) so distinct fixtures land more than `IDLE_GAP_HOURS` apart and stay
+ * distinct chains. That spacing is now load-bearing in a way it never was when
+ * each chain was its own file: grouping is by time, so two fixtures sharing a
+ * timestamp would merge into one sitting and quietly halve every count below.
+ */
+function makeChain(overrides: Partial<ProjectSessionDigest> = {}): ProjectSessionDigest {
+  const sessionId = overrides.sessionId ?? 'c-1'
+  const ordinal = Number(/(\d+)$/.exec(sessionId)?.[1] ?? 1)
+  const date = overrides.date ?? '2026-06-02'
+  // Two-hour slots keep every fixture more than IDLE_GAP_HOURS from its
+  // neighbours (so they stay distinct sittings) while staying a valid hour for
+  // ordinals up to 10.
+  const hour = String((ordinal * 2) % 22).padStart(2, '0')
+  const startedIso = overrides.startedIso ?? `${date}T${hour}:00:00.000Z`
+  // The window is the source of truth for duration now — a rollup derives
+  // `durationMs` from its members' start and end rather than trusting a stored
+  // number, so a fixture that states a duration must state a window that agrees.
+  const durationMs = overrides.durationMs ?? 60_000
   return {
     projectId: 'F9',
-    chainId: chainKey,
-    sessions: [chainKey],
-    chainKey,
-    date: '2026-06-02',
+    sessionId,
+    path: `native/claude/${sessionId}.jsonl`,
+    date,
     title: 'Micron read',
     summary: 'Read the 10-K.',
     source: 'claude-code',
     msgCount: 20,
-    durationMs: 60_000,
+    durationMs,
     activeDurationMs: 0,
-    startedIso: '2026-06-02T10:00:00.000Z',
-    endedIso: '2026-06-02T10:01:00.000Z',
+    startedIso,
+    endedIso: new Date(Date.parse(startedIso) + durationMs).toISOString(),
+    hadClear: false,
     inputHash: 'h',
-    generatedAt: '2026-06-02T10:05:00.000Z',
+    generatedAt: `${date}T${hour}:05:00.000Z`,
     model: 'test',
     generator: 'claude',
     filesWritten: ['vault://F9/micron.md'],
@@ -151,22 +170,32 @@ function makeChain(overrides: Partial<ProjectChainDigest> = {}): ProjectChainDig
   }
 }
 
-/** Flat layout, addressed by chainId — the only layout written since v4. */
-function seedChain(digest: ProjectChainDigest): void {
-  fakeFs.seed(
-    chainDigestVaultRelPathBlock(digest.projectId, digest.chainId),
-    stringifyProjectChainDigestMarkdownBlock(digest),
-  )
+/** One session digest as the single-member chain rollup it derives into.
+ *  `collapseChainWindowsBlock` operates on sittings, and a lone session is the
+ *  smallest sitting there is. */
+function rollup(digest: ProjectSessionDigest): ProjectChainRollup {
+  return {
+    projectId: digest.projectId,
+    chainKey: `${digest.projectId}::${digest.sessionId}`,
+    sessions: [digest],
+    title: digest.title,
+    date: digest.date,
+    startedIso: digest.startedIso,
+    endedIso: digest.endedIso,
+    durationMs: digest.durationMs,
+    activeDurationMs: digest.activeDurationMs,
+    msgCount: digest.msgCount,
+    filesWritten: digest.filesWritten,
+    filesRead: digest.filesRead,
+    undertaking: digest.undertaking,
+  }
 }
 
-/** The pre-v4 `<project>/<date>/<chainKey>.md` layout, still read so no vault
- *  loses its history on upgrade. Such a record has no `chainId` and adopts its
- *  `chainKey` as one. */
-function seedLegacyNestedChain(digest: ProjectChainDigest): void {
-  const { chainId: _drop, sessions: _drop2, ...legacy } = digest
+/** Flat, addressed by session id — the only address there is. */
+function seedChain(digest: ProjectSessionDigest): void {
   fakeFs.seed(
-    `ai-activity/chains/${digest.projectId}/${digest.date}/${digest.chainKey.replace(/[^A-Za-z0-9._-]+/g, '_')}.md`,
-    stringifyProjectChainDigestMarkdownBlock(legacy as ProjectChainDigest),
+    sessionDigestVaultRelPathBlock(digest.projectId, digest.sessionId),
+    stringifyProjectSessionDigestMarkdownBlock(digest),
   )
 }
 
@@ -222,24 +251,18 @@ describe('collapseChainWindowsBlock', () => {
     // same clock. This is the case the collapse exists for.
     const { collapseChainWindowsBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const collapsed = collapseChainWindowsBlock([
-      {
-        ...makeChain({
-          chainKey: 'c-1#w1',
+      rollup(makeChain({
+          sessionId: 'c-1#w1',
           durationMs: 60_000,
           startedIso: '2026-06-02T10:00:00.000Z',
           endedIso: '2026-06-02T10:01:00.000Z',
-        }),
-        path: 'a',
-      },
-      {
-        ...makeChain({
-          chainKey: 'c-1#w2',
+        })),
+      rollup(makeChain({
+          sessionId: 'c-1#w2',
           durationMs: 90_000,
           startedIso: '2026-06-02T10:00:00.000Z',
           endedIso: '2026-06-02T10:01:30.000Z',
-        }),
-        path: 'b',
-      },
+        })),
     ])
 
     expect(collapsed).toHaveLength(1)
@@ -252,29 +275,23 @@ describe('collapseChainWindowsBlock', () => {
     // to the longer one silently deleted the other from every tail.
     const { collapseChainWindowsBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const collapsed = collapseChainWindowsBlock([
-      {
-        ...makeChain({
-          chainKey: 'c-1',
+      rollup(makeChain({
+          sessionId: 'c-1',
           date: '2026-06-19',
           durationMs: 4_849_749,
           startedIso: '2026-06-19T20:43:59.000Z',
           endedIso: '2026-06-19T22:04:49.000Z',
-        }),
-        path: 'a',
-      },
-      {
-        ...makeChain({
-          chainKey: 'c-1#w2',
+        })),
+      rollup(makeChain({
+          sessionId: 'c-1#w2',
           date: '2026-06-23',
           durationMs: 7_785_561,
           startedIso: '2026-06-23T00:18:24.000Z',
           endedIso: '2026-06-23T02:28:10.000Z',
-        }),
-        path: 'b',
-      },
+        })),
     ])
 
-    expect(collapsed.map(c => c.chainKey)).toEqual(['c-1', 'c-1#w2'])
+    expect(collapsed.map(c => c.chainKey)).toEqual(['F9::c-1', 'F9::c-1#w2'])
   })
 
   it('chains a run of overlapping windows into one sitting', async () => {
@@ -282,55 +299,46 @@ describe('collapseChainWindowsBlock', () => {
     // sitting, so the cluster end has to be a high-water mark.
     const { collapseChainWindowsBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const collapsed = collapseChainWindowsBlock([
-      {
-        ...makeChain({
-          chainKey: 'c-1#w1',
+      rollup(makeChain({
+          sessionId: 'c-1#w1',
           durationMs: 60_000,
           startedIso: '2026-06-02T10:00:00.000Z',
           endedIso: '2026-06-02T10:01:00.000Z',
-        }),
-        path: 'a',
-      },
-      {
-        ...makeChain({
-          chainKey: 'c-1#w2',
+        })),
+      rollup(makeChain({
+          sessionId: 'c-1#w2',
           durationMs: 120_000,
           startedIso: '2026-06-02T10:00:30.000Z',
           endedIso: '2026-06-02T10:02:30.000Z',
-        }),
-        path: 'b',
-      },
-      {
-        ...makeChain({
-          chainKey: 'c-1#w3',
+        })),
+      rollup(makeChain({
+          sessionId: 'c-1#w3',
           durationMs: 30_000,
           startedIso: '2026-06-02T10:02:00.000Z',
           endedIso: '2026-06-02T10:02:30.000Z',
-        }),
-        path: 'c',
-      },
+        })),
     ])
 
-    expect(collapsed.map(c => c.chainKey)).toEqual(['c-1#w2'])
+    expect(collapsed.map(c => c.chainKey)).toEqual(['F9::c-1#w2'])
   })
 
   it('leaves distinct sessions alone', async () => {
     const { collapseChainWindowsBlock } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const collapsed = collapseChainWindowsBlock([
-      { ...makeChain({ chainKey: 'c-1#w1', startedIso: '2026-06-02T10:00:00.000Z' }), path: 'a' },
-      { ...makeChain({ chainKey: 'c-2#w1', startedIso: '2026-06-03T10:00:00.000Z' }), path: 'b' },
+      rollup(makeChain({ sessionId: 'c-1#w1', startedIso: '2026-06-02T10:00:00.000Z' })),
+      rollup(makeChain({ sessionId: 'c-2#w1', startedIso: '2026-06-03T10:00:00.000Z' })),
     ])
 
-    expect(collapsed.map(c => c.chainKey)).toEqual(['c-1#w1', 'c-2#w1'])
+    expect(collapsed.map(c => c.chainKey)).toEqual(['F9::c-1#w1', 'F9::c-2#w1'])
   })
 })
 
 describe('listUndertakingsOrch', () => {
   it('derives the tail from chains rather than from the record', async () => {
     seedRecord(makeRecord())
-    seedChain(makeChain({ chainKey: 'c-1', date: '2026-06-02', durationMs: 60_000 }))
+    seedChain(makeChain({ sessionId: 'c-1', date: '2026-06-02', durationMs: 60_000 }))
     seedChain(makeChain({
-      chainKey: 'c-2',
+      sessionId: 'c-2',
       date: '2026-06-03',
       durationMs: 120_000,
       startedIso: '2026-06-03T10:00:00.000Z',
@@ -354,10 +362,10 @@ describe('listUndertakingsOrch', () => {
   it('sums active duration for the sparkline, falling back to wall-clock per un-healed chain', async () => {
     seedRecord(makeRecord())
     // c-1: healed — 30m wall-clock but only 5m of active work (long pauses).
-    seedChain(makeChain({ chainKey: 'c-1', date: '2026-06-02', durationMs: 1_800_000, activeDurationMs: 300_000 }))
+    seedChain(makeChain({ sessionId: 'c-1', date: '2026-06-02', durationMs: 1_800_000, activeDurationMs: 300_000 }))
     // c-2: pre-field digest (activeDurationMs 0) → falls back to its wall-clock.
     seedChain(makeChain({
-      chainKey: 'c-2',
+      sessionId: 'c-2',
       date: '2026-06-03',
       durationMs: 600_000,
       activeDurationMs: 0,
@@ -376,7 +384,7 @@ describe('listUndertakingsOrch', () => {
 
   it('picks up chains that name the undertaking even when the record does not list them', async () => {
     seedRecord(makeRecord({ chains: [] }))
-    seedChain(makeChain({ chainKey: 'c-9', undertaking: ['f9-und-micron'] }))
+    seedChain(makeChain({ sessionId: 'c-9', undertaking: ['f9-und-micron'] }))
 
     const { listUndertakingsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const views = await listUndertakingsOrch('F9')
@@ -533,14 +541,14 @@ describe('getUndertakingOrch', () => {
       `ai-activity/thinking-organizer/F9/undertakings/${record.key}.md`,
       serializeUndertakingBlock(record),
     )
-    seedChain(makeChain({ chainKey: 'c-1', date: '2026-06-03', durationMs: 90_000 }))
+    seedChain(makeChain({ sessionId: 'c-1', date: '2026-06-03', durationMs: 90_000 }))
 
     const { getUndertakingOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const view = await getUndertakingOrch('F9', record.key)
 
     expect(view).not.toBeNull()
     expect(view!.tail.chainCount).toBe(1)
-    expect((view!.chains ?? []).map(c => c.chainKey)).toEqual(['c-1'])
+    expect((view!.chains ?? []).map(c => c.chainKey)).toEqual(['F9::c-1'])
   })
 
   it('never writes the derived tail back into the record', async () => {
@@ -765,73 +773,32 @@ describe('tagUndertakingOrch', () => {
   })
 })
 
-describe('chain repair orchestrators', () => {
-  it('moves the file when a chain is re-projected, since project id is a path segment', async () => {
-    seedChain(makeChain({ chainKey: 'c-1', projectId: 'Thinking-Space' }))
-
-    const { setChainProjectOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    const { path } = await setChainProjectOrch('Thinking-Space', 'c-1', 'F9')
-
-    expect(path).toBe('ai-activity/chains/F9/c-1.md')
-    expect(fakeFs.files.has('ai-activity/chains/Thinking-Space/c-1.md')).toBe(false)
-    expect(fakeFs.files.get(path)).toContain('projectId: F9')
-  })
-
-  it('backfills file pointers without disturbing the other side', async () => {
-    seedChain(makeChain({ chainKey: 'c-1', filesWritten: ['vault://a.md'], filesRead: ['vault://b.md'] }))
-
-    const { setChainFilesOrch, listChainsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    await setChainFilesOrch('F9', 'c-1', { written: ['vault://c.md'] })
-    const [chain] = await listChainsOrch({ projectId: 'F9' })
-
-    expect(chain.filesWritten).toEqual(['vault://c.md'])
-    expect(chain.filesRead).toEqual(['vault://b.md'])
-  })
-
-  it('throws on an unknown chain key', async () => {
-    const { setChainFilesOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    await expect(setChainFilesOrch('F9', 'nope', { written: [] })).rejects.toThrow(/not found/i)
-  })
-})
+/**
+ * The `chain repair orchestrators` block that used to sit here is gone with the
+ * thing it repaired.
+ *
+ * `chain.set_files` backfilled file pointers onto chains written before
+ * extraction existed; pointers are now recomputed from the transcript on every
+ * read, so there is no frozen copy left to backfill. `chain.set_project` moved a
+ * chain file between project directories; the equivalent is
+ * `setSessionProjectOrch`, covered where the session store is tested. Neither
+ * capability's *purpose* was dropped — the class of staleness they existed to
+ * repair was.
+ */
 
 describe('listChainsOrch', () => {
   it('bounds by date inclusively', async () => {
-    seedChain(makeChain({ chainKey: 'c-1', date: '2026-06-01' }))
-    seedChain(makeChain({ chainKey: 'c-2', date: '2026-06-02' }))
-    seedChain(makeChain({ chainKey: 'c-3', date: '2026-06-03' }))
+    seedChain(makeChain({ sessionId: 'c-1', date: '2026-06-01' }))
+    seedChain(makeChain({ sessionId: 'c-2', date: '2026-06-02' }))
+    seedChain(makeChain({ sessionId: 'c-3', date: '2026-06-03' }))
 
     const { listChainsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const chains = await listChainsOrch({ projectId: 'F9', from: '2026-06-02', to: '2026-06-03' })
 
-    expect(chains.map(c => c.chainKey)).toEqual(['c-2', 'c-3'])
+    // Newest sitting first — the order every surface renders in.
+    expect(chains.map(c => c.chainKey)).toEqual(['F9::c-3', 'F9::c-2'])
   })
 
-  it('still reads pre-v4 nested records, which adopt their chainKey as chainId', async () => {
-    // The layout change must not cost anyone their history. A nested record has
-    // no chainId, and the name its file already had is the right one to keep.
-    seedLegacyNestedChain(makeChain({ chainKey: 'c-old', title: 'Older thinking' }))
-
-    const { listChainsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    const chains = await listChainsOrch({ projectId: 'F9' })
-
-    expect(chains).toHaveLength(1)
-    expect(chains[0].chainId).toBe('c-old')
-    expect(chains[0].title).toBe('Older thinking')
-    expect(chains[0].path).toBe('ai-activity/chains/F9/2026-06-02/c-old.md')
-  })
-
-  it('prefers the flat record over its legacy twin rather than listing both', async () => {
-    // Mid-migration state: the nested file is still on disk after the record
-    // has been written back flat. One chain must not become two.
-    seedLegacyNestedChain(makeChain({ chainKey: 'c-1', title: 'Stale copy' }))
-    seedChain(makeChain({ chainKey: 'c-1', title: 'Current copy' }))
-
-    const { listChainsOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    const chains = await listChainsOrch({ projectId: 'F9' })
-
-    expect(chains).toHaveLength(1)
-    expect(chains[0].title).toBe('Current copy')
-  })
 })
 
 describe('getUndertakingIndexOrch', () => {
@@ -841,8 +808,8 @@ describe('getUndertakingIndexOrch', () => {
     // sec-a: one undertaking active early June. sec-b: one active late June.
     seedRecord(makeRecord({ key: 'u-a', section: 'sec-a', sortOrder: 1, chains: ['c-a'] }))
     seedRecord(makeRecord({ key: 'u-b', section: 'sec-b', sortOrder: 1, chains: ['c-b'] }))
-    seedChain(makeChain({ chainKey: 'c-a', date: '2026-06-01', durationMs: 60_000, activeDurationMs: 60_000, startedIso: '2026-06-01T10:00:00.000Z' }))
-    seedChain(makeChain({ chainKey: 'c-b', date: '2026-06-30', durationMs: 60_000, activeDurationMs: 60_000, startedIso: '2026-06-30T10:00:00.000Z' }))
+    seedChain(makeChain({ sessionId: 'c-a', date: '2026-06-01', durationMs: 60_000, activeDurationMs: 60_000, startedIso: '2026-06-01T10:00:00.000Z' }))
+    seedChain(makeChain({ sessionId: 'c-b', date: '2026-06-30', durationMs: 60_000, activeDurationMs: 60_000, startedIso: '2026-06-30T10:00:00.000Z' }))
 
     const { getUndertakingIndexOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const index = await getUndertakingIndexOrch('F9', { buckets: 10 })
@@ -871,8 +838,8 @@ describe('getUndertakingIndexOrch', () => {
     seedRecord(makeRecord({ key: 'u-old', section: 'sec-a', sortOrder: 1, chains: ['c-old'] }))
     seedRecord(makeRecord({ key: 'u-never', section: 'sec-a', sortOrder: 2, chains: [] }))
     seedRecord(makeRecord({ key: 'u-recent', section: 'sec-a', sortOrder: 3, chains: ['c-recent'] }))
-    seedChain(makeChain({ chainKey: 'c-old', date: '2026-06-01', durationMs: 60_000, activeDurationMs: 60_000, startedIso: '2026-06-01T10:00:00.000Z' }))
-    seedChain(makeChain({ chainKey: 'c-recent', date: '2026-06-30', durationMs: 60_000, activeDurationMs: 60_000, startedIso: '2026-06-30T10:00:00.000Z' }))
+    seedChain(makeChain({ sessionId: 'c-old', date: '2026-06-01', durationMs: 60_000, activeDurationMs: 60_000, startedIso: '2026-06-01T10:00:00.000Z' }))
+    seedChain(makeChain({ sessionId: 'c-recent', date: '2026-06-30', durationMs: 60_000, activeDurationMs: 60_000, startedIso: '2026-06-30T10:00:00.000Z' }))
 
     const { getUndertakingIndexOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const index = await getUndertakingIndexOrch('F9')

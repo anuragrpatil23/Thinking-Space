@@ -19,7 +19,7 @@ import {
 
 function makeProposal(overrides: Partial<AssignmentProposalBlock> = {}): AssignmentProposalBlock {
   return {
-    chainId: 'c-1',
+    sessionId: 'c-1',
     projectId: 'F9',
     target: { kind: 'existing', key: 'f9-und-micron' },
     confidence: 0.9,
@@ -77,34 +77,34 @@ describe('latestProposalsBlock', () => {
 describe('buildQueueGroupsBlock', () => {
   it('groups chains proposed for the same target', () => {
     const groups = buildQueueGroupsBlock([
-      makeProposal({ chainId: 'c-1' }),
-      makeProposal({ chainId: 'c-2' }),
+      makeProposal({ sessionId: 'c-1' }),
+      makeProposal({ sessionId: 'c-2' }),
     ])
     expect(groups).toHaveLength(1)
-    expect(groups[0].proposals.map(p => p.chainId)).toEqual(['c-1', 'c-2'])
+    expect(groups[0].proposals.map(p => p.sessionId)).toEqual(['c-1', 'c-2'])
   })
 
   it('takes the weakest member as the group confidence, not the average', () => {
     const groups = buildQueueGroupsBlock([
-      makeProposal({ chainId: 'c-1', confidence: 0.95 }),
-      makeProposal({ chainId: 'c-2', confidence: 0.4 }),
+      makeProposal({ sessionId: 'c-1', confidence: 0.95 }),
+      makeProposal({ sessionId: 'c-2', confidence: 0.4 }),
     ])
     expect(groups[0].confidence).toBe(0.4)
   })
 
   it('never groups across projects, even for an identical target', () => {
     const groups = buildQueueGroupsBlock([
-      makeProposal({ chainId: 'c-1', projectId: 'F9' }),
-      makeProposal({ chainId: 'c-2', projectId: 'Thinking-Space' }),
+      makeProposal({ sessionId: 'c-1', projectId: 'F9' }),
+      makeProposal({ sessionId: 'c-2', projectId: 'Thinking-Space' }),
     ])
     expect(groups).toHaveLength(2)
   })
 
   it('orders by confidence descending so the cheapest calls come first', () => {
     const groups = buildQueueGroupsBlock([
-      makeProposal({ chainId: 'c-1', target: { kind: 'bucket' }, confidence: 0.3 }),
-      makeProposal({ chainId: 'c-2', confidence: 0.99 }),
-      makeProposal({ chainId: 'c-3', target: { kind: 'new', title: 'New thing' }, confidence: 0.7 }),
+      makeProposal({ sessionId: 'c-1', target: { kind: 'bucket' }, confidence: 0.3 }),
+      makeProposal({ sessionId: 'c-2', confidence: 0.99 }),
+      makeProposal({ sessionId: 'c-3', target: { kind: 'new', title: 'New thing' }, confidence: 0.7 }),
     ])
     expect(groups.map(g => g.confidence)).toEqual([0.99, 0.7, 0.3])
   })
@@ -112,8 +112,8 @@ describe('buildQueueGroupsBlock', () => {
   it('breaks ties stably, so the list does not reshuffle under the cursor', () => {
     const build = () =>
       buildQueueGroupsBlock([
-        makeProposal({ chainId: 'c-1', target: { kind: 'existing', key: 'b' } }),
-        makeProposal({ chainId: 'c-2', target: { kind: 'existing', key: 'a' } }),
+        makeProposal({ sessionId: 'c-1', target: { kind: 'existing', key: 'b' } }),
+        makeProposal({ sessionId: 'c-2', target: { kind: 'existing', key: 'a' } }),
       ]).map(g => g.targetId)
     expect(build()).toEqual(build())
     expect(build()).toEqual(['existing:a', 'existing:b'])
@@ -121,8 +121,8 @@ describe('buildQueueGroupsBlock', () => {
 
   it('groups two proposals of the same new title as one mint', () => {
     const groups = buildQueueGroupsBlock([
-      makeProposal({ chainId: 'c-1', target: { kind: 'new', title: 'Ghost sessions' } }),
-      makeProposal({ chainId: 'c-2', target: { kind: 'new', title: 'ghost sessions' } }),
+      makeProposal({ sessionId: 'c-1', target: { kind: 'new', title: 'Ghost sessions' } }),
+      makeProposal({ sessionId: 'c-2', target: { kind: 'new', title: 'ghost sessions' } }),
     ])
     expect(groups).toHaveLength(1)
     expect(targetIdBlock(groups[0].target)).toBe('new:ghost sessions')
@@ -132,9 +132,9 @@ describe('buildQueueGroupsBlock', () => {
 describe('JSONL transport', () => {
   it('round-trips every target kind', () => {
     const originals = [
-      makeProposal({ chainId: 'c-1' }),
-      makeProposal({ chainId: 'c-2', target: { kind: 'new', title: 'T', section: 's', head: 'h' } }),
-      makeProposal({ chainId: 'c-3', target: { kind: 'bucket' } }),
+      makeProposal({ sessionId: 'c-1' }),
+      makeProposal({ sessionId: 'c-2', target: { kind: 'new', title: 'T', section: 's', head: 'h' } }),
+      makeProposal({ sessionId: 'c-3', target: { kind: 'bucket' } }),
     ]
     const parsed = parseProposalLogBlock(originals.map(serializeProposalBlock).join('\n'))
     expect(parsed).toEqual(originals)
@@ -142,18 +142,18 @@ describe('JSONL transport', () => {
 
   it('skips a corrupt line rather than losing the file', () => {
     const good = serializeProposalBlock(makeProposal())
-    const parsed = parseProposalLogBlock(`${good}\n{"chainId":\nnot json at all\n${good}`)
+    const parsed = parseProposalLogBlock(`${good}\n{"sessionId":\nnot json at all\n${good}`)
     expect(parsed).toHaveLength(2)
   })
 
   it('drops a line missing the fields that make it addressable', () => {
     expect(parseProposalLogBlock('{"projectId":"F9","target":{"kind":"bucket"}}')).toEqual([])
-    expect(parseProposalLogBlock('{"chainId":"c-1","projectId":"F9"}')).toEqual([])
+    expect(parseProposalLogBlock('{"sessionId":"c-1","projectId":"F9"}')).toEqual([])
   })
 
   it('clamps a confidence outside 0–1 instead of trusting it', () => {
     const parsed = parseProposalLogBlock(
-      '{"chainId":"c-1","projectId":"F9","target":{"kind":"bucket"},"confidence":7}',
+      '{"sessionId":"c-1","projectId":"F9","target":{"kind":"bucket"},"confidence":7}',
     )
     expect(parsed[0].confidence).toBe(1)
   })

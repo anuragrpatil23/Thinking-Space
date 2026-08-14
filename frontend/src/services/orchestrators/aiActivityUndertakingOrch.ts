@@ -21,13 +21,14 @@ import {
   type SectionRecord,
 } from '@/services/lego_blocks/units/aiActivitySectionBlock'
 import {
-  findChainBlock,
-  listChainsBlock,
-  patchChainBlock,
-  type ChainEntry,
-} from '@/services/lego_blocks/integrations/aiActivityChainIndexBlock'
-import { chainActiveDurationMsBlock } from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
-import { listProjectChainsOrch } from '@/services/orchestrators/aiActivityChainReconcileOrch'
+  getProjectSessionDigestBlock,
+  putProjectSessionDigestBlock,
+} from '@/services/lego_blocks/integrations/aiActivitySessionDigestStoreBlock'
+import { sessionActiveDurationMsBlock } from '@/services/lego_blocks/units/aiActivitySessionDigestBlock'
+import {
+  listProjectChainsOrch,
+  type ProjectChainRollup,
+} from '@/services/orchestrators/aiActivityChainsOrch'
 import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
 import {
   DEFAULT_TASK_DIR_BLOCK,
@@ -99,7 +100,7 @@ export interface UndertakingView {
   /** The chains this undertaking is built from, collapsed by sitting — the same
    *  set the tail is derived from. Present on `getUndertakingOrch` (the detail
    *  page needs the per-chain trail); omitted from list views for weight. */
-  chains?: ChainEntry[]
+  chains?: ProjectChainRollup[]
 }
 
 /**
@@ -121,22 +122,32 @@ export interface UndertakingView {
  * windows through. The density sparkline's entire job is to be honest about how
  * much work happened, in both directions.
  */
-export function collapseChainWindowsBlock(chains: ChainEntry[]): ChainEntry[] {
-  const bySession = new Map<string, ChainEntry[]>()
+export function collapseChainWindowsBlock(chains: ProjectChainRollup[]): ProjectChainRollup[] {
+  const bySession = new Map<string, ProjectChainRollup[]>()
   for (const chain of chains) {
-    const base = chain.chainKey.replace(/#w\d+$/, '')
+    // Keyed off the first MEMBER's session id, not the chain key. A window
+    // suffix (`::w2`) lives on a session id; the chain key is a display handle
+    // built from it, so reading the suffix off the key was reading it off a
+    // derived string one level too high.
+    //
+    // Note also what this no longer has to handle: PreCompact and SessionEnd
+    // both firing on one sitting used to produce two chain records that had to
+    // be de-duplicated here. They now produce two writes to the *same* session
+    // digest address, so the duplicate cannot exist to be collapsed.
+    const head = chain.sessions[0]?.sessionId ?? chain.chainKey
+    const base = head.replace(/(::|#)w\d+$/, '')
     const bucket = bySession.get(base)
     if (bucket) bucket.push(chain)
     else bySession.set(base, [chain])
   }
 
-  const kept: ChainEntry[] = []
+  const kept: ProjectChainRollup[] = []
   for (const bucket of bySession.values()) {
     bucket.sort((a, b) => a.startedIso.localeCompare(b.startedIso))
     // Interval sweep. `best` is the longest window in the cluster being built;
     // `clusterEnd` is the cluster's running high-water end, so A–B–C chains
     // into one sitting even when A and C don't touch.
-    let best: ChainEntry | null = null
+    let best: ProjectChainRollup | null = null
     let clusterEnd = ''
     for (const chain of bucket) {
       if (best && chain.startedIso < clusterEnd) {
@@ -156,11 +167,11 @@ export function collapseChainWindowsBlock(chains: ChainEntry[]): ChainEntry[] {
 
 /** Active duration for one chain. The rule lives in the digest block so every
  *  reader of chain effort applies the same fallback. */
-function activeOf(chain: ChainEntry): number {
-  return chainActiveDurationMsBlock(chain)
+function activeOf(chain: ProjectChainRollup): number {
+  return sessionActiveDurationMsBlock(chain)
 }
 
-function buildTail(chains: ChainEntry[]): UndertakingTail {
+function buildTail(chains: ProjectChainRollup[]): UndertakingTail {
   const collapsed = collapseChainWindowsBlock(chains)
   const byDate = new Map<string, { chains: number; durationMs: number; activeDurationMs: number }>()
   const files = new Set<string>()
@@ -193,24 +204,29 @@ function buildTail(chains: ChainEntry[]): UndertakingTail {
 }
 
 /**
- * Does this chain belong to that undertaking?
+ * Does this sitting belong to that undertaking?
  *
- * Two directions, and they are not equal. `chain.undertaking` lives on the
- * digest and is the authoritative one — the chain says which undertaking it
- * served. `record.chains`/`record.fedBy` are pointers the other way, carried in
- * from the old organizer, and they hold whatever a chain was *called* at import
- * time. A name is a derived value: re-grouping moves a chain's `chainKey`, and
- * every pointer written against the old one silently stops resolving.
+ * Two directions, and they are not equal. The authoritative one is the
+ * assignment carried on each member session — a session says which undertaking
+ * it served, and a session is the finest unit that can say so truthfully.
+ * `record.chains`/`record.fedBy` are pointers the other way, carried in from the
+ * old organizer, and they hold whatever a chain was *called* at import time.
  *
- * So the pointer is matched against the frozen `chainId` as well. New records
- * should carry ids; old ones keep working because a pre-v4 chain's id is the
- * key it was imported under.
+ * Those inbound pointers are matched against **session ids**, not against any
+ * chain-level name. A name is a derived value: re-grouping moved a chain's key
+ * and every pointer written against the old one silently stopped resolving,
+ * which is why this used to need a frozen `chainId` to match as well. There is
+ * no such id now and none is needed — a pointer that names a session names
+ * something that cannot be renamed.
  */
-function chainBelongsToBlock(chain: ChainEntry, record: UndertakingRecord, wanted: Set<string>): boolean {
+function chainBelongsToBlock(
+  chain: ProjectChainRollup,
+  record: UndertakingRecord,
+  wanted: Set<string>,
+): boolean {
   return (
     chain.undertaking.includes(record.key) ||
-    wanted.has(chain.chainId) ||
-    wanted.has(chain.chainKey)
+    chain.sessions.some(s => wanted.has(s.sessionId))
   )
 }
 
@@ -220,11 +236,10 @@ function chainBelongsToBlock(chain: ChainEntry, record: UndertakingRecord, wante
 // exist and silently yields zero chains (every detail page shows "0 sessions"),
 // which is exactly the bug this replaced. The id the index path already uses is
 // the one threaded in from the caller.
-async function chainsFor(projectId: string, record: UndertakingRecord): Promise<ChainEntry[]> {
-  // `listProjectChainsOrch`, not `listChainsBlock`: the stored digest's
-  // mechanical fields are a transport copy, and this device can derive the real
-  // ones. Reading the raw file is what made the drawer show no pages for
-  // undertakings whose provenance had been captured correctly all along.
+async function chainsFor(
+  projectId: string,
+  record: UndertakingRecord,
+): Promise<ProjectChainRollup[]> {
   const all = await listProjectChainsOrch(projectId)
   const wanted = new Set([...record.chains, ...record.fedBy])
   return all.filter(chain => chainBelongsToBlock(chain, record, wanted))
@@ -1275,31 +1290,29 @@ export async function recordAssignmentOrch(params: {
   return { path }
 }
 
-/** Misattribution repair. ~3% of chains land under the wrong project. */
-export async function setChainProjectOrch(
+/**
+ * Misattribution repair — move a session to the project it actually belonged to.
+ *
+ * Operates on the session, because that is what carries an attribution now, and
+ * because the record moves with it: a digest's address includes its project, so
+ * "changing the project" is genuinely a move and has to be written as one.
+ *
+ * The companion `chain.set_files` capability is gone rather than ported. It
+ * existed to backfill file pointers onto chains that predated extraction, and
+ * pointers are now recomputed from the transcript on every read — there is no
+ * stale copy left to repair. Fixing attribution at the source (a mapping rule in
+ * Settings ▸ AI Activity) remains the better move where the misattribution is
+ * systematic rather than one-off; this is the escape hatch for the one-off.
+ */
+export async function setSessionProjectOrch(
   fromProjectId: string,
-  chainKey: string,
+  sessionId: string,
   toProjectId: string,
-): Promise<{ path: string }> {
-  const chain = await findChainBlock(fromProjectId, chainKey)
-  if (!chain) throw new Error(`Chain not found: ${chainKey}`)
-  const { path } = await patchChainBlock(chain, { projectId: toProjectId })
-  return { path }
-}
-
-/** Backfill pointers onto a chain that predates extraction. */
-export async function setChainFilesOrch(
-  projectId: string,
-  chainKey: string,
-  files: { written?: string[]; read?: string[] },
-): Promise<{ path: string }> {
-  const chain = await findChainBlock(projectId, chainKey)
-  if (!chain) throw new Error(`Chain not found: ${chainKey}`)
-  const { path } = await patchChainBlock(chain, {
-    filesWritten: files.written ?? chain.filesWritten,
-    filesRead: files.read ?? chain.filesRead,
-  })
-  return { path }
+): Promise<{ sessionId: string }> {
+  const digest = await getProjectSessionDigestBlock(fromProjectId, sessionId)
+  if (!digest) throw new Error(`Session not found: ${sessionId}`)
+  await putProjectSessionDigestBlock({ ...digest, projectId: toProjectId })
+  return { sessionId }
 }
 
 export async function listChainsOrch(params: {
@@ -1307,6 +1320,12 @@ export async function listChainsOrch(params: {
   from?: string
   to?: string
   undertaking?: string
-}): Promise<ChainEntry[]> {
-  return listChainsBlock(params)
+}): Promise<ProjectChainRollup[]> {
+  const all = await listProjectChainsOrch(params.projectId)
+  return all.filter(chain => {
+    if (params.from && chain.date < params.from) return false
+    if (params.to && chain.date > params.to) return false
+    if (params.undertaking && !chain.undertaking.includes(params.undertaking)) return false
+    return true
+  })
 }

@@ -229,7 +229,7 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
   const pageGroups = useMemo(
     () =>
       chains.map(chain => ({
-        id: chain.chainId || chain.chainKey,
+        id: chain.chainKey,
         label: `${chain.date} · ${chain.title || '(untitled session)'}`,
         files: chain.filesWritten ?? [],
       })),
@@ -439,9 +439,13 @@ export default function UndertakingDetailDrawerBlock({ projectId, undertakingKey
                                 the files it touched. */}
                             <button
                               type="button"
-                              onClick={() => navigate(`/thinking-space?file=${encodeURIComponent(chain.path)}`)}
+                              onClick={() =>
+                                navigate(
+                                  `/thinking-space?file=${encodeURIComponent(chain.sessions[0]?.path ?? '')}`,
+                                )
+                              }
                               className="flex w-full items-baseline gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-black/[0.025] dark:hover:bg-white/[0.03]"
-                              title={chain.path}
+                              title={chain.sessions[0]?.path ?? ''}
                             >
                               <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/50">
                                 {chain.date}

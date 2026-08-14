@@ -1,452 +1,250 @@
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
-import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
-import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
+import type { ProjectSessionDigest } from '@/services/lego_blocks/units/aiActivitySessionDigestBlock'
+import { sessionActiveDurationMsBlock } from '@/services/lego_blocks/units/aiActivitySessionDigestBlock'
 import {
-  isValidChainDigestDateBlock,
-  type ChainSessionFiles,
-  type ProjectChainDigest,
-} from '@/services/lego_blocks/units/aiActivityChainDigestBlock'
+  ensureSessionDigestOrch,
+  loadSessionDigestOrch,
+} from '@/services/orchestrators/aiActivitySessionDigestOrch'
 import {
-  getProjectChainDigestBlock,
-  putProjectChainDigestBlock,
-} from '@/services/lego_blocks/integrations/aiActivityChainDigestStoreBlock'
-import {
-  chainDigestContract,
-  prepareChainDigestInputBlock,
-  type ChainDigestOutput,
-} from '@/services/lego_blocks/units/intelligence/contracts/chainDigestContractBlock'
+  chainStitchContract,
+  type ChainStitchContractInput,
+  type ChainStitchOutput,
+} from '@/services/lego_blocks/units/intelligence/contracts/chainStitchContractBlock'
 import { availability, runContract } from '@/services/orchestrators/intelligenceOrch'
 import { intelligenceCacheAvailableBlock } from '@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock'
-import { currentGenerationSourceBlock } from '@/services/lego_blocks/integrations/intelligence/providerRegistryBlock'
+import { getAiActivityAiTitlesEnabled } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   generationSourceForProviderBlock,
   generationSourceRankBlock,
+  type GenerationSource,
 } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
-import { getAiActivityAiTitlesEnabled } from '@/services/lego_blocks/units/storageKeyBlock'
 
-// Public surface for per-chain digests. Wraps the intelligence contract with:
-//   - the durable store (cache + vault) added earlier,
-//   - graceful degradation when the intelligence subsystem is unavailable
-//     (no persist; caller sees a fallback digest built from chain.topic),
-//   - a deterministic isoDayLocal-of-startedIso for the date bucket, so the
-//     chain lands in the same day the heatmap and trend chart show it in.
+/**
+ * Chain-level digests, DERIVED from session digests. Nothing here is stored at
+ * a chain address, because a chain has no address it could safely own.
+ *
+ * The old version of this file wrote a record to
+ * `ai-activity/chains/<project>/<chainId>.md` and then spent several hundred
+ * lines defending that address: an id minted once and frozen, a persisted
+ * membership list acting as its own index, two-pass overlap resolution to find
+ * a record whose key had moved, a reconcile orchestrator, a legacy nested-path
+ * fallback. Every one of those existed because `chainId` was seeded from an
+ * output of `buildChains`, so re-grouping renamed the file and orphaned the
+ * record.
+ *
+ * A chain digest is not a record. It is an *answer*, recomputable from the
+ * session digests underneath it, and the only reason to keep a copy is to avoid
+ * paying the model twice for the same answer. So it lives in the intelligence
+ * cache under a key derived from its own content — the members' titles and
+ * summaries. A content-addressed memo cannot be orphaned, only missed, and a
+ * miss costs one cheap call over short text rather than a lost record.
+ *
+ * Two paths, and the cheap one is the common one:
+ *
+ *   1 member  → PASS-THROUGH. The chain's digest *is* the session's digest.
+ *               No model call, no cache entry, nothing to invalidate. In a real
+ *               vault this is 64% of chains (216 of 335 with recorded
+ *               membership), so most of this layer costs nothing at all.
+ *   N members → STITCH. One call over N short summaries.
+ */
 
-/** Read-only variant — never runs the model. Used when the caller just
- *  wants to know whether a digest exists (e.g. atom generator input
- *  assembly, timeline scrubbing). */
-export async function loadChainDigestOrch(chain: ActivityChain): Promise<ProjectChainDigest | null> {
-  const parts = chainStorageParts(chain)
-  if (!parts) return null
-  return getProjectChainDigestBlock(parts.projectId, parts.chainId, {
-    date: parts.date,
-    chainKey: parts.chainKey,
-  })
+/** A chain's title/summary plus the aggregates every surface needs. Built on
+ *  read; never serialized to a chain-shaped file. */
+export interface ChainDigestView {
+  projectId: string
+  /** Display handle only — `project::first session path`. Fine to render, fine
+   *  to use as a React key within one render, never an address. Which session
+   *  sorts first is an output of the grouping rule and can change. */
+  chainKey: string
+  /** The members, earliest first. THE chain's identity, in the only form that
+   *  cannot drift: a chain *is* its sessions. */
+  sessions: ProjectSessionDigest[]
+  date: string
+  title: string
+  summary: string
+  source: string
+  msgCount: number
+  durationMs: number
+  activeDurationMs: number
+  startedIso: string
+  endedIso: string
+  /** Union of the members' writes — the index's page numbers. Per-session
+   *  attribution is not flattened away; it is on each member, where a mixed
+   *  chain stays visible instead of being silently believed. */
+  filesWritten: string[]
+  filesRead: string[]
+  /** Union of the members' undertaking assignments. A chain "belongs to" every
+   *  undertaking any of its sittings does — which is exactly how a mixed chain
+   *  should read, rather than pretending the whole window was one topic. The
+   *  authoritative per-sitting binding stays on each member. */
+  undertaking: string[]
+  /** True when the title/summary came from composing several sittings rather
+   *  than passing one through. Surfaces in the UI so a stitched summary is
+   *  never mistaken for a first-hand reading of the transcript. */
+  stitched: boolean
+  /** Which family produced the text — 'local' | 'claude' | 'rule-based'.
+   *  On a pass-through this is the session digest's own generator; on a stitch
+   *  it is whoever ran the stitch. Weakest-link on the unstitched fallback: a
+   *  concatenation is only as good as its worst member. */
+  generator: GenerationSource | ''
 }
 
-/** Ensure a stored digest exists for `chain`. Returns:
- *   - the stored digest if input hash matches (fast path),
- *   - a regenerated digest if the chain grew or the model changed,
- *   - a fallback digest built from `chain.topic` when the intelligence
- *     subsystem is unavailable. The fallback is NOT persisted so a later
- *     boot with a provider configured generates the real thing. */
+/** Read-only: never runs the model. Returns null when no member has a stored
+ *  digest yet, and a pass-through/concatenation when they do. */
+export async function loadChainDigestOrch(chain: ActivityChain): Promise<ChainDigestView | null> {
+  const digests: ProjectSessionDigest[] = []
+  for (const session of chain.sessions) {
+    const digest = await loadSessionDigestOrch(session)
+    if (digest) digests.push(digest)
+  }
+  if (digests.length === 0) return null
+  return composeWithoutModelBlock(chain, digests)
+}
+
+/**
+ * Ensure a chain digest exists, generating whatever is missing beneath it.
+ *
+ * Note the order: session digests first, always. The chain layer can never be
+ * fresher than what it composes, and asking for it is what pulls the base layer
+ * into existence.
+ */
 export async function ensureChainDigestOrch(
   chain: ActivityChain,
   options: { refresh?: boolean } = {},
-): Promise<{ digest: ProjectChainDigest; isAi: boolean } | null> {
-  const parts = chainStorageParts(chain)
-  if (!parts) return null
-  const nextHash = computeChainInputHashBlock(chain)
-  const loaded = await getProjectChainDigestBlock(parts.projectId, parts.chainId, {
-    date: parts.date,
-    chainKey: parts.chainKey,
-  })
-  // Mechanical fields come from the chain in hand, not from disk. The stored
-  // copy is refreshed as a side effect so other devices benefit, but the value
-  // returned here never depends on that write landing.
-  const existing = loaded ? await refreshStoredChainFieldsOrch(loaded, chain) : null
-  // Fast path with tier precedence: reuse the stored digest when it's fresh AND
-  // at least as good as what the current selection would produce. So a Claude
-  // digest survives a switch to local (we never downgrade a better body we
-  // already have); switching *up* to Claude falls through and regenerates. The
-  // target tier drops to rule-based (0) when AI titles are off or the cache
-  // isn't available, so any stored AI digest is preferred over the deterministic
-  // fallback. Optimistic: we don't probe live availability here — if a fall-
-  // through regeneration can't run, the branches below return `existing`.
-  // `refresh` (explicit "regenerate" action) bypasses reuse entirely so the
-  // user can force the currently-selected provider to run, even a downgrade.
-  const currentSource = currentGenerationSourceBlock()
-  const aiActive = getAiActivityAiTitlesEnabled() && intelligenceCacheAvailableBlock()
-  const targetRank = aiActive ? generationSourceRankBlock(currentSource) : 0
-  if (
-    !options.refresh &&
-    existing &&
-    existing.inputHash === nextHash &&
-    generationSourceRankBlock(existing.generator) >= targetRank
-  ) {
-    return { digest: existing, isAi: true }
+): Promise<{ digest: ChainDigestView; isAi: boolean } | null> {
+  const digests: ProjectSessionDigest[] = []
+  let anyAi = false
+  for (const session of chain.sessions) {
+    const result = await ensureSessionDigestOrch(session, options)
+    if (!result) continue
+    digests.push(result.digest)
+    if (result.isAi) anyAi = true
+  }
+  if (digests.length === 0) return null
+
+  // PASS-THROUGH. One sitting: the chain and the session are the same thing, so
+  // composing would be paying a model to rewrite a summary into itself.
+  if (digests.length === 1) {
+    return { digest: composeWithoutModelBlock(chain, digests), isAi: anyAi }
   }
 
-  if (!intelligenceCacheAvailableBlock()) {
-    return { digest: buildFallbackDigest(chain, parts, nextHash), isAi: false }
-  }
-  // User-controlled kill switch — orthogonal to provider availability.
-  // Off: never call the model, use the deterministic fallback (existing stored
-  // digests still surface via the `existing` branch above).
-  if (!getAiActivityAiTitlesEnabled()) {
-    return existing
-      ? { digest: existing, isAi: true }
-      : { digest: buildFallbackDigest(chain, parts, nextHash), isAi: false }
-  }
+  const base = composeWithoutModelBlock(chain, digests)
+  if (!intelligenceCacheAvailableBlock() || !getAiActivityAiTitlesEnabled()) return { digest: base, isAi: false }
   const av = await availability().catch(() => ({ available: false }))
-  if (!av.available) {
-    return existing
-      ? { digest: existing, isAi: true }
-      : { digest: buildFallbackDigest(chain, parts, nextHash), isAi: false }
-  }
+  if (!av.available) return { digest: base, isAi: false }
 
-  await prepareChainDigestInputBlock(chain)
-  const result = await runContract<ActivityChain, typeof chainDigestContract.outputSchema>(
-    chainDigestContract,
-    chain,
+  const input = stitchInputBlock(chain, digests)
+  const result = await runContract<ChainStitchContractInput, typeof chainStitchContract.outputSchema>(
+    chainStitchContract,
+    input,
     { scope: 'ai_activity' },
   )
-  if (!result.ok || !result.value) {
-    return existing
-      ? { digest: existing, isAi: true }
-      : { digest: buildFallbackDigest(chain, parts, nextHash), isAi: false }
-  }
+  // A failed stitch degrades to the concatenation, which is honest rather than
+  // lesser: it is exactly the member summaries, unmerged and unembellished.
+  if (!result.ok || !result.value) return { digest: base, isAi: anyAi }
 
-  const output = result.value as unknown as ChainDigestOutput
-  const digest: ProjectChainDigest = {
-    ...parts,
-    title: output.title,
-    summary: output.summary,
-    source: String(chain.source),
-    msgCount: chain.msgCount,
-    durationMs: chainDurationMs(chain),
-    activeDurationMs: chain.activeDurationMs ?? 0,
-    startedIso: chain.startedIso,
-    endedIso: chain.endedIso,
-    inputHash: nextHash,
-    generatedAt: new Date().toISOString(),
-    model: (result.meta?.model as string) ?? 'unknown',
-    generator: generationSourceForProviderBlock(result.providerId),
-    ...chainPointers(chain),
+  const output = result.value as unknown as ChainStitchOutput
+  return {
+    digest: {
+      ...base,
+      title: output.title,
+      summary: output.summary,
+      stitched: true,
+      generator: generationSourceForProviderBlock(result.providerId),
+    },
+    isAi: true,
   }
-  await putProjectChainDigestBlock(digest)
-  return { digest, isAi: true }
 }
 
 // ── Internals ──────────────────────────────────────────────────────────
 
-interface ChainStorageParts {
-  projectId: string
-  chainId: string
-  sessions: string[]
-  date: string
-  chainKey: string
+function formatWhenBlock(digest: ProjectSessionDigest): string {
+  const fmt = (iso: string) => {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return '?'
+    return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  }
+  return `${fmt(digest.startedIso)}–${fmt(digest.endedIso)}`
 }
 
-/** The chain's member session ids — its real identity. A chain *is* its
- *  sessions; everything else about it is a label. */
-export function chainSessionIdsBlock(chain: ActivityChain): string[] {
-  if (!Array.isArray(chain.sessions)) return []
-  const out: string[] = []
-  const seen = new Set<string>()
-  for (const s of chain.sessions) {
-    const id = sessionIdOf(s)
-    if (id && !seen.has(id)) {
-      seen.add(id)
-      out.push(id)
-    }
+function stitchInputBlock(
+  chain: ActivityChain,
+  digests: ProjectSessionDigest[],
+): ChainStitchContractInput {
+  return {
+    projectLabel: chain.project,
+    sessions: digests.map(d => ({
+      when: formatWhenBlock(d),
+      title: d.title,
+      summary: d.summary,
+    })),
   }
-  return out
 }
 
 /**
- * Mint an id for a chain that has no stored digest yet.
+ * Build the chain view from its members without spending a model call.
  *
- * Deliberately *minted*, not derived: written once, and every later read finds
- * the record by it. It starts life equal to `chain.key` — but only as a seed.
- * Nothing recomputes it afterwards, so when the grouping later decides a
- * different session sorts first, `chain.key` moves and `chainId` does not.
- * That divergence is the entire point.
- *
- * Seeding from `chain.key` rather than the head session id is load-bearing for
- * existing vaults: every pre-v4 digest's `chainId` *is* its `chainKey` (that is
- * what its filename encoded), so a chain whose grouping has not changed finds
- * its record on the first lookup and never regenerates. Seeding from the
- * session id instead would have missed all 469 of them and re-run the model on
- * every one.
+ * For one member this is the final answer — the pass-through. For several it is
+ * the honest fallback the stitch improves on: the member summaries kept whole
+ * and labelled by sitting. Deliberately NOT a blended paraphrase; anything that
+ * reads as one narrative should have come from the model that was told not to
+ * invent connections between sittings.
  */
-export function mintChainIdBlock(chain: ActivityChain): string {
-  return chain.key
-}
+function composeWithoutModelBlock(
+  chain: ActivityChain,
+  digests: ProjectSessionDigest[],
+): ChainDigestView {
+  const ordered = [...digests].sort(
+    (a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso),
+  )
+  const first = ordered[0]
+  const last = ordered[ordered.length - 1]
 
-function chainStorageParts(chain: ActivityChain, chainId?: string): ChainStorageParts | null {
-  const date = isoDayLocalBlock(chain.startedIso)
-  if (!date || !isValidChainDigestDateBlock(date)) return null
-  if (!chain.project || !chain.key) return null
+  const written = new Set<string>()
+  const read = new Set<string>()
+  const undertaking = new Set<string>()
+  let msgCount = 0
+  let activeDurationMs = 0
+  for (const d of ordered) {
+    for (const f of d.filesWritten) written.add(f)
+    for (const f of d.filesRead) read.add(f)
+    for (const u of d.undertaking) undertaking.add(u)
+    msgCount += d.msgCount
+    activeDurationMs += sessionActiveDurationMsBlock(d)
+  }
+
+  const single = ordered.length === 1
+  const summary = single
+    ? first.summary
+    : ordered.map(d => `**${formatWhenBlock(d)} — ${d.title}**\n\n${d.summary}`).join('\n\n')
+
+  const startMs = Date.parse(first.startedIso)
+  const endMs = Date.parse(last.endedIso)
+
   return {
-    projectId: chain.project,
-    chainId: chainId || mintChainIdBlock(chain),
-    sessions: chainSessionIdsBlock(chain),
-    date,
+    projectId: first.projectId,
     chainKey: chain.key,
+    sessions: ordered,
+    date: first.date,
+    title: single ? first.title : ordered.map(d => d.title).join(' · '),
+    summary,
+    source: first.source,
+    msgCount,
+    durationMs: Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs ? endMs - startMs : 0,
+    activeDurationMs,
+    startedIso: first.startedIso,
+    endedIso: last.endedIso,
+    filesWritten: Array.from(written).sort(),
+    filesRead: Array.from(read).sort(),
+    undertaking: Array.from(undertaking).sort(),
+    stitched: false,
+    // Weakest link, not first member: an unstitched chain view is a
+    // concatenation, so it is only as trustworthy as its least-well-generated
+    // part. Reporting the best member's generator would overstate the whole.
+    generator: ordered.reduce<GenerationSource | ''>(
+      (worst, d) =>
+        generationSourceRankBlock(d.generator) < generationSourceRankBlock(worst) ? d.generator : worst,
+      ordered[0].generator,
+    ),
   }
-}
-
-/**
- * Carry the chain's file-edit provenance into the stored digest.
- *
- * The organizer's dry run concluded "chains carry no structured file
- * references." That was true of the stored chains and false of the pipeline:
- * `nativeAiSessionParserBlock` has been pulling absolute paths out of
- * Edit/Write/MultiEdit/NotebookEdit tool calls all along, and the digest simply
- * dropped them on the way to disk. Since an index entry without pointers is a
- * memoir, this is the one field that most needed persisting.
- *
- * Paths are stored vault-relative where possible so a pointer survives a move
- * to another machine; anything outside the vault stays absolute rather than
- * being guessed at.
- */
-function toVaultRelativeBlock(paths: readonly string[]): string[] {
-  const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
-  return paths.map(path =>
-    vaultRoot && path.startsWith(`${vaultRoot}/`) ? path.slice(vaultRoot.length + 1) : path,
-  )
-}
-
-/**
- * The same writes, kept attributed to the session that made them.
- *
- * A chain groups by *time*, so one chain can legitimately hold two unrelated
- * topics — a session that ends at 18:41 and the next that starts at 18:41 are
- * one chain by the idle rule even when the second is about something else. An
- * undertaking, by contrast, is a topic, and points at a single window. Flatten
- * the writes into one chain-level list and the drawer has no way to tell which
- * topic touched which file, so it shows the union and looks wrong.
- *
- * Nothing is lost here that `filesWritten` had: that stays as the flattened
- * union (older readers depend on it) and is recomputable from this.
- */
-function chainFilesBySessionBlock(chain: ActivityChain): ChainSessionFiles[] {
-  const out: ChainSessionFiles[] = []
-  for (const s of chain.sessions ?? []) {
-    const id = sessionIdOf(s)
-    if (!id) continue
-    const paths = s.touchedPaths ?? []
-    if (paths.length === 0) continue
-    const files = Array.from(new Set(toVaultRelativeBlock(paths))).sort()
-    if (files.length > 0) out.push({ session: id, files })
-  }
-  return out
-}
-
-function chainPointers(chain: ActivityChain): {
-  filesWritten: string[]
-  filesRead: string[]
-  undertaking: string[]
-} {
-  const written = toVaultRelativeBlock(chain.touchedPaths ?? [])
-  return {
-    filesWritten: Array.from(new Set(written)).sort(),
-    // Reads aren't captured by the native parser — it only tracks mutating
-    // tools. Left empty rather than inferred from prose.
-    filesRead: [],
-    // Filled by the end-of-session ask, not here. The digest is generated
-    // after the ask, but assignment lands on the chain via its own path.
-    undertaking: [],
-  }
-}
-
-// Tolerates undefined on either side: these compare records deserialized from
-// disk, and a digest written by a build that predates a field simply has no key
-// there. Treating that as an empty set is the same "absence is not a value"
-// rule the projection follows.
-function sameStringSetBlock(a: string[] | undefined, b: string[] | undefined): boolean {
-  const left = a ?? []
-  const right = b ?? []
-  if (left.length !== right.length) return false
-  const set = new Set(left)
-  return right.every(v => set.has(v))
-}
-
-/** Same tolerance as `sameStringSetBlock`, one level deeper: a digest written
- *  before this field existed simply has no key, which reads as "no attribution"
- *  rather than "attributed to nothing". */
-function sameFilesBySessionBlock(
-  a: ChainSessionFiles[] | undefined,
-  b: ChainSessionFiles[] | undefined,
-): boolean {
-  const left = a ?? []
-  const right = b ?? []
-  if (left.length !== right.length) return false
-  const byId = new Map(left.map(e => [e.session, e.files]))
-  return right.every(e => sameStringSetBlock(byId.get(e.session), e.files))
-}
-
-/**
- * Project a chain's mechanical fields onto a stored digest.
- *
- * This replaces the reconcile/heal machinery that used to live here, and the
- * question it existed to answer. Mechanical fields (pointers, active duration,
- * the chain window) are pure functions of the chain, so a reader holding a
- * chain simply recomputes them — there is no "has the stored copy drifted?" to
- * ask, hence no freshness hash over them, no schema version, and nothing to
- * migrate. The stored values are transport for devices that cannot derive
- * chains at all, not a cache to be kept in step.
- *
- * That is the same rule the layer above already follows: an undertaking's tail
- * is recomputed on every read and never stored, precisely so it cannot go stale
- * (see `aiActivityChainIndexBlock`). The digest broke it, and the cost was 462
- * of 469 records frozen at their first write, 5 carrying pointers, while 397
- * sessions had correct provenance sitting in the cache the whole time.
- *
- * Model-derived (`title`, `summary`) and human (`undertaking`) fields are never
- * touched — those are the ones that genuinely cannot be recomputed.
- *
- * Absence is not zero. A device with no IPC to `~/.claude` parses native chains
- * with no `touchedPaths` and no per-message timing; overwriting good values
- * synced from Electron because *this* device is blind would be the one
- * destructive move available here. No value in hand → keep what is stored.
- */
-export function projectChainFieldsBlock(
-  stored: ProjectChainDigest,
-  chain: ActivityChain,
-): ProjectChainDigest {
-  const next = { ...stored }
-
-  if (chain.touchedPaths && chain.touchedPaths.length > 0) {
-    const { filesWritten, filesRead } = chainPointers(chain)
-    next.filesWritten = filesWritten
-    if (filesRead.length > 0) next.filesRead = filesRead
-    // Guarded by the same `touchedPaths` presence check: a device that cannot
-    // see the transcript has nothing to attribute, and must not blank a stored
-    // attribution synced from one that could.
-    const bySession = chainFilesBySessionBlock(chain)
-    if (bySession.length > 0) next.filesBySession = bySession
-  }
-  // `Number.isFinite`, not `typeof === 'number'`: NaN is a number, and a NaN
-  // sum from one malformed session would be written over a good stored value.
-  // Same no-stomp rule as absent pointers.
-  const active = chain.activeDurationMs
-  if (typeof active === 'number' && Number.isFinite(active)) next.activeDurationMs = active
-  if (chain.startedIso) next.startedIso = chain.startedIso
-  if (chain.endedIso ?? chain.startedIso) next.endedIso = chain.endedIso ?? chain.startedIso
-  if (typeof chain.msgCount === 'number' && Number.isFinite(chain.msgCount)) {
-    next.msgCount = chain.msgCount
-  }
-  const duration = chainDurationMs(chain)
-  if (duration > 0) next.durationMs = duration
-  // Membership last. Empty means this device could not see the chain's
-  // sessions, not that the chain has none — same no-stomp rule as pointers.
-  const sessions = chainSessionIdsBlock(chain)
-  if (sessions.length > 0) next.sessions = sessions
-  // `chainKey` is a display handle that tracks the current grouping. `chainId`
-  // is the address and is never reassigned here — that is what makes it an id.
-  if (chain.key) next.chainKey = chain.key
-  const date = isoDayLocalBlock(chain.startedIso)
-  if (date && isValidChainDigestDateBlock(date)) next.date = date
-
-  return next
-}
-
-/** True when the projection would change what is on disk — the only reason to
- *  spend a write. Compared field-by-field rather than by deep-equal so the
- *  model-derived and human fields are provably excluded from the check. */
-export function chainFieldsDifferBlock(a: ProjectChainDigest, b: ProjectChainDigest): boolean {
-  return (
-    !sameStringSetBlock(a.filesWritten, b.filesWritten) ||
-    !sameFilesBySessionBlock(a.filesBySession, b.filesBySession) ||
-    !sameStringSetBlock(a.filesRead, b.filesRead) ||
-    !sameStringSetBlock(a.sessions, b.sessions) ||
-    a.chainKey !== b.chainKey ||
-    a.date !== b.date ||
-    a.activeDurationMs !== b.activeDurationMs ||
-    a.startedIso !== b.startedIso ||
-    a.endedIso !== b.endedIso ||
-    a.msgCount !== b.msgCount ||
-    a.durationMs !== b.durationMs
-  )
-}
-
-/**
- * Refresh the transport copy on disk when the derived truth has moved.
- *
- * Not a heal — the reader already has the right values from
- * `projectChainFieldsBlock` and does not depend on this succeeding. The write
- * exists solely so a phone that cannot derive chains sees current data after
- * the vault syncs. Best-effort by construction.
- */
-export async function refreshStoredChainFieldsOrch(
-  stored: ProjectChainDigest,
-  chain: ActivityChain,
-): Promise<ProjectChainDigest> {
-  const projected = projectChainFieldsBlock(stored, chain)
-  if (!chainFieldsDifferBlock(stored, projected)) return stored
-  await putProjectChainDigestBlock(projected).catch(() => undefined)
-  return projected
-}
-
-function chainDurationMs(chain: ActivityChain): number {
-  const start = Date.parse(chain.startedIso)
-  const end = Date.parse(chain.endedIso ?? chain.startedIso)
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0
-  return end - start
-}
-
-function isoDayLocalBlock(iso: string): string | null {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return null
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function buildFallbackDigest(
-  chain: ActivityChain,
-  parts: ChainStorageParts,
-  inputHash: string,
-): ProjectChainDigest {
-  return {
-    ...parts,
-    title: chain.topic || '(untitled)',
-    summary: '',
-    source: String(chain.source),
-    msgCount: chain.msgCount,
-    durationMs: chainDurationMs(chain),
-    activeDurationMs: chain.activeDurationMs ?? 0,
-    startedIso: chain.startedIso,
-    endedIso: chain.endedIso,
-    inputHash,
-    generatedAt: new Date().toISOString(),
-    model: 'fallback:chain-topic',
-    ...chainPointers(chain),
-    // Rule-based fallback — deterministic, no model. Tagged so it's never
-    // mistaken for AI output and never persisted (see ensureChainDigestOrch:
-    // buildFallbackDigest results skip putProjectChainDigestBlock).
-    generator: 'rule-based',
-  }
-}
-
-/** Hash the inputs the digest depends on. Djb2 for speed; not crypto. */
-function computeChainInputHashBlock(chain: ActivityChain): string {
-  // Deliberately NOT chain.key: the key is the grouping rule's opinion about
-  // which session sorts first. Including it meant a re-grouping invalidated the
-  // hash and bought a fresh provider call for a conversation whose content had
-  // not changed by one byte. Hash the model's inputs, nothing else.
-  const material = [
-    String(chain.msgCount),
-    chain.startedIso,
-    chain.endedIso,
-    chainDigestContract.id,
-    String(chainDigestContract.promptVersion),
-  ].join('\x00')
-  let hash = 5381
-  for (let i = 0; i < material.length; i++) {
-    hash = ((hash << 5) + hash + material.charCodeAt(i)) | 0
-  }
-  return (hash >>> 0).toString(36)
 }
