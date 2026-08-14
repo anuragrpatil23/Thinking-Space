@@ -235,14 +235,13 @@ export const rangeSummaryContract = defineContractBlock({
   id: 'range-summary',
   promptVersion: 1,
   outputSchema: s.string({ description: 'Numbered-bullet range summary body' }),
-  buildRequest: (input: RangeSummaryContractInput, ctx) => ({
+  buildRequest: (input: RangeSummaryContractInput) => ({
     system: SYSTEM_PROMPT,
     messages: [
       { role: 'user' as const, content: buildRangeSummaryUserPromptBlock(input) },
     ],
     // Output is a modest bullet list — 6-8 bullets, ~50-100 tokens each.
     // Bump the floor so Qwen has room without the response being clipped.
-    maxTokens: Math.max(ctx.recommendedMaxTokens, 900),
     temperature: 0.2,
   }),
   finalize: (raw: string, _input: RangeSummaryContractInput): ContractOutput<RangeSummaryOutput> | null => {

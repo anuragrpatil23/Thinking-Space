@@ -21,7 +21,7 @@ import {
 } from '@/services/lego_blocks/integrations/intelligence/providerRegistryBlock'
 import type { IntelligenceProvider } from '@/services/lego_blocks/integrations/intelligence/providers/providerInterfaceBlock'
 import type { Contract } from '@/services/lego_blocks/units/intelligence/promptContractBlock'
-import { resolveModelProfileBlock, type ModelProfile, type ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
+import { resolveModelProfileBlock, resolveMaxOutputTokensBlock, checkContextFitBlock, type ModelProfile, type ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 import {
   resolveContractThinkingBlock,
   type AiSettingsScope,
@@ -37,6 +37,17 @@ import {
   type IntelligenceError,
 } from '@/services/lego_blocks/units/intelligence/intelligenceErrorsBlock'
 import { recordTelemetryBlock } from '@/services/lego_blocks/units/intelligence/intelligenceTelemetryBlock'
+import { registerRunningJobBlock } from '@/services/lego_blocks/units/intelligence/runningJobsBlock'
+
+/** Single backstop for a stuck request. Deliberately generous: local
+ *  inference is slow and reasoning is unbounded by design, so a request that
+ *  is merely SLOW must never be killed — only one that is genuinely hung.
+ *  Measured for scale: 31 tok/s on a dense 27B, and prefill alone is ~30s at
+ *  21k prompt tokens. A tighter limit would abort real work.
+ *
+ *  Note this is the only governor on how long a model may think, so it also
+ *  bounds how long a job holds one of the queue's concurrency slots. */
+const REQUEST_TIMEOUT_MS = 30 * 60_000
 
 export interface RunContractOptions {
   provider?: ProviderId
@@ -44,7 +55,7 @@ export interface RunContractOptions {
   model?: string
   /** Force cache miss (still writes back). */
   refresh?: boolean
-  /** Per-call timeout. Default 30s — plenty for local inference. */
+  /** Per-call timeout. Defaults to REQUEST_TIMEOUT_MS. */
   timeoutMs?: number
   /** Cancel from the caller (component unmount, etc.). */
   signal?: AbortSignal
@@ -267,13 +278,23 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
   }
 
   return enqueueIntelligenceJobBlock(`${contract.id}:${cacheKey}`, async () => {
-    const timeoutMs = options.timeoutMs ?? 30_000
-    const { signal, cancel } = makeTimeoutSignalBlock(options.signal, timeoutMs)
+    const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS
+    // A user-cancellable controller chained ahead of the timeout, so Settings
+    // can abort a run that is merely slow without waiting out the timeout.
+    const userCancel = new AbortController()
+    if (options.signal) {
+      if (options.signal.aborted) userCancel.abort(options.signal.reason)
+      else options.signal.addEventListener('abort', () => userCancel.abort(options.signal!.reason), { once: true })
+    }
+    const { signal, cancel } = makeTimeoutSignalBlock(userCancel.signal, timeoutMs)
+    const disposeJob = registerRunningJobBlock({
+      taskId: contract.id,
+      model,
+      providerId: provider.id,
+      cancel: () => userCancel.abort(new DOMException('cancelled by user', 'AbortError')),
+    })
     try {
-      const built = contract.buildRequest(input, {
-        model,
-        recommendedMaxTokens: profile.recommendedMaxTokens,
-      })
+      const built = contract.buildRequest(input, { model })
       // Attach the contract's output schema to the request so providers can
       // steer via native json_schema when they support it. Even when native
       // steering is unreliable, we also inject a plain-text instruction into
@@ -288,6 +309,9 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
         ...built,
         system,
         model,
+        // Contracts don't set this — the stop-limit is model policy, not task
+        // policy. See resolveMaxOutputTokensBlock.
+        maxTokens: resolveMaxOutputTokensBlock(profile, disableReasoning === false),
         responseSchema: contract.outputSchema.kind === 'string' ? undefined : contract.outputSchema,
       }
       // When the contract didn't opt in explicitly, fall back to the reasoning
@@ -295,7 +319,46 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       if (request.disableReasoning == null) {
         request.disableReasoning = disableReasoning
       }
+      // Guard the input side before spending a round trip: an oversized prompt
+      // either errors at the server or gets silently window-trimmed, and a
+      // digest built from a trimmed transcript looks fine but isn't.
+      const promptText = [request.system, ...request.messages.map(m => m.content)].join('\n')
+      const overflow = checkContextFitBlock(profile, promptText, request.maxTokens ?? 0)
+      if (overflow) {
+        return failure(makeIntelligenceErrorBlock('context-overflow', overflow, {
+          providerId: provider.id,
+          taskId: contract.id,
+          model,
+        })) as RunContractResult<Value>
+      }
+
       const response = await provider.chat(request, signal)
+
+      // A `length` finish means generation hit the stop-limit, which is set
+      // far above any legitimate answer — so the output is a mid-sentence
+      // fragment, not a short answer. Fail instead of validating and caching
+      // it into the vault, where it would look like a real digest forever.
+      if (response.finishReason === 'length') {
+        recordTelemetryBlock({
+          taskId: contract.id,
+          providerId: provider.id,
+          model,
+          latencyMs: response.latencyMs,
+          status: 'error',
+          finishReason: response.finishReason,
+          usage: response.usage,
+          reasoning: reasoningLabelBlock(disableReasoning),
+          error: makeIntelligenceErrorBlock('truncated', 'Model hit the output stop-limit', {
+            providerId: provider.id, model, taskId: contract.id,
+          }),
+        })
+        return failure(makeIntelligenceErrorBlock('truncated', `Output truncated at the ${request.maxTokens}-token stop-limit`, {
+          providerId: provider.id,
+          taskId: contract.id,
+          model,
+          details: { rawContent: response.content.slice(0, 400) },
+        })) as RunContractResult<Value>
+      }
 
       // Strip inline reasoning leakage (top-level `reasoning` field is already
       // separate on the provider response).
@@ -379,6 +442,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       return failure(mapErrorBlock(err, provider.id, contract.id, model))
     } finally {
       cancel()
+      disposeJob()
     }
   }) as Promise<RunContractResult<Value>>
 }
@@ -408,7 +472,8 @@ export async function runWithTools(options: RunWithToolsOptions): Promise<RunCon
       model,
     }))
   }
-  const timeoutMs = options.timeoutMs ?? 60_000
+  const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS
+  const toolLoopReasoning = resolveDisableReasoningBlock(profile, provider.id, options.scope)
   const { signal, cancel } = makeTimeoutSignalBlock(options.signal, timeoutMs)
   try {
     const outcome = await runToolLoopBlock({
@@ -417,9 +482,9 @@ export async function runWithTools(options: RunWithToolsOptions): Promise<RunCon
         model,
         system: options.system,
         messages: [{ role: 'user', content: options.userPrompt }],
-        maxTokens: profile.recommendedMaxTokens,
+        maxTokens: resolveMaxOutputTokensBlock(profile, toolLoopReasoning === false),
         temperature: 0.2,
-        disableReasoning: resolveDisableReasoningBlock(profile, provider.id, options.scope),
+        disableReasoning: toolLoopReasoning,
       },
       tools: options.tools,
       resolveTool: options.resolveTool,

@@ -43,7 +43,10 @@ export interface IntelligenceRequest {
    *  emulation for Anthropic). */
   responseSchema?: SchemaNode
   tools?: IntelligenceToolDefinition[]
-  maxTokens: number
+  /** Stop-limit for generation. Optional because contracts don't set it —
+   *  the orchestrator fills it from model policy (a runaway guard plus any
+   *  reasoning headroom). Contracts control output length via their prompt. */
+  maxTokens?: number
   temperature: number
   /** Suppress hidden reasoning for models that support the toggle. Providers
    *  pick the right transport (top-level chat_template_kwargs, /no_think prefix,

@@ -14,6 +14,9 @@ export type IntelligenceErrorKind =
   | 'malformed-response'       // Server returned unparseable JSON
   | 'empty-content'            // Model produced only reasoning, no usable output
   | 'schema-violation'         // Output failed schema validation after repair
+  | 'truncated'                // Hit the output stop-limit — a mid-sentence
+                               // fragment, never a legitimately short answer
+  | 'context-overflow'         // Prompt + reserved output exceeds the context
   | 'tool-loop-exceeded'       // Too many tool-call round trips
   | 'internal'                 // Bug in our code
 

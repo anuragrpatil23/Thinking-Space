@@ -204,7 +204,7 @@ export const chainDigestContract = defineContractBlock({
   id: 'chain-digest',
   promptVersion: 2,
   outputSchema: s.string({ description: 'TITLE line + blank line + summary body' }),
-  buildRequest: (chain: ActivityChain, ctx) => {
+  buildRequest: (chain: ActivityChain) => {
     const userPrompt = PREPARED.get(chain)
     // Fallback prompt for callers that skipped the async prepare step —
     // matches the new interleaved-turns shape with just the topic as the
@@ -220,7 +220,6 @@ export const chainDigestContract = defineContractBlock({
     return {
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user' as const, content: prompt }],
-      maxTokens: Math.max(ctx.recommendedMaxTokens, 320),
       temperature: 0.2,
     }
   },

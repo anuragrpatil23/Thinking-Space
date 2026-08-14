@@ -16,9 +16,16 @@
     "  thinkingToggleVisible optional; whether the UI offers a thinking switch.",
     "                        Defaults to hasReasoningMode. Only set explicitly",
     "                        where the two answers differ (see unknownLocal).",
-    "  recommendedMaxTokens  output budget; reasoning models need headroom",
-    "                        because content tokens come after the thought.",
-    "  contextWindow         approximate, for guarding oversized inputs."
+    "  contextWindow         approximate, for guarding oversized inputs.",
+    "  maxOutputTokens       runaway guard, NOT a length control. Length is",
+    "                        specified in each contract's prompt; the model never",
+    "                        sees this number. Set well above any legitimate",
+    "                        answer, so hitting it means something broke.",
+    "                        hidden thought is emitted before the answer and spends",
+    "                        the same budget. 0 for non-reasoning models.",
+    "  reasoningHeadroomTokens  added on top only when thinking is on. Sized so",
+    "                        the model can think as long as it wants — the thought",
+    "                        is never what gets cut. Time is the only real backstop."
   ],
   "models": [
     {
@@ -28,7 +35,8 @@
       "supportsTools": true,
       "supportsJsonSchema": true,
       "hasReasoningMode": true,
-      "recommendedMaxTokens": 1024,
+      "maxOutputTokens": 4096,
+      "reasoningHeadroomTokens": 28672,
       "contextWindow": 262144
     },
     {
@@ -38,7 +46,8 @@
       "supportsTools": true,
       "supportsJsonSchema": true,
       "hasReasoningMode": true,
-      "recommendedMaxTokens": 1024,
+      "maxOutputTokens": 4096,
+      "reasoningHeadroomTokens": 28672,
       "contextWindow": 128000
     },
     {
@@ -48,7 +57,8 @@
       "supportsTools": true,
       "supportsJsonSchema": true,
       "hasReasoningMode": true,
-      "recommendedMaxTokens": 1024,
+      "maxOutputTokens": 4096,
+      "reasoningHeadroomTokens": 28672,
       "contextWindow": 32000
     },
     {
@@ -58,7 +68,8 @@
       "supportsTools": true,
       "supportsJsonSchema": false,
       "hasReasoningMode": false,
-      "recommendedMaxTokens": 512,
+      "maxOutputTokens": 4096,
+      "reasoningHeadroomTokens": 0,
       "contextWindow": 32000
     },
     {
@@ -68,7 +79,8 @@
       "supportsTools": false,
       "supportsJsonSchema": false,
       "hasReasoningMode": true,
-      "recommendedMaxTokens": 2048,
+      "maxOutputTokens": 4096,
+      "reasoningHeadroomTokens": 28672,
       "contextWindow": 32000
     },
     {
@@ -78,7 +90,8 @@
       "supportsTools": false,
       "supportsJsonSchema": false,
       "hasReasoningMode": false,
-      "recommendedMaxTokens": 512,
+      "maxOutputTokens": 4096,
+      "reasoningHeadroomTokens": 0,
       "contextWindow": 128000
     },
     {
@@ -88,7 +101,8 @@
       "supportsTools": true,
       "supportsJsonSchema": true,
       "hasReasoningMode": false,
-      "recommendedMaxTokens": 512,
+      "maxOutputTokens": 4096,
+      "reasoningHeadroomTokens": 0,
       "contextWindow": 128000
     },
     {
@@ -98,7 +112,8 @@
       "supportsTools": true,
       "supportsJsonSchema": false,
       "hasReasoningMode": false,
-      "recommendedMaxTokens": 512,
+      "maxOutputTokens": 4096,
+      "reasoningHeadroomTokens": 0,
       "contextWindow": 32000
     },
     {
@@ -108,7 +123,8 @@
       "supportsTools": false,
       "supportsJsonSchema": false,
       "hasReasoningMode": false,
-      "recommendedMaxTokens": 512,
+      "maxOutputTokens": 4096,
+      "reasoningHeadroomTokens": 0,
       "contextWindow": 128000
     },
     {
@@ -118,7 +134,8 @@
       "supportsTools": false,
       "supportsJsonSchema": false,
       "hasReasoningMode": true,
-      "recommendedMaxTokens": 2048,
+      "maxOutputTokens": 4096,
+      "reasoningHeadroomTokens": 28672,
       "contextWindow": 64000
     },
     {
@@ -128,7 +145,8 @@
       "supportsTools": true,
       "supportsJsonSchema": true,
       "hasReasoningMode": true,
-      "recommendedMaxTokens": 4096,
+      "maxOutputTokens": 8192,
+      "reasoningHeadroomTokens": 4096,
       "contextWindow": 200000
     },
     {
@@ -138,7 +156,8 @@
       "supportsTools": true,
       "supportsJsonSchema": true,
       "hasReasoningMode": true,
-      "recommendedMaxTokens": 4096,
+      "maxOutputTokens": 8192,
+      "reasoningHeadroomTokens": 4096,
       "contextWindow": 200000
     },
     {
@@ -148,7 +167,8 @@
       "supportsTools": true,
       "supportsJsonSchema": true,
       "hasReasoningMode": false,
-      "recommendedMaxTokens": 2048,
+      "maxOutputTokens": 8192,
+      "reasoningHeadroomTokens": 0,
       "contextWindow": 200000
     },
     {
@@ -158,7 +178,8 @@
       "supportsTools": true,
       "supportsJsonSchema": true,
       "hasReasoningMode": false,
-      "recommendedMaxTokens": 2048,
+      "maxOutputTokens": 8192,
+      "reasoningHeadroomTokens": 0,
       "contextWindow": 200000
     }
   ],
@@ -169,7 +190,8 @@
     "supportsJsonSchema": false,
     "hasReasoningMode": false,
     "thinkingToggleVisible": true,
-    "recommendedMaxTokens": 512,
+    "maxOutputTokens": 4096,
+    "reasoningHeadroomTokens": 0,
     "contextWindow": 8000
   },
   "unknownAnthropic": {
@@ -178,7 +200,8 @@
     "supportsTools": false,
     "supportsJsonSchema": false,
     "hasReasoningMode": false,
-    "recommendedMaxTokens": 512,
+    "maxOutputTokens": 8192,
+    "reasoningHeadroomTokens": 0,
     "contextWindow": 8000
   },
   "$serversComment": [
@@ -190,18 +213,48 @@
   "servers": {
     "$discoveryComment": "Loopback ports probed by 'Detect local servers'. Adding a runtime here is all it takes to have it found.",
     "discovery": [
-      { "port": 1234, "runtime": "LM Studio" },
-      { "port": 8080, "runtime": "rapid-mlx / llama.cpp" },
-      { "port": 11434, "runtime": "Ollama" },
-      { "port": 8000, "runtime": "vLLM" },
-      { "port": 5001, "runtime": "mlx_lm.server" }
+      {
+        "port": 1234,
+        "runtime": "LM Studio"
+      },
+      {
+        "port": 8080,
+        "runtime": "rapid-mlx / llama.cpp"
+      },
+      {
+        "port": 11434,
+        "runtime": "Ollama"
+      },
+      {
+        "port": 8000,
+        "runtime": "vLLM"
+      },
+      {
+        "port": 5001,
+        "runtime": "mlx_lm.server"
+      }
     ],
     "fingerprints": [
-      { "match": "mlx", "family": "mlx_lm" },
-      { "match": "lm-studio|lmstudio", "family": "lm_studio" },
-      { "match": "ollama", "family": "ollama" },
-      { "match": "llama\\.cpp|llamacpp", "family": "llama_cpp" },
-      { "match": "vllm", "family": "vllm" }
+      {
+        "match": "mlx",
+        "family": "mlx_lm"
+      },
+      {
+        "match": "lm-studio|lmstudio",
+        "family": "lm_studio"
+      },
+      {
+        "match": "ollama",
+        "family": "ollama"
+      },
+      {
+        "match": "llama\\.cpp|llamacpp",
+        "family": "llama_cpp"
+      },
+      {
+        "match": "vllm",
+        "family": "vllm"
+      }
     ],
     "families": {
       "mlx_lm": {

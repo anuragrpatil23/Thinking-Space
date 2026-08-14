@@ -186,12 +186,11 @@ export const rangeNarrateContract = defineContractBlock({
   id: 'range-summary-narrate',
   promptVersion: 2,
   outputSchema: s.string({ description: 'Numbered-bullet range summary body' }),
-  buildRequest: (input: RangeNarrateContractInput, ctx) => ({
+  buildRequest: (input: RangeNarrateContractInput) => ({
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user' as const, content: buildUserPromptBlock(input) }],
     // Body is ~5-8 bullets, each 1-2 sentences. Bump the floor so long
     // multi-arc ranges don't clip.
-    maxTokens: Math.max(ctx.recommendedMaxTokens, 1200),
     temperature: 0.2,
   }),
   finalize: (raw: string, _input: RangeNarrateContractInput): ContractOutput<RangeNarrateOutput> | null => {

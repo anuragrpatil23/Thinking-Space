@@ -142,12 +142,11 @@ export const subunitComposeContract = defineContractBlock({
   id: 'range-summary-subunit-compose',
   promptVersion: SUBUNIT_COMPOSE_PROMPT_VERSION,
   outputSchema: s.string({ description: 'Numbered-bullet subunit compose body' }),
-  buildRequest: (input: SubunitComposeContractInput, ctx) => ({
+  buildRequest: (input: SubunitComposeContractInput) => ({
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user' as const, content: buildUserPromptBlock(input) }],
     // One bullet per subunit — a 3-month decomposed range may have 3 month
     // bullets + a handful of edge weeks/days. Bump the floor so nothing clips.
-    maxTokens: Math.max(ctx.recommendedMaxTokens, 1400),
     temperature: 0.2,
   }),
   finalize: (raw: string, _input: SubunitComposeContractInput): ContractOutput<SubunitComposeOutput> | null => {

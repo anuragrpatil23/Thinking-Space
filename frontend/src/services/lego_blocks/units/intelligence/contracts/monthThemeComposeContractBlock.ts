@@ -186,12 +186,11 @@ export const monthThemeComposeContract = defineContractBlock({
   id: 'range-summary-month-theme-compose',
   promptVersion: MONTH_THEME_COMPOSE_PROMPT_VERSION,
   outputSchema: s.string({ description: 'Numbered-bullet month theme body' }),
-  buildRequest: (input: MonthThemeComposeContractInput, ctx) => ({
+  buildRequest: (input: MonthThemeComposeContractInput) => ({
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user' as const, content: buildUserPromptBlock(input) }],
     // A busy month can carry 5–7 themes with 1–2 sentence narrations each;
     // week bodies push prompt size up. Bump the floor so nothing clips.
-    maxTokens: Math.max(ctx.recommendedMaxTokens, 1600),
     temperature: 0.2,
   }),
   finalize: (raw: string, _input: MonthThemeComposeContractInput): ContractOutput<MonthThemeComposeOutput> | null => {

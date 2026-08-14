@@ -16,10 +16,11 @@ export interface ContractBuildContext {
   /** Model id the provider resolved this request to. Contracts rarely need
    *  it, but a few (Qwen /no_think prefix, Gemma no-tools workarounds) do. */
   model: string
-  /** Recommended max output tokens from the model profile. Contracts can
-   *  override for tighter budgets. */
-  recommendedMaxTokens: number
 }
+// Note: no token budget here on purpose. A contract controls its output
+// LENGTH through its prompt ("1-5 bullets", "one line title") — the only
+// mechanism the model can actually obey. The request's stop-limit is a
+// runaway guard owned by the model profile, not something a contract tunes.
 
 export interface ContractOutput<T> {
   value: T

@@ -20,12 +20,13 @@ const provider = {
     return {
       content: 'hello',
       latencyMs: 1,
-      finishReason: 'stop',
+      finishReason: nextFinishReason,
       providerModel: request.model,
       usage: { promptTokens: 1, completionTokens: 1 },
     }
   },
 }
+let nextFinishReason = 'stop'
 
 vi.mock('@/services/lego_blocks/integrations/intelligence/providerRegistryBlock', () => ({
   resolveProviderBlock: () => provider,
@@ -87,6 +88,26 @@ describe('runContract reasoning resolution', () => {
     installLocalStorageMock()
     localStorage.clear()
     cacheKeys.length = 0
+    nextFinishReason = 'stop'
+  })
+
+  it('fails a truncated result instead of caching it into the vault', async () => {
+    nextFinishReason = 'length'
+    const result = await run({ scope: 'ai_activity' })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.kind).toBe('truncated')
+    // The decisive part: nothing was written, so a fragment can't come back
+    // later looking like a real digest.
+    expect(cacheKeys).toHaveLength(0)
+  })
+
+  it('sets the stop-limit from model policy, not from the contract', async () => {
+    await run({ scope: 'ai_activity' })
+    const off = seen[0].maxTokens!
+    setSelectedAiThinkingForScopeBlock('ai_activity', 'opensource-ai', true)
+    await run({ scope: 'ai_activity' })
+    // Thinking on buys extra headroom rather than spending the answer's budget.
+    expect(seen[0].maxTokens!).toBeGreaterThan(off)
   })
 
   it('disables reasoning when no scope is attributed (unchanged default)', async () => {

@@ -149,7 +149,7 @@ export const rangeLabelContract = defineContractBlock({
   id: 'range-summary-label',
   promptVersion: 2,
   outputSchema: s.string({ description: 'THEMES + ASSIGNMENTS labeled sections' }),
-  buildRequest: (input: RangeLabelContractInput, ctx) => ({
+  buildRequest: (input: RangeLabelContractInput) => ({
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user' as const, content: buildUserPromptBlock(input) }],
     // Sized from the input, not a flat constant. The output is one `S# -> N`
@@ -158,7 +158,6 @@ export const rangeLabelContract = defineContractBlock({
     // truncated list is silent: unlisted chains just default to 'Misc'
     // downstream, which then swallows the range and forces the fallback.
     // 12 tokens per chain is double the observed line cost.
-    maxTokens: Math.max(ctx.recommendedMaxTokens, 200 + input.chains.length * 12),
     temperature: 0.15,
   }),
   finalize: (raw: string, input: RangeLabelContractInput): ContractOutput<RangeLabelOutput> | null => {

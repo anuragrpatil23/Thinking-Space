@@ -75,10 +75,15 @@ export interface ModelProfile {
    *  don't send a toggle we're unsure of, yet still let the user reach for
    *  one. */
   thinkingToggleVisible: boolean
-  /** Recommended max output tokens for this model class. Reasoning models
-   *  need much more headroom because "content" tokens come after the hidden
-   *  thought, even when the toggle is off (some servers still leak). */
-  recommendedMaxTokens: number
+  /** Runaway guard, NOT a length control — the model never sees it, so it
+   *  can only stop generation mid-sentence, never shorten an answer. Length
+   *  belongs in the contract's prompt. Set well above any legitimate answer,
+   *  so a `length` finish reason means something actually broke. */
+  maxOutputTokens: number
+  /** Added on top of maxOutputTokens when hidden reasoning is left on: the
+   *  thought is emitted before the answer and spends the same budget, so
+   *  without this the answer is what gets cut. 0 for non-reasoning models. */
+  reasoningHeadroomTokens: number
   /** Approximate context window for guarding oversized inputs. */
   contextWindow: number
 }
@@ -94,7 +99,8 @@ interface RawProfile {
   supportsJsonSchema: boolean
   hasReasoningMode: boolean
   thinkingToggleVisible?: boolean
-  recommendedMaxTokens: number
+  maxOutputTokens: number
+  reasoningHeadroomTokens: number
   contextWindow: number
 }
 
@@ -112,7 +118,8 @@ function toProfileBlock(raw: RawProfile, where: string): ModelProfile {
     supportsJsonSchema: raw.supportsJsonSchema,
     hasReasoningMode: raw.hasReasoningMode,
     thinkingToggleVisible: raw.thinkingToggleVisible ?? raw.hasReasoningMode,
-    recommendedMaxTokens: raw.recommendedMaxTokens,
+    maxOutputTokens: raw.maxOutputTokens,
+    reasoningHeadroomTokens: raw.reasoningHeadroomTokens,
     contextWindow: raw.contextWindow,
   }
 }
@@ -134,4 +141,34 @@ export function resolveModelProfileBlock(modelId: string, providerHint?: Provide
     if (entry.match.test(modelId)) return entry.profile
   }
   return fallback
+}
+
+/** Token stop-limit for one request. The answer's LENGTH is controlled by the
+ *  contract's prompt; this is only the "model has gone haywire" backstop, so
+ *  it is deliberately generous. Reasoning gets its own additive allowance
+ *  because the thought spends the budget before the answer starts — sharing
+ *  one number is what truncates answers when thinking is switched on. */
+export function resolveMaxOutputTokensBlock(profile: ModelProfile, reasoningEnabled: boolean): number {
+  return profile.maxOutputTokens + (reasoningEnabled ? profile.reasoningHeadroomTokens : 0)
+}
+
+/** Rough token estimate for a prompt. ~4 chars/token is the usual English
+ *  heuristic; it UNDER-counts code and CJK, which is the safe direction here —
+ *  a guard that occasionally lets an oversized prompt through is better than
+ *  one that rejects valid work. */
+export function estimateTokensBlock(text: string): number {
+  return Math.ceil(text.length / 4)
+}
+
+/** Does this prompt plus its reserved output fit the model's context?
+ *  Returns null when it fits, or a human-readable reason when it doesn't. */
+export function checkContextFitBlock(
+  profile: ModelProfile,
+  promptText: string,
+  reservedOutputTokens: number,
+): string | null {
+  const promptTokens = estimateTokensBlock(promptText)
+  const needed = promptTokens + reservedOutputTokens
+  if (needed <= profile.contextWindow) return null
+  return `prompt ~${promptTokens} + ${reservedOutputTokens} reserved output exceeds ${profile.family}'s ${profile.contextWindow}-token context`
 }

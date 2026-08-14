@@ -181,12 +181,11 @@ export const dayAtomContract = defineContractBlock({
   id: 'day-atom',
   promptVersion: 2,
   outputSchema: s.string({ description: 'HEADLINE / WHY labeled sections' }),
-  buildRequest: (input: DayAtomContractInput, ctx) => ({
+  buildRequest: (input: DayAtomContractInput) => ({
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user' as const, content: buildUserPromptBlock(input) }],
     // Atom output is short prose. Reasoning models may still leak thinking
     // tokens before the labeled sections; the sanitizer discards them.
-    maxTokens: Math.max(ctx.recommendedMaxTokens, 480),
     temperature: 0.25,
   }),
   finalize: (raw: string, _input: DayAtomContractInput): ContractOutput<DayAtomOutput> | null => {
