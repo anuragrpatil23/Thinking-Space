@@ -204,6 +204,7 @@ async function generateAtomViaContractBlock(
   const result = await runContract<DayAtomContractInput, typeof dayAtomContract.outputSchema>(
     dayAtomContract,
     contractInput,
+    { scope: 'ai_activity' },
   )
   if (!result.ok || !result.value) return null
 

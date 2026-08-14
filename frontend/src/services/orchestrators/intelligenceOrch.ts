@@ -21,7 +21,12 @@ import {
 } from '@/services/lego_blocks/integrations/intelligence/providerRegistryBlock'
 import type { IntelligenceProvider } from '@/services/lego_blocks/integrations/intelligence/providers/providerInterfaceBlock'
 import type { Contract } from '@/services/lego_blocks/units/intelligence/promptContractBlock'
-import { resolveModelProfileBlock, type ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
+import { resolveModelProfileBlock, type ModelProfile, type ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
+import {
+  readAiSettingsBlock,
+  resolveAiThinkingOverrideForScopeProviderBlock,
+  type AiSettingsScope,
+} from '@/services/lego_blocks/integrations/aiSettingsBlock'
 import {
   type IntelligenceRequest,
   type IntelligenceToolDefinition,
@@ -44,6 +49,10 @@ export interface RunContractOptions {
   timeoutMs?: number
   /** Cancel from the caller (component unmount, etc.). */
   signal?: AbortSignal
+  /** Settings scope this run belongs to. When set, the user's per-scope
+   *  thinking preference decides reasoning for local models. Omit to keep the
+   *  reasoning-off default. */
+  scope?: AiSettingsScope
 }
 
 export interface RunContractSuccess<T> {
@@ -62,6 +71,35 @@ export interface RunContractFailure {
 
 export type RunContractResult<T> = RunContractSuccess<T> | RunContractFailure
 
+/** Whether to suppress the model's hidden reasoning for this run.
+ *
+ *  Internal tasks want single-shot answers, so reasoning-off stays the default
+ *  and only an EXPLICIT opt-in flips it. That asymmetry is deliberate: the
+ *  thinking setting defaults to on (right for chat, where the user is watching
+ *  a stream), but a contract run is a single shot against a fixed token budget
+ *  — silently enabling reasoning there makes every digest slower and risks the
+ *  answer being truncated by the reasoning trail. So an untouched setting must
+ *  mean "off here" even though it reads as "on" for chat.
+ *
+ *  Precedence: scope override > provider-level setting > off.
+ *  Local models only — the toggle is opensource-ai-only and reasoning is
+ *  already opt-in on the Anthropic providers. Returns undefined when the model
+ *  has no reasoning mode to toggle. */
+function resolveDisableReasoningBlock(
+  profile: ModelProfile,
+  providerId: ProviderId,
+  scope: AiSettingsScope | undefined,
+): boolean | undefined {
+  if (!profile.hasReasoningMode) return undefined
+  if (!scope || providerId !== 'openai-compat') return true
+
+  const scoped = resolveAiThinkingOverrideForScopeProviderBlock(scope, 'opensource-ai')
+  if (typeof scoped === 'boolean') return !scoped
+  const providerLevel = readAiSettingsBlock().selectedThinkingByProvider['opensource-ai']
+  if (typeof providerLevel === 'boolean') return !providerLevel
+  return true
+}
+
 export interface RunWithToolsOptions {
   provider?: ProviderId
   model?: string
@@ -72,6 +110,8 @@ export interface RunWithToolsOptions {
   maxSteps?: number
   timeoutMs?: number
   signal?: AbortSignal
+  /** See RunContractOptions.scope. */
+  scope?: AiSettingsScope
 }
 
 export interface DiagnosticsSnapshot {
@@ -188,13 +228,15 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
     }))
   }
   const profile = resolveModelProfileBlock(model, provider.id)
+  const disableReasoning = resolveDisableReasoningBlock(profile, provider.id, options.scope)
 
-  // Cache lookup — key spans task + input + prompt version + model so any of
-  // those changing invalidates automatically.
+  // Cache lookup — key spans task + input + prompt version + model + reasoning
+  // state so any of those changing invalidates automatically. Reasoning is in
+  // the key because toggling thinking changes the answer, not just its cost.
   const inputHash = contract.cacheKey
     ? contract.cacheKey(input)
     : await hashInputBlock(input)
-  const cacheKey = `${inputHash}|v${contract.promptVersion}|${model}`
+  const cacheKey = `${inputHash}|v${contract.promptVersion}|${model}|r${disableReasoning === false ? 'on' : 'off'}`
   if (!options.refresh) {
     const cached = await readIntelligenceCacheBlock(contract.id, cacheKey)
     if (cached) {
@@ -246,10 +288,10 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
         model,
         responseSchema: contract.outputSchema.kind === 'string' ? undefined : contract.outputSchema,
       }
-      // If the model supports reasoning and the contract didn't opt in, we
-      // default to disabling it — internal tasks want single-shot answers.
-      if (request.disableReasoning == null && profile.hasReasoningMode) {
-        request.disableReasoning = true
+      // When the contract didn't opt in explicitly, fall back to the reasoning
+      // state resolved above (contract override > scope setting > off).
+      if (request.disableReasoning == null) {
+        request.disableReasoning = disableReasoning
       }
       const response = await provider.chat(request, signal)
 
@@ -373,7 +415,7 @@ export async function runWithTools(options: RunWithToolsOptions): Promise<RunCon
         messages: [{ role: 'user', content: options.userPrompt }],
         maxTokens: profile.recommendedMaxTokens,
         temperature: 0.2,
-        disableReasoning: profile.hasReasoningMode ? true : undefined,
+        disableReasoning: resolveDisableReasoningBlock(profile, provider.id, options.scope),
       },
       tools: options.tools,
       resolveTool: options.resolveTool,

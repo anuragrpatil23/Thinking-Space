@@ -14,7 +14,7 @@ import {
   getAiActivityRangeSummaryProvider,
   type AiActivityRangeSummaryProvider,
 } from '@/services/lego_blocks/units/storageKeyBlock'
-import { runContract } from '@/services/orchestrators/intelligenceOrch'
+import { runContract, type RunContractOptions } from '@/services/orchestrators/intelligenceOrch'
 import {
   rangeLabelContract,
   type RangeLabelChainInput,
@@ -53,6 +53,10 @@ import {
   weekPeriodContaining,
   type RangeSubunit,
 } from '@/services/lego_blocks/units/aiActivityPeriodBlock'
+
+/** Every contract in this file runs on behalf of the AI-activity surface, so
+ *  they all resolve reasoning from that scope's thinking setting. */
+const RANGE_RUN_SCOPE = { scope: 'ai_activity' } as const satisfies RunContractOptions
 
 // Public surface: `ensureRangeSummaryOrch(input)` returns a persisted
 // ProjectRangeSummary tagged with whichever path actually ran.
@@ -273,7 +277,7 @@ interface LabelRangeMeta {
 async function labelChainsInBatches(
   meta: LabelRangeMeta,
   labelChains: RangeLabelChainInput[],
-  runOpts?: { provider: 'claude-cli' },
+  runOpts?: RunContractOptions,
 ): Promise<Map<string, string> | null> {
   const batchSize = runOpts?.provider === 'claude-cli' ? LABEL_BATCH_SIZE_CLAUDE : LABEL_BATCH_SIZE_LOCAL
   const themeNameByShort = new Map<string, string>()
@@ -411,7 +415,7 @@ async function generateLocalTwoStage(input: EnsureRangeSummaryInput): Promise<Pr
     arcs: narrateArcs,
     misc: narrateMisc,
   }
-  const narrateResult = await runContract(rangeNarrateContract, narrateInput)
+  const narrateResult = await runContract(rangeNarrateContract, narrateInput, RANGE_RUN_SCOPE)
   if (!narrateResult.ok || !narrateResult.value) return buildFallbackSummary(input)
   const narrateValue = narrateResult.value as RangeNarrateOutput
   if (!narrateValue.body) return buildFallbackSummary(input)
@@ -444,7 +448,7 @@ async function generateClaudeOneShot(input: EnsureRangeSummaryInput): Promise<Pr
       msgCount: c.msgCount,
     })),
   }
-  const result = await runContract(rangeSummaryContract, oneShotInput, { provider: 'claude-cli' })
+  const result = await runContract(rangeSummaryContract, oneShotInput, { ...RANGE_RUN_SCOPE, provider: 'claude-cli' })
   if (!result.ok || !result.value) return buildFallbackSummary(input)
   const value = result.value as RangeSummaryOutput
   if (!value.body) return buildFallbackSummary(input)
@@ -630,7 +634,7 @@ export async function ensureDecomposedRangeSummaryOrch(
         body: s.summary.body,
       })),
     }
-    const runOpts = provider === 'claude-cli' ? { provider: 'claude-cli' as const } : undefined
+    const runOpts = provider === 'claude-cli' ? { ...RANGE_RUN_SCOPE, provider: 'claude-cli' as const } : RANGE_RUN_SCOPE
     const composeResult = await runContract(subunitComposeContract, composeInput, runOpts)
     if (composeResult.ok && composeResult.value) {
       const composeValue = composeResult.value as SubunitComposeOutput
@@ -754,7 +758,7 @@ async function ensureMonthThemeSummaryOrch(
     perSubunit.push({ subunit: sub, summary, label: subunitLabelBlock(sub) })
   }
 
-  const runOpts = provider === 'claude-cli' ? { provider: 'claude-cli' as const } : undefined
+  const runOpts = provider === 'claude-cli' ? { ...RANGE_RUN_SCOPE, provider: 'claude-cli' as const } : RANGE_RUN_SCOPE
 
   // Stage 1: label chains into themes.
   const labelChains: RangeLabelChainInput[] = input.chains.map((c, i) => ({

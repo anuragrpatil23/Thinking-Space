@@ -108,6 +108,7 @@ export async function ensureChainDigestOrch(
   const result = await runContract<ActivityChain, typeof chainDigestContract.outputSchema>(
     chainDigestContract,
     chain,
+    { scope: 'ai_activity' },
   )
   if (!result.ok || !result.value) {
     return existing
