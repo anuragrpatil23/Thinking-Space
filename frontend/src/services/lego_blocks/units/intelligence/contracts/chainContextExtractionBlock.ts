@@ -374,7 +374,7 @@ async function collectSessionTurnsBlock(
   // Clip to this sitting's window.
   //
   // One JSONL file can hold several sittings: `nativeAiSessionParserBlock`
-  // splits it at idle gaps into `<uuid>`, `<uuid>::w1`, `<uuid>::w2`, and
+  // splits it at idle gaps into `<uuid>` then one entry per later window, and
   // `startedIso`/`endedIso` are exactly that window's first and last event. The
   // `#wN` suffix is stripped above to find the file, so without this clip every
   // window re-reads the WHOLE file and each one summarizes the entire day.

@@ -38,7 +38,8 @@
 export interface SweepChainBlock {
   sessionId: string
   projectId: string
-  /** `sessionIdOf` values: a uuid, or `<uuid>::w<n>` for a windowed session. */
+  /** `sessionIdOf` values: a uuid, or `<uuid>::<first-event-uuid>` for a
+   *  windowed session. */
   sessions: string[]
   /** Undertaking keys already stamped on this chain. */
   undertaking: string[]
@@ -94,7 +95,8 @@ export type SweepPlanBlock =
   | { kind: 'hold'; reason: 'unknown-undertaking'; keys: string[] }
 
 /**
- * A windowed session id (`<uuid>::w2`) is the same session as its root.
+ * A windowed session id (`<uuid>::<first-event-uuid>`) is the same session as
+ * its root.
  *
  * Windows exist because one conversation can carry two topics, and the chain
  * layer splits them. For *assignment* that split is invisible: the ask is

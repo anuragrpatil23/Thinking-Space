@@ -23,7 +23,8 @@ import {
 // against an address that moves.
 //
 // A session id does not move. It is stratum-1: the Claude Code session UUID, or
-// `<uuid>::w<n>` for a sitting windowed out of one JSONL file by the idle gap.
+// `<uuid>::<first-event-uuid>` for a sitting windowed out of one JSONL file by
+// the idle gap.
 // Nothing derives it, so nothing can rename it, so none of that defense is
 // needed here. There is no `sessionId` minting function in this file, and that
 // absence is the point.
@@ -49,9 +50,14 @@ import {
 
 export interface ProjectSessionDigest {
   projectId: string
-  /** IDENTITY and ADDRESS. `sessionIdOf(session)` — the Claude Code UUID, or
-   *  `<uuid>::w<n>` for an idle-gap window. Stratum-1: read off the transcript,
-   *  never computed from a grouping, so it cannot move under the record. */
+  /** IDENTITY and ADDRESS. `sessionIdOf(session)` — the Claude Code session
+   *  UUID, or `<uuid>::<first-event-uuid>` for a later idle-gap window.
+   *
+   *  Stratum-1 in both forms: read off the transcript, never computed from a
+   *  grouping or a position, so it cannot move under the record. A window is
+   *  named for the message it *starts with* rather than its rank among windows,
+   *  because a rank shifts whenever the windowing changes and would slide a
+   *  human assignment onto a different span of work. */
   sessionId: string
   /** MECHANICAL. Vault-relative transcript path, `#wN` suffix intact. The way
    *  back to the raw material; not an address (a file can be moved). */

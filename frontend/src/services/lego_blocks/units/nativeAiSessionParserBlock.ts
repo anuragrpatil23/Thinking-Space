@@ -189,6 +189,10 @@ interface ConvEvent {
   ts: number          // unix ms
   isUser: boolean
   body: string        // user message body (empty for assistant events)
+  /** The event's own id, when the source emits one (Claude Code puts a `uuid`
+   *  on every event; Codex does not). Used to anchor a window's identity to the
+   *  message it starts with — see `winSessionId` below. */
+  uid?: string
 }
 
 /**
@@ -218,11 +222,11 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   const fileEdits: Array<{ ts: number; path: string }> = []
 
   const convEvents: ConvEvent[] = []
-  const recordConv = (tsStr: string, isUser: boolean, body: string): void => {
+  const recordConv = (tsStr: string, isUser: boolean, body: string, uid?: string): void => {
     if (!tsStr) return
     const ms = Date.parse(tsStr)
     if (!Number.isFinite(ms)) return
-    convEvents.push({ ts: ms, isUser, body })
+    convEvents.push({ ts: ms, isUser, body, uid })
   }
 
   for (const raw of lines) {
@@ -245,7 +249,7 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
         const message = evt.message as Record<string, unknown> | undefined
         const content = message ? message.content : undefined
         const body = flattenContent(content)
-        recordConv(ts, true, body)
+        recordConv(ts, true, body, typeof evt.uuid === 'string' ? evt.uuid : undefined)
       }
       if (type === 'assistant') {
         const message = evt.message as Record<string, unknown> | undefined
@@ -274,7 +278,7 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
             for (const p of editPaths) fileEdits.push({ ts: editMs, path: p })
           }
         }
-        recordConv(ts, false, '')
+        recordConv(ts, false, '', typeof evt.uuid === 'string' ? evt.uuid : undefined)
       }
     }
 
@@ -427,8 +431,38 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
     const endedIso = new Date(win[win.length - 1].ts).toISOString()
     const topic = scan.substantiveTopic || scan.fallbackTopic || '(no user message)'
     const isFirst = idx === 0
+    // `path` keeps the ordinal `#wN` — it is a display handle and a way back to
+    // the file, never an address.
     const path = isFirst ? basePath : `${basePath}#w${idx}`
-    const winSessionId = isFirst ? baseId : `${baseId}::w${idx}`
+    // IDENTITY. Anchored to the first event of the window, not to the window's
+    // rank among windows.
+    //
+    // `::w${idx}` was an ordinal, which is a *position* — the same class of
+    // value as the `chainId` this stack was just rebuilt to stop using as an
+    // address. Under append-only growth an ordinal is stable (a new gap can only
+    // open at the end), but it shifts whenever the windowing itself changes:
+    // `IDLE_GAP_HOURS` moving, or Claude Code pruning events out of the middle
+    // of a transcript. When it shifts, `::w1` starts naming what `::w2` named.
+    //
+    // Title and summary survive that — the freshness hash covers the window
+    // bounds and message count, so they regenerate. The `undertaking` field does
+    // not: it is human judgment, it is not recomputable, and a silent slide onto
+    // a different span of work is precisely the misattribution this refactor
+    // exists to make unrepresentable.
+    //
+    // An event uuid is stratum-1 — Claude Code writes one on every event — so a
+    // window identified by the message it *starts with* is the same window
+    // whatever index the splitter later gives it. Codex emits no per-event id,
+    // so its windows fall back to the first event's timestamp: still a property
+    // of the content rather than of the ordering.
+    //
+    // Window 0 deliberately keeps the bare session id. That is load-bearing:
+    // `aiActivityCacheBlock` dedups a vault-markdown session against its native
+    // twin by comparing full ids, and a vault row carries the plain uuid — so
+    // suffixing window 0 would make every windowed session appear twice. It is
+    // also the honest name, since window 0 is where the session begins.
+    const winAnchor = win[0].uid ?? String(win[0].ts)
+    const winSessionId = isFirst ? baseId : `${baseId}::${winAnchor}`
 
     // Attribute edits to the window whose time span contains them.
     const winStart = win[0].ts
