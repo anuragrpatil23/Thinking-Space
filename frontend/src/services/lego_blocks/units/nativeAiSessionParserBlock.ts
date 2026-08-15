@@ -461,6 +461,14 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
     // twin by comparing full ids, and a vault row carries the plain uuid — so
     // suffixing window 0 would make every windowed session appear twice. It is
     // also the honest name, since window 0 is where the session begins.
+    //
+    // ⚠ Changing anything this function *emits* requires bumping CACHE_VERSION
+    // in `aiActivityCacheBlock`. Parsed sessions are cached against the file's
+    // mtime, which tracks the input and says nothing about the code that read
+    // it — so a parser change alone leaves every cached row exactly as it was.
+    // That is how this very fix shipped inert: the ids kept their old `::wN`
+    // form because no transcript had changed. Every entry in that version list
+    // (v12, v13, v15, v16, v18) is the same lesson already learned once.
     const winAnchor = win[0].uid ?? String(win[0].ts)
     const winSessionId = isFirst ? baseId : `${baseId}::${winAnchor}`
 

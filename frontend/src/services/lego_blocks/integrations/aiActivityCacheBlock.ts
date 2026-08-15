@@ -58,7 +58,12 @@ const CACHE_DIR = '.thinking-space'
 // for the vault-graph session lens; reparse so cached rows pick it up.
 // v18: native sessions carry activeDurationMs (inter-message time, long pauses
 // clamped) so the density sparkline reflects work, not wall-clock tab-open time.
-const CACHE_VERSION = 18
+// v19: a window's id is anchored to its first event (`<uuid>::<event-uuid>`)
+// instead of its ordinal (`<uuid>::w2`), so an assignment cannot slide onto a
+// different sitting when the windowing changes. Cached rows keep whatever id
+// they were parsed with, and the id is the digest's ADDRESS — so without this
+// bump every window keeps its old name and no digest ever lands at the new one.
+const CACHE_VERSION = 19
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000
