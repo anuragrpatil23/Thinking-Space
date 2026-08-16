@@ -21,6 +21,14 @@ import {
   type TelemetryEntry,
 } from '@/services/lego_blocks/units/intelligence/intelligenceTelemetryBlock'
 import { clearIntelligenceCacheBlock } from '@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock'
+import {
+  discoverLocalServersBlock,
+  type DiscoveredLocalServer,
+} from '@/services/lego_blocks/units/intelligence/localServerDiscoveryBlock'
+import {
+  getManualOpenSourceAiCredentialsBlock,
+  setManualOpenSourceAiCredentialsBlock,
+} from '@/services/lego_blocks/integrations/aiCredentialStoreBlock'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import {
   resolveMaxOutputTokensBlock,
@@ -52,6 +60,70 @@ function statusPill(status: TelemetryEntry['status']): string {
   if (status === 'ok') return 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-500'
   if (status === 'cache-hit') return 'bg-blue-500/10 dark:bg-blue-500/20 text-blue-500'
   return 'bg-red-500/10 dark:bg-red-500/20 text-red-500'
+}
+
+/**
+ * "Nothing on the configured port — but something is answering over here."
+ *
+ * Probes the same loopback ports `Detect local servers` walks, and offers a
+ * one-click switch to whichever one replied. Runs only when the configured
+ * provider is unreachable, so a healthy setup never scans anything.
+ */
+function ElsewhereOnLoopback({ onSwitched }: { onSwitched: () => void }) {
+  const [found, setFound] = useState<DiscoveredLocalServer[] | null>(null)
+  const configured = getManualOpenSourceAiCredentialsBlock()?.baseUrl ?? ''
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void discoverLocalServersBlock(controller.signal)
+      .then(servers => setFound(servers.filter(s => s.baseUrl !== configured)))
+      .catch(() => setFound([]))
+    return () => controller.abort()
+  }, [configured])
+
+  if (found === null) {
+    return <div className="mt-1 text-xs text-muted-foreground">Checking the other local ports…</div>
+  }
+  if (found.length === 0) {
+    return (
+      <div className="mt-1 text-xs text-muted-foreground">
+        No OpenAI-compatible server answered on any known local port. Start your
+        runtime, then Refresh.
+      </div>
+    )
+  }
+  return (
+    <div className="mt-2 space-y-1">
+      {found.map(server => (
+        <div
+          key={server.baseUrl}
+          className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-muted/30 px-2 py-1.5 text-xs"
+        >
+          <div className="min-w-0">
+            <div className="font-medium">{server.runtime}</div>
+            <div className="truncate text-muted-foreground">
+              <code>{server.baseUrl}</code>
+              {server.models[0] ? ` · ${server.models[0]}` : ''}
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              // Base URL only. The model id stays whatever it was: an empty one
+              // means "auto-detect from the server", and overwriting a
+              // deliberately-pinned model would be a second decision the user
+              // did not ask for.
+              setManualOpenSourceAiCredentialsBlock({ baseUrl: server.baseUrl })
+              onSwitched()
+            }}
+          >
+            Use this
+          </Button>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export default function IntelligenceDiagnosticsBlock() {
@@ -147,6 +219,15 @@ export default function IntelligenceDiagnosticsBlock() {
               )}
               {p.reason && !p.available && (
                 <div className="mt-1 text-xs text-red-500">{p.reason}</div>
+              )}
+              {/* An unreachable local provider is the one failure the app can
+                  usually solve itself: the configured port is dead, but the
+                  runtime is often alive two ports over, and the discovery list
+                  already knows where to look. Reporting "unreachable" and
+                  stopping there left the user to guess which of five ports
+                  moved. */}
+              {p.id === 'openai-compat' && !p.available && p.configured && (
+                <ElsewhereOnLoopback onSwitched={() => { void refresh(true) }} />
               )}
               {p.id === 'openai-compat' && p.defaultModel
                 && resolveModelProfileBlock(p.defaultModel, p.id).hasReasoningMode && (
