@@ -32,7 +32,7 @@ import {
   setSelectedAiThinkingBlock,
 } from '@/services/lego_blocks/integrations/aiSettingsBlock'
 
-// Internal contracts (chain digest, day atom, range summary) all run under the
+// Internal contracts (session digest, chain stitch, range summary) run under the
 // ai_activity scope, so that's the scope this panel reports and controls.
 const DIAGNOSTICS_SCOPE = 'ai_activity' as const
 

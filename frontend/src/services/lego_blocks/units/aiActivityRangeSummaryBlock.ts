@@ -31,7 +31,7 @@ export interface ProjectRangeSummary {
   rangeStartDate: string
   rangeEndDate: string
   /** Numbered-bullet body — arcs ordered by time desc + tail bullet. */
-  body: string
+  summary: string
   provider: RangeSummaryPersistedProvider
   /** Model id when the provider is a real intelligence call; empty for the
    *  fallback tiers. */
@@ -47,7 +47,7 @@ export interface ProjectRangeSummary {
    *  `contentFingerprint` instead — see the orch. */
   inputHash: string
   /** Chain-set-only fingerprint (chains + durations). Independent of which
-   *  provider produced the body, so a Claude-generated body can be read back
+   *  provider produced the summary, so a Claude-generated body can be read back
    *  from a local-mode load without regenerating. Optional for records
    *  written before this field existed — treat missing as "unknown", which
    *  the orch handles by regenerating once. */
@@ -194,12 +194,12 @@ function formatDurationMinutes(ms: number): string {
  *  The caller wraps this into a ProjectRangeSummary with the appropriate
  *  provider tag (`fallback-titles` or `fallback-stub`). */
 export function buildFallbackBodyBlock(chains: FallbackChain[]): {
-  body: string
+  summary: string
   provider: 'fallback-titles' | 'fallback-stub'
 } {
   if (chains.length === 0) {
     return {
-      body: '_No AI-assisted activity in this range._',
+      summary: '_No AI-assisted activity in this range._',
       provider: 'fallback-stub',
     }
   }
@@ -236,14 +236,13 @@ export function buildFallbackBodyBlock(chains: FallbackChain[]): {
       const countSuffix = e.count > 1 ? ` ×${e.count}` : ''
       return `${i + 1}. ${e.title}${countSuffix} — ${dateLabel}, ${formatDurationMinutes(e.totalMs)}`
     })
-    return { body: lines.join('\n'), provider: 'fallback-titles' }
+    return { summary: lines.join('\n'), provider: 'fallback-titles' }
   }
   const totalMs = chains.reduce((n, c) => n + c.durationMs, 0)
   const totalMsgs = chains.reduce((n, c) => n + c.msgCount, 0)
   const uniqueDays = new Set(chains.map(c => c.date)).size
   return {
-    body:
-      `${chains.length} chains · ${totalMsgs} msgs · ${formatDurationMinutes(totalMs)} across ` +
+    summary:       `${chains.length} chains · ${totalMsgs} msgs · ${formatDurationMinutes(totalMs)} across ` +
       `${uniqueDays} day${uniqueDays === 1 ? '' : 's'}.`,
     provider: 'fallback-stub',
   }
@@ -274,7 +273,7 @@ export function stringifyRangeSummaryMarkdownBlock(summary: ProjectRangeSummary)
     '---',
     '',
   ]
-  return `${fm.join('\n')}${summary.body}\n`
+  return `${fm.join('\n')}${summary.summary}\n`
 }
 
 function unescapeYamlValue(raw: string): string {
@@ -293,7 +292,7 @@ export function parseRangeSummaryMarkdownBlock(raw: string): ProjectRangeSummary
     const kv = /^([A-Za-z0-9_]+)\s*:\s*(.*)$/.exec(line)
     if (kv) fm[kv[1]] = kv[2]
   }
-  const body = raw.slice(m[0].length).trimEnd()
+  const summary = raw.slice(m[0].length).trimEnd()
   const provider = fm.provider?.trim() as RangeSummaryPersistedProvider | undefined
   if (
     !provider ||
@@ -309,7 +308,7 @@ export function parseRangeSummaryMarkdownBlock(raw: string): ProjectRangeSummary
     projectId: fm.projectId ?? '',
     rangeStartDate: unescapeYamlValue(fm.rangeStartDate ?? ''),
     rangeEndDate: unescapeYamlValue(fm.rangeEndDate ?? ''),
-    body,
+    summary,
     provider,
     model: unescapeYamlValue(fm.model ?? ''),
     chainKeys: [],

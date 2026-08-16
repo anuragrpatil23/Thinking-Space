@@ -7,7 +7,7 @@ import { s } from '../schemaBlock'
 // answers "which sessions share a workstream?" once.
 //
 // Output is delimited plain text (THEMES: / ASSIGNMENTS: sections) rather
-// than JSON, same reasoning as the chain-digest + day-atom contracts:
+// than JSON, same reasoning as the session-digest contract:
 // small local models follow labeled layouts far more reliably than strict
 // JSON schemas.
 

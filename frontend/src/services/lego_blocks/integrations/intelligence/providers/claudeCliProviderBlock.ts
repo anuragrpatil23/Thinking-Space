@@ -8,7 +8,7 @@
 //   - No streaming (buffered stdout).
 //   - No native tool calling. Tool-using contracts should stay on the SDK
 //     provider; this one is meant for text-only / schema-via-instruction
-//     tasks (chain digests, session titles, day atoms).
+//     tasks (session digests, chain stitches, range summaries).
 //   - JSON schema is not natively enforced. If a schema is present we still
 //     let the request through — contracts fall back to instruction-based
 //     JSON output and validate on the orchestrator side.

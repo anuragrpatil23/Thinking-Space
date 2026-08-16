@@ -159,7 +159,7 @@ export default function AiActivityRangeSummaryBlock({
         )}
         {!error && summary && (
           <LightMarkdownTextBlock
-            text={summary.body}
+            text={summary.summary}
             className="text-[11px] leading-relaxed text-muted-foreground"
           />
         )}
@@ -218,7 +218,7 @@ export default function AiActivityRangeSummaryBlock({
       )}
       {!error && summary && (
         <LightMarkdownTextBlock
-          text={summary.body}
+          text={summary.summary}
           className="text-[11px] leading-relaxed text-muted-foreground"
         />
       )}

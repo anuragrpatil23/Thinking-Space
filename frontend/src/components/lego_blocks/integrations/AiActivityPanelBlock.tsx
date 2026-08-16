@@ -29,7 +29,6 @@ import {
   mergedDurationMsBlock,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
-import { purgeRuleBasedAtomsOnceOrch } from '@/services/orchestrators/aiActivityAtomOrch'
 import { getVaultWriteAiActivityAnyEnabled } from '@/services/lego_blocks/units/vaultWritePrefsBlock'
 
 /** Which view produced the current drill selection. The detail (table + summary,
@@ -112,11 +111,6 @@ export default function AiActivityPanelBlock({
   enableManualSessions = false,
 }: AiActivityGraphControls = {}) {
   const activity = useAiActivityBlock('90d')
-  // One-time cleanup of legacy rule-based stub atoms an old bug persisted.
-  // Self-gates via a localStorage flag, so this is a no-op after the first run.
-  useEffect(() => {
-    void purgeRuleBasedAtomsOnceOrch()
-  }, [])
   // Whether hand-logged sessions can be written — gated by any AI-Activity
   // vault-write opt-in (manual sessions live in the vault ai-activity/ folder,
   // so they ride its general write permission, not the digests-mirror toggle

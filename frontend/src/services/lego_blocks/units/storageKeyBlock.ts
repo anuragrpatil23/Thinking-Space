@@ -57,7 +57,6 @@ export const STORAGE_KEYS = {
   aiActivitySectionsOpen: 'ltm-ai-activity-sections-open',
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
   intelligenceDefaultProvider: 'ltm-intelligence-default-provider',
-  aiActivityRuleBasedAtomsPurged: 'ltm-ai-activity-rule-based-atoms-purged',
   navRailPrefs: 'ltm-nav-rail-prefs',
 } as const
 
@@ -279,7 +278,7 @@ export const AI_ACTIVITY_CALENDAR_MODE_EVENT = 'thinkspc:ai-activity-calendar-mo
 
 /**
  * Master toggle for AI-generated chain titles + day summaries. Independent of
- * whether a local model is configured — when off, the atom/chain-digest
+ * whether a local model is configured — when off, the session-digest
  * orchestrators skip model calls entirely and callers see the deterministic
  * topic-based fallback. Default on: preserves existing behavior for users
  * who already have an intelligence provider set up.
@@ -300,22 +299,8 @@ export function setAiActivityAiTitlesEnabled(enabled: boolean): void {
 export const AI_ACTIVITY_AI_TITLES_EVENT = 'thinkspc:ai-activity-ai-titles-changed'
 
 /**
- * Run-once flag for the migration that purges legacy rule-based stub atoms
- * (persisted by an old bug) from the store. Set after the purge completes so
- * it never runs again on subsequent boots. Per-device — the vault-side delete
- * is idempotent, so a second device running it once more is harmless.
- */
-export function getAiActivityRuleBasedAtomsPurged(): boolean {
-  return getLocalStorageItemBlock(STORAGE_KEYS.aiActivityRuleBasedAtomsPurged) === 'true'
-}
-
-export function setAiActivityRuleBasedAtomsPurged(done: boolean): void {
-  setLocalStorageItemBlock(STORAGE_KEYS.aiActivityRuleBasedAtomsPurged, done ? 'true' : 'false')
-}
-
-/**
- * Provider choice for the range-summary pipeline. Independent of the chain-
- * digest / day-atom AI toggle above because the compute profile is very
+ * Provider choice for the range-summary pipeline. Independent of the
+ * session-digest AI toggle above because the compute profile is very
  * different — range summaries synthesize 5-25 chains in one pass, which
  * exceeds small local models' reliability ceiling. User picks:
  *   'off'         — deterministic fallback only (titles list, or stub when

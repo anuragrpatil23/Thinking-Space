@@ -1,7 +1,7 @@
-import type { ProjectDayAtom } from './aiActivityAtomBlock'
 
-// Rhythm math for AI Activity atoms. Atoms are stored per-day; this block
-// tells the view layer how to group them into the user's chosen rhythm.
+// Rhythm math for AI Activity date ranges: which week / set / month a date
+// falls in, and how to decompose an arbitrary span into subunits. Tells the
+// view and the range composer how to group by the user's chosen rhythm.
 // Pure — no I/O, no date-fns, uses the same JS `Date` semantics that the
 // existing set-mode trend chart uses so boundaries line up exactly.
 
@@ -277,33 +277,4 @@ export function periodContaining(
   if (type === 'week') return weekPeriodContaining(dateStr)
   if (type === 'month') return monthPeriodContaining(dateStr)
   return setPeriodContaining(dateStr)
-}
-
-/**
- * Group atoms into consecutive periods of the given type. Atoms outside any
- * emitted period are dropped — callers pass the range they want covered by
- * passing atoms from that range. Order preserved by start date ascending.
- */
-export function groupAtomsByPeriodBlock(
-  atoms: ProjectDayAtom[],
-  type: AiActivityPeriodType,
-): Array<{ period: AiActivityPeriod; atoms: ProjectDayAtom[] }> {
-  if (atoms.length === 0) return []
-  const byId = new Map<string, { period: AiActivityPeriod; atoms: ProjectDayAtom[] }>()
-  for (const atom of atoms) {
-    const period = periodContaining(atom.date, type)
-    let bucket = byId.get(period.id)
-    if (!bucket) {
-      bucket = { period, atoms: [] }
-      byId.set(period.id, bucket)
-    }
-    bucket.atoms.push(atom)
-  }
-  const sorted = Array.from(byId.values()).sort((a, b) =>
-    a.period.startDate < b.period.startDate ? -1 : 1,
-  )
-  for (const bucket of sorted) {
-    bucket.atoms.sort((a, b) => (a.date < b.date ? -1 : 1))
-  }
-  return sorted
 }

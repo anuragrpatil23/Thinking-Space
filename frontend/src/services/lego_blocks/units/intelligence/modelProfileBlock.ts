@@ -15,7 +15,7 @@ import quirks from '@/data/modelQuirks.json'
 export type ProviderId = 'openai-compat' | 'anthropic' | 'claude-cli'
 
 // Coarse label for *what kind of thing* produced a generated record (chain
-// digest, day atom). Deliberately provider-family-level, not model-level:
+// digest, chain stitch). Deliberately provider-family-level, not model-level:
 //   - 'local'      → an on-device openai-compat server (mlx/LM Studio/Ollama…)
 //   - 'claude'     → Anthropic, via SDK or the claude CLI
 //   - 'rule-based' → the deterministic fallback/stub, no model involved

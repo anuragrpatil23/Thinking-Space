@@ -120,7 +120,7 @@ describe('ensureRangeSummaryOrch — local two-stage stage-1 batching', () => {
     installLabeler()
     const result = await ensureRangeSummaryOrch(input(makeChains(50)))
     expect(result.provider).toBe('local-two-stage')
-    expect(result.body).toContain('Narrated')
+    expect(result.summary).toContain('Narrated')
     // 50 chains at a 24-chain batch size — every batch is short enough that
     // the ceiling never bites, so no chain silently becomes 'Misc'.
     expect(labelCalls).toHaveLength(3)

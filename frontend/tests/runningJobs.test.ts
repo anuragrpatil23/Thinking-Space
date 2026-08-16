@@ -32,8 +32,8 @@ describe('running jobs registry', () => {
   })
 
   it('cancelling invokes the abort hook', () => {
-    const a = job('day-atom')
-    const id = listRunningJobsBlock().find(j => j.taskId === 'day-atom')!.id
+    const a = job('session-digest')
+    const id = listRunningJobsBlock().find(j => j.taskId === 'session-digest')!.id
     expect(cancelRunningJobBlock(id)).toBe(true)
     expect(a.cancel).toHaveBeenCalledTimes(1)
     a.dispose()

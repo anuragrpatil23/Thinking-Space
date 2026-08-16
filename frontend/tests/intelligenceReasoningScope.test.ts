@@ -3,7 +3,7 @@ import type { IntelligenceRequest } from '@/services/lego_blocks/units/intellige
 
 // runContract used to hardcode reasoning off for every reasoning-capable model,
 // so the AI Settings thinking toggle governed chat but never the internal
-// contracts (chain digest, day atom, range summary). These cover the wiring
+// contracts (session digest, chain stitch, range summary). These cover the wiring
 // that fixed that — and the asymmetry that keeps it safe: the setting defaults
 // to ON (correct for chat), but an untouched setting must still mean OFF for a
 // single-shot contract, or every digest silently gets slower and can truncate.

@@ -310,7 +310,7 @@ export function resolveAiThinkingForScopeProviderBlock(
 }
 
 /** Whether hidden reasoning runs for INTERNAL contract runs (chain digest, day
- *  atom, range summary) in this scope.
+ *  chain stitch, range summary) in this scope.
  *
  *  Deliberately stricter than resolveAiThinkingForScopeProviderBlock, which
  *  answers the same question for chat and defaults to ON. A contract run is a

@@ -6,14 +6,21 @@ import { s } from '../schemaBlock'
 // time spent, with a tail bullet for cross-cutting small work.
 //
 // Output is delimited plain text (numbered bullets), same reasoning as the
-// chain-digest and day-atom contracts: small local models (Qwen, Gemma,
+// session-digest contract: small local models (Qwen, Gemma,
 // Llama-3-8B) reliably follow labeled/numbered layouts but stumble on JSON.
 //
-// This is a *range* summary, not a day summary. The atom-level HEADLINE +
-// WHY shape is the wrong unit for a multi-day view — it collapses within-day
-// themes so aggressively that the model can't find the "3 sessions over 2
-// days on the same feature" arcs that make a range readable. So we feed
-// chain digests directly and let the model group them itself.
+// This is a *range* summary, and it deliberately does NOT compose per-day
+// summaries. A day-level tier once existed for exactly that (a HEADLINE +
+// WHY per project per day, since deleted along with the rest of the unused
+// atom layer), and feeding a range from it was the wrong unit: summarizing
+// each day first collapses within-day themes so aggressively that the model
+// can no longer find the "3 sessions over 2 days on the same feature" arcs
+// that make a range readable. Composition loses detail multiplicatively, and
+// the arcs worth seeing are the ones that cross a day boundary.
+//
+// So the range reads chain digests directly and does its own grouping. Keep
+// it that way: a "compose weeks from days, months from weeks" ladder is the
+// intuitive shape and the wrong one.
 
 const MAX_ARCS = 8
 const MAX_BULLET_CHARS = 700

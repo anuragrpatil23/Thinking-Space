@@ -227,7 +227,7 @@ function totalDurationMs(chains: RangeSummaryDigestInput[]): number {
   return chains.reduce((n, c) => n + c.durationMs, 0)
 }
 
-function baseSummary(input: EnsureRangeSummaryInput): Omit<ProjectRangeSummary, 'body' | 'provider' | 'model'> {
+function baseSummary(input: EnsureRangeSummaryInput): Omit<ProjectRangeSummary, 'summary' | 'provider' | 'model'> {
   const totalMs = totalDurationMs(input.chains)
   return {
     schemaVersion: 1,
@@ -242,8 +242,8 @@ function baseSummary(input: EnsureRangeSummaryInput): Omit<ProjectRangeSummary, 
 }
 
 function buildFallbackSummary(input: EnsureRangeSummaryInput): ProjectRangeSummary {
-  const { body, provider } = buildFallbackBodyBlock(input.chains)
-  return { ...baseSummary(input), body, provider, model: '' }
+  const { summary, provider } = buildFallbackBodyBlock(input.chains)
+  return { ...baseSummary(input), summary, provider, model: '' }
 }
 
 // ── Stage 1: labeling, batched ───────────────────────────────────────────
@@ -422,7 +422,7 @@ async function generateLocalTwoStage(input: EnsureRangeSummaryInput): Promise<Pr
 
   return {
     ...baseSummary(input),
-    body: narrateValue.body,
+    summary: narrateValue.body,
     provider: 'local-two-stage' satisfies RangeSummaryPersistedProvider,
     model: (narrateResult.meta?.model as string) ?? narrateResult.model ?? 'unknown',
   }
@@ -454,7 +454,7 @@ async function generateClaudeOneShot(input: EnsureRangeSummaryInput): Promise<Pr
   if (!value.body) return buildFallbackSummary(input)
   return {
     ...baseSummary(input),
-    body: value.body,
+    summary: value.body,
     provider: 'claude-cli' satisfies RangeSummaryPersistedProvider,
     model: (result.meta?.model as string) ?? result.model ?? 'claude-cli',
   }
@@ -505,16 +505,16 @@ function subunitLabelBlock(subunit: RangeSubunit): string {
  *  per subunit — no fabricated narrative, just a scannable stack. */
 function composeSubunitsFallbackBlock(
   subunits: Array<{ subunit: RangeSubunit; summary: ProjectRangeSummary; label: string }>,
-): { body: string; provider: 'fallback-titles' | 'fallback-stub' } {
-  const nonEmpty = subunits.filter(s => s.summary.body.trim().length > 0)
+): { summary: string; provider: 'fallback-titles' | 'fallback-stub' } {
+  const nonEmpty = subunits.filter(s => s.summary.summary.trim().length > 0)
   if (nonEmpty.length === 0) {
-    return { body: '_No AI-assisted activity in this range._', provider: 'fallback-stub' }
+    return { summary: '_No AI-assisted activity in this range._', provider: 'fallback-stub' }
   }
   const sections = nonEmpty.map((s, i) => {
     const durLine = humanDuration(s.summary.totalDurationMs)
-    return `${i + 1}. **${s.label}** — ~${durLine}\n${s.summary.body}`
+    return `${i + 1}. **${s.label}** — ~${durLine}\n${s.summary.summary}`
   })
-  return { body: sections.join('\n\n'), provider: 'fallback-titles' }
+  return { summary: sections.join('\n\n'), provider: 'fallback-titles' }
 }
 
 export async function ensureDecomposedRangeSummaryOrch(
@@ -616,7 +616,7 @@ export async function ensureDecomposedRangeSummaryOrch(
   let topProvider: RangeSummaryPersistedProvider = 'fallback-stub'
   let topModel = ''
 
-  if (provider !== 'off' && perSubunit.some(s => s.summary.body.trim().length > 0)) {
+  if (provider !== 'off' && perSubunit.some(s => s.summary.summary.trim().length > 0)) {
     const composeInput: SubunitComposeContractInput = {
       projectId: input.projectId,
       projectLabel: input.projectLabel,
@@ -631,7 +631,7 @@ export async function ensureDecomposedRangeSummaryOrch(
         dateSpan: fmtDateSpan(s.subunit.startDate, s.subunit.endDate),
         duration: humanDuration(s.summary.totalDurationMs),
         chainCount: s.summary.chainKeys.length,
-        body: s.summary.body,
+        body: s.summary.summary,
       })),
     }
     const runOpts = provider === 'claude-cli' ? { ...RANGE_RUN_SCOPE, provider: 'claude-cli' as const } : RANGE_RUN_SCOPE
@@ -649,14 +649,14 @@ export async function ensureDecomposedRangeSummaryOrch(
 
   if (!topBody) {
     const fb = composeSubunitsFallbackBlock(perSubunit)
-    topBody = fb.body
+    topBody = fb.summary
     topProvider = fb.provider
     topModel = ''
   }
 
   const persisted: ProjectRangeSummary = {
     ...baseSummary(input),
-    body: topBody,
+    summary: topBody,
     provider: topProvider,
     model: topModel,
     inputHash,
@@ -836,7 +836,7 @@ async function ensureMonthThemeSummaryOrch(
     return perSubunit
       .filter(s => s.subunit.type === 'week')
       .filter(s => !(s.subunit.endDate < startDate || s.subunit.startDate > endDate))
-      .map(s => s.summary.body?.trim())
+      .map(s => s.summary.summary?.trim())
       .filter((b): b is string => !!b && b.length > 0)
   }
 
@@ -906,7 +906,7 @@ async function ensureMonthThemeSummaryOrch(
 
   const persisted: ProjectRangeSummary = {
     ...baseSummary(input),
-    body: composeValue.body,
+    summary: composeValue.body,
     provider: provider === 'claude-cli' ? 'claude-cli' : 'local-two-stage',
     model: (composeResult.meta?.model as string) ?? composeResult.model ?? provider,
     inputHash,
@@ -928,7 +928,7 @@ async function composeMonthFallbackBlock(
   const fb = composeSubunitsFallbackBlock(perSubunit)
   const persisted: ProjectRangeSummary = {
     ...baseSummary(input),
-    body: fb.body,
+    summary: fb.summary,
     provider: fb.provider,
     model: '',
     inputHash,
