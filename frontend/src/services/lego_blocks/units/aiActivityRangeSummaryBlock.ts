@@ -328,7 +328,23 @@ export function parseRangeSummaryJsonBlock(raw: string): ProjectRangeSummary | n
     const obj = JSON.parse(raw)
     if (!obj || typeof obj !== 'object') return null
     if (obj.schemaVersion !== 1) return null
-    return obj as ProjectRangeSummary
+    // The prose field was called `body` until 2026-08-16. The vault mirror was
+    // unaffected by the rename — there the prose is the markdown body, read
+    // positionally — but THIS sidecar serializes field names, so every cached
+    // record still says `body`. Without the fallback the record parses with an
+    // undefined `summary` and the renderer crashes on it.
+    //
+    // Tolerated rather than busted because a range summary is the expensive
+    // tier (5-25 chains per pass, some via claude-cli) and there are hundreds
+    // of them; a cache miss here is real money, not a recompute. Records
+    // rewrite themselves on their next generation, so this can go once no
+    // sidecar carries `body`.
+    const record = obj as ProjectRangeSummary & { body?: string }
+    if (typeof record.summary !== 'string' && typeof record.body === 'string') {
+      record.summary = record.body
+    }
+    if (typeof record.summary !== 'string') return null
+    return record
   } catch {
     return null
   }
