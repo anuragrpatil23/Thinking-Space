@@ -1,5 +1,5 @@
 import { Fragment, Suspense, lazy, useMemo, useState } from 'react'
-import { Check, Copy, Maximize2, Pencil, Plus, RefreshCw, Share2 } from 'lucide-react'
+import { Check, Maximize2, Pencil, Plus, RefreshCw, Share2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isReadingSource, isManualSource, type ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getManualSession } from '@/services/lego_blocks/integrations/manualSessionBlock'
@@ -289,15 +289,18 @@ export default function AiActivityDayTableBlock({
     return { totalCostUsd, totalFreshTokens, totalCachedTokens, chainsWithTokens }
   }, [sorted])
 
-  const handleCopyTable = async () => {
+  /** Copy `rows` as the drill-down Markdown — the whole table, or one row of it.
+   *  Same builder either way, so a single row copies with the same header and
+   *  hidden token/cost columns the full table carries. */
+  const copyRowsAsMarkdown = async (rows: ActivityChain[]) => {
     try {
-      const md = buildDrillDownMarkdown(title, summary, sorted)
+      const md = buildDrillDownMarkdown(title, summary, rows)
       await navigator.clipboard.writeText(md)
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
     } catch {
       // Clipboard can be denied (permissions, insecure context) — fail quietly
-      // rather than throwing; the button just won't flip to "Copied".
+      // rather than throwing.
     }
   }
 
@@ -330,21 +333,15 @@ export default function AiActivityDayTableBlock({
               Log session
             </button>
           )}
-          {sorted.length > 0 && (
-            <button
-              type="button"
-              onClick={handleCopyTable}
-              className={cn(
-                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors',
-                copied
-                  ? 'border-foreground/70 bg-foreground/10 text-foreground'
-                  : 'border-border/40 bg-card/40 text-muted-foreground hover:border-border/70 hover:text-foreground',
-              )}
-              title="Copy the whole drill-down table as Markdown (including hidden token/cost detail) so you can hand it to another AI or drop it into a test."
-            >
-              {copied ? <Check className="h-2.5 w-2.5" /> : <Copy className="h-2.5 w-2.5" />}
-              {copied ? 'Copied' : 'Copy table'}
-            </button>
+          {/* Copy lives in the right-click menu now — see `rowMenu`. It is a
+              once-in-a-while action, and a permanent chip for it competed with
+              the ones that are not. The confirmation stays: a clipboard write
+              that says nothing is indistinguishable from one that failed. */}
+          {copied && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-foreground/70 bg-foreground/10 px-2 py-0.5 text-[10px] text-foreground">
+              <Check className="h-2.5 w-2.5" />
+              Copied
+            </span>
           )}
         </div>
       </div>
@@ -446,10 +443,17 @@ export default function AiActivityDayTableBlock({
                       onSelectChain?.(c)
                       setExpandedKey(prev => (prev === c.key ? null : c.key))
                     }}
-                    onContextMenu={enableGraphPeek && !isManual ? (e) => {
+                    // Every row opens the menu now, not just graph-peekable
+                    // ones: copy works on any row, and a menu that appears on
+                    // some rows and not others teaches people it is not there.
+                    onContextMenu={(e) => {
                       e.preventDefault()
+                      // The canvas surface this table can sit on has its own
+                      // onContextMenu; without stopping here it opens straight
+                      // over this menu.
+                      e.stopPropagation()
                       setRowMenu({ chain: c, x: e.clientX, y: e.clientY })
-                    } : undefined}
+                    }}
                     onMouseEnter={enableGraphPeek && !isManual ? warmVaultGraph : undefined}
                     title={
                       onSelectChain
@@ -667,15 +671,29 @@ export default function AiActivityDayTableBlock({
           position={{ x: rowMenu.x, y: rowMenu.y }}
           onClose={() => setRowMenu(null)}
           entries={([
-            {
+            // Graph + transcript only where they lead somewhere; copy always.
+            enableGraphPeek && !isManualSource(rowMenu.chain.source) && {
               key: 'show-in-graph',
               label: 'Show in graph',
               onClick: () => { setPeekChain(rowMenu.chain); setRowMenu(null) },
             },
-            !isReadingSource(rowMenu.chain.source) && {
-              key: 'open-transcript',
-              label: 'Open transcript',
-              onClick: () => { setTranscriptChain(rowMenu.chain); setRowMenu(null) },
+            enableGraphPeek &&
+              !isManualSource(rowMenu.chain.source) &&
+              !isReadingSource(rowMenu.chain.source) && {
+                key: 'open-transcript',
+                label: 'Open transcript',
+                onClick: () => { setTranscriptChain(rowMenu.chain); setRowMenu(null) },
+              },
+            { key: 'copy-sep', kind: 'separator' as const },
+            {
+              key: 'copy-row',
+              label: 'Copy row as Markdown',
+              onClick: () => { void copyRowsAsMarkdown([rowMenu.chain]); setRowMenu(null) },
+            },
+            sorted.length > 0 && {
+              key: 'copy-table',
+              label: 'Copy table as Markdown',
+              onClick: () => { void copyRowsAsMarkdown(sorted); setRowMenu(null) },
             },
           ].filter(Boolean)) as ContextMenuEntryBlock[]}
         />

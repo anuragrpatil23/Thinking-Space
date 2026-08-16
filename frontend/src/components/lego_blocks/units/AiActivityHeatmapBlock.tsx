@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ActivityDay } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
@@ -20,7 +19,9 @@ import {
   setAiActivityCalendarMode,
   setAiActivityWorkMixMode,
 } from '@/services/lego_blocks/units/storageKeyBlock'
-import ContextMenuBlock from '@/components/lego_blocks/units/ui/ContextMenuBlock'
+import ContextMenuBlock, {
+  type ContextMenuEntryBlock,
+} from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import {
   foldWorkMixDayBlock,
   WORK_MIX_MAX_LAPS_BLOCK,
@@ -51,6 +52,12 @@ interface AiActivityHeatmapBlockProps {
    * unclassified, which renders as empty cells rather than a wrong answer.
    */
   kindByProject?: Record<string, ProjectKindBlock>
+  /**
+   * Extra right-click entries, appended above the view toggles. Drill actions
+   * belong to whoever owns the drill state, so they arrive as entries rather
+   * than as more callbacks this block would have to reason about.
+   */
+  menuEntries?: ContextMenuEntryBlock[]
 }
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -160,6 +167,7 @@ export default function AiActivityHeatmapBlock({
   selectedRange = null,
   onSelectRange,
   kindByProject,
+  menuEntries,
 }: AiActivityHeatmapBlockProps) {
   const { hostRef, isDark } = useDarkModeClassBlock()
   const [setMode, setSetMode] = useState<boolean>(() => getAiActivitySetMode())
@@ -1078,16 +1086,17 @@ export default function AiActivityHeatmapBlock({
           </span>
         )}
       </div>
-      {/* Portalled to the body on purpose. This panel can live inside the
-          canvas surface, which is CSS-transformed — and a transformed ancestor
-          becomes the containing block for `position: fixed`, so the menu's
-          viewport coordinates were being resolved against a scaled, translated
-          box and it landed off-screen. */}
-      {gridMenu && createPortal(
+      {gridMenu && (
         <ContextMenuBlock
           position={gridMenu}
           onClose={() => setGridMenu(null)}
           entries={[
+            ...(menuEntries ?? []).map(entry =>
+              'kind' in entry
+                ? entry
+                : { ...entry, onClick: () => { entry.onClick(); setGridMenu(null) } },
+            ),
+            ...(menuEntries?.length ? [{ key: 'sep', kind: 'separator' as const }] : []),
             {
               key: 'work-mix',
               label: workMixMode ? '✓ Color days by kind of work' : 'Color days by kind of work',
@@ -1108,8 +1117,7 @@ export default function AiActivityHeatmapBlock({
               },
             },
           ]}
-        />,
-        document.body,
+        />
       )}
     </div>
   )

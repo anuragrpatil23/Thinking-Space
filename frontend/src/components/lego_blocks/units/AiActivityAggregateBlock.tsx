@@ -19,9 +19,11 @@ import {
   periodKeyOfBlock,
   projectDigestBlock,
   type AggregateGranularity,
+  type AggregatePeriodRow,
   type ProjectPeriodMetrics,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { formatTokens, formatUsd } from '@/services/lego_blocks/units/aiPriceTableBlock'
+import ContextMenuBlock from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
@@ -191,6 +193,51 @@ export default function AiActivityAggregateBlock({
     [chains, effectiveGranularity],
   )
 
+  // Right-click copy for the totals table. Same deal as the day table: an
+  // occasional action that does not deserve a permanent chip, and the row under
+  // the cursor is worth offering on its own.
+  const [rowMenu, setRowMenu] = useState<{ row: AggregatePeriodRow; x: number; y: number } | null>(
+    null,
+  )
+  const [copied, setCopied] = useState(false)
+
+  /** Markdown for the totals table, or one period of it. Mirrors the columns on
+   *  screen, including the token/cost ones only when any period has them — a
+   *  copy that invents empty columns is a worse artifact than a narrow one. */
+  const copyRowsAsMarkdown = async (which: AggregatePeriodRow[]) => {
+    const withTokens = which.some(r => r.hasTokens)
+    const header = ['Period', 'Chains', 'Sessions', 'Msgs', 'Time']
+    if (withTokens) header.push('Tok in', 'Tok out', '~Cost')
+    const lines = [
+      `| ${header.join(' | ')} |`,
+      `| ${header.map(() => '---').join(' | ')} |`,
+    ]
+    for (const r of which) {
+      const cells = [
+        r.label,
+        String(r.chains),
+        String(r.sessions),
+        String(r.msgs),
+        fmtDurationMsBlock(r.durationMs),
+      ]
+      if (withTokens) {
+        cells.push(
+          r.hasTokens ? String(r.inputTokens) : '—',
+          r.hasTokens ? String(r.outputTokens) : '—',
+          r.hasTokens ? `~${formatUsd(r.costUsd)}` : '—',
+        )
+      }
+      lines.push(`| ${cells.join(' | ')} |`)
+    }
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      // Clipboard can be denied (permissions, insecure context) — fail quietly.
+    }
+  }
+
   // Inline period summary: clicking a table row expands a per-project digest
   // ("what was worked on") instead of drilling immediately — the drill action
   // moves into the expanded panel, mirroring the day table's expand pattern.
@@ -323,6 +370,14 @@ export default function AiActivityAggregateBlock({
             )
           })}
         </div>
+        {/* Copy is a right-click action here too; this only confirms it landed,
+            since a clipboard write that says nothing looks like one that
+            failed. */}
+        {copied && (
+          <span className="ml-auto mr-1 inline-flex items-center gap-1 rounded-full border border-foreground/70 bg-foreground/10 px-2 py-0.5 text-[10px] text-foreground">
+            Copied
+          </span>
+        )}
         <div className="flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 p-0.5 w-fit">
           {(['table', 'graph'] as const).map(d => {
             const active = display === d
@@ -582,6 +637,13 @@ export default function AiActivityAggregateBlock({
                     r.key === currentPeriodKey && 'bg-foreground/[0.06] ring-1 ring-inset ring-foreground/25',
                   )}
                   onClick={() => setExpandedKey(prev => (prev === r.key ? null : r.key))}
+                  onContextMenu={e => {
+                    e.preventDefault()
+                    // The canvas surface this panel can sit on has its own
+                    // onContextMenu; without stopping here it opens on top.
+                    e.stopPropagation()
+                    setRowMenu({ row: r, x: e.clientX, y: e.clientY })
+                  }}
                   title={r.key === currentPeriodKey ? 'Current period' : 'Click for a summary of this period'}
                 >
                   <td className="whitespace-nowrap px-3 py-1.5 text-foreground/85">
@@ -761,6 +823,24 @@ export default function AiActivityAggregateBlock({
           </>
         )}
       </p>
+      {rowMenu && (
+        <ContextMenuBlock
+          position={{ x: rowMenu.x, y: rowMenu.y }}
+          onClose={() => setRowMenu(null)}
+          entries={[
+            {
+              key: 'copy-period',
+              label: `Copy ${rowMenu.row.label} as Markdown`,
+              onClick: () => { void copyRowsAsMarkdown([rowMenu.row]); setRowMenu(null) },
+            },
+            {
+              key: 'copy-table',
+              label: 'Copy totals table as Markdown',
+              onClick: () => { void copyRowsAsMarkdown(rows); setRowMenu(null) },
+            },
+          ]}
+        />
+      )}
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 
 export interface ContextMenuItemBlock {
@@ -56,7 +57,13 @@ export default function ContextMenuBlock({ entries, position, onClose }: Context
     top: `${Math.min(position.y, maxY)}px`,
   }
 
-  return (
+  // Portalled to the body, always. `position: fixed` resolves against the
+  // nearest CSS-transformed ancestor rather than the viewport, and this menu is
+  // opened from panels that can sit on the canvas surface — which is both
+  // transformed and scaled. Rendered in place, the menu takes viewport
+  // coordinates and lands somewhere else entirely. The portal is what makes the
+  // coordinates mean what they say.
+  return createPortal(
     <div
       ref={menuRef}
       className="context-menu-surface fixed z-[90] min-w-[220px] rounded-lg border border-border/80 bg-background/95 p-[5px] backdrop-blur-xl"
@@ -87,6 +94,7 @@ export default function ContextMenuBlock({ entries, position, onClose }: Context
           </button>
         )
       })}
-    </div>
+    </div>,
+    document.body,
   )
 }

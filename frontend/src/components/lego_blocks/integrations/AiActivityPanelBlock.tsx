@@ -450,41 +450,6 @@ export default function AiActivityPanelBlock({
           title="Heatmap"
           open={sectionsOpen.heatmap}
           onToggle={() => toggleSection('heatmap')}
-          headerRight={
-            /* Select-all-days is a heatmap interaction: first click drills every
-               day in the visible range, second click clears back to today. */
-            (() => {
-              const rangeStart = activity.customRange?.startIso ?? activity.startIso
-              const rangeEnd = activity.customRange?.endIso ?? activity.endIso
-              const wholeRangeSelected =
-                drillSource === 'heatmap' &&
-                selectedRange?.startIso === rangeStart &&
-                selectedRange?.endIso === rangeEnd
-              const label = activity.customRange?.label ?? activity.preset
-              return (
-                <button
-                  type="button"
-                  onClick={e => {
-                    e.stopPropagation()
-                    if (wholeRangeSelected) {
-                      clearDrill()
-                    } else {
-                      drillToRange({ startIso: rangeStart, endIso: rangeEnd }, 'heatmap')
-                    }
-                  }}
-                  className={cn(
-                    'rounded-full border px-2 py-0.5 text-[10px] transition-colors',
-                    wholeRangeSelected
-                      ? 'border-foreground/70 bg-foreground/10 text-foreground'
-                      : 'border-border/40 bg-card/40 text-muted-foreground hover:border-border/70 hover:text-foreground',
-                  )}
-                  title={wholeRangeSelected ? 'Clear the range drill' : `Drill on every day in ${label}`}
-                >
-                  {wholeRangeSelected ? 'clear range' : 'select all days'}
-                </button>
-              )
-            })()
-          }
         >
           <AiActivityHeatmapBlock
             days={activity.days}
@@ -497,6 +462,36 @@ export default function AiActivityPanelBlock({
             selectedRange={selectedRange}
             onSelectRange={r => drillToRange(r, 'heatmap')}
             kindByProject={kindByProject}
+            menuEntries={
+              /* Select-all-days is a heatmap interaction, so it lives in the
+                 heatmap's own right-click menu rather than as a chip in the
+                 section header. Toggles: drills every day in the visible range,
+                 then clears back to today. */
+              (() => {
+                const rangeStart = activity.customRange?.startIso ?? activity.startIso
+                const rangeEnd = activity.customRange?.endIso ?? activity.endIso
+                const wholeRangeSelected =
+                  drillSource === 'heatmap' &&
+                  selectedRange?.startIso === rangeStart &&
+                  selectedRange?.endIso === rangeEnd
+                const label = activity.customRange?.label ?? activity.preset
+                return [
+                  {
+                    key: 'select-all-days',
+                    label: wholeRangeSelected
+                      ? 'Clear the range drill'
+                      : `Select every day in ${label}`,
+                    onClick: () => {
+                      if (wholeRangeSelected) {
+                        clearDrill()
+                      } else {
+                        drillToRange({ startIso: rangeStart, endIso: rangeEnd }, 'heatmap')
+                      }
+                    },
+                  },
+                ]
+              })()
+            }
           />
           {drillSource === 'heatmap' && drillActive && renderDrillDetail(true)}
         </PanelSection>
