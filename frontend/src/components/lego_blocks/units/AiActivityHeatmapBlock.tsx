@@ -16,7 +16,10 @@ import {
   getAiActivitySetMode,
   getAiActivityThinkingPoolHours,
   getAiActivityWorkMixMode,
+  setAiActivityCalendarMode,
+  setAiActivityWorkMixMode,
 } from '@/services/lego_blocks/units/storageKeyBlock'
+import ContextMenuBlock from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import {
   foldWorkMixDayBlock,
   WORK_MIX_MAX_LAPS_BLOCK,
@@ -214,6 +217,10 @@ export default function AiActivityHeatmapBlock({
     [restDaySet, currentMonthKey],
   )
 
+  // Right-click menu on the grid. Work mix is a way of *looking* at the
+  // heatmap, so it wants a switch where the looking happens — the Settings row
+  // stays the place that explains what the mode means.
+  const [gridMenu, setGridMenu] = useState<{ x: number; y: number } | null>(null)
   const [hoverDate, setHoverDate] = useState<string | null>(null)
   const [dragAnchor, setDragAnchor] = useState<string | null>(null)
   // Weeks paged back from the most recent window (0 = latest). Reset when the
@@ -693,6 +700,9 @@ export default function AiActivityHeatmapBlock({
   }
 
   function handleCellDown(date: string, e: React.MouseEvent) {
+    // Right-click belongs to the context menu; without this it would also arm a
+    // drag-select and the menu would open over a half-made range.
+    if (e.button !== 0) return
     if (e.shiftKey && selectedDate) {
       const a = selectedDate < date ? selectedDate : date
       const b = selectedDate < date ? date : selectedDate
@@ -790,7 +800,13 @@ export default function AiActivityHeatmapBlock({
       {loading ? (
         <div className="h-32 w-full animate-pulse rounded-lg bg-muted/20" />
       ) : (
-        <div className="relative">
+        <div
+          className="relative"
+          onContextMenu={e => {
+            e.preventDefault()
+            setGridMenu({ x: e.clientX, y: e.clientY })
+          }}
+        >
         <div ref={scrollContainerRef} className="overflow-x-auto pt-1.5 pb-1.5">
           <div className="inline-block min-w-full">
             <div
@@ -1051,6 +1067,33 @@ export default function AiActivityHeatmapBlock({
           </span>
         )}
       </div>
+      {gridMenu && (
+        <ContextMenuBlock
+          position={gridMenu}
+          onClose={() => setGridMenu(null)}
+          entries={[
+            {
+              key: 'work-mix',
+              label: workMixMode ? '✓ Color days by kind of work' : 'Color days by kind of work',
+              onClick: () => {
+                // Writing through the storage setter, not local state: it fires
+                // the event the Settings switch listens on, so the two controls
+                // can never disagree about which mode is on.
+                setAiActivityWorkMixMode(!workMixMode)
+                setGridMenu(null)
+              },
+            },
+            {
+              key: 'calendar',
+              label: calendarMode ? '✓ Calendar look' : 'Calendar look',
+              onClick: () => {
+                setAiActivityCalendarMode(!calendarMode)
+                setGridMenu(null)
+              },
+            },
+          ]}
+        />
+      )}
     </div>
   )
 }
