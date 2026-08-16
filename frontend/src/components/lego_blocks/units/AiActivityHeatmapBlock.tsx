@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ActivityDay } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
@@ -68,6 +69,10 @@ const SET_CELL_GAP = 3
 // there were two rings; the unclassified track took a third of the disc's radius
 // with it, and this gives it back.
 const WORK_MIX_CELL_PX = 30
+/** Wider than the 3px square-cell gap. Circles only touch at one point, so the
+ *  eye reads the *nearest* distance between two of them, not the average — at
+ *  3px the outer rings of neighbouring days looked joined. */
+const WORK_MIX_CELL_GAP = 7
 /** Hairline rings. Position, not weight, is what separates the two tracks, so
  *  the stroke only has to be thick enough to survive a non-retina pixel grid. */
 const WORK_MIX_STROKE_PX = 1.5
@@ -349,7 +354,7 @@ export default function AiActivityHeatmapBlock({
     return () => ro.disconnect()
   }, [])
   const cellStepPx = workMixMode
-    ? WORK_MIX_CELL_PX + SET_CELL_GAP
+    ? WORK_MIX_CELL_PX + WORK_MIX_CELL_GAP
     : bigCells
       ? SET_CELL_PX + SET_CELL_GAP
       : 15
@@ -758,7 +763,7 @@ export default function AiActivityHeatmapBlock({
 
   // Set-mode geometry: cells grow so day-of-month numbers stay legible.
   const cellPx = workMixMode ? WORK_MIX_CELL_PX : bigCells ? SET_CELL_PX : 12
-  const cellGap = bigCells ? SET_CELL_GAP : 3
+  const cellGap = workMixMode ? WORK_MIX_CELL_GAP : bigCells ? SET_CELL_GAP : 3
   const step = cellPx + cellGap
   const gridHeight = 7 * cellPx + 6 * cellGap
   const gridWidth = weeks.length * step - cellGap
@@ -860,7 +865,10 @@ export default function AiActivityHeatmapBlock({
                     aria-hidden
                     className="pointer-events-none absolute bg-foreground/15"
                     style={{
-                      left: col * step - 2,
+                      // Centred in the gap, whatever the gap is — a fixed 2px
+                      // offset drifted to the column's edge once work-mix cells
+                      // spread apart.
+                      left: col * step - cellGap / 2 - 0.5,
                       top: 0,
                       width: 1,
                       height: gridHeight,
@@ -1070,7 +1078,12 @@ export default function AiActivityHeatmapBlock({
           </span>
         )}
       </div>
-      {gridMenu && (
+      {/* Portalled to the body on purpose. This panel can live inside the
+          canvas surface, which is CSS-transformed — and a transformed ancestor
+          becomes the containing block for `position: fixed`, so the menu's
+          viewport coordinates were being resolved against a scaled, translated
+          box and it landed off-screen. */}
+      {gridMenu && createPortal(
         <ContextMenuBlock
           position={gridMenu}
           onClose={() => setGridMenu(null)}
@@ -1095,7 +1108,8 @@ export default function AiActivityHeatmapBlock({
               },
             },
           ]}
-        />
+        />,
+        document.body,
       )}
     </div>
   )
