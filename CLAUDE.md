@@ -73,8 +73,8 @@ Read the file before touching that area. Each one exists because something alrea
 | Energy | No unconditional periodic timers; reading holds the display awake, nothing else does. | [docs/contracts/ENERGY.md](docs/contracts/ENERGY.md) |
 | Code architecture | Units / integrations / hooks / orchestrators, with mandatory `*Block` / `use*` / `*Orch` naming. | [docs/contracts/CODE-ARCHITECTURE.md](docs/contracts/CODE-ARCHITECTURE.md) |
 | Editor | One CM6 engine + decorations; markdown on disk stays byte-identical. | [docs/contracts/EDITOR.md](docs/contracts/EDITOR.md) |
-| Derivation | AI-activity strata are re-derivable from raw sessions; a freshness hash must cover every input; derived layers fail loudly; hooks capture, the app derives. | [docs/contracts/DERIVATION.md](docs/contracts/DERIVATION.md) |
-| Assignment | Every chain gets a disposition ("not an undertaking" is one); AI proposes, a human mints; never clear the pending ledger; the queue is the product. | [docs/contracts/ASSIGNMENT.md](docs/contracts/ASSIGNMENT.md) |
+| Derivation | AI-activity strata are re-derivable from raw sessions; never file a record under a derived address or a position; a hash over inputs cannot see a code change (name the lever); absence is not evidence; derived layers fail loudly; hooks capture, the app derives. | [docs/contracts/DERIVATION.md](docs/contracts/DERIVATION.md) |
+| Assignment | Every session gets a disposition ("not an undertaking" is one); AI proposes, a human mints; never clear the pending ledger; the queue is the product. | [docs/contracts/ASSIGNMENT.md](docs/contracts/ASSIGNMENT.md) |
 | iOS native chrome | Locked chrome/sync-indicator/settings-roaming design; do not resurrect rejected variants. | [docs/contracts/IOS-NATIVE-CHROME.md](docs/contracts/IOS-NATIVE-CHROME.md) |
 
 ## Where Things Live
