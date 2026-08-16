@@ -18,6 +18,31 @@ export interface QueuedJobBlock {
   providerId?: string
   /** When it joined the queue, so the panel can show how long it has waited. */
   queuedAt: number
+  /**
+   * The contract input this job will be built from, as text.
+   *
+   * Not the prompt: a queued job has not run `buildRequest` yet, so no prompt
+   * exists to show. This is the material the prompt will be assembled from,
+   * which is the honest answer to "what is this job about" before it starts.
+   */
+  inputPreview?: string
+}
+
+/** Options a caller can attach when enqueuing. */
+export interface EnqueueOptionsBlock<T> {
+  taskId?: string
+  model?: string
+  providerId?: string
+  inputPreview?: string
+  /**
+   * Value to settle with if the job is cancelled while still waiting.
+   *
+   * Callers supply this so cancellation stays inside their own result type — a
+   * rejected promise here would surface as a thrown error at call sites that
+   * only ever check an `ok` flag, turning a deliberate cancel into an unhandled
+   * rejection.
+   */
+  onCancel?: () => T
 }
 
 interface QueueEntry<T> {
@@ -26,6 +51,7 @@ interface QueueEntry<T> {
   run: () => Promise<T>
   resolve: (v: T) => void
   reject: (e: unknown) => void
+  onCancel?: () => T
 }
 
 let inFlight = 0
@@ -64,22 +90,46 @@ function pump(): void {
 export function enqueueIntelligenceJobBlock<T>(
   key: string,
   run: () => Promise<T>,
-  meta?: Omit<QueuedJobBlock, 'key' | 'queuedAt'>,
+  options?: EnqueueOptionsBlock<T>,
 ): Promise<T> {
   const existing = dedup.get(key) as Promise<T> | undefined
   if (existing) return existing
   const p = new Promise<T>((resolve, reject) => {
     pending.push({
       key,
-      meta: { key, taskId: meta?.taskId ?? key.split(':')[0], ...meta, queuedAt: Date.now() },
+      meta: {
+        key,
+        taskId: options?.taskId ?? key.split(':')[0],
+        model: options?.model,
+        providerId: options?.providerId,
+        inputPreview: options?.inputPreview,
+        queuedAt: Date.now(),
+      },
       run,
       resolve: resolve as (v: unknown) => void,
       reject,
+      onCancel: options?.onCancel as (() => unknown) | undefined,
     } as QueueEntry<unknown>)
   })
   dedup.set(key, p as Promise<unknown>)
   pump()
   return p
+}
+
+/**
+ * Drop a job that is still waiting. Returns false if it already started — a
+ * running job is cancelled through `runningJobsBlock`, which can abort the
+ * request in flight; this one only ever removes something that has not begun.
+ */
+export function cancelQueuedIntelligenceJobBlock(key: string): boolean {
+  const index = pending.findIndex(e => e.key === key)
+  if (index < 0) return false
+  const [entry] = pending.splice(index, 1)
+  dedup.delete(entry.key)
+  if (entry.onCancel) entry.resolve(entry.onCancel())
+  else entry.reject(new DOMException('cancelled while queued', 'AbortError'))
+  emit()
+  return true
 }
 
 export function intelligenceQueueDepthBlock(): { inFlight: number; queued: number } {

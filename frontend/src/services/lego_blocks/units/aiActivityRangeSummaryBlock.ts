@@ -14,6 +14,23 @@ export interface RangeSummaryChainRef {
   chainKey: string
   date: string
   durationMs: number
+  /**
+   * False while the chain is still being worked in. Optional, defaulting to
+   * settled, so callers that cannot tell keep the old behaviour.
+   *
+   * Fingerprints skip everything mutable about a live chain, because duration
+   * grows with every message: a range containing the session you are in would
+   * otherwise invalidate its summary continuously and regenerate on each view.
+   * A live chain contributes its identity and nothing else, so the summary
+   * regenerates exactly once — when the session goes quiet.
+   */
+  settled?: boolean
+}
+
+/** Fingerprint material for one chain. Live chains contribute identity only. */
+function chainFingerprintPartBlock(c: RangeSummaryChainRef): string {
+  if (c.settled === false) return `${c.chainKey}:live`
+  return `${c.chainKey}:${c.durationMs}:${c.date}`
 }
 
 /** The provider tag we PERSIST. Distinct from the user's selection because
@@ -52,6 +69,20 @@ export interface ProjectRangeSummary {
    *  written before this field existed — treat missing as "unknown", which
    *  the orch handles by regenerating once. */
   contentFingerprint?: string
+  /**
+   * Fingerprint of the *digest text* this body was narrated from.
+   *
+   * The chain-set fingerprint above cannot see it: it hashes chain keys,
+   * durations and dates, all of which are identical whether the sessions
+   * beneath had digests or not. A summary narrated before its digests existed
+   * therefore matched forever and stayed thin until someone hit refresh by
+   * hand. Recording what was actually read is what lets it heal.
+   *
+   * Missing on records written before this field existed. Absent is treated as
+   * "unknown, don't touch it" rather than "stale" — invalidating every stored
+   * summary at once would mean regenerating the lot on a local model.
+   */
+  digestFingerprint?: string
   /** ISO timestamp the summary was produced. */
   generatedAt: string
 }
@@ -146,7 +177,7 @@ export function computeRangeInputHashBlock(parts: RangeInputHashParts): string {
   // switching Local → Claude regenerates rather than reusing a stale body.
   const chainPart = [...parts.chains]
     .sort((a, b) => (a.chainKey < b.chainKey ? -1 : 1))
-    .map(c => `${c.chainKey}:${c.durationMs}:${c.date}`)
+    .map(chainFingerprintPartBlock)
     .join('|')
   return hashStringBlock(`${parts.provider}#v${parts.promptVersion}#${chainPart}`)
 }
@@ -160,9 +191,33 @@ export function computeRangeContentFingerprintBlock(
 ): string {
   const chainPart = [...chains]
     .sort((a, b) => (a.chainKey < b.chainKey ? -1 : 1))
-    .map(c => `${c.chainKey}:${c.durationMs}:${c.date}`)
+    .map(chainFingerprintPartBlock)
     .join('|')
   return hashStringBlock(`content#${chainPart}`)
+}
+
+/** Hash of the digest material a range summary was narrated from. Empty
+ *  summaries hash differently from real ones, which is the entire point: it is
+ *  how "narrated before the digests existed" becomes a detectable state. */
+export function computeRangeDigestFingerprintBlock(
+  chains: ReadonlyArray<{
+    chainKey: string
+    title?: string
+    summary?: string
+    settled?: boolean
+  }>,
+): string {
+  const part = [...chains]
+    .sort((a, b) => (a.chainKey < b.chainKey ? -1 : 1))
+    // A live chain's digest is expected to change and is not worth regenerating
+    // the range for; it contributes identity only, same as above.
+    .map(c =>
+      c.settled === false
+        ? `${c.chainKey}:live`
+        : `${c.chainKey}:${(c.title ?? '').length}:${hashStringBlock(c.summary ?? '')}`,
+    )
+    .join('|')
+  return hashStringBlock(`digest#${part}`)
 }
 
 // ── Deterministic fallback body ────────────────────────────────────────
@@ -269,6 +324,9 @@ export function stringifyRangeSummaryMarkdownBlock(summary: ProjectRangeSummary)
     ...(summary.contentFingerprint
       ? [`contentFingerprint: ${summary.contentFingerprint}`]
       : []),
+    ...(summary.digestFingerprint
+      ? [`digestFingerprint: ${summary.digestFingerprint}`]
+      : []),
     `generatedAt: ${escapeYamlValue(summary.generatedAt)}`,
     '---',
     '',
@@ -315,6 +373,7 @@ export function parseRangeSummaryMarkdownBlock(raw: string): ProjectRangeSummary
     totalDurationMs: Number(fm.totalDurationMs) || 0,
     inputHash: fm.inputHash?.trim() ?? '',
     contentFingerprint: fm.contentFingerprint?.trim() || undefined,
+    digestFingerprint: fm.digestFingerprint?.trim() || undefined,
     generatedAt: unescapeYamlValue(fm.generatedAt ?? ''),
   }
 }

@@ -1,4 +1,5 @@
 import type { ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { isSettledBlock } from '@/services/lego_blocks/units/aiActivityLivenessBlock'
 import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
 import {
   getAiActivityAiTitlesEnabled,
@@ -96,6 +97,21 @@ export async function ensureSessionDigestOrch(
     generationTierRankBlock(existing.generator, existing.thinking) >= targetRank
   ) {
     return { digest: existing, isAi: true }
+  }
+
+  // Live sessions do not get a model call.
+  //
+  // The input hash covers message count and the window bounds, so the window
+  // you are working in invalidates itself on every message: each view
+  // regenerates,
+  // and the summary it produces describes a conversation that has not finished.
+  // Waiting for quiet turns an unbounded loop into one run. An explicit refresh
+  // still goes through — the guard is against a background loop deciding to do
+  // this, not against a person asking for it.
+  if (!options.refresh && !isSettledBlock(session.endedIso ?? session.startedIso)) {
+    return existing
+      ? { digest: existing, isAi: true }
+      : { digest: buildFallbackDigest(session, parts, nextHash), isAi: false }
   }
 
   if (!intelligenceCacheAvailableBlock()) {
@@ -357,13 +373,24 @@ function buildFallbackDigest(
  * so a new sitting joining a chain re-derived every sitting already summarized.
  * A session's content is fixed once it ends, so this hash settles and stays
  * settled.
+ *
+ * `mtime` used to be in here and is the same defect a third time. A rollout file
+ * splits into several windows, and every one of them carries the *file's* mtime
+ * (`mtime: env.mtime` in the parser) — a file-level value in a window-level
+ * hash. Appending one message to the window you are working in bumped the file
+ * mtime and therefore invalidated every earlier window in that file, so a single
+ * keystroke re-derived a morning's worth of finished sittings.
+ *
+ * What is left is window-scoped and content-derived: message count and the two
+ * window bounds all move when this window's content moves, and hold still when
+ * it does not. The narrow case this gives up is a rewrite that preserves the
+ * count and both bounds exactly; a forced refresh covers it.
  */
-function computeSessionInputHashBlock(session: ParsedSession): string {
+export function computeSessionInputHashBlock(session: ParsedSession): string {
   const material = [
     String(session.userMsgCount),
     session.startedIso,
     session.endedIso ?? session.startedIso,
-    String(session.mtime),
     sessionDigestContract.id,
     String(sessionDigestContract.promptVersion),
   ].join('\x00')

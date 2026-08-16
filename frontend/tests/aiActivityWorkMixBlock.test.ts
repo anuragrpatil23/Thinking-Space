@@ -81,13 +81,24 @@ describe('foldWorkMixDayBlock', () => {
     expect(cell.segments.find(s => s.kind === 'maintenance')!.topProject).toBe('Day job')
   })
 
-  it('counts unclassified projects as other, which draws nothing', () => {
+  // `other` draws its own neutral-green ring: without it, a day spent entirely
+  // on unclassified projects was indistinguishable from an idle day, and the
+  // only fix available to the user — go classify the project — was the one thing
+  // the cell never mentioned.
+  it('gives unclassified projects their own ring, apart from the classified kinds', () => {
     const cell = foldWorkMixDayBlock({ 'Some-Repo': 5 * H }, kinds, 4)
     expect(cell.hoursByKind.other).toBeCloseTo(5)
-    expect(cell.segments).toHaveLength(0)
+    expect(cell.segments.map(s => s.kind)).toEqual(['other'])
     expect(cell.fill).toBe(0)
-    // Still activity — a cell with no marks is not the same as a day with no data.
+    // Still activity — a cell with no thinking is not a day with no data.
     expect(cell.hasActivity).toBe(true)
+  })
+
+  // Unclassified time cannot back a claim about how hard measured work took the
+  // day, so it stays out of the day-level overshoot.
+  it('leaves unclassified hours out of the day-level overshoot', () => {
+    const cell = foldWorkMixDayBlock({ 'Some-Repo': 12 * H }, kinds, 4)
+    expect(cell.overshoot).toBe(0)
   })
 
   it('keeps conditioning out of the ring but still reports its hours', () => {

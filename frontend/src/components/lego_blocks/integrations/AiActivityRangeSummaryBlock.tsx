@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshCw, Loader2, Sparkles } from 'lucide-react'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
-import { loadChainDigestOrch } from '@/services/orchestrators/aiActivityChainDigestOrch'
+import { ensureChainDigestOrch } from '@/services/orchestrators/aiActivityChainDigestOrch'
+import { isSettledBlock } from '@/services/lego_blocks/units/aiActivityLivenessBlock'
 import { ensureRangeSummaryOrch } from '@/services/orchestrators/aiActivityRangeSummaryOrch'
 import type { AiActivityRangeSummaryProvider } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
@@ -61,14 +62,23 @@ export default function AiActivityRangeSummaryBlock({
       setLoading(true)
       setError(null)
       try {
-        // Best-effort digest lookup — chains without a stored digest still
-        // get summarized using their raw topic as the title. Reads are cache-
-        // first so this is cheap; missing digests never block.
+        // Digests first, and we wait for them.
+        //
+        // This used to be a read-only lookup with "missing digests never
+        // block" — which meant that whenever digests were actually being
+        // generated, the narration jumped the queue and summarised a range
+        // from titles alone while the digests it needed waited behind it. The
+        // cost of waiting is a slower first summary; the cost of not waiting
+        // was a summary built from nothing.
         const enriched = await Promise.all(
           chains.map(async chain => {
-            const digest = await loadChainDigestOrch(chain).catch(() => null)
+            const digest = (await ensureChainDigestOrch(chain).catch(() => null))?.digest ?? null
             return {
               chainKey: chain.key,
+              // Live chains are pinned out of the fingerprints, so the session
+              // you are working in does not regenerate this summary on every
+              // message.
+              settled: isSettledBlock(chain.endedIso ?? chain.startedIso),
               date: isoDayLocal(chain.startedIso),
               startedIso: chain.startedIso,
               endedIso: chain.endedIso,
@@ -109,11 +119,17 @@ export default function AiActivityRangeSummaryBlock({
           if (!cancelled) setSummary(null)
           return
         }
+        // Same rule as the manual path above: the digests the narration reads
+        // are generated first, not raced.
         const enriched = await Promise.all(
           chains.map(async chain => {
-            const digest = await loadChainDigestOrch(chain).catch(() => null)
+            const digest = (await ensureChainDigestOrch(chain).catch(() => null))?.digest ?? null
             return {
               chainKey: chain.key,
+              // Live chains are pinned out of the fingerprints, so the session
+              // you are working in does not regenerate this summary on every
+              // message.
+              settled: isSettledBlock(chain.endedIso ?? chain.startedIso),
               date: isoDayLocal(chain.startedIso),
               startedIso: chain.startedIso,
               endedIso: chain.endedIso,

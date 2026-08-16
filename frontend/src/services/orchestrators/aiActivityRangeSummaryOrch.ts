@@ -1,6 +1,7 @@
 import {
   buildFallbackBodyBlock,
   computeRangeContentFingerprintBlock,
+  computeRangeDigestFingerprintBlock,
   computeRangeInputHashBlock,
   rangeSummaryTierRankBlock,
   type ProjectRangeSummary,
@@ -111,6 +112,10 @@ function firstBulletOfSummary(summary: string): string {
 
 export interface RangeSummaryDigestInput {
   chainKey: string
+  /** False while this chain is still being worked in. Keeps a live session from
+   *  invalidating the range summary on every message — see
+   *  `chainFingerprintPartBlock`. */
+  settled?: boolean
   date: string
   startedIso: string
   endedIso: string
@@ -160,6 +165,7 @@ export async function ensureRangeSummaryOrch(
     chainKey: c.chainKey,
     date: c.date,
     durationMs: c.durationMs,
+    settled: c.settled,
   }))
   const inputHash = computeRangeInputHashBlock({
     chains: chainRefs,
@@ -167,6 +173,7 @@ export async function ensureRangeSummaryOrch(
     provider,
   })
   const contentFingerprint = computeRangeContentFingerprintBlock(chainRefs)
+  const digestFingerprint = computeRangeDigestFingerprintBlock(input.chains)
 
   if (!input.refresh) {
     const existing = await getProjectRangeSummaryBlock(
@@ -185,7 +192,16 @@ export async function ensureRangeSummaryOrch(
       const contentMatches =
         existing.contentFingerprint !== undefined &&
         existing.contentFingerprint === contentFingerprint
-      if (contentMatches && storedTier >= targetTier) return existing
+      // The digests underneath can change without the chain set changing at
+      // all — most often because the summary was narrated before they existed
+      // and read empty strings, which the chain-set fingerprint cannot see.
+      // Undefined means the record predates this field: treated as "unknown,
+      // leave it", so adding this check does not invalidate every stored
+      // summary at once.
+      const digestMatches =
+        existing.digestFingerprint === undefined ||
+        existing.digestFingerprint === digestFingerprint
+      if (contentMatches && digestMatches && storedTier >= targetTier) return existing
       // Backward-compat: pre-fingerprint records still match on the full
       // inputHash path, so a same-provider reload doesn't force a regen.
       if (!existing.contentFingerprint && existing.inputHash === inputHash) {
@@ -195,7 +211,12 @@ export async function ensureRangeSummaryOrch(
   }
 
   const generated = await generateForProvider(provider, input)
-  const persisted: ProjectRangeSummary = { ...generated, inputHash, contentFingerprint }
+  const persisted: ProjectRangeSummary = {
+    ...generated,
+    inputHash,
+    contentFingerprint,
+    digestFingerprint,
+  }
   await putProjectRangeSummaryBlock(persisted)
   return persisted
 }
@@ -583,6 +604,7 @@ export async function ensureDecomposedRangeSummaryOrch(
     chainKey: c.chainKey,
     date: c.date,
     durationMs: c.durationMs,
+    settled: c.settled,
   }))
   const contentFingerprint = computeRangeContentFingerprintBlock(chainRefs)
   const inputHash = computeRangeInputHashBlock({
@@ -712,6 +734,7 @@ async function ensureMonthThemeSummaryOrch(
     chainKey: c.chainKey,
     date: c.date,
     durationMs: c.durationMs,
+    settled: c.settled,
   }))
   const contentFingerprint = computeRangeContentFingerprintBlock(chainRefs)
   const inputHash = computeRangeInputHashBlock({

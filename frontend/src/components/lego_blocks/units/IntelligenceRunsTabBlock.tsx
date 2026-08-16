@@ -21,6 +21,7 @@ import {
   type TelemetryEntry,
 } from '@/services/lego_blocks/units/intelligence/intelligenceTelemetryBlock'
 import {
+  cancelQueuedIntelligenceJobBlock,
   listQueuedIntelligenceJobsBlock,
   subscribeIntelligenceQueueBlock,
   type QueuedJobBlock,
@@ -85,6 +86,7 @@ export default function IntelligenceRunsTabBlock() {
   const [running, setRunning] = useState<RunningJob[]>(() => listRunningJobsBlock())
   const [entries, setEntries] = useState<TelemetryEntry[]>(() => readTelemetryBlock())
   const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
   // Drives the elapsed counters. Only ticks while something is in flight, so an
   // idle panel costs nothing — see the energy contract.
   const [now, setNow] = useState(() => Date.now())
@@ -140,19 +142,53 @@ export default function IntelligenceRunsTabBlock() {
                 </button>
               </div>
             ))}
-            {queued.map((job, i) => (
-              <div
-                key={`q-${job.key}`}
-                className="flex items-center gap-2 rounded-md border border-dashed border-border/40 px-2.5 py-1.5 text-muted-foreground"
-              >
-                <span className="w-3 shrink-0 text-center tabular-nums opacity-60">{i + 1}</span>
-                <span className="font-medium text-foreground/70">{job.taskId}</span>
-                <span className="truncate opacity-70">{job.model ?? ''}</span>
-                <span className="ml-auto shrink-0 tabular-nums">
-                  waiting {fmtAgo(job.queuedAt, now)}
-                </span>
-              </div>
-            ))}
+            {queued.map((job, i) => {
+              const open = expandedKey === job.key
+              return (
+                <div
+                  key={`q-${job.key}`}
+                  className="rounded-md border border-dashed border-border/40 text-muted-foreground"
+                >
+                  <div className="flex items-center gap-2 px-2.5 py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedKey(open ? null : job.key)}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    >
+                      <span className="w-3 shrink-0 text-center tabular-nums opacity-60">{i + 1}</span>
+                      <span className="font-medium text-foreground/70">{job.taskId}</span>
+                      <span className="truncate opacity-70">{job.model ?? ''}</span>
+                      <span className="ml-auto shrink-0 tabular-nums">
+                        waiting {fmtAgo(job.queuedAt, now)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => cancelQueuedIntelligenceJobBlock(job.key)}
+                      title="Drop this job from the queue"
+                      className="shrink-0 rounded p-0.5 transition-colors hover:bg-muted/60 hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  {open && (
+                    <div className="space-y-2 px-2.5 pb-2.5">
+                      <div className="text-[10px] text-muted-foreground/70">
+                        {job.providerId ?? 'provider unknown'} · queued{' '}
+                        {new Date(job.queuedAt).toLocaleTimeString()}
+                      </div>
+                      <div className="break-all font-mono text-[10px] text-muted-foreground/60">
+                        {job.key}
+                      </div>
+                      {/* Deliberately labelled input, not prompt: a queued job
+                          has not built its request yet, and calling this "prompt"
+                          would be a claim about text that does not exist. */}
+                      <PayloadSection label="Input (prompt not built yet)" text={job.inputPreview} defaultOpen />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </section>

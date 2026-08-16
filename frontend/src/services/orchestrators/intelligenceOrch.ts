@@ -241,6 +241,19 @@ function extractJsonFromContent(content: string): unknown {
   return null
 }
 
+/** Contract input as readable text for the queue view, capped. Falls back to a
+ *  type name when the input will not serialise — a queued job with an
+ *  unprintable input is still worth listing. */
+function previewInputBlock(input: unknown): string | undefined {
+  try {
+    const text = typeof input === 'string' ? input : JSON.stringify(input, null, 2)
+    if (!text) return undefined
+    return text.length > 6_000 ? `${text.slice(0, 6_000)}\n… [truncated]` : text
+  } catch {
+    return `(unserialisable ${typeof input})`
+  }
+}
+
 export async function runContract<TInput, TOutputSchema extends SchemaNode>(
   contract: Contract<TInput, TOutputSchema>,
   input: TInput,
@@ -518,7 +531,20 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       cancel()
       disposeJob()
     }
-  }, { taskId: contract.id, model, providerId: provider.id }) as Promise<RunContractResult<Value>>
+  }, {
+    taskId: contract.id,
+    model,
+    providerId: provider.id,
+    // The input, not the prompt — the prompt does not exist until the job runs.
+    inputPreview: previewInputBlock(input),
+    // Cancelling a queued job settles as an ordinary aborted failure, so call
+    // sites that only check `ok` do not see a thrown error.
+    onCancel: () => failure(makeIntelligenceErrorBlock('aborted', 'Cancelled while queued', {
+      providerId: provider.id,
+      taskId: contract.id,
+      model,
+    })) as RunContractResult<Value>,
+  }) as Promise<RunContractResult<Value>>
 }
 
 export async function runWithTools(options: RunWithToolsOptions): Promise<RunContractResult<string>> {
