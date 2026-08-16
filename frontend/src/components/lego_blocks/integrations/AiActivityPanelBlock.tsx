@@ -16,6 +16,8 @@ import {
   type ReadingSourceFilter,
 } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import AiActivityHeatmapBlock from '@/components/lego_blocks/units/AiActivityHeatmapBlock'
+import { ensureSessionDigestOrch } from '@/services/orchestrators/aiActivitySessionDigestOrch'
+import type { ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import { useProjectsBlock } from '@/components/lego_blocks/hooks/shared/useProjectsBlock'
 import { buildProjectKindMapBlock } from '@/services/lego_blocks/units/projectKindBlock'
 import AiActivityDrillProjectTotalsBlock from '@/components/lego_blocks/units/AiActivityDrillProjectTotalsBlock'
@@ -229,6 +231,28 @@ export default function AiActivityPanelBlock({
       c => !(c.project.startsWith('[') && c.project.endsWith(']')),
     )
   }, [activity.chains, activeProject])
+
+  // Bulk digest regeneration for whatever the heatmap has selected.
+  //
+  // `refresh: true` is the point: it bypasses both the cache and the settle
+  // guard, which is right for a human asking for it and wrong for anything
+  // automatic. Sequential rather than fanned out — the queue caps at two
+  // anyway, and firing 200 promises at once only makes the queue view unreadable.
+  const [regenState, setRegenState] = useState<{ done: number; total: number } | null>(null)
+  async function regenerateDigestsForSelection() {
+    const sessions = drillChains.flatMap(c => c.sessions)
+    if (sessions.length === 0) return
+    setRegenState({ done: 0, total: sessions.length })
+    try {
+      for (let i = 0; i < sessions.length; i++) {
+        await ensureSessionDigestOrch(sessions[i], { refresh: true }).catch(() => null)
+        setRegenState({ done: i + 1, total: sessions.length })
+      }
+      activity.refresh()
+    } finally {
+      setRegenState(null)
+    }
+  }
 
   function clearDrill() {
     setSelectedDate(null)
@@ -475,7 +499,16 @@ export default function AiActivityPanelBlock({
                   selectedRange?.startIso === rangeStart &&
                   selectedRange?.endIso === rangeEnd
                 const label = activity.customRange?.label ?? activity.preset
+                const sessionCount = drillChains.reduce((n, c) => n + c.sessions.length, 0)
                 return [
+                  sessionCount > 0 && {
+                    key: 'regenerate-digests',
+                    label: regenState
+                      ? `Regenerating ${regenState.done}/${regenState.total}…`
+                      : `Regenerate ${sessionCount} session digest${sessionCount === 1 ? '' : 's'} for ${drillTitle}`,
+                    disabled: Boolean(regenState),
+                    onClick: () => { void regenerateDigestsForSelection() },
+                  },
                   {
                     key: 'select-all-days',
                     label: wholeRangeSelected
@@ -489,7 +522,7 @@ export default function AiActivityPanelBlock({
                       }
                     },
                   },
-                ]
+                ].filter(Boolean) as ContextMenuEntryBlock[]
               })()
             }
           />

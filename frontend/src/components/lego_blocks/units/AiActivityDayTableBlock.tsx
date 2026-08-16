@@ -802,8 +802,12 @@ function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
           regenerate
         </button>
       </div>
+      {/* The chain's own title, set apart from the body it heads. At the same
+          weight and size as the summary it read as the summary's first
+          sentence — which is exactly what it is not: it names the whole chain,
+          while the body below is one section per session. */}
       <div
-        className="whitespace-pre-wrap text-foreground/85"
+        className="whitespace-pre-wrap pb-0.5 text-[13px] font-semibold leading-snug text-foreground"
         style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
       >
         {title}
@@ -811,7 +815,7 @@ function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
       {summary && (
         <LightMarkdownTextBlock
           text={summary}
-          className="text-[11px] leading-relaxed text-foreground/70"
+          className="border-t border-border/40 pt-1.5 text-[11px] leading-relaxed text-foreground/70"
         />
       )}
       {isAi && (

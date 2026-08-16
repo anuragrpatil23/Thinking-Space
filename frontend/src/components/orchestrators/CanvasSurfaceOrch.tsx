@@ -163,6 +163,24 @@ export default function CanvasSurfaceOrch({
   const transformRef = useRef(transform)
   transformRef.current = transform
 
+  // Is the world mid-gesture?
+  //
+  // `will-change: transform` promotes the world to its own GPU layer, which is
+  // what keeps panning smooth — but a promoted layer is rastered once at scale 1
+  // and then stretched, so at 125% every glyph is a scaled bitmap rather than
+  // text rendered at that size. Dropping the hint once the gesture settles is
+  // what makes the browser re-raster at the real scale, and the text goes crisp.
+  //
+  // Debounced rather than tied to pointer state: zoom arrives as discrete wheel
+  // and pinch events with no natural end, so "the transform stopped changing" is
+  // the only honest signal that the gesture is over.
+  const [settling, setSettling] = useState(false)
+  useEffect(() => {
+    setSettling(true)
+    const t = window.setTimeout(() => setSettling(false), 180)
+    return () => window.clearTimeout(t)
+  }, [transform.x, transform.y, transform.scale])
+
   useEffect(() => {
     let cancelled = false
     void storage.read().then(saved => {
@@ -462,7 +480,7 @@ export default function CanvasSurfaceOrch({
           height: worldHeight,
           transform: `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${transform.scale})`,
           transformOrigin: '0 0',
-          willChange: 'transform',
+          willChange: settling ? 'transform' : 'auto',
           borderRadius: isIos ? 0 : 16,
           border: isIos ? 'none' : `1px solid ${theme.boardBorder}`,
           boxShadow: isIos ? 'none' : theme.boardGlow,
