@@ -29,10 +29,15 @@
 // always thinking, the outer ring always building, the inner ring always
 // maintenance — which is what keeps cells comparable down a column.
 //
-// Conditioning and `other` get no mark. Conditioning has no derivable input yet
-// (a book in a chair leaves no session), and rendering an always-empty band for
-// it would read as a measurement of zero rather than an absence of data. Both
-// are still summed here so the tooltip and day table can report them honestly.
+// `other` is the one exception to color-is-identity: its ring is a fixed
+// neutral green, drawn innermost, just outside the thinking disc. It has to be readable as a
+// different *kind* of statement — "there is time here nobody has classified" —
+// and a project color would file it as measured work.
+//
+// Conditioning gets no mark. It has no derivable input yet (a book in a chair
+// leaves no session), and rendering an always-empty band for it would read as a
+// measurement of zero rather than an absence of data. It is still summed here so
+// the tooltip and day table can report it honestly.
 
 import {
   normalizeProjectKindBlock,
@@ -43,10 +48,13 @@ import {
  *  than a mark. ~12% is about 6px of perimeter on an 18px cell. */
 export const WORK_MIX_MIN_ARC_BLOCK = 0.12
 
-/** Ring tone steps. One pool consumed is level 0; each further pool deepens the
- *  ring instead of drawing a second lap, which is sub-perceptual at cell size.
- *  The detail view is where a true lapping ring belongs. */
+/** Ring tone steps: how many whole pools past the first this kind consumed. */
 export type WorkMixOvershootBlock = 0 | 1 | 2
+
+/** Laps drawn past the first. Three total (one pool, two pools, three) is where
+ *  a 26px ring stops being able to say anything new; past that the arc is
+ *  saturated and the tooltip carries the number. */
+export const WORK_MIX_MAX_LAPS_BLOCK = 3
 
 export interface WorkMixSegmentBlock {
   kind: Exclude<ProjectKindBlock, ''>
@@ -54,6 +62,10 @@ export interface WorkMixSegmentBlock {
   sweep: number
   /** Unfloored hours, for the tooltip — the arc lies a little, this does not. */
   hours: number
+  /** Hours ÷ pool, unclamped. The renderer needs the whole number, not the
+   *  clamped `sweep`: 5h and 12h of building both close the ring, and without
+   *  this they render identically. */
+  raw: number
   /** How far past one pool this kind went, per ring. */
   overshoot: WorkMixOvershootBlock
   /**
@@ -73,7 +85,11 @@ export interface WorkMixCellBlock {
   /** True when thinking hours exceeded the pool — the fill is at its ceiling
    *  and the excess would otherwise be invisible. */
   fillOvershoot: boolean
-  /** Ring arcs in fixed order (building, then maintenance), starting at 12
+  /** Thinking hours ÷ pool, unclamped — the disc's equivalent of
+   *  `WorkMixSegmentBlock.raw`, so a double pool of thinking can read as more
+   *  than a single one. */
+  fillRawRatio: number
+  /** Ring arcs in fixed order (building, maintenance, then other), starting at 12
    *  o'clock. Fixed order because a color must mean the same thing in the same
    *  place on every cell or scanning a month stops working. */
   segments: WorkMixSegmentBlock[]
@@ -89,8 +105,15 @@ export interface WorkMixCellBlock {
 
 const MS_PER_HOUR = 3_600_000
 
-/** Kinds that draw an arc, in the order they are drawn. */
-const RING_KINDS_BLOCK: Exclude<ProjectKindBlock, ''>[] = ['building', 'maintenance']
+/** Kinds that draw an arc, outermost first. `other` is innermost: it is the
+ *  residual bucket, and it draws in a neutral green rather than a project color
+ *  so it reads as "not classified yet" instead of as a third kind of work. */
+const RING_KINDS_BLOCK: Exclude<ProjectKindBlock, ''>[] = ['building', 'maintenance', 'other']
+
+/** The kinds that count as *classified* non-thinking work. `other` is excluded:
+ *  the day-level overshoot is a claim about how hard measured work took the day,
+ *  and unclassified time cannot support that claim. */
+const CLASSIFIED_RING_KINDS_BLOCK: Exclude<ProjectKindBlock, ''>[] = ['building', 'maintenance']
 
 function emptyHoursBlock(): Record<Exclude<ProjectKindBlock, ''>, number> {
   return { thinking: 0, building: 0, maintenance: 0, conditioning: 0, other: 0 }
@@ -137,8 +160,11 @@ export function foldWorkMixDayBlock(
   // is also the more honest one: two kinds are not competing for one circle,
   // they are each answering "how much of a slot did this take".
   //
-  // `other` gets no ring on purpose: it is the residual bucket, so drawing it
-  // would turn "not classified yet" into "the day was consumed".
+  // `other` does get a ring, but a neutral green one drawn outside the project
+  // colors. Without it an unclassified-heavy day looks exactly like an idle day,
+  // and the only fix — go classify the project — is the one thing the cell never
+  // mentions. The neutral tone is what keeps it from reading as "the day was
+  // consumed": it says unmeasured, not spent.
   const segments: WorkMixSegmentBlock[] = []
   for (const kind of RING_KINDS_BLOCK) {
     const hours = hoursByKind[kind]
@@ -151,6 +177,7 @@ export function foldWorkMixDayBlock(
       // the surplus is carried by `overshoot`.
       sweep: Math.min(1, Math.max(WORK_MIX_MIN_ARC_BLOCK, raw)),
       hours,
+      raw,
       overshoot: raw > 2 ? 2 : raw > 1 ? 1 : 0,
       topProject: topByKind[kind]?.name ?? null,
     })
@@ -159,11 +186,13 @@ export function foldWorkMixDayBlock(
   // Kept for the cell as a whole: how hard the day was taken by everything that
   // was not thinking. Drives nothing on its own now that rings carry their own
   // overshoot, but the day table reports it.
-  const ringRaw = RING_KINDS_BLOCK.reduce((sum, kind) => sum + hoursByKind[kind], 0) / pool
+  const ringRaw =
+    CLASSIFIED_RING_KINDS_BLOCK.reduce((sum, kind) => sum + hoursByKind[kind], 0) / pool
 
   return {
     fill: Math.min(1, fillRaw),
     fillOvershoot: fillRaw > 1,
+    fillRawRatio: fillRaw,
     segments,
     overshoot: ringRaw > 2 ? 2 : ringRaw > 1 ? 1 : 0,
     hoursByKind,

@@ -47,8 +47,9 @@ export default function AiActivityWorkMixSettingsBlock() {
             The heatmap becomes activity rings and answers a different question: did
             thinking happen, and if not, what took the day. The centre is thinking, the
             outer ring building, the inner ring maintenance — each in its project's own
-            color. Set each project's kind under <em>Settings ▸ Projects</em>;
-            unclassified projects draw nothing.
+            color. Set each project's kind under <em>Settings ▸ Projects</em>; time on
+            projects you haven't classified draws a green track just inside the rest, so it
+            is visible without being counted as measured work.
           </>
         }
         control={

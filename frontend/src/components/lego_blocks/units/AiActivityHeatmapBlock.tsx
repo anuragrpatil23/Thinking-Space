@@ -19,6 +19,7 @@ import {
 } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   foldWorkMixDayBlock,
+  WORK_MIX_MAX_LAPS_BLOCK,
   type WorkMixCellBlock,
 } from '@/services/lego_blocks/units/aiActivityWorkMixBlock'
 import {
@@ -62,13 +63,28 @@ const SET_CELL_GAP = 3
 // hittable, the inner ring still reads, and the centre disc stays the largest
 // single mark — which is right, since the centre is the thing that matters.
 const WORK_MIX_CELL_PX = 26
-const WORK_MIX_STROKE_PX = 3.5
-/** Gap between the two rings, so they read as separate tracks rather than a
- *  thick band. */
-const WORK_MIX_RING_GAP_PX = 1.5
+/** Hairline rings. Position, not weight, is what separates the two tracks, so
+ *  the stroke only has to be thick enough to survive a non-retina pixel grid. */
+const WORK_MIX_STROKE_PX = 1.5
+/** Rings sit flush against each other, and the centre disc sits flush against
+ *  the inner ring: the cell reads as one solid mark banded at its rim, not as a
+ *  stack of separate tracks with air between them. */
+const WORK_MIX_RING_GAP_PX = 0
 /** Outermost first. Fixed, because position is what carries the kind once color
  *  has been handed over to project identity. */
-const RING_KIND_ORDER = ['building', 'maintenance'] as const
+const RING_KIND_ORDER = ['building', 'maintenance', 'other'] as const
+/** How much of a lap is spent easing into the tone underneath, at each end.
+ *  ~1/8 of the circle: long enough to read as a gradient, short enough that the
+ *  lap still has a stretch at full tone in the middle. */
+const WORK_MIX_LAP_FADE = 0.13
+/** Arc segments a lap is cut into to fake that gradient. SVG has no conic
+ *  gradient, so the ramp is stepped; 10 steps is where the banding stops being
+ *  visible on a 26px circle, and only rings that actually lapped pay for it. */
+const WORK_MIX_LAP_FADE_STEPS = 10
+/** The unclassified track's tone, worn by the innermost ring. Fixed and neutral
+ *  — never a project color — because it is a statement about missing metadata,
+ *  not about work. */
+const WORK_MIX_OTHER_CHANNELS = { light: '16,185,129', dark: '52,211,153' }
 
 /** Keep only the selected project's hours, so a chip click narrows the rings
  *  instead of leaving them unchanged. Null filter = the whole day. */
@@ -176,7 +192,8 @@ export default function AiActivityHeatmapBlock({
   const showDayNumbers = setMode || calendarMode
   // Work-mix needs the big geometry unconditionally: at 12px a 2px ring leaves
   // an 8px core, so the fill — the mark that matters most — would get the least
-  // area. Day numbers stay opt-in; a banded ring under a digit is busy enough.
+  // area. Day numbers stay opt-in, but when they are on they show here too —
+  // dates are how you find a day, and the rings do not replace that.
   const bigCells = showDayNumbers || workMixMode
 
   // Rest-day predicate: true when this date falls in the *current calendar
@@ -442,32 +459,94 @@ export default function AiActivityHeatmapBlock({
     return m ? `${m[1]},${m[2]},${m[3]}` : '148,163,184'
   }
 
+  /** Warning hue for laps past a closed ring. Orange because it is the one thing
+   *  on this grid that no project palette entry lands on, so a trace of it reads
+   *  as a *state* rather than as a different project. */
+  const WORK_MIX_LAP_HUE = isDark ? [251, 146, 60] : [234, 100, 18]
+
+  /** Tint a color toward the warning hue by `amount` (0–1). Kept small on
+   *  purpose: enough to see that the ring came round again, not enough to lose
+   *  which project it belongs to. */
+  function warmBy(channels: number[], amount: number): number[] {
+    if (amount <= 0) return channels
+    return channels.map((c, i) =>
+      Math.round(Math.max(0, Math.min(255, c + (WORK_MIX_LAP_HUE[i] - c) * amount))),
+    )
+  }
+
   /** Centre disc: thinking against the pool, wearing the color of the project
    *  that did the thinking. Building and maintenance contribute nothing here —
    *  they have their own rings — so a day of pure building leaves the centre
    *  empty, which is the honest answer and the state worth spotting. */
   function workMixFill(mix: WorkMixCellBlock): string {
-    if (mix.fill <= 0) return 'rgba(148,163,184,0.10)'
-    const alpha = isDark ? 0.32 + mix.fill * 0.6 : 0.18 + mix.fill * 0.65
-    return `rgba(${projectChannels(mix.thinkingProject)},${alpha.toFixed(3)})`
+    if (mix.fill <= 0) return 'transparent'
+    // Floor stays low: the disc now fills most of the cell, and the high floor a
+    // small mark needed would make a thin day read as a heavy one.
+    const alpha = isDark ? 0.28 + mix.fill * 0.6 : 0.2 + mix.fill * 0.65
+    // Past one pool the alpha ramp is spent, so extra pools drive the disc more
+    // vivid the way extra laps do a ring — otherwise 5h and 12h of thinking are
+    // the same wash.
+    const extra = Math.min(WORK_MIX_MAX_LAPS_BLOCK - 1, Math.max(0, mix.fillRawRatio - 1))
+    const channels = projectChannels(mix.thinkingProject).split(',').map(Number)
+    const warmed = warmBy(channels, (extra / (WORK_MIX_MAX_LAPS_BLOCK - 1)) * 0.28)
+    return `rgba(${warmed.join(',')},${alpha.toFixed(3)})`
   }
 
-  /** Ring stroke, deepened by that ring's own overshoot. Deliberately deepened
-   *  rather than brightened: a ring past a full pool is the worst cell in the
-   *  view, and the Apple-watch instinct to celebrate a closed ring would
-   *  congratulate the user for exactly what this view exists to catch. */
-  function workMixRingColor(project: string | null, overshoot: number): string {
-    const alpha = overshoot >= 2 ? 1 : overshoot === 1 ? 0.9 : 0.75
-    return `rgba(${projectChannels(project)},${alpha})`
+  function ringChannels(
+    kind: (typeof RING_KIND_ORDER)[number],
+    project: string | null,
+  ): string {
+    // The unclassified track opts out of project identity by design; see
+    // WORK_MIX_OTHER_CHANNELS.
+    if (kind !== 'other') return projectChannels(project)
+    return isDark ? WORK_MIX_OTHER_CHANNELS.dark : WORK_MIX_OTHER_CHANNELS.light
+  }
+
+  /** Tone for one lap of a ring. The first pool is the project's own color; once
+   *  the ring closes, each further pool comes round at full opacity with a trace
+   *  of orange worked into it.
+   *
+   *  An earlier cut deepened toward near-black instead. It did separate 5h from
+   *  12h, by destroying the project color that is the ring's whole identity and
+   *  turning a busy month into a grid of black circles. A small hue shift is the
+   *  cheaper signal: the project stays recognisable, and the warmth only ever
+   *  appears on a ring that already went past a full day. */
+  function workMixLapTone(
+    kind: (typeof RING_KIND_ORDER)[number],
+    project: string | null,
+    lap: number,
+  ): { rgb: number[]; alpha: number } {
+    const channels = ringChannels(kind, project).split(',').map(Number)
+    return {
+      rgb: warmBy(channels, lap <= 0 ? 0 : lap === 1 ? 0.22 : 0.45),
+      alpha: lap <= 0 ? 0.6 : lap === 1 ? 0.9 : 1,
+    }
+  }
+
+  type WorkMixTone = { rgb: number[]; alpha: number }
+
+  function toneCss(tone: WorkMixTone): string {
+    return `rgba(${tone.rgb.map(Math.round).join(',')},${tone.alpha.toFixed(3)})`
+  }
+
+  function blendTones(from: WorkMixTone, to: WorkMixTone, t: number): WorkMixTone {
+    return {
+      rgb: from.rgb.map((c, i) => c + (to.rgb[i] - c) * t),
+      alpha: from.alpha + (to.alpha - from.alpha) * t,
+    }
   }
 
   /**
    * Activity rings for one day: a centre disc for thinking, then one concentric
    * ring per competing kind, outermost first.
    *
-   * Every ring draws its faint track whether or not it has an arc — that is what
-   * makes an empty ring read as "none of this happened" rather than as missing
-   * data, and it is what gives the grid its shape when a day is quiet.
+   * Only marks that carry information are drawn. An earlier cut gave every ring
+   * a permanent grey track so an empty ring would read as "none of this
+   * happened" — which works on a watch face showing one stack, and fails badly
+   * across 371 cells, where 700-odd tracks become the loudest thing on screen
+   * while saying nothing. Emptiness is legible here because its neighbours are
+   * not empty; the grid supplies the baseline that a single stack would need a
+   * track for.
    */
   function renderWorkMixRings(mix: WorkMixCellBlock) {
     const c = cellPx / 2
@@ -475,11 +554,14 @@ export default function AiActivityHeatmapBlock({
       const radius =
         c - WORK_MIX_STROKE_PX / 2 - index * (WORK_MIX_STROKE_PX + WORK_MIX_RING_GAP_PX)
       return { kind, radius, segment: mix.segments.find(s => s.kind === kind) ?? null }
-    }).filter(ring => ring.radius > WORK_MIX_STROKE_PX)
+    }).filter(ring => ring.radius > WORK_MIX_STROKE_PX && ring.segment)
 
-    const innermost = rings.length
-      ? rings[rings.length - 1].radius - WORK_MIX_STROKE_PX / 2 - WORK_MIX_RING_GAP_PX
-      : c
+    const innerRadius =
+      c -
+      WORK_MIX_STROKE_PX / 2 -
+      (RING_KIND_ORDER.length - 1) * (WORK_MIX_STROKE_PX + WORK_MIX_RING_GAP_PX) -
+      WORK_MIX_STROKE_PX / 2 -
+      WORK_MIX_RING_GAP_PX
     return (
       <svg
         aria-hidden
@@ -488,37 +570,87 @@ export default function AiActivityHeatmapBlock({
         height={cellPx}
         viewBox={`0 0 ${cellPx} ${cellPx}`}
       >
-        <circle cx={c} cy={c} r={Math.max(1, innermost)} fill={workMixFill(mix)} />
-        {rings.map(({ kind, radius, segment }) => {
+        {/* Quiet baseline: one small dot marks a day with no thinking, so an
+            empty cell still reads as a day rather than as a hole in the grid. */}
+        {mix.fill <= 0 ? (
+          <circle cx={c} cy={c} r={1.5} fill="rgba(148,163,184,0.35)" />
+        ) : (
+          <circle cx={c} cy={c} r={Math.max(2, innerRadius)} fill={workMixFill(mix)} />
+        )}
+        {rings.flatMap(({ kind, radius, segment }) => {
           const circumference = 2 * Math.PI * radius
-          return (
-            <g key={kind}>
-              <circle
-                cx={c}
-                cy={c}
-                r={radius}
-                fill="none"
-                stroke="rgba(148,163,184,0.18)"
-                strokeWidth={WORK_MIX_STROKE_PX}
-              />
-              {segment && (
-                <circle
-                  cx={c}
-                  cy={c}
-                  r={radius}
-                  fill="none"
-                  stroke={workMixRingColor(segment.topProject, segment.overshoot)}
-                  strokeWidth={WORK_MIX_STROKE_PX}
-                  strokeLinecap="round"
-                  strokeDasharray={circumference}
-                  strokeDashoffset={circumference * (1 - segment.sweep)}
-                  // Start at 12 o'clock and sweep clockwise, like every progress
-                  // ring people already know how to read.
-                  transform={`rotate(-90 ${c} ${c})`}
-                />
-              )}
-            </g>
-          )
+          // Laps. A closed ring is where a single-tone arc runs out of things to
+          // say — 5h and 12h of building both fill it — so each further pool
+          // repaints the ring from 12 o'clock in a warmer tone. The lap beneath
+          // stays visible, which is what makes "one and a bit pools" read
+          // differently from "three".
+          //
+          // Each lap is laid down as a run of short arcs rather than one, so its
+          // two ends can fade into the tone underneath instead of stopping at a
+          // hard seam. A butted lap edge reads as a rendering fault at this size;
+          // a gradient reads as the ring coming round again.
+          const arcs: Array<{
+            key: string
+            start: number
+            len: number
+            css: string
+            cap: 'round' | 'butt'
+          }> = []
+          for (let lap = 0; lap < WORK_MIX_MAX_LAPS_BLOCK; lap++) {
+            const portion = segment!.raw - lap
+            if (portion <= 0) break
+            const len = lap === 0 ? segment!.sweep : Math.min(1, portion)
+            const tone = workMixLapTone(kind, segment!.topProject, lap)
+            if (lap === 0) {
+              arcs.push({ key: `${kind}-0`, start: 0, len, css: toneCss(tone), cap: 'round' })
+              continue
+            }
+            // The lap is painted *over* the one below, so its ends have to fade
+            // to transparent, not to the under tone's color — blending toward
+            // that color would paint it a second time and leave the very seam the
+            // taper exists to remove.
+            const under = { rgb: workMixLapTone(kind, segment!.topProject, lap - 1).rgb, alpha: 0 }
+            // Taper length, capped so a short lap fades over its own length
+            // rather than never reaching full tone.
+            const fade = Math.min(WORK_MIX_LAP_FADE, len / 2)
+            const steps = WORK_MIX_LAP_FADE_STEPS
+            const stepLen = len / steps
+            for (let i = 0; i < steps; i++) {
+              const start = i * stepLen
+              const mid = start + stepLen / 2
+              // Full lap tone in the middle, easing to the tone below at both
+              // ends. Distance to the nearer end, normalised by the taper.
+              const edge = Math.min(mid, len - mid)
+              const t = fade <= 0 ? 1 : Math.min(1, edge / fade)
+              arcs.push({
+                key: `${kind}-${lap}-${i}`,
+                start,
+                // Overlap by a hair so adjacent steps leave no seam of their own.
+                len: stepLen + 0.004,
+                css: toneCss(blendTones(under, tone, t)),
+                cap: 'butt',
+              })
+            }
+          }
+          return arcs.map(({ key, start, len, css, cap }) => (
+            <circle
+              key={key}
+              cx={c}
+              cy={c}
+              r={radius}
+              fill="none"
+              stroke={css}
+              strokeWidth={WORK_MIX_STROKE_PX}
+              // Round on the base arc only; the taper steps butt together, where
+              // a round cap would bulge the stroke at every join.
+              strokeLinecap={cap}
+              strokeDasharray={`${circumference * len} ${circumference}`}
+              strokeDashoffset={-circumference * start}
+              // Start at 12 o'clock and sweep clockwise, like every progress
+              // ring people already know how to read.
+              transform={`rotate(-90 ${c} ${c})`}
+            />
+          ))
         })}
       </svg>
     )
@@ -710,18 +842,31 @@ export default function AiActivityHeatmapBlock({
                 ))}
                 {/* Current-set ring: soft outlined box wrapping whichever
                     cells the set falls on. Splits across columns when the
-                    set straddles a Sun→Mon boundary. */}
+                    set straddles a Sun→Mon boundary.
+                    In work-mix mode any outline here is a fourth concentric
+                    circle around cells that are already three rings deep, and it
+                    wins the read every time. So there the set is a soft filled
+                    halo *behind* the cells instead — same information, no new
+                    line competing with the rings. */}
                 {currentSetRects.map(rect => (
                   <div
                     key={`curset-${rect.col}-${rect.topRow}`}
                     aria-hidden
-                    className="pointer-events-none absolute rounded-[5px] bg-foreground/[0.04] ring-1 ring-foreground/40"
+                    className={cn(
+                      'pointer-events-none absolute',
+                      workMixMode
+                        ? 'bg-foreground/[0.07]'
+                        : 'rounded-[5px] bg-foreground/[0.04] ring-1 ring-foreground/40',
+                    )}
                     style={{
-                      left: rect.col * step - 2,
-                      top: rect.topRow * step - 2,
-                      width: cellPx + 4,
+                      left: rect.col * step - (workMixMode ? 3 : 2),
+                      top: rect.topRow * step - (workMixMode ? 3 : 2),
+                      width: cellPx + (workMixMode ? 6 : 4),
                       height:
-                        (rect.bottomRow - rect.topRow + 1) * step - cellGap + 4,
+                        (rect.bottomRow - rect.topRow + 1) * step -
+                        cellGap +
+                        (workMixMode ? 6 : 4),
+                      borderRadius: workMixMode ? (cellPx + 6) / 2 : undefined,
                     }}
                   />
                 ))}
@@ -734,7 +879,12 @@ export default function AiActivityHeatmapBlock({
                       const inActiveRange = isInActiveRange(cell.date)
                       const cellDate = new Date(cell.date + 'T00:00:00')
                       const dayNum = cellDate.getDate()
-                      const strongTint = cell.intensity > 0.55
+                      // What sits behind the day number: the intensity tint
+                      // normally, but in work-mix mode the thinking disc, which
+                      // now fills the cell and carries its own alpha ramp.
+                      const strongTint = workMixMode
+                        ? (cell.workMix?.fill ?? 0) > 0.5
+                        : cell.intensity > 0.55
                       // 3-day set markers are a *forward-looking* pacing aid.
                       // In past months they read as noise, so gate the divider
                       // + day-number tint to the current calendar month only.
@@ -744,8 +894,15 @@ export default function AiActivityHeatmapBlock({
                       // when next date is below in the same column, right edge
                       // when this cell is Sun (row 6) and the set boundary
                       // falls on the week-column seam.
+                      // Work-mix mode draws no dividers at all: the set halo
+                      // already says where the set is, and straight rules butted
+                      // against circles read as debris no matter how short they
+                      // are cut.
                       const isSetBoundary =
-                        setMode && isCurrentMonthCell && isLastDayOfSet(cell.date)
+                        setMode &&
+                        !workMixMode &&
+                        isCurrentMonthCell &&
+                        isLastDayOfSet(cell.date)
                       const drawBottomDivider =
                         isSetBoundary && rIdx < 6
                       const drawRightDivider = isSetBoundary && rIdx === 6
@@ -789,7 +946,12 @@ export default function AiActivityHeatmapBlock({
                           }
                         >
                           {cell.workMix && renderWorkMixRings(cell.workMix)}
-                          {showDayNumbers && dayNum}
+                          {/* Day number rides above the rings — the disc is a
+                              flat wash, so a digit on top of it costs the mark
+                              nothing and keeps the grid navigable by date. */}
+                          {showDayNumbers && (
+                            <span className="relative">{dayNum}</span>
+                          )}
                           {drawBottomDivider && (
                             <span
                               aria-hidden
@@ -871,7 +1033,7 @@ export default function AiActivityHeatmapBlock({
         ) : (
           <span className="text-muted-foreground/60">
             {workMixMode
-              ? 'Centre is thinking · outer ring building · inner ring maintenance · each against your daily pool, in its project’s color · Claude-tracked work only'
+              ? 'Centre is thinking · outer ring building · inner ring maintenance · each against your daily pool, in its project’s color · the green innermost track is time on projects you haven’t classified · Claude-tracked work only'
               : setMode
               ? 'Numbers are day-of-month · thin lines mark 3-day set boundaries · ringed cells are today’s set'
               : calendarMode
