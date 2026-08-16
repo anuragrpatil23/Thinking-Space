@@ -14,8 +14,22 @@ export interface RunningJob {
   model: string
   providerId: string
   startedAt: number
+  /** What the run is about, when the input said so — same fields the queue
+   *  rows carry, so a job reads the same before and after it starts. */
+  project?: string
+  dateIso?: string
   /** Aborts the underlying request; the run resolves as an `aborted` error. */
   cancel: () => void
+  /**
+   * The prompt actually sent, attached once it exists.
+   *
+   * A job registers before `buildRequest` runs — it has to, or a request that
+   * hangs during construction would be uncancellable — so this is empty for the
+   * first instant of a run and filled in immediately after. A run you are
+   * watching take ninety seconds is exactly when you want to see what it was
+   * asked, and waiting for it to finish to find out is the wrong order.
+   */
+  request?: { system?: string; user?: string }
 }
 
 const running = new Map<number, RunningJob>()
@@ -32,16 +46,29 @@ function emit(): void {
   }
 }
 
-/** Register an in-flight run. Returns a disposer the caller MUST invoke in a
- *  finally block, or the panel will show ghosts that can never be cancelled. */
-export function registerRunningJobBlock(job: Omit<RunningJob, 'id' | 'startedAt'>): () => void {
+/** Register an in-flight run. `dispose` MUST be invoked in a finally block, or
+ *  the panel will show ghosts that can never be cancelled. `setRequest` attaches
+ *  the prompt once it has been built. */
+export function registerRunningJobBlock(
+  job: Omit<RunningJob, 'id' | 'startedAt' | 'request'>,
+): { dispose: () => void; setRequest: (request: RunningJob['request']) => void } {
   const id = nextId
   nextId += 1
   running.set(id, { ...job, id, startedAt: Date.now() })
   emit()
-  return () => {
-    running.delete(id)
-    emit()
+  return {
+    dispose: () => {
+      running.delete(id)
+      emit()
+    },
+    setRequest: request => {
+      const current = running.get(id)
+      // Silently ignored when the job already finished — a late attach is not
+      // worth resurrecting a row for.
+      if (!current) return
+      running.set(id, { ...current, request })
+      emit()
+    },
   }
 }
 

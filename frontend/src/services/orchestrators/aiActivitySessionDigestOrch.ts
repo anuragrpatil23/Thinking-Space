@@ -114,6 +114,15 @@ export async function ensureSessionDigestOrch(
       : { digest: buildFallbackDigest(session, parts, nextHash), isAi: false }
   }
 
+  // Nothing to summarise, so nothing to ask. A session with no user message
+  // spends a model call to be told what its own message count already said, and
+  // the answer comes back as the one title the contract used to reject — so
+  // these looped: run, discard, re-queue, forever. The rule-based digest is the
+  // honest and free answer.
+  if (session.userMsgCount <= 0) {
+    return { digest: buildFallbackDigest(session, parts, nextHash), isAi: false }
+  }
+
   if (!intelligenceCacheAvailableBlock()) {
     return { digest: buildFallbackDigest(session, parts, nextHash), isAi: false }
   }

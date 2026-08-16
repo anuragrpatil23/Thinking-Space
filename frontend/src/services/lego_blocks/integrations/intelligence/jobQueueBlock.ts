@@ -26,6 +26,11 @@ export interface QueuedJobBlock {
    * which is the honest answer to "what is this job about" before it starts.
    */
   inputPreview?: string
+  /** What the job is about, when the input says so: the project it belongs to
+   *  and the day it covers. Twelve identical `session-digest` rows are a wall of
+   *  noise; twelve rows naming a project and a date are a work list. */
+  project?: string
+  dateIso?: string
 }
 
 /** Options a caller can attach when enqueuing. */
@@ -34,6 +39,8 @@ export interface EnqueueOptionsBlock<T> {
   model?: string
   providerId?: string
   inputPreview?: string
+  project?: string
+  dateIso?: string
   /**
    * Value to settle with if the job is cancelled while still waiting.
    *
@@ -103,6 +110,8 @@ export function enqueueIntelligenceJobBlock<T>(
         model: options?.model,
         providerId: options?.providerId,
         inputPreview: options?.inputPreview,
+        project: options?.project,
+        dateIso: options?.dateIso,
         queuedAt: Date.now(),
       },
       run,

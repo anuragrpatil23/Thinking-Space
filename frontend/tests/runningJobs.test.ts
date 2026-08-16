@@ -12,7 +12,8 @@ import {
 // half an hour.
 
 function job(taskId: string, cancel = vi.fn()) {
-  return { dispose: registerRunningJobBlock({ taskId, model: 'm', providerId: 'openai-compat', cancel }), cancel }
+  const job = registerRunningJobBlock({ taskId, model: 'm', providerId: 'openai-compat', cancel })
+  return { dispose: job.dispose, setRequest: job.setRequest, cancel }
 }
 
 describe('running jobs registry', () => {

@@ -37,6 +37,15 @@ const MAX_SUMMARY_CHARS = 1800
 
 const TITLE_LINE_RE = /^\s*(?:title\s*[:\-—]\s*)?(.+)$/i
 
+/** The title the system prompt explicitly asks for when a session has nothing
+ *  in it. It has to survive sanitizing: the prompt instructs the model to write
+ *  it, and the three-word minimum below was silently rejecting it — so the model
+ *  obeyed, the contract discarded the output as empty, nothing was persisted,
+ *  and the next view queued the same session again. A prompt that asks for a
+ *  string the parser refuses is an infinite loop with extra steps. */
+const EMPTY_SESSION_TITLE = '(empty session)'
+const EMPTY_SESSION_RE = /^\(?\s*empty session\s*\)?$/i
+
 function sanitizeTitle(raw: string, projectName: string): string | null {
   const lines = raw.split('\n').map(stripWrappersBlock).filter(Boolean)
   let pick: string | null = null
@@ -50,6 +59,11 @@ function sanitizeTitle(raw: string, projectName: string): string | null {
     line = stripWrappersBlock(line)
     if (!line) continue
     if (CHAIN_DIGEST_USER_QUOTE_LEAD_RE.test(line)) continue
+    // Checked before the word-count floor, which this deliberately short title
+    // cannot clear.
+    if (EMPTY_SESSION_RE.test(line.replace(/^title\s*[:\-—]\s*/i, '').trim())) {
+      return EMPTY_SESSION_TITLE
+    }
     if (line.split(/\s+/).length < 3) continue
     pick = line
     break

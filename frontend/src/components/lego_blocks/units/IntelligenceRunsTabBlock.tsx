@@ -42,6 +42,29 @@ function fmtAgo(since: number, now: number): string {
   return fmtMs(Math.max(0, now - since))
 }
 
+/** Short day label for a job's subject date, e.g. "Aug 16". Bare when the value
+ *  is not a parseable date — some contract inputs carry a range label rather
+ *  than a timestamp, and showing it as-is beats showing nothing. */
+function fmtSubjectDate(dateIso?: string): string | null {
+  if (!dateIso) return null
+  const d = new Date(dateIso)
+  if (Number.isNaN(d.getTime())) return dateIso
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+/** The "what is this about" line shared by queued and running rows. */
+function SubjectTag({ project, dateIso }: { project?: string; dateIso?: string }) {
+  const date = fmtSubjectDate(dateIso)
+  if (!project && !date) return null
+  return (
+    <span className="shrink-0 truncate text-[10px] text-muted-foreground/80">
+      {project}
+      {project && date ? ' · ' : ''}
+      {date}
+    </span>
+  )
+}
+
 const STATUS_TONE: Record<TelemetryEntry['status'], string> = {
   ok: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
   'cache-hit': 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
@@ -121,27 +144,57 @@ export default function IntelligenceRunsTabBlock() {
           </div>
         ) : (
           <div className="space-y-1">
-            {running.map(job => (
-              <div
-                key={`run-${job.id}`}
-                className="flex items-center gap-2 rounded-md border border-border/40 bg-card/40 px-2.5 py-1.5"
-              >
-                <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />
-                <span className="font-medium text-foreground/90">{job.taskId}</span>
-                <span className="truncate text-muted-foreground/70">{job.model}</span>
-                <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
-                  {fmtAgo(job.startedAt, now)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => cancelRunningJobBlock(job.id)}
-                  title="Cancel this run"
-                  className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            {running.map(job => {
+              const open = expandedKey === `run-${job.id}`
+              return (
+                <div
+                  key={`run-${job.id}`}
+                  className="rounded-md border border-border/40 bg-card/40"
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
+                  <div className="flex items-center gap-2 px-2.5 py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedKey(open ? null : `run-${job.id}`)}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    >
+                      <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />
+                      <span className="font-medium text-foreground/90">{job.taskId}</span>
+                      <SubjectTag project={job.project} dateIso={job.dateIso} />
+                      <span className="truncate text-muted-foreground/70">{job.model}</span>
+                      <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+                        {fmtAgo(job.startedAt, now)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => cancelRunningJobBlock(job.id)}
+                      title="Cancel this run"
+                      className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                  {open && (
+                    <div className="space-y-2 px-2.5 pb-2.5">
+                      {/* Empty only for the instant between the job registering
+                          and its request being built — the row exists first so a
+                          request that hangs during construction is still
+                          cancellable. */}
+                      {!job.request ? (
+                        <div className="text-[10px] text-muted-foreground/70">
+                          Building the prompt…
+                        </div>
+                      ) : (
+                        <>
+                          <PayloadSection label="System prompt" text={job.request.system} />
+                          <PayloadSection label="User prompt" text={job.request.user} defaultOpen />
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
             {queued.map((job, i) => {
               const open = expandedKey === job.key
               return (
@@ -157,6 +210,7 @@ export default function IntelligenceRunsTabBlock() {
                     >
                       <span className="w-3 shrink-0 text-center tabular-nums opacity-60">{i + 1}</span>
                       <span className="font-medium text-foreground/70">{job.taskId}</span>
+                      <SubjectTag project={job.project} dateIso={job.dateIso} />
                       <span className="truncate opacity-70">{job.model ?? ''}</span>
                       <span className="ml-auto shrink-0 tabular-nums">
                         waiting {fmtAgo(job.queuedAt, now)}

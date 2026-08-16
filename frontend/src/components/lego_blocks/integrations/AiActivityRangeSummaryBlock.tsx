@@ -70,8 +70,18 @@ export default function AiActivityRangeSummaryBlock({
         // from titles alone while the digests it needed waited behind it. The
         // cost of waiting is a slower first summary; the cost of not waiting
         // was a summary built from nothing.
+        // Newest first, all the way through.
+        //
+        // The queue is FIFO, so enqueue order is run order: the digests worth
+        // having soonest are for the days you were just working on, not six
+        // months of backlog first. The model sees the same order, which is also
+        // the order the summary reads in. Fingerprints sort their own input, so
+        // reordering here cannot invalidate a cached summary.
+        const byNewest = [...chains].sort(
+          (a, b) => Date.parse(b.startedIso) - Date.parse(a.startedIso),
+        )
         const enriched = await Promise.all(
-          chains.map(async chain => {
+          byNewest.map(async chain => {
             const digest = (await ensureChainDigestOrch(chain).catch(() => null))?.digest ?? null
             return {
               chainKey: chain.key,
@@ -121,8 +131,18 @@ export default function AiActivityRangeSummaryBlock({
         }
         // Same rule as the manual path above: the digests the narration reads
         // are generated first, not raced.
+        // Newest first, all the way through.
+        //
+        // The queue is FIFO, so enqueue order is run order: the digests worth
+        // having soonest are for the days you were just working on, not six
+        // months of backlog first. The model sees the same order, which is also
+        // the order the summary reads in. Fingerprints sort their own input, so
+        // reordering here cannot invalidate a cached summary.
+        const byNewest = [...chains].sort(
+          (a, b) => Date.parse(b.startedIso) - Date.parse(a.startedIso),
+        )
         const enriched = await Promise.all(
-          chains.map(async chain => {
+          byNewest.map(async chain => {
             const digest = (await ensureChainDigestOrch(chain).catch(() => null))?.digest ?? null
             return {
               chainKey: chain.key,

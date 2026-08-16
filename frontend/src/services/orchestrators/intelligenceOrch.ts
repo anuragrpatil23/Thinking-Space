@@ -241,6 +241,30 @@ function extractJsonFromContent(content: string): unknown {
   return null
 }
 
+/**
+ * Best-effort "what is this job about" from a contract input.
+ *
+ * Duck-typed on purpose. Every contract has its own input shape and none of them
+ * owe this function anything, so it reads the two fields that happen to be near
+ * universal across the AI-activity contracts and returns nothing when they are
+ * absent. A missing label costs a row some context; requiring every contract to
+ * declare one would cost every contract a field it does not need.
+ */
+function describeSubjectBlock(input: unknown): { project?: string; dateIso?: string } {
+  if (!input || typeof input !== 'object') return {}
+  const o = input as Record<string, unknown>
+  const project = typeof o.project === 'string' ? o.project : undefined
+  const dateIso =
+    typeof o.startedIso === 'string'
+      ? o.startedIso
+      : typeof o.date === 'string'
+        ? o.date
+        : typeof o.rangeStartDate === 'string'
+          ? o.rangeStartDate
+          : undefined
+  return { project, dateIso }
+}
+
 /** Contract input as readable text for the queue view, capped. Falls back to a
  *  type name when the input will not serialise — a queued job with an
  *  unprintable input is still worth listing. */
@@ -333,10 +357,11 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       else options.signal.addEventListener('abort', () => userCancel.abort(options.signal!.reason), { once: true })
     }
     const { signal, cancel } = makeTimeoutSignalBlock(userCancel.signal, timeoutMs)
-    const disposeJob = registerRunningJobBlock({
+    const job = registerRunningJobBlock({
       taskId: contract.id,
       model,
       providerId: provider.id,
+      ...describeSubjectBlock(input),
       cancel: () => userCancel.abort(new DOMException('cancelled by user', 'AbortError')),
     })
     try {
@@ -377,6 +402,9 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
         system: request.system,
         user: request.messages.map(m => m.content).join('\n\n'),
       }
+      // Attach it to the in-flight row too, so a run you are watching can be
+      // inspected while it runs rather than only after it lands.
+      job.setRequest(requestPayload)
       const overflow = checkContextFitBlock(profile, promptText, request.maxTokens ?? 0)
       if (overflow) {
         const overflowError = makeIntelligenceErrorBlock('context-overflow', overflow, {
@@ -529,7 +557,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       return failure(mapErrorBlock(err, provider.id, contract.id, model))
     } finally {
       cancel()
-      disposeJob()
+      job.dispose()
     }
   }, {
     taskId: contract.id,
@@ -537,6 +565,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
     providerId: provider.id,
     // The input, not the prompt — the prompt does not exist until the job runs.
     inputPreview: previewInputBlock(input),
+    ...describeSubjectBlock(input),
     // Cancelling a queued job settles as an ordinary aborted failure, so call
     // sites that only check `ok` do not see a thrown error.
     onCancel: () => failure(makeIntelligenceErrorBlock('aborted', 'Cancelled while queued', {
