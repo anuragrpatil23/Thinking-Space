@@ -5,23 +5,29 @@
 // expensive, so proportional encoding makes the loudest band the one that
 // matters least, and a stacked bar of five kinds is unreadable at 18px anyway.
 //
-// So the channels are asymmetric and independent:
+// So the channels are asymmetric and independent, arranged like activity rings:
 //
-//   fill  = thinking hours, against the user's own daily pool
-//   ring  = what took the rest, as arcs on the perimeter (zero interior cost)
+//   centre disc = thinking hours, against the user's own daily pool
+//   rings       = one concentric ring per competing kind, same pool
 //   (hatch stays what it already was — rest days.)
 //
 // That yields the four states the view exists to make scannable, of which the
 // third is the whole point:
 //
-//   solid, bare ring     — thinking day
-//   solid, full ring     — big day; building did not come out of thinking
-//   EMPTY, full ring     — busy all day, nothing landed
-//   empty, bare ring     — quiet
+//   solid centre, bare rings   — thinking day
+//   solid centre, full rings   — big day; building did not come out of thinking
+//   EMPTY centre, full rings   — busy all day, nothing landed
+//   empty centre, bare rings   — quiet
 //
-// Both marks share one denominator (the pool) deliberately. "Building took a
+// Every mark shares one denominator (the pool) deliberately. "Building took a
 // slot's worth" is only a statement about cost if a slot means the same thing
-// on both sides.
+// everywhere on the cell.
+//
+// Color is project identity, not kind: the panel already shows a project legend
+// above the grid, and a second color language on the same screen would need a
+// second legend to read. Kind is carried by *position* instead — the centre is
+// always thinking, the outer ring always building, the inner ring always
+// maintenance — which is what keeps cells comparable down a column.
 //
 // Conditioning and `other` get no mark. Conditioning has no derivable input yet
 // (a book in a chair leaves no session), and rendering an always-empty band for
@@ -48,6 +54,17 @@ export interface WorkMixSegmentBlock {
   sweep: number
   /** Unfloored hours, for the tooltip — the arc lies a little, this does not. */
   hours: number
+  /** How far past one pool this kind went, per ring. */
+  overshoot: WorkMixOvershootBlock
+  /**
+   * The project that contributed most of this kind's hours that day, so the arc
+   * can wear that project's own color and stay legible against the project
+   * legend that is already on screen.
+   *
+   * Position carries the kind (building first, maintenance second, always), so
+   * handing color over to project identity costs nothing that was being read.
+   */
+  topProject: string | null
 }
 
 export interface WorkMixCellBlock {
@@ -64,6 +81,8 @@ export interface WorkMixCellBlock {
   overshoot: WorkMixOvershootBlock
   /** Raw hours per kind, unrounded and unfloored — the honest numbers. */
   hoursByKind: Record<Exclude<ProjectKindBlock, ''>, number>
+  /** Biggest thinking project of the day, so the fill wears its color. */
+  thinkingProject: string | null
   /** Any hours at all, of any kind. Distinguishes "quiet" from "no data". */
   hasActivity: boolean
 }
@@ -93,6 +112,11 @@ export function foldWorkMixDayBlock(
   poolHours: number,
 ): WorkMixCellBlock {
   const hoursByKind = emptyHoursBlock()
+  // Biggest contributor per kind — the project whose color that kind's mark
+  // wears. Ties break toward whichever came first, which is arbitrary but
+  // stable for a given day.
+  const topByKind: Partial<Record<Exclude<ProjectKindBlock, ''>, { name: string; hours: number }>> =
+    {}
   let total = 0
 
   for (const [project, ms] of Object.entries(durationMsByProject ?? {})) {
@@ -100,31 +124,42 @@ export function foldWorkMixDayBlock(
     const hours = ms / MS_PER_HOUR
     const kind = normalizeProjectKindBlock(kindByProject[project]) || 'other'
     hoursByKind[kind] += hours
+    const leader = topByKind[kind]
+    if (!leader || hours > leader.hours) topByKind[kind] = { name: project, hours }
     total += hours
   }
 
   const pool = Number.isFinite(poolHours) && poolHours > 0 ? poolHours : 4
   const fillRaw = hoursByKind.thinking / pool
 
-  // The ring measures everything that competed with thinking against the same
-  // pool. `other` is excluded on purpose: it is the residual bucket, so letting
-  // it swell the ring would turn "I have not classified this yet" into "the day
-  // was consumed", which is exactly the false accusation to avoid.
-  const ringHours = RING_KINDS_BLOCK.reduce((sum, kind) => sum + hoursByKind[kind], 0)
-  const ringRaw = ringHours / pool
-
+  // One ring per kind, each measured against the same pool — concentric, not
+  // segments of a shared perimeter. This is the Apple-rings arrangement and it
+  // is also the more honest one: two kinds are not competing for one circle,
+  // they are each answering "how much of a slot did this take".
+  //
+  // `other` gets no ring on purpose: it is the residual bucket, so drawing it
+  // would turn "not classified yet" into "the day was consumed".
   const segments: WorkMixSegmentBlock[] = []
-  if (ringHours > 0) {
-    // Arcs are proportional within one lap. Past a full pool the ring is full
-    // and the surplus is carried by `overshoot`, not by more sweep.
-    const scale = ringRaw > 1 ? 1 / ringHours : 1 / pool
-    for (const kind of RING_KINDS_BLOCK) {
-      const hours = hoursByKind[kind]
-      if (hours <= 0) continue
-      segments.push({ kind, sweep: hours * scale, hours })
-    }
-    applyMinimumArcBlock(segments, Math.min(1, ringRaw))
+  for (const kind of RING_KINDS_BLOCK) {
+    const hours = hoursByKind[kind]
+    if (hours <= 0) continue
+    const raw = hours / pool
+    segments.push({
+      kind,
+      // Floored so half an hour still reads as a visible nick rather than a
+      // sub-pixel smudge, then clamped: past a full pool the ring is closed and
+      // the surplus is carried by `overshoot`.
+      sweep: Math.min(1, Math.max(WORK_MIX_MIN_ARC_BLOCK, raw)),
+      hours,
+      overshoot: raw > 2 ? 2 : raw > 1 ? 1 : 0,
+      topProject: topByKind[kind]?.name ?? null,
+    })
   }
+
+  // Kept for the cell as a whole: how hard the day was taken by everything that
+  // was not thinking. Drives nothing on its own now that rings carry their own
+  // overshoot, but the day table reports it.
+  const ringRaw = RING_KINDS_BLOCK.reduce((sum, kind) => sum + hoursByKind[kind], 0) / pool
 
   return {
     fill: Math.min(1, fillRaw),
@@ -132,67 +167,7 @@ export function foldWorkMixDayBlock(
     segments,
     overshoot: ringRaw > 2 ? 2 : ringRaw > 1 ? 1 : 0,
     hoursByKind,
+    thinkingProject: topByKind.thinking?.name ?? null,
     hasActivity: total > 0,
   }
-}
-
-/**
- * Raise any present-but-invisible arc to the minimum, taking the difference
- * from the largest segment so the ring's total sweep is preserved.
- *
- * Trading a little magnitude accuracy for presence is the right way round: the
- * arc was only ever ~4 steps of precision, and "maintenance happened at all" is
- * the signal, while the exact hours live in the tooltip.
- */
-function applyMinimumArcBlock(segments: WorkMixSegmentBlock[], totalSweep: number): void {
-  let debt = 0
-  for (const segment of segments) {
-    if (segment.sweep < WORK_MIX_MIN_ARC_BLOCK) {
-      debt += WORK_MIX_MIN_ARC_BLOCK - segment.sweep
-      segment.sweep = WORK_MIX_MIN_ARC_BLOCK
-    }
-  }
-  if (debt <= 0) return
-
-  // A lone arc keeps its floor outright: there is no sibling to rebalance
-  // against, and the ring's total is the segment itself, so preserving it would
-  // just undo the floor. Half an hour of building on an otherwise thinking day
-  // should show as a visible nick, not as nothing.
-  if (segments.length < 2) return
-
-  // With siblings, the ring's overall sweep is meaningful ("about a slot's
-  // worth"), so the floor is paid for out of the largest arc rather than added
-  // on top — unless the total is too small to seat every floor, in which case
-  // every present kind keeps its minimum and the ring reads as "a little of
-  // each", which is true.
-  if (totalSweep < WORK_MIX_MIN_ARC_BLOCK * segments.length) return
-
-  const donor = segments.reduce((a, b) => (a.sweep >= b.sweep ? a : b))
-  donor.sweep = Math.max(WORK_MIX_MIN_ARC_BLOCK, donor.sweep - debt)
-}
-
-/**
- * CSS `conic-gradient` stops for the ring, or '' when nothing should be drawn.
- *
- * Hard stops only — this is a segmented ring, not a blend, and an interpolated
- * edge at 2px reads as a smudge.
- */
-export function workMixRingGradientBlock(
-  cell: WorkMixCellBlock,
-  colorFor: (kind: Exclude<ProjectKindBlock, ''>) => string,
-): string {
-  if (cell.segments.length === 0) return ''
-  const stops: string[] = []
-  let cursor = 0
-  for (const segment of cell.segments) {
-    const start = cursor
-    cursor = Math.min(1, cursor + segment.sweep)
-    stops.push(`${colorFor(segment.kind)} ${pct(start)} ${pct(cursor)}`)
-  }
-  if (cursor < 1) stops.push(`transparent ${pct(cursor)} 100%`)
-  return `conic-gradient(${stops.join(', ')})`
-}
-
-function pct(fraction: number): string {
-  return `${(fraction * 100).toFixed(2)}%`
 }

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   WORK_MIX_MIN_ARC_BLOCK,
   foldWorkMixDayBlock,
-  workMixRingGradientBlock,
 } from '@/services/lego_blocks/units/aiActivityWorkMixBlock'
 import { buildProjectKindMapBlock } from '@/services/lego_blocks/units/projectKindBlock'
 
@@ -34,42 +33,52 @@ describe('foldWorkMixDayBlock', () => {
     expect(viaAlias.hoursByKind.building).toBeCloseTo(2)
   })
 
-  it('sweeps the ring proportionally within one pool', () => {
-    // 1h building + 1h maintenance against a 4h pool → quarter ring, split evenly.
+  it('gives each kind its own ring against the pool, not a shared perimeter', () => {
+    // 1h building and 1h maintenance against a 4h pool → each ring a quarter,
+    // independently. They do not divide one circle between them.
     const cell = foldWorkMixDayBlock({ 'Thinking-Space': H, 'Day job': H }, kinds, 4)
-    const total = cell.segments.reduce((n, s) => n + s.sweep, 0)
-    expect(total).toBeCloseTo(0.5)
     expect(cell.segments.map(s => s.kind)).toEqual(['building', 'maintenance'])
-    expect(cell.overshoot).toBe(0)
+    expect(cell.segments.map(s => s.sweep)).toEqual([0.25, 0.25])
   })
 
-  it('fills the ring and steps the tone once the pool is exceeded', () => {
+  it('closes a ring and steps its tone once that kind exceeds the pool', () => {
     const cell = foldWorkMixDayBlock({ 'Day job': 9 * H }, kinds, 4)
-    expect(cell.segments.reduce((n, s) => n + s.sweep, 0)).toBeCloseTo(1)
-    expect(cell.overshoot).toBe(2)
+    const maint = cell.segments.find(s => s.kind === 'maintenance')!
+    expect(maint.sweep).toBe(1)
+    expect(maint.overshoot).toBe(2)
   })
 
-  it('keeps a fixed segment order so cells stay comparable', () => {
+  it('tracks overshoot per ring, not per cell', () => {
+    // Maintenance blows past two pools; building is a modest half.
+    const cell = foldWorkMixDayBlock({ 'Day job': 9 * H, 'Thinking-Space': 2 * H }, kinds, 4)
+    expect(cell.segments.find(s => s.kind === 'building')!.overshoot).toBe(0)
+    expect(cell.segments.find(s => s.kind === 'maintenance')!.overshoot).toBe(2)
+  })
+
+  it('keeps a fixed ring order so cells stay comparable', () => {
     const maintHeavy = foldWorkMixDayBlock({ 'Day job': 3 * H, 'Thinking-Space': H }, kinds, 4)
     expect(maintHeavy.segments.map(s => s.kind)).toEqual(['building', 'maintenance'])
   })
 
-  it('floors a tiny arc so presence survives, paying for it from the largest', () => {
-    // 6 min of maintenance beside 3h of building: 0.025 of the circle is a
-    // smudge, so it is raised and the building arc gives up the difference.
+  it('floors a tiny arc so presence survives, leaving the hours honest', () => {
     const cell = foldWorkMixDayBlock({ 'Thinking-Space': 3 * H, 'Day job': 0.1 * H }, kinds, 4)
     const maint = cell.segments.find(s => s.kind === 'maintenance')!
     const build = cell.segments.find(s => s.kind === 'building')!
     expect(maint.sweep).toBeCloseTo(WORK_MIX_MIN_ARC_BLOCK)
     expect(maint.hours).toBeCloseTo(0.1) // the honest number is untouched
-    expect(build.sweep).toBeLessThan(0.75)
-    expect(build.sweep + maint.sweep).toBeCloseTo(0.775)
+    // Independent rings, so the floor costs its sibling nothing.
+    expect(build.sweep).toBeCloseTo(0.75)
   })
 
-  it('floors a lone arc outright, with nothing to rebalance against', () => {
-    const cell = foldWorkMixDayBlock({ 'Thinking-Space': 0.1 * H }, kinds, 4)
-    expect(cell.segments).toHaveLength(1)
-    expect(cell.segments[0].sweep).toBeCloseTo(WORK_MIX_MIN_ARC_BLOCK)
+  it('names the top project per kind so each mark can wear its color', () => {
+    const cell = foldWorkMixDayBlock(
+      { F9: 2 * H, 'Thinking-Space': 3 * H, 'thinking-space': H, 'Day job': H },
+      kinds,
+      4,
+    )
+    expect(cell.thinkingProject).toBe('F9')
+    expect(cell.segments.find(s => s.kind === 'building')!.topProject).toBe('Thinking-Space')
+    expect(cell.segments.find(s => s.kind === 'maintenance')!.topProject).toBe('Day job')
   })
 
   it('counts unclassified projects as other, which draws nothing', () => {
@@ -110,21 +119,3 @@ describe('foldWorkMixDayBlock', () => {
   })
 })
 
-describe('workMixRingGradientBlock', () => {
-  it('emits hard stops in segment order and closes with transparent', () => {
-    const cell = foldWorkMixDayBlock({ 'Thinking-Space': H, 'Day job': H }, kinds, 4)
-    const css = workMixRingGradientBlock(cell, kind => (kind === 'building' ? 'B' : 'M'))
-    expect(css).toBe('conic-gradient(B 0.00% 25.00%, M 25.00% 50.00%, transparent 50.00% 100%)')
-  })
-
-  it('omits the transparent tail on a full ring', () => {
-    const cell = foldWorkMixDayBlock({ 'Day job': 9 * H }, kinds, 4)
-    const css = workMixRingGradientBlock(cell, () => 'M')
-    expect(css).toBe('conic-gradient(M 0.00% 100.00%)')
-  })
-
-  it('returns nothing to draw when no ring kind was active', () => {
-    const cell = foldWorkMixDayBlock({ F9: 2 * H }, kinds, 4)
-    expect(workMixRingGradientBlock(cell, () => 'X')).toBe('')
-  })
-})

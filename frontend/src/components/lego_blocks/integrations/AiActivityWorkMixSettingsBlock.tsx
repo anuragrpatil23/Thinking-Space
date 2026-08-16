@@ -44,10 +44,11 @@ export default function AiActivityWorkMixSettingsBlock() {
         label="Color days by kind of work"
         description={
           <>
-            The heatmap stops shading by project and answers a different question: did
-            thinking happen, and if not, what took the day. Fill is thinking; the ring is
-            building and maintenance. Set each project's kind under{' '}
-            <em>Settings ▸ Projects</em> — unclassified projects draw nothing.
+            The heatmap becomes activity rings and answers a different question: did
+            thinking happen, and if not, what took the day. The centre is thinking, the
+            outer ring building, the inner ring maintenance — each in its project's own
+            color. Set each project's kind under <em>Settings ▸ Projects</em>;
+            unclassified projects draw nothing.
           </>
         }
         control={

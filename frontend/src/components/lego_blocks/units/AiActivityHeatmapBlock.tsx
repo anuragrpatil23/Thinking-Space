@@ -19,12 +19,10 @@ import {
 } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   foldWorkMixDayBlock,
-  workMixRingGradientBlock,
   type WorkMixCellBlock,
 } from '@/services/lego_blocks/units/aiActivityWorkMixBlock'
 import {
   projectKindLabelBlock,
-  projectKindStrokeBlock,
   type ProjectKindBlock,
 } from '@/services/lego_blocks/units/projectKindBlock'
 
@@ -59,9 +57,29 @@ const MAX_VISIBLE_WEEKS = 53
 // legibly inside each cell.
 const SET_CELL_PX = 18
 const SET_CELL_GAP = 3
-/** Work-mix ring thickness. 2px on an 18px cell leaves a 14px core, keeping the
- *  fill — the mark that matters most — the largest thing in the cell. */
-const WORK_MIX_RING_PX = 2
+// Activity-ring geometry. Two concentric rings plus a centre disc need more
+// room than the 18px set-mode cell: at 26px the outer ring is comfortably
+// hittable, the inner ring still reads, and the centre disc stays the largest
+// single mark — which is right, since the centre is the thing that matters.
+const WORK_MIX_CELL_PX = 26
+const WORK_MIX_STROKE_PX = 3.5
+/** Gap between the two rings, so they read as separate tracks rather than a
+ *  thick band. */
+const WORK_MIX_RING_GAP_PX = 1.5
+/** Outermost first. Fixed, because position is what carries the kind once color
+ *  has been handed over to project identity. */
+const RING_KIND_ORDER = ['building', 'maintenance'] as const
+
+/** Keep only the selected project's hours, so a chip click narrows the rings
+ *  instead of leaving them unchanged. Null filter = the whole day. */
+function narrowDurationsBlock(
+  durations: Record<string, number> | undefined,
+  project: string | null,
+): Record<string, number> | undefined {
+  if (!project || !durations) return durations
+  const hours = durations[project]
+  return hours == null ? {} : { [project]: hours }
+}
 
 function fmtHoursBlock(hours: number): string {
   if (hours <= 0) return '0h'
@@ -251,7 +269,14 @@ export default function AiActivityHeatmapBlock({
         // change when you page the grid — unlike `intensity`, these are
         // absolute against the user's pool, not relative to the range.
         workMix: workMixMode
-          ? foldWorkMixDayBlock(d?.byChainProjectDurationMs, kindByProject ?? {}, poolHours)
+          ? foldWorkMixDayBlock(
+              // A selected project chip narrows the rings to that project's own
+              // hours, so the question becomes "how much of my pool did this one
+              // thing take, day by day" instead of going inert in this mode.
+              narrowDurationsBlock(d?.byChainProjectDurationMs, filterProject),
+              kindByProject ?? {},
+              poolHours,
+            )
           : null,
       })
       cursor.setDate(cursor.getDate() + 1)
@@ -297,7 +322,11 @@ export default function AiActivityHeatmapBlock({
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const cellStepPx = bigCells ? SET_CELL_PX + SET_CELL_GAP : 15
+  const cellStepPx = workMixMode
+    ? WORK_MIX_CELL_PX + SET_CELL_GAP
+    : bigCells
+      ? SET_CELL_PX + SET_CELL_GAP
+      : 15
   const leftLabelPad = showDayNumbers ? 8 : 36 // weekday labels + margin, or just padding
   const fitVisibleWeeks =
     containerWidth > 0
@@ -405,37 +434,93 @@ export default function AiActivityHeatmapBlock({
     [workMixMode, hovered, kindByProject, poolHours],
   )
 
-  /** Work-mix fill: thinking against the pool. Building and maintenance
-   *  contribute nothing here — they live on the ring — so a day of pure
-   *  building renders as an empty cell, which is the honest answer. */
+  /** Project color as `r,g,b` channels, so callers can splice their own alpha.
+   *  Falls back to the neutral slate the empty cell already uses. */
+  function projectChannels(project: string | null): string {
+    const { stroke } = getProjectColor(project ?? 'LTM', isDark)
+    const m = stroke.match(/rgb\((\d+),(\d+),(\d+)\)/)
+    return m ? `${m[1]},${m[2]},${m[3]}` : '148,163,184'
+  }
+
+  /** Centre disc: thinking against the pool, wearing the color of the project
+   *  that did the thinking. Building and maintenance contribute nothing here —
+   *  they have their own rings — so a day of pure building leaves the centre
+   *  empty, which is the honest answer and the state worth spotting. */
   function workMixFill(mix: WorkMixCellBlock): string {
-    if (mix.fill <= 0) return 'rgba(148,163,184,0.08)'
-    const stroke = projectKindStrokeBlock('thinking', isDark)
-    const m = stroke.match(/rgb\((\d+),(\d+),(\d+)\)/)
-    if (!m) return stroke
+    if (mix.fill <= 0) return 'rgba(148,163,184,0.10)'
     const alpha = isDark ? 0.32 + mix.fill * 0.6 : 0.18 + mix.fill * 0.65
-    return `rgba(${m[1]},${m[2]},${m[3]},${alpha.toFixed(3)})`
+    return `rgba(${projectChannels(mix.thinkingProject)},${alpha.toFixed(3)})`
   }
 
-  /** Ring color per kind, deepened by overshoot. Deliberately deepened rather
-   *  than brightened: a ring that has gone past a full pool is the worst cell
-   *  in the view, and the Apple-watch instinct to celebrate a lap would
+  /** Ring stroke, deepened by that ring's own overshoot. Deliberately deepened
+   *  rather than brightened: a ring past a full pool is the worst cell in the
+   *  view, and the Apple-watch instinct to celebrate a closed ring would
    *  congratulate the user for exactly what this view exists to catch. */
-  function workMixRingColor(
-    kind: Parameters<typeof projectKindStrokeBlock>[0],
-    overshoot: number,
-  ): string {
-    const stroke = projectKindStrokeBlock(kind, isDark)
-    const m = stroke.match(/rgb\((\d+),(\d+),(\d+)\)/)
-    if (!m) return stroke
-    const alpha = overshoot >= 2 ? 1 : overshoot === 1 ? 0.88 : 0.7
-    return `rgba(${m[1]},${m[2]},${m[3]},${alpha})`
+  function workMixRingColor(project: string | null, overshoot: number): string {
+    const alpha = overshoot >= 2 ? 1 : overshoot === 1 ? 0.9 : 0.75
+    return `rgba(${projectChannels(project)},${alpha})`
   }
 
-  function ringGradient(cell: CellModel): string {
-    if (!cell.workMix) return ''
-    return workMixRingGradientBlock(cell.workMix, kind =>
-      workMixRingColor(kind, cell.workMix!.overshoot),
+  /**
+   * Activity rings for one day: a centre disc for thinking, then one concentric
+   * ring per competing kind, outermost first.
+   *
+   * Every ring draws its faint track whether or not it has an arc — that is what
+   * makes an empty ring read as "none of this happened" rather than as missing
+   * data, and it is what gives the grid its shape when a day is quiet.
+   */
+  function renderWorkMixRings(mix: WorkMixCellBlock) {
+    const c = cellPx / 2
+    const rings = RING_KIND_ORDER.map((kind, index) => {
+      const radius =
+        c - WORK_MIX_STROKE_PX / 2 - index * (WORK_MIX_STROKE_PX + WORK_MIX_RING_GAP_PX)
+      return { kind, radius, segment: mix.segments.find(s => s.kind === kind) ?? null }
+    }).filter(ring => ring.radius > WORK_MIX_STROKE_PX)
+
+    const innermost = rings.length
+      ? rings[rings.length - 1].radius - WORK_MIX_STROKE_PX / 2 - WORK_MIX_RING_GAP_PX
+      : c
+    return (
+      <svg
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        width={cellPx}
+        height={cellPx}
+        viewBox={`0 0 ${cellPx} ${cellPx}`}
+      >
+        <circle cx={c} cy={c} r={Math.max(1, innermost)} fill={workMixFill(mix)} />
+        {rings.map(({ kind, radius, segment }) => {
+          const circumference = 2 * Math.PI * radius
+          return (
+            <g key={kind}>
+              <circle
+                cx={c}
+                cy={c}
+                r={radius}
+                fill="none"
+                stroke="rgba(148,163,184,0.18)"
+                strokeWidth={WORK_MIX_STROKE_PX}
+              />
+              {segment && (
+                <circle
+                  cx={c}
+                  cy={c}
+                  r={radius}
+                  fill="none"
+                  stroke={workMixRingColor(segment.topProject, segment.overshoot)}
+                  strokeWidth={WORK_MIX_STROKE_PX}
+                  strokeLinecap="round"
+                  strokeDasharray={circumference}
+                  strokeDashoffset={circumference * (1 - segment.sweep)}
+                  // Start at 12 o'clock and sweep clockwise, like every progress
+                  // ring people already know how to read.
+                  transform={`rotate(-90 ${c} ${c})`}
+                />
+              )}
+            </g>
+          )
+        })}
+      </svg>
     )
   }
 
@@ -523,7 +608,7 @@ export default function AiActivityHeatmapBlock({
   }
 
   // Set-mode geometry: cells grow so day-of-month numbers stay legible.
-  const cellPx = bigCells ? SET_CELL_PX : 12
+  const cellPx = workMixMode ? WORK_MIX_CELL_PX : bigCells ? SET_CELL_PX : 12
   const cellGap = bigCells ? SET_CELL_GAP : 3
   const step = cellPx + cellGap
   const gridHeight = 7 * cellPx + 6 * cellGap
@@ -674,7 +759,11 @@ export default function AiActivityHeatmapBlock({
                           onMouseEnter={() => setHoverDate(cell.date)}
                           onMouseLeave={() => setHoverDate(d => (d === cell.date ? null : d))}
                           className={cn(
-                            'relative flex items-center justify-center rounded-[3px] transition-all',
+                            'relative flex items-center justify-center transition-all',
+                            // Work-mix cells are activity rings, so the cell is a
+                            // circle and the centre disc is drawn inside the SVG
+                            // rather than as the button's own background.
+                            workMixMode ? 'rounded-full' : 'rounded-[3px]',
                             showDayNumbers && 'font-medium tabular-nums text-[10px]',
                             showDayNumbers &&
                               (strongTint ? 'text-background/95' : 'text-foreground/75'),
@@ -685,7 +774,7 @@ export default function AiActivityHeatmapBlock({
                           style={{
                             height: cellPx,
                             width: cellPx,
-                            backgroundColor: cellBackground(cell),
+                            backgroundColor: workMixMode ? undefined : cellBackground(cell),
                             // Rest-day tell: soft diagonal stripes overlaid on
                             // the intensity color. Reads as "different rhythm"
                             // without changing what the color means.
@@ -699,26 +788,7 @@ export default function AiActivityHeatmapBlock({
                               : `${cell.date}: ${cell.msgs} messages${isRest ? ' (Claude Code reset day)' : ''}`
                           }
                         >
-                          {ringGradient(cell) && (
-                            <span
-                              aria-hidden
-                              className="pointer-events-none absolute inset-0 rounded-[3px]"
-                              style={{
-                                padding: WORK_MIX_RING_PX,
-                                background: ringGradient(cell),
-                                // Standard gradient-border knockout: paint the
-                                // conic sweep across the whole cell, then mask
-                                // out everything inside the padding box so only
-                                // the rim survives. Keeps the ring off the fill
-                                // entirely — the two channels never share pixels.
-                                WebkitMask:
-                                  'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-                                WebkitMaskComposite: 'xor',
-                                mask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-                                maskComposite: 'exclude',
-                              }}
-                            />
-                          )}
+                          {cell.workMix && renderWorkMixRings(cell.workMix)}
                           {showDayNumbers && dayNum}
                           {drawBottomDivider && (
                             <span
@@ -801,7 +871,7 @@ export default function AiActivityHeatmapBlock({
         ) : (
           <span className="text-muted-foreground/60">
             {workMixMode
-              ? 'Fill is thinking against your daily pool · the ring is what took the rest · Claude-tracked work only'
+              ? 'Centre is thinking · outer ring building · inner ring maintenance · each against your daily pool, in its project’s color · Claude-tracked work only'
               : setMode
               ? 'Numbers are day-of-month · thin lines mark 3-day set boundaries · ringed cells are today’s set'
               : calendarMode
