@@ -26,6 +26,11 @@ export interface TelemetryEntry {
    *  answer actually gets. */
   reasoning?: 'on' | 'off'
   error?: IntelligenceError
+  /** What the run was about, when the input said so. Same pair the queue and
+   *  in-flight rows carry, so one job reads the same at every stage of its life
+   *  instead of losing its identity the moment it finishes. */
+  project?: string
+  dateIso?: string
   /** Kept for the diagnostics "replay" button — trimmed to reasonable size. */
   requestPreview?: string
   responsePreview?: string

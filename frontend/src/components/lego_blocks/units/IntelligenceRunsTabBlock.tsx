@@ -281,6 +281,7 @@ export default function IntelligenceRunsTabBlock() {
                       {entry.status}
                     </span>
                     <span className="truncate font-medium text-foreground/90">{entry.taskId}</span>
+                    <SubjectTag project={entry.project} dateIso={entry.dateIso} />
                     <span className="truncate text-muted-foreground/70">{entry.model || entry.providerId}</span>
                     <span className="ml-auto flex shrink-0 items-center gap-2 text-[10px] tabular-nums text-muted-foreground">
                       {entry.reasoning === 'on' && (

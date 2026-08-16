@@ -308,6 +308,9 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
   }
   const profile = resolveModelProfileBlock(model, provider.id)
   const disableReasoning = resolveDisableReasoningBlock(profile, provider.id, options.scope)
+  // Same subject the queue and in-flight rows show, carried onto every
+  // telemetry record below so a job keeps its identity after it finishes.
+  const subject = describeSubjectBlock(input)
 
   // Cache lookup — key spans task + input + prompt version + model + reasoning
   // state so any of those changing invalidates automatically. Reasoning is in
@@ -323,6 +326,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
         const parsed = JSON.parse(cached.valueJson) as { value: Value; meta: Record<string, unknown> }
         recordTelemetryBlock({
           taskId: contract.id,
+          ...subject,
           providerId: cached.providerId,
           model: cached.model,
           latencyMs: 0,
@@ -361,7 +365,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       taskId: contract.id,
       model,
       providerId: provider.id,
-      ...describeSubjectBlock(input),
+      ...subject,
       cancel: () => userCancel.abort(new DOMException('cancelled by user', 'AbortError')),
     })
     try {
@@ -417,6 +421,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
         // looked like the task simply never ran.
         recordTelemetryBlock({
           taskId: contract.id,
+          ...subject,
           providerId: provider.id,
           model,
           latencyMs: 0,
@@ -437,6 +442,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       if (response.finishReason === 'length') {
         recordTelemetryBlock({
           taskId: contract.id,
+          ...subject,
           providerId: provider.id,
           model,
           latencyMs: response.latencyMs,
@@ -481,6 +487,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
           // the 400-char detail on the error is not enough of it.
           recordTelemetryBlock({
             taskId: contract.id,
+            ...subject,
             providerId: provider.id,
             model,
             latencyMs: response.latencyMs,
@@ -500,6 +507,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       if (!finalized) {
         recordTelemetryBlock({
           taskId: contract.id,
+          ...subject,
           providerId: provider.id,
           model,
           latencyMs: response.latencyMs,
@@ -533,6 +541,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
 
       recordTelemetryBlock({
         taskId: contract.id,
+        ...subject,
         providerId: provider.id,
         model: response.providerModel,
         latencyMs: response.latencyMs,
@@ -565,7 +574,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
     providerId: provider.id,
     // The input, not the prompt — the prompt does not exist until the job runs.
     inputPreview: previewInputBlock(input),
-    ...describeSubjectBlock(input),
+    ...subject,
     // Cancelling a queued job settles as an ordinary aborted failure, so call
     // sites that only check `ok` do not see a thrown error.
     onCancel: () => failure(makeIntelligenceErrorBlock('aborted', 'Cancelled while queued', {
