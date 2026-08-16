@@ -310,6 +310,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
   }
 
   return enqueueIntelligenceJobBlock(`${contract.id}:${cacheKey}`, async () => {
+    // (queue metadata is passed at the end of this call — see the third arg)
     const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS
     // A user-cancellable controller chained ahead of the timeout, so Settings
     // can abort a run that is merely slow without waiting out the timeout.
@@ -355,13 +356,35 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       // either errors at the server or gets silently window-trimmed, and a
       // digest built from a trimmed transcript looks fine but isn't.
       const promptText = [request.system, ...request.messages.map(m => m.content)].join('\n')
+      // What the debug panel replays. Captured once, here, so every exit below
+      // reports the same prompt the model was actually given — including the
+      // schema instruction this function appends, which is invisible to the
+      // contract that wrote the prompt.
+      const requestPayload = {
+        system: request.system,
+        user: request.messages.map(m => m.content).join('\n\n'),
+      }
       const overflow = checkContextFitBlock(profile, promptText, request.maxTokens ?? 0)
       if (overflow) {
-        return failure(makeIntelligenceErrorBlock('context-overflow', overflow, {
+        const overflowError = makeIntelligenceErrorBlock('context-overflow', overflow, {
           providerId: provider.id,
           taskId: contract.id,
           model,
-        })) as RunContractResult<Value>
+        })
+        // Recorded, unlike before: a run that dies on its own prompt never
+        // reached the provider, so without this it left no trace anywhere and
+        // looked like the task simply never ran.
+        recordTelemetryBlock({
+          taskId: contract.id,
+          providerId: provider.id,
+          model,
+          latencyMs: 0,
+          status: 'error',
+          reasoning: reasoningLabelBlock(disableReasoning),
+          error: overflowError,
+          payload: requestPayload,
+        })
+        return failure(overflowError) as RunContractResult<Value>
       }
 
       const response = await provider.chat(request, signal)
@@ -383,6 +406,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
           error: makeIntelligenceErrorBlock('truncated', 'Model hit the output stop-limit', {
             providerId: provider.id, model, taskId: contract.id,
           }),
+          payload: { ...requestPayload, reasoning: response.reasoning, response: response.content },
         })
         return failure(makeIntelligenceErrorBlock('truncated', `Output truncated at the ${request.maxTokens}-token stop-limit`, {
           providerId: provider.id,
@@ -405,12 +429,28 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
         const raw = extractJsonFromContent(stripped.content)
         const validation = validateBlock(contract.outputSchema, raw)
         if (!validation.ok) {
-          return failure(makeIntelligenceErrorBlock('schema-violation', validation.errors.join('; '), {
+          const schemaError = makeIntelligenceErrorBlock('schema-violation', validation.errors.join('; '), {
             providerId: provider.id,
             taskId: contract.id,
             model,
             details: { rawContent: response.content.slice(0, 400) },
-          })) as RunContractResult<Value>
+          })
+          // Also newly recorded. This is the failure most worth seeing in full:
+          // the answer to "why did it not validate" is in the output text, and
+          // the 400-char detail on the error is not enough of it.
+          recordTelemetryBlock({
+            taskId: contract.id,
+            providerId: provider.id,
+            model,
+            latencyMs: response.latencyMs,
+            status: 'error',
+            finishReason: response.finishReason,
+            usage: response.usage,
+            reasoning: reasoningLabelBlock(disableReasoning),
+            error: schemaError,
+            payload: { ...requestPayload, reasoning: response.reasoning, response: response.content },
+          })
+          return failure(schemaError) as RunContractResult<Value>
         }
         parsedValue = validation.value
       }
@@ -426,6 +466,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
           finishReason: response.finishReason,
           usage: response.usage,
           reasoning: reasoningLabelBlock(disableReasoning),
+          payload: { ...requestPayload, reasoning: response.reasoning, response: response.content },
           error: makeIntelligenceErrorBlock('empty-content', 'Contract discarded model output', {
             providerId: provider.id,
             model,
@@ -460,6 +501,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
         reasoning: reasoningLabelBlock(disableReasoning),
         cacheHit: false,
         responsePreview: response.content.slice(0, 200),
+        payload: { ...requestPayload, reasoning: response.reasoning, response: response.content },
       })
 
       return {
@@ -476,7 +518,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       cancel()
       disposeJob()
     }
-  }) as Promise<RunContractResult<Value>>
+  }, { taskId: contract.id, model, providerId: provider.id }) as Promise<RunContractResult<Value>>
 }
 
 export async function runWithTools(options: RunWithToolsOptions): Promise<RunContractResult<string>> {
@@ -532,6 +574,12 @@ export async function runWithTools(options: RunWithToolsOptions): Promise<RunCon
       finishReason: outcome.finalResponse.finishReason,
       usage: outcome.finalResponse.usage,
       responsePreview: outcome.finalResponse.content.slice(0, 200),
+      payload: {
+        system: options.system,
+        user: options.userPrompt,
+        reasoning: outcome.finalResponse.reasoning,
+        response: outcome.finalResponse.content,
+      },
     })
     return {
       ok: true,

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { X, Trash2, Copy, Check, ChevronDown, ChevronRight, AlertCircle, AlertTriangle, Info, Bug, Cpu } from 'lucide-react'
+import { X, Trash2, Copy, Check, ChevronDown, ChevronRight, AlertCircle, AlertTriangle, Info, Bug, Cpu, Sparkles } from 'lucide-react'
+import IntelligenceRunsTabBlock from '@/components/lego_blocks/units/IntelligenceRunsTabBlock'
 import type { DebugLogEntryBlock, DebugLogLevel } from '@/services/lego_blocks/units/debugLogBlock'
 import { useVisibleIntervalBlock } from '../hooks/shared/useVisibleIntervalBlock'
 import {
@@ -18,7 +19,7 @@ interface DebugPanelBlockProps {
   onClear: () => void
 }
 
-type TabFilter = 'all' | 'error' | 'warn' | 'info' | 'debug' | 'performance'
+type TabFilter = 'all' | 'error' | 'warn' | 'info' | 'debug' | 'performance' | 'ai'
 
 interface DebugHostProcessMetricBlock {
   pid: number
@@ -206,6 +207,7 @@ const TABS: { id: TabFilter; label: string }[] = [
   { id: 'info', label: 'Info' },
   { id: 'debug', label: 'Debug' },
   { id: 'performance', label: 'Performance' },
+  { id: 'ai', label: 'AI runs' },
 ]
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -561,7 +563,11 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
   const [copiedAll, setCopiedAll] = useState(false)
   const listRef = useRef<HTMLDivElement | null>(null)
   const [autoScroll, setAutoScroll] = useState(true)
+  // Both tabs render their own surface rather than the log list, and neither
+  // has anything for the copy/clear buttons in the header to act on.
   const isPerfTab = activeTab === 'performance'
+  const isAiTab = activeTab === 'ai'
+  const isOwnSurface = isPerfTab || isAiTab
 
   // Auto-scroll to bottom when new entries arrive
   useEffect(() => {
@@ -574,7 +580,7 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
     : entries.filter(e => e.level === activeTab)
 
   const countFor = (tab: TabFilter) => {
-    if (tab === 'performance') return 0
+    if (tab === 'performance' || tab === 'ai') return 0
     return tab === 'all' ? entries.length : entries.filter(e => e.level === tab).length
   }
 
@@ -624,7 +630,7 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
         <div className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-3">
           <Bug className="h-4 w-4 text-muted-foreground" />
           <span className="flex-1 text-sm font-semibold text-foreground">Debug Console</span>
-          {!isPerfTab && (
+          {!isOwnSurface && (
             <>
               <button
                 type="button"
@@ -676,6 +682,7 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
                 }`}
               >
                 {tab.id === 'performance' && <Cpu className="h-3 w-3 shrink-0" />}
+                {tab.id === 'ai' && <Sparkles className="h-3 w-3 shrink-0" />}
                 {tab.label}
                 {count > 0 && (
                   <span className={`rounded px-1 py-px text-[10px] tabular-nums font-semibold ${
@@ -694,9 +701,9 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
         </div>
 
         {/* Content */}
-        {isPerfTab ? (
+        {isOwnSurface ? (
           <div ref={listRef} className="ltm-nav-scroll min-h-0 flex-1 overflow-y-auto">
-            <PerformanceTab />
+            {isPerfTab ? <PerformanceTab /> : <IntelligenceRunsTabBlock />}
           </div>
         ) : (
           <>
