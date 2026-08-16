@@ -63,7 +63,10 @@ const CACHE_DIR = '.thinking-space'
 // different sitting when the windowing changes. Cached rows keep whatever id
 // they were parsed with, and the id is the digest's ADDRESS — so without this
 // bump every window keeps its old name and no digest ever lands at the new one.
-const CACHE_VERSION = 19
+// v20: tokens are attributed to the window that spent them (Claude sums its
+// per-turn usage, Codex deltas its running total) instead of landing entirely
+// on window 0. Cached rows carry the old all-on-window-0 split.
+const CACHE_VERSION = 20
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000

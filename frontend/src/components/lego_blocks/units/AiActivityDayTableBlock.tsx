@@ -547,6 +547,17 @@ export default function AiActivityDayTableBlock({
                                   ? 'Drawing session (Excalidraw) — recorded from time the canvas was open; duration is real, there’s no transcript.'
                                   : 'Reading session (Markdown) — recorded from time the document was open; duration is real, there’s no transcript.'}
                           </span>
+                        ) : c.source === 'claude-code' || c.source === 'codex' ? (
+                          // A native transcript with no usage in this window —
+                          // a sitting of user turns whose assistant replies fell
+                          // outside it, or a provider that logged none. Says
+                          // only that, because the branch below used to catch
+                          // this case and explain it as a vault export, which
+                          // described the wrong file entirely. Absence of a
+                          // number is not evidence of where the row came from.
+                          <span className="text-muted-foreground/60">
+                            No token usage recorded in this sitting's window.
+                          </span>
                         ) : (
                           <span className="text-muted-foreground/60">
                             No token data — this chain came from the vault markdown source only.

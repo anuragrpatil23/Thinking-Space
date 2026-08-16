@@ -221,6 +221,14 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   // wrote, so we can attribute exact vault notes to each window below.
   const fileEdits: Array<{ ts: number; path: string }> = []
 
+  // Timestamped usage samples, so tokens can be attributed to the window that
+  // actually spent them. Claude tags each assistant turn with its own
+  // incremental usage; Codex emits a running total. Both are kept with their
+  // timestamp and reduced per window below — the same shape `fileEdits` already
+  // uses to attribute writes.
+  const claudeUsage: Array<{ ts: number; tokens: SessionTokens }> = []
+  const codexSamples: Array<{ ts: number; totals: SessionTokens }> = []
+
   const convEvents: ConvEvent[] = []
   const recordConv = (tsStr: string, isUser: boolean, body: string, uid?: string): void => {
     if (!tsStr) return
@@ -270,6 +278,21 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
               (claudeTotals.cacheCreation1h ?? 0) +
               numericField(cacheCreationDetail, 'ephemeral_1h_input_tokens')
           }
+          const usageMs = Date.parse(ts)
+          if (Number.isFinite(usageMs)) {
+            claudeUsage.push({
+              ts: usageMs,
+              tokens: {
+                input: numericField(usage, 'input_tokens'),
+                output: numericField(usage, 'output_tokens'),
+                cacheRead: numericField(usage, 'cache_read_input_tokens'),
+                cacheCreation: numericField(usage, 'cache_creation_input_tokens'),
+                cacheCreation1h: cacheCreationDetail
+                  ? numericField(cacheCreationDetail, 'ephemeral_1h_input_tokens')
+                  : 0,
+              },
+            })
+          }
         }
         const editPaths = extractEditedPaths(message?.content, cwd)
         if (editPaths.length > 0) {
@@ -318,6 +341,10 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
               output: output + reasoning,
               cacheRead: cached,
               cacheCreation: 0, // Codex doesn't split out cache creation
+            }
+            const sampleMs = Date.parse(ts)
+            if (Number.isFinite(sampleMs)) {
+              codexSamples.push({ ts: sampleMs, totals: codexTotals })
             }
           }
         }
@@ -398,15 +425,62 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   const basePath = `native/${env.source}/${env.relPath}`
   const baseId = sessionId.toLowerCase()
 
-  // Tokens land on the first window only — we can't reliably attribute usage
-  // per-window (claude usage tags assistant turns, codex emits running totals)
-  // without re-running the math against assistant timestamps. Keeping total on
-  // window 0 is faithful to "session-level cost" while letting later windows
-  // render with zero token noise.
-  const tokensForFirstWindow =
-    env.source === 'claude'
-      ? (claudeTotals.input || claudeTotals.output ? claudeTotals : undefined)
-      : codexTotals ?? undefined
+  // Tokens are attributed to the window that spent them.
+  //
+  // This used to put the whole file's usage on window 0 and `undefined` on
+  // every later one, on the grounds that per-window attribution would mean
+  // "re-running the math against assistant timestamps". It does, and that turns
+  // out to be a dozen lines — while the cost of not doing it was a 14-minute
+  // sitting reporting no usage at all, which the day table then explained as
+  // "this chain came from the vault markdown source only". A native transcript
+  // was being described as a vault export because a number was missing.
+  //
+  // Absence has to keep meaning "no data", so a window with no samples still
+  // gets `undefined` rather than a zeroed record — that is the difference
+  // between "we didn't measure" and "it cost nothing".
+  /** Claude tags each assistant turn with its own incremental usage, so a
+   *  window's cost is the sum of the samples belonging to it. */
+  function claudeTokensForWindow(winStart: number, boundary: number): SessionTokens | undefined {
+    const inWindow = claudeUsage.filter(u => u.ts >= winStart && u.ts < boundary)
+    if (inWindow.length === 0) return undefined
+    const acc: SessionTokens = {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheCreation: 0,
+      cacheCreation1h: 0,
+    }
+    for (const { tokens } of inWindow) {
+      acc.input += tokens.input
+      acc.output += tokens.output
+      acc.cacheRead += tokens.cacheRead
+      acc.cacheCreation += tokens.cacheCreation
+      acc.cacheCreation1h = (acc.cacheCreation1h ?? 0) + (tokens.cacheCreation1h ?? 0)
+    }
+    return acc.input || acc.output || acc.cacheRead || acc.cacheCreation ? acc : undefined
+  }
+
+  /** Codex emits RUNNING totals, so a window's cost is the delta between the
+   *  last sample belonging to it and the last sample before it. Clamped at
+   *  zero: a transcript that resets its counter mid-file would otherwise report
+   *  negative usage, which is worse than reporting none. */
+  function codexTokensForWindow(winStart: number, boundary: number): SessionTokens | undefined {
+    let last: SessionTokens | null = null
+    let prior: SessionTokens | null = null
+    for (const sample of codexSamples) {
+      if (sample.ts < winStart) prior = sample.totals
+      else if (sample.ts < boundary) last = sample.totals
+    }
+    if (!last) return undefined
+    const base = prior ?? { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
+    const delta: SessionTokens = {
+      input: Math.max(0, last.input - base.input),
+      output: Math.max(0, last.output - base.output),
+      cacheRead: Math.max(0, last.cacheRead - base.cacheRead),
+      cacheCreation: Math.max(0, last.cacheCreation - base.cacheCreation),
+    }
+    return delta.input || delta.output || delta.cacheRead ? delta : undefined
+  }
 
   const out: ParsedSession[] = []
   windows.forEach((win, idx) => {
@@ -475,6 +549,7 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
     // Attribute edits to the window whose time span contains them.
     const winStart = win[0].ts
     const winEnd = win[win.length - 1].ts
+    const windowBoundary = idx + 1 < windows.length ? windows[idx + 1][0].ts : Infinity
     const touchedPaths = Array.from(
       new Set(fileEdits.filter(e => e.ts >= winStart && e.ts <= winEnd).map(e => e.path)),
     )
@@ -490,7 +565,18 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       topic,
       hadClear: winHadClear,
       mtime: env.mtime,
-      tokens: isFirst ? tokensForFirstWindow : undefined,
+      // A usage sample belongs to the window it FOLLOWS, so the upper bound is
+      // the next window's start rather than this window's last event. Codex
+      // emits `token_count` after a turn completes, and those events are
+      // deliberately excluded from windowing (background emissions would mask a
+      // real user-side gap) — so every one of them lands after `winEnd` and
+      // bounding on `winEnd` found none at all. Claude is unaffected either way,
+      // since its usage rides on assistant events that are themselves in the
+      // window, but the same bound is used for both so there is one rule.
+      tokens:
+        env.source === 'claude'
+          ? claudeTokensForWindow(winStart, windowBoundary)
+          : codexTokensForWindow(winStart, windowBoundary),
       model,
       sessionId: winSessionId,
       touchedPaths: touchedPaths.length > 0 ? touchedPaths : undefined,
