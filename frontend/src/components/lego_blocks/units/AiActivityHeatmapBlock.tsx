@@ -72,7 +72,7 @@ const WORK_MIX_STROKE_PX = 1.5
 const WORK_MIX_RING_GAP_PX = 0
 /** Outermost first. Fixed, because position is what carries the kind once color
  *  has been handed over to project identity. */
-const RING_KIND_ORDER = ['building', 'maintenance', 'other'] as const
+const RING_KIND_ORDER = ['building', 'other', 'maintenance'] as const
 /** How much of a lap is spent easing into the tone underneath, at each end.
  *  ~1/8 of the circle: long enough to read as a gradient, short enough that the
  *  lap still has a stretch at full tone in the middle. */
@@ -81,7 +81,7 @@ const WORK_MIX_LAP_FADE = 0.13
  *  gradient, so the ramp is stepped; 10 steps is where the banding stops being
  *  visible on a 26px circle, and only rings that actually lapped pay for it. */
 const WORK_MIX_LAP_FADE_STEPS = 10
-/** The unclassified track's tone, worn by the innermost ring. Fixed and neutral
+/** The unclassified track's tone, worn by the middle ring. Fixed and neutral
  *  — never a project color — because it is a statement about missing metadata,
  *  not about work. */
 const WORK_MIX_OTHER_CHANNELS = { light: '16,185,129', dark: '52,211,153' }
@@ -439,7 +439,12 @@ export default function AiActivityHeatmapBlock({
     [monthTransitions],
   )
 
-  const hovered = hoverDate ? dayMap.get(hoverDate) : null
+  // Falls back to the selected day — today, by default — so the readout says
+  // something the moment the panel opens instead of waiting for a hover. The
+  // readout is also the only legend work-mix mode has, and a resting state is
+  // what makes it findable.
+  const readoutDate = hoverDate ?? selectedDate ?? null
+  const hovered = readoutDate ? dayMap.get(readoutDate) : null
   // The footer reports every kind with hours on it, including conditioning and
   // `other`, which deliberately draw no mark. The cell is allowed to be
   // selective; the readout is not.
@@ -1032,8 +1037,12 @@ export default function AiActivityHeatmapBlock({
           </div>
         ) : (
           <span className="text-muted-foreground/60">
+            {/* Work-mix mode carries no caption. The legend it needs is two
+                lines long and lives in the Settings toggle that turned the mode
+                on; repeating it under every view is a paragraph of chrome under
+                a grid the user is already reading. */}
             {workMixMode
-              ? 'Centre is thinking · outer ring building · inner ring maintenance · each against your daily pool, in its project’s color · the green innermost track is time on projects you haven’t classified · Claude-tracked work only'
+              ? null
               : setMode
               ? 'Numbers are day-of-month · thin lines mark 3-day set boundaries · ringed cells are today’s set'
               : calendarMode

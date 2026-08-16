@@ -26,13 +26,13 @@
 // Color is project identity, not kind: the panel already shows a project legend
 // above the grid, and a second color language on the same screen would need a
 // second legend to read. Kind is carried by *position* instead — the centre is
-// always thinking, the outer ring always building, the inner ring always
+// always thinking, the outer ring always building, the innermost ring always
 // maintenance — which is what keeps cells comparable down a column.
 //
-// `other` is the one exception to color-is-identity: its ring is a fixed
-// neutral green, drawn innermost, just outside the thinking disc. It has to be readable as a
-// different *kind* of statement — "there is time here nobody has classified" —
-// and a project color would file it as measured work.
+// `other` is the one exception to color-is-identity: its ring is a fixed neutral
+// green, drawn between the two. It has to be readable as a different *kind* of
+// statement — "there is time here nobody has classified" — and a project color
+// would file it as measured work.
 //
 // Conditioning gets no mark. It has no derivable input yet (a book in a chair
 // leaves no session), and rendering an always-empty band for it would read as a
@@ -73,8 +73,9 @@ export interface WorkMixSegmentBlock {
    * can wear that project's own color and stay legible against the project
    * legend that is already on screen.
    *
-   * Position carries the kind (building first, maintenance second, always), so
-   * handing color over to project identity costs nothing that was being read.
+   * Position carries the kind (building outermost, maintenance innermost,
+   * always), so handing color over to project identity costs nothing that was
+   * being read.
    */
   topProject: string | null
 }
@@ -89,7 +90,7 @@ export interface WorkMixCellBlock {
    *  `WorkMixSegmentBlock.raw`, so a double pool of thinking can read as more
    *  than a single one. */
   fillRawRatio: number
-  /** Ring arcs in fixed order (building, maintenance, then other), starting at 12
+  /** Ring arcs in fixed order (building, other, then maintenance), starting at 12
    *  o'clock. Fixed order because a color must mean the same thing in the same
    *  place on every cell or scanning a month stops working. */
   segments: WorkMixSegmentBlock[]
@@ -105,10 +106,11 @@ export interface WorkMixCellBlock {
 
 const MS_PER_HOUR = 3_600_000
 
-/** Kinds that draw an arc, outermost first. `other` is innermost: it is the
- *  residual bucket, and it draws in a neutral green rather than a project color
- *  so it reads as "not classified yet" instead of as a third kind of work. */
-const RING_KINDS_BLOCK: Exclude<ProjectKindBlock, ''>[] = ['building', 'maintenance', 'other']
+/** Kinds that draw an arc, outermost first. `other` sits between the two: it is
+ *  the residual bucket, and it draws in a neutral green rather than a project
+ *  color so it reads as "not classified yet" instead of as a third kind of
+ *  work. */
+const RING_KINDS_BLOCK: Exclude<ProjectKindBlock, ''>[] = ['building', 'other', 'maintenance']
 
 /** The kinds that count as *classified* non-thinking work. `other` is excluded:
  *  the day-level overshoot is a claim about how hard measured work took the day,
