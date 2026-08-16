@@ -345,11 +345,21 @@ function parseChatExportSessions(input: ParseInput): ParsedSession[] | null {
 
   return windows.map((win, i) => ({
     ...base,
+    // `path` keeps the ordinal — a display handle and the way back to the file.
     path: i === 0 ? input.path : `${input.path}#w${i}`,
     startedIso: new Date(win[0].ts).toISOString(),
     endedIso: new Date(win[win.length - 1].ts).toISOString(),
     userMsgCount: win.filter(m => m.user).length,
-    sessionId: i === 0 ? convId : `${convId}::w${i}`,
+    // IDENTITY, anchored to the first message this window contains rather than
+    // to the window's rank. `::w2` is a position, and a position moves whenever
+    // the splitting does — a re-export with one more message in an earlier gap
+    // renumbers every later window, and the human `undertaking` field slides
+    // onto a different sitting without anything noticing. Native sessions were
+    // fixed this way first (see `nativeAiSessionParserBlock`); chat exports have
+    // no per-message id, so the timestamp is the anchor — still a property of
+    // the content rather than of the ordering. Window 0 keeps the bare
+    // conversation id so it stays the conversation's own address.
+    sessionId: i === 0 ? convId : `${convId}::${win[0].ts}`,
   }))
 }
 

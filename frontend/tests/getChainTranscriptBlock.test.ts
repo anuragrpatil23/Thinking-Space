@@ -28,6 +28,12 @@ function session(over: Partial<ParsedSession> & { path: string }): ParsedSession
   return {
     source: 'claude-code',
     startedIso: '2026-08-02T18:35:00.000Z',
+    // A real parse sets the window to its own first and last event, so a
+    // fixture whose events fall outside its window cannot occur — and the
+    // renderer now clips to the window (a `#wN` sitting must not render the
+    // whole file). Span the day so a test can move `startedIso` without
+    // accidentally excluding the transcript it is asserting on.
+    endedIso: '2026-08-02T23:59:00.000Z',
     project: 'Thinking-Space',
     userMsgCount: 3,
     topic: 'a topic',

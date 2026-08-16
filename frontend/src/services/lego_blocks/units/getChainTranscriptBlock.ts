@@ -65,10 +65,17 @@ function fmtMsgWhen(iso: unknown): string {
   })
 }
 
-// Native Claude transcripts are JSONL — one JSON event per line. We render
-// user + assistant turns inline (text + thinking blocks); tool_use, system
-// events, and other plumbing are summarized as a quiet one-liner so the
-// reader sees the conversation arc without drowning in tool traffic.
+// Native transcripts are JSONL — one JSON event per line. We render user +
+// assistant turns inline (text + thinking blocks); tool_use, system events, and
+// other plumbing are summarized as a quiet one-liner so the reader sees the
+// conversation arc without drowning in tool traffic.
+//
+// Two event shapes, and only Claude's was handled until 2026-08-16:
+//   Claude — `{type: 'user'|'assistant', message: {content}}`
+//   Codex  — `{type: 'response_item'|'event_msg', payload: {...}}`
+// A Codex transcript therefore matched nothing and rendered as "the source file
+// was read but contained no renderable turns", which reads as data loss when
+// the file is intact and the reader simply doesn't speak its dialect.
 function flattenContent(content: unknown): { text: string; thinking: string } {
   let text = ''
   let thinking = ''
@@ -78,35 +85,94 @@ function flattenContent(content: unknown): { text: string; thinking: string } {
     for (const part of content) {
       if (!part || typeof part !== 'object') continue
       const p = part as Record<string, unknown>
-      if (p.type === 'text' && typeof p.text === 'string') text += (text ? '\n' : '') + p.text
-      else if (p.type === 'thinking' && typeof p.thinking === 'string') thinking += (thinking ? '\n' : '') + p.thinking
+      // Codex names its text blocks `input_text` / `output_text`.
+      if (
+        (p.type === 'text' || p.type === 'input_text' || p.type === 'output_text') &&
+        typeof p.text === 'string'
+      ) {
+        text += (text ? '\n' : '') + p.text
+      } else if (p.type === 'thinking' && typeof p.thinking === 'string') {
+        thinking += (thinking ? '\n' : '') + p.thinking
+      } else if (p.type === 'reasoning' && typeof p.text === 'string') {
+        thinking += (thinking ? '\n' : '') + p.text
+      }
     }
   }
   return { text: text.trim(), thinking: thinking.trim() }
 }
 
-function renderJsonlTranscript(jsonl: string): string {
+/** One rendered turn, or null when the event is not a conversation turn. */
+function readTurnBlock(
+  ev: Record<string, unknown>,
+): { role: 'user' | 'assistant'; text: string; thinking: string; ts: unknown } | null {
+  const type = String(ev.type ?? '')
+
+  // ── Claude ────────────────────────────────────────────────────────────
+  if (type === 'user' || type === 'assistant') {
+    const msg = ev.message as Record<string, unknown> | undefined
+    const { text, thinking } = flattenContent(msg?.content)
+    if (!text && !thinking) return null
+    return { role: type, text, thinking, ts: ev.timestamp }
+  }
+
+  // ── Codex ─────────────────────────────────────────────────────────────
+  // Each turn is emitted twice: once as a `response_item` carrying structured
+  // content and a role, once as an `event_msg` carrying a flat string. The
+  // `response_item` is used here because it keeps assistant turns (the
+  // `event_msg` form is what the *parser* prefers, for a cleaner user body and
+  // to avoid double-counting `userMsgCount` — a different job with a different
+  // right answer).
+  const payload = ev.payload as Record<string, unknown> | undefined
+  if (!payload) return null
+  if (type === 'response_item' && payload.type === 'message') {
+    const role = payload.role === 'user' ? 'user' : payload.role === 'assistant' ? 'assistant' : null
+    if (!role) return null
+    const { text, thinking } = flattenContent(payload.content)
+    if (!text && !thinking) return null
+    return { role, text, thinking, ts: ev.timestamp }
+  }
+  return null
+}
+
+/**
+ * Render the JSONL, clipped to one sitting's window.
+ *
+ * The `#wN` suffix is stripped to find the file, so without the clip every
+ * window renders the WHOLE transcript and each sitting of a long-running
+ * session looks identical. Same rule, and same reason, as
+ * `extractSessionContextBlock` — an event belongs to the window whose bounds
+ * contain it, inclusive at both ends because the bounds ARE real events.
+ * Undated events are kept: absence of a timestamp is not evidence of falling
+ * outside.
+ */
+function renderJsonlTranscript(jsonl: string, session: ParsedSession): string {
+  const windowStart = Date.parse(session.startedIso)
+  const windowEnd = Date.parse(session.endedIso ?? session.startedIso)
+  const bounded = Number.isFinite(windowStart) && Number.isFinite(windowEnd)
+
   const out: string[] = []
   for (const line of jsonl.split('\n')) {
     if (!line.trim()) continue
     let ev: Record<string, unknown>
     try { ev = JSON.parse(line) }
     catch { continue }
-    const type = ev.type
-    if (type !== 'user' && type !== 'assistant') continue
-    const msg = ev.message as Record<string, unknown> | undefined
-    const content = msg?.content
-    const { text, thinking } = flattenContent(content)
-    if (!text && !thinking) continue
-    const when = fmtMsgWhen(ev.timestamp)
-    const heading = `### ${type === 'user' ? 'User' : 'Assistant'}${when ? ` · ${when}` : ''}`
-    out.push('---', '', heading, '')
-    if (thinking) {
+
+    if (bounded && typeof ev.timestamp === 'string') {
+      const ts = Date.parse(ev.timestamp)
+      if (Number.isFinite(ts) && (ts < windowStart || ts > windowEnd)) continue
+    }
+
+    const turn = readTurnBlock(ev)
+    if (!turn) continue
+
+    const when = fmtMsgWhen(turn.ts)
+    out.push('---', '', `### ${turn.role === 'user' ? 'User' : 'Assistant'}${when ? ` · ${when}` : ''}`, '')
+    if (turn.thinking) {
       out.push('> **[thinking]**')
-      for (const ln of thinking.split('\n')) out.push(`> ${ln}`)
+      for (const ln of turn.thinking.split('\n')) out.push(`> ${ln}`)
       out.push('')
     }
-    if (text) out.push(text, '')
+    if (turn.text) out.push(turn.text, '')
   }
   return out.join('\n')
 }
@@ -128,7 +194,7 @@ async function loadSessionContent(s: ParsedSession): Promise<string> {
     const source = rest.slice(0, slash) as 'claude' | 'codex'
     const relPath = rest.slice(slash + 1)
     const jsonl = await readNativeAiSession(source, relPath)
-    return renderJsonlTranscript(jsonl)
+    return renderJsonlTranscript(jsonl, s)
   }
   // Vault md path — read directly. Strip the boilerplate H1 the SessionEnd
   // hook writes so the per-session heading we emit stays the top-level scope.

@@ -66,7 +66,12 @@ const CACHE_DIR = '.thinking-space'
 // v20: tokens are attributed to the window that spent them (Claude sums its
 // per-turn usage, Codex deltas its running total) instead of landing entirely
 // on window 0. Cached rows carry the old all-on-window-0 split.
-const CACHE_VERSION = 20
+// v21: chat-export (chatgpt/grok) window ids are anchored to the first
+// message's timestamp instead of the window's ordinal, matching what native
+// sessions already do. Cached rows carry the old `::wN` form, which is the
+// digest's ADDRESS — without the bump they keep it and no digest lands at the
+// new one.
+const CACHE_VERSION = 21
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000
