@@ -129,6 +129,13 @@ export interface ProjectSessionDigest {
   /** Which family produced this — 'local' | 'claude' | 'rule-based'. Only
    *  'local'/'claude' are persisted; 'rule-based' is display-only. */
   generator: GenerationSource | ''
+  /** Whether the model's reasoning mode ACTUALLY ran for this generation — not
+   *  whether the setting asked for it. Together with `generator` this places
+   *  the record on the quality ladder (`generationTierRankBlock`), so turning
+   *  thinking on upgrades existing digests and turning it off never stomps a
+   *  body that was thought through. Absent on records written before the field
+   *  existed, which read as false. */
+  thinking: boolean
 }
 
 // v1 — the first schema for this record, and it carries no legacy tolerance
@@ -282,6 +289,7 @@ function commonSessionDigestFieldsBlock(
     generatedAt: toIsoStringOrNow(parsed.generatedAt),
     model: toStringOrEmpty(parsed.model),
     generator: parseGenerationSourceBlock(parsed.generator),
+    thinking: parsed.thinking === true,
   }
 }
 
@@ -347,6 +355,7 @@ export function stringifyProjectSessionDigestMarkdownBlock(digest: ProjectSessio
     activeDurationMs: digest.activeDurationMs,
     model: digest.model,
     generator: digest.generator,
+    thinking: digest.thinking,
     inputHash: digest.inputHash,
     generatedAt: digest.generatedAt,
     title: digest.title,

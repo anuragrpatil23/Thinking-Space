@@ -37,6 +37,49 @@ export function generationSourceForProviderBlock(id: ProviderId): GenerationSour
 // pipeline's `rangeSummaryTierRankBlock`, just over the coarse source family.
 // Legacy records (generator '') are assumed local-tier so a later switch to
 // Claude still upgrades them, without a regeneration storm on same-tier reads.
+/**
+ * Where a stored record sits on the quality ladder, thinking included.
+ *
+ *   0  rule-based
+ *   1  local, no reasoning
+ *   2  local, reasoning ran
+ *   3  claude
+ *
+ * Thinking is a rung *within* the local family, not above Claude: the toggle is
+ * opensource-ai-only (`resolveDisableReasoningBlock`), so "local that thought"
+ * is the best a local model offers and Claude still outranks it.
+ *
+ * The point is the same asymmetry the family ladder already encodes. Turning
+ * thinking ON is an upgrade that should apply itself to records generated
+ * without it; turning it OFF must never stomp a body that was thought through.
+ * Before this existed, thinking was invisible to precedence — so the upgrade
+ * never happened without a manual regenerate, and an unrelated regeneration
+ * while thinking was off silently downgraded a better body with nothing
+ * recording that it had.
+ *
+ * `thinking` must be what ACTUALLY ran, not what the setting asked for — see
+ * `contractReasoningWillRunOrch`. A model with no reasoning mode ignores the
+ * toggle, and comparing intent against outcome there regenerates forever.
+ */
+export function generationTierRankBlock(
+  source: GenerationSource | '',
+  thinking: boolean,
+): number {
+  switch (source) {
+    case 'claude':
+      return 3
+    case 'rule-based':
+      return 0
+    case 'local':
+      return thinking ? 2 : 1
+    default:
+      // Legacy records (generator '') are assumed local-no-thinking, the same
+      // floor `generationSourceRankBlock` uses: low enough that a real upgrade
+      // still applies, high enough not to trigger a regeneration storm.
+      return 1
+  }
+}
+
 export function generationSourceRankBlock(source: GenerationSource | ''): number {
   switch (source) {
     case 'claude':

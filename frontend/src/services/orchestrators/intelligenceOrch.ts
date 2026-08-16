@@ -105,6 +105,35 @@ function resolveDisableReasoningBlock(
   return !resolveContractThinkingBlock(scope, 'opensource-ai')
 }
 
+/**
+ * Will reasoning actually run for this scope, right now?
+ *
+ * Deliberately resolved through the same path a real run takes — provider,
+ * model, profile, `resolveDisableReasoningBlock` — rather than read off the
+ * setting. A model with no reasoning mode ignores the toggle entirely, so a
+ * caller that compared "the user asked for thinking" against "thinking
+ * happened" would see a permanent mismatch and regenerate forever. Asking the
+ * question the same way the answer is produced is what keeps those two in step.
+ *
+ * False when nothing could run at all (no provider, no model): a record that
+ * cannot be generated is not one that should be considered out of date.
+ */
+export async function contractReasoningWillRunOrch(
+  scope: AiSettingsScope,
+  options: { provider?: ProviderId; model?: string } = {},
+): Promise<boolean> {
+  try {
+    const provider = resolveProviderBlock(options.provider)
+    if (!provider || !(await provider.isConfigured?.())) return false
+    const model = await resolveModelForRun(provider, options.model)
+    if (!model) return false
+    const profile = resolveModelProfileBlock(model, provider.id)
+    return resolveDisableReasoningBlock(profile, provider.id, scope) === false
+  } catch {
+    return false
+  }
+}
+
 /** Telemetry label for a resolved reasoning state. undefined (no reasoning
  *  mode on this model) stays undefined rather than reporting a misleading
  *  "off" for a model that never had a toggle. */
@@ -266,7 +295,10 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
         return {
           ok: true,
           value: parsed.value,
-          meta: parsed.meta ?? {},
+          // `reasoning` is re-derived rather than trusted from the cached meta:
+          // the cache key already spans reasoning state, so a hit is by
+          // definition a record produced under the same setting.
+          meta: { reasoning: reasoningLabelBlock(disableReasoning), ...(parsed.meta ?? {}) },
           providerId: cached.providerId as ProviderId,
           model: cached.model,
           cacheHit: true,
@@ -433,7 +465,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       return {
         ok: true,
         value,
-        meta: finalized.meta,
+        meta: { reasoning: reasoningLabelBlock(disableReasoning), ...finalized.meta },
         providerId: provider.id,
         model: response.providerModel,
         cacheHit: false,

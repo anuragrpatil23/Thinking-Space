@@ -17,12 +17,16 @@ import {
   sessionDigestContract,
   type SessionDigestOutput,
 } from '@/services/lego_blocks/units/intelligence/contracts/sessionDigestContractBlock'
-import { availability, runContract } from '@/services/orchestrators/intelligenceOrch'
+import {
+  availability,
+  contractReasoningWillRunOrch,
+  runContract,
+} from '@/services/orchestrators/intelligenceOrch'
 import { intelligenceCacheAvailableBlock } from '@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock'
 import { currentGenerationSourceBlock } from '@/services/lego_blocks/integrations/intelligence/providerRegistryBlock'
 import {
   generationSourceForProviderBlock,
-  generationSourceRankBlock,
+  generationTierRankBlock,
 } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 
 // Public surface for per-session digests — the base of the AI-activity strata.
@@ -76,12 +80,20 @@ export async function ensureSessionDigestOrch(
   // `refresh` bypasses reuse entirely so the user can force the currently
   // selected provider to run, even a downgrade.
   const aiActive = getAiActivityAiTitlesEnabled() && intelligenceCacheAvailableBlock()
-  const targetRank = aiActive ? generationSourceRankBlock(currentGenerationSourceBlock()) : 0
+  // The tier the current selection would produce, thinking included. Resolved
+  // through the same path a real run takes, so a model with no reasoning mode
+  // targets the tier it can actually reach rather than one it never will.
+  const targetRank = aiActive
+    ? generationTierRankBlock(
+        currentGenerationSourceBlock(),
+        await contractReasoningWillRunOrch('ai_activity'),
+      )
+    : 0
   if (
     !options.refresh &&
     existing &&
     existing.inputHash === nextHash &&
-    generationSourceRankBlock(existing.generator) >= targetRank
+    generationTierRankBlock(existing.generator, existing.thinking) >= targetRank
   ) {
     return { digest: existing, isAi: true }
   }
@@ -132,6 +144,10 @@ export async function ensureSessionDigestOrch(
     generatedAt: new Date().toISOString(),
     model: (result.meta?.model as string) ?? 'unknown',
     generator: generationSourceForProviderBlock(result.providerId),
+    // What actually ran, reported by the run itself — not the setting. A cache
+    // hit is by definition a body produced under the same reasoning state, so
+    // this is accurate on both paths.
+    thinking: result.meta?.reasoning === 'on',
     // HUMAN field, carried across regeneration. AI rewrote the title and
     // summary; it does not get to forget who assigned this sitting to what.
     undertaking: existing?.undertaking ?? [],
@@ -322,6 +338,7 @@ function buildFallbackDigest(
     inputHash,
     generatedAt: new Date().toISOString(),
     model: 'fallback:session-topic',
+    thinking: false,
     undertaking: [],
     ...sessionPointers(session),
     // Rule-based fallback — deterministic, no model. Tagged so it is never
