@@ -61,11 +61,13 @@ const MAX_VISIBLE_WEEKS = 53
 // legibly inside each cell.
 const SET_CELL_PX = 18
 const SET_CELL_GAP = 3
-// Activity-ring geometry. Two concentric rings plus a centre disc need more
-// room than the 18px set-mode cell: at 26px the outer ring is comfortably
-// hittable, the inner ring still reads, and the centre disc stays the largest
-// single mark — which is right, since the centre is the thing that matters.
-const WORK_MIX_CELL_PX = 26
+// Activity-ring geometry. Three concentric rings plus a centre disc need more
+// room than the 18px set-mode cell: at 30px each ring is comfortably hittable,
+// the innermost still reads, and the centre disc stays the largest single mark —
+// which is right, since the centre is the thing that matters. It was 26px when
+// there were two rings; the unclassified track took a third of the disc's radius
+// with it, and this gives it back.
+const WORK_MIX_CELL_PX = 30
 /** Hairline rings. Position, not weight, is what separates the two tracks, so
  *  the stroke only has to be thick enough to survive a non-retina pixel grid. */
 const WORK_MIX_STROKE_PX = 1.5
@@ -804,6 +806,10 @@ export default function AiActivityHeatmapBlock({
           className="relative"
           onContextMenu={e => {
             e.preventDefault()
+            // The canvas surface this panel can sit on has its own
+            // onContextMenu; without stopping here, the grid's menu opens and
+            // the canvas's opens straight over the top of it.
+            e.stopPropagation()
             setGridMenu({ x: e.clientX, y: e.clientY })
           }}
         >
@@ -863,21 +869,18 @@ export default function AiActivityHeatmapBlock({
                 ))}
                 {/* Current-set ring: soft outlined box wrapping whichever
                     cells the set falls on. Splits across columns when the
-                    set straddles a Sun→Mon boundary.
-                    In work-mix mode any outline here is a fourth concentric
-                    circle around cells that are already three rings deep, and it
-                    wins the read every time. So there the set is a soft filled
-                    halo *behind* the cells instead — same information, no new
-                    line competing with the rings. */}
+                    set straddles a Sun→Mon boundary. A stadium around the round
+                    work-mix cells, a rounded rectangle around square ones — the
+                    marker follows the shape it is bracketing. Outline only in
+                    both: a wash inside it tints the very cells it is pointing
+                    at. */}
                 {currentSetRects.map(rect => (
                   <div
                     key={`curset-${rect.col}-${rect.topRow}`}
                     aria-hidden
                     className={cn(
-                      'pointer-events-none absolute',
-                      workMixMode
-                        ? 'bg-foreground/[0.07]'
-                        : 'rounded-[5px] bg-foreground/[0.04] ring-1 ring-foreground/40',
+                      'pointer-events-none absolute ring-1 ring-foreground/40',
+                      !workMixMode && 'rounded-[5px]',
                     )}
                     style={{
                       left: rect.col * step - (workMixMode ? 3 : 2),
