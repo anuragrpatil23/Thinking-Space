@@ -226,41 +226,80 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
         </div>
 
         {/* Session picker. Hidden for single-session chains, where it would be
-            chrome around one thing. */}
+            chrome around one thing.
+            A table rather than a row of chips: a chip can only hold a clock
+            time, so choosing which session to read meant opening them until you
+            found the one you meant. The columns are the ones you actually pick
+            on — how long it ran, how much was said, which model, and whether
+            there is anything to read at all. */}
         {parts && parts.length > 1 && (
-          <div className="shrink-0 overflow-x-auto border-b border-border/40 bg-muted/20 px-3 py-2">
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setSelected('all')}
-                className={cn(
-                  'shrink-0 rounded-full border px-2.5 py-1 text-[11px] transition-colors',
-                  selected === 'all'
-                    ? 'border-foreground/20 bg-foreground/10 font-medium text-foreground'
-                    : 'border-border text-muted-foreground hover:bg-muted/50',
-                )}
-              >
-                All {parts.length}
-              </button>
-              {parts.map(part => (
-                <button
-                  key={part.session.path}
-                  type="button"
-                  onClick={() => setSelected(part.index)}
-                  title={part.session.topic || '(no topic)'}
-                  className={cn(
-                    'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors',
-                    selected === part.index
-                      ? 'border-foreground/20 bg-foreground/10 font-medium text-foreground'
-                      : 'border-border text-muted-foreground hover:bg-muted/50',
-                  )}
-                >
-                  <span className="tabular-nums opacity-70">{part.index}</span>
-                  <span>{fmtSessionWhen(part.session)}</span>
-                  <StatusPill status={part.status} />
-                </button>
-              ))}
-            </div>
+          <div className="max-h-52 shrink-0 overflow-auto border-b border-border/40 bg-muted/20">
+            <table className="w-full text-[11px]">
+              <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur-sm">
+                <tr className="text-left uppercase tracking-[0.1em] text-muted-foreground">
+                  <th className="w-8 px-3 py-1.5 font-medium">#</th>
+                  <th className="w-32 px-2 py-1.5 font-medium">When</th>
+                  <th className="w-12 px-2 py-1.5 text-right font-medium">Msgs</th>
+                  <th className="px-2 py-1.5 font-medium">Topic</th>
+                  <th className="w-24 px-3 py-1.5 text-right font-medium">
+                    <button
+                      type="button"
+                      onClick={() => setSelected('all')}
+                      className={cn(
+                        'rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] transition-colors',
+                        selected === 'all'
+                          ? 'border-foreground/50 bg-foreground/10 text-foreground'
+                          : 'border-border text-muted-foreground hover:border-border/80 hover:text-foreground',
+                      )}
+                      title="Read every session in this chain, in order"
+                    >
+                      All {parts.length}
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {parts.map(part => {
+                  const isSelected = selected === part.index
+                  return (
+                    <tr
+                      key={part.session.path}
+                      // Clicking the selected row again goes back to all —
+                      // otherwise the only way out of one session is the header
+                      // button, which is nowhere near the row you just clicked.
+                      onClick={() => setSelected(isSelected ? 'all' : part.index)}
+                      className={cn(
+                        'cursor-pointer border-t border-border/30 transition-colors',
+                        isSelected ? 'bg-foreground/[0.06]' : 'hover:bg-foreground/[0.04]',
+                      )}
+                      title={part.session.topic || '(no topic)'}
+                    >
+                      <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{part.index}</td>
+                      <td className="whitespace-nowrap px-2 py-1.5 tabular-nums text-foreground/80">
+                        {fmtSessionWhen(part.session)}
+                      </td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-foreground/70">
+                        {part.session.userMsgCount}
+                      </td>
+                      <td className="max-w-0 truncate px-2 py-1.5 text-foreground/70">
+                        {part.session.topic || (
+                          <span className="text-muted-foreground/60">(no topic)</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        {part.status === 'ok' ? (
+                          <span className="whitespace-nowrap text-[10px] text-muted-foreground/70">
+                            {part.session.model ?? ''}
+                          </span>
+                        ) : (
+                          <StatusPill status={part.status} />
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 
