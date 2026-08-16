@@ -2,12 +2,17 @@ import { Fragment, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 // Deliberately-minimal inline Markdown renderer. NOT a markdown engine — it
-// only understands `**bold**` and inline `` `code` ``, the two tokens the AI
-// summaries actually emit. Everything else (newlines, indentation, list
-// numbers) is passed through verbatim and preserved by `whitespace-pre-wrap`,
-// so the block stays as lightweight and responsive as the raw <pre> it
-// replaced. If a token is malformed/unbalanced it simply renders as literal
-// text — there's no failure mode that hides content.
+// understands `**bold**`, inline `` `code` ``, and ATX headings (`## Heading`),
+// the tokens the AI summaries actually emit. Everything else (newlines,
+// indentation, list numbers) is passed through verbatim and preserved by
+// `whitespace-pre-wrap`, so the block stays as lightweight and responsive as
+// the raw <pre> it replaced. If a token is malformed/unbalanced it simply
+// renders as literal text — there's no failure mode that hides content.
+//
+// Headings render as an emphasised span rather than a block element: the
+// container is `whitespace-pre-wrap`, so the newline after the heading already
+// puts it on its own line, and a real block would fight the preserved
+// whitespace for spacing.
 
 // One pass matches either a **bold** run or a `code` run. Non-greedy bodies
 // stop at the first closing delimiter; `[\s\S]` lets a run wrap lines, which
@@ -44,18 +49,53 @@ function renderInline(text: string): ReactNode[] {
   return nodes
 }
 
+/** `## Heading` at the start of a line, up to six levels. The marker is dropped;
+ *  what survives is the emphasis it was standing in for. */
+const HEADING_RE = /^(#{1,6})\s+(.*)$/
+
+function renderLines(text: string): ReactNode[] {
+  const out: ReactNode[] = []
+  const lines = text.split('\n')
+  lines.forEach((line, i) => {
+    if (i > 0) out.push('\n')
+    const heading = HEADING_RE.exec(line)
+    if (!heading) {
+      out.push(...renderInline(line))
+      return
+    }
+    out.push(
+      <span
+        key={`h-${i}`}
+        className={cn(
+          // inline-block so the vertical padding lands — margins do nothing on a
+          // plain inline span. The air above a heading is what makes it read as
+          // the start of a section rather than another line of the last one.
+          'inline-block pb-0.5 font-semibold text-foreground/90',
+          i > 0 && 'pt-3',
+          // Only the top two levels get a size bump; deeper ones in a summary
+          // this compact would be size for its own sake.
+          heading[1].length <= 2 && 'text-[1.08em]',
+        )}
+      >
+        {renderInline(heading[2])}
+      </span>,
+    )
+  })
+  return out
+}
+
 interface Props {
   text: string
   className?: string
 }
 
-/** Render `text` with very light inline Markdown (`**bold**`, `` `code` ``),
+/** Render `text` with very light Markdown (`**bold**`, `` `code` ``, `## head`),
  *  preserving all whitespace/newlines. Drop-in replacement for a
  *  `whitespace-pre-wrap` <pre> that was showing raw markdown. */
 export default function LightMarkdownTextBlock({ text, className }: Props) {
   return (
     <div className={cn('whitespace-pre-wrap break-words', className)}>
-      {renderInline(text).map((node, i) => (
+      {renderLines(text).map((node, i) => (
         <Fragment key={i}>{node}</Fragment>
       ))}
     </div>
