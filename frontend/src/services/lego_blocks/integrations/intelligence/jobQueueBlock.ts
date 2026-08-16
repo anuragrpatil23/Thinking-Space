@@ -1,10 +1,22 @@
-// Global FIFO job queue with a concurrency cap and dedup-by-key. Shared
-// across every consumer of the intelligence subsystem so opening a busy
-// AI-activity day doesn't compete with, say, a background classifier.
+// Global job queue with a concurrency cap and dedup-by-key. Shared across every
+// consumer of the intelligence subsystem so opening a busy AI-activity day
+// doesn't compete with, say, a background classifier.
 //
 // Dedup: if two callers enqueue with the same key while the first is still
 // in-flight or queued, the second gets the same promise. Prevents fan-out
 // when a re-render triggers duplicate hooks for the same input.
+//
+// Order is by subject date, newest first — NOT arrival order.
+//
+// Callers sorting their own work is not enough and cannot be: the weekly digest
+// mounts one range-summary per project, each correctly ordering its own chains,
+// and seven of those interleaving into one FIFO produces a queue that jumps
+// between Aug 12, Aug 10 and Aug 11 with no caller having done anything wrong.
+// Global order is only decidable where the jobs meet, which is here.
+//
+// Jobs with no subject date (chain stitches, range narrations) sort last. That
+// is also their dependency order — they compose the digests ahead of them in the
+// queue — so waiting is correct rather than merely tolerable.
 
 const MAX_CONCURRENT = 2
 
@@ -76,9 +88,32 @@ function emit(): void {
   }
 }
 
+/** Newest subject date first; undated last; ties broken by arrival so equal work
+ *  still runs in the order it was asked for. */
+function comparePriorityBlock(a: QueueEntry<unknown>, b: QueueEntry<unknown>): number {
+  const da = a.meta.dateIso ? Date.parse(a.meta.dateIso) : NaN
+  const db = b.meta.dateIso ? Date.parse(b.meta.dateIso) : NaN
+  const aHas = Number.isFinite(da)
+  const bHas = Number.isFinite(db)
+  if (aHas && bHas && da !== db) return db - da
+  if (aHas !== bHas) return aHas ? -1 : 1
+  return a.meta.queuedAt - b.meta.queuedAt
+}
+
+/** Index of the next job to run. Selected at dequeue rather than by keeping the
+ *  array sorted, so a job enqueued mid-drain is considered on its merits instead
+ *  of inheriting a position from when it happened to arrive. */
+function nextIndexBlock(): number {
+  let best = 0
+  for (let i = 1; i < pending.length; i++) {
+    if (comparePriorityBlock(pending[i], pending[best]) < 0) best = i
+  }
+  return best
+}
+
 function pump(): void {
   while (inFlight < MAX_CONCURRENT && pending.length > 0) {
-    const next = pending.shift()!
+    const next = pending.splice(nextIndexBlock(), 1)[0]
     inFlight += 1
     next
       .run()
@@ -145,9 +180,10 @@ export function intelligenceQueueDepthBlock(): { inFlight: number; queued: numbe
   return { inFlight, queued: pending.length }
 }
 
-/** The waiting jobs, in the order they will run. */
+/** The waiting jobs, in the order they will actually run — the panel showing a
+ *  different order than the queue uses would be a lie about the queue. */
 export function listQueuedIntelligenceJobsBlock(): QueuedJobBlock[] {
-  return pending.map(e => e.meta)
+  return [...pending].sort(comparePriorityBlock).map(e => e.meta)
 }
 
 export function subscribeIntelligenceQueueBlock(fn: () => void): () => void {
