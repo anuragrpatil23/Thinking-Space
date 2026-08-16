@@ -13,6 +13,12 @@ import {
   removeProjectBlock,
   updateProjectBlock,
 } from '@/services/lego_blocks/integrations/projectsStorageBlock'
+import {
+  PROJECT_KINDS_BLOCK,
+  PROJECT_KIND_META_BLOCK,
+  normalizeProjectKindBlock,
+  type ProjectKindBlock,
+} from '@/services/lego_blocks/units/projectKindBlock'
 import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
 import {
   isValidProjectKeyBlock,
@@ -37,6 +43,7 @@ interface ProjectDraft {
   aliasesText: string
   group: string
   color: string
+  kind: ProjectKindBlock
 }
 
 function linesToTextBlock(values: string[]): string {
@@ -57,6 +64,7 @@ function toDraft(project: ProjectBlock): ProjectDraft {
     aliasesText: linesToTextBlock(project.aliases),
     group: project.group,
     color: project.color,
+    kind: project.kind,
   }
 }
 
@@ -69,7 +77,8 @@ function draftDiffersBlock(project: ProjectBlock, draft: ProjectDraft): boolean 
     draft.rootsText !== linesToTextBlock(project.roots) ||
     draft.aliasesText !== linesToTextBlock(project.aliases) ||
     draft.group !== project.group ||
-    draft.color !== project.color
+    draft.color !== project.color ||
+    draft.kind !== project.kind
   )
 }
 
@@ -167,6 +176,7 @@ export default function ProjectsSettingsBlock() {
         aliases: textToLinesBlock(draft.aliasesText),
         group: draft.group,
         color: draft.color,
+        kind: draft.kind,
       })
       // null means the storage layer refused to write rather than clobber an
       // unreadable file. Silence here would look like a successful save.
@@ -299,6 +309,31 @@ export default function ProjectsSettingsBlock() {
         </p>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="space-y-1">
+          <label className={LABEL_CLASS}>Kind of work</label>
+          <select
+            value={draft.kind}
+            onChange={e =>
+              updateDraft(project.uuid, {
+                kind: normalizeProjectKindBlock(e.target.value),
+              })
+            }
+            aria-label={`Kind of work for ${project.name}`}
+            className={FIELD_CLASS}
+          >
+            <option value="">Unset</option>
+            {PROJECT_KINDS_BLOCK.map(kind => (
+              <option key={kind} value={kind}>
+                {PROJECT_KIND_META_BLOCK[kind].label}
+              </option>
+            ))}
+          </select>
+          <p className={HINT_CLASS}>
+            {draft.kind
+              ? PROJECT_KIND_META_BLOCK[draft.kind].hint
+              : 'Drives the work-mix heatmap. Unset projects draw nothing there.'}
+          </p>
+        </div>
         <div className="space-y-1">
           <label className={LABEL_CLASS}>Group</label>
           <input

@@ -16,6 +16,8 @@ import {
   type ReadingSourceFilter,
 } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import AiActivityHeatmapBlock from '@/components/lego_blocks/units/AiActivityHeatmapBlock'
+import { useProjectsBlock } from '@/components/lego_blocks/hooks/shared/useProjectsBlock'
+import { buildProjectKindMapBlock } from '@/services/lego_blocks/units/projectKindBlock'
 import AiActivityDrillProjectTotalsBlock from '@/components/lego_blocks/units/AiActivityDrillProjectTotalsBlock'
 import AiActivityProjectChipsBlock from '@/components/lego_blocks/units/AiActivityProjectChipsBlock'
 // Code-split boundaries: these two pull recharts; keep it out of the startup bundle.
@@ -111,6 +113,11 @@ export default function AiActivityPanelBlock({
   enableManualSessions = false,
 }: AiActivityGraphControls = {}) {
   const activity = useAiActivityBlock('90d')
+  // Work-mix classification. Loaded here rather than in the heatmap so that
+  // primitive stays prop-driven; cheap enough to keep unconditional, since the
+  // projects list is a handful of records read once.
+  const { projects } = useProjectsBlock()
+  const kindByProject = useMemo(() => buildProjectKindMapBlock(projects), [projects])
   // Whether hand-logged sessions can be written — gated by any AI-Activity
   // vault-write opt-in (manual sessions live in the vault ai-activity/ folder,
   // so they ride its general write permission, not the digests-mirror toggle
@@ -489,6 +496,7 @@ export default function AiActivityPanelBlock({
             onSelectDate={d => drillToDate(d, 'heatmap')}
             selectedRange={selectedRange}
             onSelectRange={r => drillToRange(r, 'heatmap')}
+            kindByProject={kindByProject}
           />
           {drillSource === 'heatmap' && drillActive && renderDrillDetail(true)}
         </PanelSection>

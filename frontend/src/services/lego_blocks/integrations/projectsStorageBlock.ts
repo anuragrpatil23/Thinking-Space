@@ -9,6 +9,10 @@ import {
   type ProjectBlock,
   type ProjectsFileBlock,
 } from '@/services/lego_blocks/units/projectBlock'
+import {
+  normalizeProjectKindBlock,
+  type ProjectKindBlock,
+} from '@/services/lego_blocks/units/projectKindBlock'
 import { renderProjectsMarkdownBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 
@@ -40,6 +44,7 @@ export interface CreateProjectInputBlock {
   group?: string
   aliases?: string[]
   color?: string
+  kind?: ProjectKindBlock
 }
 
 export interface UpdateProjectInputBlock {
@@ -52,6 +57,7 @@ export interface UpdateProjectInputBlock {
   group?: string
   aliases?: string[]
   color?: string
+  kind?: ProjectKindBlock
 }
 
 function normalizeRootListBlock(value: string[] | undefined): string[] {
@@ -184,6 +190,7 @@ export async function addProjectBlock(input: CreateProjectInputBlock): Promise<P
     taskDir: '',
     taskLabel: '',
     color: (input.color ?? '').trim(),
+    kind: normalizeProjectKindBlock(input.kind),
   }
   await writeProjectsBlock([...projects, next])
   return next
@@ -212,6 +219,7 @@ export async function updateProjectBlock(uuid: string, patch: UpdateProjectInput
       group: patch.group !== undefined ? patch.group.trim() : project.group,
       aliases: patch.aliases !== undefined ? normalizeAliasListBlock(patch.aliases) : project.aliases,
       color: patch.color !== undefined ? patch.color.trim() : project.color,
+      kind: patch.kind !== undefined ? normalizeProjectKindBlock(patch.kind) : project.kind,
     }
     return updated
   })

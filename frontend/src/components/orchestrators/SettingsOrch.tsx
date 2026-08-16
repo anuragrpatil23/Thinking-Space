@@ -108,6 +108,7 @@ import AiActivitySessionSourcesSettingsBlock from '@/components/lego_blocks/inte
 import AiActivityHomePostItSettingsBlock from '@/components/lego_blocks/integrations/AiActivityHomePostItSettingsBlock'
 import AiActivitySetModeSettingsBlock from '@/components/lego_blocks/integrations/AiActivitySetModeSettingsBlock'
 import AiActivityCalendarModeSettingsBlock from '@/components/lego_blocks/integrations/AiActivityCalendarModeSettingsBlock'
+import AiActivityWorkMixSettingsBlock from '@/components/lego_blocks/integrations/AiActivityWorkMixSettingsBlock'
 import AiActivityAiTitlesSettingsBlock from '@/components/lego_blocks/integrations/AiActivityAiTitlesSettingsBlock'
 import AiActivityRangeSummaryProviderSettingsBlock from '@/components/lego_blocks/integrations/AiActivityRangeSummaryProviderSettingsBlock'
 import AiActivityRestDaysSettingsBlock from '@/components/lego_blocks/integrations/AiActivityRestDaysSettingsBlock'
@@ -1631,6 +1632,7 @@ export default function SettingsOrch({
           <AiActivityHomePostItSettingsBlock />
           <AiActivitySetModeSettingsBlock />
           <AiActivityCalendarModeSettingsBlock />
+          <AiActivityWorkMixSettingsBlock />
           <AiActivityAiTitlesSettingsBlock />
           <AiActivityRangeSummaryProviderSettingsBlock />
           <AiActivityRestDaysSettingsBlock />

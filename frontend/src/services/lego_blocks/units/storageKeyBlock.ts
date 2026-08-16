@@ -54,6 +54,8 @@ export const STORAGE_KEYS = {
   aiActivityAiTitlesEnabled: 'ltm-ai-activity-ai-titles-enabled',
   aiActivityRangeSummaryProvider: 'ltm-ai-activity-range-summary-provider',
   aiActivityRestDays: 'ltm-ai-activity-rest-days',
+  aiActivityWorkMixMode: 'ltm-ai-activity-work-mix-mode-enabled',
+  aiActivityThinkingPoolHours: 'ltm-ai-activity-thinking-pool-hours',
   aiActivitySectionsOpen: 'ltm-ai-activity-sections-open',
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
   intelligenceDefaultProvider: 'ltm-intelligence-default-provider',
@@ -360,6 +362,69 @@ export function setAiActivityRestDays(days: number[]): void {
 }
 
 export const AI_ACTIVITY_REST_DAYS_EVENT = 'thinkspc:ai-activity-rest-days-changed'
+
+/**
+ * When on, the heatmap stops coloring days by which project you spent most
+ * time in and starts answering a different question: did thinking happen, and
+ * if not, what took the day instead.
+ *
+ * A separate mode rather than a replacement because the two answer different
+ * questions — "where did my time go across projects" is still the right view
+ * when you are looking for a session, and this one is useless for that.
+ */
+export function getAiActivityWorkMixMode(): boolean {
+  return getLocalStorageItemBlock(STORAGE_KEYS.aiActivityWorkMixMode) === 'true'
+}
+
+export function setAiActivityWorkMixMode(enabled: boolean): void {
+  setStorageItem(STORAGE_KEYS.aiActivityWorkMixMode, enabled ? 'true' : 'false')
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AI_ACTIVITY_WORK_MIX_MODE_EVENT, { detail: enabled }))
+  }
+}
+
+export const AI_ACTIVITY_WORK_MIX_MODE_EVENT = 'thinkspc:ai-activity-work-mix-mode-changed'
+
+/** Below this the fill saturates on a rounding error; above it a full day of
+ *  anything reads as one slot and the scale stops discriminating. */
+export const AI_ACTIVITY_POOL_HOURS_MIN = 0.5
+export const AI_ACTIVITY_POOL_HOURS_MAX = 12
+export const AI_ACTIVITY_POOL_HOURS_DEFAULT = 4
+
+/**
+ * How many hours of focused work a day is expected to hold — the denominator
+ * both the fill and the ring are measured against.
+ *
+ * User-set rather than fixed because the ceiling is personal, and because a
+ * shared denominator is the only reason a ring and a fill on the same cell can
+ * be compared at all: "building took a slot's worth" is only meaningful if a
+ * slot means one thing. Default 4h, the figure most people report as the
+ * ceiling for genuinely effortful work.
+ */
+export function getAiActivityThinkingPoolHours(): number {
+  const raw = getLocalStorageItemBlock(STORAGE_KEYS.aiActivityThinkingPoolHours)
+  const parsed = raw == null ? NaN : Number.parseFloat(raw)
+  if (!Number.isFinite(parsed)) return AI_ACTIVITY_POOL_HOURS_DEFAULT
+  return clampPoolHoursBlock(parsed)
+}
+
+export function setAiActivityThinkingPoolHours(hours: number): void {
+  const clean = Number.isFinite(hours)
+    ? clampPoolHoursBlock(hours)
+    : AI_ACTIVITY_POOL_HOURS_DEFAULT
+  setStorageItem(STORAGE_KEYS.aiActivityThinkingPoolHours, String(clean))
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AI_ACTIVITY_POOL_HOURS_EVENT, { detail: clean }))
+  }
+}
+
+export function clampPoolHoursBlock(hours: number): number {
+  const bounded = Math.min(AI_ACTIVITY_POOL_HOURS_MAX, Math.max(AI_ACTIVITY_POOL_HOURS_MIN, hours))
+  // Quarter-hour steps — finer than the arc can render anyway.
+  return Math.round(bounded * 4) / 4
+}
+
+export const AI_ACTIVITY_POOL_HOURS_EVENT = 'thinkspc:ai-activity-pool-hours-changed'
 
 export function setStoredVaultRoot(path: string): void {
   setStorageItem(STORAGE_KEYS.vaultRoot, path)

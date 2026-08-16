@@ -7,12 +7,26 @@ import { useWheelScrollCaptureBlock } from '@/components/lego_blocks/hooks/share
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import {
   AI_ACTIVITY_CALENDAR_MODE_EVENT,
+  AI_ACTIVITY_POOL_HOURS_EVENT,
   AI_ACTIVITY_REST_DAYS_EVENT,
   AI_ACTIVITY_SET_MODE_EVENT,
+  AI_ACTIVITY_WORK_MIX_MODE_EVENT,
   getAiActivityCalendarMode,
   getAiActivityRestDays,
   getAiActivitySetMode,
+  getAiActivityThinkingPoolHours,
+  getAiActivityWorkMixMode,
 } from '@/services/lego_blocks/units/storageKeyBlock'
+import {
+  foldWorkMixDayBlock,
+  workMixRingGradientBlock,
+  type WorkMixCellBlock,
+} from '@/services/lego_blocks/units/aiActivityWorkMixBlock'
+import {
+  projectKindLabelBlock,
+  projectKindStrokeBlock,
+  type ProjectKindBlock,
+} from '@/services/lego_blocks/units/projectKindBlock'
 
 interface AiActivityHeatmapBlockProps {
   days: ActivityDay[]
@@ -27,6 +41,13 @@ interface AiActivityHeatmapBlockProps {
   /** Range selection — used for multi-day comparison. */
   selectedRange?: { startIso: string; endIso: string } | null
   onSelectRange?: (range: { startIso: string; endIso: string } | null) => void
+  /**
+   * Canonical-project-name → kind, from `buildProjectKindMapBlock`. Only read
+   * in work-mix mode. Passed in rather than loaded here so this stays a
+   * prop-driven primitive; a caller that omits it leaves every project
+   * unclassified, which renders as empty cells rather than a wrong answer.
+   */
+  kindByProject?: Record<string, ProjectKindBlock>
 }
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -38,6 +59,15 @@ const MAX_VISIBLE_WEEKS = 53
 // legibly inside each cell.
 const SET_CELL_PX = 18
 const SET_CELL_GAP = 3
+/** Work-mix ring thickness. 2px on an 18px cell leaves a 14px core, keeping the
+ *  fill — the mark that matters most — the largest thing in the cell. */
+const WORK_MIX_RING_PX = 2
+
+function fmtHoursBlock(hours: number): string {
+  if (hours <= 0) return '0h'
+  if (hours < 1) return `${Math.round(hours * 60)}m`
+  return `${hours.toFixed(hours < 10 ? 1 : 0)}h`
+}
 
 function mondayOf(date: Date): Date {
   const d = new Date(date)
@@ -71,6 +101,8 @@ interface CellModel {
   intensity: number
   /** Top project on that day (used for default tint when no project filter is set). */
   topProject: string | null
+  /** Kind breakdown for work-mix mode; null when the mode is off. */
+  workMix: WorkMixCellBlock | null
 }
 
 export default function AiActivityHeatmapBlock({
@@ -83,34 +115,51 @@ export default function AiActivityHeatmapBlock({
   onSelectDate,
   selectedRange = null,
   onSelectRange,
+  kindByProject,
 }: AiActivityHeatmapBlockProps) {
   const { hostRef, isDark } = useDarkModeClassBlock()
   const [setMode, setSetMode] = useState<boolean>(() => getAiActivitySetMode())
   const [calendarMode, setCalendarMode] = useState<boolean>(() => getAiActivityCalendarMode())
   const [restDays, setRestDays] = useState<number[]>(() => getAiActivityRestDays())
+  const [workMixMode, setWorkMixMode] = useState<boolean>(() => getAiActivityWorkMixMode())
+  const [poolHours, setPoolHours] = useState<number>(() => getAiActivityThinkingPoolHours())
   useEffect(() => {
     const onSetMode = () => setSetMode(getAiActivitySetMode())
     const onCalMode = () => setCalendarMode(getAiActivityCalendarMode())
     const onRestDays = () => setRestDays(getAiActivityRestDays())
+    const onWorkMix = () => setWorkMixMode(getAiActivityWorkMixMode())
+    const onPool = () => setPoolHours(getAiActivityThinkingPoolHours())
     window.addEventListener(AI_ACTIVITY_SET_MODE_EVENT, onSetMode)
     window.addEventListener(AI_ACTIVITY_CALENDAR_MODE_EVENT, onCalMode)
     window.addEventListener(AI_ACTIVITY_REST_DAYS_EVENT, onRestDays)
+    window.addEventListener(AI_ACTIVITY_WORK_MIX_MODE_EVENT, onWorkMix)
+    window.addEventListener(AI_ACTIVITY_POOL_HOURS_EVENT, onPool)
     window.addEventListener('storage', onSetMode)
     window.addEventListener('storage', onCalMode)
     window.addEventListener('storage', onRestDays)
+    window.addEventListener('storage', onWorkMix)
+    window.addEventListener('storage', onPool)
     return () => {
       window.removeEventListener(AI_ACTIVITY_SET_MODE_EVENT, onSetMode)
       window.removeEventListener(AI_ACTIVITY_CALENDAR_MODE_EVENT, onCalMode)
       window.removeEventListener(AI_ACTIVITY_REST_DAYS_EVENT, onRestDays)
+      window.removeEventListener(AI_ACTIVITY_WORK_MIX_MODE_EVENT, onWorkMix)
+      window.removeEventListener(AI_ACTIVITY_POOL_HOURS_EVENT, onPool)
       window.removeEventListener('storage', onSetMode)
       window.removeEventListener('storage', onCalMode)
       window.removeEventListener('storage', onRestDays)
+      window.removeEventListener('storage', onWorkMix)
+      window.removeEventListener('storage', onPool)
     }
   }, [])
   // "Calendar look" = same big-cell / day-of-month layout that set-mode uses,
   // but without the 3-day dividers or the current-set ring. Either toggle
   // activates the layout; set-specific decorations still gate on setMode.
   const showDayNumbers = setMode || calendarMode
+  // Work-mix needs the big geometry unconditionally: at 12px a 2px ring leaves
+  // an 8px core, so the fill — the mark that matters most — would get the least
+  // area. Day numbers stay opt-in; a banded ring under a digit is busy enough.
+  const bigCells = showDayNumbers || workMixMode
 
   // Rest-day predicate: true when this date falls in the *current calendar
   // month* AND its weekday is one the user marked as rest. Bucket the check
@@ -193,7 +242,18 @@ export default function AiActivityHeatmapBlock({
           }
         }
       }
-      cells.push({ date, msgs, intensity: msgs, topProject })
+      cells.push({
+        date,
+        msgs,
+        intensity: msgs,
+        topProject,
+        // Folded per cell rather than per visible page so a day's marks do not
+        // change when you page the grid — unlike `intensity`, these are
+        // absolute against the user's pool, not relative to the range.
+        workMix: workMixMode
+          ? foldWorkMixDayBlock(d?.byChainProjectDurationMs, kindByProject ?? {}, poolHours)
+          : null,
+      })
       cursor.setDate(cursor.getDate() + 1)
       if (cells.length > 530 * 7) break // ~10y hard stop against degenerate ranges
     }
@@ -206,7 +266,16 @@ export default function AiActivityHeatmapBlock({
     const w: CellModel[][] = []
     for (let i = 0; i < cells.length; i += 7) w.push(cells.slice(i, i + 7))
     return w
-  }, [dayMap, startIso, endIso, endOfCurrentMonthIso, filterProject])
+  }, [
+    dayMap,
+    startIso,
+    endIso,
+    endOfCurrentMonthIso,
+    filterProject,
+    workMixMode,
+    kindByProject,
+    poolHours,
+  ])
 
   // Measure the outer scroll container so paging kicks in whenever the grid
   // would actually overflow — not just past the 53-week fallback. This
@@ -228,7 +297,7 @@ export default function AiActivityHeatmapBlock({
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const cellStepPx = showDayNumbers ? SET_CELL_PX + SET_CELL_GAP : 15
+  const cellStepPx = bigCells ? SET_CELL_PX + SET_CELL_GAP : 15
   const leftLabelPad = showDayNumbers ? 8 : 36 // weekday labels + margin, or just padding
   const fitVisibleWeeks =
     containerWidth > 0
@@ -325,8 +394,65 @@ export default function AiActivityHeatmapBlock({
   )
 
   const hovered = hoverDate ? dayMap.get(hoverDate) : null
+  // The footer reports every kind with hours on it, including conditioning and
+  // `other`, which deliberately draw no mark. The cell is allowed to be
+  // selective; the readout is not.
+  const hoveredMix = useMemo(
+    () =>
+      workMixMode && hovered
+        ? foldWorkMixDayBlock(hovered.byChainProjectDurationMs, kindByProject ?? {}, poolHours)
+        : null,
+    [workMixMode, hovered, kindByProject, poolHours],
+  )
+
+  /** Work-mix fill: thinking against the pool. Building and maintenance
+   *  contribute nothing here — they live on the ring — so a day of pure
+   *  building renders as an empty cell, which is the honest answer. */
+  function workMixFill(mix: WorkMixCellBlock): string {
+    if (mix.fill <= 0) return 'rgba(148,163,184,0.08)'
+    const stroke = projectKindStrokeBlock('thinking', isDark)
+    const m = stroke.match(/rgb\((\d+),(\d+),(\d+)\)/)
+    if (!m) return stroke
+    const alpha = isDark ? 0.32 + mix.fill * 0.6 : 0.18 + mix.fill * 0.65
+    return `rgba(${m[1]},${m[2]},${m[3]},${alpha.toFixed(3)})`
+  }
+
+  /** Ring color per kind, deepened by overshoot. Deliberately deepened rather
+   *  than brightened: a ring that has gone past a full pool is the worst cell
+   *  in the view, and the Apple-watch instinct to celebrate a lap would
+   *  congratulate the user for exactly what this view exists to catch. */
+  function workMixRingColor(
+    kind: Parameters<typeof projectKindStrokeBlock>[0],
+    overshoot: number,
+  ): string {
+    const stroke = projectKindStrokeBlock(kind, isDark)
+    const m = stroke.match(/rgb\((\d+),(\d+),(\d+)\)/)
+    if (!m) return stroke
+    const alpha = overshoot >= 2 ? 1 : overshoot === 1 ? 0.88 : 0.7
+    return `rgba(${m[1]},${m[2]},${m[3]},${alpha})`
+  }
+
+  function ringGradient(cell: CellModel): string {
+    if (!cell.workMix) return ''
+    return workMixRingGradientBlock(cell.workMix, kind =>
+      workMixRingColor(kind, cell.workMix!.overshoot),
+    )
+  }
+
+  /** Spoken form of a work-mix cell. Reports every kind with hours on it,
+   *  including the two that draw no mark, so the screen-reader label is not a
+   *  narrower truth than the tooltip. */
+  function workMixSummary(mix: WorkMixCellBlock): string {
+    if (!mix.hasActivity) return 'no tracked work'
+    const parts = (Object.entries(mix.hoursByKind) as [string, number][])
+      .filter(([, hours]) => hours > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([kind, hours]) => `${kind} ${fmtHoursBlock(hours)}`)
+    return parts.join(', ')
+  }
 
   function cellBackground(cell: CellModel): string {
+    if (cell.workMix) return workMixFill(cell.workMix)
     if (cell.intensity <= 0) return 'rgba(148,163,184,0.08)'
     const colorName = filterProject ?? cell.topProject ?? 'LTM'
     const { stroke } = getProjectColor(colorName, isDark)
@@ -397,8 +523,8 @@ export default function AiActivityHeatmapBlock({
   }
 
   // Set-mode geometry: cells grow so day-of-month numbers stay legible.
-  const cellPx = showDayNumbers ? SET_CELL_PX : 12
-  const cellGap = showDayNumbers ? SET_CELL_GAP : 3
+  const cellPx = bigCells ? SET_CELL_PX : 12
+  const cellGap = bigCells ? SET_CELL_GAP : 3
   const step = cellPx + cellGap
   const gridHeight = 7 * cellPx + 6 * cellGap
   const gridWidth = weeks.length * step - cellGap
@@ -567,8 +693,32 @@ export default function AiActivityHeatmapBlock({
                               ? 'repeating-linear-gradient(45deg, transparent 0 3px, rgba(148,163,184,0.35) 3px 4px)'
                               : undefined,
                           }}
-                          aria-label={`${cell.date}: ${cell.msgs} messages${isRest ? ' (Claude Code reset day)' : ''}`}
+                          aria-label={
+                            cell.workMix
+                              ? `${cell.date}: ${workMixSummary(cell.workMix)}${isRest ? ' (rest day)' : ''}`
+                              : `${cell.date}: ${cell.msgs} messages${isRest ? ' (Claude Code reset day)' : ''}`
+                          }
                         >
+                          {ringGradient(cell) && (
+                            <span
+                              aria-hidden
+                              className="pointer-events-none absolute inset-0 rounded-[3px]"
+                              style={{
+                                padding: WORK_MIX_RING_PX,
+                                background: ringGradient(cell),
+                                // Standard gradient-border knockout: paint the
+                                // conic sweep across the whole cell, then mask
+                                // out everything inside the padding box so only
+                                // the rim survives. Keeps the ring off the fill
+                                // entirely — the two channels never share pixels.
+                                WebkitMask:
+                                  'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+                                WebkitMaskComposite: 'xor',
+                                mask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+                                maskComposite: 'exclude',
+                              }}
+                            />
+                          )}
                           {showDayNumbers && dayNum}
                           {drawBottomDivider && (
                             <span
@@ -635,10 +785,24 @@ export default function AiActivityHeatmapBlock({
             <span>
               <strong className="tabular-nums text-foreground/80">{hovered.totalChains}</strong> chains
             </span>
+            {hoveredMix?.hasActivity &&
+              (Object.entries(hoveredMix.hoursByKind) as [string, number][])
+                .filter(([, hours]) => hours > 0)
+                .sort((a, b) => b[1] - a[1])
+                .map(([kind, hours]) => (
+                  <span key={kind}>
+                    <strong className="tabular-nums text-foreground/80">
+                      {fmtHoursBlock(hours)}
+                    </strong>{' '}
+                    {projectKindLabelBlock(kind as ProjectKindBlock).toLowerCase()}
+                  </span>
+                ))}
           </div>
         ) : (
           <span className="text-muted-foreground/60">
-            {setMode
+            {workMixMode
+              ? 'Fill is thinking against your daily pool · the ring is what took the rest · Claude-tracked work only'
+              : setMode
               ? 'Numbers are day-of-month · thin lines mark 3-day set boundaries · ringed cells are today’s set'
               : calendarMode
                 ? 'Numbers are day-of-month · click a day · drag or shift-click for range · click a month label for the whole month'

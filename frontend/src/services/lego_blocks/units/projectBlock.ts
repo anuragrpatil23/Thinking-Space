@@ -33,6 +33,11 @@
  * speaking a third vocabulary is how it ended up with three identities.
  */
 
+import {
+  normalizeProjectKindBlock,
+  type ProjectKindBlock,
+} from '@/services/lego_blocks/units/projectKindBlock'
+
 export interface ProjectBlock {
   /** Stable identity. Minted once and frozen — never derived from name, key or path. */
   uuid: string
@@ -92,6 +97,15 @@ export interface ProjectBlock {
    * every row under it, so F9 names it "Thinking": the half opposite doing.
    */
   taskLabel: string
+  /**
+   * What kind of work this project mostly is — drives the work-mix heatmap.
+   * Empty means unclassified, which the fold treats as `other`.
+   *
+   * Per-project rather than per-session because the kind is not derivable from
+   * a transcript and a per-session prompt is a tax nobody pays twice. See
+   * [projectKindBlock](./projectKindBlock.ts) for what the kinds mean.
+   */
+  kind: ProjectKindBlock
 }
 
 /**
@@ -281,6 +295,7 @@ function upgradeProjectBlock(value: unknown): ProjectBlock {
     color: typeof candidate.color === 'string' ? candidate.color.trim() : '',
     taskDir: typeof candidate.taskDir === 'string' ? candidate.taskDir.trim() : '',
     taskLabel: typeof candidate.taskLabel === 'string' ? candidate.taskLabel.trim() : '',
+    kind: normalizeProjectKindBlock(candidate.kind),
   }
 }
 
