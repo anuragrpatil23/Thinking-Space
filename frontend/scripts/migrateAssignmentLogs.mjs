@@ -345,6 +345,89 @@ function migratePendingBlock() {
  * migrated file, leaving no way back to the original. The backup is only worth
  * having if it predates every change this script makes.
  */
+/**
+ * Undertaking records: rewrite `chains:` from chain ids to session ids.
+ *
+ * The third place the chainId -> sessionId rekey never reached disk, and the
+ * one with a visible symptom: `chainsFor` matches these pointers against
+ * *session ids* — its own comment says so — while every stored pointer was a
+ * full chain id (`F9::native/claude/<slug>/<uuid>.jsonl#w1`). Nothing matched,
+ * so all 32 F9 undertakings that had a trail rendered "0 sessions · 0 days"
+ * with their sessions sitting right there on disk.
+ *
+ * An undertaking is keyed to a **session**, never to a chain and never to a
+ * window. A chain is a grouping by time and can hold two unrelated topics; a
+ * window is a property of how a transcript was cut up. Neither is what the work
+ * was. So the window marker is dropped and the session root is written — the
+ * reader matches at the root, so one pointer finds every window of that sitting.
+ *
+ * `fedBy` is deliberately untouched: it holds task keys (`F9-II-E-571`), not
+ * session pointers, and rewriting it would corrupt the seam to the old
+ * organizer.
+ */
+function sessionRootsOnDiskBlock() {
+  const roots = new Set()
+  for (const id of known.ids) roots.add(id.includes('::') ? id.slice(0, id.indexOf('::')) : id)
+  return roots
+}
+
+function undertakingSessionIdBlock(pointer, roots) {
+  const split = splitChainIdBlock(pointer)
+  if (!split) return null
+  // `splitChainIdBlock` already applies the `sessionIdOf` rules (bare uuid,
+  // codex `rollout-*`, vault `<date>_<8hex>.md`) and strips `#wN`.
+  return roots.has(split.base) ? split.base : null
+}
+
+function migrateUndertakingsBlock() {
+  const roots = sessionRootsOnDiskBlock()
+  const organizer = path.join(ACTIVITY, 'thinking-organizer')
+  const report = { files: 0, rewritten: 0, pointers: 0, migrated: 0, unresolved: [] }
+  if (!fs.existsSync(organizer)) return report
+
+  for (const project of fs.readdirSync(organizer)) {
+    const dir = path.join(organizer, project, 'undertakings')
+    if (!fs.existsSync(dir)) continue
+    for (const file of fs.readdirSync(dir)) {
+      if (!file.endsWith('.md')) continue
+      const full = path.join(dir, file)
+      const text = fs.readFileSync(full, 'utf8')
+      const match = /^chains:[ \t]*$((?:\r?\n[ \t]+-[ \t]+.*)+)/m.exec(text)
+      if (!match) continue
+      report.files += 1
+
+      const entries = [...match[1].matchAll(/-[ \t]+(.*)/g)].map(m => m[1].trim().replace(/^["']|["']$/g, ''))
+      const next = []
+      let changed = false
+      for (const entry of entries) {
+        if (!entry) continue
+        report.pointers += 1
+        // Already a session id: leave it, so a re-run is a no-op.
+        if (!entry.includes('/') && !entry.includes('.jsonl') && !entry.includes('#w')) {
+          next.push(entry)
+          continue
+        }
+        const sessionId = undertakingSessionIdBlock(entry, roots)
+        if (!sessionId) {
+          report.unresolved.push({ file: `${project}/${file}`, pointer: entry.slice(0, 90) })
+          next.push(entry) // Left alone rather than dropped — a pointer we cannot
+          continue         // resolve is not a pointer we may delete.
+        }
+        report.migrated += 1
+        changed = true
+        if (!next.includes(sessionId)) next.push(sessionId)
+      }
+      if (!changed) continue
+
+      const rendered = `chains:\n${next.map(id => `  - "${id}"`).join('\n')}`
+      const updated = text.slice(0, match.index) + rendered + text.slice(match.index + match[0].length)
+      report.rewritten += 1
+      writeBlock(full, updated)
+    }
+  }
+  return report
+}
+
 function writeBlock(file, content) {
   if (!APPLY) return
   const backup = `${file}.bak`
@@ -392,6 +475,8 @@ function foldKeyBlock(proposal) {
   return `${proposal.sessionId}|${proposal.proposedBy}|${target}`
 }
 
+const undertakings = migrateUndertakingsBlock()
+
 const pending = migratePendingBlock()
 let folded = 0
 for (const [project, proposals] of pending.byProject) {
@@ -421,6 +506,11 @@ for (const r of reports) {
   )
   for (const [reason, n] of r.reasons) console.log(`    ${n} × ${reason}`)
 }
+
+console.log(
+  `\nundertakings  records with chains=${undertakings.files}  rewritten=${undertakings.rewritten}  pointers=${undertakings.pointers}  migrated=${undertakings.migrated}  unresolved=${undertakings.unresolved.length}`,
+)
+for (const u of undertakings.unresolved.slice(0, 6)) console.log(`    unresolved: ${JSON.stringify(u)}`)
 
 console.log(`\npending  files=${pending.report.files}  proposals produced=${pending.report.produced}  newly written=${folded}`)
 for (const s of pending.report.skipped) console.log(`    skipped: ${JSON.stringify(s)}`)

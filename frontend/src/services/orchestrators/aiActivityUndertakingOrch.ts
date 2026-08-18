@@ -5,6 +5,7 @@ import {
   type UndertakingComment,
   type UndertakingRecord,
 } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
+import { sessionRootBlock } from '@/services/lego_blocks/units/assignmentSweepBlock'
 import {
   appendProposalsBlock,
   proposalLogPathBlock,
@@ -239,7 +240,14 @@ function chainBelongsToBlock(
 ): boolean {
   return (
     chain.undertaking.includes(record.key) ||
-    chain.sessions.some(s => wanted.has(s.sessionId))
+    // Compared at the session *root*, so a pointer naming a session also finds
+    // the later windows of that same session. A window id is
+    // `<uuid>::<first-event-uuid>`, and the window split is a property of how
+    // the transcript was cut up, not of what the work was — an undertaking that
+    // names a sitting means the whole sitting. Matching the full id instead let
+    // a pointer resolve to the bare first window and silently miss the rest,
+    // which on F9 meant an undertaking finding the wrong half of its own day.
+    chain.sessions.some(s => wanted.has(sessionRootBlock(s.sessionId)))
   )
 }
 

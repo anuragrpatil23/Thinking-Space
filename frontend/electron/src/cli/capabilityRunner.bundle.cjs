@@ -18919,14 +18919,12 @@ async function incrementalSync(sinceTimestamp, fs4, options) {
     const allEntries = excludedPrefixes.length === 0 ? walked : walked.filter((e) => !isPathSyncExcluded(e.path, excludedPrefixes));
     const sinceSeconds = normalizeEpochSeconds(sinceTimestamp);
     const mtimeSelectedEntries = allEntries.filter((e) => normalizeEpochSeconds(e.mtime) > sinceSeconds);
-    let fingerprintSkipped = 0;
     let updatedEntries = mtimeSelectedEntries;
     if (indexTrusted && mtimeSelectedEntries.length > 0) {
       const prevIndex = await getVaultFileRecordsByPaths(mtimeSelectedEntries.map((e) => e.path));
       updatedEntries = mtimeSelectedEntries.filter((entry) => {
         const prev = prevIndex.get(entry.path);
         const unchanged = prev !== void 0 && prev.mtime === normalizeEpochSeconds(entry.mtime) && prev.size === entry.size;
-        if (unchanged) fingerprintSkipped++;
         return !unchanged;
       });
     }
@@ -20952,7 +20950,7 @@ function cleanTitle(raw) {
   let t = raw.trim();
   const linkMatch = t.match(/\[\[([^\]]+)\]\]/);
   if (linkMatch) t = linkMatch[1];
-  t = t.replace(/^[📍•\-\s]+/, "");
+  t = t.replace(/^[📍•\-\s]+/u, "");
   return t.trim().slice(0, 80);
 }
 function extractExcalidrawHighlightsBlock(content) {
@@ -22417,6 +22415,15 @@ function extendVocabularyBlock(vocabulary, added) {
   return { tags };
 }
 
+// src/services/lego_blocks/units/assignmentSweepBlock.ts
+function sessionRootBlock(sessionId) {
+  const cut = sessionId.indexOf("::");
+  return cut === -1 ? sessionId : sessionId.slice(0, cut);
+}
+function undisposedChainsBlock(chains) {
+  return chains.filter((chain) => !chain.undertaking.some((key) => key.trim()));
+}
+
 // src/services/lego_blocks/integrations/assignmentLogStoreBlock.ts
 init_fsBlock();
 
@@ -23786,7 +23793,14 @@ function buildTail(chains) {
   };
 }
 function chainBelongsToBlock(chain, record, wanted) {
-  return chain.undertaking.includes(record.key) || chain.sessions.some((s) => wanted.has(s.sessionId));
+  return chain.undertaking.includes(record.key) || // Compared at the session *root*, so a pointer naming a session also finds
+  // the later windows of that same session. A window id is
+  // `<uuid>::<first-event-uuid>`, and the window split is a property of how
+  // the transcript was cut up, not of what the work was — an undertaking that
+  // names a sitting means the whole sitting. Matching the full id instead let
+  // a pointer resolve to the bare first window and silently miss the rest,
+  // which on F9 meant an undertaking finding the wrong half of its own day.
+  chain.sessions.some((s) => wanted.has(sessionRootBlock(s.sessionId)));
 }
 async function chainsFor(projectId, record) {
   const all = await listProjectChainsOrch(projectId);
@@ -23989,11 +24003,6 @@ async function listChainsOrch(params) {
     if (params.undertaking && !chain.undertaking.includes(params.undertaking)) return false;
     return true;
   });
-}
-
-// src/services/lego_blocks/units/assignmentSweepBlock.ts
-function undisposedChainsBlock(chains) {
-  return chains.filter((chain) => !chain.undertaking.some((key) => key.trim()));
 }
 
 // src/services/orchestrators/assignmentQueueOrch.ts
