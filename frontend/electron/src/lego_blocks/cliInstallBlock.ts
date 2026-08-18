@@ -340,7 +340,7 @@ async function runMacAdminInstallBlock(sourcePath: string, targetPath: string): 
 }
 
 function toShellSingleQuotedBlock(value: string): string {
-  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 function toAppleScriptStringLiteralBlock(value: string): string {

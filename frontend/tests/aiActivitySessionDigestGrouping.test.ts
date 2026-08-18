@@ -63,6 +63,10 @@ function digestFor(s: ParsedSession): ProjectSessionDigest {
     generatedAt: T(12),
     model: 'm',
     generator: 'local',
+    // Neither is read by grouping, but both are required on the record — and a
+    // fixture that is not a valid digest can drift from the real one silently.
+    undertaking: [],
+    thinking: false,
   }
 }
 

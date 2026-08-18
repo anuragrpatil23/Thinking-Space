@@ -188,14 +188,6 @@ export default function AiActivityDayTimelineBlock({
     return { placed: out, rows: rowEnds.length }
   }, [pills, dayStartMs, startHour, endHour])
 
-  if (chains.length === 0) {
-    return (
-      <div className="text-[11px] text-muted-foreground/70">
-        No sessions on this day.
-      </div>
-    )
-  }
-
   const stripHeight = placed.rows * (ROW_HEIGHT + ROW_GAP) - ROW_GAP
 
   // Pin hour axis below the strip; if the strip itself overflows vertically
@@ -234,6 +226,21 @@ export default function AiActivityDayTimelineBlock({
     if (!el) return
     const delta = el.clientWidth * 0.5 * (direction === 'left' ? -1 : 1)
     el.scrollBy({ left: delta, behavior: 'smooth' })
+  }
+
+  // Below every hook, not above them. This return used to sit before the
+  // scroll-affordance hooks, so a day crossing between "has sessions" and
+  // "none" changed how many hooks this component called between two renders —
+  // which is the one thing React cannot tolerate, and which shows up later as
+  // "rendered fewer hooks than expected" or as state landing on the wrong
+  // component. The hooks are inert on an empty day anyway: the ref is null, so
+  // the effect returns immediately and observes nothing.
+  if (chains.length === 0) {
+    return (
+      <div className="text-[11px] text-muted-foreground/70">
+        No sessions on this day.
+      </div>
+    )
   }
 
   return (

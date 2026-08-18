@@ -449,7 +449,7 @@ async function harvestGoodnotesReadingInner(
     loadExistingBlock(logPath),
   ]);
 
-  let existing = loaded.records;
+  const existing = loaded.records;
   if (loaded.dirty) {
     try {
       await rewriteLogBlock(logPath, existing);

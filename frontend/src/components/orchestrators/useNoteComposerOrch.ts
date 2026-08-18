@@ -580,8 +580,14 @@ export function useNoteComposerOrch(): NoteComposerOrch {
         if (cancelled || requestId !== loadTargetRequestRef.current) return
         setError(err instanceof Error ? err.message : 'Failed to load destination note')
       } finally {
-        if (cancelled || requestId !== loadTargetRequestRef.current) return
-        setLoadingTargetContent(false)
+        // Guarded rather than returned out of: a `return` inside `finally`
+        // discards whatever the block was completing with, including an
+        // in-flight exception. Equivalent here — the catch above swallows
+        // everything and the IIFE returns void — but the shape is a trap, and
+        // the same shape one file over sits on a try with no catch at all.
+        if (!cancelled && requestId === loadTargetRequestRef.current) {
+          setLoadingTargetContent(false)
+        }
       }
     })()
 

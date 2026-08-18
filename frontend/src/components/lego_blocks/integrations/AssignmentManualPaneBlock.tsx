@@ -433,7 +433,7 @@ export default function AssignmentManualPaneBlock({ sessions, onReload, onOpenCh
                               the same decision. */}
                           <span
                             className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground/70"
-                            title={`${1} session${1 === 1 ? '' : 's'}`}
+                            title="1 session"
                           >
                             {1} sess
                           </span>

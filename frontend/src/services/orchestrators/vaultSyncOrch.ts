@@ -278,7 +278,6 @@ export async function incrementalSync(
   // per-file re-read (a bridge round trip on iOS) entirely. Must be read
   // BEFORE replaceVaultFileIndex overwrites the previous walk's records, and
   // only applies when the trust marker says the previous sync finished clean.
-  let fingerprintSkipped = 0
   let updatedEntries = mtimeSelectedEntries
   if (indexTrusted && mtimeSelectedEntries.length > 0) {
     const prevIndex = await getVaultFileRecordsByPaths(mtimeSelectedEntries.map(e => e.path))
@@ -287,7 +286,6 @@ export async function incrementalSync(
       const unchanged = prev !== undefined
         && prev.mtime === normalizeEpochSeconds(entry.mtime)
         && prev.size === entry.size
-      if (unchanged) fingerprintSkipped++
       return !unchanged
     })
   }

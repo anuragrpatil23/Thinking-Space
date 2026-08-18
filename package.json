@@ -1,0 +1,5 @@
+{
+  "devDependencies": {
+    "@eslint/compat": "^1.4.1"
+  }
+}

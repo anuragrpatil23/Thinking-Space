@@ -44,7 +44,14 @@ vi.mock('@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock
   intelligenceCacheAvailableBlock: () => true,
 }))
 
-const runContract = vi.fn(async () => ({ ok: false, value: undefined, providerId: 'local' }))
+// Typed as variadic so the recorded calls keep their arguments: with a
+// zero-parameter mock, `mock.calls[0]` is the empty tuple and asserting on what
+// the orchestrator actually passed is a type error.
+const runContract = vi.fn(async (..._args: unknown[]) => ({
+  ok: false,
+  value: undefined,
+  providerId: 'local',
+}))
 vi.mock('@/services/orchestrators/intelligenceOrch', () => ({
   availability: async () => ({ available: true }),
   runContract: (...args: unknown[]) => runContract(...(args as [])),

@@ -967,8 +967,7 @@ function CardBlock({
                 <ChevronRight className="h-3 w-3 shrink-0 translate-y-0.5 text-muted-foreground/60" />
                 <span className="min-w-0 flex-1 truncate">{session.title}</span>
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {session.date} · {session.activeMinutes}m · {1} session
-                  {1 === 1 ? '' : 's'}
+                  {session.date} · {session.activeMinutes}m
                 </span>
               </button>
               {/* Dropping a session is not a disposition — it just takes it out of

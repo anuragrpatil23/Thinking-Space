@@ -135,7 +135,7 @@ function cleanTitle(raw: string): string {
   const linkMatch = t.match(/\[\[([^\]]+)\]\]/)
   if (linkMatch) t = linkMatch[1]
   // Strip leading marker glyphs/bullets.
-  t = t.replace(/^[📍•\-\s]+/, '')
+  t = t.replace(/^[📍•\-\s]+/u, '')
   return t.trim().slice(0, 80)
 }
 

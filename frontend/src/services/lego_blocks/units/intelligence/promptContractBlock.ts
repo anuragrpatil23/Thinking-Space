@@ -30,7 +30,7 @@ export interface ContractOutput<T> {
   meta: Record<string, unknown>
 }
 
-export interface Contract<TInput, TOutputSchema extends SchemaNode> {
+export interface Contract<TInput, TOutputSchema extends SchemaNode, TOutput = unknown> {
   /** Stable identifier — namespaces the cache. e.g. "session-title". */
   id: string
   /** Bump this when the prompt or sanitizer changes so old cached outputs
@@ -49,8 +49,14 @@ export interface Contract<TInput, TOutputSchema extends SchemaNode> {
   buildRequest: (input: TInput, ctx: ContractBuildContext) => Omit<IntelligenceRequest, 'model'>
   /** Turn validated structured output into the contract's typed output.
    *  Return null to signal "unusable; fall through to caller's fallback"
-   *  without treating it as an error. */
-  finalize: (parsed: Infer<TOutputSchema>, input: TInput) => ContractOutput<unknown> | null
+   *  without treating it as an error.
+   *
+   *  `TOutput` is inferred from the implementation, so a caller reading
+   *  `contract.finalize(...)?.value` gets the contract's real output type. It
+   *  was hardcoded to `unknown`, which erased every contract's output at the
+   *  type level and made even `value.title` an error at the call site. Defaults
+   *  to `unknown` so a `Contract<A, B>` written before this still compiles. */
+  finalize: (parsed: Infer<TOutputSchema>, input: TInput) => ContractOutput<TOutput> | null
   /** Optional custom cache key. Defaults to a hash over `JSON.stringify(input)`
    *  in the orchestrator when omitted. Provide this for inputs that contain
    *  volatile fields (timestamps, references) that shouldn't invalidate. */
@@ -59,8 +65,8 @@ export interface Contract<TInput, TOutputSchema extends SchemaNode> {
 
 // Helper for contracts to declare themselves with less ceremony. Preserves
 // the schema's type parameter for downstream Infer<>.
-export function defineContractBlock<TInput, TOutputSchema extends SchemaNode>(
-  c: Contract<TInput, TOutputSchema>,
-): Contract<TInput, TOutputSchema> {
+export function defineContractBlock<TInput, TOutputSchema extends SchemaNode, TOutput>(
+  c: Contract<TInput, TOutputSchema, TOutput>,
+): Contract<TInput, TOutputSchema, TOutput> {
   return c
 }

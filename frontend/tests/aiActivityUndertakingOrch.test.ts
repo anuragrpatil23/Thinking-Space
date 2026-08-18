@@ -166,6 +166,10 @@ function makeChain(overrides: Partial<ProjectSessionDigest> = {}): ProjectSessio
     filesWritten: ['vault://F9/micron.md'],
     filesRead: [],
     undertaking: [],
+    // Required on the record, so a fixture that omits it is not a valid digest.
+    // Defaults false: a fixture asserting the reasoning-mode ladder should say
+    // so explicitly rather than inherit it.
+    thinking: false,
     ...overrides,
   }
 }

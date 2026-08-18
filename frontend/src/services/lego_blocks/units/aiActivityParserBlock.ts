@@ -124,7 +124,7 @@ const FILENAME_RE = /^(\d{4}-\d{2}-\d{2})_([0-9a-f]{8})\.md$/
 // Permissive: any filename that *starts* with YYYY-MM-DD. Covers Codex
 // transcripts and any other tool that prefixes a date but uses a different id.
 const FILENAME_DATE_RE = /^(\d{4}-\d{2}-\d{2})/
-const SAVED_RE = /_Last saved:\s*([0-9T:\-]+)_/
+const SAVED_RE = /_Last saved:\s*([0-9T:-]+)_/
 const CLEAR_RE = /<command-name>\/clear<\/command-name>/i
 const COMMAND_NAME_RE = /<command-name>([^<]+)<\/command-name>/
 // Vault session files (Claude Code save-skill output) begin with a line like
