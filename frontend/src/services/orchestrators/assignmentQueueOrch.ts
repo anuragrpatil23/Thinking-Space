@@ -28,8 +28,10 @@ import {
   type QueueGroupBlock,
 } from '@/services/lego_blocks/units/assignmentProposalBlock'
 import {
+  accuracyByAuthorBlock,
   calibrateBandsBlock,
   type AssignmentVerdictBlock,
+  type AuthorAccuracyBlock,
   type BandCalibrationBlock,
   type VerdictKindBlock,
 } from '@/services/lego_blocks/units/assignmentVerdictBlock'
@@ -520,6 +522,10 @@ export interface DisposeParams {
    *  the queue. */
   target: ProposalTargetBlock | null
   decidedBy?: 'queue' | 'auto'
+  /** Who made the claim being judged, carried from the proposal onto the
+   *  verdict so accuracy can be read per author. Empty when `proposed` is null
+   *  — there was no claim and therefore no one to grade. */
+  proposedBy?: string
   /** Provenance for an undertaking this disposition mints. Defaults to
    *  `assignment-queue`; the manual pane passes `manual`. */
   origin?: string
@@ -578,6 +584,7 @@ export async function disposeSessionsOrch(params: DisposeParams): Promise<Dispos
     proposed: params.proposed,
     confidence: params.confidence,
     verdict: verdictKind,
+    proposedBy: params.proposed ? params.proposedBy?.trim() ?? '' : '',
     // Logged as the resolved key, not the target as typed: a `new` target's
     // title is not where the chain landed, and the log has to be replayable
     // against the store a year from now.
@@ -669,6 +676,20 @@ export async function detachSessionOrch(
  *  disappointment. */
 export async function getAssignmentCalibrationOrch(): Promise<BandCalibrationBlock[]> {
   return calibrateBandsBlock((await readAllVerdictsBlock()).verdicts)
+}
+
+/**
+ * Accept rate per proposing author, across every month.
+ *
+ * The question this answers: is a first-hand in-session answer more or less
+ * reliable than a sweep's inference? Until the in-session route reached the
+ * queue there was nothing to measure, and until `proposedBy` was logged there
+ * was no way to split the measurement. Read it before adding machinery to help
+ * agents pick better keys — if they already pick well, that machinery is cost
+ * with no return.
+ */
+export async function getAuthorAccuracyOrch(): Promise<AuthorAccuracyBlock[]> {
+  return accuracyByAuthorBlock((await readAllVerdictsBlock()).verdicts)
 }
 
 /** Recently auto-applied stamps, newest first — the visibility half of "auto is

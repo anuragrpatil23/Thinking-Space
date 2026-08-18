@@ -466,6 +466,69 @@ describe('mintFromSelectionOrch', () => {
       .resolves.toBe(true)
   })
 
+  it('records who proposed, so accuracy can be read per author', async () => {
+    // `decidedBy` says who decided, never who proposed, so every author's
+    // record used to pool into one accept rate. The concrete question waiting
+    // on this: does a first-hand in-session answer get corrected more often
+    // than a sweep's inference? Unanswerable without this field.
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    seedRecord('F9', makeRecord())
+    await disposeSessionsOrch({
+      sessionIds: ['c-1'],
+      projectId: 'F9',
+      proposed: { kind: 'existing', key: 'f9-und-micron' },
+      confidence: 0.9,
+      proposedBy: 'in-session',
+      target: { kind: 'existing', key: 'f9-und-micron' },
+    })
+    expect(readVerdicts()[0].proposedBy).toBe('in-session')
+  })
+
+  it('leaves the author empty when there was no proposal to grade', async () => {
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    seedRecord('F9', makeRecord())
+    await disposeSessionsOrch({
+      sessionIds: ['c-1'],
+      projectId: 'F9',
+      proposed: null,
+      confidence: 0,
+      // Passed, but there is no claim under judgement — attributing the row to
+      // an author would invent evidence about them.
+      proposedBy: 'kai',
+      target: { kind: 'existing', key: 'f9-und-micron' },
+    })
+    expect(readVerdicts()[0].proposedBy).toBe('')
+  })
+
+  it('splits the accept rate by author and ignores rows that grade nobody', async () => {
+    const { accuracyByAuthorBlock } = await import(
+      '@/services/lego_blocks/units/assignmentVerdictBlock'
+    )
+    const base = {
+      sessionId: 'c-1',
+      projectId: 'F9',
+      proposed: { kind: 'existing' as const, key: 'k' },
+      confidence: 0.9,
+      correctedTo: null,
+      at: '2026-08-17T00:00:00.000Z',
+    }
+    const rows = accuracyByAuthorBlock([
+      { ...base, verdict: 'accept', decidedBy: 'queue', proposedBy: 'in-session' },
+      { ...base, verdict: 'accept', decidedBy: 'queue', proposedBy: 'in-session' },
+      { ...base, verdict: 'modify', decidedBy: 'queue', proposedBy: 'kai' },
+      // Auto rows grade the policy, not the proposer.
+      { ...base, verdict: 'accept', decidedBy: 'auto', proposedBy: 'kai' },
+      // No proposal means no evidence about anyone.
+      { ...base, proposed: null, verdict: 'accept', decidedBy: 'queue', proposedBy: 'kai' },
+      // Pre-field rows stay in the denominator, honestly labelled.
+      { ...base, verdict: 'accept', decidedBy: 'queue', proposedBy: '' },
+    ])
+    expect(rows.map(r => r.proposedBy)).toEqual(['in-session', 'kai', 'unknown'])
+    expect(rows[0]).toMatchObject({ accepted: 2, total: 2, acceptRate: 1 })
+    expect(rows[1]).toMatchObject({ modified: 1, total: 1, acceptRate: 0 })
+    expect(rows[2].proposedBy).toBe('unknown')
+  })
+
   it('carries the task edges the human picked onto the new record', async () => {
     const { key } = await mintFromSelectionOrch({
       projectId: 'F9',

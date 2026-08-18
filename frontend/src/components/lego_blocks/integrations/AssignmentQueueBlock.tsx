@@ -212,6 +212,9 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
           projectId: current.group.projectId,
           proposed: current.group.target,
           confidence: current.group.confidence,
+          // Every proposal in a group shares a target; the author of the first
+          // is the author of the claim being judged.
+          proposedBy: current.group.proposals[0]?.proposedBy,
           target,
         })
         if (result.undertaking && result.stamped.length) {

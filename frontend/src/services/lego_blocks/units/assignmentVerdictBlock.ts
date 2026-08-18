@@ -50,6 +50,26 @@ export interface AssignmentVerdictBlock {
   /** `queue` (a human cleared it) or `auto` (a band was trusted). Auto rows are
    *  what the recent-auto undo list reads, so this is not cosmetic. */
   decidedBy: 'queue' | 'auto'
+  /**
+   * Who made the claim being judged — `kai`, `in-session`, `manual`.
+   *
+   * Recorded so the obvious question can be answered from data instead of
+   * argued about: does a first-hand answer from the agent that did the work get
+   * corrected more often than a sweep's inference?
+   *
+   * It could not be answered before. `decidedBy` says who *decided*, never who
+   * *proposed*, so every author's record was pooled into one accept rate. The
+   * concrete decision waiting on this is whether the in-session ask needs to be
+   * told about related sessions before it answers — worth building if agents
+   * pick wrong keys, and worth skipping if they do not. Nobody knew which,
+   * because until the in-session route reached the queue at all there was
+   * nothing to measure.
+   *
+   * Empty on a disposition with no proposal (`proposed: null`), and on every
+   * verdict written before this field existed — including the migrated ones,
+   * which are honestly `''` rather than retro-attributed to a guess.
+   */
+  proposedBy: string
   at: string
 }
 
@@ -187,6 +207,7 @@ export function parseVerdictLogBlock(content: string): VerdictLogReadBlock {
       verdict,
       correctedTo: parseTargetBlock(raw.correctedTo),
       decidedBy: raw.decidedBy === 'auto' ? 'auto' : 'queue',
+      proposedBy: asStringBlock(raw.proposedBy).trim(),
       at: asStringBlock(raw.at),
     })
   }
@@ -199,6 +220,47 @@ export function serializeVerdictBlock(verdict: AssignmentVerdictBlock): string {
 
 /** Month bucket a verdict files under, so the log stays readable by hand and no
  *  single file grows without bound. Derived from the timestamp, never stored. */
+/**
+ * Accept rate per author — the measurement `proposedBy` exists for.
+ *
+ * Only rows a human actually judged and that had something on the table count:
+ * an `auto` row grades the policy, not the proposer, and a disposition with no
+ * proposal is not evidence about anyone. Rows predating the field carry an
+ * empty author and are reported under `unknown` rather than dropped, so the
+ * denominator stays honest while the history ages out.
+ */
+export interface AuthorAccuracyBlock {
+  proposedBy: string
+  accepted: number
+  modified: number
+  rejected: number
+  total: number
+  acceptRate: number
+}
+
+export function accuracyByAuthorBlock(
+  verdicts: AssignmentVerdictBlock[],
+): AuthorAccuracyBlock[] {
+  const tally = new Map<string, AuthorAccuracyBlock>()
+  for (const verdict of verdicts) {
+    if (verdict.decidedBy !== 'queue') continue
+    if (!verdict.proposed) continue
+    const author = verdict.proposedBy || 'unknown'
+    let row = tally.get(author)
+    if (!row) {
+      row = { proposedBy: author, accepted: 0, modified: 0, rejected: 0, total: 0, acceptRate: 0 }
+      tally.set(author, row)
+    }
+    row.total += 1
+    if (verdict.verdict === 'accept') row.accepted += 1
+    else if (verdict.verdict === 'modify') row.modified += 1
+    else row.rejected += 1
+  }
+  const out = [...tally.values()]
+  for (const row of out) row.acceptRate = row.total ? row.accepted / row.total : 0
+  return out.sort((a, b) => b.total - a.total || a.proposedBy.localeCompare(b.proposedBy))
+}
+
 export function verdictMonthBlock(at: string): string {
   const month = /^(\d{4}-\d{2})/.exec(at)
   return month ? month[1] : new Date().toISOString().slice(0, 7)

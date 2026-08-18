@@ -22620,6 +22620,7 @@ function parseVerdictLogBlock(content) {
       verdict,
       correctedTo: parseTargetBlock2(raw.correctedTo),
       decidedBy: raw.decidedBy === "auto" ? "auto" : "queue",
+      proposedBy: asStringBlock2(raw.proposedBy).trim(),
       at: asStringBlock2(raw.at)
     });
   }
