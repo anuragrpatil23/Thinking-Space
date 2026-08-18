@@ -988,6 +988,79 @@ describe('recordAssignmentOrch', () => {
     expect(proposal.similar).toEqual(result.similar)
   })
 
+  it('previews without writing, and previews exactly what it would write', async () => {
+    // The preview shares its resolution with the write on purpose: a dry run
+    // computing its own answer would eventually reassure an agent about a
+    // write that then behaved differently.
+    seedRecord(makeRecord({ key: 'f9-und-micron' }))
+    const { previewAssignmentRecordOrch, recordAssignmentOrch } = await import(
+      '@/services/orchestrators/aiActivityUndertakingOrch'
+    )
+    const args = {
+      sessionId: SESSION,
+      projectId: 'F9',
+      undertakings: ['f9-und-micron', 'f9-und-typo'],
+    }
+
+    const preview = await previewAssignmentRecordOrch(args)
+    expect(preview.dryRun).toBe(true)
+    expect(preview.written).toBe(1)
+    expect(preview.rejected).toHaveLength(1)
+    expect(preview.path).toBe('ai-activity/proposals/F9.jsonl')
+    expect(fakeFs.files.has('ai-activity/proposals/F9.jsonl')).toBe(false)
+
+    const real = await recordAssignmentOrch(args)
+    expect(real.dryRun).toBe(false)
+    expect(real.written).toBe(preview.written)
+    expect(real.rejected).toEqual(preview.rejected)
+  })
+
+  it('reports which other sessions already fed the strand being joined', async () => {
+    // The question an agent mid-session cannot answer for itself: am I adding
+    // to the right strand? The head and a few recent sittings settle it.
+    seedRecord(makeRecord({ key: 'f9-und-micron', head: 'HBM is the thesis.' }))
+    seedChain(makeChain({ sessionId: 'c-1', title: 'Micron Q3 teardown', date: '2026-07-01', undertaking: ['f9-und-micron'] }))
+    seedChain(makeChain({ sessionId: 'c-2', title: 'DRAM pricing check', date: '2026-08-02', undertaking: ['f9-und-micron'] }))
+    seedChain(makeChain({ sessionId: 'c-3', title: 'Unrelated', date: '2026-08-03', undertaking: ['f9-und-other'] }))
+
+    const { previewAssignmentRecordOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const preview = await previewAssignmentRecordOrch({
+      sessionId: SESSION,
+      projectId: 'F9',
+      undertakings: ['f9-und-micron'],
+    })
+
+    expect(preview.context).toHaveLength(1)
+    const [context] = preview.context
+    expect(context.head).toBe('HBM is the thesis.')
+    expect(context.sessionCount).toBe(2)
+    // Newest first, so the most recognisable sitting is the one read first.
+    expect(context.recentSessions.map(s => s.title)).toEqual(['DRAM pricing check', 'Micron Q3 teardown'])
+  })
+
+  it('does not count the asking session as context for itself', async () => {
+    seedRecord(makeRecord({ key: 'f9-und-micron' }))
+    seedChain(makeChain({ sessionId: SESSION, title: 'This very session', date: '2026-08-17', undertaking: ['f9-und-micron'] }))
+    const { previewAssignmentRecordOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const preview = await previewAssignmentRecordOrch({
+      sessionId: SESSION,
+      projectId: 'F9',
+      undertakings: ['f9-und-micron'],
+    })
+    expect(preview.context[0].sessionCount).toBe(0)
+  })
+
+  it('reports no context for a mint, which by definition joins nothing', async () => {
+    const { previewAssignmentRecordOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const preview = await previewAssignmentRecordOrch({
+      sessionId: SESSION,
+      projectId: 'F9',
+      undertakings: ['brand-new'],
+      newTitle: 'A genuinely new strand',
+    })
+    expect(preview.context).toEqual([])
+  })
+
   it('spends newTitle on one key only, since it describes one mint', async () => {
     const { recordAssignmentOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
     const result = await recordAssignmentOrch({

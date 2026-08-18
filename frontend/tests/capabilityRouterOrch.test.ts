@@ -195,6 +195,84 @@ afterEach(async () => {
 
 describe('capabilityRouterOrch', () => {
 
+  // ── dry run ──────────────────────────────────────────────────────────────
+  //
+  // The router used to keep its own `WRITE_CAPABILITIES` list, separate from
+  // the policy block's, and the two drifted. Because the dry-run gate only
+  // *considers* a capability in the router's list, `--dryRun` on the five
+  // `ai_activity` writes fell through to the real write — while still
+  // reporting `dryRun: true`. A dry run that writes and denies it is worse
+  // than no dry run, so both facts are pinned here.
+
+  it('treats every write the policy block knows about as dry-runnable', async () => {
+    const { WRITE_CAPABILITIES } = await import(
+      '@/services/lego_blocks/integrations/capabilityPolicyBlock'
+    )
+    // One object, not two lists that agree today. If the router ever
+    // reintroduces its own, this is what catches it.
+    for (const capability of [
+      'ai_activity.assignment.record',
+      'ai_activity.assignment.propose',
+      'ai_activity.undertaking.update_head',
+      'ai_activity.undertaking.tag',
+      'ai_activity.session.set_project',
+      'daily.log_insight',
+      'write_note',
+    ]) {
+      expect(WRITE_CAPABILITIES.has(capability as never)).toBe(true)
+    }
+  })
+
+  it('refuses a dry run it cannot preview instead of performing the write', async () => {
+    const fs = new FakeVaultFS()
+    await fs.write(
+      'ai-activity/thinking-organizer/F9/undertakings/u1.md',
+      '---\nuuid: u-1\nkey: f9-und-micron\ntitle: "Micron"\nrecord_kind: undertaking\nproject_id: F9\nsection: s\ncreated_at: \'2026-06-01\'\nupdated_at: \'2026-06-01\'\n---\n\nOriginal head.\n',
+    )
+
+    const response = await capabilityOrch!.invokeCapabilityOrch(
+      {
+        capability: 'ai_activity.undertaking.update_head',
+        input: { projectId: 'F9', key: 'f9-und-micron', head: 'should not land' },
+        actor: ACTOR,
+        dryRun: true,
+      } as never,
+      { fs: fs as never },
+    )
+
+    expect(response.ok).toBe(false)
+    if (!response.ok) expect(response.error.code).toBe('CAPABILITY_DRY_RUN_UNSUPPORTED')
+    const after = await fs.read('ai-activity/thinking-organizer/F9/undertakings/u1.md')
+    expect(after).not.toContain('should not land')
+  })
+
+  it('previews assignment.record without writing, and says so', async () => {
+    const fs = new FakeVaultFS()
+    await fs.write(
+      'ai-activity/thinking-organizer/F9/undertakings/u1.md',
+      '---\nuuid: u-1\nkey: f9-und-micron\ntitle: "Micron"\nrecord_kind: undertaking\nproject_id: F9\nsection: s\ncreated_at: \'2026-06-01\'\nupdated_at: \'2026-06-01\'\n---\n\nHBM is the thesis.\n',
+    )
+
+    const response = await capabilityOrch!.invokeCapabilityOrch(
+      {
+        capability: 'ai_activity.assignment.record',
+        input: { sessionId: 's-1', projectId: 'F9', undertakings: ['f9-und-micron'] },
+        actor: ACTOR,
+        dryRun: true,
+      } as never,
+      { fs: fs as never },
+    )
+
+    expect(response.ok).toBe(true)
+    if (response.ok) {
+      expect(response.warnings).toContain('Dry-run preview only. No files were modified.')
+      const data = response.data as { dryRun: boolean; written: number }
+      expect(data.dryRun).toBe(true)
+      expect(data.written).toBe(1)
+    }
+    await expect(fs.read('ai-activity/proposals/F9.jsonl')).rejects.toThrow()
+  })
+
   it('scopes the fs singleton to the invoke, so getVaultFS() blocks see the caller\'s vault', async () => {
     const { peekVaultFSInstance, resetVaultFSInstance } = await import('@/services/lego_blocks/integrations/fsBlock')
     resetVaultFSInstance()

@@ -5,7 +5,10 @@ import {
   type UndertakingComment,
   type UndertakingRecord,
 } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
-import { appendProposalsBlock } from '@/services/lego_blocks/integrations/assignmentLogStoreBlock'
+import {
+  appendProposalsBlock,
+  proposalLogPathBlock,
+} from '@/services/lego_blocks/integrations/assignmentLogStoreBlock'
 import type {
   AssignmentProposalBlock,
   ProposalTargetBlock,
@@ -28,10 +31,14 @@ import {
 } from '@/services/lego_blocks/units/aiActivitySectionBlock'
 import {
   getProjectSessionDigestBlock,
+  listProjectSessionDigestsBlock,
   listSessionProjectsBlock,
   putProjectSessionDigestBlock,
 } from '@/services/lego_blocks/integrations/aiActivitySessionDigestStoreBlock'
-import { sessionActiveDurationMsBlock } from '@/services/lego_blocks/units/aiActivitySessionDigestBlock'
+import {
+  sessionActiveDurationMsBlock,
+  type ProjectSessionDigest,
+} from '@/services/lego_blocks/units/aiActivitySessionDigestBlock'
 import {
   listProjectChainsOrch,
   type ProjectChainRollup,
@@ -1283,6 +1290,32 @@ export async function tagUndertakingOrch(
   return { path, record: next, rejected: result.rejected, added: result.added }
 }
 
+/**
+ * What an existing target is joining.
+ *
+ * The answer to "which other sessions contributed to this undertaking" — asked
+ * at the one moment it can still change the answer. An agent mid-session knows
+ * its own transcript and nothing else, so "is this the same strand as the six
+ * sittings already filed here?" is a question it cannot ask without being told.
+ *
+ * Note what this deliberately is *not*: a search for sessions that resemble
+ * this one. That is the sweep's job — `assignment.queue` plus `propose` see
+ * every session at once and are far better placed to spot "these six were one
+ * piece of work" than an agent holding a single transcript. This only has to
+ * answer "am I adding to the right strand", which the head and a few recent
+ * titles settle.
+ */
+export interface UndertakingContextBlock {
+  key: string
+  title: string
+  /** The strand's one-line "what came out" so far. Empty when never written. */
+  head: string
+  /** How many sessions already carry this key. */
+  sessionCount: number
+  /** The most recent few, newest first — enough to recognise the strand. */
+  recentSessions: Array<{ sessionId: string; title: string; date: string }>
+}
+
 export interface RecordAssignmentResult {
   path: string
   /** Proposals actually written. Plural: a session commonly feeds more than one
@@ -1293,50 +1326,37 @@ export interface RecordAssignmentResult {
   rejected: Array<{ key: string; reason: string }>
   /** Existing undertakings a `newTitle` resembles. Advisory. */
   similar: Array<{ key: string; title: string }>
+  /** What each `existing` target is joining. */
+  context: UndertakingContextBlock[]
   projectId: string
+  /** True when nothing was written — see `previewAssignmentOrch`. */
+  dryRun: boolean
 }
 
+const RECENT_SESSION_LIMIT = 4
+
 /**
- * Answer the end-of-session ask: which undertaking(s) did this session feed?
+ * Resolve an assignment answer without writing it.
  *
- * ## It writes a proposal, not a private record
- *
- * This used to park a JSON file in `ai-activity/pending-assignments/<id>.json`,
- * a directory with a writer and no reader — `listPendingAssignmentsBlock` had
- * zero call sites, so every answer an agent ever gave about its own work went
- * nowhere and no queue, index or count could see it. The claim is the same
- * claim a sweep makes; only its *provenance* differs, and provenance is a
- * field. So it goes in the one proposal log as `proposedBy: in-session` at
- * confidence 1.0, where the queue sorts it to the top and one keystroke files
- * it.
- *
- * Confidence 1.0 is not permission to skip the human. ASSIGNMENT.md's rule is
- * that AI proposes and a human mints, and a first-hand report is still a report
- * — `isAutoApplicableBlock` refuses a `new` target at any confidence, which is
- * exactly the case an in-session answer most often carries.
- *
- * ## It reads before it writes
- *
- * The ask fires mid-session, where the agent knows what it did and nothing
- * else. Left blind it could name a key that does not exist (a typo becomes a
- * permanent address) or mint a second address for a strand that already has one
- * — the granularity failure `assignmentDraftOrch` guards against by handing a
- * model the existing titles, a guard the capability path never had.
- *
- * So: keys are resolved against the store, an unrecognised key with no
- * `newTitle` is refused rather than guessed at (a typo and a deliberate mint are
- * indistinguishable from here, and only one of them is safe to act on), and a
- * `newTitle` is scored against existing titles so the resemblance travels with
- * the proposal to the person deciding it.
+ * Split out from the write so the preview and the real thing cannot disagree:
+ * a dry run that computed its answer separately would eventually reassure an
+ * agent about a write that then behaved differently, which is worse than having
+ * no preview at all.
  */
-export async function recordAssignmentOrch(params: {
+export async function previewAssignmentOrch(params: {
   sessionId: string
   undertakings: string[]
   newTitle?: string
   head?: string
   section?: string
   projectId?: string
-}): Promise<RecordAssignmentResult> {
+}): Promise<{
+  projectId: string
+  proposals: AssignmentProposalBlock[]
+  rejected: Array<{ key: string; reason: string }>
+  similar: Array<{ key: string; title: string }>
+  context: UndertakingContextBlock[]
+}> {
   const sessionId = params.sessionId.trim()
   if (!sessionId) throw new Error('Missing required field: sessionId')
 
@@ -1400,13 +1420,106 @@ export async function recordAssignmentOrch(params: {
     })
   }
 
-  if (!proposals.length) {
+  const existingKeys = proposals
+    .map(proposal => (proposal.target.kind === 'existing' ? proposal.target.key : ''))
+    .filter(Boolean)
+  const context = existingKeys.length
+    ? await undertakingContextBlock(projectId, existingKeys, byKey, sessionId)
+    : []
+
+  return { projectId, proposals, rejected, similar, context }
+}
+
+/** One digest scan for every key at once — the project's digests are read once
+ *  and bucketed, rather than re-read per key. */
+async function undertakingContextBlock(
+  projectId: string,
+  keys: string[],
+  byKey: Map<string, UndertakingRecord>,
+  excludeSessionId: string,
+): Promise<UndertakingContextBlock[]> {
+  const digests = await listProjectSessionDigestsBlock(projectId)
+  const wanted = new Set(keys)
+  const bucket = new Map<string, ProjectSessionDigest[]>()
+  for (const digest of digests) {
+    // The session doing the asking is not context for itself.
+    if (digest.sessionId === excludeSessionId) continue
+    for (const key of digest.undertaking) {
+      if (!wanted.has(key)) continue
+      const list = bucket.get(key)
+      if (list) list.push(digest)
+      else bucket.set(key, [digest])
+    }
+  }
+  return keys.map(key => {
+    const record = byKey.get(key)
+    const fed = (bucket.get(key) ?? []).slice().sort((a, b) => b.date.localeCompare(a.date))
+    return {
+      key,
+      title: record?.title ?? key,
+      head: record?.head ?? '',
+      sessionCount: fed.length,
+      recentSessions: fed.slice(0, RECENT_SESSION_LIMIT).map(d => ({
+        sessionId: d.sessionId,
+        title: d.title,
+        date: d.date,
+      })),
+    }
+  })
+}
+
+/**
+ * Answer the end-of-session ask: which undertaking(s) did this session feed?
+ *
+ * ## It writes a proposal, not a private record
+ *
+ * This used to park a JSON file in `ai-activity/pending-assignments/<id>.json`,
+ * a directory with a writer and no reader — `listPendingAssignmentsBlock` had
+ * zero call sites, so every answer an agent ever gave about its own work went
+ * nowhere and no queue, index or count could see it. The claim is the same
+ * claim a sweep makes; only its *provenance* differs, and provenance is a
+ * field. So it goes in the one proposal log as `proposedBy: in-session` at
+ * confidence 1.0, where the queue sorts it to the top and one keystroke files
+ * it.
+ *
+ * Confidence 1.0 is not permission to skip the human. ASSIGNMENT.md's rule is
+ * that AI proposes and a human mints, and a first-hand report is still a report
+ * — `isAutoApplicableBlock` refuses a `new` target at any confidence, which is
+ * exactly the case an in-session answer most often carries.
+ *
+ * ## It reads before it writes
+ *
+ * The ask fires mid-session, where the agent knows what it did and nothing
+ * else. Left blind it could name a key that does not exist (a typo becomes a
+ * permanent address) or mint a second address for a strand that already has one
+ * — the granularity failure `assignmentDraftOrch` guards against by handing a
+ * model the existing titles, a guard the capability path never had.
+ *
+ * So: keys are resolved against the store, an unrecognised key with no
+ * `newTitle` is refused rather than guessed at (a typo and a deliberate mint are
+ * indistinguishable from here, and only one of them is safe to act on), and a
+ * `newTitle` is scored against existing titles so the resemblance travels with
+ * the proposal to the person deciding it.
+ */
+export async function recordAssignmentOrch(params: {
+  sessionId: string
+  undertakings: string[]
+  newTitle?: string
+  head?: string
+  section?: string
+  projectId?: string
+}): Promise<RecordAssignmentResult> {
+  const plan = await previewAssignmentOrch(params)
+
+  if (!plan.proposals.length) {
     throw new Error(
-      `Nothing recorded for ${sessionId}: ${rejected.map(r => `${r.key} — ${r.reason}`).join('; ')}`,
+      `Nothing recorded for ${params.sessionId.trim()}: ${plan.rejected
+        .map(r => `${r.key} — ${r.reason}`)
+        .join('; ')}`,
     )
   }
 
-  const { path, verified } = await appendProposalsBlock(projectId, proposals)
+  const { path, verified } = await appendProposalsBlock(plan.projectId, plan.proposals)
   if (!verified) {
     // An in-session answer is first-hand and cannot be re-derived once this
     // agent ends. Returning a path for a write that did not land would be the
@@ -1414,7 +1527,47 @@ export async function recordAssignmentOrch(params: {
     throw new Error(`Recorded nothing: ${path} could not be written durably after retries.`)
   }
 
-  return { path, written: proposals.length, rejected, similar, projectId }
+  return {
+    path,
+    written: plan.proposals.length,
+    rejected: plan.rejected,
+    similar: plan.similar,
+    context: plan.context,
+    projectId: plan.projectId,
+    dryRun: false,
+  }
+}
+
+/**
+ * The same answer, computed and shown but not written.
+ *
+ * This is what makes "read before you record" a single command rather than a
+ * discipline. An agent gets back which keys resolved, which were refused, what
+ * a new title resembles, and what each existing strand already contains —
+ * before anything is on disk and while it can still choose differently.
+ *
+ * Reachable as `thinkspc ai_activity.assignment.record --dryRun`, which
+ * previously failed outright: the capability is a write, and the router refuses
+ * a dry run on a write with no preview (`CAPABILITY_DRY_RUN_UNSUPPORTED`).
+ */
+export async function previewAssignmentRecordOrch(params: {
+  sessionId: string
+  undertakings: string[]
+  newTitle?: string
+  head?: string
+  section?: string
+  projectId?: string
+}): Promise<RecordAssignmentResult> {
+  const plan = await previewAssignmentOrch(params)
+  return {
+    path: proposalLogPathBlock(plan.projectId),
+    written: plan.proposals.length,
+    rejected: plan.rejected,
+    similar: plan.similar,
+    context: plan.context,
+    projectId: plan.projectId,
+    dryRun: true,
+  }
 }
 
 /** Which project holds this session's digest. Scans, because the ask is a

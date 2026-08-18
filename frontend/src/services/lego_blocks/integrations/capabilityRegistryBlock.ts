@@ -610,7 +610,8 @@ export interface CapabilityOutputMap {
   }
   'ai_activity.assignment.record': {
     path: string
-    /** Proposals written — one per undertaking the session fed. */
+    /** Proposals written — one per undertaking the session fed. Under
+     *  `--dryRun`, the number that *would* be written. */
     written: number
     /** Keys refused: they named no undertaking and no `newTitle` justified a
      *  mint. Surfaced rather than swallowed so the agent can fix the key while
@@ -618,7 +619,20 @@ export interface CapabilityOutputMap {
     rejected: Array<{ key: string; reason: string }>
     /** Existing undertakings a `newTitle` resembles. Advisory, never a block. */
     similar: Array<{ key: string; title: string }>
+    /** What each existing target is joining: the strand's head, how many
+     *  sessions already fed it, and the most recent few — the answer to "did
+     *  other sessions contribute to this?", returned while the caller can still
+     *  choose a different key. */
+    context: Array<{
+      key: string
+      title: string
+      head: string
+      sessionCount: number
+      recentSessions: Array<{ sessionId: string; title: string; date: string }>
+    }>
     projectId: string
+    /** True when `--dryRun` was passed and nothing was written. */
+    dryRun: boolean
   }
   /** The whole queue shape, not a restatement of it: a field added to
    *  `AssignmentQueue` and forgotten here would silently stop crossing the
@@ -882,7 +896,7 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
   {
     name: 'ai_activity.assignment.record',
     description:
-      'Answer, from inside the session, which undertaking(s) it fed. Writes a proposal at confidence 1.0 — first-hand, but still awaiting a human verdict in the queue. Keys are checked against the project: an unknown key needs newTitle, or it is refused as a typo.',
+      'Answer, from inside the session, which undertaking(s) it fed. Run it with --dryRun first: that resolves the keys, shows what a --newTitle resembles, and shows what each existing strand already holds (its head and the sessions that fed it) — all before anything is written. Then run it again without --dryRun to record. Writes a proposal at confidence 1.0: first-hand, but still awaiting a human verdict in the queue.',
     readOnly: false,
   },
   {

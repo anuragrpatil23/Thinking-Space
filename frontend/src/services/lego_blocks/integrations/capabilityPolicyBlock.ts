@@ -7,7 +7,25 @@ const DESTRUCTIVE_CAPABILITIES = new Set<CapabilityName>([
   'organizer.node.delete',
 ])
 
-const WRITE_CAPABILITIES = new Set<CapabilityName>([
+/**
+ * Every capability that writes. The single source of truth for that question.
+ *
+ * It was not single. `capabilityRouterOrch` kept a second hand-maintained list
+ * with the same name for its dry-run gate, and the two drifted in both
+ * directions: the router's was missing all five `ai_activity` writes, and this
+ * one was missing `daily.log_insight`.
+ *
+ * The consequence was not a cosmetic mismatch. The router only *considers* a
+ * dry run for a capability in its list, so `--dryRun` on
+ * `ai_activity.assignment.record` fell straight through to the real write —
+ * and still returned `dryRun: true` in the envelope. A dry run that writes and
+ * says it didn't is worse than having no dry run at all, and nothing failed
+ * loudly enough for anyone to notice.
+ *
+ * One list, exported, used by both.
+ */
+export const WRITE_CAPABILITIES = new Set<CapabilityName>([
+  'daily.log_insight',
   'write_note',
   'patch_note_frontmatter',
   'create_ai_synthesis_note',

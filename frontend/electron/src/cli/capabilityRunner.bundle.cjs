@@ -17657,7 +17657,7 @@ var CAPABILITY_REGISTRY = [
   },
   {
     name: "ai_activity.assignment.record",
-    description: "Answer, from inside the session, which undertaking(s) it fed. Writes a proposal at confidence 1.0 \u2014 first-hand, but still awaiting a human verdict in the queue. Keys are checked against the project: an unknown key needs newTitle, or it is refused as a typo.",
+    description: "Answer, from inside the session, which undertaking(s) it fed. Run it with --dryRun first: that resolves the keys, shows what a --newTitle resembles, and shows what each existing strand already holds (its head and the sessions that fed it) \u2014 all before anything is written. Then run it again without --dryRun to record. Writes a proposal at confidence 1.0: first-hand, but still awaiting a human verdict in the queue.",
     readOnly: false
   },
   {
@@ -17824,6 +17824,7 @@ var DESTRUCTIVE_CAPABILITIES = /* @__PURE__ */ new Set([
   "organizer.node.delete"
 ]);
 var WRITE_CAPABILITIES = /* @__PURE__ */ new Set([
+  "daily.log_insight",
   "write_note",
   "patch_note_frontmatter",
   "create_ai_synthesis_note",
@@ -23848,7 +23849,8 @@ async function tagUndertakingOrch(projectId, key, options) {
   }
   return { path: path5, record: next, rejected: result.rejected, added: result.added };
 }
-async function recordAssignmentOrch(params) {
+var RECENT_SESSION_LIMIT = 4;
+async function previewAssignmentOrch(params) {
   const sessionId = params.sessionId.trim();
   if (!sessionId) throw new Error("Missing required field: sessionId");
   const projectId = params.projectId?.trim() || await findSessionProjectBlock(sessionId);
@@ -23900,16 +23902,71 @@ async function recordAssignmentOrch(params) {
       proposedAt
     });
   }
-  if (!proposals.length) {
+  const existingKeys = proposals.map((proposal) => proposal.target.kind === "existing" ? proposal.target.key : "").filter(Boolean);
+  const context = existingKeys.length ? await undertakingContextBlock(projectId, existingKeys, byKey, sessionId) : [];
+  return { projectId, proposals, rejected, similar, context };
+}
+async function undertakingContextBlock(projectId, keys, byKey, excludeSessionId) {
+  const digests = await listProjectSessionDigestsBlock(projectId);
+  const wanted = new Set(keys);
+  const bucket = /* @__PURE__ */ new Map();
+  for (const digest of digests) {
+    if (digest.sessionId === excludeSessionId) continue;
+    for (const key of digest.undertaking) {
+      if (!wanted.has(key)) continue;
+      const list = bucket.get(key);
+      if (list) list.push(digest);
+      else bucket.set(key, [digest]);
+    }
+  }
+  return keys.map((key) => {
+    const record = byKey.get(key);
+    const fed = (bucket.get(key) ?? []).slice().sort((a, b) => b.date.localeCompare(a.date));
+    return {
+      key,
+      title: record?.title ?? key,
+      head: record?.head ?? "",
+      sessionCount: fed.length,
+      recentSessions: fed.slice(0, RECENT_SESSION_LIMIT).map((d) => ({
+        sessionId: d.sessionId,
+        title: d.title,
+        date: d.date
+      }))
+    };
+  });
+}
+async function recordAssignmentOrch(params) {
+  const plan = await previewAssignmentOrch(params);
+  if (!plan.proposals.length) {
     throw new Error(
-      `Nothing recorded for ${sessionId}: ${rejected.map((r) => `${r.key} \u2014 ${r.reason}`).join("; ")}`
+      `Nothing recorded for ${params.sessionId.trim()}: ${plan.rejected.map((r) => `${r.key} \u2014 ${r.reason}`).join("; ")}`
     );
   }
-  const { path: path5, verified } = await appendProposalsBlock(projectId, proposals);
+  const { path: path5, verified } = await appendProposalsBlock(plan.projectId, plan.proposals);
   if (!verified) {
     throw new Error(`Recorded nothing: ${path5} could not be written durably after retries.`);
   }
-  return { path: path5, written: proposals.length, rejected, similar, projectId };
+  return {
+    path: path5,
+    written: plan.proposals.length,
+    rejected: plan.rejected,
+    similar: plan.similar,
+    context: plan.context,
+    projectId: plan.projectId,
+    dryRun: false
+  };
+}
+async function previewAssignmentRecordOrch(params) {
+  const plan = await previewAssignmentOrch(params);
+  return {
+    path: proposalLogPathBlock(plan.projectId),
+    written: plan.proposals.length,
+    rejected: plan.rejected,
+    similar: plan.similar,
+    context: plan.context,
+    projectId: plan.projectId,
+    dryRun: true
+  };
 }
 async function findSessionProjectBlock(sessionId) {
   for (const project of await listSessionProjectsBlock()) {
@@ -24054,32 +24111,6 @@ var DEFAULT_ACTOR = {
   kind: "human",
   id: "ui.unknown"
 };
-var WRITE_CAPABILITIES2 = /* @__PURE__ */ new Set([
-  "write_note",
-  "patch_note_frontmatter",
-  "create_ai_synthesis_note",
-  "update_ai_synthesis_compile_state",
-  "organizer.node.create",
-  "organizer.node.rename",
-  "organizer.node.update",
-  "organizer.node.move",
-  "organizer.node.delete",
-  "task.claim",
-  "task.update_status",
-  "run.log",
-  "handoff.create",
-  "comment.add",
-  "thoughts.create",
-  "daily.log_insight",
-  "todos.create",
-  "todos.toggle",
-  "tools.excalidraw.format",
-  "tools.pdf.convert",
-  "tools.transcript.clean_save",
-  "telegram.send_message",
-  "telegram.open_conversation",
-  "telegram.close_conversation"
-]);
 function listCapabilitiesOrch() {
   return CAPABILITY_REGISTRY;
 }
@@ -24136,7 +24167,7 @@ async function invokeCapabilityOrch(request, options) {
         input: request.input,
         actor
       });
-      if (dryRun && WRITE_CAPABILITIES2.has(request.capability)) {
+      if (dryRun && WRITE_CAPABILITIES.has(request.capability)) {
         const preview = await executeDryRunCapability(request.capability, request.input);
         if (preview) {
           warnings.push("Dry-run preview only. No files were modified.");
@@ -24809,6 +24840,20 @@ async function executeCapability(capability, input, fs4) {
 }
 async function executeDryRunCapability(capability, input) {
   switch (capability) {
+    // The one write whose preview is the point rather than a courtesy: an
+    // agent answering mid-session cannot see which keys exist or which strand
+    // it is about to duplicate, and after the write it is too late to choose
+    // differently. Shares `previewAssignmentOrch` with the real path, so the
+    // two cannot drift apart and reassure a caller about different behaviour.
+    case "ai_activity.assignment.record": {
+      const payload = input;
+      assertNonEmptyString(payload.sessionId, "sessionId");
+      if (!Array.isArray(payload.undertakings) || payload.undertakings.length === 0) {
+        throw new Error("Missing required field: undertakings");
+      }
+      const preview = await previewAssignmentRecordOrch(payload);
+      return preview;
+    }
     case "write_note":
     case "patch_note_frontmatter":
     case "create_ai_synthesis_note":
@@ -25924,9 +25969,13 @@ var CAPABILITY_EXAMPLES = {
     'thinkspc ai_activity.undertaking.tag --projectId F9 --key f9-und-micron-memory-cycle --add "fab-equipment" --allowNew'
   ],
   "ai_activity.assignment.record": [
+    "# Look first: resolves the keys and shows what each strand already holds. Writes nothing.",
+    'thinkspc ai_activity.assignment.record --dryRun --sessionId "3f3ea0fb-..." --undertakings f9-und-micron-memory-cycle',
+    "# Then record.",
     'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-micron-memory-cycle',
     'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings "f9-und-tsmc,f9-und-semiconductor-physics"',
-    'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-new-thing --newTitle "Coherent optics teardown" --projectId F9',
+    "# A key that does not exist is refused unless --newTitle says it is a mint.",
+    'thinkspc ai_activity.assignment.record --dryRun --sessionId "3f3ea0fb-..." --undertakings f9-und-new-thing --newTitle "Coherent optics teardown" --projectId F9',
     'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-micron-memory-cycle --head HBM capacity is the whole thesis; the DRAM cycle is noise'
   ],
   "ai_activity.assignment.queue": [
@@ -26196,11 +26245,12 @@ var CAPABILITY_INPUT_FIELDS = {
   ],
   "ai_activity.assignment.record": [
     { flag: "sessionId", required: true, note: "Claude Code session id, not the commit-footer slug" },
-    { flag: "undertakings", required: true, note: "comma-separated undertaking keys; a session can feed several" },
-    { flag: "newTitle", required: false, note: "set when the session opened a new undertaking" },
+    { flag: "undertakings", required: true, note: "comma-separated undertaking keys; a session can feed several, and each becomes its own queue row" },
+    { flag: "newTitle", required: false, note: "set when the session opened an undertaking that did not exist; describes exactly one new key, and without it an unknown key is refused as a typo" },
     { flag: "head", required: false, note: "one line of what came out; greedy, so put it last, no quotes needed" },
     { flag: "section", required: false },
-    { flag: "projectId", required: false }
+    { flag: "projectId", required: false, note: "inferred from the session digest when omitted" },
+    { flag: "dryRun", required: false, note: "boolean flag; resolves keys, shows what a newTitle resembles and what each existing strand already holds (head, session count, recent sessions), and writes nothing. Run this first." }
   ],
   "ai_activity.assignment.queue": [
     { flag: "projectId", required: false, note: "omit to sweep every project that has chains" }

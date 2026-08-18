@@ -891,9 +891,13 @@ const CAPABILITY_EXAMPLES: Record<string, string[]> = {
     'thinkspc ai_activity.undertaking.tag --projectId F9 --key f9-und-micron-memory-cycle --add "fab-equipment" --allowNew',
   ],
   'ai_activity.assignment.record': [
+    '# Look first: resolves the keys and shows what each strand already holds. Writes nothing.',
+    'thinkspc ai_activity.assignment.record --dryRun --sessionId "3f3ea0fb-..." --undertakings f9-und-micron-memory-cycle',
+    '# Then record.',
     'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-micron-memory-cycle',
     'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings "f9-und-tsmc,f9-und-semiconductor-physics"',
-    'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-new-thing --newTitle "Coherent optics teardown" --projectId F9',
+    '# A key that does not exist is refused unless --newTitle says it is a mint.',
+    'thinkspc ai_activity.assignment.record --dryRun --sessionId "3f3ea0fb-..." --undertakings f9-und-new-thing --newTitle "Coherent optics teardown" --projectId F9',
     'thinkspc ai_activity.assignment.record --sessionId "3f3ea0fb-..." --undertakings f9-und-micron-memory-cycle --head HBM capacity is the whole thesis; the DRAM cycle is noise',
   ],
   'ai_activity.assignment.queue': [
@@ -1166,11 +1170,12 @@ const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: bo
   ],
   'ai_activity.assignment.record': [
     { flag: 'sessionId', required: true, note: 'Claude Code session id, not the commit-footer slug' },
-    { flag: 'undertakings', required: true, note: 'comma-separated undertaking keys; a session can feed several' },
-    { flag: 'newTitle', required: false, note: 'set when the session opened a new undertaking' },
+    { flag: 'undertakings', required: true, note: 'comma-separated undertaking keys; a session can feed several, and each becomes its own queue row' },
+    { flag: 'newTitle', required: false, note: 'set when the session opened an undertaking that did not exist; describes exactly one new key, and without it an unknown key is refused as a typo' },
     { flag: 'head', required: false, note: 'one line of what came out; greedy, so put it last, no quotes needed' },
     { flag: 'section', required: false },
-    { flag: 'projectId', required: false },
+    { flag: 'projectId', required: false, note: 'inferred from the session digest when omitted' },
+    { flag: 'dryRun', required: false, note: 'boolean flag; resolves keys, shows what a newTitle resembles and what each existing strand already holds (head, session count, recent sessions), and writes nothing. Run this first.' },
   ],
   'ai_activity.assignment.queue': [
     { flag: 'projectId', required: false, note: 'omit to sweep every project that has chains' },

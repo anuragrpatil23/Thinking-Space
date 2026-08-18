@@ -20,7 +20,11 @@ import {
   createCapabilityInputHash,
   writeCapabilityAuditEntry,
 } from '@/services/lego_blocks/integrations/capabilityAuditLogBlock'
-import { getCapabilityPolicy, validateCapabilityPolicy } from '@/services/lego_blocks/integrations/capabilityPolicyBlock'
+import {
+  getCapabilityPolicy,
+  validateCapabilityPolicy,
+  WRITE_CAPABILITIES,
+} from '@/services/lego_blocks/integrations/capabilityPolicyBlock'
 import {
   createYamlNode,
   deleteYamlNode,
@@ -74,6 +78,7 @@ import {
   getUndertakingDensityOrch,
   listChainsOrch,
   listUndertakingsOrch,
+  previewAssignmentRecordOrch,
   recordAssignmentOrch,
   setSessionProjectOrch,
   tagUndertakingOrch,
@@ -129,32 +134,6 @@ const DEFAULT_ACTOR: CapabilityActor = {
   id: 'ui.unknown',
 }
 
-const WRITE_CAPABILITIES = new Set<CapabilityName>([
-  'write_note',
-  'patch_note_frontmatter',
-  'create_ai_synthesis_note',
-  'update_ai_synthesis_compile_state',
-  'organizer.node.create',
-  'organizer.node.rename',
-  'organizer.node.update',
-  'organizer.node.move',
-  'organizer.node.delete',
-  'task.claim',
-  'task.update_status',
-  'run.log',
-  'handoff.create',
-  'comment.add',
-  'thoughts.create',
-  'daily.log_insight',
-  'todos.create',
-  'todos.toggle',
-  'tools.excalidraw.format',
-  'tools.pdf.convert',
-  'tools.transcript.clean_save',
-  'telegram.send_message',
-  'telegram.open_conversation',
-  'telegram.close_conversation',
-])
 
 export function listCapabilitiesOrch() {
   return CAPABILITY_REGISTRY
@@ -992,6 +971,20 @@ async function executeDryRunCapability<Name extends CapabilityName>(
   input: CapabilityInputMap[Name],
 ): Promise<CapabilityOutputMap[Name] | null> {
   switch (capability) {
+    // The one write whose preview is the point rather than a courtesy: an
+    // agent answering mid-session cannot see which keys exist or which strand
+    // it is about to duplicate, and after the write it is too late to choose
+    // differently. Shares `previewAssignmentOrch` with the real path, so the
+    // two cannot drift apart and reassure a caller about different behaviour.
+    case 'ai_activity.assignment.record': {
+      const payload = input as CapabilityInputMap['ai_activity.assignment.record']
+      assertNonEmptyString(payload.sessionId, 'sessionId')
+      if (!Array.isArray(payload.undertakings) || payload.undertakings.length === 0) {
+        throw new Error('Missing required field: undertakings')
+      }
+      const preview = await previewAssignmentRecordOrch(payload)
+      return preview as CapabilityOutputMap[Name]
+    }
     case 'write_note':
     case 'patch_note_frontmatter':
     case 'create_ai_synthesis_note':
