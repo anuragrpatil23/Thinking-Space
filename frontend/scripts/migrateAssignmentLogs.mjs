@@ -361,9 +361,14 @@ function migratePendingBlock() {
  * was. So the window marker is dropped and the session root is written — the
  * reader matches at the root, so one pointer finds every window of that sitting.
  *
- * `fedBy` is deliberately untouched: it holds task keys (`F9-II-E-571`), not
- * session pointers, and rewriting it would corrupt the seam to the old
- * organizer.
+ * `fedBy` is migrated too, but only entry by entry. It is a mixed field: 321 of
+ * its Thinking-Space entries and 29 of F9's are task keys (`TP-DA-T-995`) that
+ * name the seam to the old organizer and must be left exactly as they are —
+ * while 5 of F9's are chain ids that are session pointers wearing the wrong
+ * clothes. Rewriting the field wholesale would corrupt the seam; skipping it
+ * wholesale (which the first cut of this script did) leaves five real pointers
+ * dead. So the shape of each entry decides, and anything that is not clearly a
+ * chain id is passed through untouched.
  */
 function sessionRootsOnDiskBlock() {
   const roots = new Set()
@@ -379,6 +384,13 @@ function undertakingSessionIdBlock(pointer, roots) {
   return roots.has(split.base) ? split.base : null
 }
 
+/** Does this entry look like a chain id rather than a task key? Task keys have
+ *  no path separators and no `::`; chain ids always have both a project prefix
+ *  and a transcript path. Anything ambiguous is left alone. */
+function looksLikeChainIdBlock(entry) {
+  return entry.includes('::') && (entry.includes('/') || entry.includes('.jsonl'))
+}
+
 function migrateUndertakingsBlock() {
   const roots = sessionRootsOnDiskBlock()
   const organizer = path.join(ACTIVITY, 'thinking-organizer')
@@ -391,38 +403,57 @@ function migrateUndertakingsBlock() {
     for (const file of fs.readdirSync(dir)) {
       if (!file.endsWith('.md')) continue
       const full = path.join(dir, file)
-      const text = fs.readFileSync(full, 'utf8')
-      const match = /^chains:[ \t]*$((?:\r?\n[ \t]+-[ \t]+.*)+)/m.exec(text)
-      if (!match) continue
-      report.files += 1
+      let text = fs.readFileSync(full, 'utf8')
+      let touched = false
+      let counted = false
 
-      const entries = [...match[1].matchAll(/-[ \t]+(.*)/g)].map(m => m[1].trim().replace(/^["']|["']$/g, ''))
-      const next = []
-      let changed = false
-      for (const entry of entries) {
-        if (!entry) continue
-        report.pointers += 1
-        // Already a session id: leave it, so a re-run is a no-op.
-        if (!entry.includes('/') && !entry.includes('.jsonl') && !entry.includes('#w')) {
-          next.push(entry)
-          continue
+      // `chains` is wholly session pointers; `fed_by` is mixed, so only the
+      // entries shaped like chain ids are rewritten there.
+      for (const field of ['chains', 'fed_by']) {
+        const re = new RegExp(`^${field}:[ \\t]*$((?:\\r?\\n[ \\t]+-[ \\t]+.*)+)`, 'm')
+        const match = re.exec(text)
+        if (!match) continue
+        if (!counted) {
+          report.files += 1
+          counted = true
         }
-        const sessionId = undertakingSessionIdBlock(entry, roots)
-        if (!sessionId) {
-          report.unresolved.push({ file: `${project}/${file}`, pointer: entry.slice(0, 90) })
-          next.push(entry) // Left alone rather than dropped — a pointer we cannot
-          continue         // resolve is not a pointer we may delete.
+
+        const entries = [...match[1].matchAll(/-[ \t]+(.*)/g)].map(m => m[1].trim().replace(/^["']|["']$/g, ''))
+        const next = []
+        let changed = false
+        for (const entry of entries) {
+          if (!entry) continue
+          const isPointer = field === 'chains' || looksLikeChainIdBlock(entry)
+          if (!isPointer) {
+            next.push(entry) // Task key. Not ours to touch.
+            continue
+          }
+          report.pointers += 1
+          // Already a session id: leave it, so a re-run is a no-op.
+          if (!entry.includes('/') && !entry.includes('.jsonl') && !entry.includes('#w')) {
+            next.push(entry)
+            continue
+          }
+          const sessionId = undertakingSessionIdBlock(entry, roots)
+          if (!sessionId) {
+            report.unresolved.push({ file: `${project}/${file}`, field, pointer: entry.slice(0, 80) })
+            next.push(entry) // Left alone rather than dropped — a pointer we cannot
+            continue         // resolve is not a pointer we may delete.
+          }
+          report.migrated += 1
+          changed = true
+          if (!next.includes(sessionId)) next.push(sessionId)
         }
-        report.migrated += 1
-        changed = true
-        if (!next.includes(sessionId)) next.push(sessionId)
+        if (!changed) continue
+
+        const rendered = `${field}:\n${next.map(id => `  - "${id}"`).join('\n')}`
+        text = text.slice(0, match.index) + rendered + text.slice(match.index + match[0].length)
+        touched = true
       }
-      if (!changed) continue
 
-      const rendered = `chains:\n${next.map(id => `  - "${id}"`).join('\n')}`
-      const updated = text.slice(0, match.index) + rendered + text.slice(match.index + match[0].length)
+      if (!touched) continue
       report.rewritten += 1
-      writeBlock(full, updated)
+      writeBlock(full, text)
     }
   }
   return report
