@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronRight, CircleSlash, Inbox, Loader2, Pencil, SkipForward, Sparkles, Undo2, X } from 'lucide-react'
+import { Check, ChevronRight, CircleSlash, Inbox, Loader2, Pencil, Plus, SkipForward, Sparkles, Undo2, X } from 'lucide-react'
 import {
   detachSessionOrch,
   disposeSessionsOrch,
@@ -133,6 +133,15 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
   const [draftTitle, setDraftTitle] = useState<string | null>(null)
   const [draftSection, setDraftSection] = useState<string | null>(null)
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set())
+  // Sessions pulled in from elsewhere in the queue. The third correction
+  // primitive: a proposal is as often too small as too large, and until now the
+  // only remedy for "it missed one" was to accept this group, find the other
+  // session, and file it separately — two decisions for one piece of work, in a
+  // queue whose entire design budget goes on not making you decide twice.
+  const [added, setAdded] = useState<QueueSessionBlock[]>([])
+  const [adding, setAdding] = useState(false)
+  const [addQuery, setAddQuery] = useState('')
+  const addInputRef = useRef<HTMLInputElement | null>(null)
 
   const [mode, setMode] = useState<'proposed' | 'unsorted'>('proposed')
 
@@ -145,6 +154,9 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
     setDraftTitle(null)
     setDraftSection(null)
     setExcluded(new Set())
+    setAdded([])
+    setAdding(false)
+    setAddQuery('')
   }, [])
 
   // Edits belong to one proposal. Moving the cursor abandons them rather than
@@ -152,9 +164,60 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
   useEffect(() => { clearEdits() }, [focusKey, clearEdits])
 
   const selectedChains = useMemo(
-    () => (current?.sessions ?? []).filter(session => !excluded.has(session.sessionId)),
-    [current, excluded],
+    () => [
+      ...(current?.sessions ?? []).filter(session => !excluded.has(session.sessionId)),
+      ...added,
+    ],
+    [current, excluded, added],
   )
+
+  /**
+   * Every session in the queue that could be pulled into this group: same
+   * project, still owing an answer, not already here.
+   *
+   * Drawn from both panes. A missing session is at least as likely to be one
+   * another proposal claimed as one nothing claimed, and requiring you to know
+   * which before you can find it would be the queue asking you to do its
+   * bookkeeping.
+   */
+  const addableSessions = useMemo(() => {
+    if (!current || !queue) return []
+    const here = new Set(current.sessions.map(session => session.sessionId))
+    for (const session of added) here.add(session.sessionId)
+    const pool = [...queue.items.flatMap(entry => entry.sessions), ...(queue.unproposed ?? [])]
+    const seen = new Set<string>()
+    return pool.filter(session => {
+      if (session.projectId !== current.group.projectId) return false
+      if (here.has(session.sessionId) || seen.has(session.sessionId)) return false
+      seen.add(session.sessionId)
+      return true
+    })
+  }, [current, queue, added])
+
+  /** What each session had on the table before this decision — so a session
+   *  moved in from another proposal is logged as a correction to *that* claim
+   *  rather than to this group's. */
+  const proposalBySession = useMemo(() => {
+    const out = new Map<string, { proposed: ProposalTargetBlock | null; confidence: number; proposedBy?: string }>()
+    for (const entry of queue?.items ?? []) {
+      for (const proposal of entry.group.proposals) {
+        out.set(proposal.sessionId, {
+          proposed: proposal.target,
+          confidence: proposal.confidence,
+          proposedBy: proposal.proposedBy,
+        })
+      }
+    }
+    return out
+  }, [queue])
+
+  const filteredAddable = useMemo(() => {
+    const q = addQuery.trim().toLowerCase()
+    const rows = q
+      ? addableSessions.filter(session => session.title.toLowerCase().includes(q) || session.date.includes(q))
+      : addableSessions
+    return rows.slice(0, 8)
+  }, [addableSessions, addQuery])
 
   /** What Accept would actually do, once the edits on the card are applied. */
   const effectiveTarget: ProposalTargetBlock | null = useMemo(() => {
@@ -198,16 +261,39 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
     if (retargeting) retargetInputRef.current?.focus()
   }, [retargeting])
 
+  useEffect(() => {
+    if (adding) addInputRef.current?.focus()
+  }, [adding])
+
   const dispose = useCallback(
     async (target: ProposalTargetBlock | null, label: string) => {
       if (!current || busy || selectedChains.length === 0) return
       setBusy(true)
       setError(null)
       try {
+        // A dropped session is still a judgement, and it used to be thrown away.
+        // It was logged nowhere: the session simply came back next pass, so
+        // "these five belong together and that one does not" taught the
+        // proposer nothing and it could group them the same way forever. It is
+        // recorded as a reject against the proposal — the same verdict the
+        // Reject key writes — which leaves it undisposed and back in the queue,
+        // exactly as before, while the correction survives.
+        const dropped = (current.sessions ?? []).filter(session =>
+          excluded.has(session.sessionId),
+        )
+        if (dropped.length) {
+          await disposeSessionsOrch({
+            sessionIds: dropped.map(session => session.sessionId),
+            projectId: current.group.projectId,
+            proposed: current.group.target,
+            confidence: current.group.confidence,
+            proposedBy: current.group.proposals[0]?.proposedBy,
+            // Null target: nothing is stamped and it stays in the queue.
+            target: null,
+          })
+        }
+
         const result = await disposeSessionsOrch({
-          // Only the sessions still selected. A dropped session is not disposed of
-          // — it keeps its proposal and comes back on its own, which is the
-          // point: "these five yes, that one no" should not cost six decisions.
           sessionIds: selectedChains.map(session => session.sessionId),
           projectId: current.group.projectId,
           proposed: current.group.target,
@@ -215,6 +301,14 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
           // Every proposal in a group shares a target; the author of the first
           // is the author of the claim being judged.
           proposedBy: current.group.proposals[0]?.proposedBy,
+          // Added sessions carry their own claim, so each is graded against
+          // what was actually proposed for it.
+          perSession: new Map(
+            added.map(session => [
+              session.sessionId,
+              proposalBySession.get(session.sessionId) ?? { proposed: null, confidence: 0 },
+            ]),
+          ),
           target,
         })
         if (result.undertaking && result.stamped.length) {
@@ -238,7 +332,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
         clearEdits()
       }
     },
-    [current, busy, selectedChains, onReload, clearEdits],
+    [current, busy, selectedChains, excluded, added, proposalBySession, onReload, clearEdits],
   )
 
   const undoLast = useCallback(async () => {
@@ -306,6 +400,17 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
         }
         return
       }
+      // Same contract as the retarget field: while the picker is open it owns
+      // the keyboard, and Escape backs out of it rather than closing the panel.
+      if (adding) {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          setAdding(false)
+          setAddQuery('')
+        }
+        return
+      }
       if (typing) return
 
       switch (event.key) {
@@ -316,6 +421,12 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
         case 'r':
           event.preventDefault()
           if (current) setRetargeting(true)
+          break
+        // `+` and `=` both: the unshifted key is what a hand actually hits.
+        case '+':
+        case '=':
+          event.preventDefault()
+          if (current) setAdding(true)
           break
         case 'b':
           event.preventDefault()
@@ -343,7 +454,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
     // also close the panel.
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [current, items.length, busy, mode, retargeting, transcript.kind, dispose, undoLast])
+  }, [current, items.length, busy, mode, retargeting, transcript.kind, dispose, undoLast, adding])
 
   const undisposed = queue?.undisposedCount ?? 0
   const unproposed = unproposedChains.length
@@ -504,6 +615,10 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
                 sectionLabel={current.targetSection}
                 editable={current.group.target.kind === 'new'}
                 excluded={excluded}
+                added={added}
+                onRemoveAdded={sessionId =>
+                  setAdded(prev => prev.filter(session => session.sessionId !== sessionId))
+                }
                 onRename={setDraftTitle}
                 onSection={setDraftSection}
                 onToggleChain={sessionId =>
@@ -559,6 +674,51 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
                     <KbdBlock>esc</KbdBlock> to back out
                   </p>
                 </div>
+              ) : adding ? (
+                /* Pulling a session in, rather than filing it separately after.
+                   Same shape as Retarget on purpose: a filter box and a short
+                   list, no modal, escape backs out. Adding does not decide
+                   anything by itself — the session joins the card and rides on
+                   the next Accept, so one keystroke still disposes of the whole
+                   group. */
+                <div>
+                  <input
+                    ref={addInputRef}
+                    value={addQuery}
+                    onChange={event => setAddQuery(event.target.value)}
+                    placeholder="Filter sessions still owing an answer…"
+                    className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring"
+                  />
+                  <ul className="mt-2 max-h-52 space-y-0.5 overflow-y-auto">
+                    {filteredAddable.map(session => (
+                      <li key={session.sessionId}>
+                        <button
+                          onClick={() => {
+                            setAdded(prev => [...prev, session])
+                            setAdding(false)
+                            setAddQuery('')
+                          }}
+                          className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+                        >
+                          <span className="min-w-0 flex-1 truncate">{session.title}</span>
+                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                            {session.date} · {session.activeMinutes}m
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                    {filteredAddable.length === 0 && (
+                      <li className="px-2 py-1.5 text-sm text-muted-foreground">
+                        {addableSessions.length === 0
+                          ? 'Nothing else in this project still owes an answer.'
+                          : 'No session matches that.'}
+                      </li>
+                    )}
+                  </ul>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    <KbdBlock>esc</KbdBlock> to back out
+                  </p>
+                </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-2">
                   <ActionBlock
@@ -573,6 +733,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
                     disabled={selectedChains.length === 0}
                     onClick={() => effectiveTarget && void dispose(effectiveTarget, 'accepted')}
                   />
+                  <ActionBlock icon={Plus} label="Add session" hint="+" onClick={() => setAdding(true)} />
                   <ActionBlock icon={ChevronRight} label="Retarget" hint="r" onClick={() => setRetargeting(true)} />
                   <ActionBlock icon={CircleSlash} label="Not an undertaking" hint="b" onClick={() => void dispose({ kind: 'bucket' }, 'bucketed')} />
                   <ActionBlock icon={SkipForward} label="Skip" hint="s" onClick={() => setCursor(i => Math.min(i + 1, items.length - 1))} />
@@ -629,6 +790,8 @@ function CardBlock({
   sectionLabel,
   editable,
   excluded,
+  added,
+  onRemoveAdded,
   onRename,
   onSection,
   onToggleChain,
@@ -646,6 +809,12 @@ function CardBlock({
    *  it from here — that record is an address other sessions already point at. */
   editable: boolean
   excluded: ReadonlySet<string>
+  /** Sessions a human pulled in from elsewhere in the queue. Shown apart from
+   *  the proposed ones because they are a different claim: nothing suggested
+   *  them, so the row is the human's, and mixing them in would make the group
+   *  look more agreed-upon than it is. */
+  added: QueueSessionBlock[]
+  onRemoveAdded: (sessionId: string) => void
   onRename: (title: string | null) => void
   onSection: (key: string) => void
   onToggleChain: (sessionId: string) => void
@@ -822,10 +991,45 @@ function CardBlock({
           )
         })}
       </ul>
+      {added.length > 0 && (
+        <>
+          <p className="mt-4 px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Added by you
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {added.map(session => (
+              <li key={session.sessionId} className="group/added flex items-center gap-1 rounded-md">
+                <button
+                  onClick={() => onOpenChain(session)}
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
+                  title="Open the transcript"
+                >
+                  <Plus className="h-3 w-3 shrink-0 translate-y-0.5 text-sky-600 dark:text-sky-400" />
+                  <span className="min-w-0 flex-1 truncate">{session.title}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {session.date} · {session.activeMinutes}m
+                  </span>
+                </button>
+                <button
+                  onClick={() => onRemoveAdded(session.sessionId)}
+                  title="Take it back out"
+                  aria-label="Take it back out"
+                  className="shrink-0 rounded p-1 text-muted-foreground/40 opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus:opacity-100 group-hover/added:opacity-100"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {excluded.size > 0 && (
         <p className="mt-3 px-2 text-xs text-muted-foreground">
+          {/* Now a recorded judgement, not just a UI filter: the drop is logged
+              as a reject against this proposal, so the proposer stops grouping
+              them this way. It still comes back — nothing was disposed. */}
           {excluded.size} dropped — {excluded.size === 1 ? 'it stays' : 'they stay'} in the queue and
-          will come back on {excluded.size === 1 ? 'its' : 'their'} own.
+          will come back on {excluded.size === 1 ? 'its' : 'their'} own. The correction is recorded.
         </p>
       )}
     </article>

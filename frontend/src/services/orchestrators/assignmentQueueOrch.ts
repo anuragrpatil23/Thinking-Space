@@ -526,6 +526,25 @@ export interface DisposeParams {
    *  verdict so accuracy can be read per author. Empty when `proposed` is null
    *  — there was no claim and therefore no one to grade. */
   proposedBy?: string
+  /**
+   * Per-session overrides of what was on the table.
+   *
+   * A group's sessions normally share one proposal, which is why the top-level
+   * `proposed` exists. They stop sharing it the moment a human *adds* a session
+   * to the group: that session either had no proposal at all, or had a
+   * different one, and logging this group's claim against it would record a
+   * correction that nobody made — inventing evidence about a proposer, in the
+   * one log that decides which bands earn the right to auto-apply.
+   *
+   * So an added session carries its own provenance here, and its verdict is
+   * computed from that: `modify` against the proposal it was moved away from,
+   * or a null-proposal row when nothing had claimed it. Sessions absent from
+   * this map fall back to the top-level fields.
+   */
+  perSession?: Map<
+    string,
+    { proposed: ProposalTargetBlock | null; confidence: number; proposedBy?: string }
+  >
   /** Provenance for an undertaking this disposition mints. Defaults to
    *  `assignment-queue`; the manual pane passes `manual`. */
   origin?: string
@@ -578,20 +597,36 @@ export async function disposeSessionsOrch(params: DisposeParams): Promise<Dispos
     }
   }
 
-  const verdicts: AssignmentVerdictBlock[] = params.sessionIds.map(sessionId => ({
-    sessionId,
-    projectId: params.projectId,
-    proposed: params.proposed,
-    confidence: params.confidence,
-    verdict: verdictKind,
-    proposedBy: params.proposed ? params.proposedBy?.trim() ?? '' : '',
-    // Logged as the resolved key, not the target as typed: a `new` target's
-    // title is not where the chain landed, and the log has to be replayable
-    // against the store a year from now.
-    correctedTo: key ? { kind: 'existing', key } : null,
-    decidedBy: params.decidedBy ?? 'queue',
-    at,
-  }))
+  const verdicts: AssignmentVerdictBlock[] = params.sessionIds.map(sessionId => {
+    // What was on the table *for this session* — its own claim when it was
+    // added from elsewhere, the group's otherwise.
+    const own = params.perSession?.get(sessionId)
+    const proposed = own ? own.proposed : params.proposed
+    const confidence = own ? own.confidence : params.confidence
+    const proposedBy = own ? own.proposedBy : params.proposedBy
+    return {
+      sessionId,
+      projectId: params.projectId,
+      proposed,
+      confidence,
+      // Recomputed per session rather than reused from the group: a session
+      // moved in from another proposal is a `modify` even when the group it
+      // joined was accepted unchanged, and that is the correction worth
+      // learning from.
+      verdict: !params.target
+        ? ('reject' as VerdictKindBlock)
+        : proposed && targetsMatchBlock(proposed, params.target)
+          ? ('accept' as VerdictKindBlock)
+          : ('modify' as VerdictKindBlock),
+      proposedBy: proposed ? proposedBy?.trim() ?? '' : '',
+      // Logged as the resolved key, not the target as typed: a `new` target's
+      // title is not where the chain landed, and the log has to be replayable
+      // against the store a year from now.
+      correctedTo: key ? { kind: 'existing', key } : null,
+      decidedBy: params.decidedBy ?? 'queue',
+      at,
+    }
+  })
   await appendVerdictsBlock(verdicts)
 
   return { stamped, undertaking: key, verdict: verdictKind }

@@ -466,6 +466,83 @@ describe('mintFromSelectionOrch', () => {
       .resolves.toBe(true)
   })
 
+  it('grades an added session against its own claim, not the group it joined', async () => {
+    // Pulling a session in from another proposal is a correction to *that*
+    // proposal. Logging this group's claim against it would record a
+    // correction nobody made, in the log that decides which bands earn the
+    // right to auto-apply.
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    seedChain(makeChain({ sessionId: 'c-2' }))
+    seedRecord('F9', makeRecord())
+    await disposeSessionsOrch({
+      sessionIds: ['c-1', 'c-2'],
+      projectId: 'F9',
+      proposed: { kind: 'existing', key: 'f9-und-micron' },
+      confidence: 0.9,
+      proposedBy: 'kai',
+      perSession: new Map([
+        // c-2 was proposed for the bucket by someone else and a human moved it.
+        ['c-2', { proposed: { kind: 'bucket' }, confidence: 0.4, proposedBy: 'in-session' }],
+      ]),
+      target: { kind: 'existing', key: 'f9-und-micron' },
+    })
+
+    const verdicts = readVerdicts()
+    const byId = new Map(verdicts.map(v => [v.sessionId, v]))
+    // The group's own session agreed with what was proposed for it.
+    expect(byId.get('c-1')).toMatchObject({ verdict: 'accept', proposedBy: 'kai' })
+    // The added one did not — and it is graded against the claim it was moved
+    // away from, by the author who made that claim.
+    expect(byId.get('c-2')).toMatchObject({
+      verdict: 'modify',
+      proposedBy: 'in-session',
+      confidence: 0.4,
+    })
+    expect(byId.get('c-2')?.proposed).toEqual({ kind: 'bucket' })
+    // Both still landed in the same undertaking.
+    expect(readChain('F9', 'c-2')?.undertaking).toEqual(['f9-und-micron'])
+  })
+
+  it('logs an added session that nothing had claimed without inventing a proposer', async () => {
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    seedRecord('F9', makeRecord())
+    await disposeSessionsOrch({
+      sessionIds: ['c-1'],
+      projectId: 'F9',
+      proposed: { kind: 'existing', key: 'f9-und-micron' },
+      confidence: 0.9,
+      proposedBy: 'kai',
+      perSession: new Map([['c-1', { proposed: null, confidence: 0 }]]),
+      target: { kind: 'existing', key: 'f9-und-micron' },
+    })
+    const [verdict] = readVerdicts()
+    expect(verdict.proposed).toBeNull()
+    expect(verdict.proposedBy).toBe('')
+    // Null proposal means calibration must not count it either way.
+    const bands = await getAssignmentCalibrationOrch()
+    expect(bands.every(band => band.total === 0)).toBe(true)
+  })
+
+  it('records a dropped session as a reject and leaves it in the queue', async () => {
+    // Dropping used to be a UI filter and nothing else: the session simply
+    // came back, so "these belong together and that one does not" taught the
+    // proposer nothing and it could group them the same way forever.
+    seedChain(makeChain({ sessionId: 'c-1' }))
+    seedRecord('F9', makeRecord())
+    await disposeSessionsOrch({
+      sessionIds: ['c-1'],
+      projectId: 'F9',
+      proposed: { kind: 'existing', key: 'f9-und-micron' },
+      confidence: 0.9,
+      proposedBy: 'kai',
+      target: null,
+    })
+    const [verdict] = readVerdicts()
+    expect(verdict).toMatchObject({ verdict: 'reject', proposedBy: 'kai' })
+    // Undisposed: nothing stamped, so it returns to the queue as before.
+    expect(readChain('F9', 'c-1')?.undertaking ?? []).toEqual([])
+  })
+
   it('records who proposed, so accuracy can be read per author', async () => {
     // `decidedBy` says who decided, never who proposed, so every author's
     // record used to pool into one accept rate. The concrete question waiting
