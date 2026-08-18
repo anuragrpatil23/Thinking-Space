@@ -80,6 +80,7 @@
   },
   "devDependencies": {
     "@capacitor-community/electron": "^5.0.1",
+    "@eslint/compat": "^1.4.1",
     "@eslint/js": "^9.39.5",
     "@types/js-yaml": "^4.0.9",
     "@types/react": "^18.3.0",
