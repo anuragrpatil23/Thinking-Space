@@ -888,17 +888,121 @@ describe('getOpenTasksOrch', () => {
 })
 
 describe('recordAssignmentOrch', () => {
-  it('parks the answer under the session id, since no chain exists yet', async () => {
+  const SESSION = '3f3ea0fb-362b-4694-b744-cd5135c868d0'
+
+  const readProposals = () =>
+    (fakeFs.files.get('ai-activity/proposals/F9.jsonl') ?? '')
+      .split('\n')
+      .filter(Boolean)
+      .map(line => JSON.parse(line))
+
+  it('writes a proposal into the one log, not a private parked file', async () => {
+    // The whole point of the collapse: an in-session answer used to land in
+    // `pending-assignments/`, which had a writer and no reader, so it reached
+    // no queue, index or count. It is the same claim a sweep makes — only the
+    // provenance differs — so it goes in the proposal log as `in-session`.
+    seedRecord(makeRecord({ key: 'f9-und-micron' }))
+    seedRecord(makeRecord({ uuid: 'u-2', key: 'f9-und-semiconductor-physics', title: 'Transistors' }))
+
     const { recordAssignmentOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
-    const { path } = await recordAssignmentOrch({
-      sessionId: '3f3ea0fb-362b-4694-b744-cd5135c868d0',
+    const result = await recordAssignmentOrch({
+      sessionId: SESSION,
+      projectId: 'F9',
       undertakings: ['f9-und-micron', 'f9-und-semiconductor-physics'],
+      head: 'HBM capacity is the whole thesis.',
     })
 
-    expect(path).toBe('ai-activity/pending-assignments/3f3ea0fb-362b-4694-b744-cd5135c868d0.json')
-    const parsed = JSON.parse(fakeFs.files.get(path)!)
-    expect(parsed.undertakings).toEqual(['f9-und-micron', 'f9-und-semiconductor-physics'])
-    expect(parsed.recordedAt).toBeTruthy()
+    expect(result.path).toBe('ai-activity/proposals/F9.jsonl')
+    expect(fakeFs.files.has('ai-activity/pending-assignments/' + SESSION + '.json')).toBe(false)
+
+    const written = readProposals()
+    expect(written).toHaveLength(2)
+    expect(written.every(p => p.sessionId === SESSION && p.proposedBy === 'in-session')).toBe(true)
+    // Confidence 1.0 is a statement about provenance, not permission to skip
+    // the human — the queue still holds it for a verdict.
+    expect(written.every(p => p.confidence === 1)).toBe(true)
+    expect(written.map(p => p.target)).toEqual([
+      { kind: 'existing', key: 'f9-und-micron' },
+      { kind: 'existing', key: 'f9-und-semiconductor-physics' },
+    ])
+    // The head rides on the primary undertaking only, and on an `existing`
+    // target — which a proposal could not carry before this change.
+    expect(written[0].head).toBe('HBM capacity is the whole thesis.')
+    expect(written[1].head).toBeUndefined()
+  })
+
+  it('refuses a key that names no undertaking, rather than minting from a typo', async () => {
+    seedRecord(makeRecord({ key: 'f9-und-micron' }))
+    const { recordAssignmentOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const result = await recordAssignmentOrch({
+      sessionId: SESSION,
+      projectId: 'F9',
+      undertakings: ['f9-und-micron', 'f9-und-mircon-typo'],
+    })
+
+    expect(result.written).toBe(1)
+    expect(result.rejected).toEqual([
+      {
+        key: 'f9-und-mircon-typo',
+        reason: 'no undertaking with this key in F9 — pass --newTitle to mint one, or fix the key',
+      },
+    ])
+    expect(readProposals()).toHaveLength(1)
+  })
+
+  it('throws rather than half-recording when every key is refused', async () => {
+    seedRecord(makeRecord({ key: 'f9-und-micron' }))
+    const { recordAssignmentOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    await expect(
+      recordAssignmentOrch({ sessionId: SESSION, projectId: 'F9', undertakings: ['nope'] }),
+    ).rejects.toThrow(/Nothing recorded/)
+    expect(fakeFs.files.has('ai-activity/proposals/F9.jsonl')).toBe(false)
+  })
+
+  it('mints only with a newTitle, and carries the resemblance to what already exists', async () => {
+    // The guard the capability path never had: an agent mid-session cannot see
+    // the 30 undertakings it might be duplicating. Advisory, never a block.
+    seedRecord(makeRecord({ key: 'f9-und-the-cognition-tide', title: 'The Cognition Tide — AI and where value goes' }))
+    const { recordAssignmentOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const result = await recordAssignmentOrch({
+      sessionId: SESSION,
+      projectId: 'F9',
+      undertakings: ['f9-und-cognition-tide-value'],
+      newTitle: 'The Cognition Tide — where value actually goes',
+      section: 'f9-sec-worldly-understanding',
+      head: 'Value accrues to whoever holds the bottleneck.',
+    })
+
+    expect(result.similar).toEqual([
+      { key: 'f9-und-the-cognition-tide', title: 'The Cognition Tide — AI and where value goes' },
+    ])
+    const [proposal] = readProposals()
+    expect(proposal.target).toEqual({
+      kind: 'new',
+      title: 'The Cognition Tide — where value actually goes',
+      section: 'f9-sec-worldly-understanding',
+      head: 'Value accrues to whoever holds the bottleneck.',
+    })
+    // The resemblance travels with the claim, so it is on the row at the moment
+    // the mint is being decided rather than in a log nobody reads.
+    expect(proposal.similar).toEqual(result.similar)
+  })
+
+  it('spends newTitle on one key only, since it describes one mint', async () => {
+    const { recordAssignmentOrch } = await import('@/services/orchestrators/aiActivityUndertakingOrch')
+    const result = await recordAssignmentOrch({
+      sessionId: SESSION,
+      projectId: 'F9',
+      undertakings: ['brand-new-one', 'brand-new-two'],
+      newTitle: 'Only one of these has a title',
+    })
+    expect(result.written).toBe(1)
+    expect(result.rejected).toEqual([
+      {
+        key: 'brand-new-two',
+        reason: 'newTitle describes only one new undertaking, and it is already spoken for',
+      },
+    ])
   })
 })
 

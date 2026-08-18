@@ -1179,7 +1179,7 @@ const CAPABILITY_INPUT_FIELDS: Record<string, Array<{ flag: string; required: bo
     {
       flag: 'proposals',
       required: true,
-      note: 'JSON array; prefer --proposals-file. Each: {chainId, projectId, target, confidence, rationale}. target is {kind:"existing",key} | {kind:"new",title} | {kind:"bucket"}',
+      note: 'JSON array; prefer --proposals-file. Each: {sessionId, projectId, target, confidence, rationale}. target is {kind:"existing",key} | {kind:"new",title} | {kind:"bucket"}',
     },
     { flag: 'proposedBy', required: false, note: 'who is proposing; defaults to "agent"' },
   ],

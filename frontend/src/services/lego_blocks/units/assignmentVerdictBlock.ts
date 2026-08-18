@@ -130,10 +130,34 @@ function parseTargetBlock(raw: unknown): ProposalTargetBlock | null {
   return null
 }
 
-/** Parse a verdict log. Malformed lines are skipped: a corrupted row must cost
- *  one data point, not the whole month's calibration. */
-export function parseVerdictLogBlock(content: string): AssignmentVerdictBlock[] {
+/**
+ * What a verdict log read produced, including what it could not read.
+ *
+ * Same reason as `ProposalLogReadBlock`: the pre-refactor lines are keyed
+ * `chainId`, this parser requires `sessionId`, and dropping them quietly does
+ * not merely hide rows — it empties the calibration set. A band's right to
+ * auto-apply is earned from these verdicts, so a silent skip here reads as
+ * "this band has no track record" when the truth is "its track record could not
+ * be parsed". Those must not look the same.
+ */
+export interface VerdictLogReadBlock {
+  verdicts: AssignmentVerdictBlock[]
+  skipped: number
+  samples: string[]
+}
+
+const SAMPLE_LIMIT = 3
+const SAMPLE_CHARS = 160
+
+function pushSampleBlock(samples: string[], line: string): void {
+  if (samples.length >= SAMPLE_LIMIT) return
+  samples.push(line.length > SAMPLE_CHARS ? `${line.slice(0, SAMPLE_CHARS)}…` : line)
+}
+
+export function parseVerdictLogBlock(content: string): VerdictLogReadBlock {
   const out: AssignmentVerdictBlock[] = []
+  const samples: string[] = []
+  let skipped = 0
   for (const line of content.split('\n')) {
     const trimmed = line.trim()
     if (!trimmed) continue
@@ -141,12 +165,17 @@ export function parseVerdictLogBlock(content: string): AssignmentVerdictBlock[] 
     try {
       raw = JSON.parse(trimmed) as Record<string, unknown>
     } catch {
+      skipped += 1
+      pushSampleBlock(samples, trimmed)
       continue
     }
     const sessionId = asStringBlock(raw.sessionId).trim()
     const verdict = raw.verdict
-    if (!sessionId) continue
-    if (verdict !== 'accept' && verdict !== 'modify' && verdict !== 'reject') continue
+    if (!sessionId || (verdict !== 'accept' && verdict !== 'modify' && verdict !== 'reject')) {
+      skipped += 1
+      pushSampleBlock(samples, trimmed)
+      continue
+    }
     out.push({
       sessionId,
       projectId: asStringBlock(raw.projectId).trim(),
@@ -161,7 +190,7 @@ export function parseVerdictLogBlock(content: string): AssignmentVerdictBlock[] 
       at: asStringBlock(raw.at),
     })
   }
-  return out
+  return { verdicts: out, skipped, samples }
 }
 
 export function serializeVerdictBlock(verdict: AssignmentVerdictBlock): string {

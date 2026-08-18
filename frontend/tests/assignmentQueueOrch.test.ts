@@ -189,7 +189,9 @@ function seedRecord(projectId: string, record: UndertakingRecord, fileName?: str
 function readVerdicts() {
   const out = []
   for (const [path, content] of fakeFs.files) {
-    if (path.startsWith('ai-activity/assignment-log/')) out.push(...parseVerdictLogBlock(content))
+    if (path.startsWith('ai-activity/assignment-log/')) {
+      out.push(...parseVerdictLogBlock(content).verdicts)
+    }
   }
   return out
 }
@@ -571,8 +573,8 @@ describe('the proposal log', () => {
       { sessionId: 'c-1', projectId: 'F9', target: { kind: 'new', title: 'Real work' }, confidence: 0.8, rationale: 'second look', proposedBy: 'kai' },
     ])
     const lines = parseProposalLogBlock(fakeFs.files.get('ai-activity/proposals/F9.jsonl')!)
-    expect(lines).toHaveLength(2)
-    expect(lines[1].target).toEqual({ kind: 'new', title: 'Real work' })
+    expect(lines.proposals).toHaveLength(2)
+    expect(lines.proposals[1].target).toEqual({ kind: 'new', title: 'Real work' })
   })
 })
 

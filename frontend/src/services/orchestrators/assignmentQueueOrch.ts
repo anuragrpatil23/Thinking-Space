@@ -130,6 +130,19 @@ export interface AssignmentQueue {
    * the silent degradation DERIVATION.md forbids.
    */
   orphanedProposals: Array<{ sessionId: string; projectId: string; proposedBy: string }>
+  /**
+   * Lines in the logs that could not be parsed at all.
+   *
+   * A sibling of `orphanedProposals` and for the same reason, one level lower.
+   * That field catches a proposal that parses and then names nothing; this one
+   * catches a line that never became a proposal — which is the failure that
+   * actually happened. The session refactor rekeyed the log from `chainId` to
+   * `sessionId`, the parser dropped every pre-refactor line without a word, and
+   * "Nothing suggested right now" was rendered over 220 readable proposals and
+   * a full month of verdicts. Absence is not evidence; an empty queue has to be
+   * able to say whether it is empty or broken.
+   */
+  unreadableLines: { proposals: number; verdicts: number; samples: string[] }
 }
 
 /** `chainKey` for display grouping. Computed from the sitting each session
@@ -242,6 +255,8 @@ export async function getAssignmentQueueOrch(projectId?: string): Promise<Assign
   const proposedSessionIds = new Set<string>()
   const orphanedProposals: AssignmentQueue['orphanedProposals'] = []
   const chainKeys = new Map<string, string>()
+  const unreadableSamples: string[] = []
+  let unreadableProposals = 0
 
   for (const project of projects) {
     // Every session, not just the undisposed ones: telling an answered proposal
@@ -257,7 +272,11 @@ export async function getAssignmentQueueOrch(projectId?: string): Promise<Assign
     for (const digest of mine) digestsById.set(digest.sessionId, digest)
 
     const undisposedIds = new Set(mine.map(d => d.sessionId))
-    for (const [sessionId, proposal] of latestProposalsBlock(await readProposalsBlock(project))) {
+    const read = await readProposalsBlock(project)
+    unreadableProposals += read.skipped
+    for (const sample of read.samples) if (unreadableSamples.length < 3) unreadableSamples.push(sample)
+    for (const proposal of latestProposalsBlock(read.proposals)) {
+      const { sessionId } = proposal
       if (!known.has(sessionId)) {
         orphanedProposals.push({ sessionId, projectId: project, proposedBy: proposal.proposedBy })
         continue
@@ -302,6 +321,15 @@ export async function getAssignmentQueueOrch(projectId?: string): Promise<Assign
     targetSection: sectionTitleOf(group.projectId, group),
   }))
 
+  // Verdicts are read here purely to surface their unreadable count alongside
+  // the proposals'. The queue does not otherwise need them — but a broken
+  // verdict log is invisible everywhere else, and it is the one that costs
+  // calibration rather than rows.
+  const verdictRead = await readAllVerdictsBlock()
+  for (const sample of verdictRead.samples) {
+    if (unreadableSamples.length < 3) unreadableSamples.push(sample)
+  }
+
   return {
     items,
     unproposed: undisposed
@@ -309,6 +337,11 @@ export async function getAssignmentQueueOrch(projectId?: string): Promise<Assign
       .map(digest => toQueueSessionBlock(digest, chainKeys)),
     undisposedCount: undisposed.length,
     orphanedProposals,
+    unreadableLines: {
+      proposals: unreadableProposals,
+      verdicts: verdictRead.skipped,
+      samples: unreadableSamples,
+    },
   }
 }
 
@@ -327,8 +360,18 @@ export async function proposeAssignmentsOrch(
     else byProject.set(full.projectId, [full])
   }
   const paths: string[] = []
+  const unverified: string[] = []
   for (const [project, batch] of byProject) {
-    paths.push(await appendProposalsBlock(project, batch))
+    const { path, verified } = await appendProposalsBlock(project, batch)
+    paths.push(path)
+    if (!verified) unverified.push(path)
+  }
+  if (unverified.length) {
+    // Loud, not logged-and-shrugged. The caller asked for a claim to be
+    // durable; if it is not, saying so is the only honest return.
+    throw new Error(
+      `Proposals could not be written durably after retries: ${unverified.join(', ')}`,
+    )
   }
   return { written: proposals.length, paths }
 }
@@ -625,13 +668,13 @@ export async function detachSessionOrch(
  *  log had to exist before the first disposition rather than after the first
  *  disappointment. */
 export async function getAssignmentCalibrationOrch(): Promise<BandCalibrationBlock[]> {
-  return calibrateBandsBlock(await readAllVerdictsBlock())
+  return calibrateBandsBlock((await readAllVerdictsBlock()).verdicts)
 }
 
 /** Recently auto-applied stamps, newest first — the visibility half of "auto is
  *  never invisible". Each row carries what it needs for a one-key undo. */
 export async function listRecentAutoAppliedOrch(limit = 20): Promise<AssignmentVerdictBlock[]> {
-  const all = await readAllVerdictsBlock()
+  const { verdicts: all } = await readAllVerdictsBlock()
   return all
     .filter(verdict => verdict.decidedBy === 'auto' && verdict.correctedTo)
     .sort((a, b) => b.at.localeCompare(a.at))

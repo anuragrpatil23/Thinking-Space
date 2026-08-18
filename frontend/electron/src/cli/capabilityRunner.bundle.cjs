@@ -130,14 +130,8 @@ function getJsonStorageItem(key, fallback) {
 function getStoredVaultRoot() {
   return getStorageItem(STORAGE_KEYS.vaultRoot);
 }
-function getGoodnotesAnnotationGate() {
-  return getLocalStorageItemBlock(STORAGE_KEYS.goodnotesReadingAnnotationGate) === "true";
-}
-function getGoodnotesReadingEnabled() {
-  return getLocalStorageItemBlock(STORAGE_KEYS.goodnotesReadingEnabled) === "true";
-}
-function setStoredVaultRoot(path6) {
-  setStorageItem(STORAGE_KEYS.vaultRoot, path6);
+function setStoredVaultRoot(path5) {
+  setStorageItem(STORAGE_KEYS.vaultRoot, path5);
 }
 var STORAGE_KEYS, storageWriteListenerBlock;
 var init_storageKeyBlock = __esm({
@@ -195,13 +189,15 @@ var init_storageKeyBlock = __esm({
       aiActivityHomePostItEnabled: "ltm-ai-activity-home-post-it-enabled",
       aiActivitySetMode: "ltm-ai-activity-set-mode-enabled",
       aiActivityCalendarMode: "ltm-ai-activity-calendar-mode-enabled",
+      aiInputBudgetTokens: "ltm-ai-input-budget-tokens",
       aiActivityAiTitlesEnabled: "ltm-ai-activity-ai-titles-enabled",
       aiActivityRangeSummaryProvider: "ltm-ai-activity-range-summary-provider",
       aiActivityRestDays: "ltm-ai-activity-rest-days",
+      aiActivityWorkMixMode: "ltm-ai-activity-work-mix-mode-enabled",
+      aiActivityThinkingPoolHours: "ltm-ai-activity-thinking-pool-hours",
       aiActivitySectionsOpen: "ltm-ai-activity-sections-open",
       vaultSyncExcludedPrefixes: "ltm-vault-sync-excluded-prefixes",
       intelligenceDefaultProvider: "ltm-intelligence-default-provider",
-      aiActivityRuleBasedAtomsPurged: "ltm-ai-activity-rule-based-atoms-purged",
       navRailPrefs: "ltm-nav-rail-prefs"
     };
     storageWriteListenerBlock = null;
@@ -3603,10 +3599,10 @@ var require_index_cjs = __commonJS({
       }
     };
     var getPlatformId = (win) => {
-      var _a2, _b;
+      var _a, _b;
       if (win === null || win === void 0 ? void 0 : win.androidBridge) {
         return "android";
-      } else if ((_b = (_a2 = win === null || win === void 0 ? void 0 : win.webkit) === null || _a2 === void 0 ? void 0 : _a2.messageHandlers) === null || _b === void 0 ? void 0 : _b.bridge) {
+      } else if ((_b = (_a = win === null || win === void 0 ? void 0 : win.webkit) === null || _a === void 0 ? void 0 : _a.messageHandlers) === null || _b === void 0 ? void 0 : _b.bridge) {
         return "ios";
       } else {
         return "web";
@@ -3631,8 +3627,8 @@ var require_index_cjs = __commonJS({
         return false;
       };
       const getPluginHeader = (pluginName) => {
-        var _a2;
-        return (_a2 = cap.PluginHeaders) === null || _a2 === void 0 ? void 0 : _a2.find((h) => h.name === pluginName);
+        var _a;
+        return (_a = cap.PluginHeaders) === null || _a === void 0 ? void 0 : _a.find((h) => h.name === pluginName);
       };
       const handleError = (err) => win.console.error(err);
       const registeredPlugins = /* @__PURE__ */ new Map();
@@ -3654,7 +3650,7 @@ var require_index_cjs = __commonJS({
           return jsImplementation;
         };
         const createPluginMethod = (impl, prop) => {
-          var _a2, _b;
+          var _a, _b;
           if (pluginHeader) {
             const methodHeader = pluginHeader === null || pluginHeader === void 0 ? void 0 : pluginHeader.methods.find((m) => prop === m.name);
             if (methodHeader) {
@@ -3664,7 +3660,7 @@ var require_index_cjs = __commonJS({
                 return (options, callback) => cap.nativeCallback(pluginName, prop.toString(), options, callback);
               }
             } else if (impl) {
-              return (_a2 = impl[prop]) === null || _a2 === void 0 ? void 0 : _a2.bind(impl);
+              return (_a = impl[prop]) === null || _a === void 0 ? void 0 : _a.bind(impl);
             }
           } else if (impl) {
             return (_b = impl[prop]) === null || _b === void 0 ? void 0 : _b.bind(impl);
@@ -3805,8 +3801,8 @@ var require_index_cjs = __commonJS({
         listeners2.forEach((listener) => listener(data));
       }
       hasListeners(eventName) {
-        var _a2;
-        return !!((_a2 = this.listeners[eventName]) === null || _a2 === void 0 ? void 0 : _a2.length);
+        var _a;
+        return !!((_a = this.listeners[eventName]) === null || _a === void 0 ? void 0 : _a.length);
       }
       registerWindowListener(windowEventName, pluginEventName) {
         this.windowListeners[pluginEventName] = {
@@ -3879,9 +3875,9 @@ var require_index_cjs = __commonJS({
           const encodedKey = encode(options.key);
           const encodedValue = encode(options.value);
           const expires = options.expires ? `; expires=${options.expires.replace("expires=", "")}` : "";
-          const path6 = (options.path || "/").replace("path=", "");
+          const path5 = (options.path || "/").replace("path=", "");
           const domain = options.url != null && options.url.length > 0 ? `domain=${options.url}` : "";
-          document.cookie = `${encodedKey}=${encodedValue || ""}${expires}; path=${path6}; ${domain};`;
+          document.cookie = `${encodedKey}=${encodedValue || ""}${expires}; path=${path5}; ${domain};`;
         } catch (error) {
           return Promise.reject(error);
         }
@@ -4129,10 +4125,10 @@ function readRaw() {
 function getSyncExcludedPathPrefixes() {
   return readRaw();
 }
-function isPathSyncExcluded(path6, prefixes) {
+function isPathSyncExcluded(path5, prefixes) {
   const list = prefixes ?? readRaw();
   if (list.length === 0) return false;
-  const normalized = normalizePrefix(path6);
+  const normalized = normalizePrefix(path5);
   if (!normalized) return false;
   for (const prefix of list) {
     if (normalized === prefix || normalized.startsWith(`${prefix}/`)) return true;
@@ -4152,15 +4148,15 @@ function normalizePath2(value) {
 }
 function prune(now) {
   if (recentWrites.size <= MAX_ENTRIES) {
-    for (const [path6, ts] of recentWrites) {
-      if (now - ts > WINDOW_MS) recentWrites.delete(path6);
+    for (const [path5, ts] of recentWrites) {
+      if (now - ts > WINDOW_MS) recentWrites.delete(path5);
     }
     return;
   }
   const entries = [...recentWrites.entries()].sort((a, b) => a[1] - b[1]);
-  for (const [path6, ts] of entries) {
+  for (const [path5, ts] of entries) {
     if (recentWrites.size <= MAX_ENTRIES && now - ts <= WINDOW_MS) break;
-    recentWrites.delete(path6);
+    recentWrites.delete(path5);
   }
 }
 function recordSelfWriteBlock(filePath) {
@@ -4286,7 +4282,7 @@ var require_synapse = __commonJS({
   "node_modules/@capacitor/synapse/dist/synapse.cjs"(exports2) {
     "use strict";
     Object.defineProperty(exports2, Symbol.toStringTag, { value: "Module" });
-    function s2(t) {
+    function s(t) {
       t.CapacitorUtils.Synapse = new Proxy({}, { get(a, o) {
         return new Proxy({}, { get(d, n) {
           return (c, p, r) => {
@@ -4317,7 +4313,7 @@ var require_synapse = __commonJS({
       } });
     }
     function y(t = false) {
-      typeof window > "u" || (window.CapacitorUtils = window.CapacitorUtils || {}, window.Capacitor !== void 0 && !t ? s2(window) : window.cordova !== void 0 && u(window));
+      typeof window > "u" || (window.CapacitorUtils = window.CapacitorUtils || {}, window.Capacitor !== void 0 && !t ? s(window) : window.cordova !== void 0 && u(window));
     }
     exports2.exposeSynapse = y;
   }
@@ -4355,8 +4351,8 @@ var require_plugin_cjs = __commonJS({
       }).then((m) => new m.FilesystemWeb())
     });
     synapse.exposeSynapse();
-    function resolve2(path6) {
-      const posix = path6.split("/").filter((item) => item !== ".");
+    function resolve2(path5) {
+      const posix = path5.split("/").filter((item) => item !== ".");
       const newPosix = [];
       posix.forEach((item) => {
         if (item === ".." && newPosix.length > 0 && newPosix[newPosix.length - 1] !== "..") {
@@ -4381,7 +4377,7 @@ var require_plugin_cjs = __commonJS({
         this.DB_NAME = "Disc";
         this._writeCmds = ["add", "put", "delete"];
         this.downloadFile = async (options) => {
-          var _a2, _b;
+          var _a, _b;
           const requestInit = core2.buildRequestInit(options, options.webFetchExtra);
           const response = await fetch(options.url, requestInit);
           let blob;
@@ -4420,7 +4416,7 @@ var require_plugin_cjs = __commonJS({
           }
           const result = await this.writeFile({
             path: options.path,
-            directory: (_a2 = options.directory) !== null && _a2 !== void 0 ? _a2 : void 0,
+            directory: (_a = options.directory) !== null && _a !== void 0 ? _a : void 0,
             recursive: (_b = options.recursive) !== null && _b !== void 0 ? _b : false,
             data: blob
           });
@@ -4511,8 +4507,8 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the read file data result
        */
       async readFile(options) {
-        const path6 = this.getPath(options.directory, options.path);
-        const entry = await this.dbRequest("get", [path6]);
+        const path5 = this.getPath(options.directory, options.path);
+        const entry = await this.dbRequest("get", [path5]);
         if (entry === void 0)
           throw Error("File does not exist.");
         return { data: entry.content ? entry.content : "" };
@@ -4523,14 +4519,14 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the file write result
        */
       async writeFile(options) {
-        const path6 = this.getPath(options.directory, options.path);
+        const path5 = this.getPath(options.directory, options.path);
         let data = options.data;
         const encoding = options.encoding;
         const doRecursive = options.recursive;
-        const occupiedEntry = await this.dbRequest("get", [path6]);
+        const occupiedEntry = await this.dbRequest("get", [path5]);
         if (occupiedEntry && occupiedEntry.type === "directory")
           throw Error("The supplied path is a directory.");
-        const parentPath = path6.substr(0, path6.lastIndexOf("/"));
+        const parentPath = path5.substr(0, path5.lastIndexOf("/"));
         const parentEntry = await this.dbRequest("get", [parentPath]);
         if (parentEntry === void 0) {
           const subDirIndex = parentPath.indexOf("/", 1);
@@ -4550,7 +4546,7 @@ var require_plugin_cjs = __commonJS({
         }
         const now = Date.now();
         const pathObj = {
-          path: path6,
+          path: path5,
           folder: parentPath,
           type: "file",
           size: data instanceof Blob ? data.size : data.length,
@@ -4569,13 +4565,13 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the file write result
        */
       async appendFile(options) {
-        const path6 = this.getPath(options.directory, options.path);
+        const path5 = this.getPath(options.directory, options.path);
         let data = options.data;
         const encoding = options.encoding;
-        const parentPath = path6.substr(0, path6.lastIndexOf("/"));
+        const parentPath = path5.substr(0, path5.lastIndexOf("/"));
         const now = Date.now();
         let ctime = now;
-        const occupiedEntry = await this.dbRequest("get", [path6]);
+        const occupiedEntry = await this.dbRequest("get", [path5]);
         if (occupiedEntry && occupiedEntry.type === "directory")
           throw Error("The supplied path is a directory.");
         const parentEntry = await this.dbRequest("get", [parentPath]);
@@ -4604,7 +4600,7 @@ var require_plugin_cjs = __commonJS({
           ctime = occupiedEntry.ctime;
         }
         const pathObj = {
-          path: path6,
+          path: path5,
           folder: parentPath,
           type: "file",
           size: data.length,
@@ -4620,14 +4616,14 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the deleted file data result
        */
       async deleteFile(options) {
-        const path6 = this.getPath(options.directory, options.path);
-        const entry = await this.dbRequest("get", [path6]);
+        const path5 = this.getPath(options.directory, options.path);
+        const entry = await this.dbRequest("get", [path5]);
         if (entry === void 0)
           throw Error("File does not exist.");
-        const entries = await this.dbIndexRequest("by_folder", "getAllKeys", [IDBKeyRange.only(path6)]);
+        const entries = await this.dbIndexRequest("by_folder", "getAllKeys", [IDBKeyRange.only(path5)]);
         if (entries.length !== 0)
           throw Error("Folder is not empty.");
-        await this.dbRequest("delete", [path6]);
+        await this.dbRequest("delete", [path5]);
       }
       /**
        * Create a directory.
@@ -4635,12 +4631,12 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the mkdir result
        */
       async mkdir(options) {
-        const path6 = this.getPath(options.directory, options.path);
+        const path5 = this.getPath(options.directory, options.path);
         const doRecursive = options.recursive;
-        const parentPath = path6.substr(0, path6.lastIndexOf("/"));
-        const depth = (path6.match(/\//g) || []).length;
+        const parentPath = path5.substr(0, path5.lastIndexOf("/"));
+        const depth = (path5.match(/\//g) || []).length;
         const parentEntry = await this.dbRequest("get", [parentPath]);
-        const occupiedEntry = await this.dbRequest("get", [path6]);
+        const occupiedEntry = await this.dbRequest("get", [path5]);
         if (depth === 1)
           throw Error("Cannot create Root directory");
         if (occupiedEntry !== void 0)
@@ -4657,7 +4653,7 @@ var require_plugin_cjs = __commonJS({
         }
         const now = Date.now();
         const pathObj = {
-          path: path6,
+          path: path5,
           folder: parentPath,
           type: "directory",
           size: 0,
@@ -4671,18 +4667,18 @@ var require_plugin_cjs = __commonJS({
        * @param options the options for the directory remove
        */
       async rmdir(options) {
-        const { path: path6, directory, recursive } = options;
-        const fullPath = this.getPath(directory, path6);
+        const { path: path5, directory, recursive } = options;
+        const fullPath = this.getPath(directory, path5);
         const entry = await this.dbRequest("get", [fullPath]);
         if (entry === void 0)
           throw Error("Folder does not exist.");
         if (entry.type !== "directory")
           throw Error("Requested path is not a directory");
-        const readDirResult = await this.readdir({ path: path6, directory });
+        const readDirResult = await this.readdir({ path: path5, directory });
         if (readDirResult.files.length !== 0 && !recursive)
           throw Error("Folder is not empty");
         for (const entry2 of readDirResult.files) {
-          const entryPath = `${path6}/${entry2.name}`;
+          const entryPath = `${path5}/${entry2.name}`;
           const entryObj = await this.stat({ path: entryPath, directory });
           if (entryObj.type === "file") {
             await this.deleteFile({ path: entryPath, directory });
@@ -4698,18 +4694,18 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the readdir directory listing result
        */
       async readdir(options) {
-        const path6 = this.getPath(options.directory, options.path);
-        const entry = await this.dbRequest("get", [path6]);
+        const path5 = this.getPath(options.directory, options.path);
+        const entry = await this.dbRequest("get", [path5]);
         if (options.path !== "" && entry === void 0)
           throw Error("Folder does not exist.");
-        const entries = await this.dbIndexRequest("by_folder", "getAllKeys", [IDBKeyRange.only(path6)]);
+        const entries = await this.dbIndexRequest("by_folder", "getAllKeys", [IDBKeyRange.only(path5)]);
         const files = await Promise.all(entries.map(async (e) => {
           let subEntry = await this.dbRequest("get", [e]);
           if (subEntry === void 0) {
             subEntry = await this.dbRequest("get", [e + "/"]);
           }
           return {
-            name: e.substring(path6.length + 1),
+            name: e.substring(path5.length + 1),
             type: subEntry.type,
             size: subEntry.size,
             ctime: subEntry.ctime,
@@ -4725,13 +4721,13 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the file stat result
        */
       async getUri(options) {
-        const path6 = this.getPath(options.directory, options.path);
-        let entry = await this.dbRequest("get", [path6]);
+        const path5 = this.getPath(options.directory, options.path);
+        let entry = await this.dbRequest("get", [path5]);
         if (entry === void 0) {
-          entry = await this.dbRequest("get", [path6 + "/"]);
+          entry = await this.dbRequest("get", [path5 + "/"]);
         }
         return {
-          uri: (entry === null || entry === void 0 ? void 0 : entry.path) || path6
+          uri: (entry === null || entry === void 0 ? void 0 : entry.path) || path5
         };
       }
       /**
@@ -4740,15 +4736,15 @@ var require_plugin_cjs = __commonJS({
        * @return a promise that resolves with the file stat result
        */
       async stat(options) {
-        const path6 = this.getPath(options.directory, options.path);
-        let entry = await this.dbRequest("get", [path6]);
+        const path5 = this.getPath(options.directory, options.path);
+        let entry = await this.dbRequest("get", [path5]);
         if (entry === void 0) {
-          entry = await this.dbRequest("get", [path6 + "/"]);
+          entry = await this.dbRequest("get", [path5 + "/"]);
         }
         if (entry === void 0)
           throw Error("Entry does not exist.");
         return {
-          name: entry.path.substring(path6.length + 1),
+          name: entry.path.substring(path5.length + 1),
           type: entry.type,
           size: entry.size,
           ctime: entry.ctime,
@@ -4831,8 +4827,8 @@ var require_plugin_cjs = __commonJS({
           path: from,
           directory: fromDirectory
         });
-        const updateTime = async (path6, ctime2, mtime) => {
-          const fullPath = this.getPath(toDirectory, path6);
+        const updateTime = async (path5, ctime2, mtime) => {
+          const fullPath = this.getPath(toDirectory, path5);
           const entry = await this.dbRequest("get", [fullPath]);
           entry.ctime = ctime2;
           entry.mtime = mtime;
@@ -4926,46 +4922,46 @@ var require_plugin_cjs = __commonJS({
 });
 
 // src/services/lego_blocks/integrations/fsBlock.ts
-function normalizeVaultPathForValidationBlock(path6) {
-  return String(path6 || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").trim();
+function normalizeVaultPathForValidationBlock(path5) {
+  return String(path5 || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").trim();
 }
-function invalidVaultPathReasonBlock(path6, options) {
-  const normalized = normalizeVaultPathForValidationBlock(path6);
+function invalidVaultPathReasonBlock(path5, options) {
+  const normalized = normalizeVaultPathForValidationBlock(path5);
   if (!normalized) return options?.allowEmpty ? null : "empty path";
   if (normalized === ".md") return `invalid normalized path "${normalized}"`;
   const segments = normalized.split("/").filter(Boolean);
   if (segments.some((segment) => segment.trim() === "" || segment.trim() === ".")) return "contains invalid empty path segment";
   return null;
 }
-function warnRejectedVaultPathBlock(op, path6, reason) {
-  const key = `${op}::${path6}::${reason}`;
+function warnRejectedVaultPathBlock(op, path5, reason) {
+  const key = `${op}::${path5}::${reason}`;
   if (warnedInvalidVaultPathKeysBlock.has(key)) return;
   warnedInvalidVaultPathKeysBlock.add(key);
   logWarn(
     `Rejected invalid vault path before filesystem call`,
-    `op=${op} path=${path6} reason=${reason}`,
+    `op=${op} path=${path5} reason=${reason}`,
     "fsBlock"
   );
 }
-function assertValidVaultPathBlock(op, path6, options) {
-  const reason = invalidVaultPathReasonBlock(path6, options);
-  if (!reason) return path6;
-  warnRejectedVaultPathBlock(op, path6, reason);
-  throw new Error(`Rejected invalid vault path for ${op}: ${path6} (${reason})`);
+function assertValidVaultPathBlock(op, path5, options) {
+  const reason = invalidVaultPathReasonBlock(path5, options);
+  if (!reason) return path5;
+  warnRejectedVaultPathBlock(op, path5, reason);
+  throw new Error(`Rejected invalid vault path for ${op}: ${path5} (${reason})`);
 }
-function isValidVaultPathBlock(path6, options) {
-  const reason = invalidVaultPathReasonBlock(path6, options);
+function isValidVaultPathBlock(path5, options) {
+  const reason = invalidVaultPathReasonBlock(path5, options);
   if (!reason) return true;
-  warnRejectedVaultPathBlock("exists", path6, reason);
+  warnRejectedVaultPathBlock("exists", path5, reason);
   return false;
 }
-function vaultPathOrNullBlock(op, path6, options) {
-  const reason = invalidVaultPathReasonBlock(path6, options);
+function vaultPathOrNullBlock(op, path5, options) {
+  const reason = invalidVaultPathReasonBlock(path5, options);
   if (reason) {
-    warnRejectedVaultPathBlock(op, path6, reason);
+    warnRejectedVaultPathBlock(op, path5, reason);
     return null;
   }
-  return path6;
+  return path5;
 }
 function encodeFileUriSegmentBlock(segment) {
   return encodeURIComponent(segment);
@@ -5082,8 +5078,8 @@ var init_fsBlock = __esm({
     init_byteEncodingBlock();
     warnedInvalidVaultPathKeysBlock = /* @__PURE__ */ new Set();
     WebVaultFS = class {
-      async read(path6) {
-        const safePath = assertValidVaultPathBlock("read", path6);
+      async read(path5) {
+        const safePath = assertValidVaultPathBlock("read", path5);
         const res = await fetch(`/api/tools/file-content?path=${encodeURIComponent(safePath)}`);
         if (!res.ok) {
           let detail = "";
@@ -5093,24 +5089,24 @@ var init_fsBlock = __esm({
           } catch {
           }
           const suffix = detail || res.statusText || `HTTP ${res.status}`;
-          throw new Error(`Failed to read file: ${path6} (${suffix})`);
+          throw new Error(`Failed to read file: ${path5} (${suffix})`);
         }
         const data = await res.json();
         return data.content;
       }
-      async write(path6, data) {
-        assertValidVaultPathBlock("write", path6);
+      async write(path5, data) {
+        assertValidVaultPathBlock("write", path5);
         const res = await fetch("/api/tools/vault/write", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: path6, content: data })
+          body: JSON.stringify({ path: path5, content: data })
         });
-        if (!res.ok) throw new Error(`Failed to write file: ${path6}`);
-        notifyFileChanged(path6);
+        if (!res.ok) throw new Error(`Failed to write file: ${path5}`);
+        notifyFileChanged(path5);
       }
-      async readBytes(path6) {
-        assertValidVaultPathBlock("readBytes", path6);
-        const res = await fetch(`/api/tools/vault/read-bytes?path=${encodeURIComponent(path6)}`);
+      async readBytes(path5) {
+        assertValidVaultPathBlock("readBytes", path5);
+        const res = await fetch(`/api/tools/vault/read-bytes?path=${encodeURIComponent(path5)}`);
         if (!res.ok) {
           let detail = "";
           try {
@@ -5119,32 +5115,32 @@ var init_fsBlock = __esm({
           } catch {
           }
           const suffix = detail || res.statusText || `HTTP ${res.status}`;
-          throw new Error(`Failed to read bytes: ${path6} (${suffix})`);
+          throw new Error(`Failed to read bytes: ${path5} (${suffix})`);
         }
         const payload = await res.json();
         return base64ToBytesBlock(payload.data_base64 || "");
       }
-      async writeBytes(path6, data) {
-        assertValidVaultPathBlock("writeBytes", path6);
+      async writeBytes(path5, data) {
+        assertValidVaultPathBlock("writeBytes", path5);
         const res = await fetch("/api/tools/vault/write-bytes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            path: path6,
+            path: path5,
             data_base64: bytesToBase64Block(data)
           })
         });
-        if (!res.ok) throw new Error(`Failed to write bytes: ${path6}`);
-        notifyFileChanged(path6);
+        if (!res.ok) throw new Error(`Failed to write bytes: ${path5}`);
+        notifyFileChanged(path5);
       }
-      async create(path6, data) {
-        if (await this.exists(path6)) throw new Error(`File already exists: ${path6}`);
-        await this.write(path6, data);
+      async create(path5, data) {
+        if (await this.exists(path5)) throw new Error(`File already exists: ${path5}`);
+        await this.write(path5, data);
       }
-      async list(path6) {
-        assertValidVaultPathBlock("list", path6, { allowEmpty: true });
-        const res = await fetch(`/api/tools/vault/readdir?path=${encodeURIComponent(path6)}`);
-        if (!res.ok) throw new Error(`Failed to list directory: ${path6}`);
+      async list(path5) {
+        assertValidVaultPathBlock("list", path5, { allowEmpty: true });
+        const res = await fetch(`/api/tools/vault/readdir?path=${encodeURIComponent(path5)}`);
+        if (!res.ok) throw new Error(`Failed to list directory: ${path5}`);
         const json2 = await res.json();
         const files = [];
         const folders = [];
@@ -5166,48 +5162,48 @@ var init_fsBlock = __esm({
           ctime: f.birthtime ?? f.ctime ?? f.mtime
         }));
       }
-      async stat(path6) {
-        assertValidVaultPathBlock("stat", path6);
-        const res = await fetch(`/api/tools/vault/stat?path=${encodeURIComponent(path6)}`);
-        if (!res.ok) throw new Error(`Failed to stat: ${path6}`);
-        const s2 = await res.json();
+      async stat(path5) {
+        assertValidVaultPathBlock("stat", path5);
+        const res = await fetch(`/api/tools/vault/stat?path=${encodeURIComponent(path5)}`);
+        if (!res.ok) throw new Error(`Failed to stat: ${path5}`);
+        const s = await res.json();
         return {
-          size: s2.size,
-          mtime: s2.mtime,
-          ctime: s2.birthtime ?? s2.ctime,
-          isDirectory: Boolean(s2.isDirectory)
+          size: s.size,
+          mtime: s.mtime,
+          ctime: s.birthtime ?? s.ctime,
+          isDirectory: Boolean(s.isDirectory)
         };
       }
-      async exists(path6) {
-        if (!isValidVaultPathBlock(path6)) return false;
+      async exists(path5) {
+        if (!isValidVaultPathBlock(path5)) return false;
         try {
-          await this.stat(path6);
+          await this.stat(path5);
           return true;
         } catch {
           return false;
         }
       }
-      async mkdir(path6) {
-        assertValidVaultPathBlock("mkdir", path6, { allowEmpty: true });
+      async mkdir(path5) {
+        assertValidVaultPathBlock("mkdir", path5, { allowEmpty: true });
         const res = await fetch("/api/tools/vault/mkdir", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: path6 })
+          body: JSON.stringify({ path: path5 })
         });
-        if (!res.ok) throw new Error(`Failed to mkdir: ${path6}`);
+        if (!res.ok) throw new Error(`Failed to mkdir: ${path5}`);
       }
-      async delete(path6) {
-        assertValidVaultPathBlock("delete", path6);
+      async delete(path5) {
+        assertValidVaultPathBlock("delete", path5);
         const res = await fetch("/api/tools/vault/delete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: path6, recursive: false })
+          body: JSON.stringify({ path: path5, recursive: false })
         });
-        if (!res.ok) throw new Error(`Failed to delete: ${path6}`);
+        if (!res.ok) throw new Error(`Failed to delete: ${path5}`);
       }
-      async process(path6, fn) {
-        const content = await this.read(path6);
-        await this.write(path6, fn(content));
+      async process(path5, fn) {
+        const content = await this.read(path5);
+        await this.write(path5, fn(content));
       }
     };
     ElectronVaultFS = class {
@@ -5218,17 +5214,17 @@ var init_fsBlock = __esm({
       get api() {
         return window.electronAPI;
       }
-      async read(path6) {
-        const safePath = assertValidVaultPathBlock("read", path6);
+      async read(path5) {
+        const safePath = assertValidVaultPathBlock("read", path5);
         return this.api.read(this.vaultRoot, safePath);
       }
-      async write(path6, data) {
-        const safePath = assertValidVaultPathBlock("write", path6);
+      async write(path5, data) {
+        const safePath = assertValidVaultPathBlock("write", path5);
         await this.api.write(this.vaultRoot, safePath, data);
         notifyFileChanged(safePath);
       }
-      async readBytes(path6) {
-        const safePath = assertValidVaultPathBlock("readBytes", path6);
+      async readBytes(path5) {
+        const safePath = assertValidVaultPathBlock("readBytes", path5);
         if (this.api.readBytesBase64) {
           const base64 = await this.api.readBytesBase64(this.vaultRoot, safePath);
           return base64ToBytesBlock(base64);
@@ -5236,8 +5232,8 @@ var init_fsBlock = __esm({
         const text = await this.read(safePath);
         return utf8ToBytesBlock(text);
       }
-      async writeBytes(path6, data) {
-        const safePath = assertValidVaultPathBlock("writeBytes", path6);
+      async writeBytes(path5, data) {
+        const safePath = assertValidVaultPathBlock("writeBytes", path5);
         if (this.api.writeBytesBase64) {
           await this.api.writeBytesBase64(this.vaultRoot, safePath, bytesToBase64Block(data));
           notifyFileChanged(safePath);
@@ -5245,39 +5241,39 @@ var init_fsBlock = __esm({
         }
         await this.write(safePath, bytesToUtf8Block(data));
       }
-      async create(path6, data) {
-        if (await this.exists(path6)) throw new Error(`File already exists: ${path6}`);
-        await this.write(path6, data);
+      async create(path5, data) {
+        if (await this.exists(path5)) throw new Error(`File already exists: ${path5}`);
+        await this.write(path5, data);
       }
-      async list(path6) {
-        const safePath = assertValidVaultPathBlock("list", path6, { allowEmpty: true });
+      async list(path5) {
+        const safePath = assertValidVaultPathBlock("list", path5, { allowEmpty: true });
         return this.api.list(this.vaultRoot, safePath || ".");
       }
       async walkVault(extensions = [".md"]) {
         return this.api.walkVault(this.vaultRoot, extensions);
       }
-      async stat(path6) {
-        const safePath = assertValidVaultPathBlock("stat", path6);
+      async stat(path5) {
+        const safePath = assertValidVaultPathBlock("stat", path5);
         return this.api.stat(this.vaultRoot, safePath);
       }
-      async exists(path6) {
-        const safePath = vaultPathOrNullBlock("exists", path6);
+      async exists(path5) {
+        const safePath = vaultPathOrNullBlock("exists", path5);
         if (safePath === null) return false;
         return this.api.exists(this.vaultRoot, safePath);
       }
-      async mkdir(path6) {
-        const safePath = assertValidVaultPathBlock("mkdir", path6, { allowEmpty: true });
+      async mkdir(path5) {
+        const safePath = assertValidVaultPathBlock("mkdir", path5, { allowEmpty: true });
         return this.api.mkdir(this.vaultRoot, safePath);
       }
-      async delete(path6) {
-        const safePath = assertValidVaultPathBlock("delete", path6);
+      async delete(path5) {
+        const safePath = assertValidVaultPathBlock("delete", path5);
         if (this.api.deletePath) {
           await this.api.deletePath(this.vaultRoot, safePath, false);
         }
       }
-      async process(path6, fn) {
-        const content = await this.read(path6);
-        await this.write(path6, fn(content));
+      async process(path5, fn) {
+        const content = await this.read(path5);
+        await this.write(path5, fn(content));
       }
     };
     _vaultWalkPluginPromise = null;
@@ -5288,37 +5284,37 @@ var init_fsBlock = __esm({
         this.isAbsolute = vaultRoot.startsWith("/");
         this.vaultRoot = vaultRoot;
       }
-      resolve(path6) {
-        const base = path6 ? `${this.vaultRoot}/${path6}` : this.vaultRoot;
+      resolve(path5) {
+        const base = path5 ? `${this.vaultRoot}/${path5}` : this.vaultRoot;
         if (this.isAbsolute) {
           const encoded = base.split("/").map(encodeFileUriSegmentBlock).join("/");
           return `file://${encoded}`;
         }
         return base;
       }
-      async fsOpts(path6) {
+      async fsOpts(path5) {
         if (this.isAbsolute) {
-          return { path: this.resolve(path6) };
+          return { path: this.resolve(path5) };
         }
         const { Directory } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-        return { path: this.resolve(path6), directory: Directory.Documents };
+        return { path: this.resolve(path5), directory: Directory.Documents };
       }
-      async read(path6) {
-        const safePath = assertValidVaultPathBlock("read", path6);
+      async read(path5) {
+        const safePath = assertValidVaultPathBlock("read", path5);
         const { Filesystem, Encoding } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
         const opts = await this.fsOpts(safePath);
         const result = await Filesystem.readFile({ ...opts, encoding: Encoding.UTF8 });
         return result.data;
       }
-      async write(path6, data) {
-        const safePath = assertValidVaultPathBlock("write", path6);
+      async write(path5, data) {
+        const safePath = assertValidVaultPathBlock("write", path5);
         const { Filesystem, Encoding } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
         const opts = await this.fsOpts(safePath);
         await Filesystem.writeFile({ ...opts, data, encoding: Encoding.UTF8, recursive: true });
         notifyFileChanged(safePath);
       }
-      async readBytes(path6) {
-        const safePath = assertValidVaultPathBlock("readBytes", path6);
+      async readBytes(path5) {
+        const safePath = assertValidVaultPathBlock("readBytes", path5);
         const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
         const opts = await this.fsOpts(safePath);
         const result = await Filesystem.readFile(opts);
@@ -5328,8 +5324,8 @@ var init_fsBlock = __esm({
         const arrayBuffer = await result.data.arrayBuffer();
         return new Uint8Array(arrayBuffer);
       }
-      async writeBytes(path6, data) {
-        const safePath = assertValidVaultPathBlock("writeBytes", path6);
+      async writeBytes(path5, data) {
+        const safePath = assertValidVaultPathBlock("writeBytes", path5);
         const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
         const opts = await this.fsOpts(safePath);
         await Filesystem.writeFile({
@@ -5339,12 +5335,12 @@ var init_fsBlock = __esm({
         });
         notifyFileChanged(safePath);
       }
-      async create(path6, data) {
-        if (await this.exists(path6)) throw new Error(`File already exists: ${path6}`);
-        await this.write(path6, data);
+      async create(path5, data) {
+        if (await this.exists(path5)) throw new Error(`File already exists: ${path5}`);
+        await this.write(path5, data);
       }
-      async list(path6) {
-        const safePath = assertValidVaultPathBlock("list", path6, { allowEmpty: true });
+      async list(path5) {
+        const safePath = assertValidVaultPathBlock("list", path5, { allowEmpty: true });
         const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
         const exists = await this.exists(safePath).catch(() => false);
         if (!exists) return { files: [], folders: [] };
@@ -5416,8 +5412,8 @@ var init_fsBlock = __esm({
         await walk(this.vaultRoot, null, "");
         return entries;
       }
-      async stat(path6) {
-        const safePath = assertValidVaultPathBlock("stat", path6);
+      async stat(path5) {
+        const safePath = assertValidVaultPathBlock("stat", path5);
         const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
         const opts = await this.fsOpts(safePath);
         const st = await Filesystem.stat(opts);
@@ -5427,8 +5423,8 @@ var init_fsBlock = __esm({
           ctime: (st.ctime || st.mtime || 0) / 1e3
         };
       }
-      async exists(path6) {
-        const safePath = vaultPathOrNullBlock("exists", path6, { allowEmpty: true });
+      async exists(path5) {
+        const safePath = vaultPathOrNullBlock("exists", path5, { allowEmpty: true });
         if (safePath === null) return false;
         if (!safePath) return true;
         const normalized = safePath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
@@ -5447,8 +5443,8 @@ var init_fsBlock = __esm({
           return false;
         }
       }
-      async mkdir(path6) {
-        const safePath = assertValidVaultPathBlock("mkdir", path6, { allowEmpty: true });
+      async mkdir(path5) {
+        const safePath = assertValidVaultPathBlock("mkdir", path5, { allowEmpty: true });
         const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
         const opts = await this.fsOpts(safePath);
         const exists = await this.exists(safePath).catch(() => false);
@@ -5460,15 +5456,15 @@ var init_fsBlock = __esm({
           throw error;
         }
       }
-      async delete(path6) {
-        const safePath = assertValidVaultPathBlock("delete", path6);
+      async delete(path5) {
+        const safePath = assertValidVaultPathBlock("delete", path5);
         const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
         const opts = await this.fsOpts(safePath);
         await Filesystem.deleteFile(opts);
       }
-      async process(path6, fn) {
-        const content = await this.read(path6);
-        await this.write(path6, fn(content));
+      async process(path5, fn) {
+        const content = await this.read(path5);
+        await this.write(path5, fn(content));
       }
     };
     _instance = null;
@@ -5503,9 +5499,9 @@ var require_dexie = __commonJS({
       }
       var __assign = function() {
         __assign = Object.assign || function __assign2(t) {
-          for (var s2, i = 1, n = arguments.length; i < n; i++) {
-            s2 = arguments[i];
-            for (var p in s2) if (Object.prototype.hasOwnProperty.call(s2, p)) t[p] = s2[p];
+          for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p)) t[p] = s[p];
           }
           return t;
         };
@@ -5526,7 +5522,7 @@ var require_dexie = __commonJS({
       };
       var _global = typeof globalThis !== "undefined" ? globalThis : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : global;
       var keys = Object.keys;
-      var isArray2 = Array.isArray;
+      var isArray = Array.isArray;
       if (typeof Promise !== "undefined" && !_global.Promise) {
         _global.Promise = Promise;
       }
@@ -5540,7 +5536,7 @@ var require_dexie = __commonJS({
       }
       var getProto = Object.getPrototypeOf;
       var _hasOwn = {}.hasOwnProperty;
-      function hasOwn2(obj, prop) {
+      function hasOwn(obj, prop) {
         return _hasOwn.call(obj, prop);
       }
       function props(proto, extension) {
@@ -5552,7 +5548,7 @@ var require_dexie = __commonJS({
       }
       var defineProperty = Object.defineProperty;
       function setProp(obj, prop, functionOrGetSet, options) {
-        defineProperty(obj, prop, extend(functionOrGetSet && hasOwn2(functionOrGetSet, "get") && typeof functionOrGetSet.get === "function" ? { get: functionOrGetSet.get, set: functionOrGetSet.set, configurable: true } : { value: functionOrGetSet, configurable: true, writable: true }, options));
+        defineProperty(obj, prop, extend(functionOrGetSet && hasOwn(functionOrGetSet, "get") && typeof functionOrGetSet.get === "function" ? { get: functionOrGetSet.get, set: functionOrGetSet.set, configurable: true } : { value: functionOrGetSet, configurable: true, writable: true }, options));
       }
       function derive(Child) {
         return {
@@ -5597,7 +5593,7 @@ var require_dexie = __commonJS({
         }, {});
       }
       function getByKeyPath(obj, keyPath) {
-        if (typeof keyPath === "string" && hasOwn2(obj, keyPath))
+        if (typeof keyPath === "string" && hasOwn(obj, keyPath))
           return obj[keyPath];
         if (!keyPath)
           return obj;
@@ -5633,7 +5629,7 @@ var require_dexie = __commonJS({
             var remainingKeyPath = keyPath.substr(period + 1);
             if (remainingKeyPath === "")
               if (value === void 0) {
-                if (isArray2(obj) && !isNaN(parseInt(currentKeyPath)))
+                if (isArray(obj) && !isNaN(parseInt(currentKeyPath)))
                   obj.splice(currentKeyPath, 1);
                 else
                   delete obj[currentKeyPath];
@@ -5641,13 +5637,13 @@ var require_dexie = __commonJS({
                 obj[currentKeyPath] = value;
             else {
               var innerObj = obj[currentKeyPath];
-              if (!innerObj || !hasOwn2(obj, currentKeyPath))
+              if (!innerObj || !hasOwn(obj, currentKeyPath))
                 innerObj = obj[currentKeyPath] = {};
               setByKeyPath(innerObj, remainingKeyPath, value);
             }
           } else {
             if (value === void 0) {
-              if (isArray2(obj) && !isNaN(parseInt(keyPath)))
+              if (isArray(obj) && !isNaN(parseInt(keyPath)))
                 obj.splice(keyPath, 1);
               else
                 delete obj[keyPath];
@@ -5667,7 +5663,7 @@ var require_dexie = __commonJS({
       function shallowClone(obj) {
         var rv = {};
         for (var m in obj) {
-          if (hasOwn2(obj, m))
+          if (hasOwn(obj, m))
             rv[m] = obj[m];
         }
         return rv;
@@ -5689,7 +5685,7 @@ var require_dexie = __commonJS({
       function cloneSimpleObjectTree(o) {
         var rv = {};
         for (var k in o)
-          if (hasOwn2(o, k)) {
+          if (hasOwn(o, k)) {
             var v = o[k];
             rv[k] = !v || typeof v !== "object" || intrinsicTypes.has(v.constructor) ? v : cloneSimpleObjectTree(v);
           }
@@ -5697,7 +5693,7 @@ var require_dexie = __commonJS({
       }
       function objectIsEmpty(o) {
         for (var k in o)
-          if (hasOwn2(o, k))
+          if (hasOwn(o, k))
             return false;
         return true;
       }
@@ -5714,7 +5710,7 @@ var require_dexie = __commonJS({
         var rv = circularRefs.get(x);
         if (rv)
           return rv;
-        if (isArray2(x)) {
+        if (isArray(x)) {
           rv = [];
           circularRefs.set(x, rv);
           for (var i = 0, l = x.length; i < l; ++i) {
@@ -5727,7 +5723,7 @@ var require_dexie = __commonJS({
           rv = proto === Object.prototype ? {} : Object.create(proto);
           circularRefs.set(x, rv);
           for (var prop in x) {
-            if (hasOwn2(x, prop)) {
+            if (hasOwn(x, prop)) {
               rv[prop] = innerDeepClone(x[prop]);
             }
           }
@@ -5755,7 +5751,7 @@ var require_dexie = __commonJS({
       function getArrayOf(arrayLike) {
         var i, a, x, it;
         if (arguments.length === 1) {
-          if (isArray2(arrayLike))
+          if (isArray(arrayLike))
             return arrayLike.slice();
           if (this === NO_CHAR_ARRAY && typeof arrayLike === "string")
             return [arrayLike];
@@ -5841,8 +5837,8 @@ var require_dexie = __commonJS({
       function getMultiErrorMessage(msg, failures) {
         return msg + ". Errors: " + Object.keys(failures).map(function(key) {
           return failures[key].toString();
-        }).filter(function(v, i, s2) {
-          return s2.indexOf(v) === i;
+        }).filter(function(v, i, s) {
+          return s.indexOf(v) === i;
         }).join("\n");
       }
       function ModifyError(msg, failures, successCount, failedKeys) {
@@ -6619,7 +6615,7 @@ var require_dexie = __commonJS({
             if (mode === "readwrite")
               try {
                 trans.idbtrans.commit();
-              } catch (_a3) {
+              } catch (_a2) {
               }
             return mode === "readonly" ? result : trans._completion.then(function() {
               return result;
@@ -6696,7 +6692,7 @@ var require_dexie = __commonJS({
             case "Array":
               return compareArrays(a, b);
           }
-        } catch (_a3) {
+        } catch (_a2) {
         }
         return NaN;
       }
@@ -6745,8 +6741,8 @@ var require_dexie = __commonJS({
           keys2 = keys2.filter(function(_, i) {
             return !res.failures[i];
           });
-        return Promise.all(yProps.map(function(_a3) {
-          var updatesTable = _a3.updatesTable;
+        return Promise.all(yProps.map(function(_a2) {
+          var updatesTable = _a2.updatesTable;
           return keys2 ? table.db.table(updatesTable).where("k").anyOf(keys2).delete() : table.db.table(updatesTable).clear();
         })).then(function() {
           return res;
@@ -6757,12 +6753,12 @@ var require_dexie = __commonJS({
           this["@@propmod"] = spec;
         }
         PropModification3.prototype.execute = function(value) {
-          var _a3;
+          var _a2;
           var spec = this["@@propmod"];
           if (spec.add !== void 0) {
             var term = spec.add;
-            if (isArray2(term)) {
-              return __spreadArray(__spreadArray([], isArray2(value) ? value : [], true), term, true).sort();
+            if (isArray(term)) {
+              return __spreadArray(__spreadArray([], isArray(value) ? value : [], true), term, true).sort();
             }
             if (typeof term === "number")
               return (Number(value) || 0) + term;
@@ -6777,8 +6773,8 @@ var require_dexie = __commonJS({
           }
           if (spec.remove !== void 0) {
             var subtrahend_1 = spec.remove;
-            if (isArray2(subtrahend_1)) {
-              return isArray2(value) ? value.filter(function(item) {
+            if (isArray(subtrahend_1)) {
+              return isArray(value) ? value.filter(function(item) {
                 return !subtrahend_1.includes(item);
               }).sort() : [];
             }
@@ -6793,7 +6789,7 @@ var require_dexie = __commonJS({
             }
             throw new TypeError("Invalid subtrahend ".concat(subtrahend_1));
           }
-          var prefixToReplace = (_a3 = spec.replacePrefix) === null || _a3 === void 0 ? void 0 : _a3[0];
+          var prefixToReplace = (_a2 = spec.replacePrefix) === null || _a2 === void 0 ? void 0 : _a2[0];
           if (prefixToReplace && typeof value === "string" && value.startsWith(prefixToReplace)) {
             return spec.replacePrefix[1] + value.substring(prefixToReplace.length);
           }
@@ -6864,7 +6860,7 @@ var require_dexie = __commonJS({
         Table2.prototype.where = function(indexOrCrit) {
           if (typeof indexOrCrit === "string")
             return new this.db.WhereClause(this, indexOrCrit);
-          if (isArray2(indexOrCrit))
+          if (isArray(indexOrCrit))
             return new this.db.WhereClause(this, "[".concat(indexOrCrit.join("+"), "]"));
           var keyPaths = keys(indexOrCrit);
           if (keyPaths.length === 1)
@@ -6895,22 +6891,22 @@ var require_dexie = __commonJS({
           function equals(a, b) {
             return cmp3(a, b) === 0;
           }
-          var _a3 = keyPaths.reduce(function(_a4, keyPath) {
-            var prevIndex = _a4[0], prevFilterFn = _a4[1];
+          var _a2 = keyPaths.reduce(function(_a3, keyPath) {
+            var prevIndex = _a3[0], prevFilterFn = _a3[1];
             var index = idxByName[keyPath];
             var value = indexOrCrit[keyPath];
             return [
               prevIndex || index,
               prevIndex || !index ? combine(prevFilterFn, index && index.multi ? function(x) {
                 var prop = getByKeyPath(x, keyPath);
-                return isArray2(prop) && prop.some(function(item) {
+                return isArray(prop) && prop.some(function(item) {
                   return equals(value, item);
                 });
               } : function(x) {
                 return equals(value, getByKeyPath(x, keyPath));
               }) : prevFilterFn
             ];
-          }, [null, null]), idx = _a3[0], filterFunction = _a3[1];
+          }, [null, null]), idx = _a2[0], filterFunction = _a2[1];
           return idx ? this.where(idx.name).equals(indexOrCrit[idx.keyPath]).filter(filterFunction) : compoundIndex ? this.filter(filterFunction) : this.where(keyPaths).equals("");
         };
         Table2.prototype.filter = function(filterFunction) {
@@ -6935,13 +6931,13 @@ var require_dexie = __commonJS({
           return new this.db.Collection(new this.db.WhereClause(this));
         };
         Table2.prototype.orderBy = function(index) {
-          return new this.db.Collection(new this.db.WhereClause(this, isArray2(index) ? "[".concat(index.join("+"), "]") : index));
+          return new this.db.Collection(new this.db.WhereClause(this, isArray(index) ? "[".concat(index.join("+"), "]") : index));
         };
         Table2.prototype.reverse = function() {
           return this.toCollection().reverse();
         };
         Table2.prototype.mapToClass = function(constructor) {
-          var _a3 = this, db = _a3.db, tableName = _a3.name;
+          var _a2 = this, db = _a2.db, tableName = _a2.name;
           this.schema.mappedClass = constructor;
           if (constructor.prototype instanceof Entity2) {
             constructor = (function(_super) {
@@ -6995,7 +6991,7 @@ var require_dexie = __commonJS({
         };
         Table2.prototype.add = function(obj, key) {
           var _this = this;
-          var _a3 = this.schema.primKey, auto = _a3.auto, keyPath = _a3.keyPath;
+          var _a2 = this.schema.primKey, auto = _a2.auto, keyPath = _a2.keyPath;
           var objToAdd = obj;
           if (keyPath && auto) {
             objToAdd = workaroundForUndefinedPrimKey(keyPath)(obj);
@@ -7037,7 +7033,7 @@ var require_dexie = __commonJS({
           });
         };
         Table2.prototype.update = function(keyOrObject, modifications) {
-          if (typeof keyOrObject === "object" && !isArray2(keyOrObject)) {
+          if (typeof keyOrObject === "object" && !isArray(keyOrObject)) {
             var key = getByKeyPath(keyOrObject, this.schema.primKey.keyPath);
             if (key === void 0)
               return rejection(new exceptions.InvalidArgument("Given object does not contain its primary key"));
@@ -7048,7 +7044,7 @@ var require_dexie = __commonJS({
         };
         Table2.prototype.put = function(obj, key) {
           var _this = this;
-          var _a3 = this.schema.primKey, auto = _a3.auto, keyPath = _a3.keyPath;
+          var _a2 = this.schema.primKey, auto = _a2.auto, keyPath = _a2.keyPath;
           var objToAdd = obj;
           if (keyPath && auto) {
             objToAdd = workaroundForUndefinedPrimKey(keyPath)(obj);
@@ -7106,15 +7102,15 @@ var require_dexie = __commonJS({
           options = options || (keys2 ? void 0 : keysOrOptions);
           var wantResults = options ? options.allKeys : void 0;
           return this._trans("readwrite", function(trans) {
-            var _a3 = _this.schema.primKey, auto = _a3.auto, keyPath = _a3.keyPath;
+            var _a2 = _this.schema.primKey, auto = _a2.auto, keyPath = _a2.keyPath;
             if (keyPath && keys2)
               throw new exceptions.InvalidArgument("bulkAdd(): keys argument invalid on tables with inbound keys");
             if (keys2 && keys2.length !== objects.length)
               throw new exceptions.InvalidArgument("Arguments objects and keys must have the same length");
             var numObjects = objects.length;
             var objectsToAdd = keyPath && auto ? objects.map(workaroundForUndefinedPrimKey(keyPath)) : objects;
-            return _this.core.mutate({ trans, type: "add", keys: keys2, values: objectsToAdd, wantResults }).then(function(_a4) {
-              var numFailures = _a4.numFailures, results = _a4.results, lastResult = _a4.lastResult, failures = _a4.failures;
+            return _this.core.mutate({ trans, type: "add", keys: keys2, values: objectsToAdd, wantResults }).then(function(_a3) {
+              var numFailures = _a3.numFailures, results = _a3.results, lastResult = _a3.lastResult, failures = _a3.failures;
               var result = wantResults ? results : lastResult;
               if (numFailures === 0)
                 return result;
@@ -7128,15 +7124,15 @@ var require_dexie = __commonJS({
           options = options || (keys2 ? void 0 : keysOrOptions);
           var wantResults = options ? options.allKeys : void 0;
           return this._trans("readwrite", function(trans) {
-            var _a3 = _this.schema.primKey, auto = _a3.auto, keyPath = _a3.keyPath;
+            var _a2 = _this.schema.primKey, auto = _a2.auto, keyPath = _a2.keyPath;
             if (keyPath && keys2)
               throw new exceptions.InvalidArgument("bulkPut(): keys argument invalid on tables with inbound keys");
             if (keys2 && keys2.length !== objects.length)
               throw new exceptions.InvalidArgument("Arguments objects and keys must have the same length");
             var numObjects = objects.length;
             var objectsToPut = keyPath && auto ? objects.map(workaroundForUndefinedPrimKey(keyPath)) : objects;
-            return _this.core.mutate({ trans, type: "put", keys: keys2, values: objectsToPut, wantResults }).then(function(_a4) {
-              var numFailures = _a4.numFailures, results = _a4.results, lastResult = _a4.lastResult, failures = _a4.failures;
+            return _this.core.mutate({ trans, type: "put", keys: keys2, values: objectsToPut, wantResults }).then(function(_a3) {
+              var numFailures = _a3.numFailures, results = _a3.results, lastResult = _a3.lastResult, failures = _a3.failures;
               var result = wantResults ? results : lastResult;
               if (numFailures === 0)
                 return result;
@@ -7158,8 +7154,8 @@ var require_dexie = __commonJS({
             return coreTable.getMany({ trans, keys: keys2, cache: "clone" }).then(function(objs) {
               var resultKeys = [];
               var resultObjs = [];
-              keysAndChanges.forEach(function(_a3, idx) {
-                var key = _a3.key, changes = _a3.changes;
+              keysAndChanges.forEach(function(_a2, idx) {
+                var key = _a2.key, changes = _a2.changes;
                 var obj = objs[idx];
                 if (obj) {
                   for (var _i = 0, _b = Object.keys(changes); _i < _b.length; _i++) {
@@ -7188,8 +7184,8 @@ var require_dexie = __commonJS({
                   keys: keys2,
                   changeSpecs
                 }
-              }).then(function(_a3) {
-                var numFailures = _a3.numFailures, failures = _a3.failures;
+              }).then(function(_a2) {
+                var numFailures = _a2.numFailures, failures = _a2.failures;
                 if (numFailures === 0)
                   return numEntries;
                 for (var _i = 0, _b = Object.keys(failures); _i < _b.length; _i++) {
@@ -7213,8 +7209,8 @@ var require_dexie = __commonJS({
             return _this.core.mutate({ trans, type: "delete", keys: keys2 }).then(function(res) {
               return builtInDeletionTrigger(_this, keys2, res);
             });
-          }).then(function(_a3) {
-            var numFailures = _a3.numFailures, lastResult = _a3.lastResult, failures = _a3.failures;
+          }).then(function(_a2) {
+            var numFailures = _a2.numFailures, lastResult = _a2.lastResult, failures = _a2.failures;
             if (numFailures === 0)
               return lastResult;
             throw new BulkError("".concat(_this.name, ".bulkDelete(): ").concat(numFailures, " of ").concat(numKeys, " operations failed"), failures);
@@ -7269,7 +7265,7 @@ var require_dexie = __commonJS({
         function addConfiguredEvents(cfg) {
           keys(cfg).forEach(function(eventName) {
             var args = cfg[eventName];
-            if (isArray2(args)) {
+            if (isArray(args)) {
               add3(eventName, cfg[eventName][0], cfg[eventName][1]);
             } else if (args === "asap") {
               var context = add3(eventName, mirror, function fire() {
@@ -7358,7 +7354,7 @@ var require_dexie = __commonJS({
               var key = "" + primaryKey;
               if (key === "[object ArrayBuffer]")
                 key = "" + new Uint8Array(primaryKey);
-              if (!hasOwn2(set_1, key)) {
+              if (!hasOwn(set_1, key)) {
                 set_1[key] = true;
                 fn(item, cursor, advance);
               }
@@ -7490,8 +7486,8 @@ var require_dexie = __commonJS({
                   index,
                   range: ctx.range
                 }
-              }).then(function(_a3) {
-                var result = _a3.result;
+              }).then(function(_a2) {
+                var result = _a2.result;
                 return valueMapper_1 ? result.map(valueMapper_1) : result;
               });
             } else {
@@ -7631,8 +7627,8 @@ var require_dexie = __commonJS({
                   range: ctx.range
                 }
               });
-            }).then(function(_a3) {
-              var result = _a3.result;
+            }).then(function(_a2) {
+              var result = _a2.result;
               return result;
             }).then(cb);
           }
@@ -7663,7 +7659,7 @@ var require_dexie = __commonJS({
           var set2 = {};
           addFilter(this._ctx, function(cursor) {
             var strKey = cursor.primaryKey.toString();
-            var found = hasOwn2(set2, strKey);
+            var found = hasOwn(set2, strKey);
             set2[strKey] = true;
             return !found;
           });
@@ -7682,7 +7678,7 @@ var require_dexie = __commonJS({
               };
             }
             var coreTable = ctx.table.core;
-            var _a3 = coreTable.schema.primaryKey, outbound = _a3.outbound, extractKey2 = _a3.extractKey;
+            var _a2 = coreTable.schema.primaryKey, outbound = _a2.outbound, extractKey2 = _a2.extractKey;
             var limit = 200;
             var modifyChunkSize = _this.db._options.modifyChunkSize;
             if (modifyChunkSize) {
@@ -7698,8 +7694,8 @@ var require_dexie = __commonJS({
             var applyMutateResult = function(expectedCount, res) {
               var failures = res.failures, numFailures = res.numFailures;
               successCount += expectedCount - numFailures;
-              for (var _i = 0, _a4 = keys(failures); _i < _a4.length; _i++) {
-                var pos = _a4[_i];
+              for (var _i = 0, _a3 = keys(failures); _i < _a3.length; _i++) {
+                var pos = _a3[_i];
                 totalFailures.push(failures[pos]);
               }
             };
@@ -7790,8 +7786,8 @@ var require_dexie = __commonJS({
               var primaryKey = ctx.table.core.schema.primaryKey;
               var coreRange = range;
               return ctx.table.core.count({ trans, query: { index: primaryKey, range: coreRange } }).then(function(count) {
-                return ctx.table.core.mutate({ trans, type: "deleteRange", range: coreRange }).then(function(_a3) {
-                  var failures = _a3.failures, numFailures = _a3.numFailures;
+                return ctx.table.core.mutate({ trans, type: "deleteRange", range: coreRange }).then(function(_a2) {
+                  var failures = _a2.failures, numFailures = _a2.numFailures;
                   if (numFailures)
                     throw new ModifyError("Could not delete some values", Object.keys(failures).map(function(pos) {
                       return failures[pos];
@@ -7859,17 +7855,17 @@ var require_dexie = __commonJS({
         }).limit(0);
       }
       function upperFactory(dir) {
-        return dir === "next" ? function(s2) {
-          return s2.toUpperCase();
-        } : function(s2) {
-          return s2.toLowerCase();
+        return dir === "next" ? function(s) {
+          return s.toUpperCase();
+        } : function(s) {
+          return s.toLowerCase();
         };
       }
       function lowerFactory(dir) {
-        return dir === "next" ? function(s2) {
-          return s2.toLowerCase();
-        } : function(s2) {
-          return s2.toUpperCase();
+        return dir === "next" ? function(s) {
+          return s.toLowerCase();
+        } : function(s) {
+          return s.toUpperCase();
         };
       }
       function nextCasing(key, lowerKey, upperNeedle, lowerNeedle, cmp4, dir) {
@@ -7897,8 +7893,8 @@ var require_dexie = __commonJS({
       }
       function addIgnoreCaseAlgorithm(whereClause, match, needles, suffix) {
         var upper, lower, compare, upperNeedles, lowerNeedles, direction, nextKeySuffix, needlesLen = needles.length;
-        if (!needles.every(function(s2) {
-          return typeof s2 === "string";
+        if (!needles.every(function(s) {
+          return typeof s === "string";
         })) {
           return fail(whereClause, STRING_EXPECTED);
         }
@@ -8215,8 +8211,8 @@ var require_dexie = __commonJS({
         };
         WhereClause2.prototype.startsWithAnyOf = function() {
           var set2 = getArrayOf.apply(NO_CHAR_ARRAY, arguments);
-          if (!set2.every(function(s2) {
-            return typeof s2 === "string";
+          if (!set2.every(function(s) {
+            return typeof s === "string";
           })) {
             return fail(this, "startsWithAnyOf() only works with strings");
           }
@@ -8416,7 +8412,7 @@ var require_dexie = __commonJS({
         };
         Transaction2.prototype.table = function(tableName) {
           var memoizedTables = this._memoizedTables || (this._memoizedTables = {});
-          if (hasOwn2(memoizedTables, tableName))
+          if (hasOwn(memoizedTables, tableName))
             return memoizedTables[tableName];
           var tableSchema = this.schema[tableName];
           if (!tableSchema) {
@@ -8434,8 +8430,8 @@ var require_dexie = __commonJS({
           var _this = this;
           if (mode !== "readonly")
             storeNames.forEach(function(storeName) {
-              var _a3;
-              var yProps = (_a3 = dbschema[storeName]) === null || _a3 === void 0 ? void 0 : _a3.yProps;
+              var _a2;
+              var yProps = (_a2 = dbschema[storeName]) === null || _a2 === void 0 ? void 0 : _a2.yProps;
               if (yProps)
                 storeNames = storeNames.concat(yProps.map(function(p) {
                   return p.updatesTable;
@@ -8558,7 +8554,7 @@ var require_dexie = __commonJS({
                 return trans.objectStore(table);
               }).map(function(store) {
                 var keyPath = store.keyPath, autoIncrement = store.autoIncrement;
-                var compound = isArray2(keyPath);
+                var compound = isArray(keyPath);
                 var outbound = keyPath == null;
                 var indexByKeyPath = {};
                 var result = {
@@ -8577,7 +8573,7 @@ var require_dexie = __commonJS({
                     return store.index(indexName);
                   }).map(function(index) {
                     var name = index.name, unique = index.unique, multiEntry = index.multiEntry, keyPath2 = index.keyPath;
-                    var compound2 = isArray2(keyPath2);
+                    var compound2 = isArray(keyPath2);
                     var result2 = {
                       name,
                       compound: compound2,
@@ -8614,8 +8610,8 @@ var require_dexie = __commonJS({
         }
         function createDbCoreTable(tableSchema) {
           var tableName = tableSchema.name;
-          function mutate(_a4) {
-            var trans = _a4.trans, type3 = _a4.type, keys2 = _a4.keys, values = _a4.values, range = _a4.range;
+          function mutate(_a3) {
+            var trans = _a3.trans, type3 = _a3.type, keys2 = _a3.keys, values = _a3.values, range = _a3.range;
             return new Promise(function(resolve2, reject) {
               resolve2 = wrap(resolve2);
               var store = trans.objectStore(tableName);
@@ -8645,7 +8641,7 @@ var require_dexie = __commonJS({
                 else
                   reqs.push(req = store.delete(makeIDBKeyRange(range)));
               } else {
-                var _a5 = isAddOrPut ? outbound ? [values, keys2] : [values, null] : [keys2, null], args1 = _a5[0], args2 = _a5[1];
+                var _a4 = isAddOrPut ? outbound ? [values, keys2] : [values, null] : [keys2, null], args1 = _a4[0], args2 = _a4[1];
                 if (isAddOrPut) {
                   for (var i = 0; i < length; ++i) {
                     reqs.push(req = args2 && args2[i] !== void 0 ? store[type3](args1[i], args2[i]) : store[type3](args1[i]));
@@ -8679,8 +8675,8 @@ var require_dexie = __commonJS({
               req.onsuccess = done;
             });
           }
-          function openCursor2(_a4) {
-            var trans = _a4.trans, values = _a4.values, query2 = _a4.query, reverse = _a4.reverse, unique = _a4.unique;
+          function openCursor2(_a3) {
+            var trans = _a3.trans, values = _a3.values, query2 = _a3.query, reverse = _a3.reverse, unique = _a3.unique;
             return new Promise(function(resolve2, reject) {
               resolve2 = wrap(resolve2);
               var index = query2.index, range = query2.range;
@@ -8799,8 +8795,8 @@ var require_dexie = __commonJS({
             name: tableName,
             schema: tableSchema,
             mutate,
-            getMany: function(_a4) {
-              var trans = _a4.trans, keys2 = _a4.keys;
+            getMany: function(_a3) {
+              var trans = _a3.trans, keys2 = _a3.keys;
               return new Promise(function(resolve2, reject) {
                 resolve2 = wrap(resolve2);
                 var store = trans.objectStore(tableName);
@@ -8831,8 +8827,8 @@ var require_dexie = __commonJS({
                   resolve2(result);
               });
             },
-            get: function(_a4) {
-              var trans = _a4.trans, key = _a4.key;
+            get: function(_a3) {
+              var trans = _a3.trans, key = _a3.key;
               return new Promise(function(resolve2, reject) {
                 resolve2 = wrap(resolve2);
                 var store = trans.objectStore(tableName);
@@ -8845,8 +8841,8 @@ var require_dexie = __commonJS({
             },
             query: query(hasGetAll),
             openCursor: openCursor2,
-            count: function(_a4) {
-              var query2 = _a4.query, trans = _a4.trans;
+            count: function(_a3) {
+              var query2 = _a3.query, trans = _a3.trans;
               var index = query2.index, range = query2.range;
               return new Promise(function(resolve2, reject) {
                 var store = trans.objectStore(tableName);
@@ -8861,7 +8857,7 @@ var require_dexie = __commonJS({
             }
           };
         }
-        var _a3 = extractSchema(db, tmpTrans), schema2 = _a3.schema, hasGetAll = _a3.hasGetAll;
+        var _a2 = extractSchema(db, tmpTrans), schema2 = _a2.schema, hasGetAll = _a2.hasGetAll;
         var tables = schema2.tables.map(function(tableSchema) {
           return createDbCoreTable(tableSchema);
         });
@@ -8884,14 +8880,14 @@ var require_dexie = __commonJS({
         };
       }
       function createMiddlewareStack(stackImpl, middlewares) {
-        return middlewares.reduce(function(down, _a3) {
-          var create = _a3.create;
+        return middlewares.reduce(function(down, _a2) {
+          var create = _a2.create;
           return __assign(__assign({}, down), create(down));
         }, stackImpl);
       }
-      function createMiddlewareStacks(middlewares, idbdb, _a3, tmpTrans) {
-        var IDBKeyRange2 = _a3.IDBKeyRange;
-        _a3.indexedDB;
+      function createMiddlewareStacks(middlewares, idbdb, _a2, tmpTrans) {
+        var IDBKeyRange2 = _a2.IDBKeyRange;
+        _a2.indexedDB;
         var dbcore = createMiddlewareStack(createDBCore(idbdb, IDBKeyRange2, tmpTrans), middlewares.dbcore);
         return {
           dbcore
@@ -8996,8 +8992,8 @@ var require_dexie = __commonJS({
             addIndex(store, idx);
           });
         };
-        for (var _i = 0, _a3 = diff.change; _i < _a3.length; _i++) {
-          var tableChange = _a3[_i];
+        for (var _i = 0, _a2 = diff.change; _i < _a2.length; _i++) {
+          var tableChange = _a2[_i];
           var state_1 = _loop_1(tableChange);
           if (typeof state_1 === "object")
             return state_1.value;
@@ -9239,13 +9235,13 @@ var require_dexie = __commonJS({
       }
       function parseIndexSyntax(primKeyAndIndexes) {
         return primKeyAndIndexes.split(",").map(function(index, indexNum) {
-          var _a3;
+          var _a2;
           var typeSplit = index.split(":");
-          var type3 = (_a3 = typeSplit[1]) === null || _a3 === void 0 ? void 0 : _a3.trim();
+          var type3 = (_a2 = typeSplit[1]) === null || _a2 === void 0 ? void 0 : _a2.trim();
           index = typeSplit[0].trim();
           var name = index.replace(/([&*]|\+\+)/g, "");
           var keyPath = /^\[/.test(name) ? name.match(/^\[(.*)\]$/)[1].split("+") : name;
-          return createIndexSpec(name, keyPath || null, /\&/.test(index), /\*/.test(index), /\+\+/.test(index), isArray2(keyPath), indexNum === 0, type3);
+          return createIndexSpec(name, keyPath || null, /\&/.test(index), /\*/.test(index), /\+\+/.test(index), isArray(keyPath), indexNum === 0, type3);
         });
       }
       var Version = (function() {
@@ -9330,8 +9326,8 @@ var require_dexie = __commonJS({
       function hasDatabasesNative(indexedDB2) {
         return indexedDB2 && typeof indexedDB2.databases === "function";
       }
-      function getDatabaseNames(_a3) {
-        var indexedDB2 = _a3.indexedDB, IDBKeyRange2 = _a3.IDBKeyRange;
+      function getDatabaseNames(_a2) {
+        var indexedDB2 = _a2.indexedDB, IDBKeyRange2 = _a2.IDBKeyRange;
         return hasDatabasesNative(indexedDB2) ? Promise.resolve(indexedDB2.databases()).then(function(infos) {
           return infos.map(function(info) {
             return info.name;
@@ -9340,12 +9336,12 @@ var require_dexie = __commonJS({
           });
         }) : getDbNamesTable(indexedDB2, IDBKeyRange2).toCollection().primaryKeys();
       }
-      function _onDatabaseCreated(_a3, name) {
-        var indexedDB2 = _a3.indexedDB, IDBKeyRange2 = _a3.IDBKeyRange;
+      function _onDatabaseCreated(_a2, name) {
+        var indexedDB2 = _a2.indexedDB, IDBKeyRange2 = _a2.IDBKeyRange;
         !hasDatabasesNative(indexedDB2) && name !== DBNAMES_DB && getDbNamesTable(indexedDB2, IDBKeyRange2).put({ name }).catch(nop);
       }
-      function _onDatabaseDeleted(_a3, name) {
-        var indexedDB2 = _a3.indexedDB, IDBKeyRange2 = _a3.IDBKeyRange;
+      function _onDatabaseDeleted(_a2, name) {
+        var indexedDB2 = _a2.indexedDB, IDBKeyRange2 = _a2.IDBKeyRange;
         !hasDatabasesNative(indexedDB2) && name !== DBNAMES_DB && getDbNamesTable(indexedDB2, IDBKeyRange2).delete(name).catch(nop);
       }
       function vip(fn) {
@@ -9369,7 +9365,7 @@ var require_dexie = __commonJS({
           return clearInterval(intervalId);
         });
       }
-      var _a2;
+      var _a;
       function isEmptyRange(node) {
         return !("from" in node);
       }
@@ -9384,7 +9380,7 @@ var require_dexie = __commonJS({
           return rv;
         }
       };
-      props(RangeSet2.prototype, (_a2 = {
+      props(RangeSet2.prototype, (_a = {
         add: function(rangeSet) {
           mergeRanges2(this, rangeSet);
           return this;
@@ -9404,9 +9400,9 @@ var require_dexie = __commonJS({
           var node = getRangeSetIterator(this).next(key).value;
           return node && cmp3(node.from, key) <= 0 && cmp3(node.to, key) >= 0;
         }
-      }, _a2[iteratorSymbol] = function() {
+      }, _a[iteratorSymbol] = function() {
         return getRangeSetIterator(this);
-      }, _a2));
+      }, _a));
       function addRange(target, from, to) {
         var diff = cmp3(from, to);
         if (isNaN(diff))
@@ -9444,8 +9440,8 @@ var require_dexie = __commonJS({
         }
       }
       function mergeRanges2(target, newSet) {
-        function _addRangeSet(target2, _a3) {
-          var from = _a3.from, to = _a3.to, l = _a3.l, r = _a3.r;
+        function _addRangeSet(target2, _a2) {
+          var from = _a2.from, to = _a2.to, l = _a2.l, r = _a2.r;
           addRange(target2, from, to);
           if (l)
             _addRangeSet(target2, l);
@@ -9506,8 +9502,8 @@ var require_dexie = __commonJS({
         };
       }
       function rebalance(target) {
-        var _a3, _b;
-        var diff = (((_a3 = target.r) === null || _a3 === void 0 ? void 0 : _a3.d) || 0) - (((_b = target.l) === null || _b === void 0 ? void 0 : _b.d) || 0);
+        var _a2, _b;
+        var diff = (((_a2 = target.r) === null || _a2 === void 0 ? void 0 : _a2.d) || 0) - (((_b = target.l) === null || _b === void 0 ? void 0 : _b.d) || 0);
         var r = diff > 1 ? "r" : diff < -1 ? "l" : "";
         if (r) {
           var l = r === "r" ? "l" : "r";
@@ -9522,8 +9518,8 @@ var require_dexie = __commonJS({
         }
         target.d = computeDepth(target);
       }
-      function computeDepth(_a3) {
-        var r = _a3.r, l = _a3.l;
+      function computeDepth(_a2) {
+        var r = _a2.r, l = _a2.l;
         return (r ? l ? Math.max(r.d, l.d) : r.d : l ? l.d : 0) + 1;
       }
       function extendObservabilitySet(target, newSet) {
@@ -9540,7 +9536,7 @@ var require_dexie = __commonJS({
           return os22[key] && rangesOverlap2(os22[key], os1[key]);
         });
       }
-      var cache2 = {};
+      var cache = {};
       var unsignaledParts = {};
       var isTaskEnqueued = false;
       function signalSubscribersLazily(part, optimistic) {
@@ -9561,8 +9557,8 @@ var require_dexie = __commonJS({
         }
         var queriesToSignal = /* @__PURE__ */ new Set();
         if (updatedParts.all) {
-          for (var _i = 0, _a3 = Object.values(cache2); _i < _a3.length; _i++) {
-            var tblCache = _a3[_i];
+          for (var _i = 0, _a2 = Object.values(cache); _i < _a2.length; _i++) {
+            var tblCache = _a2[_i];
             collectTableSubscribers(tblCache, updatedParts, queriesToSignal, deleteAffectedCacheEntries);
           }
         } else {
@@ -9570,7 +9566,7 @@ var require_dexie = __commonJS({
             var parts = /^idb\:\/\/(.*)\/(.*)\//.exec(key);
             if (parts) {
               var dbName = parts[1], tableName = parts[2];
-              var tblCache = cache2["idb://".concat(dbName, "/").concat(tableName)];
+              var tblCache = cache["idb://".concat(dbName, "/").concat(tableName)];
               if (tblCache)
                 collectTableSubscribers(tblCache, updatedParts, queriesToSignal, deleteAffectedCacheEntries);
             }
@@ -9582,8 +9578,8 @@ var require_dexie = __commonJS({
       }
       function collectTableSubscribers(tblCache, updatedParts, outQueriesToSignal, deleteAffectedCacheEntries) {
         var updatedEntryLists = [];
-        for (var _i = 0, _a3 = Object.entries(tblCache.queries.query); _i < _a3.length; _i++) {
-          var _b = _a3[_i], indexName = _b[0], entries = _b[1];
+        for (var _i = 0, _a2 = Object.entries(tblCache.queries.query); _i < _a2.length; _i++) {
+          var _b = _a2[_i], indexName = _b[0], entries = _b[1];
           var filteredEntries = [];
           for (var _c = 0, entries_1 = entries; _c < entries_1.length; _c++) {
             var entry = entries_1[_c];
@@ -9734,7 +9730,7 @@ var require_dexie = __commonJS({
           state.dbOpenError = err;
           try {
             upgradeTransaction && upgradeTransaction.abort();
-          } catch (_a3) {
+          } catch (_a2) {
           }
           if (openCanceller === state.openCanceller) {
             db._close();
@@ -9768,7 +9764,7 @@ var require_dexie = __commonJS({
         function step(getNext) {
           return function(val) {
             var next = getNext(val), value = next.value;
-            return next.done ? value : !value || typeof value.then !== "function" ? isArray2(value) ? Promise.all(value).then(onSuccess, onError) : onSuccess(value) : value.then(onSuccess, onError);
+            return next.done ? value : !value || typeof value.then !== "function" ? isArray(value) ? Promise.all(value).then(onSuccess, onError) : onSuccess(value) : value.then(onSuccess, onError);
           };
         }
         return step(callNext)();
@@ -9844,7 +9840,7 @@ var require_dexie = __commonJS({
         });
       }
       function pad(a, value, count) {
-        var result = isArray2(a) ? a.slice() : [a];
+        var result = isArray(a) ? a.slice() : [a];
         for (var i = 0; i < count; ++i)
           result.push(value);
         return result;
@@ -9876,8 +9872,8 @@ var require_dexie = __commonJS({
           }
           var primaryKey = addVirtualIndexes(schema2.primaryKey.keyPath, 0, schema2.primaryKey);
           indexLookup[":id"] = [primaryKey];
-          for (var _i = 0, _a3 = schema2.indexes; _i < _a3.length; _i++) {
-            var index = _a3[_i];
+          for (var _i = 0, _a2 = schema2.indexes; _i < _a2.length; _i++) {
+            var index = _a2[_i];
             addVirtualIndexes(index.keyPath, 0, index);
           }
           function findBestIndex(keyPath) {
@@ -9905,7 +9901,7 @@ var require_dexie = __commonJS({
           }, query: function(req) {
             return table.query(translateRequest(req));
           }, openCursor: function(req) {
-            var _a4 = req.query.index, keyTail = _a4.keyTail, isVirtual = _a4.isVirtual, keyLength = _a4.keyLength;
+            var _a3 = req.query.index, keyTail = _a3.keyTail, isVirtual = _a3.isVirtual, keyLength = _a3.keyLength;
             if (!isVirtual)
               return table.openCursor(req);
             function createVirtualCursor(cursor) {
@@ -9955,7 +9951,7 @@ var require_dexie = __commonJS({
         rv = rv || {};
         prfx = prfx || "";
         keys(a).forEach(function(prop) {
-          if (!hasOwn2(b, prop)) {
+          if (!hasOwn(b, prop)) {
             rv[prfx + prop] = void 0;
           } else {
             var ap = a[prop], bp = b[prop];
@@ -9974,7 +9970,7 @@ var require_dexie = __commonJS({
           }
         });
         keys(b).forEach(function(prop) {
-          if (!hasOwn2(a, prop)) {
+          if (!hasOwn(a, prop)) {
             rv[prfx + prop] = b[prop];
           }
         });
@@ -9995,7 +9991,7 @@ var require_dexie = __commonJS({
             var primaryKey = downTable.schema.primaryKey;
             var tableMiddleware = __assign(__assign({}, downTable), { mutate: function(req) {
               var dxTrans = PSD.trans;
-              var _a3 = dxTrans.table(tableName).hook, deleting = _a3.deleting, creating = _a3.creating, updating = _a3.updating;
+              var _a2 = dxTrans.table(tableName).hook, deleting = _a2.deleting, creating = _a2.creating, updating = _a2.updating;
               switch (req.type) {
                 case "add":
                   if (creating.fire === nop)
@@ -10054,7 +10050,7 @@ var require_dexie = __commonJS({
                       if (additionalChanges_1) {
                         var requestedValue_1 = req2.values[i];
                         Object.keys(additionalChanges_1).forEach(function(keyPath) {
-                          if (hasOwn2(requestedValue_1, keyPath)) {
+                          if (hasOwn(requestedValue_1, keyPath)) {
                             requestedValue_1[keyPath] = additionalChanges_1[keyPath];
                           } else {
                             setByKeyPath(requestedValue_1, keyPath, additionalChanges_1[keyPath]);
@@ -10064,8 +10060,8 @@ var require_dexie = __commonJS({
                     }
                     return ctx;
                   });
-                  return downTable.mutate(req2).then(function(_a4) {
-                    var failures = _a4.failures, results = _a4.results, numFailures = _a4.numFailures, lastResult = _a4.lastResult;
+                  return downTable.mutate(req2).then(function(_a3) {
+                    var failures = _a3.failures, results = _a3.results, numFailures = _a3.numFailures, lastResult = _a3.lastResult;
                     for (var i = 0; i < keys2.length; ++i) {
                       var primKey = results ? results[i] : keys2[i];
                       var ctx = contexts[i];
@@ -10090,8 +10086,8 @@ var require_dexie = __commonJS({
                 return deleteNextChunk(req2.trans, req2.range, 1e4);
               }
               function deleteNextChunk(trans, range, limit) {
-                return downTable.query({ trans, values: false, query: { index: primaryKey, range }, limit }).then(function(_a4) {
-                  var result = _a4.result;
+                return downTable.query({ trans, values: false, query: { index: primaryKey, range }, limit }).then(function(_a3) {
+                  var result = _a3.result;
                   return addPutOrDelete({ type: "delete", keys: result, trans }).then(function(res) {
                     if (res.numFailures > 0)
                       return Promise.reject(res.failures[0]);
@@ -10111,21 +10107,21 @@ var require_dexie = __commonJS({
       function getExistingValues(table, req, effectiveKeys) {
         return req.type === "add" ? Promise.resolve([]) : table.getMany({ trans: req.trans, keys: effectiveKeys, cache: "immutable" });
       }
-      function getFromTransactionCache(keys2, cache3, clone) {
+      function getFromTransactionCache(keys2, cache2, clone) {
         try {
-          if (!cache3)
+          if (!cache2)
             return null;
-          if (cache3.keys.length < keys2.length)
+          if (cache2.keys.length < keys2.length)
             return null;
           var result = [];
-          for (var i = 0, j = 0; i < cache3.keys.length && j < keys2.length; ++i) {
-            if (cmp3(cache3.keys[i], keys2[j]) !== 0)
+          for (var i = 0, j = 0; i < cache2.keys.length && j < keys2.length; ++i) {
+            if (cmp3(cache2.keys[i], keys2[j]) !== 0)
               continue;
-            result.push(clone ? deepClone(cache3.values[i]) : cache3.values[i]);
+            result.push(clone ? deepClone(cache2.values[i]) : cache2.values[i]);
             ++j;
           }
           return result.length === keys2.length ? result : null;
-        } catch (_a3) {
+        } catch (_a2) {
           return null;
         }
       }
@@ -10198,7 +10194,7 @@ var require_dexie = __commonJS({
               return index.compound && index.keyPath.includes(primaryKey.keyPath);
             });
             var tableClone = __assign(__assign({}, table), { mutate: function(req) {
-              var _a3, _b;
+              var _a2, _b;
               var trans = req.trans;
               var mutatedParts = req.mutatedParts || (req.mutatedParts = {});
               var getRangeSet = function(indexName) {
@@ -10212,7 +10208,7 @@ var require_dexie = __commonJS({
                 return id;
               }), req.values] : [], keys2 = _c[0], newObjs = _c[1];
               var oldCache = req.trans["_cache"];
-              if (isArray2(keys2)) {
+              if (isArray(keys2)) {
                 pkRangeSet.addKeys(keys2);
                 var oldObjs = type3 === "delete" || keys2.length === newObjs.length ? getFromTransactionCache(keys2, oldCache) : null;
                 if (!oldObjs) {
@@ -10223,7 +10219,7 @@ var require_dexie = __commonJS({
                 }
               } else if (keys2) {
                 var range = {
-                  from: (_a3 = keys2.lower) !== null && _a3 !== void 0 ? _a3 : core2.MIN_KEY,
+                  from: (_a2 = keys2.lower) !== null && _a2 !== void 0 ? _a2 : core2.MIN_KEY,
                   to: (_b = keys2.upper) !== null && _b !== void 0 ? _b : core2.MAX_KEY
                 };
                 delsRangeSet.add(range);
@@ -10257,9 +10253,9 @@ var require_dexie = __commonJS({
                 return res;
               });
             } });
-            var getRange = function(_a3) {
+            var getRange = function(_a2) {
               var _b, _c;
-              var _d = _a3.query, index = _d.index, range = _d.range;
+              var _d = _a2.query, index = _d.index, range = _d.range;
               return [
                 index,
                 new RangeSet2((_b = range.lower) !== null && _b !== void 0 ? _b : core2.MIN_KEY, (_c = range.upper) !== null && _c !== void 0 ? _c : core2.MAX_KEY)
@@ -10289,7 +10285,7 @@ var require_dexie = __commonJS({
                   };
                   var pkRangeSet_1 = getRangeSet("");
                   var delsRangeSet_1 = getRangeSet(":dels");
-                  var _a3 = readSubscribers[method](req), queriedIndex = _a3[0], queriedRanges = _a3[1];
+                  var _a2 = readSubscribers[method](req), queriedIndex = _a2[0], queriedRanges = _a2[1];
                   if (method === "query" && queriedIndex.isPrimaryKey && !req.values) {
                     delsRangeSet_1.add(queriedRanges);
                   } else {
@@ -10303,8 +10299,8 @@ var require_dexie = __commonJS({
                       return table[method].apply(this, arguments).then(function(res) {
                         if (method === "query") {
                           if (outbound && req.values) {
-                            return keysPromise_1.then(function(_a4) {
-                              var resultingKeys = _a4.result;
+                            return keysPromise_1.then(function(_a3) {
+                              var resultingKeys = _a3.result;
                               pkRangeSet_1.addKeys(resultingKeys);
                               return res;
                             });
@@ -10359,7 +10355,7 @@ var require_dexie = __commonJS({
             return obj != null ? ix.extractKey(obj) : null;
           }
           var addKeyOrKeys = function(key) {
-            return ix.multiEntry && isArray2(key) ? key.forEach(function(key2) {
+            return ix.multiEntry && isArray(key) ? key.forEach(function(key2) {
               return rangeSet.addKey(key2);
             }) : rangeSet.addKey(key);
           };
@@ -10387,12 +10383,12 @@ var require_dexie = __commonJS({
           return null;
         }
         var clone = __assign({}, req);
-        if (isArray2(clone.keys)) {
+        if (isArray(clone.keys)) {
           clone.keys = clone.keys.filter(function(_, i) {
             return !(i in res.failures);
           });
         }
-        if ("values" in clone && isArray2(clone.values)) {
+        if ("values" in clone && isArray(clone.values)) {
           clone.values = clone.values.filter(function(_, i) {
             return !(i in res.failures);
           });
@@ -10429,7 +10425,7 @@ var require_dexie = __commonJS({
               if (includedPKs.hasKey(pk))
                 continue;
               var key = extractIndex(value);
-              if (multiEntry && isArray2(key) ? key.some(function(k) {
+              if (multiEntry && isArray(key) ? key.some(function(k) {
                 return isWithinRange(k, queryRange);
               }) : isWithinRange(key, queryRange)) {
                 includedPKs.addKey(pk);
@@ -10541,7 +10537,7 @@ var require_dexie = __commonJS({
         return compareLowers(r1.lower, r2.lower, r1.lowerOpen, r2.lowerOpen) <= 0 && compareUppers(r1.upper, r2.upper, r1.upperOpen, r2.upperOpen) >= 0;
       }
       function findCompatibleQuery(dbName, tableName, type3, req) {
-        var tblCache = cache2["idb://".concat(dbName, "/").concat(tableName)];
+        var tblCache = cache["idb://".concat(dbName, "/").concat(tableName)];
         if (!tblCache)
           return [];
         var queries = tblCache.queries[type3];
@@ -10609,15 +10605,15 @@ var require_dexie = __commonJS({
                     var affectedSubscribers_1 = /* @__PURE__ */ new Set();
                     for (var _i = 0, stores_1 = stores; _i < stores_1.length; _i++) {
                       var storeName = stores_1[_i];
-                      var tblCache = cache2["idb://".concat(dbName, "/").concat(storeName)];
+                      var tblCache = cache["idb://".concat(dbName, "/").concat(storeName)];
                       if (tblCache) {
                         var table = core2.table(storeName);
                         var ops = tblCache.optimisticOps.filter(function(op) {
                           return op.trans === idbtrans;
                         });
                         if (idbtrans._explicit && wasCommitted && idbtrans.mutatedParts) {
-                          for (var _a3 = 0, _b = Object.values(tblCache.queries.query); _a3 < _b.length; _a3++) {
-                            var entries = _b[_a3];
+                          for (var _a2 = 0, _b = Object.values(tblCache.queries.query); _a2 < _b.length; _a2++) {
+                            var entries = _b[_a2];
                             for (var _c = 0, _d = entries.slice(); _c < _d.length; _c++) {
                               var entry = _d[_c];
                               if (obsSetsOverlap(entry.obsSet, idbtrans.mutatedParts)) {
@@ -10688,7 +10684,7 @@ var require_dexie = __commonJS({
               if (primKey.outbound || trans.db._options.cache === "disabled" || trans.explicit || trans.idbtrans.mode !== "readwrite") {
                 return downTable.mutate(req);
               }
-              var tblCache = cache2["idb://".concat(dbName, "/").concat(tableName)];
+              var tblCache = cache["idb://".concat(dbName, "/").concat(tableName)];
               if (!tblCache)
                 return downTable.mutate(req);
               var promise = downTable.mutate(req);
@@ -10697,10 +10693,10 @@ var require_dexie = __commonJS({
               }))) {
                 promise.then(function(res) {
                   var reqWithResolvedKeys = __assign(__assign({}, req), { values: req.values.map(function(value, i) {
-                    var _a3;
+                    var _a2;
                     if (res.failures[i])
                       return value;
-                    var valueWithKey = ((_a3 = primKey.keyPath) === null || _a3 === void 0 ? void 0 : _a3.includes(".")) ? deepClone(value) : __assign({}, value);
+                    var valueWithKey = ((_a2 = primKey.keyPath) === null || _a2 === void 0 ? void 0 : _a2.includes(".")) ? deepClone(value) : __assign({}, value);
                     setByKeyPath(valueWithKey, primKey.keyPath, res.results[i]);
                     return valueWithKey;
                   }) });
@@ -10730,10 +10726,10 @@ var require_dexie = __commonJS({
               }
               return promise;
             }, query: function(req) {
-              var _a3;
+              var _a2;
               if (!isCachableContext(PSD, downTable) || !isCachableRequest("query", req))
                 return downTable.query(req);
-              var freezeResults = ((_a3 = PSD.trans) === null || _a3 === void 0 ? void 0 : _a3.db._options.cache) === "immutable";
+              var freezeResults = ((_a2 = PSD.trans) === null || _a2 === void 0 ? void 0 : _a2.db._options.cache) === "immutable";
               var _b = PSD, requery = _b.requery, signal = _b.signal;
               var _c = findCompatibleQuery(dbName, tableName, "query", req), cacheEntry = _c[0], exactMatch = _c[1], tblCache = _c[2], container = _c[3];
               if (cacheEntry && exactMatch) {
@@ -10770,7 +10766,7 @@ var require_dexie = __commonJS({
                 } else {
                   container = [cacheEntry];
                   if (!tblCache) {
-                    tblCache = cache2["idb://".concat(dbName, "/").concat(tableName)] = {
+                    tblCache = cache["idb://".concat(dbName, "/").concat(tableName)] = {
                       queries: {
                         query: {},
                         count: {}
@@ -10985,8 +10981,8 @@ var require_dexie = __commonJS({
             _this._state.dbReadyPromise.then(resolve2, reject);
           }).then(fn);
         };
-        Dexie3.prototype.use = function(_a3) {
-          var stack = _a3.stack, create = _a3.create, level = _a3.level, name = _a3.name;
+        Dexie3.prototype.use = function(_a2) {
+          var stack = _a2.stack, create = _a2.create, level = _a2.level, name = _a2.name;
           if (name)
             this.unuse({ stack, name });
           var middlewares = this._middlewares[stack] || (this._middlewares[stack] = []);
@@ -10996,8 +10992,8 @@ var require_dexie = __commonJS({
           });
           return this;
         };
-        Dexie3.prototype.unuse = function(_a3) {
-          var stack = _a3.stack, name = _a3.name, create = _a3.create;
+        Dexie3.prototype.unuse = function(_a2) {
+          var stack = _a2.stack, name = _a2.name, create = _a2.create;
           if (stack && this._middlewares[stack]) {
             this._middlewares[stack] = this._middlewares[stack].filter(function(mw) {
               return create ? mw.create !== create : name ? mw.name !== name : false;
@@ -11036,8 +11032,8 @@ var require_dexie = __commonJS({
             });
           }
         };
-        Dexie3.prototype.close = function(_a3) {
-          var _b = _a3 === void 0 ? { disableAutoOpen: true } : _a3, disableAutoOpen = _b.disableAutoOpen;
+        Dexie3.prototype.close = function(_a2) {
+          var _b = _a2 === void 0 ? { disableAutoOpen: true } : _a2, disableAutoOpen = _b.disableAutoOpen;
           var state = this._state;
           if (disableAutoOpen) {
             if (state.isBeingOpened) {
@@ -11163,7 +11159,7 @@ var require_dexie = __commonJS({
           }) : this._whenReady(enterTransaction);
         };
         Dexie3.prototype.table = function(tableName) {
-          if (!hasOwn2(this._allTables, tableName)) {
+          if (!hasOwn(this._allTables, tableName)) {
             throw new exceptions.InvalidTable("Table ".concat(tableName, " does not exist"));
           }
           return this._allTables[tableName];
@@ -11316,7 +11312,7 @@ var require_dexie = __commonJS({
         getDatabaseNames: function(cb) {
           try {
             return getDatabaseNames(Dexie2.dependencies).then(cb);
-          } catch (_a3) {
+          } catch (_a2) {
             return rejection(new exceptions.MissingAPI());
           }
         },
@@ -11391,7 +11387,7 @@ var require_dexie = __commonJS({
         connections,
         errnames,
         dependencies: domDeps,
-        cache: cache2,
+        cache,
         semVer: DEXIE_VERSION,
         version: DEXIE_VERSION.split(".").map(function(n) {
           return parseInt(n);
@@ -11412,8 +11408,8 @@ var require_dexie = __commonJS({
             propagatingLocally = false;
           }
         });
-        addEventListener(STORAGE_MUTATED_DOM_EVENT_NAME, function(_a3) {
-          var detail = _a3.detail;
+        addEventListener(STORAGE_MUTATED_DOM_EVENT_NAME, function(_a2) {
+          var detail = _a2.detail;
           if (!propagatingLocally) {
             propagateLocally(detail);
           }
@@ -11620,8 +11616,8 @@ async function bulkDeleteNodesByPaths(filePaths) {
   if (filePaths.length === 0) return;
   const db = getDb();
   await db.transaction("rw", db.nodes, async () => {
-    for (const path6 of filePaths) {
-      await db.nodes.where("filePath").equals(path6).delete();
+    for (const path5 of filePaths) {
+      await db.nodes.where("filePath").equals(path5).delete();
     }
   });
 }
@@ -11629,8 +11625,8 @@ async function bulkDeleteLinksForFiles(filePaths) {
   if (filePaths.length === 0) return;
   const db = getDb();
   await db.transaction("rw", db.links, async () => {
-    for (const path6 of filePaths) {
-      await db.links.where("sourceFilePath").equals(path6).delete();
+    for (const path5 of filePaths) {
+      await db.links.where("sourceFilePath").equals(path5).delete();
     }
   });
 }
@@ -11660,10 +11656,6 @@ async function getAllNodes() {
   const db = getDb();
   return db.nodes.orderBy("type").toArray();
 }
-async function getNodesByMetadataKey(metadataKey) {
-  const db = getDb();
-  return db.nodes.where("metadataKeys").equals(metadataKey).toArray();
-}
 async function searchNodes(query, limit = 20) {
   const db = getDb();
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -11683,7 +11675,7 @@ async function searchNodes(query, limit = 20) {
       scored.push({ node, score });
     }
   });
-  return scored.sort((a, b) => b.score - a.score).slice(0, limit).map((s2) => s2.node);
+  return scored.sort((a, b) => b.score - a.score).slice(0, limit).map((s) => s.node);
 }
 async function deleteNode(uuid) {
   const db = getDb();
@@ -11865,9 +11857,9 @@ function collectMetadataKeys(prefix, value, out) {
   if (typeof value !== "object") return;
   const record = value;
   for (const [key, inner] of Object.entries(record)) {
-    const path6 = prefix ? `${prefix}.${key}` : key;
-    out.add(path6);
-    collectMetadataKeys(path6, inner, out);
+    const path5 = prefix ? `${prefix}.${key}` : key;
+    out.add(path5);
+    collectMetadataKeys(path5, inner, out);
   }
 }
 function buildMetadataSearchText(metadata) {
@@ -11946,24 +11938,6 @@ function todayIsoDate(now = /* @__PURE__ */ new Date()) {
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
-}
-function normalizeMemorizedSessions(raw) {
-  if (!Array.isArray(raw)) return [];
-  const out = [];
-  for (const entry of raw) {
-    if (typeof entry === "string") {
-      out.push({ date: entry });
-    } else if (entry && typeof entry === "object") {
-      const rec = entry;
-      if (typeof rec.date !== "string") continue;
-      out.push({
-        date: rec.date,
-        startedAt: typeof rec.started_at === "string" ? rec.started_at : void 0,
-        endedAt: typeof rec.ended_at === "string" ? rec.ended_at : void 0
-      });
-    }
-  }
-  return out;
 }
 var init_memorizedSessionsBlock = __esm({
   "src/services/lego_blocks/units/memorizedSessionsBlock.ts"() {
@@ -12516,7 +12490,7 @@ var require_react_development = __commonJS({
           return refObject;
         }
         var isArrayImpl = Array.isArray;
-        function isArray2(a) {
+        function isArray(a) {
           return isArrayImpl(a);
         }
         function typeName(value) {
@@ -12902,7 +12876,7 @@ var require_react_development = __commonJS({
             var _child = children;
             var mappedChild = callback(_child);
             var childKey = nameSoFar === "" ? SEPARATOR + getElementKey(_child, 0) : nameSoFar;
-            if (isArray2(mappedChild)) {
+            if (isArray(mappedChild)) {
               var escapedChildKey = "";
               if (childKey != null) {
                 escapedChildKey = escapeUserProvidedKey(childKey) + "/";
@@ -12937,7 +12911,7 @@ var require_react_development = __commonJS({
           var nextName;
           var subtreeCount = 0;
           var nextNamePrefix = nameSoFar === "" ? SEPARATOR : nameSoFar + SUBSEPARATOR;
-          if (isArray2(children)) {
+          if (isArray(children)) {
             for (var i = 0; i < children.length; i++) {
               child = children[i];
               nextName = nextNamePrefix + getElementKey(child, i);
@@ -13518,19 +13492,19 @@ var require_react_development = __commonJS({
             if (sample && control && typeof sample.stack === "string") {
               var sampleLines = sample.stack.split("\n");
               var controlLines = control.stack.split("\n");
-              var s2 = sampleLines.length - 1;
+              var s = sampleLines.length - 1;
               var c = controlLines.length - 1;
-              while (s2 >= 1 && c >= 0 && sampleLines[s2] !== controlLines[c]) {
+              while (s >= 1 && c >= 0 && sampleLines[s] !== controlLines[c]) {
                 c--;
               }
-              for (; s2 >= 1 && c >= 0; s2--, c--) {
-                if (sampleLines[s2] !== controlLines[c]) {
-                  if (s2 !== 1 || c !== 1) {
+              for (; s >= 1 && c >= 0; s--, c--) {
+                if (sampleLines[s] !== controlLines[c]) {
+                  if (s !== 1 || c !== 1) {
                     do {
-                      s2--;
+                      s--;
                       c--;
-                      if (c < 0 || sampleLines[s2] !== controlLines[c]) {
-                        var _frame = "\n" + sampleLines[s2].replace(" at new ", " at ");
+                      if (c < 0 || sampleLines[s] !== controlLines[c]) {
+                        var _frame = "\n" + sampleLines[s].replace(" at new ", " at ");
                         if (fn.displayName && _frame.includes("<anonymous>")) {
                           _frame = _frame.replace("<anonymous>", fn.displayName);
                         }
@@ -13541,7 +13515,7 @@ var require_react_development = __commonJS({
                         }
                         return _frame;
                       }
-                    } while (s2 >= 1 && c >= 0);
+                    } while (s >= 1 && c >= 0);
                   }
                   break;
                 }
@@ -13727,7 +13701,7 @@ var require_react_development = __commonJS({
           if (typeof node !== "object") {
             return;
           }
-          if (isArray2(node)) {
+          if (isArray(node)) {
             for (var i = 0; i < node.length; i++) {
               var child = node[i];
               if (isValidElement2(child)) {
@@ -13817,7 +13791,7 @@ var require_react_development = __commonJS({
             var typeString;
             if (type2 === null) {
               typeString = "null";
-            } else if (isArray2(type2)) {
+            } else if (isArray(type2)) {
               typeString = "array";
             } else if (type2 !== void 0 && type2.$$typeof === REACT_ELEMENT_TYPE) {
               typeString = "<" + (getComponentNameFromType(type2.type) || "Unknown") + " />";
@@ -14128,6132 +14102,6 @@ var require_react = __commonJS({
     } else {
       module2.exports = require_react_development();
     }
-  }
-});
-
-// src/services/lego_blocks/units/intelligence/modelProfileBlock.ts
-function parseGenerationSourceBlock(value) {
-  return value === "local" || value === "claude" || value === "rule-based" ? value : "";
-}
-var init_modelProfileBlock = __esm({
-  "src/services/lego_blocks/units/intelligence/modelProfileBlock.ts"() {
-    "use strict";
-  }
-});
-
-// src/services/lego_blocks/units/intelligence/schemaBlock.ts
-function toJsonSchemaBlock(node) {
-  switch (node.kind) {
-    case "string": {
-      const out = { type: "string" };
-      if (node.description) out.description = node.description;
-      if (node.minLength != null) out.minLength = node.minLength;
-      if (node.maxLength != null) out.maxLength = node.maxLength;
-      return out;
-    }
-    case "number": {
-      const out = { type: node.integer ? "integer" : "number" };
-      if (node.description) out.description = node.description;
-      if (node.min != null) out.minimum = node.min;
-      if (node.max != null) out.maximum = node.max;
-      return out;
-    }
-    case "boolean": {
-      const out = { type: "boolean" };
-      if (node.description) out.description = node.description;
-      return out;
-    }
-    case "enum": {
-      const out = { type: "string", enum: [...node.values] };
-      if (node.description) out.description = node.description;
-      return out;
-    }
-    case "array": {
-      const out = {
-        type: "array",
-        items: toJsonSchemaBlock(node.item)
-      };
-      if (node.description) out.description = node.description;
-      if (node.minItems != null) out.minItems = node.minItems;
-      if (node.maxItems != null) out.maxItems = node.maxItems;
-      return out;
-    }
-    case "object": {
-      const properties = {};
-      for (const [k, v] of Object.entries(node.properties)) {
-        properties[k] = toJsonSchemaBlock(v);
-      }
-      const out = {
-        type: "object",
-        properties,
-        required: [...node.required],
-        additionalProperties: false
-      };
-      if (node.description) out.description = node.description;
-      return out;
-    }
-  }
-}
-var s;
-var init_schemaBlock = __esm({
-  "src/services/lego_blocks/units/intelligence/schemaBlock.ts"() {
-    "use strict";
-    s = {
-      string: (opts = {}) => ({ kind: "string", ...opts }),
-      number: (opts = {}) => ({ kind: "number", ...opts }),
-      boolean: (opts = {}) => ({ kind: "boolean", ...opts }),
-      enum: (values, description) => ({ kind: "enum", values, ...description ? { description } : {} }),
-      array: (item, opts = {}) => ({ kind: "array", item, ...opts }),
-      object: (properties, opts = {}) => {
-        const required = opts.required ?? Object.keys(properties);
-        return {
-          kind: "object",
-          properties,
-          required,
-          ...opts.description ? { description: opts.description } : {}
-        };
-      }
-    };
-  }
-});
-
-// src/services/lego_blocks/integrations/aiCredentialStoreBlock.ts
-function sanitizeValue(value) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed || null;
-}
-function sanitizeClaude(raw) {
-  if (!raw || typeof raw !== "object") return void 0;
-  const apiKey = sanitizeValue(raw.apiKey);
-  if (!apiKey) return void 0;
-  return { apiKey };
-}
-function sanitizeOpenAi(raw) {
-  if (!raw || typeof raw !== "object") return void 0;
-  const apiKey = sanitizeValue(raw.apiKey);
-  if (!apiKey) return void 0;
-  return { apiKey };
-}
-function sanitizeAzure(raw) {
-  if (!raw || typeof raw !== "object") return void 0;
-  const record = raw;
-  const apiKey = sanitizeValue(record.apiKey);
-  if (!apiKey) return void 0;
-  return {
-    apiKey,
-    endpoint: sanitizeValue(record.endpoint) || DEFAULT_AZURE_OPENAI_ENDPOINT,
-    deployment: sanitizeValue(record.deployment) || DEFAULT_AZURE_OPENAI_DEPLOYMENT,
-    apiVersion: sanitizeValue(record.apiVersion) || DEFAULT_AZURE_OPENAI_API_VERSION
-  };
-}
-function sanitizeOpenSourceAi(raw) {
-  if (!raw || typeof raw !== "object") return void 0;
-  const record = raw;
-  const baseUrl = sanitizeValue(record.baseUrl) || DEFAULT_OPENSOURCE_AI_BASE_URL;
-  const apiKey = sanitizeValue(record.apiKey) || void 0;
-  const model = sanitizeValue(record.model) || void 0;
-  return {
-    baseUrl,
-    ...apiKey ? { apiKey } : {},
-    ...model ? { model } : {}
-  };
-}
-function sanitizeManualCredentials(raw) {
-  if (!raw || typeof raw !== "object") return {};
-  const record = raw;
-  const claude = sanitizeClaude(record.claude);
-  const openaiCodex = sanitizeOpenAi(record.openaiCodex);
-  const azure = sanitizeAzure(record.azure);
-  const opensourceAi = sanitizeOpenSourceAi(record.opensourceAi);
-  return {
-    ...claude ? { claude } : {},
-    ...openaiCodex ? { openaiCodex } : {},
-    ...azure ? { azure } : {},
-    ...opensourceAi ? { opensourceAi } : {}
-  };
-}
-function readAiManualCredentialsBlock() {
-  const raw = getJsonStorageItem(STORAGE_KEYS.aiManualCredentials, DEFAULT_MANUAL_CREDENTIALS);
-  return sanitizeManualCredentials(raw);
-}
-function getManualClaudeApiKeyBlock() {
-  return readAiManualCredentialsBlock().claude?.apiKey ?? null;
-}
-function getManualOpenSourceAiCredentialsBlock() {
-  return readAiManualCredentialsBlock().opensourceAi ?? null;
-}
-var DEFAULT_AZURE_OPENAI_ENDPOINT, DEFAULT_AZURE_OPENAI_DEPLOYMENT, DEFAULT_AZURE_OPENAI_API_VERSION, DEFAULT_OPENSOURCE_AI_BASE_URL, DEFAULT_MANUAL_CREDENTIALS;
-var init_aiCredentialStoreBlock = __esm({
-  "src/services/lego_blocks/integrations/aiCredentialStoreBlock.ts"() {
-    "use strict";
-    init_storageKeyBlock();
-    DEFAULT_AZURE_OPENAI_ENDPOINT = "https://fuchs-lab-openai.openai.azure.com";
-    DEFAULT_AZURE_OPENAI_DEPLOYMENT = "gpt-5";
-    DEFAULT_AZURE_OPENAI_API_VERSION = "2024-12-01-preview";
-    DEFAULT_OPENSOURCE_AI_BASE_URL = "http://127.0.0.1:1234/v1";
-    DEFAULT_MANUAL_CREDENTIALS = {};
-  }
-});
-
-// src/services/lego_blocks/units/intelligence/serverProfileBlock.ts
-function normalizeBaseUrlBlock(raw, fallback = "http://127.0.0.1:1234/v1") {
-  const trimmed = typeof raw === "string" ? raw.trim() : "";
-  const normalized = (trimmed || fallback).replace(/\/+$/, "");
-  return normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
-}
-function detectFamilyFromFingerprint(fingerprint) {
-  if (!fingerprint) return "unknown-openai-compat";
-  const f = fingerprint.toLowerCase();
-  if (f.includes("mlx")) return "mlx_lm";
-  if (f.includes("lm-studio") || f.includes("lmstudio")) return "lm_studio";
-  if (f.includes("ollama")) return "ollama";
-  if (f.includes("llama.cpp") || f.includes("llamacpp")) return "llama_cpp";
-  if (f.includes("vllm")) return "vllm";
-  return "unknown-openai-compat";
-}
-function capabilitiesForFamily(family) {
-  switch (family) {
-    case "mlx_lm":
-      return { reasoningToggleLocation: "top-level", supportsTools: true, supportsJsonSchema: false };
-    case "lm_studio":
-      return { reasoningToggleLocation: "top-level", supportsTools: true, supportsJsonSchema: true };
-    case "ollama":
-      return { reasoningToggleLocation: null, supportsTools: true, supportsJsonSchema: false };
-    case "llama_cpp":
-      return { reasoningToggleLocation: "top-level", supportsTools: true, supportsJsonSchema: true };
-    case "vllm":
-      return { reasoningToggleLocation: "extra-body", supportsTools: true, supportsJsonSchema: true };
-    case "openai":
-      return { reasoningToggleLocation: null, supportsTools: true, supportsJsonSchema: true };
-    default:
-      return { reasoningToggleLocation: null, supportsTools: false, supportsJsonSchema: false };
-  }
-}
-async function probeServerProfileBlock(baseUrlRaw, apiKey, force = false) {
-  const baseUrl = normalizeBaseUrlBlock(baseUrlRaw);
-  if (!force) {
-    const cached2 = cache.get(baseUrl);
-    if (cached2 && Date.now() - cached2.at < CACHE_TTL_MS) return cached2.profile;
-    const pending = inflight.get(baseUrl);
-    if (pending) return pending;
-  }
-  const probe = (async () => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-    try {
-      const res = await fetch(`${baseUrl}/models`, {
-        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-        signal: controller.signal
-      });
-      if (!res.ok) {
-        cache.set(baseUrl, { profile: null, at: Date.now() });
-        return null;
-      }
-      const body = await res.json();
-      const models = (body?.data ?? []).map((m) => typeof m?.id === "string" ? m.id.trim() : "").filter(Boolean);
-      const ownedBy = body?.data?.find((m) => typeof m?.owned_by === "string")?.owned_by ?? null;
-      let family = detectFamilyFromFingerprint(ownedBy);
-      if (family === "unknown-openai-compat") {
-        if (/api\.openai\.com/i.test(baseUrl)) family = "openai";
-        else if (/127\.0\.0\.1|localhost/.test(baseUrl)) {
-          family = "mlx_lm";
-        }
-      }
-      const caps = capabilitiesForFamily(family);
-      const profile = {
-        family,
-        baseUrl,
-        models,
-        ...caps,
-        probedAt: Date.now(),
-        fingerprint: ownedBy
-      };
-      cache.set(baseUrl, { profile, at: Date.now() });
-      return profile;
-    } catch {
-      cache.set(baseUrl, { profile: null, at: Date.now() });
-      return null;
-    } finally {
-      clearTimeout(timeout);
-      inflight.delete(baseUrl);
-    }
-  })();
-  inflight.set(baseUrl, probe);
-  return probe;
-}
-var PROBE_TIMEOUT_MS, CACHE_TTL_MS, cache, inflight;
-var init_serverProfileBlock = __esm({
-  "src/services/lego_blocks/units/intelligence/serverProfileBlock.ts"() {
-    "use strict";
-    PROBE_TIMEOUT_MS = 5e3;
-    CACHE_TTL_MS = 6e4;
-    cache = /* @__PURE__ */ new Map();
-    inflight = /* @__PURE__ */ new Map();
-  }
-});
-
-// src/services/lego_blocks/integrations/intelligence/providers/openaiCompatProviderBlock.ts
-function normalizeMessages(request) {
-  const out = [{ role: "system", content: request.system }];
-  for (const m of request.messages) {
-    if (m.role === "tool") {
-      out.push({
-        role: "tool",
-        tool_call_id: m.toolCallId ?? "",
-        // OpenAI tools protocol wants the tool name mirrored on the reply.
-        ...m.toolName ? { name: m.toolName } : {},
-        content: m.content
-      });
-      continue;
-    }
-    if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-      out.push({
-        role: "assistant",
-        content: m.content || null,
-        tool_calls: m.toolCalls.map((tc) => ({
-          id: tc.id,
-          type: "function",
-          function: { name: tc.name, arguments: JSON.stringify(tc.args) }
-        }))
-      });
-      continue;
-    }
-    out.push({ role: m.role, content: m.content });
-  }
-  return out;
-}
-function attachReasoningToggle(body, profile, disable) {
-  if (!disable || !profile.reasoningToggleLocation) return;
-  const payload = { chat_template_kwargs: { enable_thinking: false }, enable_thinking: false };
-  if (profile.reasoningToggleLocation === "top-level") {
-    Object.assign(body, payload);
-  } else {
-    const existing = body.extra_body ?? {};
-    body.extra_body = { ...existing, ...payload };
-  }
-}
-function attachTools(body, request, profile) {
-  if (!request.tools || request.tools.length === 0) return;
-  if (!profile.supportsTools) return;
-  body.tools = request.tools.map((t) => ({
-    type: "function",
-    function: {
-      name: t.name,
-      description: t.description,
-      parameters: toJsonSchemaBlock(t.parameters)
-    }
-  }));
-  body.tool_choice = "auto";
-}
-function attachResponseFormat(body, request, profile) {
-  if (!request.responseSchema || !profile.supportsJsonSchema) return;
-  body.response_format = {
-    type: "json_schema",
-    json_schema: {
-      name: "output",
-      strict: true,
-      schema: toJsonSchemaBlock(request.responseSchema)
-    }
-  };
-}
-function parseToolCalls(raw) {
-  const tcs = raw?.message?.tool_calls ?? [];
-  const out = [];
-  for (const tc of tcs) {
-    if (!tc?.function?.name) continue;
-    let args = {};
-    try {
-      args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
-    } catch {
-      args = {};
-    }
-    out.push({ id: tc.id ?? crypto.randomUUID(), name: tc.function.name, args });
-  }
-  return out;
-}
-function normalizeFinishReason(raw, toolCalls) {
-  if (toolCalls && toolCalls.length > 0) return "tool_calls";
-  switch (raw) {
-    case "tool_calls":
-      return "tool_calls";
-    case "length":
-      return "length";
-    case "stop":
-    case null:
-    case void 0:
-      return "stop";
-    default:
-      return "stop";
-  }
-}
-function resolveConfig() {
-  const manual = getManualOpenSourceAiCredentialsBlock();
-  if (!manual?.baseUrl) return null;
-  return manual;
-}
-var OpenaiCompatProviderBlock, openaiCompatProvider;
-var init_openaiCompatProviderBlock = __esm({
-  "src/services/lego_blocks/integrations/intelligence/providers/openaiCompatProviderBlock.ts"() {
-    "use strict";
-    init_aiCredentialStoreBlock();
-    init_serverProfileBlock();
-    init_schemaBlock();
-    OpenaiCompatProviderBlock = class {
-      id = "openai-compat";
-      isConfigured() {
-        return !!resolveConfig();
-      }
-      async availability(force = false) {
-        const cfg = resolveConfig();
-        if (!cfg) {
-          return { available: false, defaultModel: null, details: {}, reason: "Base URL not configured" };
-        }
-        const baseUrl = normalizeBaseUrlBlock(cfg.baseUrl);
-        const profile = await probeServerProfileBlock(baseUrl, cfg.apiKey, force);
-        if (!profile) {
-          return { available: false, defaultModel: null, details: { baseUrl }, reason: "Server unreachable" };
-        }
-        const defaultModel = cfg.model?.trim() || profile.models[0] || null;
-        if (!defaultModel) {
-          return {
-            available: false,
-            defaultModel: null,
-            details: { baseUrl, family: profile.family },
-            reason: "Server has no loaded model"
-          };
-        }
-        return {
-          available: true,
-          defaultModel,
-          details: {
-            baseUrl,
-            family: profile.family,
-            models: profile.models,
-            supportsTools: profile.supportsTools,
-            supportsJsonSchema: profile.supportsJsonSchema,
-            reasoningToggleLocation: profile.reasoningToggleLocation,
-            fingerprint: profile.fingerprint
-          }
-        };
-      }
-      async chat(request, signal) {
-        const cfg = resolveConfig();
-        if (!cfg) throw new Error("openai-compat provider not configured");
-        const baseUrl = normalizeBaseUrlBlock(cfg.baseUrl);
-        const profile = await probeServerProfileBlock(baseUrl, cfg.apiKey) ?? {
-          family: "unknown-openai-compat",
-          baseUrl,
-          models: [],
-          reasoningToggleLocation: null,
-          supportsTools: false,
-          supportsJsonSchema: false,
-          probedAt: 0,
-          fingerprint: null
-        };
-        const body = {
-          model: request.model,
-          messages: normalizeMessages(request),
-          max_tokens: request.maxTokens,
-          temperature: request.temperature
-        };
-        attachReasoningToggle(body, profile, !!request.disableReasoning);
-        attachTools(body, request, profile);
-        attachResponseFormat(body, request, profile);
-        const startedAt = performance.now();
-        const res = await fetch(`${baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}
-          },
-          body: JSON.stringify(body),
-          signal
-        });
-        const latencyMs = performance.now() - startedAt;
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          const err = new Error(`openai-compat HTTP ${res.status}: ${text.slice(0, 200)}`);
-          err.httpStatus = res.status;
-          throw err;
-        }
-        const parsed = await res.json();
-        const choice = parsed.choices?.[0];
-        if (!choice) throw new Error("openai-compat: no choices in response");
-        const toolCalls = parseToolCalls(choice);
-        return {
-          content: choice.message?.content ?? "",
-          reasoning: choice.message?.reasoning ?? "",
-          toolCalls,
-          finishReason: normalizeFinishReason(choice.finish_reason, toolCalls),
-          usage: {
-            promptTokens: parsed.usage?.prompt_tokens ?? 0,
-            completionTokens: parsed.usage?.completion_tokens ?? 0
-          },
-          providerModel: parsed.model || request.model,
-          latencyMs
-        };
-      }
-    };
-    openaiCompatProvider = new OpenaiCompatProviderBlock();
-  }
-});
-
-// src/services/lego_blocks/integrations/aiOauthCredentialStoreBlock.ts
-function sanitizeValue2(value) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed || null;
-}
-function sanitizeClaude2(raw) {
-  if (!raw || typeof raw !== "object") return void 0;
-  const record = raw;
-  const accessToken = sanitizeValue2(record.accessToken);
-  const refreshToken = sanitizeValue2(record.refreshToken);
-  const expiresAt = sanitizeValue2(record.expiresAt);
-  if (!accessToken || !refreshToken || !expiresAt) return void 0;
-  return { accessToken, refreshToken, expiresAt };
-}
-function sanitizeCodex(raw) {
-  if (!raw || typeof raw !== "object") return void 0;
-  const record = raw;
-  const accessToken = sanitizeValue2(record.accessToken);
-  const refreshToken = sanitizeValue2(record.refreshToken);
-  const expiresAt = sanitizeValue2(record.expiresAt);
-  if (!accessToken || !refreshToken || !expiresAt) return void 0;
-  const accountId = sanitizeValue2(record.accountId);
-  return {
-    accessToken,
-    refreshToken,
-    expiresAt,
-    ...accountId ? { accountId } : {}
-  };
-}
-function sanitizeOauthCredentials(raw) {
-  if (!raw || typeof raw !== "object") return {};
-  const record = raw;
-  const claude = sanitizeClaude2(record.claude);
-  const openaiCodex = sanitizeCodex(record.openaiCodex);
-  return {
-    ...claude ? { claude } : {},
-    ...openaiCodex ? { openaiCodex } : {}
-  };
-}
-function readNativeAiOauthCredentialsBlock() {
-  const raw = getJsonStorageItem(STORAGE_KEYS.aiOauthCredentials, {});
-  return sanitizeOauthCredentials(raw);
-}
-function getNativeClaudeOauthCredentialsBlock() {
-  return readNativeAiOauthCredentialsBlock().claude ?? null;
-}
-var init_aiOauthCredentialStoreBlock = __esm({
-  "src/services/lego_blocks/integrations/aiOauthCredentialStoreBlock.ts"() {
-    "use strict";
-    init_storageKeyBlock();
-  }
-});
-
-// src/services/lego_blocks/units/aiDebugBlock.ts
-var init_aiDebugBlock = __esm({
-  "src/services/lego_blocks/units/aiDebugBlock.ts"() {
-    "use strict";
-  }
-});
-
-// src/services/lego_blocks/integrations/aiProviderBlock.ts
-function parseExpiresAt(value) {
-  if (!value) return NaN;
-  if (/^\d+$/.test(value)) return Number(value);
-  return new Date(value).getTime();
-}
-function isTokenExpired(expiresAt, bufferMs = TOKEN_EXPIRY_BUFFER_MS) {
-  const ts = parseExpiresAt(expiresAt);
-  if (isNaN(ts)) return true;
-  return Date.now() >= ts - bufferMs;
-}
-async function getClaudeCredentialsBlock() {
-  if (!isElectron()) return null;
-  const api = window.electronAPI;
-  if (_claudeCache) {
-    if (!isTokenExpired(_claudeCache.expiresAt)) return _claudeCache;
-    if (_claudeCache.refreshToken) {
-      try {
-        _claudeCache = await api.aiRefreshClaudeToken(_claudeCache.refreshToken);
-        return _claudeCache;
-      } catch {
-        _claudeCache = null;
-      }
-    }
-    _claudeCache = null;
-  }
-  const creds = await api.aiGetClaudeCredentials();
-  if (!creds) return null;
-  if (isTokenExpired(creds.expiresAt)) {
-    if (!creds.refreshToken) return null;
-    try {
-      _claudeCache = await api.aiRefreshClaudeToken(creds.refreshToken);
-      return _claudeCache;
-    } catch {
-      return null;
-    }
-  }
-  _claudeCache = creds;
-  return creds;
-}
-var _claudeCache, AZURE_CACHE_TTL_MS, TOKEN_EXPIRY_BUFFER_MS;
-var init_aiProviderBlock = __esm({
-  "src/services/lego_blocks/integrations/aiProviderBlock.ts"() {
-    "use strict";
-    init_fsBlock();
-    init_aiCredentialStoreBlock();
-    init_aiOauthCredentialStoreBlock();
-    init_aiDebugBlock();
-    _claudeCache = null;
-    AZURE_CACHE_TTL_MS = 10 * 60 * 1e3;
-    TOKEN_EXPIRY_BUFFER_MS = 6e4;
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/tslib.mjs
-function __classPrivateFieldSet(receiver, state, value, kind, f) {
-  if (kind === "m")
-    throw new TypeError("Private method is not writable");
-  if (kind === "a" && !f)
-    throw new TypeError("Private accessor was defined without a setter");
-  if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver))
-    throw new TypeError("Cannot write private member to an object whose class did not declare it");
-  return kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value), value;
-}
-function __classPrivateFieldGet(receiver, state, kind, f) {
-  if (kind === "a" && !f)
-    throw new TypeError("Private accessor was defined without a getter");
-  if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver))
-    throw new TypeError("Cannot read private member from an object whose class did not declare it");
-  return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
-}
-var init_tslib = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/tslib.mjs"() {
-    "use strict";
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/utils/uuid.mjs
-var uuid4;
-var init_uuid = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/utils/uuid.mjs"() {
-    "use strict";
-    uuid4 = function() {
-      const { crypto: crypto2 } = globalThis;
-      if (crypto2?.randomUUID) {
-        uuid4 = crypto2.randomUUID.bind(crypto2);
-        return crypto2.randomUUID();
-      }
-      const u8 = new Uint8Array(1);
-      const randomByte = crypto2 ? () => crypto2.getRandomValues(u8)[0] : () => Math.random() * 255 & 255;
-      return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (+c ^ randomByte() & 15 >> +c / 4).toString(16));
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/errors.mjs
-function isAbortError(err) {
-  return typeof err === "object" && err !== null && // Spec-compliant fetch implementations
-  ("name" in err && err.name === "AbortError" || // Expo fetch
-  "message" in err && String(err.message).includes("FetchRequestCanceledException"));
-}
-var castToError;
-var init_errors = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/errors.mjs"() {
-    "use strict";
-    castToError = (err) => {
-      if (err instanceof Error)
-        return err;
-      if (typeof err === "object" && err !== null) {
-        try {
-          if (Object.prototype.toString.call(err) === "[object Error]") {
-            const error = new Error(err.message, err.cause ? { cause: err.cause } : {});
-            if (err.stack)
-              error.stack = err.stack;
-            if (err.cause && !error.cause)
-              error.cause = err.cause;
-            if (err.name)
-              error.name = err.name;
-            return error;
-          }
-        } catch {
-        }
-        try {
-          return new Error(JSON.stringify(err));
-        } catch {
-        }
-      }
-      return new Error(err);
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/core/error.mjs
-var AnthropicError, APIError, APIUserAbortError, APIConnectionError, APIConnectionTimeoutError, BadRequestError, AuthenticationError, PermissionDeniedError, NotFoundError2, ConflictError, UnprocessableEntityError, RateLimitError, InternalServerError;
-var init_error = __esm({
-  "node_modules/@anthropic-ai/sdk/core/error.mjs"() {
-    "use strict";
-    init_errors();
-    AnthropicError = class extends Error {
-    };
-    APIError = class _APIError extends AnthropicError {
-      constructor(status, error, message, headers) {
-        super(`${_APIError.makeMessage(status, error, message)}`);
-        this.status = status;
-        this.headers = headers;
-        this.requestID = headers?.get("request-id");
-        this.error = error;
-      }
-      static makeMessage(status, error, message) {
-        const msg = error?.message ? typeof error.message === "string" ? error.message : JSON.stringify(error.message) : error ? JSON.stringify(error) : message;
-        if (status && msg) {
-          return `${status} ${msg}`;
-        }
-        if (status) {
-          return `${status} status code (no body)`;
-        }
-        if (msg) {
-          return msg;
-        }
-        return "(no status code or body)";
-      }
-      static generate(status, errorResponse, message, headers) {
-        if (!status || !headers) {
-          return new APIConnectionError({ message, cause: castToError(errorResponse) });
-        }
-        const error = errorResponse;
-        if (status === 400) {
-          return new BadRequestError(status, error, message, headers);
-        }
-        if (status === 401) {
-          return new AuthenticationError(status, error, message, headers);
-        }
-        if (status === 403) {
-          return new PermissionDeniedError(status, error, message, headers);
-        }
-        if (status === 404) {
-          return new NotFoundError2(status, error, message, headers);
-        }
-        if (status === 409) {
-          return new ConflictError(status, error, message, headers);
-        }
-        if (status === 422) {
-          return new UnprocessableEntityError(status, error, message, headers);
-        }
-        if (status === 429) {
-          return new RateLimitError(status, error, message, headers);
-        }
-        if (status >= 500) {
-          return new InternalServerError(status, error, message, headers);
-        }
-        return new _APIError(status, error, message, headers);
-      }
-    };
-    APIUserAbortError = class extends APIError {
-      constructor({ message } = {}) {
-        super(void 0, void 0, message || "Request was aborted.", void 0);
-      }
-    };
-    APIConnectionError = class extends APIError {
-      constructor({ message, cause }) {
-        super(void 0, void 0, message || "Connection error.", void 0);
-        if (cause)
-          this.cause = cause;
-      }
-    };
-    APIConnectionTimeoutError = class extends APIConnectionError {
-      constructor({ message } = {}) {
-        super({ message: message ?? "Request timed out." });
-      }
-    };
-    BadRequestError = class extends APIError {
-    };
-    AuthenticationError = class extends APIError {
-    };
-    PermissionDeniedError = class extends APIError {
-    };
-    NotFoundError2 = class extends APIError {
-    };
-    ConflictError = class extends APIError {
-    };
-    UnprocessableEntityError = class extends APIError {
-    };
-    RateLimitError = class extends APIError {
-    };
-    InternalServerError = class extends APIError {
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/utils/values.mjs
-function maybeObj(x) {
-  if (typeof x !== "object") {
-    return {};
-  }
-  return x ?? {};
-}
-function isEmptyObj(obj) {
-  if (!obj)
-    return true;
-  for (const _k in obj)
-    return false;
-  return true;
-}
-function hasOwn(obj, key) {
-  return Object.prototype.hasOwnProperty.call(obj, key);
-}
-var startsWithSchemeRegexp, isAbsoluteURL, isArray, isReadonlyArray, validatePositiveInteger, safeJSON;
-var init_values = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/utils/values.mjs"() {
-    "use strict";
-    init_error();
-    startsWithSchemeRegexp = /^[a-z][a-z0-9+.-]*:/i;
-    isAbsoluteURL = (url) => {
-      return startsWithSchemeRegexp.test(url);
-    };
-    isArray = (val) => (isArray = Array.isArray, isArray(val));
-    isReadonlyArray = isArray;
-    validatePositiveInteger = (name, n) => {
-      if (typeof n !== "number" || !Number.isInteger(n)) {
-        throw new AnthropicError(`${name} must be an integer`);
-      }
-      if (n < 0) {
-        throw new AnthropicError(`${name} must be a positive integer`);
-      }
-      return n;
-    };
-    safeJSON = (text) => {
-      try {
-        return JSON.parse(text);
-      } catch (err) {
-        return void 0;
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/utils/sleep.mjs
-var sleep;
-var init_sleep = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/utils/sleep.mjs"() {
-    "use strict";
-    sleep = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms));
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/version.mjs
-var VERSION;
-var init_version = __esm({
-  "node_modules/@anthropic-ai/sdk/version.mjs"() {
-    "use strict";
-    VERSION = "0.74.0";
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/detect-platform.mjs
-function getDetectedPlatform() {
-  if (typeof Deno !== "undefined" && Deno.build != null) {
-    return "deno";
-  }
-  if (typeof EdgeRuntime !== "undefined") {
-    return "edge";
-  }
-  if (Object.prototype.toString.call(typeof globalThis.process !== "undefined" ? globalThis.process : 0) === "[object process]") {
-    return "node";
-  }
-  return "unknown";
-}
-function getBrowserInfo() {
-  if (typeof navigator === "undefined" || !navigator) {
-    return null;
-  }
-  const browserPatterns = [
-    { key: "edge", pattern: /Edge(?:\W+(\d+)\.(\d+)(?:\.(\d+))?)?/ },
-    { key: "ie", pattern: /MSIE(?:\W+(\d+)\.(\d+)(?:\.(\d+))?)?/ },
-    { key: "ie", pattern: /Trident(?:.*rv\:(\d+)\.(\d+)(?:\.(\d+))?)?/ },
-    { key: "chrome", pattern: /Chrome(?:\W+(\d+)\.(\d+)(?:\.(\d+))?)?/ },
-    { key: "firefox", pattern: /Firefox(?:\W+(\d+)\.(\d+)(?:\.(\d+))?)?/ },
-    { key: "safari", pattern: /(?:Version\W+(\d+)\.(\d+)(?:\.(\d+))?)?(?:\W+Mobile\S*)?\W+Safari/ }
-  ];
-  for (const { key, pattern } of browserPatterns) {
-    const match = pattern.exec(navigator.userAgent);
-    if (match) {
-      const major = match[1] || 0;
-      const minor = match[2] || 0;
-      const patch = match[3] || 0;
-      return { browser: key, version: `${major}.${minor}.${patch}` };
-    }
-  }
-  return null;
-}
-var isRunningInBrowser, getPlatformProperties, normalizeArch, normalizePlatform, _platformHeaders, getPlatformHeaders;
-var init_detect_platform = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/detect-platform.mjs"() {
-    "use strict";
-    init_version();
-    isRunningInBrowser = () => {
-      return (
-        // @ts-ignore
-        typeof window !== "undefined" && // @ts-ignore
-        typeof window.document !== "undefined" && // @ts-ignore
-        typeof navigator !== "undefined"
-      );
-    };
-    getPlatformProperties = () => {
-      const detectedPlatform = getDetectedPlatform();
-      if (detectedPlatform === "deno") {
-        return {
-          "X-Stainless-Lang": "js",
-          "X-Stainless-Package-Version": VERSION,
-          "X-Stainless-OS": normalizePlatform(Deno.build.os),
-          "X-Stainless-Arch": normalizeArch(Deno.build.arch),
-          "X-Stainless-Runtime": "deno",
-          "X-Stainless-Runtime-Version": typeof Deno.version === "string" ? Deno.version : Deno.version?.deno ?? "unknown"
-        };
-      }
-      if (typeof EdgeRuntime !== "undefined") {
-        return {
-          "X-Stainless-Lang": "js",
-          "X-Stainless-Package-Version": VERSION,
-          "X-Stainless-OS": "Unknown",
-          "X-Stainless-Arch": `other:${EdgeRuntime}`,
-          "X-Stainless-Runtime": "edge",
-          "X-Stainless-Runtime-Version": globalThis.process.version
-        };
-      }
-      if (detectedPlatform === "node") {
-        return {
-          "X-Stainless-Lang": "js",
-          "X-Stainless-Package-Version": VERSION,
-          "X-Stainless-OS": normalizePlatform(globalThis.process.platform ?? "unknown"),
-          "X-Stainless-Arch": normalizeArch(globalThis.process.arch ?? "unknown"),
-          "X-Stainless-Runtime": "node",
-          "X-Stainless-Runtime-Version": globalThis.process.version ?? "unknown"
-        };
-      }
-      const browserInfo = getBrowserInfo();
-      if (browserInfo) {
-        return {
-          "X-Stainless-Lang": "js",
-          "X-Stainless-Package-Version": VERSION,
-          "X-Stainless-OS": "Unknown",
-          "X-Stainless-Arch": "unknown",
-          "X-Stainless-Runtime": `browser:${browserInfo.browser}`,
-          "X-Stainless-Runtime-Version": browserInfo.version
-        };
-      }
-      return {
-        "X-Stainless-Lang": "js",
-        "X-Stainless-Package-Version": VERSION,
-        "X-Stainless-OS": "Unknown",
-        "X-Stainless-Arch": "unknown",
-        "X-Stainless-Runtime": "unknown",
-        "X-Stainless-Runtime-Version": "unknown"
-      };
-    };
-    normalizeArch = (arch) => {
-      if (arch === "x32")
-        return "x32";
-      if (arch === "x86_64" || arch === "x64")
-        return "x64";
-      if (arch === "arm")
-        return "arm";
-      if (arch === "aarch64" || arch === "arm64")
-        return "arm64";
-      if (arch)
-        return `other:${arch}`;
-      return "unknown";
-    };
-    normalizePlatform = (platform) => {
-      platform = platform.toLowerCase();
-      if (platform.includes("ios"))
-        return "iOS";
-      if (platform === "android")
-        return "Android";
-      if (platform === "darwin")
-        return "MacOS";
-      if (platform === "win32")
-        return "Windows";
-      if (platform === "freebsd")
-        return "FreeBSD";
-      if (platform === "openbsd")
-        return "OpenBSD";
-      if (platform === "linux")
-        return "Linux";
-      if (platform)
-        return `Other:${platform}`;
-      return "Unknown";
-    };
-    getPlatformHeaders = () => {
-      return _platformHeaders ?? (_platformHeaders = getPlatformProperties());
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/shims.mjs
-function getDefaultFetch() {
-  if (typeof fetch !== "undefined") {
-    return fetch;
-  }
-  throw new Error("`fetch` is not defined as a global; Either pass `fetch` to the client, `new Anthropic({ fetch })` or polyfill the global, `globalThis.fetch = fetch`");
-}
-function makeReadableStream(...args) {
-  const ReadableStream = globalThis.ReadableStream;
-  if (typeof ReadableStream === "undefined") {
-    throw new Error("`ReadableStream` is not defined as a global; You will need to polyfill it, `globalThis.ReadableStream = ReadableStream`");
-  }
-  return new ReadableStream(...args);
-}
-function ReadableStreamFrom(iterable) {
-  let iter = Symbol.asyncIterator in iterable ? iterable[Symbol.asyncIterator]() : iterable[Symbol.iterator]();
-  return makeReadableStream({
-    start() {
-    },
-    async pull(controller) {
-      const { done, value } = await iter.next();
-      if (done) {
-        controller.close();
-      } else {
-        controller.enqueue(value);
-      }
-    },
-    async cancel() {
-      await iter.return?.();
-    }
-  });
-}
-function ReadableStreamToAsyncIterable(stream) {
-  if (stream[Symbol.asyncIterator])
-    return stream;
-  const reader = stream.getReader();
-  return {
-    async next() {
-      try {
-        const result = await reader.read();
-        if (result?.done)
-          reader.releaseLock();
-        return result;
-      } catch (e) {
-        reader.releaseLock();
-        throw e;
-      }
-    },
-    async return() {
-      const cancelPromise = reader.cancel();
-      reader.releaseLock();
-      await cancelPromise;
-      return { done: true, value: void 0 };
-    },
-    [Symbol.asyncIterator]() {
-      return this;
-    }
-  };
-}
-async function CancelReadableStream(stream) {
-  if (stream === null || typeof stream !== "object")
-    return;
-  if (stream[Symbol.asyncIterator]) {
-    await stream[Symbol.asyncIterator]().return?.();
-    return;
-  }
-  const reader = stream.getReader();
-  const cancelPromise = reader.cancel();
-  reader.releaseLock();
-  await cancelPromise;
-}
-var init_shims = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/shims.mjs"() {
-    "use strict";
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/request-options.mjs
-var FallbackEncoder;
-var init_request_options = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/request-options.mjs"() {
-    "use strict";
-    FallbackEncoder = ({ headers, body }) => {
-      return {
-        bodyHeaders: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify(body)
-      };
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/utils/bytes.mjs
-function concatBytes(buffers) {
-  let length = 0;
-  for (const buffer of buffers) {
-    length += buffer.length;
-  }
-  const output = new Uint8Array(length);
-  let index = 0;
-  for (const buffer of buffers) {
-    output.set(buffer, index);
-    index += buffer.length;
-  }
-  return output;
-}
-function encodeUTF8(str2) {
-  let encoder;
-  return (encodeUTF8_ ?? (encoder = new globalThis.TextEncoder(), encodeUTF8_ = encoder.encode.bind(encoder)))(str2);
-}
-function decodeUTF8(bytes) {
-  let decoder;
-  return (decodeUTF8_ ?? (decoder = new globalThis.TextDecoder(), decodeUTF8_ = decoder.decode.bind(decoder)))(bytes);
-}
-var encodeUTF8_, decodeUTF8_;
-var init_bytes = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/utils/bytes.mjs"() {
-    "use strict";
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/decoders/line.mjs
-function findNewlineIndex(buffer, startIndex) {
-  const newline = 10;
-  const carriage = 13;
-  for (let i = startIndex ?? 0; i < buffer.length; i++) {
-    if (buffer[i] === newline) {
-      return { preceding: i, index: i + 1, carriage: false };
-    }
-    if (buffer[i] === carriage) {
-      return { preceding: i, index: i + 1, carriage: true };
-    }
-  }
-  return null;
-}
-function findDoubleNewlineIndex(buffer) {
-  const newline = 10;
-  const carriage = 13;
-  for (let i = 0; i < buffer.length - 1; i++) {
-    if (buffer[i] === newline && buffer[i + 1] === newline) {
-      return i + 2;
-    }
-    if (buffer[i] === carriage && buffer[i + 1] === carriage) {
-      return i + 2;
-    }
-    if (buffer[i] === carriage && buffer[i + 1] === newline && i + 3 < buffer.length && buffer[i + 2] === carriage && buffer[i + 3] === newline) {
-      return i + 4;
-    }
-  }
-  return -1;
-}
-var _LineDecoder_buffer, _LineDecoder_carriageReturnIndex, LineDecoder;
-var init_line = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/decoders/line.mjs"() {
-    "use strict";
-    init_tslib();
-    init_bytes();
-    LineDecoder = class {
-      constructor() {
-        _LineDecoder_buffer.set(this, void 0);
-        _LineDecoder_carriageReturnIndex.set(this, void 0);
-        __classPrivateFieldSet(this, _LineDecoder_buffer, new Uint8Array(), "f");
-        __classPrivateFieldSet(this, _LineDecoder_carriageReturnIndex, null, "f");
-      }
-      decode(chunk) {
-        if (chunk == null) {
-          return [];
-        }
-        const binaryChunk = chunk instanceof ArrayBuffer ? new Uint8Array(chunk) : typeof chunk === "string" ? encodeUTF8(chunk) : chunk;
-        __classPrivateFieldSet(this, _LineDecoder_buffer, concatBytes([__classPrivateFieldGet(this, _LineDecoder_buffer, "f"), binaryChunk]), "f");
-        const lines = [];
-        let patternIndex;
-        while ((patternIndex = findNewlineIndex(__classPrivateFieldGet(this, _LineDecoder_buffer, "f"), __classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f"))) != null) {
-          if (patternIndex.carriage && __classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f") == null) {
-            __classPrivateFieldSet(this, _LineDecoder_carriageReturnIndex, patternIndex.index, "f");
-            continue;
-          }
-          if (__classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f") != null && (patternIndex.index !== __classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f") + 1 || patternIndex.carriage)) {
-            lines.push(decodeUTF8(__classPrivateFieldGet(this, _LineDecoder_buffer, "f").subarray(0, __classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f") - 1)));
-            __classPrivateFieldSet(this, _LineDecoder_buffer, __classPrivateFieldGet(this, _LineDecoder_buffer, "f").subarray(__classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f")), "f");
-            __classPrivateFieldSet(this, _LineDecoder_carriageReturnIndex, null, "f");
-            continue;
-          }
-          const endIndex = __classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f") !== null ? patternIndex.preceding - 1 : patternIndex.preceding;
-          const line = decodeUTF8(__classPrivateFieldGet(this, _LineDecoder_buffer, "f").subarray(0, endIndex));
-          lines.push(line);
-          __classPrivateFieldSet(this, _LineDecoder_buffer, __classPrivateFieldGet(this, _LineDecoder_buffer, "f").subarray(patternIndex.index), "f");
-          __classPrivateFieldSet(this, _LineDecoder_carriageReturnIndex, null, "f");
-        }
-        return lines;
-      }
-      flush() {
-        if (!__classPrivateFieldGet(this, _LineDecoder_buffer, "f").length) {
-          return [];
-        }
-        return this.decode("\n");
-      }
-    };
-    _LineDecoder_buffer = /* @__PURE__ */ new WeakMap(), _LineDecoder_carriageReturnIndex = /* @__PURE__ */ new WeakMap();
-    LineDecoder.NEWLINE_CHARS = /* @__PURE__ */ new Set(["\n", "\r"]);
-    LineDecoder.NEWLINE_REGEXP = /\r\n|[\n\r]/g;
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/utils/log.mjs
-function noop() {
-}
-function makeLogFn(fnLevel, logger, logLevel) {
-  if (!logger || levelNumbers[fnLevel] > levelNumbers[logLevel]) {
-    return noop;
-  } else {
-    return logger[fnLevel].bind(logger);
-  }
-}
-function loggerFor(client) {
-  const logger = client.logger;
-  const logLevel = client.logLevel ?? "off";
-  if (!logger) {
-    return noopLogger;
-  }
-  const cachedLogger = cachedLoggers.get(logger);
-  if (cachedLogger && cachedLogger[0] === logLevel) {
-    return cachedLogger[1];
-  }
-  const levelLogger = {
-    error: makeLogFn("error", logger, logLevel),
-    warn: makeLogFn("warn", logger, logLevel),
-    info: makeLogFn("info", logger, logLevel),
-    debug: makeLogFn("debug", logger, logLevel)
-  };
-  cachedLoggers.set(logger, [logLevel, levelLogger]);
-  return levelLogger;
-}
-var levelNumbers, parseLogLevel, noopLogger, cachedLoggers, formatRequestDetails;
-var init_log = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/utils/log.mjs"() {
-    "use strict";
-    init_values();
-    levelNumbers = {
-      off: 0,
-      error: 200,
-      warn: 300,
-      info: 400,
-      debug: 500
-    };
-    parseLogLevel = (maybeLevel, sourceName, client) => {
-      if (!maybeLevel) {
-        return void 0;
-      }
-      if (hasOwn(levelNumbers, maybeLevel)) {
-        return maybeLevel;
-      }
-      loggerFor(client).warn(`${sourceName} was set to ${JSON.stringify(maybeLevel)}, expected one of ${JSON.stringify(Object.keys(levelNumbers))}`);
-      return void 0;
-    };
-    noopLogger = {
-      error: noop,
-      warn: noop,
-      info: noop,
-      debug: noop
-    };
-    cachedLoggers = /* @__PURE__ */ new WeakMap();
-    formatRequestDetails = (details) => {
-      if (details.options) {
-        details.options = { ...details.options };
-        delete details.options["headers"];
-      }
-      if (details.headers) {
-        details.headers = Object.fromEntries((details.headers instanceof Headers ? [...details.headers] : Object.entries(details.headers)).map(([name, value]) => [
-          name,
-          name.toLowerCase() === "x-api-key" || name.toLowerCase() === "authorization" || name.toLowerCase() === "cookie" || name.toLowerCase() === "set-cookie" ? "***" : value
-        ]));
-      }
-      if ("retryOfRequestLogID" in details) {
-        if (details.retryOfRequestLogID) {
-          details.retryOf = details.retryOfRequestLogID;
-        }
-        delete details.retryOfRequestLogID;
-      }
-      return details;
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/core/streaming.mjs
-async function* _iterSSEMessages(response, controller) {
-  if (!response.body) {
-    controller.abort();
-    if (typeof globalThis.navigator !== "undefined" && globalThis.navigator.product === "ReactNative") {
-      throw new AnthropicError(`The default react-native fetch implementation does not support streaming. Please use expo/fetch: https://docs.expo.dev/versions/latest/sdk/expo/#expofetch-api`);
-    }
-    throw new AnthropicError(`Attempted to iterate over a response with no body`);
-  }
-  const sseDecoder = new SSEDecoder();
-  const lineDecoder = new LineDecoder();
-  const iter = ReadableStreamToAsyncIterable(response.body);
-  for await (const sseChunk of iterSSEChunks(iter)) {
-    for (const line of lineDecoder.decode(sseChunk)) {
-      const sse = sseDecoder.decode(line);
-      if (sse)
-        yield sse;
-    }
-  }
-  for (const line of lineDecoder.flush()) {
-    const sse = sseDecoder.decode(line);
-    if (sse)
-      yield sse;
-  }
-}
-async function* iterSSEChunks(iterator) {
-  let data = new Uint8Array();
-  for await (const chunk of iterator) {
-    if (chunk == null) {
-      continue;
-    }
-    const binaryChunk = chunk instanceof ArrayBuffer ? new Uint8Array(chunk) : typeof chunk === "string" ? encodeUTF8(chunk) : chunk;
-    let newData = new Uint8Array(data.length + binaryChunk.length);
-    newData.set(data);
-    newData.set(binaryChunk, data.length);
-    data = newData;
-    let patternIndex;
-    while ((patternIndex = findDoubleNewlineIndex(data)) !== -1) {
-      yield data.slice(0, patternIndex);
-      data = data.slice(patternIndex);
-    }
-  }
-  if (data.length > 0) {
-    yield data;
-  }
-}
-function partition(str2, delimiter) {
-  const index = str2.indexOf(delimiter);
-  if (index !== -1) {
-    return [str2.substring(0, index), delimiter, str2.substring(index + delimiter.length)];
-  }
-  return [str2, "", ""];
-}
-var _Stream_client, Stream, SSEDecoder;
-var init_streaming = __esm({
-  "node_modules/@anthropic-ai/sdk/core/streaming.mjs"() {
-    "use strict";
-    init_tslib();
-    init_error();
-    init_shims();
-    init_line();
-    init_shims();
-    init_errors();
-    init_values();
-    init_bytes();
-    init_log();
-    init_error();
-    Stream = class _Stream {
-      constructor(iterator, controller, client) {
-        this.iterator = iterator;
-        _Stream_client.set(this, void 0);
-        this.controller = controller;
-        __classPrivateFieldSet(this, _Stream_client, client, "f");
-      }
-      static fromSSEResponse(response, controller, client) {
-        let consumed = false;
-        const logger = client ? loggerFor(client) : console;
-        async function* iterator() {
-          if (consumed) {
-            throw new AnthropicError("Cannot iterate over a consumed stream, use `.tee()` to split the stream.");
-          }
-          consumed = true;
-          let done = false;
-          try {
-            for await (const sse of _iterSSEMessages(response, controller)) {
-              if (sse.event === "completion") {
-                try {
-                  yield JSON.parse(sse.data);
-                } catch (e) {
-                  logger.error(`Could not parse message into JSON:`, sse.data);
-                  logger.error(`From chunk:`, sse.raw);
-                  throw e;
-                }
-              }
-              if (sse.event === "message_start" || sse.event === "message_delta" || sse.event === "message_stop" || sse.event === "content_block_start" || sse.event === "content_block_delta" || sse.event === "content_block_stop") {
-                try {
-                  yield JSON.parse(sse.data);
-                } catch (e) {
-                  logger.error(`Could not parse message into JSON:`, sse.data);
-                  logger.error(`From chunk:`, sse.raw);
-                  throw e;
-                }
-              }
-              if (sse.event === "ping") {
-                continue;
-              }
-              if (sse.event === "error") {
-                throw new APIError(void 0, safeJSON(sse.data) ?? sse.data, void 0, response.headers);
-              }
-            }
-            done = true;
-          } catch (e) {
-            if (isAbortError(e))
-              return;
-            throw e;
-          } finally {
-            if (!done)
-              controller.abort();
-          }
-        }
-        return new _Stream(iterator, controller, client);
-      }
-      /**
-       * Generates a Stream from a newline-separated ReadableStream
-       * where each item is a JSON value.
-       */
-      static fromReadableStream(readableStream, controller, client) {
-        let consumed = false;
-        async function* iterLines() {
-          const lineDecoder = new LineDecoder();
-          const iter = ReadableStreamToAsyncIterable(readableStream);
-          for await (const chunk of iter) {
-            for (const line of lineDecoder.decode(chunk)) {
-              yield line;
-            }
-          }
-          for (const line of lineDecoder.flush()) {
-            yield line;
-          }
-        }
-        async function* iterator() {
-          if (consumed) {
-            throw new AnthropicError("Cannot iterate over a consumed stream, use `.tee()` to split the stream.");
-          }
-          consumed = true;
-          let done = false;
-          try {
-            for await (const line of iterLines()) {
-              if (done)
-                continue;
-              if (line)
-                yield JSON.parse(line);
-            }
-            done = true;
-          } catch (e) {
-            if (isAbortError(e))
-              return;
-            throw e;
-          } finally {
-            if (!done)
-              controller.abort();
-          }
-        }
-        return new _Stream(iterator, controller, client);
-      }
-      [(_Stream_client = /* @__PURE__ */ new WeakMap(), Symbol.asyncIterator)]() {
-        return this.iterator();
-      }
-      /**
-       * Splits the stream into two streams which can be
-       * independently read from at different speeds.
-       */
-      tee() {
-        const left = [];
-        const right = [];
-        const iterator = this.iterator();
-        const teeIterator = (queue) => {
-          return {
-            next: () => {
-              if (queue.length === 0) {
-                const result = iterator.next();
-                left.push(result);
-                right.push(result);
-              }
-              return queue.shift();
-            }
-          };
-        };
-        return [
-          new _Stream(() => teeIterator(left), this.controller, __classPrivateFieldGet(this, _Stream_client, "f")),
-          new _Stream(() => teeIterator(right), this.controller, __classPrivateFieldGet(this, _Stream_client, "f"))
-        ];
-      }
-      /**
-       * Converts this stream to a newline-separated ReadableStream of
-       * JSON stringified values in the stream
-       * which can be turned back into a Stream with `Stream.fromReadableStream()`.
-       */
-      toReadableStream() {
-        const self2 = this;
-        let iter;
-        return makeReadableStream({
-          async start() {
-            iter = self2[Symbol.asyncIterator]();
-          },
-          async pull(ctrl) {
-            try {
-              const { value, done } = await iter.next();
-              if (done)
-                return ctrl.close();
-              const bytes = encodeUTF8(JSON.stringify(value) + "\n");
-              ctrl.enqueue(bytes);
-            } catch (err) {
-              ctrl.error(err);
-            }
-          },
-          async cancel() {
-            await iter.return?.();
-          }
-        });
-      }
-    };
-    SSEDecoder = class {
-      constructor() {
-        this.event = null;
-        this.data = [];
-        this.chunks = [];
-      }
-      decode(line) {
-        if (line.endsWith("\r")) {
-          line = line.substring(0, line.length - 1);
-        }
-        if (!line) {
-          if (!this.event && !this.data.length)
-            return null;
-          const sse = {
-            event: this.event,
-            data: this.data.join("\n"),
-            raw: this.chunks
-          };
-          this.event = null;
-          this.data = [];
-          this.chunks = [];
-          return sse;
-        }
-        this.chunks.push(line);
-        if (line.startsWith(":")) {
-          return null;
-        }
-        let [fieldname, _, value] = partition(line, ":");
-        if (value.startsWith(" ")) {
-          value = value.substring(1);
-        }
-        if (fieldname === "event") {
-          this.event = value;
-        } else if (fieldname === "data") {
-          this.data.push(value);
-        }
-        return null;
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/parse.mjs
-async function defaultParseResponse(client, props) {
-  const { response, requestLogID, retryOfRequestLogID, startTime } = props;
-  const body = await (async () => {
-    if (props.options.stream) {
-      loggerFor(client).debug("response", response.status, response.url, response.headers, response.body);
-      if (props.options.__streamClass) {
-        return props.options.__streamClass.fromSSEResponse(response, props.controller);
-      }
-      return Stream.fromSSEResponse(response, props.controller);
-    }
-    if (response.status === 204) {
-      return null;
-    }
-    if (props.options.__binaryResponse) {
-      return response;
-    }
-    const contentType = response.headers.get("content-type");
-    const mediaType = contentType?.split(";")[0]?.trim();
-    const isJSON = mediaType?.includes("application/json") || mediaType?.endsWith("+json");
-    if (isJSON) {
-      const contentLength = response.headers.get("content-length");
-      if (contentLength === "0") {
-        return void 0;
-      }
-      const json2 = await response.json();
-      return addRequestID(json2, response);
-    }
-    const text = await response.text();
-    return text;
-  })();
-  loggerFor(client).debug(`[${requestLogID}] response parsed`, formatRequestDetails({
-    retryOfRequestLogID,
-    url: response.url,
-    status: response.status,
-    body,
-    durationMs: Date.now() - startTime
-  }));
-  return body;
-}
-function addRequestID(value, response) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return value;
-  }
-  return Object.defineProperty(value, "_request_id", {
-    value: response.headers.get("request-id"),
-    enumerable: false
-  });
-}
-var init_parse = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/parse.mjs"() {
-    "use strict";
-    init_streaming();
-    init_log();
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/core/api-promise.mjs
-var _APIPromise_client, APIPromise;
-var init_api_promise = __esm({
-  "node_modules/@anthropic-ai/sdk/core/api-promise.mjs"() {
-    "use strict";
-    init_tslib();
-    init_parse();
-    APIPromise = class _APIPromise extends Promise {
-      constructor(client, responsePromise, parseResponse = defaultParseResponse) {
-        super((resolve2) => {
-          resolve2(null);
-        });
-        this.responsePromise = responsePromise;
-        this.parseResponse = parseResponse;
-        _APIPromise_client.set(this, void 0);
-        __classPrivateFieldSet(this, _APIPromise_client, client, "f");
-      }
-      _thenUnwrap(transform) {
-        return new _APIPromise(__classPrivateFieldGet(this, _APIPromise_client, "f"), this.responsePromise, async (client, props) => addRequestID(transform(await this.parseResponse(client, props), props), props.response));
-      }
-      /**
-       * Gets the raw `Response` instance instead of parsing the response
-       * data.
-       *
-       * If you want to parse the response body but still get the `Response`
-       * instance, you can use {@link withResponse()}.
-       *
-       * 👋 Getting the wrong TypeScript type for `Response`?
-       * Try setting `"moduleResolution": "NodeNext"` or add `"lib": ["DOM"]`
-       * to your `tsconfig.json`.
-       */
-      asResponse() {
-        return this.responsePromise.then((p) => p.response);
-      }
-      /**
-       * Gets the parsed response data, the raw `Response` instance and the ID of the request,
-       * returned via the `request-id` header which is useful for debugging requests and resporting
-       * issues to Anthropic.
-       *
-       * If you just want to get the raw `Response` instance without parsing it,
-       * you can use {@link asResponse()}.
-       *
-       * 👋 Getting the wrong TypeScript type for `Response`?
-       * Try setting `"moduleResolution": "NodeNext"` or add `"lib": ["DOM"]`
-       * to your `tsconfig.json`.
-       */
-      async withResponse() {
-        const [data, response] = await Promise.all([this.parse(), this.asResponse()]);
-        return { data, response, request_id: response.headers.get("request-id") };
-      }
-      parse() {
-        if (!this.parsedPromise) {
-          this.parsedPromise = this.responsePromise.then((data) => this.parseResponse(__classPrivateFieldGet(this, _APIPromise_client, "f"), data));
-        }
-        return this.parsedPromise;
-      }
-      then(onfulfilled, onrejected) {
-        return this.parse().then(onfulfilled, onrejected);
-      }
-      catch(onrejected) {
-        return this.parse().catch(onrejected);
-      }
-      finally(onfinally) {
-        return this.parse().finally(onfinally);
-      }
-    };
-    _APIPromise_client = /* @__PURE__ */ new WeakMap();
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/core/pagination.mjs
-var _AbstractPage_client, AbstractPage, PagePromise, Page, PageCursor;
-var init_pagination = __esm({
-  "node_modules/@anthropic-ai/sdk/core/pagination.mjs"() {
-    "use strict";
-    init_tslib();
-    init_error();
-    init_parse();
-    init_api_promise();
-    init_values();
-    AbstractPage = class {
-      constructor(client, response, body, options) {
-        _AbstractPage_client.set(this, void 0);
-        __classPrivateFieldSet(this, _AbstractPage_client, client, "f");
-        this.options = options;
-        this.response = response;
-        this.body = body;
-      }
-      hasNextPage() {
-        const items = this.getPaginatedItems();
-        if (!items.length)
-          return false;
-        return this.nextPageRequestOptions() != null;
-      }
-      async getNextPage() {
-        const nextOptions = this.nextPageRequestOptions();
-        if (!nextOptions) {
-          throw new AnthropicError("No next page expected; please check `.hasNextPage()` before calling `.getNextPage()`.");
-        }
-        return await __classPrivateFieldGet(this, _AbstractPage_client, "f").requestAPIList(this.constructor, nextOptions);
-      }
-      async *iterPages() {
-        let page = this;
-        yield page;
-        while (page.hasNextPage()) {
-          page = await page.getNextPage();
-          yield page;
-        }
-      }
-      async *[(_AbstractPage_client = /* @__PURE__ */ new WeakMap(), Symbol.asyncIterator)]() {
-        for await (const page of this.iterPages()) {
-          for (const item of page.getPaginatedItems()) {
-            yield item;
-          }
-        }
-      }
-    };
-    PagePromise = class extends APIPromise {
-      constructor(client, request, Page2) {
-        super(client, request, async (client2, props) => new Page2(client2, props.response, await defaultParseResponse(client2, props), props.options));
-      }
-      /**
-       * Allow auto-paginating iteration on an unawaited list call, eg:
-       *
-       *    for await (const item of client.items.list()) {
-       *      console.log(item)
-       *    }
-       */
-      async *[Symbol.asyncIterator]() {
-        const page = await this;
-        for await (const item of page) {
-          yield item;
-        }
-      }
-    };
-    Page = class extends AbstractPage {
-      constructor(client, response, body, options) {
-        super(client, response, body, options);
-        this.data = body.data || [];
-        this.has_more = body.has_more || false;
-        this.first_id = body.first_id || null;
-        this.last_id = body.last_id || null;
-      }
-      getPaginatedItems() {
-        return this.data ?? [];
-      }
-      hasNextPage() {
-        if (this.has_more === false) {
-          return false;
-        }
-        return super.hasNextPage();
-      }
-      nextPageRequestOptions() {
-        if (this.options.query?.["before_id"]) {
-          const first_id = this.first_id;
-          if (!first_id) {
-            return null;
-          }
-          return {
-            ...this.options,
-            query: {
-              ...maybeObj(this.options.query),
-              before_id: first_id
-            }
-          };
-        }
-        const cursor = this.last_id;
-        if (!cursor) {
-          return null;
-        }
-        return {
-          ...this.options,
-          query: {
-            ...maybeObj(this.options.query),
-            after_id: cursor
-          }
-        };
-      }
-    };
-    PageCursor = class extends AbstractPage {
-      constructor(client, response, body, options) {
-        super(client, response, body, options);
-        this.data = body.data || [];
-        this.has_more = body.has_more || false;
-        this.next_page = body.next_page || null;
-      }
-      getPaginatedItems() {
-        return this.data ?? [];
-      }
-      hasNextPage() {
-        if (this.has_more === false) {
-          return false;
-        }
-        return super.hasNextPage();
-      }
-      nextPageRequestOptions() {
-        const cursor = this.next_page;
-        if (!cursor) {
-          return null;
-        }
-        return {
-          ...this.options,
-          query: {
-            ...maybeObj(this.options.query),
-            page: cursor
-          }
-        };
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/uploads.mjs
-function makeFile(fileBits, fileName, options) {
-  checkFileSupport();
-  return new File(fileBits, fileName ?? "unknown_file", options);
-}
-function getName(value, stripPath) {
-  const val = typeof value === "object" && value !== null && ("name" in value && value.name && String(value.name) || "url" in value && value.url && String(value.url) || "filename" in value && value.filename && String(value.filename) || "path" in value && value.path && String(value.path)) || "";
-  return stripPath ? val.split(/[\\/]/).pop() || void 0 : val;
-}
-function supportsFormData(fetchObject) {
-  const fetch2 = typeof fetchObject === "function" ? fetchObject : fetchObject.fetch;
-  const cached2 = supportsFormDataMap.get(fetch2);
-  if (cached2)
-    return cached2;
-  const promise = (async () => {
-    try {
-      const FetchResponse = "Response" in fetch2 ? fetch2.Response : (await fetch2("data:,")).constructor;
-      const data = new FormData();
-      if (data.toString() === await new FetchResponse(data).text()) {
-        return false;
-      }
-      return true;
-    } catch {
-      return true;
-    }
-  })();
-  supportsFormDataMap.set(fetch2, promise);
-  return promise;
-}
-var checkFileSupport, isAsyncIterable, multipartFormRequestOptions, supportsFormDataMap, createForm, isNamedBlob, addFormValue;
-var init_uploads = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/uploads.mjs"() {
-    "use strict";
-    init_shims();
-    checkFileSupport = () => {
-      if (typeof File === "undefined") {
-        const { process: process3 } = globalThis;
-        const isOldNode = typeof process3?.versions?.node === "string" && parseInt(process3.versions.node.split(".")) < 20;
-        throw new Error("`File` is not defined as a global, which is required for file uploads." + (isOldNode ? " Update to Node 20 LTS or newer, or set `globalThis.File` to `import('node:buffer').File`." : ""));
-      }
-    };
-    isAsyncIterable = (value) => value != null && typeof value === "object" && typeof value[Symbol.asyncIterator] === "function";
-    multipartFormRequestOptions = async (opts, fetch2, stripFilenames = true) => {
-      return { ...opts, body: await createForm(opts.body, fetch2, stripFilenames) };
-    };
-    supportsFormDataMap = /* @__PURE__ */ new WeakMap();
-    createForm = async (body, fetch2, stripFilenames = true) => {
-      if (!await supportsFormData(fetch2)) {
-        throw new TypeError("The provided fetch function does not support file uploads with the current global FormData class.");
-      }
-      const form = new FormData();
-      await Promise.all(Object.entries(body || {}).map(([key, value]) => addFormValue(form, key, value, stripFilenames)));
-      return form;
-    };
-    isNamedBlob = (value) => value instanceof Blob && "name" in value;
-    addFormValue = async (form, key, value, stripFilenames) => {
-      if (value === void 0)
-        return;
-      if (value == null) {
-        throw new TypeError(`Received null for "${key}"; to pass null in FormData, you must use the string 'null'`);
-      }
-      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-        form.append(key, String(value));
-      } else if (value instanceof Response) {
-        let options = {};
-        const contentType = value.headers.get("Content-Type");
-        if (contentType) {
-          options = { type: contentType };
-        }
-        form.append(key, makeFile([await value.blob()], getName(value, stripFilenames), options));
-      } else if (isAsyncIterable(value)) {
-        form.append(key, makeFile([await new Response(ReadableStreamFrom(value)).blob()], getName(value, stripFilenames)));
-      } else if (isNamedBlob(value)) {
-        form.append(key, makeFile([value], getName(value, stripFilenames), { type: value.type }));
-      } else if (Array.isArray(value)) {
-        await Promise.all(value.map((entry) => addFormValue(form, key + "[]", entry, stripFilenames)));
-      } else if (typeof value === "object") {
-        await Promise.all(Object.entries(value).map(([name, prop]) => addFormValue(form, `${key}[${name}]`, prop, stripFilenames)));
-      } else {
-        throw new TypeError(`Invalid value given to form, expected a string, number, boolean, object, Array, File or Blob but got ${value} instead`);
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/to-file.mjs
-async function toFile(value, name, options) {
-  checkFileSupport();
-  value = await value;
-  name || (name = getName(value, true));
-  if (isFileLike(value)) {
-    if (value instanceof File && name == null && options == null) {
-      return value;
-    }
-    return makeFile([await value.arrayBuffer()], name ?? value.name, {
-      type: value.type,
-      lastModified: value.lastModified,
-      ...options
-    });
-  }
-  if (isResponseLike(value)) {
-    const blob = await value.blob();
-    name || (name = new URL(value.url).pathname.split(/[\\/]/).pop());
-    return makeFile(await getBytes(blob), name, options);
-  }
-  const parts = await getBytes(value);
-  if (!options?.type) {
-    const type2 = parts.find((part) => typeof part === "object" && "type" in part && part.type);
-    if (typeof type2 === "string") {
-      options = { ...options, type: type2 };
-    }
-  }
-  return makeFile(parts, name, options);
-}
-async function getBytes(value) {
-  let parts = [];
-  if (typeof value === "string" || ArrayBuffer.isView(value) || // includes Uint8Array, Buffer, etc.
-  value instanceof ArrayBuffer) {
-    parts.push(value);
-  } else if (isBlobLike(value)) {
-    parts.push(value instanceof Blob ? value : await value.arrayBuffer());
-  } else if (isAsyncIterable(value)) {
-    for await (const chunk of value) {
-      parts.push(...await getBytes(chunk));
-    }
-  } else {
-    const constructor = value?.constructor?.name;
-    throw new Error(`Unexpected data type: ${typeof value}${constructor ? `; constructor: ${constructor}` : ""}${propsForError(value)}`);
-  }
-  return parts;
-}
-function propsForError(value) {
-  if (typeof value !== "object" || value === null)
-    return "";
-  const props = Object.getOwnPropertyNames(value);
-  return `; props: [${props.map((p) => `"${p}"`).join(", ")}]`;
-}
-var isBlobLike, isFileLike, isResponseLike;
-var init_to_file = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/to-file.mjs"() {
-    "use strict";
-    init_uploads();
-    init_uploads();
-    isBlobLike = (value) => value != null && typeof value === "object" && typeof value.size === "number" && typeof value.type === "string" && typeof value.text === "function" && typeof value.slice === "function" && typeof value.arrayBuffer === "function";
-    isFileLike = (value) => value != null && typeof value === "object" && typeof value.name === "string" && typeof value.lastModified === "number" && isBlobLike(value);
-    isResponseLike = (value) => value != null && typeof value === "object" && typeof value.url === "string" && typeof value.blob === "function";
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/core/uploads.mjs
-var init_uploads2 = __esm({
-  "node_modules/@anthropic-ai/sdk/core/uploads.mjs"() {
-    "use strict";
-    init_to_file();
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/shared.mjs
-var init_shared = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/shared.mjs"() {
-    "use strict";
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/core/resource.mjs
-var APIResource;
-var init_resource = __esm({
-  "node_modules/@anthropic-ai/sdk/core/resource.mjs"() {
-    "use strict";
-    APIResource = class {
-      constructor(client) {
-        this._client = client;
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/headers.mjs
-function* iterateHeaders(headers) {
-  if (!headers)
-    return;
-  if (brand_privateNullableHeaders in headers) {
-    const { values, nulls } = headers;
-    yield* values.entries();
-    for (const name of nulls) {
-      yield [name, null];
-    }
-    return;
-  }
-  let shouldClear = false;
-  let iter;
-  if (headers instanceof Headers) {
-    iter = headers.entries();
-  } else if (isReadonlyArray(headers)) {
-    iter = headers;
-  } else {
-    shouldClear = true;
-    iter = Object.entries(headers ?? {});
-  }
-  for (let row of iter) {
-    const name = row[0];
-    if (typeof name !== "string")
-      throw new TypeError("expected header name to be a string");
-    const values = isReadonlyArray(row[1]) ? row[1] : [row[1]];
-    let didClear = false;
-    for (const value of values) {
-      if (value === void 0)
-        continue;
-      if (shouldClear && !didClear) {
-        didClear = true;
-        yield [name, null];
-      }
-      yield [name, value];
-    }
-  }
-}
-var brand_privateNullableHeaders, buildHeaders;
-var init_headers = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/headers.mjs"() {
-    "use strict";
-    init_values();
-    brand_privateNullableHeaders = Symbol.for("brand.privateNullableHeaders");
-    buildHeaders = (newHeaders) => {
-      const targetHeaders = new Headers();
-      const nullHeaders = /* @__PURE__ */ new Set();
-      for (const headers of newHeaders) {
-        const seenHeaders = /* @__PURE__ */ new Set();
-        for (const [name, value] of iterateHeaders(headers)) {
-          const lowerName = name.toLowerCase();
-          if (!seenHeaders.has(lowerName)) {
-            targetHeaders.delete(name);
-            seenHeaders.add(lowerName);
-          }
-          if (value === null) {
-            targetHeaders.delete(name);
-            nullHeaders.add(lowerName);
-          } else {
-            targetHeaders.append(name, value);
-            nullHeaders.delete(lowerName);
-          }
-        }
-      }
-      return { [brand_privateNullableHeaders]: true, values: targetHeaders, nulls: nullHeaders };
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/lib/stainless-helper-header.mjs
-function wasCreatedByStainlessHelper(value) {
-  return typeof value === "object" && value !== null && SDK_HELPER_SYMBOL in value;
-}
-function collectStainlessHelpers(tools, messages2) {
-  const helpers = /* @__PURE__ */ new Set();
-  if (tools) {
-    for (const tool of tools) {
-      if (wasCreatedByStainlessHelper(tool)) {
-        helpers.add(tool[SDK_HELPER_SYMBOL]);
-      }
-    }
-  }
-  if (messages2) {
-    for (const message of messages2) {
-      if (wasCreatedByStainlessHelper(message)) {
-        helpers.add(message[SDK_HELPER_SYMBOL]);
-      }
-      if (Array.isArray(message.content)) {
-        for (const block of message.content) {
-          if (wasCreatedByStainlessHelper(block)) {
-            helpers.add(block[SDK_HELPER_SYMBOL]);
-          }
-        }
-      }
-    }
-  }
-  return Array.from(helpers);
-}
-function stainlessHelperHeader(tools, messages2) {
-  const helpers = collectStainlessHelpers(tools, messages2);
-  if (helpers.length === 0)
-    return {};
-  return { "x-stainless-helper": helpers.join(", ") };
-}
-function stainlessHelperHeaderFromFile(file) {
-  if (wasCreatedByStainlessHelper(file)) {
-    return { "x-stainless-helper": file[SDK_HELPER_SYMBOL] };
-  }
-  return {};
-}
-var SDK_HELPER_SYMBOL;
-var init_stainless_helper_header = __esm({
-  "node_modules/@anthropic-ai/sdk/lib/stainless-helper-header.mjs"() {
-    "use strict";
-    SDK_HELPER_SYMBOL = Symbol("anthropic.sdk.stainlessHelper");
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/utils/path.mjs
-function encodeURIPath(str2) {
-  return str2.replace(/[^A-Za-z0-9\-._~!$&'()*+,;=:@]+/g, encodeURIComponent);
-}
-var EMPTY, createPathTagFunction, path4;
-var init_path = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/utils/path.mjs"() {
-    "use strict";
-    init_error();
-    EMPTY = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.create(null));
-    createPathTagFunction = (pathEncoder = encodeURIPath) => function path6(statics, ...params) {
-      if (statics.length === 1)
-        return statics[0];
-      let postPath = false;
-      const invalidSegments = [];
-      const path7 = statics.reduce((previousValue, currentValue, index) => {
-        if (/[?#]/.test(currentValue)) {
-          postPath = true;
-        }
-        const value = params[index];
-        let encoded = (postPath ? encodeURIComponent : pathEncoder)("" + value);
-        if (index !== params.length && (value == null || typeof value === "object" && // handle values from other realms
-        value.toString === Object.getPrototypeOf(Object.getPrototypeOf(value.hasOwnProperty ?? EMPTY) ?? EMPTY)?.toString)) {
-          encoded = value + "";
-          invalidSegments.push({
-            start: previousValue.length + currentValue.length,
-            length: encoded.length,
-            error: `Value of type ${Object.prototype.toString.call(value).slice(8, -1)} is not a valid path parameter`
-          });
-        }
-        return previousValue + currentValue + (index === params.length ? "" : encoded);
-      }, "");
-      const pathOnly = path7.split(/[?#]/, 1)[0];
-      const invalidSegmentPattern = /(?<=^|\/)(?:\.|%2e){1,2}(?=\/|$)/gi;
-      let match;
-      while ((match = invalidSegmentPattern.exec(pathOnly)) !== null) {
-        invalidSegments.push({
-          start: match.index,
-          length: match[0].length,
-          error: `Value "${match[0]}" can't be safely passed as a path parameter`
-        });
-      }
-      invalidSegments.sort((a, b) => a.start - b.start);
-      if (invalidSegments.length > 0) {
-        let lastEnd = 0;
-        const underline = invalidSegments.reduce((acc, segment) => {
-          const spaces = " ".repeat(segment.start - lastEnd);
-          const arrows = "^".repeat(segment.length);
-          lastEnd = segment.start + segment.length;
-          return acc + spaces + arrows;
-        }, "");
-        throw new AnthropicError(`Path parameters result in path with invalid segments:
-${invalidSegments.map((e) => e.error).join("\n")}
-${path7}
-${underline}`);
-      }
-      return path7;
-    };
-    path4 = /* @__PURE__ */ createPathTagFunction(encodeURIPath);
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/beta/files.mjs
-var Files;
-var init_files = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/beta/files.mjs"() {
-    "use strict";
-    init_resource();
-    init_pagination();
-    init_headers();
-    init_stainless_helper_header();
-    init_uploads();
-    init_path();
-    Files = class extends APIResource {
-      /**
-       * List Files
-       *
-       * @example
-       * ```ts
-       * // Automatically fetches more pages as needed.
-       * for await (const fileMetadata of client.beta.files.list()) {
-       *   // ...
-       * }
-       * ```
-       */
-      list(params = {}, options) {
-        const { betas, ...query } = params ?? {};
-        return this._client.getAPIList("/v1/files", Page, {
-          query,
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "files-api-2025-04-14"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * Delete File
-       *
-       * @example
-       * ```ts
-       * const deletedFile = await client.beta.files.delete(
-       *   'file_id',
-       * );
-       * ```
-       */
-      delete(fileID, params = {}, options) {
-        const { betas } = params ?? {};
-        return this._client.delete(path4`/v1/files/${fileID}`, {
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "files-api-2025-04-14"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * Download File
-       *
-       * @example
-       * ```ts
-       * const response = await client.beta.files.download(
-       *   'file_id',
-       * );
-       *
-       * const content = await response.blob();
-       * console.log(content);
-       * ```
-       */
-      download(fileID, params = {}, options) {
-        const { betas } = params ?? {};
-        return this._client.get(path4`/v1/files/${fileID}/content`, {
-          ...options,
-          headers: buildHeaders([
-            {
-              "anthropic-beta": [...betas ?? [], "files-api-2025-04-14"].toString(),
-              Accept: "application/binary"
-            },
-            options?.headers
-          ]),
-          __binaryResponse: true
-        });
-      }
-      /**
-       * Get File Metadata
-       *
-       * @example
-       * ```ts
-       * const fileMetadata =
-       *   await client.beta.files.retrieveMetadata('file_id');
-       * ```
-       */
-      retrieveMetadata(fileID, params = {}, options) {
-        const { betas } = params ?? {};
-        return this._client.get(path4`/v1/files/${fileID}`, {
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "files-api-2025-04-14"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * Upload File
-       *
-       * @example
-       * ```ts
-       * const fileMetadata = await client.beta.files.upload({
-       *   file: fs.createReadStream('path/to/file'),
-       * });
-       * ```
-       */
-      upload(params, options) {
-        const { betas, ...body } = params;
-        return this._client.post("/v1/files", multipartFormRequestOptions({
-          body,
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "files-api-2025-04-14"].toString() },
-            stainlessHelperHeaderFromFile(body.file),
-            options?.headers
-          ])
-        }, this._client));
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/beta/models.mjs
-var Models;
-var init_models = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/beta/models.mjs"() {
-    "use strict";
-    init_resource();
-    init_pagination();
-    init_headers();
-    init_path();
-    Models = class extends APIResource {
-      /**
-       * Get a specific model.
-       *
-       * The Models API response can be used to determine information about a specific
-       * model or resolve a model alias to a model ID.
-       *
-       * @example
-       * ```ts
-       * const betaModelInfo = await client.beta.models.retrieve(
-       *   'model_id',
-       * );
-       * ```
-       */
-      retrieve(modelID, params = {}, options) {
-        const { betas } = params ?? {};
-        return this._client.get(path4`/v1/models/${modelID}?beta=true`, {
-          ...options,
-          headers: buildHeaders([
-            { ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * List available models.
-       *
-       * The Models API response can be used to determine which models are available for
-       * use in the API. More recently released models are listed first.
-       *
-       * @example
-       * ```ts
-       * // Automatically fetches more pages as needed.
-       * for await (const betaModelInfo of client.beta.models.list()) {
-       *   // ...
-       * }
-       * ```
-       */
-      list(params = {}, options) {
-        const { betas, ...query } = params ?? {};
-        return this._client.getAPIList("/v1/models?beta=true", Page, {
-          query,
-          ...options,
-          headers: buildHeaders([
-            { ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 },
-            options?.headers
-          ])
-        });
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/error.mjs
-var init_error2 = __esm({
-  "node_modules/@anthropic-ai/sdk/error.mjs"() {
-    "use strict";
-    init_error();
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/constants.mjs
-var MODEL_NONSTREAMING_TOKENS;
-var init_constants = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/constants.mjs"() {
-    "use strict";
-    MODEL_NONSTREAMING_TOKENS = {
-      "claude-opus-4-20250514": 8192,
-      "claude-opus-4-0": 8192,
-      "claude-4-opus-20250514": 8192,
-      "anthropic.claude-opus-4-20250514-v1:0": 8192,
-      "claude-opus-4@20250514": 8192,
-      "claude-opus-4-1-20250805": 8192,
-      "anthropic.claude-opus-4-1-20250805-v1:0": 8192,
-      "claude-opus-4-1@20250805": 8192
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/lib/beta-parser.mjs
-function getOutputFormat(params) {
-  return params?.output_format ?? params?.output_config?.format;
-}
-function maybeParseBetaMessage(message, params, opts) {
-  const outputFormat = getOutputFormat(params);
-  if (!params || !("parse" in (outputFormat ?? {}))) {
-    return {
-      ...message,
-      content: message.content.map((block) => {
-        if (block.type === "text") {
-          const parsedBlock = Object.defineProperty({ ...block }, "parsed_output", {
-            value: null,
-            enumerable: false
-          });
-          return Object.defineProperty(parsedBlock, "parsed", {
-            get() {
-              opts.logger.warn("The `parsed` property on `text` blocks is deprecated, please use `parsed_output` instead.");
-              return null;
-            },
-            enumerable: false
-          });
-        }
-        return block;
-      }),
-      parsed_output: null
-    };
-  }
-  return parseBetaMessage(message, params, opts);
-}
-function parseBetaMessage(message, params, opts) {
-  let firstParsedOutput = null;
-  const content = message.content.map((block) => {
-    if (block.type === "text") {
-      const parsedOutput = parseBetaOutputFormat(params, block.text);
-      if (firstParsedOutput === null) {
-        firstParsedOutput = parsedOutput;
-      }
-      const parsedBlock = Object.defineProperty({ ...block }, "parsed_output", {
-        value: parsedOutput,
-        enumerable: false
-      });
-      return Object.defineProperty(parsedBlock, "parsed", {
-        get() {
-          opts.logger.warn("The `parsed` property on `text` blocks is deprecated, please use `parsed_output` instead.");
-          return parsedOutput;
-        },
-        enumerable: false
-      });
-    }
-    return block;
-  });
-  return {
-    ...message,
-    content,
-    parsed_output: firstParsedOutput
-  };
-}
-function parseBetaOutputFormat(params, content) {
-  const outputFormat = getOutputFormat(params);
-  if (outputFormat?.type !== "json_schema") {
-    return null;
-  }
-  try {
-    if ("parse" in outputFormat) {
-      return outputFormat.parse(content);
-    }
-    return JSON.parse(content);
-  } catch (error) {
-    throw new AnthropicError(`Failed to parse structured output: ${error}`);
-  }
-}
-var init_beta_parser = __esm({
-  "node_modules/@anthropic-ai/sdk/lib/beta-parser.mjs"() {
-    "use strict";
-    init_error();
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/_vendor/partial-json-parser/parser.mjs
-var tokenize, strip, unstrip, generate, partialParse;
-var init_parser = __esm({
-  "node_modules/@anthropic-ai/sdk/_vendor/partial-json-parser/parser.mjs"() {
-    "use strict";
-    tokenize = (input) => {
-      let current = 0;
-      let tokens = [];
-      while (current < input.length) {
-        let char = input[current];
-        if (char === "\\") {
-          current++;
-          continue;
-        }
-        if (char === "{") {
-          tokens.push({
-            type: "brace",
-            value: "{"
-          });
-          current++;
-          continue;
-        }
-        if (char === "}") {
-          tokens.push({
-            type: "brace",
-            value: "}"
-          });
-          current++;
-          continue;
-        }
-        if (char === "[") {
-          tokens.push({
-            type: "paren",
-            value: "["
-          });
-          current++;
-          continue;
-        }
-        if (char === "]") {
-          tokens.push({
-            type: "paren",
-            value: "]"
-          });
-          current++;
-          continue;
-        }
-        if (char === ":") {
-          tokens.push({
-            type: "separator",
-            value: ":"
-          });
-          current++;
-          continue;
-        }
-        if (char === ",") {
-          tokens.push({
-            type: "delimiter",
-            value: ","
-          });
-          current++;
-          continue;
-        }
-        if (char === '"') {
-          let value = "";
-          let danglingQuote = false;
-          char = input[++current];
-          while (char !== '"') {
-            if (current === input.length) {
-              danglingQuote = true;
-              break;
-            }
-            if (char === "\\") {
-              current++;
-              if (current === input.length) {
-                danglingQuote = true;
-                break;
-              }
-              value += char + input[current];
-              char = input[++current];
-            } else {
-              value += char;
-              char = input[++current];
-            }
-          }
-          char = input[++current];
-          if (!danglingQuote) {
-            tokens.push({
-              type: "string",
-              value
-            });
-          }
-          continue;
-        }
-        let WHITESPACE = /\s/;
-        if (char && WHITESPACE.test(char)) {
-          current++;
-          continue;
-        }
-        let NUMBERS = /[0-9]/;
-        if (char && NUMBERS.test(char) || char === "-" || char === ".") {
-          let value = "";
-          if (char === "-") {
-            value += char;
-            char = input[++current];
-          }
-          while (char && NUMBERS.test(char) || char === ".") {
-            value += char;
-            char = input[++current];
-          }
-          tokens.push({
-            type: "number",
-            value
-          });
-          continue;
-        }
-        let LETTERS = /[a-z]/i;
-        if (char && LETTERS.test(char)) {
-          let value = "";
-          while (char && LETTERS.test(char)) {
-            if (current === input.length) {
-              break;
-            }
-            value += char;
-            char = input[++current];
-          }
-          if (value == "true" || value == "false" || value === "null") {
-            tokens.push({
-              type: "name",
-              value
-            });
-          } else {
-            current++;
-            continue;
-          }
-          continue;
-        }
-        current++;
-      }
-      return tokens;
-    };
-    strip = (tokens) => {
-      if (tokens.length === 0) {
-        return tokens;
-      }
-      let lastToken = tokens[tokens.length - 1];
-      switch (lastToken.type) {
-        case "separator":
-          tokens = tokens.slice(0, tokens.length - 1);
-          return strip(tokens);
-          break;
-        case "number":
-          let lastCharacterOfLastToken = lastToken.value[lastToken.value.length - 1];
-          if (lastCharacterOfLastToken === "." || lastCharacterOfLastToken === "-") {
-            tokens = tokens.slice(0, tokens.length - 1);
-            return strip(tokens);
-          }
-        case "string":
-          let tokenBeforeTheLastToken = tokens[tokens.length - 2];
-          if (tokenBeforeTheLastToken?.type === "delimiter") {
-            tokens = tokens.slice(0, tokens.length - 1);
-            return strip(tokens);
-          } else if (tokenBeforeTheLastToken?.type === "brace" && tokenBeforeTheLastToken.value === "{") {
-            tokens = tokens.slice(0, tokens.length - 1);
-            return strip(tokens);
-          }
-          break;
-        case "delimiter":
-          tokens = tokens.slice(0, tokens.length - 1);
-          return strip(tokens);
-          break;
-      }
-      return tokens;
-    };
-    unstrip = (tokens) => {
-      let tail = [];
-      tokens.map((token) => {
-        if (token.type === "brace") {
-          if (token.value === "{") {
-            tail.push("}");
-          } else {
-            tail.splice(tail.lastIndexOf("}"), 1);
-          }
-        }
-        if (token.type === "paren") {
-          if (token.value === "[") {
-            tail.push("]");
-          } else {
-            tail.splice(tail.lastIndexOf("]"), 1);
-          }
-        }
-      });
-      if (tail.length > 0) {
-        tail.reverse().map((item) => {
-          if (item === "}") {
-            tokens.push({
-              type: "brace",
-              value: "}"
-            });
-          } else if (item === "]") {
-            tokens.push({
-              type: "paren",
-              value: "]"
-            });
-          }
-        });
-      }
-      return tokens;
-    };
-    generate = (tokens) => {
-      let output = "";
-      tokens.map((token) => {
-        switch (token.type) {
-          case "string":
-            output += '"' + token.value + '"';
-            break;
-          default:
-            output += token.value;
-            break;
-        }
-      });
-      return output;
-    };
-    partialParse = (input) => JSON.parse(generate(unstrip(strip(tokenize(input)))));
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/streaming.mjs
-var init_streaming2 = __esm({
-  "node_modules/@anthropic-ai/sdk/streaming.mjs"() {
-    "use strict";
-    init_streaming();
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/lib/BetaMessageStream.mjs
-function tracksToolInput(content) {
-  return content.type === "tool_use" || content.type === "server_tool_use" || content.type === "mcp_tool_use";
-}
-function checkNever(x) {
-}
-var _BetaMessageStream_instances, _BetaMessageStream_currentMessageSnapshot, _BetaMessageStream_params, _BetaMessageStream_connectedPromise, _BetaMessageStream_resolveConnectedPromise, _BetaMessageStream_rejectConnectedPromise, _BetaMessageStream_endPromise, _BetaMessageStream_resolveEndPromise, _BetaMessageStream_rejectEndPromise, _BetaMessageStream_listeners, _BetaMessageStream_ended, _BetaMessageStream_errored, _BetaMessageStream_aborted, _BetaMessageStream_catchingPromiseCreated, _BetaMessageStream_response, _BetaMessageStream_request_id, _BetaMessageStream_logger, _BetaMessageStream_getFinalMessage, _BetaMessageStream_getFinalText, _BetaMessageStream_handleError, _BetaMessageStream_beginRequest, _BetaMessageStream_addStreamEvent, _BetaMessageStream_endRequest, _BetaMessageStream_accumulateMessage, JSON_BUF_PROPERTY, BetaMessageStream;
-var init_BetaMessageStream = __esm({
-  "node_modules/@anthropic-ai/sdk/lib/BetaMessageStream.mjs"() {
-    "use strict";
-    init_tslib();
-    init_parser();
-    init_error2();
-    init_errors();
-    init_streaming2();
-    init_beta_parser();
-    JSON_BUF_PROPERTY = "__json_buf";
-    BetaMessageStream = class _BetaMessageStream {
-      constructor(params, opts) {
-        _BetaMessageStream_instances.add(this);
-        this.messages = [];
-        this.receivedMessages = [];
-        _BetaMessageStream_currentMessageSnapshot.set(this, void 0);
-        _BetaMessageStream_params.set(this, null);
-        this.controller = new AbortController();
-        _BetaMessageStream_connectedPromise.set(this, void 0);
-        _BetaMessageStream_resolveConnectedPromise.set(this, () => {
-        });
-        _BetaMessageStream_rejectConnectedPromise.set(this, () => {
-        });
-        _BetaMessageStream_endPromise.set(this, void 0);
-        _BetaMessageStream_resolveEndPromise.set(this, () => {
-        });
-        _BetaMessageStream_rejectEndPromise.set(this, () => {
-        });
-        _BetaMessageStream_listeners.set(this, {});
-        _BetaMessageStream_ended.set(this, false);
-        _BetaMessageStream_errored.set(this, false);
-        _BetaMessageStream_aborted.set(this, false);
-        _BetaMessageStream_catchingPromiseCreated.set(this, false);
-        _BetaMessageStream_response.set(this, void 0);
-        _BetaMessageStream_request_id.set(this, void 0);
-        _BetaMessageStream_logger.set(this, void 0);
-        _BetaMessageStream_handleError.set(this, (error) => {
-          __classPrivateFieldSet(this, _BetaMessageStream_errored, true, "f");
-          if (isAbortError(error)) {
-            error = new APIUserAbortError();
-          }
-          if (error instanceof APIUserAbortError) {
-            __classPrivateFieldSet(this, _BetaMessageStream_aborted, true, "f");
-            return this._emit("abort", error);
-          }
-          if (error instanceof AnthropicError) {
-            return this._emit("error", error);
-          }
-          if (error instanceof Error) {
-            const anthropicError = new AnthropicError(error.message);
-            anthropicError.cause = error;
-            return this._emit("error", anthropicError);
-          }
-          return this._emit("error", new AnthropicError(String(error)));
-        });
-        __classPrivateFieldSet(this, _BetaMessageStream_connectedPromise, new Promise((resolve2, reject) => {
-          __classPrivateFieldSet(this, _BetaMessageStream_resolveConnectedPromise, resolve2, "f");
-          __classPrivateFieldSet(this, _BetaMessageStream_rejectConnectedPromise, reject, "f");
-        }), "f");
-        __classPrivateFieldSet(this, _BetaMessageStream_endPromise, new Promise((resolve2, reject) => {
-          __classPrivateFieldSet(this, _BetaMessageStream_resolveEndPromise, resolve2, "f");
-          __classPrivateFieldSet(this, _BetaMessageStream_rejectEndPromise, reject, "f");
-        }), "f");
-        __classPrivateFieldGet(this, _BetaMessageStream_connectedPromise, "f").catch(() => {
-        });
-        __classPrivateFieldGet(this, _BetaMessageStream_endPromise, "f").catch(() => {
-        });
-        __classPrivateFieldSet(this, _BetaMessageStream_params, params, "f");
-        __classPrivateFieldSet(this, _BetaMessageStream_logger, opts?.logger ?? console, "f");
-      }
-      get response() {
-        return __classPrivateFieldGet(this, _BetaMessageStream_response, "f");
-      }
-      get request_id() {
-        return __classPrivateFieldGet(this, _BetaMessageStream_request_id, "f");
-      }
-      /**
-       * Returns the `MessageStream` data, the raw `Response` instance and the ID of the request,
-       * returned vie the `request-id` header which is useful for debugging requests and resporting
-       * issues to Anthropic.
-       *
-       * This is the same as the `APIPromise.withResponse()` method.
-       *
-       * This method will raise an error if you created the stream using `MessageStream.fromReadableStream`
-       * as no `Response` is available.
-       */
-      async withResponse() {
-        __classPrivateFieldSet(this, _BetaMessageStream_catchingPromiseCreated, true, "f");
-        const response = await __classPrivateFieldGet(this, _BetaMessageStream_connectedPromise, "f");
-        if (!response) {
-          throw new Error("Could not resolve a `Response` object");
-        }
-        return {
-          data: this,
-          response,
-          request_id: response.headers.get("request-id")
-        };
-      }
-      /**
-       * Intended for use on the frontend, consuming a stream produced with
-       * `.toReadableStream()` on the backend.
-       *
-       * Note that messages sent to the model do not appear in `.on('message')`
-       * in this context.
-       */
-      static fromReadableStream(stream) {
-        const runner = new _BetaMessageStream(null);
-        runner._run(() => runner._fromReadableStream(stream));
-        return runner;
-      }
-      static createMessage(messages2, params, options, { logger } = {}) {
-        const runner = new _BetaMessageStream(params, { logger });
-        for (const message of params.messages) {
-          runner._addMessageParam(message);
-        }
-        __classPrivateFieldSet(runner, _BetaMessageStream_params, { ...params, stream: true }, "f");
-        runner._run(() => runner._createMessage(messages2, { ...params, stream: true }, { ...options, headers: { ...options?.headers, "X-Stainless-Helper-Method": "stream" } }));
-        return runner;
-      }
-      _run(executor) {
-        executor().then(() => {
-          this._emitFinal();
-          this._emit("end");
-        }, __classPrivateFieldGet(this, _BetaMessageStream_handleError, "f"));
-      }
-      _addMessageParam(message) {
-        this.messages.push(message);
-      }
-      _addMessage(message, emit2 = true) {
-        this.receivedMessages.push(message);
-        if (emit2) {
-          this._emit("message", message);
-        }
-      }
-      async _createMessage(messages2, params, options) {
-        const signal = options?.signal;
-        let abortHandler;
-        if (signal) {
-          if (signal.aborted)
-            this.controller.abort();
-          abortHandler = this.controller.abort.bind(this.controller);
-          signal.addEventListener("abort", abortHandler);
-        }
-        try {
-          __classPrivateFieldGet(this, _BetaMessageStream_instances, "m", _BetaMessageStream_beginRequest).call(this);
-          const { response, data: stream } = await messages2.create({ ...params, stream: true }, { ...options, signal: this.controller.signal }).withResponse();
-          this._connected(response);
-          for await (const event of stream) {
-            __classPrivateFieldGet(this, _BetaMessageStream_instances, "m", _BetaMessageStream_addStreamEvent).call(this, event);
-          }
-          if (stream.controller.signal?.aborted) {
-            throw new APIUserAbortError();
-          }
-          __classPrivateFieldGet(this, _BetaMessageStream_instances, "m", _BetaMessageStream_endRequest).call(this);
-        } finally {
-          if (signal && abortHandler) {
-            signal.removeEventListener("abort", abortHandler);
-          }
-        }
-      }
-      _connected(response) {
-        if (this.ended)
-          return;
-        __classPrivateFieldSet(this, _BetaMessageStream_response, response, "f");
-        __classPrivateFieldSet(this, _BetaMessageStream_request_id, response?.headers.get("request-id"), "f");
-        __classPrivateFieldGet(this, _BetaMessageStream_resolveConnectedPromise, "f").call(this, response);
-        this._emit("connect");
-      }
-      get ended() {
-        return __classPrivateFieldGet(this, _BetaMessageStream_ended, "f");
-      }
-      get errored() {
-        return __classPrivateFieldGet(this, _BetaMessageStream_errored, "f");
-      }
-      get aborted() {
-        return __classPrivateFieldGet(this, _BetaMessageStream_aborted, "f");
-      }
-      abort() {
-        this.controller.abort();
-      }
-      /**
-       * Adds the listener function to the end of the listeners array for the event.
-       * No checks are made to see if the listener has already been added. Multiple calls passing
-       * the same combination of event and listener will result in the listener being added, and
-       * called, multiple times.
-       * @returns this MessageStream, so that calls can be chained
-       */
-      on(event, listener) {
-        const listeners2 = __classPrivateFieldGet(this, _BetaMessageStream_listeners, "f")[event] || (__classPrivateFieldGet(this, _BetaMessageStream_listeners, "f")[event] = []);
-        listeners2.push({ listener });
-        return this;
-      }
-      /**
-       * Removes the specified listener from the listener array for the event.
-       * off() will remove, at most, one instance of a listener from the listener array. If any single
-       * listener has been added multiple times to the listener array for the specified event, then
-       * off() must be called multiple times to remove each instance.
-       * @returns this MessageStream, so that calls can be chained
-       */
-      off(event, listener) {
-        const listeners2 = __classPrivateFieldGet(this, _BetaMessageStream_listeners, "f")[event];
-        if (!listeners2)
-          return this;
-        const index = listeners2.findIndex((l) => l.listener === listener);
-        if (index >= 0)
-          listeners2.splice(index, 1);
-        return this;
-      }
-      /**
-       * Adds a one-time listener function for the event. The next time the event is triggered,
-       * this listener is removed and then invoked.
-       * @returns this MessageStream, so that calls can be chained
-       */
-      once(event, listener) {
-        const listeners2 = __classPrivateFieldGet(this, _BetaMessageStream_listeners, "f")[event] || (__classPrivateFieldGet(this, _BetaMessageStream_listeners, "f")[event] = []);
-        listeners2.push({ listener, once: true });
-        return this;
-      }
-      /**
-       * This is similar to `.once()`, but returns a Promise that resolves the next time
-       * the event is triggered, instead of calling a listener callback.
-       * @returns a Promise that resolves the next time given event is triggered,
-       * or rejects if an error is emitted.  (If you request the 'error' event,
-       * returns a promise that resolves with the error).
-       *
-       * Example:
-       *
-       *   const message = await stream.emitted('message') // rejects if the stream errors
-       */
-      emitted(event) {
-        return new Promise((resolve2, reject) => {
-          __classPrivateFieldSet(this, _BetaMessageStream_catchingPromiseCreated, true, "f");
-          if (event !== "error")
-            this.once("error", reject);
-          this.once(event, resolve2);
-        });
-      }
-      async done() {
-        __classPrivateFieldSet(this, _BetaMessageStream_catchingPromiseCreated, true, "f");
-        await __classPrivateFieldGet(this, _BetaMessageStream_endPromise, "f");
-      }
-      get currentMessage() {
-        return __classPrivateFieldGet(this, _BetaMessageStream_currentMessageSnapshot, "f");
-      }
-      /**
-       * @returns a promise that resolves with the the final assistant Message response,
-       * or rejects if an error occurred or the stream ended prematurely without producing a Message.
-       * If structured outputs were used, this will be a ParsedMessage with a `parsed` field.
-       */
-      async finalMessage() {
-        await this.done();
-        return __classPrivateFieldGet(this, _BetaMessageStream_instances, "m", _BetaMessageStream_getFinalMessage).call(this);
-      }
-      /**
-       * @returns a promise that resolves with the the final assistant Message's text response, concatenated
-       * together if there are more than one text blocks.
-       * Rejects if an error occurred or the stream ended prematurely without producing a Message.
-       */
-      async finalText() {
-        await this.done();
-        return __classPrivateFieldGet(this, _BetaMessageStream_instances, "m", _BetaMessageStream_getFinalText).call(this);
-      }
-      _emit(event, ...args) {
-        if (__classPrivateFieldGet(this, _BetaMessageStream_ended, "f"))
-          return;
-        if (event === "end") {
-          __classPrivateFieldSet(this, _BetaMessageStream_ended, true, "f");
-          __classPrivateFieldGet(this, _BetaMessageStream_resolveEndPromise, "f").call(this);
-        }
-        const listeners2 = __classPrivateFieldGet(this, _BetaMessageStream_listeners, "f")[event];
-        if (listeners2) {
-          __classPrivateFieldGet(this, _BetaMessageStream_listeners, "f")[event] = listeners2.filter((l) => !l.once);
-          listeners2.forEach(({ listener }) => listener(...args));
-        }
-        if (event === "abort") {
-          const error = args[0];
-          if (!__classPrivateFieldGet(this, _BetaMessageStream_catchingPromiseCreated, "f") && !listeners2?.length) {
-            Promise.reject(error);
-          }
-          __classPrivateFieldGet(this, _BetaMessageStream_rejectConnectedPromise, "f").call(this, error);
-          __classPrivateFieldGet(this, _BetaMessageStream_rejectEndPromise, "f").call(this, error);
-          this._emit("end");
-          return;
-        }
-        if (event === "error") {
-          const error = args[0];
-          if (!__classPrivateFieldGet(this, _BetaMessageStream_catchingPromiseCreated, "f") && !listeners2?.length) {
-            Promise.reject(error);
-          }
-          __classPrivateFieldGet(this, _BetaMessageStream_rejectConnectedPromise, "f").call(this, error);
-          __classPrivateFieldGet(this, _BetaMessageStream_rejectEndPromise, "f").call(this, error);
-          this._emit("end");
-        }
-      }
-      _emitFinal() {
-        const finalMessage = this.receivedMessages.at(-1);
-        if (finalMessage) {
-          this._emit("finalMessage", __classPrivateFieldGet(this, _BetaMessageStream_instances, "m", _BetaMessageStream_getFinalMessage).call(this));
-        }
-      }
-      async _fromReadableStream(readableStream, options) {
-        const signal = options?.signal;
-        let abortHandler;
-        if (signal) {
-          if (signal.aborted)
-            this.controller.abort();
-          abortHandler = this.controller.abort.bind(this.controller);
-          signal.addEventListener("abort", abortHandler);
-        }
-        try {
-          __classPrivateFieldGet(this, _BetaMessageStream_instances, "m", _BetaMessageStream_beginRequest).call(this);
-          this._connected(null);
-          const stream = Stream.fromReadableStream(readableStream, this.controller);
-          for await (const event of stream) {
-            __classPrivateFieldGet(this, _BetaMessageStream_instances, "m", _BetaMessageStream_addStreamEvent).call(this, event);
-          }
-          if (stream.controller.signal?.aborted) {
-            throw new APIUserAbortError();
-          }
-          __classPrivateFieldGet(this, _BetaMessageStream_instances, "m", _BetaMessageStream_endRequest).call(this);
-        } finally {
-          if (signal && abortHandler) {
-            signal.removeEventListener("abort", abortHandler);
-          }
-        }
-      }
-      [(_BetaMessageStream_currentMessageSnapshot = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_params = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_connectedPromise = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_resolveConnectedPromise = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_rejectConnectedPromise = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_endPromise = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_resolveEndPromise = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_rejectEndPromise = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_listeners = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_ended = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_errored = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_aborted = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_catchingPromiseCreated = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_response = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_request_id = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_logger = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_handleError = /* @__PURE__ */ new WeakMap(), _BetaMessageStream_instances = /* @__PURE__ */ new WeakSet(), _BetaMessageStream_getFinalMessage = function _BetaMessageStream_getFinalMessage2() {
-        if (this.receivedMessages.length === 0) {
-          throw new AnthropicError("stream ended without producing a Message with role=assistant");
-        }
-        return this.receivedMessages.at(-1);
-      }, _BetaMessageStream_getFinalText = function _BetaMessageStream_getFinalText2() {
-        if (this.receivedMessages.length === 0) {
-          throw new AnthropicError("stream ended without producing a Message with role=assistant");
-        }
-        const textBlocks = this.receivedMessages.at(-1).content.filter((block) => block.type === "text").map((block) => block.text);
-        if (textBlocks.length === 0) {
-          throw new AnthropicError("stream ended without producing a content block with type=text");
-        }
-        return textBlocks.join(" ");
-      }, _BetaMessageStream_beginRequest = function _BetaMessageStream_beginRequest2() {
-        if (this.ended)
-          return;
-        __classPrivateFieldSet(this, _BetaMessageStream_currentMessageSnapshot, void 0, "f");
-      }, _BetaMessageStream_addStreamEvent = function _BetaMessageStream_addStreamEvent2(event) {
-        if (this.ended)
-          return;
-        const messageSnapshot = __classPrivateFieldGet(this, _BetaMessageStream_instances, "m", _BetaMessageStream_accumulateMessage).call(this, event);
-        this._emit("streamEvent", event, messageSnapshot);
-        switch (event.type) {
-          case "content_block_delta": {
-            const content = messageSnapshot.content.at(-1);
-            switch (event.delta.type) {
-              case "text_delta": {
-                if (content.type === "text") {
-                  this._emit("text", event.delta.text, content.text || "");
-                }
-                break;
-              }
-              case "citations_delta": {
-                if (content.type === "text") {
-                  this._emit("citation", event.delta.citation, content.citations ?? []);
-                }
-                break;
-              }
-              case "input_json_delta": {
-                if (tracksToolInput(content) && content.input) {
-                  this._emit("inputJson", event.delta.partial_json, content.input);
-                }
-                break;
-              }
-              case "thinking_delta": {
-                if (content.type === "thinking") {
-                  this._emit("thinking", event.delta.thinking, content.thinking);
-                }
-                break;
-              }
-              case "signature_delta": {
-                if (content.type === "thinking") {
-                  this._emit("signature", content.signature);
-                }
-                break;
-              }
-              case "compaction_delta": {
-                if (content.type === "compaction" && content.content) {
-                  this._emit("compaction", content.content);
-                }
-                break;
-              }
-              default:
-                checkNever(event.delta);
-            }
-            break;
-          }
-          case "message_stop": {
-            this._addMessageParam(messageSnapshot);
-            this._addMessage(maybeParseBetaMessage(messageSnapshot, __classPrivateFieldGet(this, _BetaMessageStream_params, "f"), { logger: __classPrivateFieldGet(this, _BetaMessageStream_logger, "f") }), true);
-            break;
-          }
-          case "content_block_stop": {
-            this._emit("contentBlock", messageSnapshot.content.at(-1));
-            break;
-          }
-          case "message_start": {
-            __classPrivateFieldSet(this, _BetaMessageStream_currentMessageSnapshot, messageSnapshot, "f");
-            break;
-          }
-          case "content_block_start":
-          case "message_delta":
-            break;
-        }
-      }, _BetaMessageStream_endRequest = function _BetaMessageStream_endRequest2() {
-        if (this.ended) {
-          throw new AnthropicError(`stream has ended, this shouldn't happen`);
-        }
-        const snapshot2 = __classPrivateFieldGet(this, _BetaMessageStream_currentMessageSnapshot, "f");
-        if (!snapshot2) {
-          throw new AnthropicError(`request ended without sending any chunks`);
-        }
-        __classPrivateFieldSet(this, _BetaMessageStream_currentMessageSnapshot, void 0, "f");
-        return maybeParseBetaMessage(snapshot2, __classPrivateFieldGet(this, _BetaMessageStream_params, "f"), { logger: __classPrivateFieldGet(this, _BetaMessageStream_logger, "f") });
-      }, _BetaMessageStream_accumulateMessage = function _BetaMessageStream_accumulateMessage2(event) {
-        let snapshot2 = __classPrivateFieldGet(this, _BetaMessageStream_currentMessageSnapshot, "f");
-        if (event.type === "message_start") {
-          if (snapshot2) {
-            throw new AnthropicError(`Unexpected event order, got ${event.type} before receiving "message_stop"`);
-          }
-          return event.message;
-        }
-        if (!snapshot2) {
-          throw new AnthropicError(`Unexpected event order, got ${event.type} before "message_start"`);
-        }
-        switch (event.type) {
-          case "message_stop":
-            return snapshot2;
-          case "message_delta":
-            snapshot2.container = event.delta.container;
-            snapshot2.stop_reason = event.delta.stop_reason;
-            snapshot2.stop_sequence = event.delta.stop_sequence;
-            snapshot2.usage.output_tokens = event.usage.output_tokens;
-            snapshot2.context_management = event.context_management;
-            if (event.usage.input_tokens != null) {
-              snapshot2.usage.input_tokens = event.usage.input_tokens;
-            }
-            if (event.usage.cache_creation_input_tokens != null) {
-              snapshot2.usage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
-            }
-            if (event.usage.cache_read_input_tokens != null) {
-              snapshot2.usage.cache_read_input_tokens = event.usage.cache_read_input_tokens;
-            }
-            if (event.usage.server_tool_use != null) {
-              snapshot2.usage.server_tool_use = event.usage.server_tool_use;
-            }
-            if (event.usage.iterations != null) {
-              snapshot2.usage.iterations = event.usage.iterations;
-            }
-            return snapshot2;
-          case "content_block_start":
-            snapshot2.content.push(event.content_block);
-            return snapshot2;
-          case "content_block_delta": {
-            const snapshotContent = snapshot2.content.at(event.index);
-            switch (event.delta.type) {
-              case "text_delta": {
-                if (snapshotContent?.type === "text") {
-                  snapshot2.content[event.index] = {
-                    ...snapshotContent,
-                    text: (snapshotContent.text || "") + event.delta.text
-                  };
-                }
-                break;
-              }
-              case "citations_delta": {
-                if (snapshotContent?.type === "text") {
-                  snapshot2.content[event.index] = {
-                    ...snapshotContent,
-                    citations: [...snapshotContent.citations ?? [], event.delta.citation]
-                  };
-                }
-                break;
-              }
-              case "input_json_delta": {
-                if (snapshotContent && tracksToolInput(snapshotContent)) {
-                  let jsonBuf = snapshotContent[JSON_BUF_PROPERTY] || "";
-                  jsonBuf += event.delta.partial_json;
-                  const newContent = { ...snapshotContent };
-                  Object.defineProperty(newContent, JSON_BUF_PROPERTY, {
-                    value: jsonBuf,
-                    enumerable: false,
-                    writable: true
-                  });
-                  if (jsonBuf) {
-                    try {
-                      newContent.input = partialParse(jsonBuf);
-                    } catch (err) {
-                      const error = new AnthropicError(`Unable to parse tool parameter JSON from model. Please retry your request or adjust your prompt. Error: ${err}. JSON: ${jsonBuf}`);
-                      __classPrivateFieldGet(this, _BetaMessageStream_handleError, "f").call(this, error);
-                    }
-                  }
-                  snapshot2.content[event.index] = newContent;
-                }
-                break;
-              }
-              case "thinking_delta": {
-                if (snapshotContent?.type === "thinking") {
-                  snapshot2.content[event.index] = {
-                    ...snapshotContent,
-                    thinking: snapshotContent.thinking + event.delta.thinking
-                  };
-                }
-                break;
-              }
-              case "signature_delta": {
-                if (snapshotContent?.type === "thinking") {
-                  snapshot2.content[event.index] = {
-                    ...snapshotContent,
-                    signature: event.delta.signature
-                  };
-                }
-                break;
-              }
-              case "compaction_delta": {
-                if (snapshotContent?.type === "compaction") {
-                  snapshot2.content[event.index] = {
-                    ...snapshotContent,
-                    content: (snapshotContent.content || "") + event.delta.content
-                  };
-                }
-                break;
-              }
-              default:
-                checkNever(event.delta);
-            }
-            return snapshot2;
-          }
-          case "content_block_stop":
-            return snapshot2;
-        }
-      }, Symbol.asyncIterator)]() {
-        const pushQueue = [];
-        const readQueue = [];
-        let done = false;
-        this.on("streamEvent", (event) => {
-          const reader = readQueue.shift();
-          if (reader) {
-            reader.resolve(event);
-          } else {
-            pushQueue.push(event);
-          }
-        });
-        this.on("end", () => {
-          done = true;
-          for (const reader of readQueue) {
-            reader.resolve(void 0);
-          }
-          readQueue.length = 0;
-        });
-        this.on("abort", (err) => {
-          done = true;
-          for (const reader of readQueue) {
-            reader.reject(err);
-          }
-          readQueue.length = 0;
-        });
-        this.on("error", (err) => {
-          done = true;
-          for (const reader of readQueue) {
-            reader.reject(err);
-          }
-          readQueue.length = 0;
-        });
-        return {
-          next: async () => {
-            if (!pushQueue.length) {
-              if (done) {
-                return { value: void 0, done: true };
-              }
-              return new Promise((resolve2, reject) => readQueue.push({ resolve: resolve2, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
-            }
-            const chunk = pushQueue.shift();
-            return { value: chunk, done: false };
-          },
-          return: async () => {
-            this.abort();
-            return { value: void 0, done: true };
-          }
-        };
-      }
-      toReadableStream() {
-        const stream = new Stream(this[Symbol.asyncIterator].bind(this), this.controller);
-        return stream.toReadableStream();
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/lib/tools/ToolError.mjs
-var ToolError;
-var init_ToolError = __esm({
-  "node_modules/@anthropic-ai/sdk/lib/tools/ToolError.mjs"() {
-    "use strict";
-    ToolError = class extends Error {
-      constructor(content) {
-        const message = typeof content === "string" ? content : content.map((block) => {
-          if (block.type === "text")
-            return block.text;
-          return `[${block.type}]`;
-        }).join(" ");
-        super(message);
-        this.name = "ToolError";
-        this.content = content;
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/lib/tools/CompactionControl.mjs
-var DEFAULT_TOKEN_THRESHOLD, DEFAULT_SUMMARY_PROMPT;
-var init_CompactionControl = __esm({
-  "node_modules/@anthropic-ai/sdk/lib/tools/CompactionControl.mjs"() {
-    "use strict";
-    DEFAULT_TOKEN_THRESHOLD = 1e5;
-    DEFAULT_SUMMARY_PROMPT = `You have been working on the task described above but have not yet completed it. Write a continuation summary that will allow you (or another instance of yourself) to resume work efficiently in a future context window where the conversation history will be replaced with this summary. Your summary should be structured, concise, and actionable. Include:
-1. Task Overview
-The user's core request and success criteria
-Any clarifications or constraints they specified
-2. Current State
-What has been completed so far
-Files created, modified, or analyzed (with paths if relevant)
-Key outputs or artifacts produced
-3. Important Discoveries
-Technical constraints or requirements uncovered
-Decisions made and their rationale
-Errors encountered and how they were resolved
-What approaches were tried that didn't work (and why)
-4. Next Steps
-Specific actions needed to complete the task
-Any blockers or open questions to resolve
-Priority order if multiple steps remain
-5. Context to Preserve
-User preferences or style requirements
-Domain-specific details that aren't obvious
-Any promises made to the user
-Be concise but complete\u2014err on the side of including information that would prevent duplicate work or repeated mistakes. Write in a way that enables immediate resumption of the task.
-Wrap your summary in <summary></summary> tags.`;
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/lib/tools/BetaToolRunner.mjs
-function promiseWithResolvers() {
-  let resolve2;
-  let reject;
-  const promise = new Promise((res, rej) => {
-    resolve2 = res;
-    reject = rej;
-  });
-  return { promise, resolve: resolve2, reject };
-}
-async function generateToolResponse(params, lastMessage = params.messages.at(-1)) {
-  if (!lastMessage || lastMessage.role !== "assistant" || !lastMessage.content || typeof lastMessage.content === "string") {
-    return null;
-  }
-  const toolUseBlocks = lastMessage.content.filter((content) => content.type === "tool_use");
-  if (toolUseBlocks.length === 0) {
-    return null;
-  }
-  const toolResults = await Promise.all(toolUseBlocks.map(async (toolUse) => {
-    const tool = params.tools.find((t) => ("name" in t ? t.name : t.mcp_server_name) === toolUse.name);
-    if (!tool || !("run" in tool)) {
-      return {
-        type: "tool_result",
-        tool_use_id: toolUse.id,
-        content: `Error: Tool '${toolUse.name}' not found`,
-        is_error: true
-      };
-    }
-    try {
-      let input = toolUse.input;
-      if ("parse" in tool && tool.parse) {
-        input = tool.parse(input);
-      }
-      const result = await tool.run(input);
-      return {
-        type: "tool_result",
-        tool_use_id: toolUse.id,
-        content: result
-      };
-    } catch (error) {
-      return {
-        type: "tool_result",
-        tool_use_id: toolUse.id,
-        content: error instanceof ToolError ? error.content : `Error: ${error instanceof Error ? error.message : String(error)}`,
-        is_error: true
-      };
-    }
-  }));
-  return {
-    role: "user",
-    content: toolResults
-  };
-}
-var _BetaToolRunner_instances, _BetaToolRunner_consumed, _BetaToolRunner_mutated, _BetaToolRunner_state, _BetaToolRunner_options, _BetaToolRunner_message, _BetaToolRunner_toolResponse, _BetaToolRunner_completion, _BetaToolRunner_iterationCount, _BetaToolRunner_checkAndCompact, _BetaToolRunner_generateToolResponse, BetaToolRunner;
-var init_BetaToolRunner = __esm({
-  "node_modules/@anthropic-ai/sdk/lib/tools/BetaToolRunner.mjs"() {
-    "use strict";
-    init_tslib();
-    init_ToolError();
-    init_error();
-    init_headers();
-    init_CompactionControl();
-    init_stainless_helper_header();
-    BetaToolRunner = class {
-      constructor(client, params, options) {
-        _BetaToolRunner_instances.add(this);
-        this.client = client;
-        _BetaToolRunner_consumed.set(this, false);
-        _BetaToolRunner_mutated.set(this, false);
-        _BetaToolRunner_state.set(this, void 0);
-        _BetaToolRunner_options.set(this, void 0);
-        _BetaToolRunner_message.set(this, void 0);
-        _BetaToolRunner_toolResponse.set(this, void 0);
-        _BetaToolRunner_completion.set(this, void 0);
-        _BetaToolRunner_iterationCount.set(this, 0);
-        __classPrivateFieldSet(this, _BetaToolRunner_state, {
-          params: {
-            // You can't clone the entire params since there are functions as handlers.
-            // You also don't really need to clone params.messages, but it probably will prevent a foot gun
-            // somewhere.
-            ...params,
-            messages: structuredClone(params.messages)
-          }
-        }, "f");
-        const helpers = collectStainlessHelpers(params.tools, params.messages);
-        const helperValue = ["BetaToolRunner", ...helpers].join(", ");
-        __classPrivateFieldSet(this, _BetaToolRunner_options, {
-          ...options,
-          headers: buildHeaders([{ "x-stainless-helper": helperValue }, options?.headers])
-        }, "f");
-        __classPrivateFieldSet(this, _BetaToolRunner_completion, promiseWithResolvers(), "f");
-      }
-      async *[(_BetaToolRunner_consumed = /* @__PURE__ */ new WeakMap(), _BetaToolRunner_mutated = /* @__PURE__ */ new WeakMap(), _BetaToolRunner_state = /* @__PURE__ */ new WeakMap(), _BetaToolRunner_options = /* @__PURE__ */ new WeakMap(), _BetaToolRunner_message = /* @__PURE__ */ new WeakMap(), _BetaToolRunner_toolResponse = /* @__PURE__ */ new WeakMap(), _BetaToolRunner_completion = /* @__PURE__ */ new WeakMap(), _BetaToolRunner_iterationCount = /* @__PURE__ */ new WeakMap(), _BetaToolRunner_instances = /* @__PURE__ */ new WeakSet(), _BetaToolRunner_checkAndCompact = async function _BetaToolRunner_checkAndCompact2() {
-        const compactionControl = __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params.compactionControl;
-        if (!compactionControl || !compactionControl.enabled) {
-          return false;
-        }
-        let tokensUsed = 0;
-        if (__classPrivateFieldGet(this, _BetaToolRunner_message, "f") !== void 0) {
-          try {
-            const message = await __classPrivateFieldGet(this, _BetaToolRunner_message, "f");
-            const totalInputTokens = message.usage.input_tokens + (message.usage.cache_creation_input_tokens ?? 0) + (message.usage.cache_read_input_tokens ?? 0);
-            tokensUsed = totalInputTokens + message.usage.output_tokens;
-          } catch {
-            return false;
-          }
-        }
-        const threshold = compactionControl.contextTokenThreshold ?? DEFAULT_TOKEN_THRESHOLD;
-        if (tokensUsed < threshold) {
-          return false;
-        }
-        const model = compactionControl.model ?? __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params.model;
-        const summaryPrompt = compactionControl.summaryPrompt ?? DEFAULT_SUMMARY_PROMPT;
-        const messages2 = __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params.messages;
-        if (messages2[messages2.length - 1].role === "assistant") {
-          const lastMessage = messages2[messages2.length - 1];
-          if (Array.isArray(lastMessage.content)) {
-            const nonToolBlocks = lastMessage.content.filter((block) => block.type !== "tool_use");
-            if (nonToolBlocks.length === 0) {
-              messages2.pop();
-            } else {
-              lastMessage.content = nonToolBlocks;
-            }
-          }
-        }
-        const response = await this.client.beta.messages.create({
-          model,
-          messages: [
-            ...messages2,
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: summaryPrompt
-                }
-              ]
-            }
-          ],
-          max_tokens: __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params.max_tokens
-        }, {
-          headers: { "x-stainless-helper": "compaction" }
-        });
-        if (response.content[0]?.type !== "text") {
-          throw new AnthropicError("Expected text response for compaction");
-        }
-        __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params.messages = [
-          {
-            role: "user",
-            content: response.content
-          }
-        ];
-        return true;
-      }, Symbol.asyncIterator)]() {
-        var _a2;
-        if (__classPrivateFieldGet(this, _BetaToolRunner_consumed, "f")) {
-          throw new AnthropicError("Cannot iterate over a consumed stream");
-        }
-        __classPrivateFieldSet(this, _BetaToolRunner_consumed, true, "f");
-        __classPrivateFieldSet(this, _BetaToolRunner_mutated, true, "f");
-        __classPrivateFieldSet(this, _BetaToolRunner_toolResponse, void 0, "f");
-        try {
-          while (true) {
-            let stream;
-            try {
-              if (__classPrivateFieldGet(this, _BetaToolRunner_state, "f").params.max_iterations && __classPrivateFieldGet(this, _BetaToolRunner_iterationCount, "f") >= __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params.max_iterations) {
-                break;
-              }
-              __classPrivateFieldSet(this, _BetaToolRunner_mutated, false, "f");
-              __classPrivateFieldSet(this, _BetaToolRunner_toolResponse, void 0, "f");
-              __classPrivateFieldSet(this, _BetaToolRunner_iterationCount, (_a2 = __classPrivateFieldGet(this, _BetaToolRunner_iterationCount, "f"), _a2++, _a2), "f");
-              __classPrivateFieldSet(this, _BetaToolRunner_message, void 0, "f");
-              const { max_iterations, compactionControl, ...params } = __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params;
-              if (params.stream) {
-                stream = this.client.beta.messages.stream({ ...params }, __classPrivateFieldGet(this, _BetaToolRunner_options, "f"));
-                __classPrivateFieldSet(this, _BetaToolRunner_message, stream.finalMessage(), "f");
-                __classPrivateFieldGet(this, _BetaToolRunner_message, "f").catch(() => {
-                });
-                yield stream;
-              } else {
-                __classPrivateFieldSet(this, _BetaToolRunner_message, this.client.beta.messages.create({ ...params, stream: false }, __classPrivateFieldGet(this, _BetaToolRunner_options, "f")), "f");
-                yield __classPrivateFieldGet(this, _BetaToolRunner_message, "f");
-              }
-              const isCompacted = await __classPrivateFieldGet(this, _BetaToolRunner_instances, "m", _BetaToolRunner_checkAndCompact).call(this);
-              if (!isCompacted) {
-                if (!__classPrivateFieldGet(this, _BetaToolRunner_mutated, "f")) {
-                  const { role, content } = await __classPrivateFieldGet(this, _BetaToolRunner_message, "f");
-                  __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params.messages.push({ role, content });
-                }
-                const toolMessage = await __classPrivateFieldGet(this, _BetaToolRunner_instances, "m", _BetaToolRunner_generateToolResponse).call(this, __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params.messages.at(-1));
-                if (toolMessage) {
-                  __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params.messages.push(toolMessage);
-                } else if (!__classPrivateFieldGet(this, _BetaToolRunner_mutated, "f")) {
-                  break;
-                }
-              }
-            } finally {
-              if (stream) {
-                stream.abort();
-              }
-            }
-          }
-          if (!__classPrivateFieldGet(this, _BetaToolRunner_message, "f")) {
-            throw new AnthropicError("ToolRunner concluded without a message from the server");
-          }
-          __classPrivateFieldGet(this, _BetaToolRunner_completion, "f").resolve(await __classPrivateFieldGet(this, _BetaToolRunner_message, "f"));
-        } catch (error) {
-          __classPrivateFieldSet(this, _BetaToolRunner_consumed, false, "f");
-          __classPrivateFieldGet(this, _BetaToolRunner_completion, "f").promise.catch(() => {
-          });
-          __classPrivateFieldGet(this, _BetaToolRunner_completion, "f").reject(error);
-          __classPrivateFieldSet(this, _BetaToolRunner_completion, promiseWithResolvers(), "f");
-          throw error;
-        }
-      }
-      setMessagesParams(paramsOrMutator) {
-        if (typeof paramsOrMutator === "function") {
-          __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params = paramsOrMutator(__classPrivateFieldGet(this, _BetaToolRunner_state, "f").params);
-        } else {
-          __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params = paramsOrMutator;
-        }
-        __classPrivateFieldSet(this, _BetaToolRunner_mutated, true, "f");
-        __classPrivateFieldSet(this, _BetaToolRunner_toolResponse, void 0, "f");
-      }
-      /**
-       * Get the tool response for the last message from the assistant.
-       * Avoids redundant tool executions by caching results.
-       *
-       * @returns A promise that resolves to a BetaMessageParam containing tool results, or null if no tools need to be executed
-       *
-       * @example
-       * const toolResponse = await runner.generateToolResponse();
-       * if (toolResponse) {
-       *   console.log('Tool results:', toolResponse.content);
-       * }
-       */
-      async generateToolResponse() {
-        const message = await __classPrivateFieldGet(this, _BetaToolRunner_message, "f") ?? this.params.messages.at(-1);
-        if (!message) {
-          return null;
-        }
-        return __classPrivateFieldGet(this, _BetaToolRunner_instances, "m", _BetaToolRunner_generateToolResponse).call(this, message);
-      }
-      /**
-       * Wait for the async iterator to complete. This works even if the async iterator hasn't yet started, and
-       * will wait for an instance to start and go to completion.
-       *
-       * @returns A promise that resolves to the final BetaMessage when the iterator completes
-       *
-       * @example
-       * // Start consuming the iterator
-       * for await (const message of runner) {
-       *   console.log('Message:', message.content);
-       * }
-       *
-       * // Meanwhile, wait for completion from another part of the code
-       * const finalMessage = await runner.done();
-       * console.log('Final response:', finalMessage.content);
-       */
-      done() {
-        return __classPrivateFieldGet(this, _BetaToolRunner_completion, "f").promise;
-      }
-      /**
-       * Returns a promise indicating that the stream is done. Unlike .done(), this will eagerly read the stream:
-       * * If the iterator has not been consumed, consume the entire iterator and return the final message from the
-       * assistant.
-       * * If the iterator has been consumed, waits for it to complete and returns the final message.
-       *
-       * @returns A promise that resolves to the final BetaMessage from the conversation
-       * @throws {AnthropicError} If no messages were processed during the conversation
-       *
-       * @example
-       * const finalMessage = await runner.runUntilDone();
-       * console.log('Final response:', finalMessage.content);
-       */
-      async runUntilDone() {
-        if (!__classPrivateFieldGet(this, _BetaToolRunner_consumed, "f")) {
-          for await (const _ of this) {
-          }
-        }
-        return this.done();
-      }
-      /**
-       * Get the current parameters being used by the ToolRunner.
-       *
-       * @returns A readonly view of the current ToolRunnerParams
-       *
-       * @example
-       * const currentParams = runner.params;
-       * console.log('Current model:', currentParams.model);
-       * console.log('Message count:', currentParams.messages.length);
-       */
-      get params() {
-        return __classPrivateFieldGet(this, _BetaToolRunner_state, "f").params;
-      }
-      /**
-       * Add one or more messages to the conversation history.
-       *
-       * @param messages - One or more BetaMessageParam objects to add to the conversation
-       *
-       * @example
-       * runner.pushMessages(
-       *   { role: 'user', content: 'Also, what about the weather in NYC?' }
-       * );
-       *
-       * @example
-       * // Adding multiple messages
-       * runner.pushMessages(
-       *   { role: 'user', content: 'What about NYC?' },
-       *   { role: 'user', content: 'And Boston?' }
-       * );
-       */
-      pushMessages(...messages2) {
-        this.setMessagesParams((params) => ({
-          ...params,
-          messages: [...params.messages, ...messages2]
-        }));
-      }
-      /**
-       * Makes the ToolRunner directly awaitable, equivalent to calling .runUntilDone()
-       * This allows using `await runner` instead of `await runner.runUntilDone()`
-       */
-      then(onfulfilled, onrejected) {
-        return this.runUntilDone().then(onfulfilled, onrejected);
-      }
-    };
-    _BetaToolRunner_generateToolResponse = async function _BetaToolRunner_generateToolResponse2(lastMessage) {
-      if (__classPrivateFieldGet(this, _BetaToolRunner_toolResponse, "f") !== void 0) {
-        return __classPrivateFieldGet(this, _BetaToolRunner_toolResponse, "f");
-      }
-      __classPrivateFieldSet(this, _BetaToolRunner_toolResponse, generateToolResponse(__classPrivateFieldGet(this, _BetaToolRunner_state, "f").params, lastMessage), "f");
-      return __classPrivateFieldGet(this, _BetaToolRunner_toolResponse, "f");
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/decoders/jsonl.mjs
-var JSONLDecoder;
-var init_jsonl = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/decoders/jsonl.mjs"() {
-    "use strict";
-    init_error();
-    init_shims();
-    init_line();
-    JSONLDecoder = class _JSONLDecoder {
-      constructor(iterator, controller) {
-        this.iterator = iterator;
-        this.controller = controller;
-      }
-      async *decoder() {
-        const lineDecoder = new LineDecoder();
-        for await (const chunk of this.iterator) {
-          for (const line of lineDecoder.decode(chunk)) {
-            yield JSON.parse(line);
-          }
-        }
-        for (const line of lineDecoder.flush()) {
-          yield JSON.parse(line);
-        }
-      }
-      [Symbol.asyncIterator]() {
-        return this.decoder();
-      }
-      static fromResponse(response, controller) {
-        if (!response.body) {
-          controller.abort();
-          if (typeof globalThis.navigator !== "undefined" && globalThis.navigator.product === "ReactNative") {
-            throw new AnthropicError(`The default react-native fetch implementation does not support streaming. Please use expo/fetch: https://docs.expo.dev/versions/latest/sdk/expo/#expofetch-api`);
-          }
-          throw new AnthropicError(`Attempted to iterate over a response with no body`);
-        }
-        return new _JSONLDecoder(ReadableStreamToAsyncIterable(response.body), controller);
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/beta/messages/batches.mjs
-var Batches;
-var init_batches = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/beta/messages/batches.mjs"() {
-    "use strict";
-    init_resource();
-    init_pagination();
-    init_headers();
-    init_jsonl();
-    init_error2();
-    init_path();
-    Batches = class extends APIResource {
-      /**
-       * Send a batch of Message creation requests.
-       *
-       * The Message Batches API can be used to process multiple Messages API requests at
-       * once. Once a Message Batch is created, it begins processing immediately. Batches
-       * can take up to 24 hours to complete.
-       *
-       * Learn more about the Message Batches API in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
-       *
-       * @example
-       * ```ts
-       * const betaMessageBatch =
-       *   await client.beta.messages.batches.create({
-       *     requests: [
-       *       {
-       *         custom_id: 'my-custom-id-1',
-       *         params: {
-       *           max_tokens: 1024,
-       *           messages: [
-       *             { content: 'Hello, world', role: 'user' },
-       *           ],
-       *           model: 'claude-opus-4-6',
-       *         },
-       *       },
-       *     ],
-       *   });
-       * ```
-       */
-      create(params, options) {
-        const { betas, ...body } = params;
-        return this._client.post("/v1/messages/batches?beta=true", {
-          body,
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "message-batches-2024-09-24"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * This endpoint is idempotent and can be used to poll for Message Batch
-       * completion. To access the results of a Message Batch, make a request to the
-       * `results_url` field in the response.
-       *
-       * Learn more about the Message Batches API in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
-       *
-       * @example
-       * ```ts
-       * const betaMessageBatch =
-       *   await client.beta.messages.batches.retrieve(
-       *     'message_batch_id',
-       *   );
-       * ```
-       */
-      retrieve(messageBatchID, params = {}, options) {
-        const { betas } = params ?? {};
-        return this._client.get(path4`/v1/messages/batches/${messageBatchID}?beta=true`, {
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "message-batches-2024-09-24"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * List all Message Batches within a Workspace. Most recently created batches are
-       * returned first.
-       *
-       * Learn more about the Message Batches API in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
-       *
-       * @example
-       * ```ts
-       * // Automatically fetches more pages as needed.
-       * for await (const betaMessageBatch of client.beta.messages.batches.list()) {
-       *   // ...
-       * }
-       * ```
-       */
-      list(params = {}, options) {
-        const { betas, ...query } = params ?? {};
-        return this._client.getAPIList("/v1/messages/batches?beta=true", Page, {
-          query,
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "message-batches-2024-09-24"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * Delete a Message Batch.
-       *
-       * Message Batches can only be deleted once they've finished processing. If you'd
-       * like to delete an in-progress batch, you must first cancel it.
-       *
-       * Learn more about the Message Batches API in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
-       *
-       * @example
-       * ```ts
-       * const betaDeletedMessageBatch =
-       *   await client.beta.messages.batches.delete(
-       *     'message_batch_id',
-       *   );
-       * ```
-       */
-      delete(messageBatchID, params = {}, options) {
-        const { betas } = params ?? {};
-        return this._client.delete(path4`/v1/messages/batches/${messageBatchID}?beta=true`, {
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "message-batches-2024-09-24"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * Batches may be canceled any time before processing ends. Once cancellation is
-       * initiated, the batch enters a `canceling` state, at which time the system may
-       * complete any in-progress, non-interruptible requests before finalizing
-       * cancellation.
-       *
-       * The number of canceled requests is specified in `request_counts`. To determine
-       * which requests were canceled, check the individual results within the batch.
-       * Note that cancellation may not result in any canceled requests if they were
-       * non-interruptible.
-       *
-       * Learn more about the Message Batches API in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
-       *
-       * @example
-       * ```ts
-       * const betaMessageBatch =
-       *   await client.beta.messages.batches.cancel(
-       *     'message_batch_id',
-       *   );
-       * ```
-       */
-      cancel(messageBatchID, params = {}, options) {
-        const { betas } = params ?? {};
-        return this._client.post(path4`/v1/messages/batches/${messageBatchID}/cancel?beta=true`, {
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "message-batches-2024-09-24"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * Streams the results of a Message Batch as a `.jsonl` file.
-       *
-       * Each line in the file is a JSON object containing the result of a single request
-       * in the Message Batch. Results are not guaranteed to be in the same order as
-       * requests. Use the `custom_id` field to match results to requests.
-       *
-       * Learn more about the Message Batches API in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
-       *
-       * @example
-       * ```ts
-       * const betaMessageBatchIndividualResponse =
-       *   await client.beta.messages.batches.results(
-       *     'message_batch_id',
-       *   );
-       * ```
-       */
-      async results(messageBatchID, params = {}, options) {
-        const batch = await this.retrieve(messageBatchID);
-        if (!batch.results_url) {
-          throw new AnthropicError(`No batch \`results_url\`; Has it finished processing? ${batch.processing_status} - ${batch.id}`);
-        }
-        const { betas } = params ?? {};
-        return this._client.get(batch.results_url, {
-          ...options,
-          headers: buildHeaders([
-            {
-              "anthropic-beta": [...betas ?? [], "message-batches-2024-09-24"].toString(),
-              Accept: "application/binary"
-            },
-            options?.headers
-          ]),
-          stream: true,
-          __binaryResponse: true
-        })._thenUnwrap((_, props) => JSONLDecoder.fromResponse(props.response, props.controller));
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/beta/messages/messages.mjs
-function transformOutputFormat(params) {
-  if (!params.output_format) {
-    return params;
-  }
-  if (params.output_config?.format) {
-    throw new AnthropicError("Both output_format and output_config.format were provided. Please use only output_config.format (output_format is deprecated).");
-  }
-  const { output_format, ...rest } = params;
-  return {
-    ...rest,
-    output_config: {
-      ...params.output_config,
-      format: output_format
-    }
-  };
-}
-var DEPRECATED_MODELS, MODELS_TO_WARN_WITH_THINKING_ENABLED, Messages;
-var init_messages = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/beta/messages/messages.mjs"() {
-    "use strict";
-    init_error2();
-    init_resource();
-    init_constants();
-    init_headers();
-    init_stainless_helper_header();
-    init_beta_parser();
-    init_BetaMessageStream();
-    init_BetaToolRunner();
-    init_ToolError();
-    init_batches();
-    init_batches();
-    init_BetaToolRunner();
-    init_ToolError();
-    DEPRECATED_MODELS = {
-      "claude-1.3": "November 6th, 2024",
-      "claude-1.3-100k": "November 6th, 2024",
-      "claude-instant-1.1": "November 6th, 2024",
-      "claude-instant-1.1-100k": "November 6th, 2024",
-      "claude-instant-1.2": "November 6th, 2024",
-      "claude-3-sonnet-20240229": "July 21st, 2025",
-      "claude-3-opus-20240229": "January 5th, 2026",
-      "claude-2.1": "July 21st, 2025",
-      "claude-2.0": "July 21st, 2025",
-      "claude-3-7-sonnet-latest": "February 19th, 2026",
-      "claude-3-7-sonnet-20250219": "February 19th, 2026"
-    };
-    MODELS_TO_WARN_WITH_THINKING_ENABLED = ["claude-opus-4-6"];
-    Messages = class extends APIResource {
-      constructor() {
-        super(...arguments);
-        this.batches = new Batches(this._client);
-      }
-      create(params, options) {
-        const modifiedParams = transformOutputFormat(params);
-        const { betas, ...body } = modifiedParams;
-        if (body.model in DEPRECATED_MODELS) {
-          console.warn(`The model '${body.model}' is deprecated and will reach end-of-life on ${DEPRECATED_MODELS[body.model]}
-Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resources/model-deprecations for more information.`);
-        }
-        if (body.model in MODELS_TO_WARN_WITH_THINKING_ENABLED && body.thinking && body.thinking.type === "enabled") {
-          console.warn(`Using Claude with ${body.model} and 'thinking.type=enabled' is deprecated. Use 'thinking.type=adaptive' instead which results in better model performance in our testing: https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking`);
-        }
-        let timeout = this._client._options.timeout;
-        if (!body.stream && timeout == null) {
-          const maxNonstreamingTokens = MODEL_NONSTREAMING_TOKENS[body.model] ?? void 0;
-          timeout = this._client.calculateNonstreamingTimeout(body.max_tokens, maxNonstreamingTokens);
-        }
-        const helperHeader = stainlessHelperHeader(body.tools, body.messages);
-        return this._client.post("/v1/messages?beta=true", {
-          body,
-          timeout: timeout ?? 6e5,
-          ...options,
-          headers: buildHeaders([
-            { ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 },
-            helperHeader,
-            options?.headers
-          ]),
-          stream: modifiedParams.stream ?? false
-        });
-      }
-      /**
-       * Send a structured list of input messages with text and/or image content, along with an expected `output_format` and
-       * the response will be automatically parsed and available in the `parsed_output` property of the message.
-       *
-       * @example
-       * ```ts
-       * const message = await client.beta.messages.parse({
-       *   model: 'claude-3-5-sonnet-20241022',
-       *   max_tokens: 1024,
-       *   messages: [{ role: 'user', content: 'What is 2+2?' }],
-       *   output_format: zodOutputFormat(z.object({ answer: z.number() }), 'math'),
-       * });
-       *
-       * console.log(message.parsed_output?.answer); // 4
-       * ```
-       */
-      parse(params, options) {
-        options = {
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...params.betas ?? [], "structured-outputs-2025-12-15"].toString() },
-            options?.headers
-          ])
-        };
-        return this.create(params, options).then((message) => parseBetaMessage(message, params, { logger: this._client.logger ?? console }));
-      }
-      /**
-       * Create a Message stream
-       */
-      stream(body, options) {
-        return BetaMessageStream.createMessage(this, body, options);
-      }
-      /**
-       * Count the number of tokens in a Message.
-       *
-       * The Token Count API can be used to count the number of tokens in a Message,
-       * including tools, images, and documents, without creating it.
-       *
-       * Learn more about token counting in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/token-counting)
-       *
-       * @example
-       * ```ts
-       * const betaMessageTokensCount =
-       *   await client.beta.messages.countTokens({
-       *     messages: [{ content: 'string', role: 'user' }],
-       *     model: 'claude-opus-4-6',
-       *   });
-       * ```
-       */
-      countTokens(params, options) {
-        const modifiedParams = transformOutputFormat(params);
-        const { betas, ...body } = modifiedParams;
-        return this._client.post("/v1/messages/count_tokens?beta=true", {
-          body,
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "token-counting-2024-11-01"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      toolRunner(body, options) {
-        return new BetaToolRunner(this._client, body, options);
-      }
-    };
-    Messages.Batches = Batches;
-    Messages.BetaToolRunner = BetaToolRunner;
-    Messages.ToolError = ToolError;
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/beta/skills/versions.mjs
-var Versions;
-var init_versions = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/beta/skills/versions.mjs"() {
-    "use strict";
-    init_resource();
-    init_pagination();
-    init_headers();
-    init_uploads();
-    init_path();
-    Versions = class extends APIResource {
-      /**
-       * Create Skill Version
-       *
-       * @example
-       * ```ts
-       * const version = await client.beta.skills.versions.create(
-       *   'skill_id',
-       * );
-       * ```
-       */
-      create(skillID, params = {}, options) {
-        const { betas, ...body } = params ?? {};
-        return this._client.post(path4`/v1/skills/${skillID}/versions?beta=true`, multipartFormRequestOptions({
-          body,
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "skills-2025-10-02"].toString() },
-            options?.headers
-          ])
-        }, this._client));
-      }
-      /**
-       * Get Skill Version
-       *
-       * @example
-       * ```ts
-       * const version = await client.beta.skills.versions.retrieve(
-       *   'version',
-       *   { skill_id: 'skill_id' },
-       * );
-       * ```
-       */
-      retrieve(version, params, options) {
-        const { skill_id, betas } = params;
-        return this._client.get(path4`/v1/skills/${skill_id}/versions/${version}?beta=true`, {
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "skills-2025-10-02"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * List Skill Versions
-       *
-       * @example
-       * ```ts
-       * // Automatically fetches more pages as needed.
-       * for await (const versionListResponse of client.beta.skills.versions.list(
-       *   'skill_id',
-       * )) {
-       *   // ...
-       * }
-       * ```
-       */
-      list(skillID, params = {}, options) {
-        const { betas, ...query } = params ?? {};
-        return this._client.getAPIList(path4`/v1/skills/${skillID}/versions?beta=true`, PageCursor, {
-          query,
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "skills-2025-10-02"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * Delete Skill Version
-       *
-       * @example
-       * ```ts
-       * const version = await client.beta.skills.versions.delete(
-       *   'version',
-       *   { skill_id: 'skill_id' },
-       * );
-       * ```
-       */
-      delete(version, params, options) {
-        const { skill_id, betas } = params;
-        return this._client.delete(path4`/v1/skills/${skill_id}/versions/${version}?beta=true`, {
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "skills-2025-10-02"].toString() },
-            options?.headers
-          ])
-        });
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/beta/skills/skills.mjs
-var Skills;
-var init_skills = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/beta/skills/skills.mjs"() {
-    "use strict";
-    init_resource();
-    init_versions();
-    init_versions();
-    init_pagination();
-    init_headers();
-    init_uploads();
-    init_path();
-    Skills = class extends APIResource {
-      constructor() {
-        super(...arguments);
-        this.versions = new Versions(this._client);
-      }
-      /**
-       * Create Skill
-       *
-       * @example
-       * ```ts
-       * const skill = await client.beta.skills.create();
-       * ```
-       */
-      create(params = {}, options) {
-        const { betas, ...body } = params ?? {};
-        return this._client.post("/v1/skills?beta=true", multipartFormRequestOptions({
-          body,
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "skills-2025-10-02"].toString() },
-            options?.headers
-          ])
-        }, this._client, false));
-      }
-      /**
-       * Get Skill
-       *
-       * @example
-       * ```ts
-       * const skill = await client.beta.skills.retrieve('skill_id');
-       * ```
-       */
-      retrieve(skillID, params = {}, options) {
-        const { betas } = params ?? {};
-        return this._client.get(path4`/v1/skills/${skillID}?beta=true`, {
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "skills-2025-10-02"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * List Skills
-       *
-       * @example
-       * ```ts
-       * // Automatically fetches more pages as needed.
-       * for await (const skillListResponse of client.beta.skills.list()) {
-       *   // ...
-       * }
-       * ```
-       */
-      list(params = {}, options) {
-        const { betas, ...query } = params ?? {};
-        return this._client.getAPIList("/v1/skills?beta=true", PageCursor, {
-          query,
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "skills-2025-10-02"].toString() },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * Delete Skill
-       *
-       * @example
-       * ```ts
-       * const skill = await client.beta.skills.delete('skill_id');
-       * ```
-       */
-      delete(skillID, params = {}, options) {
-        const { betas } = params ?? {};
-        return this._client.delete(path4`/v1/skills/${skillID}?beta=true`, {
-          ...options,
-          headers: buildHeaders([
-            { "anthropic-beta": [...betas ?? [], "skills-2025-10-02"].toString() },
-            options?.headers
-          ])
-        });
-      }
-    };
-    Skills.Versions = Versions;
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/beta/beta.mjs
-var Beta;
-var init_beta = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/beta/beta.mjs"() {
-    "use strict";
-    init_resource();
-    init_files();
-    init_files();
-    init_models();
-    init_models();
-    init_messages();
-    init_messages();
-    init_skills();
-    init_skills();
-    Beta = class extends APIResource {
-      constructor() {
-        super(...arguments);
-        this.models = new Models(this._client);
-        this.messages = new Messages(this._client);
-        this.files = new Files(this._client);
-        this.skills = new Skills(this._client);
-      }
-    };
-    Beta.Models = Models;
-    Beta.Messages = Messages;
-    Beta.Files = Files;
-    Beta.Skills = Skills;
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/completions.mjs
-var Completions;
-var init_completions = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/completions.mjs"() {
-    "use strict";
-    init_resource();
-    init_headers();
-    Completions = class extends APIResource {
-      create(params, options) {
-        const { betas, ...body } = params;
-        return this._client.post("/v1/complete", {
-          body,
-          timeout: this._client._options.timeout ?? 6e5,
-          ...options,
-          headers: buildHeaders([
-            { ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 },
-            options?.headers
-          ]),
-          stream: params.stream ?? false
-        });
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/lib/parser.mjs
-function getOutputFormat2(params) {
-  return params?.output_config?.format;
-}
-function maybeParseMessage(message, params, opts) {
-  const outputFormat = getOutputFormat2(params);
-  if (!params || !("parse" in (outputFormat ?? {}))) {
-    return {
-      ...message,
-      content: message.content.map((block) => {
-        if (block.type === "text") {
-          const parsedBlock = Object.defineProperty({ ...block }, "parsed_output", {
-            value: null,
-            enumerable: false
-          });
-          return parsedBlock;
-        }
-        return block;
-      }),
-      parsed_output: null
-    };
-  }
-  return parseMessage(message, params, opts);
-}
-function parseMessage(message, params, opts) {
-  let firstParsedOutput = null;
-  const content = message.content.map((block) => {
-    if (block.type === "text") {
-      const parsedOutput = parseOutputFormat(params, block.text);
-      if (firstParsedOutput === null) {
-        firstParsedOutput = parsedOutput;
-      }
-      const parsedBlock = Object.defineProperty({ ...block }, "parsed_output", {
-        value: parsedOutput,
-        enumerable: false
-      });
-      return parsedBlock;
-    }
-    return block;
-  });
-  return {
-    ...message,
-    content,
-    parsed_output: firstParsedOutput
-  };
-}
-function parseOutputFormat(params, content) {
-  const outputFormat = getOutputFormat2(params);
-  if (outputFormat?.type !== "json_schema") {
-    return null;
-  }
-  try {
-    if ("parse" in outputFormat) {
-      return outputFormat.parse(content);
-    }
-    return JSON.parse(content);
-  } catch (error) {
-    throw new AnthropicError(`Failed to parse structured output: ${error}`);
-  }
-}
-var init_parser2 = __esm({
-  "node_modules/@anthropic-ai/sdk/lib/parser.mjs"() {
-    "use strict";
-    init_error();
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/lib/MessageStream.mjs
-function tracksToolInput2(content) {
-  return content.type === "tool_use" || content.type === "server_tool_use";
-}
-function checkNever2(x) {
-}
-var _MessageStream_instances, _MessageStream_currentMessageSnapshot, _MessageStream_params, _MessageStream_connectedPromise, _MessageStream_resolveConnectedPromise, _MessageStream_rejectConnectedPromise, _MessageStream_endPromise, _MessageStream_resolveEndPromise, _MessageStream_rejectEndPromise, _MessageStream_listeners, _MessageStream_ended, _MessageStream_errored, _MessageStream_aborted, _MessageStream_catchingPromiseCreated, _MessageStream_response, _MessageStream_request_id, _MessageStream_logger, _MessageStream_getFinalMessage, _MessageStream_getFinalText, _MessageStream_handleError, _MessageStream_beginRequest, _MessageStream_addStreamEvent, _MessageStream_endRequest, _MessageStream_accumulateMessage, JSON_BUF_PROPERTY2, MessageStream;
-var init_MessageStream = __esm({
-  "node_modules/@anthropic-ai/sdk/lib/MessageStream.mjs"() {
-    "use strict";
-    init_tslib();
-    init_errors();
-    init_error2();
-    init_streaming2();
-    init_parser();
-    init_parser2();
-    JSON_BUF_PROPERTY2 = "__json_buf";
-    MessageStream = class _MessageStream {
-      constructor(params, opts) {
-        _MessageStream_instances.add(this);
-        this.messages = [];
-        this.receivedMessages = [];
-        _MessageStream_currentMessageSnapshot.set(this, void 0);
-        _MessageStream_params.set(this, null);
-        this.controller = new AbortController();
-        _MessageStream_connectedPromise.set(this, void 0);
-        _MessageStream_resolveConnectedPromise.set(this, () => {
-        });
-        _MessageStream_rejectConnectedPromise.set(this, () => {
-        });
-        _MessageStream_endPromise.set(this, void 0);
-        _MessageStream_resolveEndPromise.set(this, () => {
-        });
-        _MessageStream_rejectEndPromise.set(this, () => {
-        });
-        _MessageStream_listeners.set(this, {});
-        _MessageStream_ended.set(this, false);
-        _MessageStream_errored.set(this, false);
-        _MessageStream_aborted.set(this, false);
-        _MessageStream_catchingPromiseCreated.set(this, false);
-        _MessageStream_response.set(this, void 0);
-        _MessageStream_request_id.set(this, void 0);
-        _MessageStream_logger.set(this, void 0);
-        _MessageStream_handleError.set(this, (error) => {
-          __classPrivateFieldSet(this, _MessageStream_errored, true, "f");
-          if (isAbortError(error)) {
-            error = new APIUserAbortError();
-          }
-          if (error instanceof APIUserAbortError) {
-            __classPrivateFieldSet(this, _MessageStream_aborted, true, "f");
-            return this._emit("abort", error);
-          }
-          if (error instanceof AnthropicError) {
-            return this._emit("error", error);
-          }
-          if (error instanceof Error) {
-            const anthropicError = new AnthropicError(error.message);
-            anthropicError.cause = error;
-            return this._emit("error", anthropicError);
-          }
-          return this._emit("error", new AnthropicError(String(error)));
-        });
-        __classPrivateFieldSet(this, _MessageStream_connectedPromise, new Promise((resolve2, reject) => {
-          __classPrivateFieldSet(this, _MessageStream_resolveConnectedPromise, resolve2, "f");
-          __classPrivateFieldSet(this, _MessageStream_rejectConnectedPromise, reject, "f");
-        }), "f");
-        __classPrivateFieldSet(this, _MessageStream_endPromise, new Promise((resolve2, reject) => {
-          __classPrivateFieldSet(this, _MessageStream_resolveEndPromise, resolve2, "f");
-          __classPrivateFieldSet(this, _MessageStream_rejectEndPromise, reject, "f");
-        }), "f");
-        __classPrivateFieldGet(this, _MessageStream_connectedPromise, "f").catch(() => {
-        });
-        __classPrivateFieldGet(this, _MessageStream_endPromise, "f").catch(() => {
-        });
-        __classPrivateFieldSet(this, _MessageStream_params, params, "f");
-        __classPrivateFieldSet(this, _MessageStream_logger, opts?.logger ?? console, "f");
-      }
-      get response() {
-        return __classPrivateFieldGet(this, _MessageStream_response, "f");
-      }
-      get request_id() {
-        return __classPrivateFieldGet(this, _MessageStream_request_id, "f");
-      }
-      /**
-       * Returns the `MessageStream` data, the raw `Response` instance and the ID of the request,
-       * returned vie the `request-id` header which is useful for debugging requests and resporting
-       * issues to Anthropic.
-       *
-       * This is the same as the `APIPromise.withResponse()` method.
-       *
-       * This method will raise an error if you created the stream using `MessageStream.fromReadableStream`
-       * as no `Response` is available.
-       */
-      async withResponse() {
-        __classPrivateFieldSet(this, _MessageStream_catchingPromiseCreated, true, "f");
-        const response = await __classPrivateFieldGet(this, _MessageStream_connectedPromise, "f");
-        if (!response) {
-          throw new Error("Could not resolve a `Response` object");
-        }
-        return {
-          data: this,
-          response,
-          request_id: response.headers.get("request-id")
-        };
-      }
-      /**
-       * Intended for use on the frontend, consuming a stream produced with
-       * `.toReadableStream()` on the backend.
-       *
-       * Note that messages sent to the model do not appear in `.on('message')`
-       * in this context.
-       */
-      static fromReadableStream(stream) {
-        const runner = new _MessageStream(null);
-        runner._run(() => runner._fromReadableStream(stream));
-        return runner;
-      }
-      static createMessage(messages2, params, options, { logger } = {}) {
-        const runner = new _MessageStream(params, { logger });
-        for (const message of params.messages) {
-          runner._addMessageParam(message);
-        }
-        __classPrivateFieldSet(runner, _MessageStream_params, { ...params, stream: true }, "f");
-        runner._run(() => runner._createMessage(messages2, { ...params, stream: true }, { ...options, headers: { ...options?.headers, "X-Stainless-Helper-Method": "stream" } }));
-        return runner;
-      }
-      _run(executor) {
-        executor().then(() => {
-          this._emitFinal();
-          this._emit("end");
-        }, __classPrivateFieldGet(this, _MessageStream_handleError, "f"));
-      }
-      _addMessageParam(message) {
-        this.messages.push(message);
-      }
-      _addMessage(message, emit2 = true) {
-        this.receivedMessages.push(message);
-        if (emit2) {
-          this._emit("message", message);
-        }
-      }
-      async _createMessage(messages2, params, options) {
-        const signal = options?.signal;
-        let abortHandler;
-        if (signal) {
-          if (signal.aborted)
-            this.controller.abort();
-          abortHandler = this.controller.abort.bind(this.controller);
-          signal.addEventListener("abort", abortHandler);
-        }
-        try {
-          __classPrivateFieldGet(this, _MessageStream_instances, "m", _MessageStream_beginRequest).call(this);
-          const { response, data: stream } = await messages2.create({ ...params, stream: true }, { ...options, signal: this.controller.signal }).withResponse();
-          this._connected(response);
-          for await (const event of stream) {
-            __classPrivateFieldGet(this, _MessageStream_instances, "m", _MessageStream_addStreamEvent).call(this, event);
-          }
-          if (stream.controller.signal?.aborted) {
-            throw new APIUserAbortError();
-          }
-          __classPrivateFieldGet(this, _MessageStream_instances, "m", _MessageStream_endRequest).call(this);
-        } finally {
-          if (signal && abortHandler) {
-            signal.removeEventListener("abort", abortHandler);
-          }
-        }
-      }
-      _connected(response) {
-        if (this.ended)
-          return;
-        __classPrivateFieldSet(this, _MessageStream_response, response, "f");
-        __classPrivateFieldSet(this, _MessageStream_request_id, response?.headers.get("request-id"), "f");
-        __classPrivateFieldGet(this, _MessageStream_resolveConnectedPromise, "f").call(this, response);
-        this._emit("connect");
-      }
-      get ended() {
-        return __classPrivateFieldGet(this, _MessageStream_ended, "f");
-      }
-      get errored() {
-        return __classPrivateFieldGet(this, _MessageStream_errored, "f");
-      }
-      get aborted() {
-        return __classPrivateFieldGet(this, _MessageStream_aborted, "f");
-      }
-      abort() {
-        this.controller.abort();
-      }
-      /**
-       * Adds the listener function to the end of the listeners array for the event.
-       * No checks are made to see if the listener has already been added. Multiple calls passing
-       * the same combination of event and listener will result in the listener being added, and
-       * called, multiple times.
-       * @returns this MessageStream, so that calls can be chained
-       */
-      on(event, listener) {
-        const listeners2 = __classPrivateFieldGet(this, _MessageStream_listeners, "f")[event] || (__classPrivateFieldGet(this, _MessageStream_listeners, "f")[event] = []);
-        listeners2.push({ listener });
-        return this;
-      }
-      /**
-       * Removes the specified listener from the listener array for the event.
-       * off() will remove, at most, one instance of a listener from the listener array. If any single
-       * listener has been added multiple times to the listener array for the specified event, then
-       * off() must be called multiple times to remove each instance.
-       * @returns this MessageStream, so that calls can be chained
-       */
-      off(event, listener) {
-        const listeners2 = __classPrivateFieldGet(this, _MessageStream_listeners, "f")[event];
-        if (!listeners2)
-          return this;
-        const index = listeners2.findIndex((l) => l.listener === listener);
-        if (index >= 0)
-          listeners2.splice(index, 1);
-        return this;
-      }
-      /**
-       * Adds a one-time listener function for the event. The next time the event is triggered,
-       * this listener is removed and then invoked.
-       * @returns this MessageStream, so that calls can be chained
-       */
-      once(event, listener) {
-        const listeners2 = __classPrivateFieldGet(this, _MessageStream_listeners, "f")[event] || (__classPrivateFieldGet(this, _MessageStream_listeners, "f")[event] = []);
-        listeners2.push({ listener, once: true });
-        return this;
-      }
-      /**
-       * This is similar to `.once()`, but returns a Promise that resolves the next time
-       * the event is triggered, instead of calling a listener callback.
-       * @returns a Promise that resolves the next time given event is triggered,
-       * or rejects if an error is emitted.  (If you request the 'error' event,
-       * returns a promise that resolves with the error).
-       *
-       * Example:
-       *
-       *   const message = await stream.emitted('message') // rejects if the stream errors
-       */
-      emitted(event) {
-        return new Promise((resolve2, reject) => {
-          __classPrivateFieldSet(this, _MessageStream_catchingPromiseCreated, true, "f");
-          if (event !== "error")
-            this.once("error", reject);
-          this.once(event, resolve2);
-        });
-      }
-      async done() {
-        __classPrivateFieldSet(this, _MessageStream_catchingPromiseCreated, true, "f");
-        await __classPrivateFieldGet(this, _MessageStream_endPromise, "f");
-      }
-      get currentMessage() {
-        return __classPrivateFieldGet(this, _MessageStream_currentMessageSnapshot, "f");
-      }
-      /**
-       * @returns a promise that resolves with the the final assistant Message response,
-       * or rejects if an error occurred or the stream ended prematurely without producing a Message.
-       * If structured outputs were used, this will be a ParsedMessage with a `parsed_output` field.
-       */
-      async finalMessage() {
-        await this.done();
-        return __classPrivateFieldGet(this, _MessageStream_instances, "m", _MessageStream_getFinalMessage).call(this);
-      }
-      /**
-       * @returns a promise that resolves with the the final assistant Message's text response, concatenated
-       * together if there are more than one text blocks.
-       * Rejects if an error occurred or the stream ended prematurely without producing a Message.
-       */
-      async finalText() {
-        await this.done();
-        return __classPrivateFieldGet(this, _MessageStream_instances, "m", _MessageStream_getFinalText).call(this);
-      }
-      _emit(event, ...args) {
-        if (__classPrivateFieldGet(this, _MessageStream_ended, "f"))
-          return;
-        if (event === "end") {
-          __classPrivateFieldSet(this, _MessageStream_ended, true, "f");
-          __classPrivateFieldGet(this, _MessageStream_resolveEndPromise, "f").call(this);
-        }
-        const listeners2 = __classPrivateFieldGet(this, _MessageStream_listeners, "f")[event];
-        if (listeners2) {
-          __classPrivateFieldGet(this, _MessageStream_listeners, "f")[event] = listeners2.filter((l) => !l.once);
-          listeners2.forEach(({ listener }) => listener(...args));
-        }
-        if (event === "abort") {
-          const error = args[0];
-          if (!__classPrivateFieldGet(this, _MessageStream_catchingPromiseCreated, "f") && !listeners2?.length) {
-            Promise.reject(error);
-          }
-          __classPrivateFieldGet(this, _MessageStream_rejectConnectedPromise, "f").call(this, error);
-          __classPrivateFieldGet(this, _MessageStream_rejectEndPromise, "f").call(this, error);
-          this._emit("end");
-          return;
-        }
-        if (event === "error") {
-          const error = args[0];
-          if (!__classPrivateFieldGet(this, _MessageStream_catchingPromiseCreated, "f") && !listeners2?.length) {
-            Promise.reject(error);
-          }
-          __classPrivateFieldGet(this, _MessageStream_rejectConnectedPromise, "f").call(this, error);
-          __classPrivateFieldGet(this, _MessageStream_rejectEndPromise, "f").call(this, error);
-          this._emit("end");
-        }
-      }
-      _emitFinal() {
-        const finalMessage = this.receivedMessages.at(-1);
-        if (finalMessage) {
-          this._emit("finalMessage", __classPrivateFieldGet(this, _MessageStream_instances, "m", _MessageStream_getFinalMessage).call(this));
-        }
-      }
-      async _fromReadableStream(readableStream, options) {
-        const signal = options?.signal;
-        let abortHandler;
-        if (signal) {
-          if (signal.aborted)
-            this.controller.abort();
-          abortHandler = this.controller.abort.bind(this.controller);
-          signal.addEventListener("abort", abortHandler);
-        }
-        try {
-          __classPrivateFieldGet(this, _MessageStream_instances, "m", _MessageStream_beginRequest).call(this);
-          this._connected(null);
-          const stream = Stream.fromReadableStream(readableStream, this.controller);
-          for await (const event of stream) {
-            __classPrivateFieldGet(this, _MessageStream_instances, "m", _MessageStream_addStreamEvent).call(this, event);
-          }
-          if (stream.controller.signal?.aborted) {
-            throw new APIUserAbortError();
-          }
-          __classPrivateFieldGet(this, _MessageStream_instances, "m", _MessageStream_endRequest).call(this);
-        } finally {
-          if (signal && abortHandler) {
-            signal.removeEventListener("abort", abortHandler);
-          }
-        }
-      }
-      [(_MessageStream_currentMessageSnapshot = /* @__PURE__ */ new WeakMap(), _MessageStream_params = /* @__PURE__ */ new WeakMap(), _MessageStream_connectedPromise = /* @__PURE__ */ new WeakMap(), _MessageStream_resolveConnectedPromise = /* @__PURE__ */ new WeakMap(), _MessageStream_rejectConnectedPromise = /* @__PURE__ */ new WeakMap(), _MessageStream_endPromise = /* @__PURE__ */ new WeakMap(), _MessageStream_resolveEndPromise = /* @__PURE__ */ new WeakMap(), _MessageStream_rejectEndPromise = /* @__PURE__ */ new WeakMap(), _MessageStream_listeners = /* @__PURE__ */ new WeakMap(), _MessageStream_ended = /* @__PURE__ */ new WeakMap(), _MessageStream_errored = /* @__PURE__ */ new WeakMap(), _MessageStream_aborted = /* @__PURE__ */ new WeakMap(), _MessageStream_catchingPromiseCreated = /* @__PURE__ */ new WeakMap(), _MessageStream_response = /* @__PURE__ */ new WeakMap(), _MessageStream_request_id = /* @__PURE__ */ new WeakMap(), _MessageStream_logger = /* @__PURE__ */ new WeakMap(), _MessageStream_handleError = /* @__PURE__ */ new WeakMap(), _MessageStream_instances = /* @__PURE__ */ new WeakSet(), _MessageStream_getFinalMessage = function _MessageStream_getFinalMessage2() {
-        if (this.receivedMessages.length === 0) {
-          throw new AnthropicError("stream ended without producing a Message with role=assistant");
-        }
-        return this.receivedMessages.at(-1);
-      }, _MessageStream_getFinalText = function _MessageStream_getFinalText2() {
-        if (this.receivedMessages.length === 0) {
-          throw new AnthropicError("stream ended without producing a Message with role=assistant");
-        }
-        const textBlocks = this.receivedMessages.at(-1).content.filter((block) => block.type === "text").map((block) => block.text);
-        if (textBlocks.length === 0) {
-          throw new AnthropicError("stream ended without producing a content block with type=text");
-        }
-        return textBlocks.join(" ");
-      }, _MessageStream_beginRequest = function _MessageStream_beginRequest2() {
-        if (this.ended)
-          return;
-        __classPrivateFieldSet(this, _MessageStream_currentMessageSnapshot, void 0, "f");
-      }, _MessageStream_addStreamEvent = function _MessageStream_addStreamEvent2(event) {
-        if (this.ended)
-          return;
-        const messageSnapshot = __classPrivateFieldGet(this, _MessageStream_instances, "m", _MessageStream_accumulateMessage).call(this, event);
-        this._emit("streamEvent", event, messageSnapshot);
-        switch (event.type) {
-          case "content_block_delta": {
-            const content = messageSnapshot.content.at(-1);
-            switch (event.delta.type) {
-              case "text_delta": {
-                if (content.type === "text") {
-                  this._emit("text", event.delta.text, content.text || "");
-                }
-                break;
-              }
-              case "citations_delta": {
-                if (content.type === "text") {
-                  this._emit("citation", event.delta.citation, content.citations ?? []);
-                }
-                break;
-              }
-              case "input_json_delta": {
-                if (tracksToolInput2(content) && content.input) {
-                  this._emit("inputJson", event.delta.partial_json, content.input);
-                }
-                break;
-              }
-              case "thinking_delta": {
-                if (content.type === "thinking") {
-                  this._emit("thinking", event.delta.thinking, content.thinking);
-                }
-                break;
-              }
-              case "signature_delta": {
-                if (content.type === "thinking") {
-                  this._emit("signature", content.signature);
-                }
-                break;
-              }
-              default:
-                checkNever2(event.delta);
-            }
-            break;
-          }
-          case "message_stop": {
-            this._addMessageParam(messageSnapshot);
-            this._addMessage(maybeParseMessage(messageSnapshot, __classPrivateFieldGet(this, _MessageStream_params, "f"), { logger: __classPrivateFieldGet(this, _MessageStream_logger, "f") }), true);
-            break;
-          }
-          case "content_block_stop": {
-            this._emit("contentBlock", messageSnapshot.content.at(-1));
-            break;
-          }
-          case "message_start": {
-            __classPrivateFieldSet(this, _MessageStream_currentMessageSnapshot, messageSnapshot, "f");
-            break;
-          }
-          case "content_block_start":
-          case "message_delta":
-            break;
-        }
-      }, _MessageStream_endRequest = function _MessageStream_endRequest2() {
-        if (this.ended) {
-          throw new AnthropicError(`stream has ended, this shouldn't happen`);
-        }
-        const snapshot2 = __classPrivateFieldGet(this, _MessageStream_currentMessageSnapshot, "f");
-        if (!snapshot2) {
-          throw new AnthropicError(`request ended without sending any chunks`);
-        }
-        __classPrivateFieldSet(this, _MessageStream_currentMessageSnapshot, void 0, "f");
-        return maybeParseMessage(snapshot2, __classPrivateFieldGet(this, _MessageStream_params, "f"), { logger: __classPrivateFieldGet(this, _MessageStream_logger, "f") });
-      }, _MessageStream_accumulateMessage = function _MessageStream_accumulateMessage2(event) {
-        let snapshot2 = __classPrivateFieldGet(this, _MessageStream_currentMessageSnapshot, "f");
-        if (event.type === "message_start") {
-          if (snapshot2) {
-            throw new AnthropicError(`Unexpected event order, got ${event.type} before receiving "message_stop"`);
-          }
-          return event.message;
-        }
-        if (!snapshot2) {
-          throw new AnthropicError(`Unexpected event order, got ${event.type} before "message_start"`);
-        }
-        switch (event.type) {
-          case "message_stop":
-            return snapshot2;
-          case "message_delta":
-            snapshot2.stop_reason = event.delta.stop_reason;
-            snapshot2.stop_sequence = event.delta.stop_sequence;
-            snapshot2.usage.output_tokens = event.usage.output_tokens;
-            if (event.usage.input_tokens != null) {
-              snapshot2.usage.input_tokens = event.usage.input_tokens;
-            }
-            if (event.usage.cache_creation_input_tokens != null) {
-              snapshot2.usage.cache_creation_input_tokens = event.usage.cache_creation_input_tokens;
-            }
-            if (event.usage.cache_read_input_tokens != null) {
-              snapshot2.usage.cache_read_input_tokens = event.usage.cache_read_input_tokens;
-            }
-            if (event.usage.server_tool_use != null) {
-              snapshot2.usage.server_tool_use = event.usage.server_tool_use;
-            }
-            return snapshot2;
-          case "content_block_start":
-            snapshot2.content.push({ ...event.content_block });
-            return snapshot2;
-          case "content_block_delta": {
-            const snapshotContent = snapshot2.content.at(event.index);
-            switch (event.delta.type) {
-              case "text_delta": {
-                if (snapshotContent?.type === "text") {
-                  snapshot2.content[event.index] = {
-                    ...snapshotContent,
-                    text: (snapshotContent.text || "") + event.delta.text
-                  };
-                }
-                break;
-              }
-              case "citations_delta": {
-                if (snapshotContent?.type === "text") {
-                  snapshot2.content[event.index] = {
-                    ...snapshotContent,
-                    citations: [...snapshotContent.citations ?? [], event.delta.citation]
-                  };
-                }
-                break;
-              }
-              case "input_json_delta": {
-                if (snapshotContent && tracksToolInput2(snapshotContent)) {
-                  let jsonBuf = snapshotContent[JSON_BUF_PROPERTY2] || "";
-                  jsonBuf += event.delta.partial_json;
-                  const newContent = { ...snapshotContent };
-                  Object.defineProperty(newContent, JSON_BUF_PROPERTY2, {
-                    value: jsonBuf,
-                    enumerable: false,
-                    writable: true
-                  });
-                  if (jsonBuf) {
-                    newContent.input = partialParse(jsonBuf);
-                  }
-                  snapshot2.content[event.index] = newContent;
-                }
-                break;
-              }
-              case "thinking_delta": {
-                if (snapshotContent?.type === "thinking") {
-                  snapshot2.content[event.index] = {
-                    ...snapshotContent,
-                    thinking: snapshotContent.thinking + event.delta.thinking
-                  };
-                }
-                break;
-              }
-              case "signature_delta": {
-                if (snapshotContent?.type === "thinking") {
-                  snapshot2.content[event.index] = {
-                    ...snapshotContent,
-                    signature: event.delta.signature
-                  };
-                }
-                break;
-              }
-              default:
-                checkNever2(event.delta);
-            }
-            return snapshot2;
-          }
-          case "content_block_stop":
-            return snapshot2;
-        }
-      }, Symbol.asyncIterator)]() {
-        const pushQueue = [];
-        const readQueue = [];
-        let done = false;
-        this.on("streamEvent", (event) => {
-          const reader = readQueue.shift();
-          if (reader) {
-            reader.resolve(event);
-          } else {
-            pushQueue.push(event);
-          }
-        });
-        this.on("end", () => {
-          done = true;
-          for (const reader of readQueue) {
-            reader.resolve(void 0);
-          }
-          readQueue.length = 0;
-        });
-        this.on("abort", (err) => {
-          done = true;
-          for (const reader of readQueue) {
-            reader.reject(err);
-          }
-          readQueue.length = 0;
-        });
-        this.on("error", (err) => {
-          done = true;
-          for (const reader of readQueue) {
-            reader.reject(err);
-          }
-          readQueue.length = 0;
-        });
-        return {
-          next: async () => {
-            if (!pushQueue.length) {
-              if (done) {
-                return { value: void 0, done: true };
-              }
-              return new Promise((resolve2, reject) => readQueue.push({ resolve: resolve2, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
-            }
-            const chunk = pushQueue.shift();
-            return { value: chunk, done: false };
-          },
-          return: async () => {
-            this.abort();
-            return { value: void 0, done: true };
-          }
-        };
-      }
-      toReadableStream() {
-        const stream = new Stream(this[Symbol.asyncIterator].bind(this), this.controller);
-        return stream.toReadableStream();
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/messages/batches.mjs
-var Batches2;
-var init_batches2 = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/messages/batches.mjs"() {
-    "use strict";
-    init_resource();
-    init_pagination();
-    init_headers();
-    init_jsonl();
-    init_error2();
-    init_path();
-    Batches2 = class extends APIResource {
-      /**
-       * Send a batch of Message creation requests.
-       *
-       * The Message Batches API can be used to process multiple Messages API requests at
-       * once. Once a Message Batch is created, it begins processing immediately. Batches
-       * can take up to 24 hours to complete.
-       *
-       * Learn more about the Message Batches API in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
-       *
-       * @example
-       * ```ts
-       * const messageBatch = await client.messages.batches.create({
-       *   requests: [
-       *     {
-       *       custom_id: 'my-custom-id-1',
-       *       params: {
-       *         max_tokens: 1024,
-       *         messages: [
-       *           { content: 'Hello, world', role: 'user' },
-       *         ],
-       *         model: 'claude-opus-4-6',
-       *       },
-       *     },
-       *   ],
-       * });
-       * ```
-       */
-      create(body, options) {
-        return this._client.post("/v1/messages/batches", { body, ...options });
-      }
-      /**
-       * This endpoint is idempotent and can be used to poll for Message Batch
-       * completion. To access the results of a Message Batch, make a request to the
-       * `results_url` field in the response.
-       *
-       * Learn more about the Message Batches API in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
-       *
-       * @example
-       * ```ts
-       * const messageBatch = await client.messages.batches.retrieve(
-       *   'message_batch_id',
-       * );
-       * ```
-       */
-      retrieve(messageBatchID, options) {
-        return this._client.get(path4`/v1/messages/batches/${messageBatchID}`, options);
-      }
-      /**
-       * List all Message Batches within a Workspace. Most recently created batches are
-       * returned first.
-       *
-       * Learn more about the Message Batches API in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
-       *
-       * @example
-       * ```ts
-       * // Automatically fetches more pages as needed.
-       * for await (const messageBatch of client.messages.batches.list()) {
-       *   // ...
-       * }
-       * ```
-       */
-      list(query = {}, options) {
-        return this._client.getAPIList("/v1/messages/batches", Page, { query, ...options });
-      }
-      /**
-       * Delete a Message Batch.
-       *
-       * Message Batches can only be deleted once they've finished processing. If you'd
-       * like to delete an in-progress batch, you must first cancel it.
-       *
-       * Learn more about the Message Batches API in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
-       *
-       * @example
-       * ```ts
-       * const deletedMessageBatch =
-       *   await client.messages.batches.delete('message_batch_id');
-       * ```
-       */
-      delete(messageBatchID, options) {
-        return this._client.delete(path4`/v1/messages/batches/${messageBatchID}`, options);
-      }
-      /**
-       * Batches may be canceled any time before processing ends. Once cancellation is
-       * initiated, the batch enters a `canceling` state, at which time the system may
-       * complete any in-progress, non-interruptible requests before finalizing
-       * cancellation.
-       *
-       * The number of canceled requests is specified in `request_counts`. To determine
-       * which requests were canceled, check the individual results within the batch.
-       * Note that cancellation may not result in any canceled requests if they were
-       * non-interruptible.
-       *
-       * Learn more about the Message Batches API in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
-       *
-       * @example
-       * ```ts
-       * const messageBatch = await client.messages.batches.cancel(
-       *   'message_batch_id',
-       * );
-       * ```
-       */
-      cancel(messageBatchID, options) {
-        return this._client.post(path4`/v1/messages/batches/${messageBatchID}/cancel`, options);
-      }
-      /**
-       * Streams the results of a Message Batch as a `.jsonl` file.
-       *
-       * Each line in the file is a JSON object containing the result of a single request
-       * in the Message Batch. Results are not guaranteed to be in the same order as
-       * requests. Use the `custom_id` field to match results to requests.
-       *
-       * Learn more about the Message Batches API in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
-       *
-       * @example
-       * ```ts
-       * const messageBatchIndividualResponse =
-       *   await client.messages.batches.results('message_batch_id');
-       * ```
-       */
-      async results(messageBatchID, options) {
-        const batch = await this.retrieve(messageBatchID);
-        if (!batch.results_url) {
-          throw new AnthropicError(`No batch \`results_url\`; Has it finished processing? ${batch.processing_status} - ${batch.id}`);
-        }
-        return this._client.get(batch.results_url, {
-          ...options,
-          headers: buildHeaders([{ Accept: "application/binary" }, options?.headers]),
-          stream: true,
-          __binaryResponse: true
-        })._thenUnwrap((_, props) => JSONLDecoder.fromResponse(props.response, props.controller));
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/messages/messages.mjs
-var Messages2, DEPRECATED_MODELS2, MODELS_TO_WARN_WITH_THINKING_ENABLED2;
-var init_messages2 = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/messages/messages.mjs"() {
-    "use strict";
-    init_resource();
-    init_headers();
-    init_stainless_helper_header();
-    init_MessageStream();
-    init_parser2();
-    init_batches2();
-    init_batches2();
-    init_constants();
-    Messages2 = class extends APIResource {
-      constructor() {
-        super(...arguments);
-        this.batches = new Batches2(this._client);
-      }
-      create(body, options) {
-        if (body.model in DEPRECATED_MODELS2) {
-          console.warn(`The model '${body.model}' is deprecated and will reach end-of-life on ${DEPRECATED_MODELS2[body.model]}
-Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resources/model-deprecations for more information.`);
-        }
-        if (body.model in MODELS_TO_WARN_WITH_THINKING_ENABLED2 && body.thinking && body.thinking.type === "enabled") {
-          console.warn(`Using Claude with ${body.model} and 'thinking.type=enabled' is deprecated. Use 'thinking.type=adaptive' instead which results in better model performance in our testing: https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking`);
-        }
-        let timeout = this._client._options.timeout;
-        if (!body.stream && timeout == null) {
-          const maxNonstreamingTokens = MODEL_NONSTREAMING_TOKENS[body.model] ?? void 0;
-          timeout = this._client.calculateNonstreamingTimeout(body.max_tokens, maxNonstreamingTokens);
-        }
-        const helperHeader = stainlessHelperHeader(body.tools, body.messages);
-        return this._client.post("/v1/messages", {
-          body,
-          timeout: timeout ?? 6e5,
-          ...options,
-          headers: buildHeaders([helperHeader, options?.headers]),
-          stream: body.stream ?? false
-        });
-      }
-      /**
-       * Send a structured list of input messages with text and/or image content, along with an expected `output_config.format` and
-       * the response will be automatically parsed and available in the `parsed_output` property of the message.
-       *
-       * @example
-       * ```ts
-       * const message = await client.messages.parse({
-       *   model: 'claude-sonnet-4-5-20250929',
-       *   max_tokens: 1024,
-       *   messages: [{ role: 'user', content: 'What is 2+2?' }],
-       *   output_config: {
-       *     format: zodOutputFormat(z.object({ answer: z.number() })),
-       *   },
-       * });
-       *
-       * console.log(message.parsed_output?.answer); // 4
-       * ```
-       */
-      parse(params, options) {
-        return this.create(params, options).then((message) => parseMessage(message, params, { logger: this._client.logger ?? console }));
-      }
-      /**
-       * Create a Message stream.
-       *
-       * If `output_config.format` is provided with a parseable format (like `zodOutputFormat()`),
-       * the final message will include a `parsed_output` property with the parsed content.
-       *
-       * @example
-       * ```ts
-       * const stream = client.messages.stream({
-       *   model: 'claude-sonnet-4-5-20250929',
-       *   max_tokens: 1024,
-       *   messages: [{ role: 'user', content: 'What is 2+2?' }],
-       *   output_config: {
-       *     format: zodOutputFormat(z.object({ answer: z.number() })),
-       *   },
-       * });
-       *
-       * const message = await stream.finalMessage();
-       * console.log(message.parsed_output?.answer); // 4
-       * ```
-       */
-      stream(body, options) {
-        return MessageStream.createMessage(this, body, options, { logger: this._client.logger ?? console });
-      }
-      /**
-       * Count the number of tokens in a Message.
-       *
-       * The Token Count API can be used to count the number of tokens in a Message,
-       * including tools, images, and documents, without creating it.
-       *
-       * Learn more about token counting in our
-       * [user guide](https://docs.claude.com/en/docs/build-with-claude/token-counting)
-       *
-       * @example
-       * ```ts
-       * const messageTokensCount =
-       *   await client.messages.countTokens({
-       *     messages: [{ content: 'string', role: 'user' }],
-       *     model: 'claude-opus-4-6',
-       *   });
-       * ```
-       */
-      countTokens(body, options) {
-        return this._client.post("/v1/messages/count_tokens", { body, ...options });
-      }
-    };
-    DEPRECATED_MODELS2 = {
-      "claude-1.3": "November 6th, 2024",
-      "claude-1.3-100k": "November 6th, 2024",
-      "claude-instant-1.1": "November 6th, 2024",
-      "claude-instant-1.1-100k": "November 6th, 2024",
-      "claude-instant-1.2": "November 6th, 2024",
-      "claude-3-sonnet-20240229": "July 21st, 2025",
-      "claude-3-opus-20240229": "January 5th, 2026",
-      "claude-2.1": "July 21st, 2025",
-      "claude-2.0": "July 21st, 2025",
-      "claude-3-7-sonnet-latest": "February 19th, 2026",
-      "claude-3-7-sonnet-20250219": "February 19th, 2026",
-      "claude-3-5-haiku-latest": "February 19th, 2026",
-      "claude-3-5-haiku-20241022": "February 19th, 2026"
-    };
-    MODELS_TO_WARN_WITH_THINKING_ENABLED2 = ["claude-opus-4-6"];
-    Messages2.Batches = Batches2;
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/models.mjs
-var Models2;
-var init_models2 = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/models.mjs"() {
-    "use strict";
-    init_resource();
-    init_pagination();
-    init_headers();
-    init_path();
-    Models2 = class extends APIResource {
-      /**
-       * Get a specific model.
-       *
-       * The Models API response can be used to determine information about a specific
-       * model or resolve a model alias to a model ID.
-       */
-      retrieve(modelID, params = {}, options) {
-        const { betas } = params ?? {};
-        return this._client.get(path4`/v1/models/${modelID}`, {
-          ...options,
-          headers: buildHeaders([
-            { ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 },
-            options?.headers
-          ])
-        });
-      }
-      /**
-       * List available models.
-       *
-       * The Models API response can be used to determine which models are available for
-       * use in the API. More recently released models are listed first.
-       */
-      list(params = {}, options) {
-        const { betas, ...query } = params ?? {};
-        return this._client.getAPIList("/v1/models", Page, {
-          query,
-          ...options,
-          headers: buildHeaders([
-            { ...betas?.toString() != null ? { "anthropic-beta": betas?.toString() } : void 0 },
-            options?.headers
-          ])
-        });
-      }
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/resources/index.mjs
-var init_resources = __esm({
-  "node_modules/@anthropic-ai/sdk/resources/index.mjs"() {
-    "use strict";
-    init_shared();
-    init_beta();
-    init_completions();
-    init_messages2();
-    init_models2();
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/internal/utils/env.mjs
-var readEnv;
-var init_env = __esm({
-  "node_modules/@anthropic-ai/sdk/internal/utils/env.mjs"() {
-    "use strict";
-    readEnv = (env) => {
-      if (typeof globalThis.process !== "undefined") {
-        return globalThis.process.env?.[env]?.trim() ?? void 0;
-      }
-      if (typeof globalThis.Deno !== "undefined") {
-        return globalThis.Deno.env?.get?.(env)?.trim();
-      }
-      return void 0;
-    };
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/client.mjs
-var _BaseAnthropic_instances, _a, _BaseAnthropic_encoder, _BaseAnthropic_baseURLOverridden, HUMAN_PROMPT, AI_PROMPT, BaseAnthropic, Anthropic;
-var init_client = __esm({
-  "node_modules/@anthropic-ai/sdk/client.mjs"() {
-    "use strict";
-    init_tslib();
-    init_uuid();
-    init_values();
-    init_sleep();
-    init_errors();
-    init_detect_platform();
-    init_shims();
-    init_request_options();
-    init_version();
-    init_error();
-    init_pagination();
-    init_uploads2();
-    init_resources();
-    init_api_promise();
-    init_completions();
-    init_models2();
-    init_beta();
-    init_messages2();
-    init_detect_platform();
-    init_headers();
-    init_env();
-    init_log();
-    init_values();
-    HUMAN_PROMPT = "\\n\\nHuman:";
-    AI_PROMPT = "\\n\\nAssistant:";
-    BaseAnthropic = class {
-      /**
-       * API Client for interfacing with the Anthropic API.
-       *
-       * @param {string | null | undefined} [opts.apiKey=process.env['ANTHROPIC_API_KEY'] ?? null]
-       * @param {string | null | undefined} [opts.authToken=process.env['ANTHROPIC_AUTH_TOKEN'] ?? null]
-       * @param {string} [opts.baseURL=process.env['ANTHROPIC_BASE_URL'] ?? https://api.anthropic.com] - Override the default base URL for the API.
-       * @param {number} [opts.timeout=10 minutes] - The maximum amount of time (in milliseconds) the client will wait for a response before timing out.
-       * @param {MergedRequestInit} [opts.fetchOptions] - Additional `RequestInit` options to be passed to `fetch` calls.
-       * @param {Fetch} [opts.fetch] - Specify a custom `fetch` function implementation.
-       * @param {number} [opts.maxRetries=2] - The maximum number of times the client will retry a request.
-       * @param {HeadersLike} opts.defaultHeaders - Default headers to include with every request to the API.
-       * @param {Record<string, string | undefined>} opts.defaultQuery - Default query parameters to include with every request to the API.
-       * @param {boolean} [opts.dangerouslyAllowBrowser=false] - By default, client-side use of this library is not allowed, as it risks exposing your secret API credentials to attackers.
-       */
-      constructor({ baseURL = readEnv("ANTHROPIC_BASE_URL"), apiKey = readEnv("ANTHROPIC_API_KEY") ?? null, authToken = readEnv("ANTHROPIC_AUTH_TOKEN") ?? null, ...opts } = {}) {
-        _BaseAnthropic_instances.add(this);
-        _BaseAnthropic_encoder.set(this, void 0);
-        const options = {
-          apiKey,
-          authToken,
-          ...opts,
-          baseURL: baseURL || `https://api.anthropic.com`
-        };
-        if (!options.dangerouslyAllowBrowser && isRunningInBrowser()) {
-          throw new AnthropicError("It looks like you're running in a browser-like environment.\n\nThis is disabled by default, as it risks exposing your secret API credentials to attackers.\nIf you understand the risks and have appropriate mitigations in place,\nyou can set the `dangerouslyAllowBrowser` option to `true`, e.g.,\n\nnew Anthropic({ apiKey, dangerouslyAllowBrowser: true });\n");
-        }
-        this.baseURL = options.baseURL;
-        this.timeout = options.timeout ?? _a.DEFAULT_TIMEOUT;
-        this.logger = options.logger ?? console;
-        const defaultLogLevel = "warn";
-        this.logLevel = defaultLogLevel;
-        this.logLevel = parseLogLevel(options.logLevel, "ClientOptions.logLevel", this) ?? parseLogLevel(readEnv("ANTHROPIC_LOG"), "process.env['ANTHROPIC_LOG']", this) ?? defaultLogLevel;
-        this.fetchOptions = options.fetchOptions;
-        this.maxRetries = options.maxRetries ?? 2;
-        this.fetch = options.fetch ?? getDefaultFetch();
-        __classPrivateFieldSet(this, _BaseAnthropic_encoder, FallbackEncoder, "f");
-        this._options = options;
-        this.apiKey = typeof apiKey === "string" ? apiKey : null;
-        this.authToken = authToken;
-      }
-      /**
-       * Create a new client instance re-using the same options given to the current client with optional overriding.
-       */
-      withOptions(options) {
-        const client = new this.constructor({
-          ...this._options,
-          baseURL: this.baseURL,
-          maxRetries: this.maxRetries,
-          timeout: this.timeout,
-          logger: this.logger,
-          logLevel: this.logLevel,
-          fetch: this.fetch,
-          fetchOptions: this.fetchOptions,
-          apiKey: this.apiKey,
-          authToken: this.authToken,
-          ...options
-        });
-        return client;
-      }
-      defaultQuery() {
-        return this._options.defaultQuery;
-      }
-      validateHeaders({ values, nulls }) {
-        if (values.get("x-api-key") || values.get("authorization")) {
-          return;
-        }
-        if (this.apiKey && values.get("x-api-key")) {
-          return;
-        }
-        if (nulls.has("x-api-key")) {
-          return;
-        }
-        if (this.authToken && values.get("authorization")) {
-          return;
-        }
-        if (nulls.has("authorization")) {
-          return;
-        }
-        throw new Error('Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the "X-Api-Key" or "Authorization" headers to be explicitly omitted');
-      }
-      async authHeaders(opts) {
-        return buildHeaders([await this.apiKeyAuth(opts), await this.bearerAuth(opts)]);
-      }
-      async apiKeyAuth(opts) {
-        if (this.apiKey == null) {
-          return void 0;
-        }
-        return buildHeaders([{ "X-Api-Key": this.apiKey }]);
-      }
-      async bearerAuth(opts) {
-        if (this.authToken == null) {
-          return void 0;
-        }
-        return buildHeaders([{ Authorization: `Bearer ${this.authToken}` }]);
-      }
-      /**
-       * Basic re-implementation of `qs.stringify` for primitive types.
-       */
-      stringifyQuery(query) {
-        return Object.entries(query).filter(([_, value]) => typeof value !== "undefined").map(([key, value]) => {
-          if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-            return `${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
-          }
-          if (value === null) {
-            return `${encodeURIComponent(key)}=`;
-          }
-          throw new AnthropicError(`Cannot stringify type ${typeof value}; Expected string, number, boolean, or null. If you need to pass nested query parameters, you can manually encode them, e.g. { query: { 'foo[key1]': value1, 'foo[key2]': value2 } }, and please open a GitHub issue requesting better support for your use case.`);
-        }).join("&");
-      }
-      getUserAgent() {
-        return `${this.constructor.name}/JS ${VERSION}`;
-      }
-      defaultIdempotencyKey() {
-        return `stainless-node-retry-${uuid4()}`;
-      }
-      makeStatusError(status, error, message, headers) {
-        return APIError.generate(status, error, message, headers);
-      }
-      buildURL(path6, query, defaultBaseURL) {
-        const baseURL = !__classPrivateFieldGet(this, _BaseAnthropic_instances, "m", _BaseAnthropic_baseURLOverridden).call(this) && defaultBaseURL || this.baseURL;
-        const url = isAbsoluteURL(path6) ? new URL(path6) : new URL(baseURL + (baseURL.endsWith("/") && path6.startsWith("/") ? path6.slice(1) : path6));
-        const defaultQuery = this.defaultQuery();
-        if (!isEmptyObj(defaultQuery)) {
-          query = { ...defaultQuery, ...query };
-        }
-        if (typeof query === "object" && query && !Array.isArray(query)) {
-          url.search = this.stringifyQuery(query);
-        }
-        return url.toString();
-      }
-      _calculateNonstreamingTimeout(maxTokens) {
-        const defaultTimeout = 10 * 60;
-        const expectedTimeout = 60 * 60 * maxTokens / 128e3;
-        if (expectedTimeout > defaultTimeout) {
-          throw new AnthropicError("Streaming is required for operations that may take longer than 10 minutes. See https://github.com/anthropics/anthropic-sdk-typescript#streaming-responses for more details");
-        }
-        return defaultTimeout * 1e3;
-      }
-      /**
-       * Used as a callback for mutating the given `FinalRequestOptions` object.
-       */
-      async prepareOptions(options) {
-      }
-      /**
-       * Used as a callback for mutating the given `RequestInit` object.
-       *
-       * This is useful for cases where you want to add certain headers based off of
-       * the request properties, e.g. `method` or `url`.
-       */
-      async prepareRequest(request, { url, options }) {
-      }
-      get(path6, opts) {
-        return this.methodRequest("get", path6, opts);
-      }
-      post(path6, opts) {
-        return this.methodRequest("post", path6, opts);
-      }
-      patch(path6, opts) {
-        return this.methodRequest("patch", path6, opts);
-      }
-      put(path6, opts) {
-        return this.methodRequest("put", path6, opts);
-      }
-      delete(path6, opts) {
-        return this.methodRequest("delete", path6, opts);
-      }
-      methodRequest(method, path6, opts) {
-        return this.request(Promise.resolve(opts).then((opts2) => {
-          return { method, path: path6, ...opts2 };
-        }));
-      }
-      request(options, remainingRetries = null) {
-        return new APIPromise(this, this.makeRequest(options, remainingRetries, void 0));
-      }
-      async makeRequest(optionsInput, retriesRemaining, retryOfRequestLogID) {
-        const options = await optionsInput;
-        const maxRetries = options.maxRetries ?? this.maxRetries;
-        if (retriesRemaining == null) {
-          retriesRemaining = maxRetries;
-        }
-        await this.prepareOptions(options);
-        const { req, url, timeout } = await this.buildRequest(options, {
-          retryCount: maxRetries - retriesRemaining
-        });
-        await this.prepareRequest(req, { url, options });
-        const requestLogID = "log_" + (Math.random() * (1 << 24) | 0).toString(16).padStart(6, "0");
-        const retryLogStr = retryOfRequestLogID === void 0 ? "" : `, retryOf: ${retryOfRequestLogID}`;
-        const startTime = Date.now();
-        loggerFor(this).debug(`[${requestLogID}] sending request`, formatRequestDetails({
-          retryOfRequestLogID,
-          method: options.method,
-          url,
-          options,
-          headers: req.headers
-        }));
-        if (options.signal?.aborted) {
-          throw new APIUserAbortError();
-        }
-        const controller = new AbortController();
-        const response = await this.fetchWithTimeout(url, req, timeout, controller).catch(castToError);
-        const headersTime = Date.now();
-        if (response instanceof globalThis.Error) {
-          const retryMessage = `retrying, ${retriesRemaining} attempts remaining`;
-          if (options.signal?.aborted) {
-            throw new APIUserAbortError();
-          }
-          const isTimeout = isAbortError(response) || /timed? ?out/i.test(String(response) + ("cause" in response ? String(response.cause) : ""));
-          if (retriesRemaining) {
-            loggerFor(this).info(`[${requestLogID}] connection ${isTimeout ? "timed out" : "failed"} - ${retryMessage}`);
-            loggerFor(this).debug(`[${requestLogID}] connection ${isTimeout ? "timed out" : "failed"} (${retryMessage})`, formatRequestDetails({
-              retryOfRequestLogID,
-              url,
-              durationMs: headersTime - startTime,
-              message: response.message
-            }));
-            return this.retryRequest(options, retriesRemaining, retryOfRequestLogID ?? requestLogID);
-          }
-          loggerFor(this).info(`[${requestLogID}] connection ${isTimeout ? "timed out" : "failed"} - error; no more retries left`);
-          loggerFor(this).debug(`[${requestLogID}] connection ${isTimeout ? "timed out" : "failed"} (error; no more retries left)`, formatRequestDetails({
-            retryOfRequestLogID,
-            url,
-            durationMs: headersTime - startTime,
-            message: response.message
-          }));
-          if (isTimeout) {
-            throw new APIConnectionTimeoutError();
-          }
-          throw new APIConnectionError({ cause: response });
-        }
-        const specialHeaders = [...response.headers.entries()].filter(([name]) => name === "request-id").map(([name, value]) => ", " + name + ": " + JSON.stringify(value)).join("");
-        const responseInfo = `[${requestLogID}${retryLogStr}${specialHeaders}] ${req.method} ${url} ${response.ok ? "succeeded" : "failed"} with status ${response.status} in ${headersTime - startTime}ms`;
-        if (!response.ok) {
-          const shouldRetry = await this.shouldRetry(response);
-          if (retriesRemaining && shouldRetry) {
-            const retryMessage2 = `retrying, ${retriesRemaining} attempts remaining`;
-            await CancelReadableStream(response.body);
-            loggerFor(this).info(`${responseInfo} - ${retryMessage2}`);
-            loggerFor(this).debug(`[${requestLogID}] response error (${retryMessage2})`, formatRequestDetails({
-              retryOfRequestLogID,
-              url: response.url,
-              status: response.status,
-              headers: response.headers,
-              durationMs: headersTime - startTime
-            }));
-            return this.retryRequest(options, retriesRemaining, retryOfRequestLogID ?? requestLogID, response.headers);
-          }
-          const retryMessage = shouldRetry ? `error; no more retries left` : `error; not retryable`;
-          loggerFor(this).info(`${responseInfo} - ${retryMessage}`);
-          const errText = await response.text().catch((err2) => castToError(err2).message);
-          const errJSON = safeJSON(errText);
-          const errMessage = errJSON ? void 0 : errText;
-          loggerFor(this).debug(`[${requestLogID}] response error (${retryMessage})`, formatRequestDetails({
-            retryOfRequestLogID,
-            url: response.url,
-            status: response.status,
-            headers: response.headers,
-            message: errMessage,
-            durationMs: Date.now() - startTime
-          }));
-          const err = this.makeStatusError(response.status, errJSON, errMessage, response.headers);
-          throw err;
-        }
-        loggerFor(this).info(responseInfo);
-        loggerFor(this).debug(`[${requestLogID}] response start`, formatRequestDetails({
-          retryOfRequestLogID,
-          url: response.url,
-          status: response.status,
-          headers: response.headers,
-          durationMs: headersTime - startTime
-        }));
-        return { response, options, controller, requestLogID, retryOfRequestLogID, startTime };
-      }
-      getAPIList(path6, Page2, opts) {
-        return this.requestAPIList(Page2, opts && "then" in opts ? opts.then((opts2) => ({ method: "get", path: path6, ...opts2 })) : { method: "get", path: path6, ...opts });
-      }
-      requestAPIList(Page2, options) {
-        const request = this.makeRequest(options, null, void 0);
-        return new PagePromise(this, request, Page2);
-      }
-      async fetchWithTimeout(url, init, ms, controller) {
-        const { signal, method, ...options } = init || {};
-        const abort = this._makeAbort(controller);
-        if (signal)
-          signal.addEventListener("abort", abort, { once: true });
-        const timeout = setTimeout(abort, ms);
-        const isReadableBody = globalThis.ReadableStream && options.body instanceof globalThis.ReadableStream || typeof options.body === "object" && options.body !== null && Symbol.asyncIterator in options.body;
-        const fetchOptions = {
-          signal: controller.signal,
-          ...isReadableBody ? { duplex: "half" } : {},
-          method: "GET",
-          ...options
-        };
-        if (method) {
-          fetchOptions.method = method.toUpperCase();
-        }
-        try {
-          return await this.fetch.call(void 0, url, fetchOptions);
-        } finally {
-          clearTimeout(timeout);
-        }
-      }
-      async shouldRetry(response) {
-        const shouldRetryHeader = response.headers.get("x-should-retry");
-        if (shouldRetryHeader === "true")
-          return true;
-        if (shouldRetryHeader === "false")
-          return false;
-        if (response.status === 408)
-          return true;
-        if (response.status === 409)
-          return true;
-        if (response.status === 429)
-          return true;
-        if (response.status >= 500)
-          return true;
-        return false;
-      }
-      async retryRequest(options, retriesRemaining, requestLogID, responseHeaders) {
-        let timeoutMillis;
-        const retryAfterMillisHeader = responseHeaders?.get("retry-after-ms");
-        if (retryAfterMillisHeader) {
-          const timeoutMs = parseFloat(retryAfterMillisHeader);
-          if (!Number.isNaN(timeoutMs)) {
-            timeoutMillis = timeoutMs;
-          }
-        }
-        const retryAfterHeader = responseHeaders?.get("retry-after");
-        if (retryAfterHeader && !timeoutMillis) {
-          const timeoutSeconds = parseFloat(retryAfterHeader);
-          if (!Number.isNaN(timeoutSeconds)) {
-            timeoutMillis = timeoutSeconds * 1e3;
-          } else {
-            timeoutMillis = Date.parse(retryAfterHeader) - Date.now();
-          }
-        }
-        if (!(timeoutMillis && 0 <= timeoutMillis && timeoutMillis < 60 * 1e3)) {
-          const maxRetries = options.maxRetries ?? this.maxRetries;
-          timeoutMillis = this.calculateDefaultRetryTimeoutMillis(retriesRemaining, maxRetries);
-        }
-        await sleep(timeoutMillis);
-        return this.makeRequest(options, retriesRemaining - 1, requestLogID);
-      }
-      calculateDefaultRetryTimeoutMillis(retriesRemaining, maxRetries) {
-        const initialRetryDelay = 0.5;
-        const maxRetryDelay = 8;
-        const numRetries = maxRetries - retriesRemaining;
-        const sleepSeconds = Math.min(initialRetryDelay * Math.pow(2, numRetries), maxRetryDelay);
-        const jitter = 1 - Math.random() * 0.25;
-        return sleepSeconds * jitter * 1e3;
-      }
-      calculateNonstreamingTimeout(maxTokens, maxNonstreamingTokens) {
-        const maxTime = 60 * 60 * 1e3;
-        const defaultTime = 60 * 10 * 1e3;
-        const expectedTime = maxTime * maxTokens / 128e3;
-        if (expectedTime > defaultTime || maxNonstreamingTokens != null && maxTokens > maxNonstreamingTokens) {
-          throw new AnthropicError("Streaming is required for operations that may take longer than 10 minutes. See https://github.com/anthropics/anthropic-sdk-typescript#long-requests for more details");
-        }
-        return defaultTime;
-      }
-      async buildRequest(inputOptions, { retryCount = 0 } = {}) {
-        const options = { ...inputOptions };
-        const { method, path: path6, query, defaultBaseURL } = options;
-        const url = this.buildURL(path6, query, defaultBaseURL);
-        if ("timeout" in options)
-          validatePositiveInteger("timeout", options.timeout);
-        options.timeout = options.timeout ?? this.timeout;
-        const { bodyHeaders, body } = this.buildBody({ options });
-        const reqHeaders = await this.buildHeaders({ options: inputOptions, method, bodyHeaders, retryCount });
-        const req = {
-          method,
-          headers: reqHeaders,
-          ...options.signal && { signal: options.signal },
-          ...globalThis.ReadableStream && body instanceof globalThis.ReadableStream && { duplex: "half" },
-          ...body && { body },
-          ...this.fetchOptions ?? {},
-          ...options.fetchOptions ?? {}
-        };
-        return { req, url, timeout: options.timeout };
-      }
-      async buildHeaders({ options, method, bodyHeaders, retryCount }) {
-        let idempotencyHeaders = {};
-        if (this.idempotencyHeader && method !== "get") {
-          if (!options.idempotencyKey)
-            options.idempotencyKey = this.defaultIdempotencyKey();
-          idempotencyHeaders[this.idempotencyHeader] = options.idempotencyKey;
-        }
-        const headers = buildHeaders([
-          idempotencyHeaders,
-          {
-            Accept: "application/json",
-            "User-Agent": this.getUserAgent(),
-            "X-Stainless-Retry-Count": String(retryCount),
-            ...options.timeout ? { "X-Stainless-Timeout": String(Math.trunc(options.timeout / 1e3)) } : {},
-            ...getPlatformHeaders(),
-            ...this._options.dangerouslyAllowBrowser ? { "anthropic-dangerous-direct-browser-access": "true" } : void 0,
-            "anthropic-version": "2023-06-01"
-          },
-          await this.authHeaders(options),
-          this._options.defaultHeaders,
-          bodyHeaders,
-          options.headers
-        ]);
-        this.validateHeaders(headers);
-        return headers.values;
-      }
-      _makeAbort(controller) {
-        return () => controller.abort();
-      }
-      buildBody({ options: { body, headers: rawHeaders } }) {
-        if (!body) {
-          return { bodyHeaders: void 0, body: void 0 };
-        }
-        const headers = buildHeaders([rawHeaders]);
-        if (
-          // Pass raw type verbatim
-          ArrayBuffer.isView(body) || body instanceof ArrayBuffer || body instanceof DataView || typeof body === "string" && // Preserve legacy string encoding behavior for now
-          headers.values.has("content-type") || // `Blob` is superset of `File`
-          globalThis.Blob && body instanceof globalThis.Blob || // `FormData` -> `multipart/form-data`
-          body instanceof FormData || // `URLSearchParams` -> `application/x-www-form-urlencoded`
-          body instanceof URLSearchParams || // Send chunked stream (each chunk has own `length`)
-          globalThis.ReadableStream && body instanceof globalThis.ReadableStream
-        ) {
-          return { bodyHeaders: void 0, body };
-        } else if (typeof body === "object" && (Symbol.asyncIterator in body || Symbol.iterator in body && "next" in body && typeof body.next === "function")) {
-          return { bodyHeaders: void 0, body: ReadableStreamFrom(body) };
-        } else {
-          return __classPrivateFieldGet(this, _BaseAnthropic_encoder, "f").call(this, { body, headers });
-        }
-      }
-    };
-    _a = BaseAnthropic, _BaseAnthropic_encoder = /* @__PURE__ */ new WeakMap(), _BaseAnthropic_instances = /* @__PURE__ */ new WeakSet(), _BaseAnthropic_baseURLOverridden = function _BaseAnthropic_baseURLOverridden2() {
-      return this.baseURL !== "https://api.anthropic.com";
-    };
-    BaseAnthropic.Anthropic = _a;
-    BaseAnthropic.HUMAN_PROMPT = HUMAN_PROMPT;
-    BaseAnthropic.AI_PROMPT = AI_PROMPT;
-    BaseAnthropic.DEFAULT_TIMEOUT = 6e5;
-    BaseAnthropic.AnthropicError = AnthropicError;
-    BaseAnthropic.APIError = APIError;
-    BaseAnthropic.APIConnectionError = APIConnectionError;
-    BaseAnthropic.APIConnectionTimeoutError = APIConnectionTimeoutError;
-    BaseAnthropic.APIUserAbortError = APIUserAbortError;
-    BaseAnthropic.NotFoundError = NotFoundError2;
-    BaseAnthropic.ConflictError = ConflictError;
-    BaseAnthropic.RateLimitError = RateLimitError;
-    BaseAnthropic.BadRequestError = BadRequestError;
-    BaseAnthropic.AuthenticationError = AuthenticationError;
-    BaseAnthropic.InternalServerError = InternalServerError;
-    BaseAnthropic.PermissionDeniedError = PermissionDeniedError;
-    BaseAnthropic.UnprocessableEntityError = UnprocessableEntityError;
-    BaseAnthropic.toFile = toFile;
-    Anthropic = class extends BaseAnthropic {
-      constructor() {
-        super(...arguments);
-        this.completions = new Completions(this);
-        this.messages = new Messages2(this);
-        this.models = new Models2(this);
-        this.beta = new Beta(this);
-      }
-    };
-    Anthropic.Completions = Completions;
-    Anthropic.Messages = Messages2;
-    Anthropic.Models = Models2;
-    Anthropic.Beta = Beta;
-  }
-});
-
-// node_modules/@anthropic-ai/sdk/index.mjs
-var sdk_exports = {};
-__export(sdk_exports, {
-  AI_PROMPT: () => AI_PROMPT,
-  APIConnectionError: () => APIConnectionError,
-  APIConnectionTimeoutError: () => APIConnectionTimeoutError,
-  APIError: () => APIError,
-  APIPromise: () => APIPromise,
-  APIUserAbortError: () => APIUserAbortError,
-  Anthropic: () => Anthropic,
-  AnthropicError: () => AnthropicError,
-  AuthenticationError: () => AuthenticationError,
-  BadRequestError: () => BadRequestError,
-  BaseAnthropic: () => BaseAnthropic,
-  ConflictError: () => ConflictError,
-  HUMAN_PROMPT: () => HUMAN_PROMPT,
-  InternalServerError: () => InternalServerError,
-  NotFoundError: () => NotFoundError2,
-  PagePromise: () => PagePromise,
-  PermissionDeniedError: () => PermissionDeniedError,
-  RateLimitError: () => RateLimitError,
-  UnprocessableEntityError: () => UnprocessableEntityError,
-  default: () => Anthropic,
-  toFile: () => toFile
-});
-var init_sdk = __esm({
-  "node_modules/@anthropic-ai/sdk/index.mjs"() {
-    "use strict";
-    init_client();
-    init_uploads2();
-    init_api_promise();
-    init_client();
-    init_pagination();
-    init_error();
-  }
-});
-
-// src/services/lego_blocks/integrations/intelligence/providers/anthropicProviderBlock.ts
-async function makeClientBlock() {
-  const { default: Anthropic2 } = await Promise.resolve().then(() => (init_sdk(), sdk_exports));
-  const apiKey = getManualClaudeApiKeyBlock();
-  if (apiKey) {
-    return new Anthropic2({ apiKey, dangerouslyAllowBrowser: true });
-  }
-  const oauth = getNativeClaudeOauthCredentialsBlock();
-  if (oauth?.accessToken) {
-    return new Anthropic2({
-      authToken: oauth.accessToken,
-      defaultHeaders: { "anthropic-beta": "oauth-2025-04-20" },
-      dangerouslyAllowBrowser: true
-    });
-  }
-  const creds = await getClaudeCredentialsBlock();
-  if (!creds) throw new Error("anthropic: no credentials configured");
-  return new Anthropic2({
-    authToken: creds.accessToken,
-    defaultHeaders: { "anthropic-beta": "oauth-2025-04-20" },
-    dangerouslyAllowBrowser: true
-  });
-}
-function toAnthropicMessages(messages2) {
-  const out = [];
-  for (const m of messages2) {
-    if (m.role === "tool") {
-      out.push({
-        role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: m.toolCallId ?? "",
-            content: m.content
-          }
-        ]
-      });
-      continue;
-    }
-    if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-      const blocks = [];
-      if (m.content) blocks.push({ type: "text", text: m.content });
-      for (const tc of m.toolCalls) {
-        blocks.push({ type: "tool_use", id: tc.id, name: tc.name, input: tc.args });
-      }
-      out.push({ role: "assistant", content: blocks });
-      continue;
-    }
-    out.push({ role: m.role, content: m.content });
-  }
-  return out;
-}
-function normalizeFinishReason2(stopReason, toolCalls) {
-  if (toolCalls.length > 0) return "tool_calls";
-  switch (stopReason) {
-    case "end_turn":
-    case "stop_sequence":
-      return "stop";
-    case "tool_use":
-      return "tool_calls";
-    case "max_tokens":
-      return "length";
-    default:
-      return "stop";
-  }
-}
-var DEFAULT_CLAUDE_MODEL, STRUCTURED_OUTPUT_TOOL_NAME, AnthropicProviderBlock, anthropicProvider;
-var init_anthropicProviderBlock = __esm({
-  "src/services/lego_blocks/integrations/intelligence/providers/anthropicProviderBlock.ts"() {
-    "use strict";
-    init_aiCredentialStoreBlock();
-    init_aiOauthCredentialStoreBlock();
-    init_aiProviderBlock();
-    init_schemaBlock();
-    DEFAULT_CLAUDE_MODEL = "claude-haiku-4-5-20251001";
-    STRUCTURED_OUTPUT_TOOL_NAME = "__intelligence_structured_output";
-    AnthropicProviderBlock = class {
-      id = "anthropic";
-      isConfigured() {
-        if (getManualClaudeApiKeyBlock()) return true;
-        if (getNativeClaudeOauthCredentialsBlock()) return true;
-        return false;
-      }
-      async availability() {
-        if (!this.isConfigured()) {
-          return { available: false, defaultModel: null, details: {}, reason: "No API key or OAuth credentials" };
-        }
-        const manual = readAiManualCredentialsBlock().claude?.apiKey ? "apiKey" : "oauth";
-        return {
-          available: true,
-          defaultModel: DEFAULT_CLAUDE_MODEL,
-          details: { authMode: manual, defaultModel: DEFAULT_CLAUDE_MODEL }
-        };
-      }
-      async chat(request, signal) {
-        const client = await makeClientBlock();
-        const args = {
-          model: request.model || DEFAULT_CLAUDE_MODEL,
-          max_tokens: request.maxTokens,
-          temperature: request.temperature,
-          system: request.system,
-          messages: toAnthropicMessages(request.messages)
-        };
-        const tools = [];
-        if (request.tools && request.tools.length > 0) {
-          for (const t of request.tools) {
-            tools.push({
-              name: t.name,
-              description: t.description,
-              input_schema: toJsonSchemaBlock(t.parameters)
-            });
-          }
-        }
-        if (request.responseSchema) {
-          tools.push({
-            name: STRUCTURED_OUTPUT_TOOL_NAME,
-            description: "Return the required structured output.",
-            input_schema: toJsonSchemaBlock(request.responseSchema)
-          });
-          args.tool_choice = { type: "tool", name: STRUCTURED_OUTPUT_TOOL_NAME };
-        }
-        if (tools.length > 0) args.tools = tools;
-        const request$ = client.messages.create(args);
-        const abort$ = new Promise((_resolve, reject) => {
-          if (signal.aborted) return reject(new DOMException("aborted", "AbortError"));
-          signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
-        });
-        const started = performance.now();
-        const response = await Promise.race([request$, abort$]);
-        const latencyMs = performance.now() - started;
-        const textParts = [];
-        const reasoningParts = [];
-        const toolCalls = [];
-        let structuredOutput = null;
-        for (const block of response.content) {
-          if (block.type === "text" && typeof block.text === "string") {
-            textParts.push(block.text);
-          } else if (block.type === "thinking" && typeof block.thinking === "string") {
-            reasoningParts.push(block.thinking);
-          } else if (block.type === "tool_use") {
-            const use = block;
-            if (use.name === STRUCTURED_OUTPUT_TOOL_NAME) {
-              structuredOutput = use.input;
-            } else {
-              toolCalls.push({ id: use.id, name: use.name, args: use.input });
-            }
-          }
-        }
-        const content = structuredOutput ? JSON.stringify(structuredOutput) : textParts.join("");
-        return {
-          content,
-          reasoning: reasoningParts.join("\n"),
-          toolCalls,
-          finishReason: normalizeFinishReason2(response.stop_reason ?? null, toolCalls),
-          usage: {
-            promptTokens: response.usage?.input_tokens ?? 0,
-            completionTokens: response.usage?.output_tokens ?? 0
-          },
-          providerModel: response.model || args.model,
-          latencyMs
-        };
-      }
-    };
-    anthropicProvider = new AnthropicProviderBlock();
-  }
-});
-
-// src/services/lego_blocks/integrations/intelligence/providers/claudeCliProviderBlock.ts
-function flattenMessagesBlock(request) {
-  const parts = [];
-  for (const m of request.messages) {
-    if (m.role === "tool") continue;
-    if (m.role === "assistant" && !m.content) continue;
-    if (m.role === "user") {
-      parts.push(m.content);
-    } else if (m.role === "assistant") {
-      parts.push(`Previous assistant: ${m.content}`);
-    }
-  }
-  return parts.join("\n\n");
-}
-function newRequestIdBlock() {
-  return `cli-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-var DEFAULT_MODEL, ClaudeCliProviderBlock, claudeCliProvider;
-var init_claudeCliProviderBlock = __esm({
-  "src/services/lego_blocks/integrations/intelligence/providers/claudeCliProviderBlock.ts"() {
-    "use strict";
-    DEFAULT_MODEL = "haiku";
-    ClaudeCliProviderBlock = class {
-      id = "claude-cli";
-      probeCache = null;
-      isConfigured() {
-        const api = typeof window !== "undefined" ? window.electronAPI : void 0;
-        return !!api && typeof api.claudeCliChat === "function";
-      }
-      async availability(force) {
-        const api = typeof window !== "undefined" ? window.electronAPI : void 0;
-        if (!api || typeof api.claudeCliProbe !== "function") {
-          return {
-            available: false,
-            defaultModel: null,
-            details: { transport: "claude -p (electron ipc)" },
-            reason: "Claude Code CLI is only available inside the Thinking Space desktop app"
-          };
-        }
-        if (!this.probeCache || force) {
-          this.probeCache = await api.claudeCliProbe();
-        }
-        if (!this.probeCache.available) {
-          return {
-            available: false,
-            defaultModel: null,
-            details: { transport: "claude -p", version: null },
-            reason: "Claude Code CLI (`claude`) not found on PATH"
-          };
-        }
-        return {
-          available: true,
-          defaultModel: DEFAULT_MODEL,
-          details: {
-            transport: "claude -p",
-            version: this.probeCache.version,
-            defaultModel: DEFAULT_MODEL,
-            note: "Uses interactive Claude Code OAuth \u2014 no API tokens billed for Pro-plan users."
-          }
-        };
-      }
-      async chat(request, signal) {
-        const api = typeof window !== "undefined" ? window.electronAPI : void 0;
-        if (!api || typeof api.claudeCliChat !== "function") {
-          throw new Error("claude-cli: bridge not available (running outside Electron?)");
-        }
-        if (request.tools && request.tools.length > 0) {
-          throw new Error("claude-cli: tool calling is not supported via `claude -p`; use the anthropic SDK provider");
-        }
-        const requestId = newRequestIdBlock();
-        const timeoutMs = 6e4;
-        signal.addEventListener("abort", () => {
-          if (typeof api.claudeCliCancel === "function") void api.claudeCliCancel(requestId);
-        }, { once: true });
-        const started = performance.now();
-        const result = await api.claudeCliChat(requestId, {
-          model: request.model || DEFAULT_MODEL,
-          system: request.system,
-          userPrompt: flattenMessagesBlock(request),
-          timeoutMs
-        });
-        const latencyMs = result.latencyMs ?? performance.now() - started;
-        if (!result.ok || typeof result.content !== "string") {
-          throw new Error(`claude-cli: ${result.error ?? "unknown error"}`);
-        }
-        return {
-          content: result.content,
-          reasoning: "",
-          toolCalls: [],
-          finishReason: "stop",
-          usage: { promptTokens: 0, completionTokens: 0 },
-          providerModel: request.model || DEFAULT_MODEL,
-          latencyMs
-        };
-      }
-    };
-    claudeCliProvider = new ClaudeCliProviderBlock();
-  }
-});
-
-// src/services/lego_blocks/integrations/intelligence/providerRegistryBlock.ts
-var init_providerRegistryBlock = __esm({
-  "src/services/lego_blocks/integrations/intelligence/providerRegistryBlock.ts"() {
-    "use strict";
-    init_storageKeyBlock();
-    init_openaiCompatProviderBlock();
-    init_anthropicProviderBlock();
-    init_claudeCliProviderBlock();
-    init_modelProfileBlock();
   }
 });
 
@@ -23563,7 +17411,7 @@ var import_node_child_process = require("node:child_process");
 var fs3 = __toESM(require("node:fs"), 1);
 var fsPromises = __toESM(require("node:fs/promises"), 1);
 var os3 = __toESM(require("node:os"), 1);
-var path5 = __toESM(require("node:path"), 1);
+var path4 = __toESM(require("node:path"), 1);
 var import_node_process = __toESM(require("node:process"), 1);
 var import_node_url = require("node:url");
 var import_node_util = require("node:util");
@@ -23809,7 +17657,7 @@ var CAPABILITY_REGISTRY = [
   },
   {
     name: "ai_activity.assignment.record",
-    description: "Record which undertaking(s) a session belongs to, keyed on session id before the chain exists.",
+    description: "Answer, from inside the session, which undertaking(s) it fed. Writes a proposal at confidence 1.0 \u2014 first-hand, but still awaiting a human verdict in the queue. Keys are checked against the project: an unknown key needs newTitle, or it is refused as a typo.",
     readOnly: false
   },
   {
@@ -23828,13 +17676,8 @@ var CAPABILITY_REGISTRY = [
     readOnly: true
   },
   {
-    name: "ai_activity.chain.set_project",
-    description: "Re-file a chain under the correct project \u2014 the repair path for projectId misattribution.",
-    readOnly: false
-  },
-  {
-    name: "ai_activity.chain.set_files",
-    description: "Backfill file pointers onto a chain that predates structured extraction.",
+    name: "ai_activity.session.set_project",
+    description: "Re-file a session under the correct project \u2014 the repair path for projectId misattribution.",
     readOnly: false
   }
 ];
@@ -24008,8 +17851,7 @@ var WRITE_CAPABILITIES = /* @__PURE__ */ new Set([
   "ai_activity.undertaking.tag",
   "ai_activity.assignment.record",
   "ai_activity.assignment.propose",
-  "ai_activity.chain.set_project",
-  "ai_activity.chain.set_files"
+  "ai_activity.session.set_project"
 ]);
 var STORAGE_KEY = "ltm-capability-policy";
 function validateCapabilityPolicy(params) {
@@ -24170,13 +18012,13 @@ function resolveGeneratedWikiLinksForFrontmatterBlock(frontmatter, options) {
   const parentLink = options?.parentFilePath ? toWikiLinkFromVaultPathBlock(options.parentFilePath) : void 0;
   if (parentLink) generated.push(parentLink);
   const derivedFrom = normalizeStringArrayBlock(frontmatter.derived_from);
-  for (const path6 of derivedFrom) {
-    const link = normalizeWikiLinkOrPathBlock(path6);
+  for (const path5 of derivedFrom) {
+    const link = normalizeWikiLinkOrPathBlock(path5);
     if (link) generated.push(link);
   }
   const sourceFiles = normalizeStringArrayBlock(frontmatter.source_files);
-  for (const path6 of sourceFiles) {
-    const link = normalizeWikiLinkOrPathBlock(path6);
+  for (const path5 of sourceFiles) {
+    const link = normalizeWikiLinkOrPathBlock(path5);
     if (link) generated.push(link);
   }
   return uniqueStringsBlock(generated);
@@ -24421,8 +18263,8 @@ init_dbBlock();
 
 // src/services/lego_blocks/integrations/obsidianWikilinkBlock.ts
 var WIKILINK_TOKEN_PATTERN = /(!)?\[\[([^[\]]+?)\]\]/g;
-function normalizeVaultPath(path6) {
-  const sanitized = path6.replace(/\\/g, "/").trim();
+function normalizeVaultPath(path5) {
+  const sanitized = path5.replace(/\\/g, "/").trim();
   if (!sanitized) return "";
   const parts = sanitized.split("/").filter(Boolean);
   const stack = [];
@@ -24436,14 +18278,14 @@ function normalizeVaultPath(path6) {
   }
   return stack.join("/");
 }
-function dirnameOf(path6) {
-  const normalized = normalizeVaultPath(path6);
+function dirnameOf(path5) {
+  const normalized = normalizeVaultPath(path5);
   const idx = normalized.lastIndexOf("/");
   if (idx < 0) return "";
   return normalized.slice(0, idx);
 }
-function leafOf(path6) {
-  const normalized = normalizeVaultPath(path6);
+function leafOf(path5) {
+  const normalized = normalizeVaultPath(path5);
   const idx = normalized.lastIndexOf("/");
   if (idx < 0) return normalized;
   return normalized.slice(idx + 1);
@@ -24455,17 +18297,17 @@ function joinVaultPath(parent, child) {
   if (!relRaw) return base;
   return normalizeVaultPath(`${base}/${relRaw}`);
 }
-function hasExplicitExtension(path6) {
-  const leaf = leafOf(path6);
+function hasExplicitExtension(path5) {
+  const leaf = leafOf(path5);
   const idx = leaf.lastIndexOf(".");
   return idx > 0;
 }
-function stripMarkdownExtension(path6) {
-  if (path6.toLowerCase().endsWith(".md")) return path6.slice(0, -3);
-  return path6;
+function stripMarkdownExtension(path5) {
+  if (path5.toLowerCase().endsWith(".md")) return path5.slice(0, -3);
+  return path5;
 }
-function extensionVariants(path6) {
-  const normalized = normalizeVaultPath(path6);
+function extensionVariants(path5) {
+  const normalized = normalizeVaultPath(path5);
   if (!normalized) return [];
   if (hasExplicitExtension(normalized)) return [normalized];
   return [
@@ -24475,20 +18317,20 @@ function extensionVariants(path6) {
     `${normalized}.excalidraw`
   ];
 }
-function addLookupKey(map2, key, path6) {
+function addLookupKey(map2, key, path5) {
   const normalizedKey = normalizeVaultPath(key).toLowerCase();
   if (!normalizedKey) return;
   const existing = map2.get(normalizedKey);
   if (existing) {
-    existing.add(path6);
+    existing.add(path5);
     return;
   }
-  map2.set(normalizedKey, /* @__PURE__ */ new Set([path6]));
+  map2.set(normalizedKey, /* @__PURE__ */ new Set([path5]));
 }
 var candidateLookupCache = /* @__PURE__ */ new WeakMap();
 function buildCandidateLookup(candidatePaths) {
-  const cached2 = candidateLookupCache.get(candidatePaths);
-  if (cached2) return cached2;
+  const cached = candidateLookupCache.get(candidatePaths);
+  if (cached) return cached;
   const map2 = buildCandidateLookupUncached(candidatePaths);
   candidateLookupCache.set(candidatePaths, map2);
   return map2;
@@ -24496,14 +18338,14 @@ function buildCandidateLookup(candidatePaths) {
 function buildCandidateLookupUncached(candidatePaths) {
   const map2 = /* @__PURE__ */ new Map();
   for (const rawPath of candidatePaths) {
-    const path6 = normalizeVaultPath(rawPath);
-    if (!path6) continue;
-    addLookupKey(map2, path6, path6);
-    const withoutMd = stripMarkdownExtension(path6);
-    addLookupKey(map2, withoutMd, path6);
-    const fileName = leafOf(path6);
-    addLookupKey(map2, fileName, path6);
-    addLookupKey(map2, stripMarkdownExtension(fileName), path6);
+    const path5 = normalizeVaultPath(rawPath);
+    if (!path5) continue;
+    addLookupKey(map2, path5, path5);
+    const withoutMd = stripMarkdownExtension(path5);
+    addLookupKey(map2, withoutMd, path5);
+    const fileName = leafOf(path5);
+    addLookupKey(map2, fileName, path5);
+    addLookupKey(map2, stripMarkdownExtension(fileName), path5);
   }
   return map2;
 }
@@ -24542,8 +18384,8 @@ function splitTargetAndAlias(rawInner) {
   const alias = rawInner.slice(pipeIdx + 1).trim();
   return { target, alias: alias || null };
 }
-function normalizeWikilinkPath(path6) {
-  return path6.replace(/\\/g, "/").replace(/^\/+/g, "").replace(/\/+/g, "/").trim();
+function normalizeWikilinkPath(path5) {
+  return path5.replace(/\\/g, "/").replace(/^\/+/g, "").replace(/\/+/g, "/").trim();
 }
 function parseWikilinkTargetBlock(rawTarget) {
   const raw = rawTarget.trim();
@@ -24744,8 +18586,8 @@ function findYamlCommentStartIndexBlock(value) {
 function hasUriScheme(value) {
   return /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value);
 }
-function normalizeLinkPath(path6) {
-  const sanitized = path6.replace(/\\/g, "/").trim();
+function normalizeLinkPath(path5) {
+  const sanitized = path5.replace(/\\/g, "/").trim();
   if (!sanitized) return "";
   const parts = sanitized.split("/").filter(Boolean);
   const stack = [];
@@ -24759,8 +18601,8 @@ function normalizeLinkPath(path6) {
   }
   return stack.join("/");
 }
-function dirnameLinkPath(path6) {
-  const normalized = normalizeLinkPath(path6);
+function dirnameLinkPath(path5) {
+  const normalized = normalizeLinkPath(path5);
   const idx = normalized.lastIndexOf("/");
   if (idx < 0) return "";
   return normalized.slice(0, idx);
@@ -24826,8 +18668,8 @@ function extractMarkdownLinks(content, filePath) {
 }
 var normalizedCandidateSetCache = /* @__PURE__ */ new WeakMap();
 function getNormalizedCandidateSet(candidatePaths) {
-  const cached2 = normalizedCandidateSetCache.get(candidatePaths);
-  if (cached2) return cached2;
+  const cached = normalizedCandidateSetCache.get(candidatePaths);
+  if (cached) return cached;
   const set2 = new Set(candidatePaths.map(normalizeLinkPath));
   normalizedCandidateSetCache.set(candidatePaths, set2);
   return set2;
@@ -25577,13 +19419,13 @@ function extractGenericMetadata(frontmatter) {
 }
 function collectMetadataKeys2(metadata) {
   const out = /* @__PURE__ */ new Set();
-  walkMetadata("", metadata, (path6) => out.add(path6));
+  walkMetadata("", metadata, (path5) => out.add(path5));
   return [...out];
 }
 function buildMetadataText(metadata) {
   const out = [];
-  walkMetadata("", metadata, (path6, value) => {
-    out.push(path6);
+  walkMetadata("", metadata, (path5, value) => {
+    out.push(path5);
     if (value !== null && value !== void 0 && typeof value !== "object") {
       out.push(String(value));
     }
@@ -25593,18 +19435,18 @@ function buildMetadataText(metadata) {
 function walkMetadata(prefix, value, visitor) {
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i += 1) {
-      const path6 = prefix ? `${prefix}[${i}]` : `[${i}]`;
-      visitor(path6, value[i]);
-      walkMetadata(path6, value[i], visitor);
+      const path5 = prefix ? `${prefix}[${i}]` : `[${i}]`;
+      visitor(path5, value[i]);
+      walkMetadata(path5, value[i], visitor);
     }
     return;
   }
   if (value && typeof value === "object") {
     const record = value;
     for (const [key, inner] of Object.entries(record)) {
-      const path6 = prefix ? `${prefix}.${key}` : key;
-      visitor(path6, inner);
-      walkMetadata(path6, inner, visitor);
+      const path5 = prefix ? `${prefix}.${key}` : key;
+      visitor(path5, inner);
+      walkMetadata(path5, inner, visitor);
     }
   }
 }
@@ -25857,8 +19699,8 @@ async function resolveProjectRoot(params) {
   if (!parentKey) return void 0;
   const parentRecord = await getNodeByKey(parentKey);
   if (!parentRecord) return void 0;
-  const cached2 = normalizeProjectRoot(parentRecord.projectRoot);
-  if (cached2) return cached2;
+  const cached = normalizeProjectRoot(parentRecord.projectRoot);
+  if (cached) return cached;
   const parsed = await readProjectRootFromFile(parentRecord.filePath, params.fs);
   return normalizeProjectRoot(parsed);
 }
@@ -26766,8 +20608,8 @@ function cleanExcessNewlines(text) {
 function autoDetectBook(lines) {
   if (hasTranscriptSectionStructure(lines)) return true;
   for (const line of lines) {
-    const s2 = line.trim();
-    if (PART_RE.test(s2) || CHAPTER_RE.test(s2) || CHAPTER_LINE_RE.test(s2) || CHAPTER_MARKER_RE.test(s2) || CONTENTS_HEADING_RE.test(s2)) return true;
+    const s = line.trim();
+    if (PART_RE.test(s) || CHAPTER_RE.test(s) || CHAPTER_LINE_RE.test(s) || CHAPTER_MARKER_RE.test(s) || CONTENTS_HEADING_RE.test(s)) return true;
   }
   return false;
 }
@@ -26793,7 +20635,7 @@ function bulletizeParagraphs(lines, _splitLong, _joinLines) {
   let para = [];
   function flushPara() {
     if (para.length === 0) return;
-    let text = para.map((s2) => s2.trim()).filter(Boolean).join(" ");
+    let text = para.map((s) => s.trim()).filter(Boolean).join(" ");
     text = text.replace(/\s{2,}/g, " ").trim();
     if (text) {
       out.push(`\u2022 ${text}`);
@@ -27236,10 +21078,10 @@ async function extractExcalidrawHighlights(inputPath, fs4) {
 }
 
 // src/services/orchestrators/pdfToMarkdownOrch.ts
-function toolsApiUrl(path6) {
+function toolsApiUrl(path5) {
   const base = globalThis.__LTM_API_BASE__;
-  if (base) return `${base}${path6}`;
-  return path6;
+  if (base) return `${base}${path5}`;
+  return path5;
 }
 async function previewPdf(inputPath, options) {
   const res = await fetch(toolsApiUrl("/api/tools/pdf-to-markdown/preview"), {
@@ -27281,14 +21123,14 @@ function parseTimeToSeconds(value) {
     return nums[0];
   }
   if (/[a-zA-Z]/.test(v)) {
-    let h = 0, m = 0, s2 = 0;
+    let h = 0, m = 0, s = 0;
     const hMatch = v.match(/(\d+)\s*h/);
     if (hMatch) h = parseInt(hMatch[1], 10);
     const mMatch = v.match(/(\d+)\s*m/);
     if (mMatch) m = parseInt(mMatch[1], 10);
     const sMatch = v.match(/(\d+)\s*s/);
-    if (sMatch) s2 = parseInt(sMatch[1], 10);
-    return h * 3600 + m * 60 + s2;
+    if (sMatch) s = parseInt(sMatch[1], 10);
+    return h * 3600 + m * 60 + s;
   }
   if (/^\d+$/.test(v)) return parseInt(v, 10);
   return null;
@@ -28081,8 +21923,8 @@ function asTrimmedStringBlock(value) {
 }
 
 // src/services/orchestrators/aiSynthesisInfraOrch.ts
-async function readNoteOrch(fs4, path6) {
-  return readNoteBlock(fs4, path6);
+async function readNoteOrch(fs4, path5) {
+  return readNoteBlock(fs4, path5);
 }
 async function writeNoteOrch(fs4, input) {
   return writeNoteBlock(fs4, input);
@@ -28395,6 +22237,51 @@ function asNumber(value) {
 function normalizeTagBlock(tag) {
   return tag.toLowerCase().replace(/[_\s]+/g, " ").replace(/^[^a-z0-9]+|[^a-z0-9?]+$/g, "").trim();
 }
+var TITLE_STOPWORDS = /* @__PURE__ */ new Set([
+  "a",
+  "an",
+  "and",
+  "as",
+  "at",
+  "be",
+  "but",
+  "by",
+  "for",
+  "from",
+  "how",
+  "in",
+  "is",
+  "it",
+  "of",
+  "on",
+  "or",
+  "the",
+  "to",
+  "vs",
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "why",
+  "with"
+]);
+function titleTokensBlock(title) {
+  const words = title.toLowerCase().replace(/[^a-z0-9\s]+/g, " ").split(/\s+/).filter((word) => word.length > 2 && !TITLE_STOPWORDS.has(word));
+  return new Set(words);
+}
+function titleSimilarityBlock(a, b) {
+  const left = titleTokensBlock(a);
+  const right = titleTokensBlock(b);
+  if (!left.size || !right.size) return 0;
+  let shared = 0;
+  for (const token of left) if (right.has(token)) shared += 1;
+  return shared / (left.size + right.size - shared);
+}
+var SIMILAR_TITLE_THRESHOLD = 0.34;
+function similarUndertakingsBlock(title, records, limit = 3) {
+  return records.map((record) => ({ record, score: titleSimilarityBlock(title, record.title) })).filter((entry) => entry.score >= SIMILAR_TITLE_THRESHOLD).sort((a, b) => b.score - a.score || a.record.key.localeCompare(b.record.key)).slice(0, limit).map((entry) => ({ key: entry.record.key, title: entry.record.title }));
+}
 function parseUndertakingBlock(content) {
   const trimmed = content.trimStart();
   if (!trimmed.startsWith("---")) return null;
@@ -28529,6 +22416,284 @@ function extendVocabularyBlock(vocabulary, added) {
   return { tags };
 }
 
+// src/services/lego_blocks/integrations/assignmentLogStoreBlock.ts
+init_fsBlock();
+
+// src/services/lego_blocks/units/assignmentProposalBlock.ts
+function targetIdBlock(target) {
+  switch (target.kind) {
+    case "existing":
+      return `existing:${target.key}`;
+    case "new":
+      return `new:${target.title.trim().toLowerCase()}`;
+    case "bucket":
+      return "bucket";
+  }
+}
+function targetLabelBlock(target) {
+  switch (target.kind) {
+    case "existing":
+      return target.key;
+    case "new":
+      return target.title.trim();
+    case "bucket":
+      return "Not an undertaking";
+  }
+}
+function latestProposalsBlock(lines) {
+  const newestBatch = /* @__PURE__ */ new Map();
+  for (const line of lines) {
+    const author = `${line.sessionId}\0${line.proposedBy}`;
+    const seen = newestBatch.get(author);
+    if (seen === void 0 || line.proposedAt >= seen) newestBatch.set(author, line.proposedAt);
+  }
+  return lines.filter(
+    (line) => newestBatch.get(`${line.sessionId}\0${line.proposedBy}`) === line.proposedAt
+  );
+}
+function buildQueueGroupsBlock(proposals) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const proposal of proposals) {
+    const targetId = targetIdBlock(proposal.target);
+    const groupId = `${proposal.projectId}\0${targetId}`;
+    const existing = groups.get(groupId);
+    if (existing) {
+      existing.proposals.push(proposal);
+      existing.confidence = Math.min(existing.confidence, proposal.confidence);
+    } else {
+      groups.set(groupId, {
+        targetId,
+        target: proposal.target,
+        projectId: proposal.projectId,
+        proposals: [proposal],
+        confidence: proposal.confidence
+      });
+    }
+  }
+  const out = [...groups.values()];
+  for (const group of out) {
+    group.proposals.sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+  }
+  out.sort(
+    (a, b) => b.confidence - a.confidence || a.projectId.localeCompare(b.projectId) || a.targetId.localeCompare(b.targetId)
+  );
+  return out;
+}
+function asStringBlock(value) {
+  return typeof value === "string" ? value : "";
+}
+function parseTargetBlock(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw;
+  switch (obj.kind) {
+    case "existing": {
+      const key = asStringBlock(obj.key).trim();
+      return key ? { kind: "existing", key } : null;
+    }
+    case "new": {
+      const title = asStringBlock(obj.title).trim();
+      if (!title) return null;
+      const section = asStringBlock(obj.section).trim();
+      const head = asStringBlock(obj.head).trim();
+      return { kind: "new", title, ...section ? { section } : {}, ...head ? { head } : {} };
+    }
+    case "bucket":
+      return { kind: "bucket" };
+    default:
+      return null;
+  }
+}
+var SAMPLE_LIMIT = 3;
+var SAMPLE_CHARS = 160;
+function pushSampleBlock(samples, line) {
+  if (samples.length >= SAMPLE_LIMIT) return;
+  samples.push(line.length > SAMPLE_CHARS ? `${line.slice(0, SAMPLE_CHARS)}\u2026` : line);
+}
+function parseProposalLogBlock(content) {
+  const proposals = [];
+  const samples = [];
+  let skipped = 0;
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let raw;
+    try {
+      raw = JSON.parse(trimmed);
+    } catch {
+      skipped += 1;
+      pushSampleBlock(samples, trimmed);
+      continue;
+    }
+    const sessionId = asStringBlock(raw.sessionId).trim();
+    const projectId = asStringBlock(raw.projectId).trim();
+    const target = parseTargetBlock(raw.target);
+    if (!sessionId || !projectId || !target) {
+      skipped += 1;
+      pushSampleBlock(samples, trimmed);
+      continue;
+    }
+    const confidence = typeof raw.confidence === "number" && Number.isFinite(raw.confidence) ? Math.min(1, Math.max(0, raw.confidence)) : 0;
+    const head = asStringBlock(raw.head).trim();
+    const similar = parseSimilarBlock(raw.similar);
+    proposals.push({
+      sessionId,
+      projectId,
+      target,
+      ...head ? { head } : {},
+      ...similar.length ? { similar } : {},
+      confidence,
+      rationale: asStringBlock(raw.rationale),
+      proposedBy: asStringBlock(raw.proposedBy) || "unknown",
+      proposedAt: asStringBlock(raw.proposedAt)
+    });
+  }
+  return { proposals, skipped, samples };
+}
+function parseSimilarBlock(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const obj = entry;
+    const key = asStringBlock(obj.key).trim();
+    if (!key) continue;
+    out.push({ key, title: asStringBlock(obj.title).trim() });
+  }
+  return out;
+}
+function serializeProposalBlock(proposal) {
+  return JSON.stringify(proposal);
+}
+
+// src/services/lego_blocks/units/assignmentVerdictBlock.ts
+function asStringBlock2(value) {
+  return typeof value === "string" ? value : "";
+}
+function parseTargetBlock2(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw;
+  if (obj.kind === "bucket") return { kind: "bucket" };
+  if (obj.kind === "existing") {
+    const key = asStringBlock2(obj.key).trim();
+    return key ? { kind: "existing", key } : null;
+  }
+  if (obj.kind === "new") {
+    const title = asStringBlock2(obj.title).trim();
+    return title ? { kind: "new", title } : null;
+  }
+  return null;
+}
+var SAMPLE_LIMIT2 = 3;
+var SAMPLE_CHARS2 = 160;
+function pushSampleBlock2(samples, line) {
+  if (samples.length >= SAMPLE_LIMIT2) return;
+  samples.push(line.length > SAMPLE_CHARS2 ? `${line.slice(0, SAMPLE_CHARS2)}\u2026` : line);
+}
+function parseVerdictLogBlock(content) {
+  const out = [];
+  const samples = [];
+  let skipped = 0;
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let raw;
+    try {
+      raw = JSON.parse(trimmed);
+    } catch {
+      skipped += 1;
+      pushSampleBlock2(samples, trimmed);
+      continue;
+    }
+    const sessionId = asStringBlock2(raw.sessionId).trim();
+    const verdict = raw.verdict;
+    if (!sessionId || verdict !== "accept" && verdict !== "modify" && verdict !== "reject") {
+      skipped += 1;
+      pushSampleBlock2(samples, trimmed);
+      continue;
+    }
+    out.push({
+      sessionId,
+      projectId: asStringBlock2(raw.projectId).trim(),
+      proposed: parseTargetBlock2(raw.proposed),
+      confidence: typeof raw.confidence === "number" && Number.isFinite(raw.confidence) ? Math.min(1, Math.max(0, raw.confidence)) : 0,
+      verdict,
+      correctedTo: parseTargetBlock2(raw.correctedTo),
+      decidedBy: raw.decidedBy === "auto" ? "auto" : "queue",
+      at: asStringBlock2(raw.at)
+    });
+  }
+  return { verdicts: out, skipped, samples };
+}
+
+// src/services/lego_blocks/integrations/assignmentLogStoreBlock.ts
+var PROPOSALS_ROOT = "ai-activity/proposals";
+var VERDICTS_ROOT = "ai-activity/assignment-log";
+async function readIfPresentBlock(path5) {
+  const fs4 = getVaultFS();
+  try {
+    if (!await fs4.exists(path5)) return "";
+    return await fs4.read(path5);
+  } catch {
+    return "";
+  }
+}
+var APPEND_ATTEMPTS = 3;
+async function sleepJitterBlock(attempt) {
+  const ms = 40 * attempt + Math.floor(Math.random() * 60);
+  await new Promise((resolve2) => setTimeout(resolve2, ms));
+}
+async function appendLinesBlock(root, path5, lines) {
+  if (!lines.length) return { verified: true };
+  const fs4 = getVaultFS();
+  await fs4.mkdir(root);
+  for (let attempt = 1; attempt <= APPEND_ATTEMPTS; attempt += 1) {
+    const existing = await readIfPresentBlock(path5);
+    const prefix = existing && !existing.endsWith("\n") ? `${existing}
+` : existing;
+    await fs4.write(path5, `${prefix}${lines.join("\n")}
+`);
+    const after = await readIfPresentBlock(path5);
+    const present = new Set(after.split("\n").map((line) => line.trim()));
+    if (lines.every((line) => present.has(line.trim()))) return { verified: true };
+    if (attempt < APPEND_ATTEMPTS) await sleepJitterBlock(attempt);
+  }
+  return { verified: false };
+}
+function proposalLogPathBlock(projectId) {
+  return `${PROPOSALS_ROOT}/${projectId.replace(/[^A-Za-z0-9._-]+/g, "-")}.jsonl`;
+}
+async function readProposalsBlock(projectId) {
+  return parseProposalLogBlock(await readIfPresentBlock(proposalLogPathBlock(projectId)));
+}
+async function appendProposalsBlock(projectId, proposals) {
+  const path5 = proposalLogPathBlock(projectId);
+  const { verified } = await appendLinesBlock(
+    PROPOSALS_ROOT,
+    path5,
+    proposals.map(serializeProposalBlock)
+  );
+  return { path: path5, verified };
+}
+async function readAllVerdictsBlock() {
+  const fs4 = getVaultFS();
+  let names = [];
+  try {
+    names = (await fs4.list(VERDICTS_ROOT)).files.filter((name) => name.endsWith(".jsonl")).sort();
+  } catch {
+    return { verdicts: [], skipped: 0, samples: [] };
+  }
+  const verdicts = [];
+  const samples = [];
+  let skipped = 0;
+  for (const name of names) {
+    const read = parseVerdictLogBlock(await readIfPresentBlock(`${VERDICTS_ROOT}/${name}`));
+    verdicts.push(...read.verdicts);
+    skipped += read.skipped;
+    for (const sample of read.samples) if (samples.length < 3) samples.push(sample);
+  }
+  return { verdicts, skipped, samples };
+}
+
 // src/services/lego_blocks/integrations/aiActivityUndertakingStoreBlock.ts
 init_js_yaml();
 init_fsBlock();
@@ -28587,11 +22752,11 @@ function fileNameFor(key) {
 function undertakingPathBlock(projectId, key) {
   return `${undertakingDirBlock(projectId)}/${fileNameFor(key)}`;
 }
-async function readIfPresent(path6) {
+async function readIfPresent(path5) {
   const fs4 = getVaultFS();
   try {
-    if (!await fs4.exists(path6)) return null;
-    return await fs4.read(path6);
+    if (!await fs4.exists(path5)) return null;
+    return await fs4.read(path5);
   } catch {
     return null;
   }
@@ -28669,9 +22834,9 @@ async function existingPathForKeyBlock(projectId, key) {
 async function writeUndertakingBlock(projectId, record) {
   const fs4 = getVaultFS();
   await fs4.mkdir(undertakingDirBlock(projectId));
-  const path6 = await existingPathForKeyBlock(projectId, record.key) ?? undertakingPathBlock(projectId, record.key);
-  await fs4.write(path6, serializeUndertakingBlock(record));
-  return path6;
+  const path5 = await existingPathForKeyBlock(projectId, record.key) ?? undertakingPathBlock(projectId, record.key);
+  await fs4.write(path5, serializeUndertakingBlock(record));
+  return path5;
 }
 var DEFAULT_VOCABULARY = { tags: [] };
 async function readTagVocabularyBlock(projectId) {
@@ -28695,35 +22860,428 @@ async function readTagVocabularyBlock(projectId) {
 async function writeTagVocabularyBlock(projectId, vocabulary) {
   const fs4 = getVaultFS();
   await fs4.mkdir(`${ROOT}/${projectId}`);
-  const path6 = tagVocabularyPathBlock(projectId);
+  const path5 = tagVocabularyPathBlock(projectId);
   const header = "# Tag vocabulary for this project.\n# Anurag owns this list. Tagging refuses anything not named here unless\n# explicitly forced, which is what stops near-duplicates accumulating.\n";
-  await fs4.write(path6, header + yaml.dump({ tags: vocabulary.tags }, { lineWidth: -1 }));
-  return path6;
+  await fs4.write(path5, header + yaml.dump({ tags: vocabulary.tags }, { lineWidth: -1 }));
+  return path5;
 }
 
-// src/services/lego_blocks/integrations/aiActivityChainIndexBlock.ts
+// src/services/lego_blocks/integrations/aiActivitySessionDigestStoreBlock.ts
 init_fsBlock();
 
-// src/services/lego_blocks/units/aiActivityChainDigestBlock.ts
+// src/services/lego_blocks/units/aiActivitySessionDigestBlock.ts
 init_js_yaml();
-init_modelProfileBlock();
-var CURRENT_CHAIN_DIGEST_SCHEMA_VERSION = 4;
+
+// src/services/lego_blocks/units/aiActivityMappingBlock.ts
+init_storageKeyBlock();
+
+// src/services/lego_blocks/units/aiActivityParserBlock.ts
+var IDLE_GAP_HOURS = 1;
+var IDLE_GAP_MS = IDLE_GAP_HOURS * 36e5;
+function groupChainableBlock(items) {
+  if (items.length === 0) return [];
+  const sorted = [...items].sort(
+    (a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso) || a.chainSortKey.localeCompare(b.chainSortKey)
+  );
+  const byProject = /* @__PURE__ */ new Map();
+  for (const s of sorted) {
+    const arr = byProject.get(s.project) ?? [];
+    arr.push(s);
+    byProject.set(s.project, arr);
+  }
+  const groups = [];
+  for (const list of byProject.values()) {
+    let open = [];
+    for (const s of list) {
+      const sStartMs = Date.parse(s.startedIso);
+      const sEndMs = Date.parse(s.endedIso ?? s.startedIso);
+      const stillOpen = [];
+      for (const chain of open) {
+        if (sStartMs - chain.maxEndMs > IDLE_GAP_MS) groups.push(chain.sessions);
+        else stillOpen.push(chain);
+      }
+      open = stillOpen;
+      let best = null;
+      for (const chain of open) {
+        if (chain.cleared) continue;
+        if (sStartMs < chain.maxEndMs) continue;
+        if (!best || chain.maxEndMs > best.maxEndMs) best = chain;
+      }
+      if (best) {
+        best.sessions.push(s);
+        if (sEndMs > best.maxEndMs) best.maxEndMs = sEndMs;
+        best.cleared = s.hadClear;
+      } else {
+        open.push({ sessions: [s], maxEndMs: sEndMs, cleared: s.hadClear });
+      }
+    }
+    for (const chain of open) groups.push(chain.sessions);
+  }
+  return groups;
+}
+
+// src/data/modelQuirks.json
+var modelQuirks_default = {
+  $schema: "./modelQuirks.schema.md",
+  version: 1,
+  $comment: [
+    "Model and server quirks, as data. Adding support for a newly released",
+    "model should be an edit to this file \u2014 not a code change.",
+    "",
+    "`models` is ORDER SENSITIVE: first regex match wins, so specific patterns",
+    "must precede general ones (qwen3.8 before qwen3). Patterns are matched",
+    "case-insensitively against the model id the server reports.",
+    "",
+    "Fields:",
+    "  match                 regex source, matched case-insensitively",
+    "  hasReasoningMode      model hides a thinking trail we must actively",
+    "                        disable for single-shot contract runs",
+    "  thinkingToggleVisible optional; whether the UI offers a thinking switch.",
+    "                        Defaults to hasReasoningMode. Only set explicitly",
+    "                        where the two answers differ (see unknownLocal).",
+    "  contextWindow         approximate, for guarding oversized inputs.",
+    "  maxOutputTokens       runaway guard, NOT a length control. Length is",
+    "                        specified in each contract's prompt; the model never",
+    "                        sees this number. Set well above any legitimate",
+    "                        answer, so hitting it means something broke.",
+    "                        hidden thought is emitted before the answer and spends",
+    "                        the same budget. 0 for non-reasoning models.",
+    "  reasoningHeadroomTokens  added on top only when thinking is on. Sized so",
+    "                        the model can think as long as it wants \u2014 the thought",
+    "                        is never what gets cut. Time is the only real backstop."
+  ],
+  models: [
+    {
+      match: "qwen3\\.?8",
+      family: "Qwen 3.8",
+      provider: "openai-compat",
+      supportsTools: true,
+      supportsJsonSchema: true,
+      hasReasoningMode: true,
+      maxOutputTokens: 4096,
+      reasoningHeadroomTokens: 28672,
+      contextWindow: 262144
+    },
+    {
+      match: "qwen3\\.?6|qwen3-next|qwen-3-next",
+      family: "Qwen 3.6 / Qwen3-Next",
+      provider: "openai-compat",
+      supportsTools: true,
+      supportsJsonSchema: true,
+      hasReasoningMode: true,
+      maxOutputTokens: 4096,
+      reasoningHeadroomTokens: 28672,
+      contextWindow: 128e3
+    },
+    {
+      match: "qwen[-_ ]?3",
+      family: "Qwen 3",
+      provider: "openai-compat",
+      supportsTools: true,
+      supportsJsonSchema: true,
+      hasReasoningMode: true,
+      maxOutputTokens: 4096,
+      reasoningHeadroomTokens: 28672,
+      contextWindow: 32e3
+    },
+    {
+      match: "qwen[-_ ]?2",
+      family: "Qwen 2",
+      provider: "openai-compat",
+      supportsTools: true,
+      supportsJsonSchema: false,
+      hasReasoningMode: false,
+      maxOutputTokens: 4096,
+      reasoningHeadroomTokens: 0,
+      contextWindow: 32e3
+    },
+    {
+      match: "qwq",
+      family: "QwQ",
+      provider: "openai-compat",
+      supportsTools: false,
+      supportsJsonSchema: false,
+      hasReasoningMode: true,
+      maxOutputTokens: 4096,
+      reasoningHeadroomTokens: 28672,
+      contextWindow: 32e3
+    },
+    {
+      match: "gemma[-_ ]?[34]",
+      family: "Gemma 3/4",
+      provider: "openai-compat",
+      supportsTools: false,
+      supportsJsonSchema: false,
+      hasReasoningMode: false,
+      maxOutputTokens: 4096,
+      reasoningHeadroomTokens: 0,
+      contextWindow: 128e3
+    },
+    {
+      match: "llama[-_ ]?3\\.[123]|llama[-_ ]?3\\.\\d",
+      family: "Llama 3.x",
+      provider: "openai-compat",
+      supportsTools: true,
+      supportsJsonSchema: true,
+      hasReasoningMode: false,
+      maxOutputTokens: 4096,
+      reasoningHeadroomTokens: 0,
+      contextWindow: 128e3
+    },
+    {
+      match: "mistral|mixtral",
+      family: "Mistral",
+      provider: "openai-compat",
+      supportsTools: true,
+      supportsJsonSchema: false,
+      hasReasoningMode: false,
+      maxOutputTokens: 4096,
+      reasoningHeadroomTokens: 0,
+      contextWindow: 32e3
+    },
+    {
+      match: "phi[-_ ]?\\d",
+      family: "Phi",
+      provider: "openai-compat",
+      supportsTools: false,
+      supportsJsonSchema: false,
+      hasReasoningMode: false,
+      maxOutputTokens: 4096,
+      reasoningHeadroomTokens: 0,
+      contextWindow: 128e3
+    },
+    {
+      match: "deepseek[-_ ]?r1|r1[-_ ]?distill",
+      family: "DeepSeek R1",
+      provider: "openai-compat",
+      supportsTools: false,
+      supportsJsonSchema: false,
+      hasReasoningMode: true,
+      maxOutputTokens: 4096,
+      reasoningHeadroomTokens: 28672,
+      contextWindow: 64e3
+    },
+    {
+      match: "claude[-_ ]?opus[-_ ]?4",
+      family: "Claude Opus 4.x",
+      provider: "anthropic",
+      supportsTools: true,
+      supportsJsonSchema: true,
+      hasReasoningMode: true,
+      maxOutputTokens: 8192,
+      reasoningHeadroomTokens: 4096,
+      contextWindow: 2e5
+    },
+    {
+      match: "claude[-_ ]?sonnet[-_ ]?4|claude[-_ ]?4[-_ ]?sonnet",
+      family: "Claude Sonnet 4.x",
+      provider: "anthropic",
+      supportsTools: true,
+      supportsJsonSchema: true,
+      hasReasoningMode: true,
+      maxOutputTokens: 8192,
+      reasoningHeadroomTokens: 4096,
+      contextWindow: 2e5
+    },
+    {
+      match: "claude[-_ ]?haiku[-_ ]?4|claude[-_ ]?4[-_ ]?haiku",
+      family: "Claude Haiku 4.x",
+      provider: "anthropic",
+      supportsTools: true,
+      supportsJsonSchema: true,
+      hasReasoningMode: false,
+      maxOutputTokens: 8192,
+      reasoningHeadroomTokens: 0,
+      contextWindow: 2e5
+    },
+    {
+      match: "claude",
+      family: "Claude (unknown version)",
+      provider: "anthropic",
+      supportsTools: true,
+      supportsJsonSchema: true,
+      hasReasoningMode: false,
+      maxOutputTokens: 8192,
+      reasoningHeadroomTokens: 0,
+      contextWindow: 2e5
+    }
+  ],
+  unknownLocal: {
+    family: "Unknown (OpenAI-compatible)",
+    provider: "openai-compat",
+    supportsTools: false,
+    supportsJsonSchema: false,
+    hasReasoningMode: false,
+    thinkingToggleVisible: true,
+    maxOutputTokens: 4096,
+    reasoningHeadroomTokens: 0,
+    contextWindow: 8e3
+  },
+  unknownAnthropic: {
+    family: "Unknown Claude",
+    provider: "anthropic",
+    supportsTools: false,
+    supportsJsonSchema: false,
+    hasReasoningMode: false,
+    maxOutputTokens: 8192,
+    reasoningHeadroomTokens: 0,
+    contextWindow: 8e3
+  },
+  $serversComment: [
+    "Server-side quirks, keyed by the family sniffed from system_fingerprint.",
+    "`fingerprints` is order sensitive the same way `models` is.",
+    "reasoningToggleLocation: where enable_thinking has to go, or null to not",
+    "send it at all."
+  ],
+  servers: {
+    $discoveryComment: "Loopback ports probed by 'Detect local servers'. Adding a runtime here is all it takes to have it found.",
+    discovery: [
+      {
+        port: 1234,
+        runtime: "LM Studio"
+      },
+      {
+        port: 8080,
+        runtime: "rapid-mlx / llama.cpp"
+      },
+      {
+        port: 11434,
+        runtime: "Ollama"
+      },
+      {
+        port: 8e3,
+        runtime: "vLLM"
+      },
+      {
+        port: 5001,
+        runtime: "mlx_lm.server"
+      }
+    ],
+    fingerprints: [
+      {
+        match: "mlx",
+        family: "mlx_lm"
+      },
+      {
+        match: "lm-studio|lmstudio",
+        family: "lm_studio"
+      },
+      {
+        match: "ollama",
+        family: "ollama"
+      },
+      {
+        match: "llama\\.cpp|llamacpp",
+        family: "llama_cpp"
+      },
+      {
+        match: "vllm",
+        family: "vllm"
+      }
+    ],
+    families: {
+      mlx_lm: {
+        $comment: "Accepts response_format: json_schema but does not reliably steer the model to obey it (observed with Qwen 3.6: server accepts the field, model emits markdown). Advertising false makes non-string contracts fall back to prompt-based JSON instead of trusting native enforcement.",
+        reasoningToggleLocation: "top-level",
+        supportsTools: true,
+        supportsJsonSchema: false
+      },
+      lm_studio: {
+        reasoningToggleLocation: "top-level",
+        supportsTools: true,
+        supportsJsonSchema: true
+      },
+      ollama: {
+        reasoningToggleLocation: null,
+        supportsTools: true,
+        supportsJsonSchema: false
+      },
+      llama_cpp: {
+        reasoningToggleLocation: "top-level",
+        supportsTools: true,
+        supportsJsonSchema: true
+      },
+      vllm: {
+        reasoningToggleLocation: "extra-body",
+        supportsTools: true,
+        supportsJsonSchema: true
+      },
+      openai: {
+        reasoningToggleLocation: null,
+        supportsTools: true,
+        supportsJsonSchema: true
+      },
+      "unknown-openai-compat": {
+        reasoningToggleLocation: null,
+        supportsTools: false,
+        supportsJsonSchema: false
+      }
+    }
+  }
+};
+
+// src/services/lego_blocks/units/intelligence/modelProfileBlock.ts
+function parseGenerationSourceBlock(value) {
+  return value === "local" || value === "claude" || value === "rule-based" ? value : "";
+}
+function toProfileBlock(raw, where) {
+  if (raw.provider !== "openai-compat" && raw.provider !== "anthropic" && raw.provider !== "claude-cli") {
+    throw new Error(`modelQuirks.json: invalid provider "${raw.provider}" at ${where}`);
+  }
+  return {
+    family: raw.family,
+    provider: raw.provider,
+    supportsTools: raw.supportsTools,
+    supportsJsonSchema: raw.supportsJsonSchema,
+    hasReasoningMode: raw.hasReasoningMode,
+    thinkingToggleVisible: raw.thinkingToggleVisible ?? raw.hasReasoningMode,
+    maxOutputTokens: raw.maxOutputTokens,
+    reasoningHeadroomTokens: raw.reasoningHeadroomTokens,
+    contextWindow: raw.contextWindow
+  };
+}
+var FAMILIES = modelQuirks_default.models.map((entry, i) => ({
+  match: new RegExp(entry.match, "i"),
+  profile: toProfileBlock(entry, `models[${i}] (${entry.family})`)
+}));
+var UNKNOWN_LOCAL_PROFILE = toProfileBlock(modelQuirks_default.unknownLocal, "unknownLocal");
+var UNKNOWN_ANTHROPIC_PROFILE = toProfileBlock(modelQuirks_default.unknownAnthropic, "unknownAnthropic");
+
+// src/services/lego_blocks/units/aiActivitySessionDigestBlock.ts
+var CURRENT_SESSION_DIGEST_SCHEMA_VERSION = 1;
 var ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-function isValidChainDigestDateBlock(value) {
+function isValidSessionDigestDateBlock(value) {
   return typeof value === "string" && ISO_DATE_RE.test(value);
 }
-function chainActiveDurationMsBlock(digest) {
+function sessionActiveDurationMsBlock(digest) {
   return digest.activeDurationMs > 0 ? digest.activeDurationMs : digest.durationMs;
 }
-var AI_ACTIVITY_CHAIN_DIGEST_CACHE_TASK_ID = "projectChainDigest";
+function groupSessionDigestsBlock(digests) {
+  const chainable = digests.map((d) => ({
+    digest: d,
+    project: d.projectId,
+    startedIso: d.startedIso,
+    endedIso: d.endedIso,
+    hadClear: d.hadClear,
+    chainSortKey: d.sessionId
+  }));
+  const groups = groupChainableBlock(chainable).map((group) => group.map((g) => g.digest));
+  groups.sort((a, b) => Date.parse(b[0].startedIso) - Date.parse(a[0].startedIso));
+  return groups;
+}
+var AI_ACTIVITY_SESSION_DIGEST_CACHE_TASK_ID = "projectSessionDigest";
+var SESSIONS_ROOT = "ai-activity/sessions";
 function sanitizeSegment(value) {
   return value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "x";
 }
-function chainDigestVaultRelPathBlock(projectId, chainId) {
-  return `ai-activity/chains/${sanitizeSegment(projectId)}/${sanitizeSegment(chainId)}.md`;
+function sessionDigestVaultRelPathBlock(projectId, sessionId) {
+  return `${SESSIONS_ROOT}/${sanitizeSegment(projectId)}/${sanitizeSegment(sessionId)}.md`;
 }
-function chainDigestCacheKeyBlock(projectId, chainId) {
-  return `${sanitizeSegment(projectId)}__${sanitizeSegment(chainId)}`;
+function sessionDigestProjectDirBlock(projectId) {
+  return `${SESSIONS_ROOT}/${sanitizeSegment(projectId)}`;
+}
+function sessionDigestCacheKeyBlock(projectId, sessionId) {
+  return `${sanitizeSegment(projectId)}__${sanitizeSegment(sessionId)}`;
 }
 function toStringOrEmpty(value) {
   return typeof value === "string" ? value : "";
@@ -28747,45 +23305,39 @@ function toStringArrayLoose(value) {
   if (typeof value === "string") return value.trim() ? [value.trim()] : [];
   return toStringArray(value);
 }
-function commonChainDigestFieldsBlock(parsed, projectId, chainKey, date) {
+function commonSessionDigestFieldsBlock(parsed, projectId, sessionId, date, summary) {
   return {
     projectId,
-    chainId: toStringOrEmpty(parsed.chainId) || chainKey,
-    sessions: toStringArray(parsed.sessions),
-    chainKey,
+    sessionId,
+    path: toStringOrEmpty(parsed.path),
     date,
     title: toStringOrEmpty(parsed.title),
-    summary: toStringOrEmpty(parsed.summary),
+    summary,
     source: toStringOrEmpty(parsed.source),
     msgCount: toNumberOrZero(parsed.msgCount),
     durationMs: toNumberOrZero(parsed.durationMs),
     activeDurationMs: toNumberOrZero(parsed.activeDurationMs),
     startedIso: toStringOrEmpty(parsed.startedIso),
     endedIso: toStringOrEmpty(parsed.endedIso),
+    hadClear: parsed.hadClear === true,
+    filesWritten: toStringArray(parsed.filesWritten),
+    filesRead: toStringArray(parsed.filesRead),
+    undertaking: toStringArrayLoose(parsed.undertaking),
     inputHash: toStringOrEmpty(parsed.inputHash),
     generatedAt: toIsoStringOrNow(parsed.generatedAt),
     model: toStringOrEmpty(parsed.model),
     generator: parseGenerationSourceBlock(parsed.generator),
-    filesWritten: toStringArray(parsed.filesWritten),
-    filesBySession: toChainSessionFilesBlock(parsed.filesBySession),
-    filesRead: toStringArray(parsed.filesRead),
-    undertaking: toStringArrayLoose(parsed.undertaking)
+    thinking: parsed.thinking === true
   };
 }
-function toChainSessionFilesBlock(value) {
-  if (!Array.isArray(value)) return void 0;
-  const out = [];
-  for (const raw of value) {
-    if (!raw || typeof raw !== "object") continue;
-    const entry = raw;
-    const session = toStringOrEmpty(entry.session);
-    if (!session) continue;
-    const files = toStringArray(entry.files);
-    if (files.length > 0) out.push({ session, files });
-  }
-  return out.length > 0 ? out : void 0;
+function addressableBlock(parsed) {
+  const projectId = toStringOrEmpty(parsed.projectId);
+  const sessionId = toStringOrEmpty(parsed.sessionId);
+  const date = toStringOrEmpty(parsed.date);
+  if (!projectId || !sessionId || !isValidSessionDigestDateBlock(date)) return null;
+  return { projectId, sessionId, date };
 }
-function parseProjectChainDigestMarkdownBlock(content) {
+function parseProjectSessionDigestMarkdownBlock(content) {
   const trimmed = content.trimStart();
   if (!trimmed.startsWith("---")) return null;
   const afterOpen = trimmed.indexOf("\n");
@@ -28800,1388 +23352,114 @@ function parseProjectChainDigestMarkdownBlock(content) {
     return null;
   }
   if (!parsed || typeof parsed !== "object") return null;
-  const projectId = toStringOrEmpty(parsed.projectId);
-  const chainKey = toStringOrEmpty(parsed.chainKey);
-  const date = toStringOrEmpty(parsed.date);
-  if (!projectId || !chainKey || !isValidChainDigestDateBlock(date)) return null;
-  return commonChainDigestFieldsBlock(parsed, projectId, chainKey, date);
+  const addr = addressableBlock(parsed);
+  if (!addr) return null;
+  const afterClose = rest.slice(closeIdx).replace(/^---\s*\n?/, "");
+  const summary = afterClose.replace(/^\s*#\s+.*\n+/, "").trim();
+  return commonSessionDigestFieldsBlock(parsed, addr.projectId, addr.sessionId, addr.date, summary);
 }
-function stringifyProjectChainDigestMarkdownBlock(digest) {
+function stringifyProjectSessionDigestMarkdownBlock(digest) {
   const frontmatter = {
-    schemaVersion: CURRENT_CHAIN_DIGEST_SCHEMA_VERSION,
+    schemaVersion: CURRENT_SESSION_DIGEST_SCHEMA_VERSION,
     projectId: digest.projectId,
-    chainId: digest.chainId,
-    chainKey: digest.chainKey,
+    sessionId: digest.sessionId,
+    path: digest.path,
     date: digest.date,
     source: digest.source,
     startedIso: digest.startedIso,
     endedIso: digest.endedIso,
+    hadClear: digest.hadClear,
     msgCount: digest.msgCount,
     durationMs: digest.durationMs,
     activeDurationMs: digest.activeDurationMs,
     model: digest.model,
     generator: digest.generator,
+    thinking: digest.thinking,
     inputHash: digest.inputHash,
     generatedAt: digest.generatedAt,
     title: digest.title
   };
-  if (digest.sessions?.length) frontmatter.sessions = digest.sessions;
   if (digest.filesWritten?.length) frontmatter.filesWritten = digest.filesWritten;
-  if (digest.filesBySession?.length) frontmatter.filesBySession = digest.filesBySession;
   if (digest.filesRead?.length) frontmatter.filesRead = digest.filesRead;
   if (digest.undertaking?.length) frontmatter.undertaking = digest.undertaking;
-  const yamlStr = yaml.dump(frontmatter, {
-    lineWidth: -1,
-    noRefs: true,
-    sortKeys: false,
-    quotingType: '"'
-  }).trimEnd();
+  const yamlStr = yaml.dump(frontmatter, { lineWidth: -1, noRefs: true, sortKeys: false, quotingType: '"' }).trimEnd();
   const bodyLines = [];
   if (digest.title) bodyLines.push(`# ${digest.title}`, "");
   if (digest.summary) bodyLines.push(digest.summary, "");
-  const body = bodyLines.join("\n").trimEnd();
   return `---
 ${yamlStr}
 ---
 
-${body}
+${bodyLines.join("\n").trimEnd()}
 `;
 }
-function stringifyProjectChainDigestJsonBlock(digest) {
-  return JSON.stringify(
-    { schemaVersion: CURRENT_CHAIN_DIGEST_SCHEMA_VERSION, ...digest },
-    null,
-    2
-  );
+function stringifyProjectSessionDigestJsonBlock(digest) {
+  return JSON.stringify({ schemaVersion: CURRENT_SESSION_DIGEST_SCHEMA_VERSION, ...digest }, null, 2);
 }
-
-// src/services/lego_blocks/integrations/aiActivityChainIndexBlock.ts
-var CHAINS_ROOT = "ai-activity/chains";
-function withinRange(date, from, to) {
-  if (from && date < from) return false;
-  if (to && date > to) return false;
-  return true;
-}
-async function listChainProjectsBlock() {
-  const fs4 = getVaultFS();
+function parseProjectSessionDigestJsonBlock(raw) {
+  let parsed;
   try {
-    return (await fs4.list(CHAINS_ROOT)).folders.slice().sort((a, b) => a.localeCompare(b));
-  } catch {
-    return [];
-  }
-}
-async function listChainDatesBlock(projectId) {
-  const fs4 = getVaultFS();
-  try {
-    const listed = await fs4.list(`${CHAINS_ROOT}/${projectId}`);
-    return listed.folders.filter((name) => /^\d{4}-\d{2}-\d{2}$/.test(name)).sort();
-  } catch {
-    return [];
-  }
-}
-async function readDigestFileBlock(path6) {
-  const fs4 = getVaultFS();
-  let content;
-  try {
-    content = await fs4.read(path6);
+    parsed = JSON.parse(raw);
   } catch {
     return null;
   }
-  const digest = parseProjectChainDigestMarkdownBlock(content);
-  return digest ? { ...digest, path: path6 } : null;
-}
-async function listChainsBlock(query) {
-  const fs4 = getVaultFS();
-  const dir = `${CHAINS_ROOT}/${query.projectId}`;
-  const byId = /* @__PURE__ */ new Map();
-  let names = [];
-  try {
-    names = (await fs4.list(dir)).files.filter((name) => name.endsWith(".md"));
-  } catch {
-    names = [];
-  }
-  for (const name of names) {
-    const entry = await readDigestFileBlock(`${dir}/${name}`);
-    if (entry) byId.set(entry.chainId, entry);
-  }
-  for (const date of await listChainDatesBlock(query.projectId)) {
-    let legacy = [];
-    try {
-      legacy = (await fs4.list(`${dir}/${date}`)).files.filter((name) => name.endsWith(".md"));
-    } catch {
-      continue;
-    }
-    for (const name of legacy) {
-      const entry = await readDigestFileBlock(`${dir}/${date}/${name}`);
-      if (entry && !byId.has(entry.chainId)) byId.set(entry.chainId, entry);
-    }
-  }
-  const out = [];
-  for (const entry of byId.values()) {
-    if (!withinRange(entry.date, query.from, query.to)) continue;
-    if (query.undertaking && !entry.undertaking.includes(query.undertaking)) continue;
-    out.push(entry);
-  }
-  out.sort((a, b) => a.startedIso.localeCompare(b.startedIso) || a.chainId.localeCompare(b.chainId));
-  return out;
-}
-async function findChainBlock(projectId, chainKey) {
-  const chains = await listChainsBlock({ projectId });
-  return chains.find((chain) => chain.chainKey === chainKey) ?? null;
-}
-async function patchChainBlock(entry, patch) {
-  const fs4 = getVaultFS();
-  const digest = { ...entry, ...patch };
-  const content = stringifyProjectChainDigestMarkdownBlock(digest);
-  const targetDir = `${CHAINS_ROOT}/${digest.projectId}`;
-  const targetPath = chainDigestVaultRelPathBlock(digest.projectId, digest.chainId);
-  if (targetPath !== entry.path) {
-    await fs4.mkdir(targetDir);
-    await fs4.write(targetPath, content);
-    try {
-      await fs4.delete(entry.path);
-    } catch {
-    }
-  } else {
-    await fs4.write(targetPath, content);
-  }
-  return { path: targetPath, digest };
-}
-
-// src/services/orchestrators/aiActivityChainReconcileOrch.ts
-init_fsBlock();
-
-// src/services/lego_blocks/units/aiActivityMappingBlock.ts
-init_storageKeyBlock();
-
-// src/services/lego_blocks/units/projectRegistryBlock.ts
-function parseProjectRegistryMarkdownBlock(markdown, vaultRoot) {
-  const root = vaultRoot.replace(/\/+$/, "");
-  const out = [];
-  for (const line of markdown.split("\n")) {
-    const m = /^\s*-\s*\*\*(.+?)\*\*\s*(.*)$/.exec(line);
-    if (!m) continue;
-    const project = m[1].trim();
-    if (!project) continue;
-    const [pathPart] = m[2].split("\u2014");
-    const paths = [];
-    for (const pm of pathPart.matchAll(/`([^`]+)`/g)) {
-      const raw = pm[1].trim().replace(/\/+$/, "");
-      if (!raw) continue;
-      paths.push(raw.startsWith("/") ? raw : root ? `${root}/${raw}` : raw);
-    }
-    if (paths.length) out.push({ project, paths });
-  }
-  return out;
-}
-function matchProjectRootBlock(cwd, entries) {
-  const norm = cwd.replace(/\/+$/, "");
-  if (!norm) return null;
-  let best = null;
-  for (const entry of entries) {
-    for (const path6 of entry.paths) {
-      if (norm === path6 || norm.startsWith(`${path6}/`)) {
-        if (!best || path6.length > best.root.length) best = { project: entry.project, root: path6 };
-      }
-    }
-  }
-  return best;
-}
-function projectRegistryFromProjectsBlock(projects, vaultRoot) {
-  const root = vaultRoot.replace(/\/+$/, "");
-  const out = [];
-  for (const project of projects) {
-    if (!project.key) continue;
-    const paths = [];
-    for (const raw of project.roots ?? []) {
-      const path6 = raw.trim().replace(/\/+$/, "");
-      if (!path6) continue;
-      paths.push(path6.startsWith("/") ? path6 : root ? `${root}/${path6}` : path6);
-    }
-    if (paths.length) out.push({ project: project.key, paths });
-  }
-  return out;
-}
-function projectAliasesFromProjectsBlock(projects) {
-  const keys = new Set(projects.map((p) => p.key.trim().toLowerCase()).filter(Boolean));
-  const out = /* @__PURE__ */ new Map();
-  for (const project of projects) {
-    const key = project.key.trim();
-    if (!key) continue;
-    for (const raw of project.aliases ?? []) {
-      const alias = raw.trim().toLowerCase();
-      if (!alias || keys.has(alias) || out.has(alias)) continue;
-      out.set(alias, key);
-    }
-  }
-  return out;
-}
-function resolveProjectByAliasBlock(detected, aliases) {
-  return aliases.get(detected.trim().toLowerCase()) ?? null;
-}
-var _cache = [];
-var _aliasCache = /* @__PURE__ */ new Map();
-var _colorCache = {};
-var _nameCache = {};
-var _taskSourceCache = {};
-var _missionCache = {};
-function setCachedProjectRegistryBlock(entries) {
-  _cache = entries;
-}
-function readCachedProjectRegistryBlock() {
-  return _cache;
-}
-function setCachedProjectAliasesBlock(aliases) {
-  _aliasCache = aliases;
-}
-function readCachedProjectAliasesBlock() {
-  return _aliasCache;
-}
-function setCachedProjectColorsBlock(colors) {
-  _colorCache = colors;
-}
-function setCachedProjectNamesBlock(names) {
-  _nameCache = names;
-}
-function setCachedProjectTaskSourcesBlock(sources) {
-  _taskSourceCache = sources;
-}
-function setCachedProjectMissionsBlock(missions) {
-  _missionCache = missions;
-}
-function projectTaskSourcesFromProjectsBlock(projects) {
-  const out = {};
-  for (const project of projects) {
-    if (!project.key) continue;
-    const dir = (project.taskDir ?? "").trim();
-    const label = (project.taskLabel ?? "").trim();
-    if (!dir && !label) continue;
-    out[project.key] = { dir, label };
-  }
-  return out;
-}
-function projectMissionsFromProjectsBlock(projects) {
-  const out = {};
-  for (const project of projects) {
-    const mission = (project.mission ?? "").trim();
-    if (project.key && mission) out[project.key] = mission;
-  }
-  return out;
-}
-
-// src/services/lego_blocks/units/aiActivityMappingBlock.ts
-var DEFAULT_SETTINGS = { rules: [], colors: {} };
-function sanitizeRule(raw) {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw;
-  const match = typeof r.match === "string" ? r.match.trim() : "";
-  const output = typeof r.output === "string" ? r.output.trim() : "";
-  if (!match || !output) return null;
-  const mode = r.mode === "contains" ? "contains" : "exact";
-  const id = typeof r.id === "string" && r.id ? r.id : `rule-${Math.random().toString(36).slice(2, 10)}`;
-  return { id, mode, match, output, enabled: r.enabled !== false };
-}
-function sanitizeColors(raw) {
-  if (!raw || typeof raw !== "object") return {};
-  const out = {};
-  for (const [key, value] of Object.entries(raw)) {
-    if (typeof value !== "string") continue;
-    const hex = normalizeHex(value);
-    if (hex) out[key] = hex;
-  }
-  return out;
-}
-function sanitizeSettings(raw) {
-  if (!raw || typeof raw !== "object") return { ...DEFAULT_SETTINGS };
-  const r = raw;
-  const rules = Array.isArray(r.rules) ? r.rules.map(sanitizeRule).filter((x) => x != null) : [];
-  return { rules, colors: sanitizeColors(r.colors) };
-}
-function normalizeHex(value) {
-  const v = value.trim().toLowerCase();
-  if (/^#[0-9a-f]{6}$/.test(v)) return v;
-  if (/^#[0-9a-f]{3}$/.test(v)) {
-    return `#${v[1]}${v[1]}${v[2]}${v[2]}${v[3]}${v[3]}`;
-  }
-  return null;
-}
-var cached = null;
-function readAiActivityMappingBlock() {
-  if (cached) return cached;
-  cached = sanitizeSettings(getJsonStorageItem(STORAGE_KEYS.aiActivityProjectMapping, DEFAULT_SETTINGS));
-  return cached;
-}
-function explainCanonicalProjectBlock(rawProject, path6, cwd, settings) {
-  const snapshot2 = settings ?? readAiActivityMappingBlock();
-  for (const rule of snapshot2.rules) {
-    if (!rule.enabled) continue;
-    if (rule.mode === "exact") {
-      if (rawProject === rule.match) return { canonical: rule.output, source: "rule", via: rule.match };
-    } else {
-      const needle = rule.match.toLowerCase();
-      const hit = rawProject.toLowerCase().includes(needle) || path6 != null && path6.toLowerCase().includes(needle) || cwd != null && cwd.toLowerCase().includes(needle);
-      if (hit) return { canonical: rule.output, source: "rule", via: rule.match };
-    }
-  }
-  if (cwd) {
-    const match = matchProjectRootBlock(cwd, readCachedProjectRegistryBlock());
-    if (match) return { canonical: match.project, source: "root", via: match.root };
-  }
-  const byAlias = resolveProjectByAliasBlock(rawProject, readCachedProjectAliasesBlock());
-  if (byAlias) return { canonical: byAlias, source: "alias", via: rawProject };
-  return { canonical: rawProject, source: "detected", via: "" };
-}
-function resolveCanonicalProjectBlock(rawProject, path6, cwd, settings) {
-  return explainCanonicalProjectBlock(rawProject, path6, cwd, settings).canonical;
-}
-function isInfraSegment(seg) {
-  if (seg.startsWith(".") || /\.(md|txt|json)$/i.test(seg)) return true;
-  if (/["'`$()|;*<>]/.test(seg)) return true;
-  return false;
-}
-function autoInferProjectFromPathBlock(path6) {
-  const segs = path6.split(/[\\/]/).filter(Boolean);
-  for (let i = segs.length - 1; i >= 0; i -= 1) {
-    if (!isInfraSegment(segs[i])) return segs[i];
-  }
-  return null;
-}
-
-// src/services/lego_blocks/units/aiActivityParserBlock.ts
-function isManualSource(source) {
-  return source === "manual";
-}
-var READING_SOURCES = /* @__PURE__ */ new Set([
-  "goodnotes",
-  "memorized",
-  "reading-md",
-  "reading-draw"
-]);
-function isReadingSource(source) {
-  return READING_SOURCES.has(source);
-}
-var FILENAME_RE = /^(\d{4}-\d{2}-\d{2})_([0-9a-f]{8})\.md$/;
-var FILENAME_DATE_RE = /^(\d{4}-\d{2}-\d{2})/;
-var SAVED_RE = /_Last saved:\s*([0-9T:\-]+)_/;
-var CLEAR_RE = /<command-name>\/clear<\/command-name>/i;
-var COMMAND_NAME_RE = /<command-name>([^<]+)<\/command-name>/;
-var FULL_UUID_RE = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
-var CWD_RE = /(?:Primary working directory|Working directory|cwd)\s*[:=]\s*([^\n`<]+)/gi;
-function sanitizeCwd(raw) {
-  let v = raw.trim();
-  v = v.replace(/^["'`]+/, "").replace(/["'`,]+$/, "").trim();
-  if (!v) return null;
-  if (!/^(~|\/|[A-Za-z]:[\\/])/.test(v)) return null;
-  if (/[$()|`;*<>"]/.test(v)) return null;
-  return v;
-}
-function detectProject(text) {
-  let cwd;
-  for (const m of text.matchAll(CWD_RE)) {
-    const candidate = sanitizeCwd(m[1]);
-    if (candidate) {
-      cwd = candidate;
-      break;
-    }
-  }
-  if (cwd) {
-    const project = autoInferProjectFromPathBlock(cwd);
-    if (project) return { project, cwd };
-  }
-  return { project: "<unknown>", cwd };
-}
-function parseStarted(filename, text, mtimeUnix) {
-  const saved = SAVED_RE.exec(text);
-  if (saved) {
-    const raw = saved[1];
-    const norm = raw.replace(/T(\d{2})-(\d{2})-(\d{2})/, "T$1:$2:$3");
-    const d = new Date(norm);
-    if (!Number.isNaN(d.getTime())) return d.toISOString();
-  }
-  const dateMatch = FILENAME_RE.exec(filename) ?? FILENAME_DATE_RE.exec(filename);
-  if (dateMatch) return (/* @__PURE__ */ new Date(dateMatch[1] + "T00:00:00")).toISOString();
-  return new Date(mtimeUnix * 1e3).toISOString();
-}
-function countUserMessages(text) {
-  const blocks = text.split(/^## User\s*$/m).slice(1);
-  let real = 0;
-  let substantive = "";
-  let fallback = "";
-  for (const rawBlock of blocks) {
-    const body = rawBlock.split(/^## /m)[0].trim();
-    const cleaned = body.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").trim().replace(/^-+/, "").trim();
-    if (!cleaned || cleaned.startsWith("[tool_result]")) continue;
-    if (/^<(local-command-caveat|command-name|command-message)/.test(cleaned)) {
-      const cmd = COMMAND_NAME_RE.exec(cleaned);
-      if (cmd && !fallback) fallback = `[${cmd[1].trim()}]`;
-      real += 1;
-      continue;
-    }
-    if (cleaned.startsWith("You are writing a git commit message")) {
-      if (!fallback) fallback = "[auto commit message]";
-      real += 1;
-      continue;
-    }
-    real += 1;
-    if (!substantive) substantive = cleaned.split("\n")[0].slice(0, 140);
-  }
-  return { count: real, topic: substantive || fallback || "(no user message)" };
-}
-var CHAT_EXPORT_PROVIDERS = /* @__PURE__ */ new Set(["chatgpt", "grok"]);
-var CHAT_EXPORT_MSG_RE = /^## (User|Assistant)[ \t]*\r?\n\*(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/gm;
-var CHAT_EXPORT_WINDOW_GAP_MS = 36e5;
-function parseChatExportSessions(input) {
-  if (!input.text.startsWith("---")) return null;
-  const fmEnd = input.text.indexOf("\n---", 3);
-  if (fmEnd === -1) return null;
-  const fm = input.text.slice(3, fmEnd);
-  const get = (key) => {
-    const m = new RegExp(`^${key}:[ \\t]*(.+)$`, "m").exec(fm);
-    if (!m) return null;
-    const v = m[1].trim();
-    return v.replace(/^"(.*)"$/, "$1") || null;
-  };
-  const provider = get("provider");
-  if (!provider || !CHAT_EXPORT_PROVIDERS.has(provider)) return null;
-  const conversationId = get("conversation_id");
-  const created = get("created");
-  if (!conversationId || !created) return null;
-  const startedDate = new Date(created.replace(" ", "T"));
-  if (Number.isNaN(startedDate.getTime())) return null;
-  const userMsgs = Number(get("user_messages"));
-  let model = get("model") ?? void 0;
-  if (!model) {
-    const list = /^models:[ \t]*\n([ \t]+-[ \t]+.+)/m.exec(fm);
-    if (list) model = list[1].replace(/^[ \t]+-[ \t]+/, "").trim() || void 0;
-  }
-  if (model === "auto") model = void 0;
-  const base = {
-    source: provider,
-    project: provider,
-    topic: get("title") ?? "(untitled)",
-    hadClear: false,
-    mtime: input.mtime,
-    model
-  };
-  const convId = conversationId.toLowerCase();
-  const msgs = [];
-  const body = input.text.slice(fmEnd + 4);
-  CHAT_EXPORT_MSG_RE.lastIndex = 0;
-  for (let m = CHAT_EXPORT_MSG_RE.exec(body); m; m = CHAT_EXPORT_MSG_RE.exec(body)) {
-    const t = Date.parse(m[2].replace(" ", "T"));
-    if (Number.isFinite(t)) msgs.push({ user: m[1] === "User", ts: t });
-  }
-  msgs.sort((a, b) => a.ts - b.ts);
-  if (msgs.length === 0) {
-    return [
-      {
-        ...base,
-        path: input.path,
-        startedIso: startedDate.toISOString(),
-        endedIso: startedDate.toISOString(),
-        userMsgCount: Number.isFinite(userMsgs) && userMsgs > 0 ? userMsgs : 0,
-        sessionId: convId
-      }
-    ];
-  }
-  const windows = [];
-  let cur = [];
-  for (const msg of msgs) {
-    if (cur.length > 0 && msg.ts - cur[cur.length - 1].ts > CHAT_EXPORT_WINDOW_GAP_MS) {
-      windows.push(cur);
-      cur = [];
-    }
-    cur.push(msg);
-  }
-  windows.push(cur);
-  return windows.map((win, i) => ({
-    ...base,
-    path: i === 0 ? input.path : `${input.path}#w${i}`,
-    startedIso: new Date(win[0].ts).toISOString(),
-    endedIso: new Date(win[win.length - 1].ts).toISOString(),
-    userMsgCount: win.filter((m) => m.user).length,
-    sessionId: i === 0 ? convId : `${convId}::w${i}`
-  }));
-}
-function parseVaultSessionsBlock(input) {
-  const chatExport = parseChatExportSessions(input);
-  if (chatExport) return chatExport;
-  const single = parseSession(input);
-  return single ? [single] : [];
-}
-function parseSession(input) {
-  const filename = input.path.split("/").pop() ?? "";
-  const looksLikeSession = FILENAME_RE.test(filename) || /^\d{4}-\d{2}-\d{2}_/.test(filename);
-  if (!looksLikeSession) return null;
-  const source = input.path.includes("/codex/") ? "codex" : "claude-code";
-  const startedIso = parseStarted(filename, input.text, input.mtime);
-  const detected = detectProject(input.text);
-  let project = detected.project;
-  const head = input.text.slice(0, 2e3);
-  if (head.includes("You are writing a git commit message")) project = "[auto-commit]";
-  else if (head.includes("TELEGRAM MODE")) project = "[telegram]";
-  const { count, topic } = countUserMessages(input.text);
-  const uuidMatch = FULL_UUID_RE.exec(input.text.slice(0, 500));
-  const sessionId = uuidMatch ? uuidMatch[1].toLowerCase() : void 0;
-  return {
-    path: input.path,
-    source,
-    startedIso,
-    // Vault markdown has no per-message timestamps; the file-level _Last saved_
-    // we used for startedIso is also the end. Keeps the field consistent across
-    // sources without inventing data we don't have.
-    endedIso: startedIso,
-    project,
-    cwd: detected.cwd,
-    userMsgCount: count,
-    topic,
-    hadClear: CLEAR_RE.test(input.text),
-    mtime: input.mtime,
-    sessionId
-  };
-}
-var IDLE_GAP_HOURS = 1;
-var IDLE_GAP_MS = IDLE_GAP_HOURS * 36e5;
-var INHERIT_WINDOW_HOURS = 4;
-function isInheritable(project) {
-  return project !== "<unknown>" && !(project.startsWith("[") && project.endsWith("]"));
-}
-function inheritUnknownSessions(sessions) {
-  if (sessions.length === 0) return sessions;
-  const sorted = [...sessions].sort(
-    (a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso)
+  if (!parsed || typeof parsed !== "object") return null;
+  const addr = addressableBlock(parsed);
+  if (!addr) return null;
+  return commonSessionDigestFieldsBlock(
+    parsed,
+    addr.projectId,
+    addr.sessionId,
+    addr.date,
+    toStringOrEmpty(parsed.summary)
   );
-  const anchors = [];
-  for (const s2 of sorted) {
-    if (s2.source === "chatgpt" || s2.source === "grok" || isReadingSource(s2.source) || isManualSource(s2.source)) continue;
-    if (isInheritable(s2.project)) {
-      anchors.push({ t: Date.parse(s2.startedIso), project: s2.project });
-    }
-  }
-  if (anchors.length === 0) return sorted;
-  const windowMs = INHERIT_WINDOW_HOURS * 36e5;
-  return sorted.map((s2) => {
-    if (s2.project !== "<unknown>") return s2;
-    const t = Date.parse(s2.startedIso);
-    let bestProject = null;
-    let bestDist = Infinity;
-    for (const a of anchors) {
-      const d = Math.abs(a.t - t);
-      if (d < bestDist) {
-        bestDist = d;
-        bestProject = a.project;
-        if (d === 0) break;
-      }
-    }
-    if (bestProject && bestDist <= windowMs) {
-      return { ...s2, project: bestProject };
-    }
-    return s2;
-  });
-}
-function buildChains(sessions) {
-  if (sessions.length === 0) return [];
-  const sorted = [...sessions].sort(
-    (a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso) || a.path.localeCompare(b.path)
-  );
-  const byProject = /* @__PURE__ */ new Map();
-  for (const s2 of sorted) {
-    const arr = byProject.get(s2.project) ?? [];
-    arr.push(s2);
-    byProject.set(s2.project, arr);
-  }
-  const chains = [];
-  for (const [project, list] of byProject.entries()) {
-    let open = [];
-    for (const s2 of list) {
-      const sStartMs = Date.parse(s2.startedIso);
-      const sEndMs = Date.parse(s2.endedIso ?? s2.startedIso);
-      const stillOpen = [];
-      for (const chain of open) {
-        if (sStartMs - chain.maxEndMs > IDLE_GAP_MS) chains.push(makeChain(project, chain.sessions));
-        else stillOpen.push(chain);
-      }
-      open = stillOpen;
-      let best = null;
-      for (const chain of open) {
-        if (chain.cleared) continue;
-        if (sStartMs < chain.maxEndMs) continue;
-        if (!best || chain.maxEndMs > best.maxEndMs) best = chain;
-      }
-      if (best) {
-        best.sessions.push(s2);
-        if (sEndMs > best.maxEndMs) best.maxEndMs = sEndMs;
-        best.cleared = s2.hadClear;
-      } else {
-        open.push({ sessions: [s2], maxEndMs: sEndMs, cleared: s2.hadClear });
-      }
-    }
-    for (const chain of open) chains.push(makeChain(project, chain.sessions));
-  }
-  chains.sort((a, b) => Date.parse(b.startedIso) - Date.parse(a.startedIso));
-  return chains;
-}
-function isPlaceholderTopic(topic) {
-  return topic.startsWith("[") && topic.endsWith("]") || topic === "(no user message)";
-}
-function chainTopic(sessions) {
-  for (const s2 of sessions) {
-    if (!isPlaceholderTopic(s2.topic)) return s2.topic;
-  }
-  return sessions[0].topic;
-}
-function makeChain(project, sessions) {
-  const first = sessions[0];
-  const last = sessions[sessions.length - 1];
-  const msgCount = sessions.reduce((n, s2) => n + s2.userMsgCount, 0);
-  const key = `${project}::${first.path}`;
-  const lastEnded = last.endedIso ?? last.startedIso;
-  let touched = null;
-  let activeDurationMs;
-  for (const s2 of sessions) {
-    if (s2.touchedPaths && s2.touchedPaths.length > 0) {
-      if (!touched) touched = /* @__PURE__ */ new Set();
-      for (const p of s2.touchedPaths) touched.add(p);
-    }
-    if (typeof s2.activeDurationMs === "number") {
-      activeDurationMs = (activeDurationMs ?? 0) + s2.activeDurationMs;
-    }
-  }
-  return {
-    key,
-    project,
-    source: first.source,
-    startedIso: first.startedIso,
-    endedIso: lastEnded,
-    msgCount,
-    topic: chainTopic(sessions),
-    sessions,
-    touchedPaths: touched ? Array.from(touched) : void 0,
-    activeDurationMs
-  };
 }
 
-// src/services/lego_blocks/units/nativeAiSessionParserBlock.ts
-function classifyCwd(cwd) {
-  if (!cwd) return "<unknown>";
-  return autoInferProjectFromPathBlock(cwd) ?? "<unknown>";
-}
-function numericField(obj, key) {
-  const v = obj[key];
-  return typeof v === "number" && Number.isFinite(v) ? v : 0;
-}
-function flattenContent(content) {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  const parts = [];
-  for (const block of content) {
-    if (typeof block === "string") {
-      parts.push(block);
-    } else if (block && typeof block === "object") {
-      const b = block;
-      const bt = typeof b.type === "string" ? b.type : "";
-      if ((bt === "text" || bt === "input_text" || bt === "output_text") && typeof b.text === "string") {
-        parts.push(b.text);
-      }
-    }
-  }
-  return parts.join("\n");
-}
-var FILE_EDIT_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
-function resolveEditPath(raw, cwd) {
-  if (raw.startsWith("/") || /^[A-Za-z]:[\\/]/.test(raw)) return raw;
-  if (cwd) return `${cwd.replace(/\/+$/, "")}/${raw.replace(/^\.\//, "")}`;
-  return raw;
-}
-function extractEditedPaths(content, cwd) {
-  if (!Array.isArray(content)) return [];
-  const out = [];
-  for (const block of content) {
-    if (!block || typeof block !== "object") continue;
-    const b = block;
-    if (b.type !== "tool_use" || typeof b.name !== "string") continue;
-    if (!FILE_EDIT_TOOLS.has(b.name)) continue;
-    const input = b.input;
-    if (!input) continue;
-    const raw = typeof input.file_path === "string" && input.file_path || typeof input.notebook_path === "string" && input.notebook_path || "";
-    if (raw) out.push(resolveEditPath(raw, cwd));
-  }
-  return out;
-}
-function isSlashCommand(body) {
-  const m = /<command-name>([^<]+)<\/command-name>/.exec(body);
-  if (m) return { is: true, name: m[1].trim() };
-  return { is: false };
-}
-function isLocalCommandCaveat(body) {
-  return body.startsWith("<local-command-caveat>");
-}
-function isAutoCommit(body) {
-  return body.startsWith("You are writing a git commit message");
-}
-function isTelegram(body) {
-  return body.includes("TELEGRAM MODE");
-}
-function emptyScan() {
-  return { count: 0, substantiveTopic: "", fallbackTopic: "" };
-}
-function ingestUserBody(scan, raw) {
-  const body = raw.trim();
-  if (!body) return;
-  if (isLocalCommandCaveat(body)) return;
-  const slash = isSlashCommand(body);
-  if (slash.is) {
-    if (!scan.fallbackTopic && slash.name) scan.fallbackTopic = `[${slash.name}]`;
-    scan.count += 1;
-    return;
-  }
-  if (isAutoCommit(body)) {
-    if (!scan.fallbackTopic) scan.fallbackTopic = "[auto commit message]";
-    scan.count += 1;
-    return;
-  }
-  scan.count += 1;
-  if (!scan.substantiveTopic) {
-    scan.substantiveTopic = body.split("\n")[0].slice(0, 140);
-  }
-}
-var WINDOW_GAP_MS = IDLE_GAP_MS;
-var ACTIVE_GAP_CAP_MS = 5 * 6e4;
-function activeDurationOfWindow(win) {
-  let active = 0;
-  for (let i = 1; i < win.length; i++) {
-    active += Math.min(win[i].ts - win[i - 1].ts, ACTIVE_GAP_CAP_MS);
-  }
-  return active;
-}
-function parseNativeAiSession(env) {
-  const lines = env.text.split("\n");
-  let cwd = "";
-  let sessionId = "";
-  let model;
-  const claudeTotals = {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheCreation: 0,
-    cacheCreation1h: 0
-  };
-  let codexTotals = null;
-  const fileEdits = [];
-  const convEvents = [];
-  const recordConv = (tsStr, isUser, body) => {
-    if (!tsStr) return;
-    const ms = Date.parse(tsStr);
-    if (!Number.isFinite(ms)) return;
-    convEvents.push({ ts: ms, isUser, body });
-  };
-  for (const raw of lines) {
-    if (!raw) continue;
-    let evt;
-    try {
-      evt = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-    const type2 = String(evt.type ?? "");
-    const ts = typeof evt.timestamp === "string" ? evt.timestamp : "";
-    if (env.source === "claude") {
-      if (!cwd && typeof evt.cwd === "string") cwd = evt.cwd;
-      if (!sessionId && typeof evt.sessionId === "string") sessionId = evt.sessionId;
-      if (type2 === "user") {
-        const message = evt.message;
-        const content = message ? message.content : void 0;
-        const body = flattenContent(content);
-        recordConv(ts, true, body);
-      }
-      if (type2 === "assistant") {
-        const message = evt.message;
-        if (message && typeof message.model === "string") model = message.model;
-        const usage = message ? message.usage : void 0;
-        if (usage) {
-          claudeTotals.input += numericField(usage, "input_tokens");
-          claudeTotals.output += numericField(usage, "output_tokens");
-          claudeTotals.cacheRead += numericField(usage, "cache_read_input_tokens");
-          claudeTotals.cacheCreation += numericField(usage, "cache_creation_input_tokens");
-          const cacheCreationDetail = usage.cache_creation;
-          if (cacheCreationDetail) {
-            claudeTotals.cacheCreation1h = (claudeTotals.cacheCreation1h ?? 0) + numericField(cacheCreationDetail, "ephemeral_1h_input_tokens");
-          }
-        }
-        const editPaths = extractEditedPaths(message?.content, cwd);
-        if (editPaths.length > 0) {
-          const editMs = Date.parse(ts);
-          if (Number.isFinite(editMs)) {
-            for (const p of editPaths) fileEdits.push({ ts: editMs, path: p });
-          }
-        }
-        recordConv(ts, false, "");
-      }
-    }
-    if (env.source === "codex") {
-      const payload = evt.payload ?? {};
-      if (type2 === "session_meta") {
-        if (typeof payload.cwd === "string") cwd = payload.cwd;
-        if (typeof payload.id === "string") sessionId = payload.id;
-        continue;
-      }
-      if (type2 === "turn_context" && typeof payload.model === "string") {
-        model = payload.model;
-      }
-      if (type2 === "event_msg") {
-        const ep = payload;
-        if (ep.type === "token_count") {
-          const info = ep.info;
-          const total = info?.total_token_usage;
-          if (total) {
-            const totalInput = numericField(total, "input_tokens");
-            const cached2 = numericField(total, "cached_input_tokens");
-            const freshInput = Math.max(0, totalInput - cached2);
-            const output = numericField(total, "output_tokens");
-            const reasoning = numericField(total, "reasoning_output_tokens");
-            codexTotals = {
-              input: freshInput,
-              output: output + reasoning,
-              cacheRead: cached2,
-              cacheCreation: 0
-              // Codex doesn't split out cache creation
-            };
-          }
-        }
-      }
-      const payloadType = String(payload.type ?? "");
-      const isUserEventMsg = type2 === "event_msg" && payloadType === "user_message";
-      const isAgentEventMsg = type2 === "event_msg" && payloadType === "agent_message";
-      const isUserResponseItem = type2 === "response_item" && payloadType === "message" && typeof payload.role === "string" && payload.role === "user";
-      const isAgentResponseItem = type2 === "response_item" && payloadType === "message" && typeof payload.role === "string" && payload.role === "assistant";
-      const isUser = isUserEventMsg || isUserResponseItem;
-      const isAgent = isAgentEventMsg || isAgentResponseItem;
-      if (ts && (isUser || isAgent)) {
-        let body = "";
-        if (isUserEventMsg) {
-          if (typeof payload.message === "string") body = payload.message;
-          else if (typeof payload.text === "string") body = payload.text;
-          else if (Array.isArray(payload.content)) body = flattenContent(payload.content);
-          else if (typeof payload.content === "string") body = payload.content;
-        }
-        recordConv(ts, isUserEventMsg, body);
-      }
-    }
-  }
-  if (!sessionId) {
-    const base = env.relPath.split("/").pop() ?? "";
-    const m = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(base);
-    if (m) sessionId = m[1];
-  }
-  if (!sessionId) return [];
-  if (convEvents.length === 0) return [];
-  convEvents.sort((a, b) => a.ts - b.ts);
-  const windows = [];
-  let cur = [];
-  for (const e of convEvents) {
-    if (cur.length === 0) {
-      cur.push(e);
-      continue;
-    }
-    if (e.ts - cur[cur.length - 1].ts > WINDOW_GAP_MS) {
-      windows.push(cur);
-      cur = [e];
-    } else {
-      cur.push(e);
-    }
-  }
-  if (cur.length > 0) windows.push(cur);
-  const sourceTag = env.source === "codex" ? "codex" : "claude-code";
-  const basePath = `native/${env.source}/${env.relPath}`;
-  const baseId = sessionId.toLowerCase();
-  const tokensForFirstWindow = env.source === "claude" ? claudeTotals.input || claudeTotals.output ? claudeTotals : void 0 : codexTotals ?? void 0;
-  const out = [];
-  windows.forEach((win, idx) => {
-    const scan = emptyScan();
-    let winHadClear = false;
-    let winHadTelegram = false;
-    let winHadAutoCommit = false;
-    for (const e of win) {
-      if (!e.isUser) continue;
-      if (/<command-name>\/clear<\/command-name>/.test(e.body)) winHadClear = true;
-      if (isAutoCommit(e.body)) winHadAutoCommit = true;
-      if (isTelegram(e.body)) winHadTelegram = true;
-      ingestUserBody(scan, e.body);
-    }
-    let project;
-    if (winHadAutoCommit) project = "[auto-commit]";
-    else if (winHadTelegram) project = "[telegram]";
-    else project = classifyCwd(cwd);
-    const startedIso = new Date(win[0].ts).toISOString();
-    const endedIso = new Date(win[win.length - 1].ts).toISOString();
-    const topic = scan.substantiveTopic || scan.fallbackTopic || "(no user message)";
-    const isFirst = idx === 0;
-    const path6 = isFirst ? basePath : `${basePath}#w${idx}`;
-    const winSessionId = isFirst ? baseId : `${baseId}::w${idx}`;
-    const winStart = win[0].ts;
-    const winEnd = win[win.length - 1].ts;
-    const touchedPaths = Array.from(
-      new Set(fileEdits.filter((e) => e.ts >= winStart && e.ts <= winEnd).map((e) => e.path))
-    );
-    out.push({
-      path: path6,
-      source: sourceTag,
-      startedIso,
-      endedIso,
-      project,
-      cwd: cwd || void 0,
-      userMsgCount: scan.count,
-      topic,
-      hadClear: winHadClear,
-      mtime: env.mtime,
-      tokens: isFirst ? tokensForFirstWindow : void 0,
-      model,
-      sessionId: winSessionId,
-      touchedPaths: touchedPaths.length > 0 ? touchedPaths : void 0,
-      activeDurationMs: activeDurationOfWindow(win)
-    });
-  });
-  return out;
-}
-function sessionIdOf(session) {
-  if (session.sessionId) return session.sessionId;
-  const base = session.path.split("/").pop() ?? session.path;
-  const uuid = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(base);
-  if (uuid) return uuid[1].toLowerCase();
-  const short = /_(\b[0-9a-f]{8}\b)\.(md|txt)$/i.exec(base);
-  if (short) return short[1].toLowerCase();
-  return session.path;
-}
-
-// src/services/lego_blocks/integrations/nativeAiSessionsBlock.ts
+// src/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock.ts
 function getApi() {
   if (typeof window === "undefined") return null;
   const api = window.electronAPI;
-  if (!api) return null;
-  if (!api.nativeAiSessionsList || !api.nativeAiSessionRead) return null;
+  if (!api || !api.intelligenceCacheGet || !api.intelligenceCacheSet) return null;
   return api;
 }
-function nativeAiSourcesAvailable() {
+var memory = /* @__PURE__ */ new Map();
+function memoryKey(taskId, cacheKey) {
+  return `${taskId}\0${cacheKey}`;
+}
+function intelligenceCacheAvailableBlock() {
   return getApi() !== null;
 }
-async function listNativeAiSessions() {
+async function readIntelligenceCacheBlock(taskId, cacheKey) {
+  if (!taskId || !cacheKey) return null;
+  const mk = memoryKey(taskId, cacheKey);
+  if (memory.has(mk)) return memory.get(mk) ?? null;
   const api = getApi();
-  if (!api) return [];
+  if (!api?.intelligenceCacheGet) {
+    memory.set(mk, null);
+    return null;
+  }
   try {
-    return await api.nativeAiSessionsList() ?? [];
+    const rec = await api.intelligenceCacheGet(taskId, cacheKey);
+    memory.set(mk, rec);
+    return rec;
   } catch {
-    return [];
+    memory.set(mk, null);
+    return null;
   }
 }
-async function readClaudeHistory() {
+async function writeIntelligenceCacheBlock(record) {
   const api = getApi();
-  if (!api?.nativeAiClaudeHistoryRead) return "";
+  if (!api?.intelligenceCacheSet) return false;
   try {
-    return await api.nativeAiClaudeHistoryRead() ?? "";
+    const res = await api.intelligenceCacheSet(record);
+    if (res?.ok) {
+      memory.set(memoryKey(record.taskId, record.cacheKey), record);
+      return true;
+    }
+    return false;
   } catch {
-    return "";
+    return false;
   }
-}
-async function readNativeAiSession(source, relPath) {
-  const api = getApi();
-  if (!api) throw new Error("Native AI session API not available on this platform");
-  return api.nativeAiSessionRead(source, relPath);
-}
-async function loadAndParseNativeAiSession(entry) {
-  try {
-    const text = await readNativeAiSession(entry.source, entry.relPath);
-    return parseNativeAiSession({
-      source: entry.source,
-      relPath: entry.relPath,
-      mtime: entry.mtime,
-      text
-    });
-  } catch {
-    return [];
-  }
-}
-
-// src/services/lego_blocks/units/claudeHistoryParserBlock.ts
-var WINDOW_GAP_MS2 = 36e5;
-function isSlashCommand2(display) {
-  const trimmed = display.trim();
-  if (/^\/[a-z][\w:-]*(\s|$)/i.test(trimmed)) {
-    return { is: true, name: trimmed.split(/\s/, 1)[0] };
-  }
-  return { is: false };
-}
-function parseClaudeHistoryBlock(text, mtime) {
-  const bySession = /* @__PURE__ */ new Map();
-  for (const raw of text.split("\n")) {
-    if (!raw) continue;
-    let evt;
-    try {
-      evt = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-    const sessionId = typeof evt.sessionId === "string" ? evt.sessionId.toLowerCase() : "";
-    const ts = typeof evt.timestamp === "number" && Number.isFinite(evt.timestamp) ? evt.timestamp : NaN;
-    if (!sessionId || !Number.isFinite(ts)) continue;
-    const entry = {
-      ts,
-      display: typeof evt.display === "string" ? evt.display : "",
-      cwd: typeof evt.project === "string" ? evt.project : ""
-    };
-    const arr = bySession.get(sessionId);
-    if (arr) arr.push(entry);
-    else bySession.set(sessionId, [entry]);
-  }
-  const out = [];
-  for (const [sessionId, entries] of bySession) {
-    entries.sort((a, b) => a.ts - b.ts);
-    const windows = [];
-    let cur = [];
-    for (const e of entries) {
-      if (cur.length > 0 && e.ts - cur[cur.length - 1].ts > WINDOW_GAP_MS2) {
-        windows.push(cur);
-        cur = [];
-      }
-      cur.push(e);
-    }
-    if (cur.length > 0) windows.push(cur);
-    const basePath = `history/claude/${sessionId}`;
-    windows.forEach((win, idx) => {
-      let substantiveTopic = "";
-      let fallbackTopic = "";
-      let hadClear = false;
-      const cwd = win.find((e) => e.cwd)?.cwd ?? "";
-      for (const e of win) {
-        const body = e.display.trim();
-        if (!body) continue;
-        const slash = isSlashCommand2(body);
-        if (slash.is) {
-          if (slash.name === "/clear") hadClear = true;
-          if (!fallbackTopic && slash.name) fallbackTopic = `[${slash.name}]`;
-          continue;
-        }
-        if (!substantiveTopic) substantiveTopic = body.split("\n")[0].slice(0, 140);
-      }
-      const isFirst = idx === 0;
-      out.push({
-        path: isFirst ? basePath : `${basePath}#w${idx}`,
-        source: "claude-code",
-        startedIso: new Date(win[0].ts).toISOString(),
-        endedIso: new Date(win[win.length - 1].ts).toISOString(),
-        project: cwd && autoInferProjectFromPathBlock(cwd) || "<unknown>",
-        cwd: cwd || void 0,
-        userMsgCount: win.length,
-        topic: substantiveTopic || fallbackTopic || "(no user message)",
-        hadClear,
-        mtime,
-        sessionId: isFirst ? sessionId : `${sessionId}::w${idx}`,
-        reconstructed: true
-      });
-    });
-  }
-  return out;
-}
-
-// src/services/lego_blocks/units/aiActivitySourcesBlock.ts
-init_storageKeyBlock();
-var DEFAULT_VAULT_SESSION_PREFIXES = [
-  "ai-activity/raw-sessions/claude-code/",
-  "ai-activity/raw-sessions/codex/",
-  "ai-activity/raw-sessions/chatgpt/",
-  "ai-activity/raw-sessions/grok/"
-];
-function sanitizePrefixes(raw) {
-  if (!Array.isArray(raw)) return null;
-  const out = [];
-  for (const item of raw) {
-    if (typeof item !== "string") continue;
-    let p = item.trim().replace(/^\/+/, "");
-    if (!p) continue;
-    if (p.startsWith("ai_raw/raw/")) p = `ai-activity/raw-sessions/${p.slice("ai_raw/raw/".length)}`;
-    else if (p.startsWith("ai-raw/raw/")) p = `ai-activity/raw-sessions/${p.slice("ai-raw/raw/".length)}`;
-    if (!p.endsWith("/")) p += "/";
-    if (!out.includes(p)) out.push(p);
-  }
-  return out;
-}
-function readVaultSessionPrefixesBlock() {
-  const stored = sanitizePrefixes(
-    getJsonStorageItem(STORAGE_KEYS.aiActivityVaultSourcePrefixes, null)
-  );
-  return stored ?? [...DEFAULT_VAULT_SESSION_PREFIXES];
-}
-
-// src/services/lego_blocks/units/goodnotesReadingParserBlock.ts
-var MAX_SESSION_MS = 90 * 6e4;
-var PUBLISHER_KEYWORDS = /\b(press|books?|publish(?:ing|ers?)|house|verlag|editions?|classics|library|ltd|inc|co|wiley|penguin|vintage|routledge|springer|norton|harpercollins|bloomsbury|macmillan|profile)\b/i;
-function cleanReadingTitleBlock(rawTitle, documentId) {
-  let t = (rawTitle ?? "").trim();
-  if (!t) return `Document ${documentId.slice(0, 8)}`;
-  t = t.replace(/\.(pdf|epub|goodnotes|note|docx?|txt)$/i, "").trim();
-  t = t.replace(/\s*[-–—|]?\s*(libgen(\.\w+)?|z-?lib(\.\w+)?|annas?[-\s]?archive|sci-?hub)\b.*$/i, "").trim();
-  const authorPrefix = /^[A-Z][\w.'’-]+,\s+[A-Z][\w.'’\s-]*?\s+[-–—]\s+(?=\S)/u;
-  if (authorPrefix.test(t)) t = t.replace(authorPrefix, "").trim();
-  t = t.replace(/[_]+/g, " ").replace(/\s{2,}/g, " ").trim();
-  t = t.replace(/\s*\((?:\d{4}|[^()]*\b\d{4}\b[^()]*)\)\s*$/g, "").trim();
-  const trailing = /\s*[-–—]\s*([^-–—]{2,40})$/u.exec(t);
-  if (trailing && PUBLISHER_KEYWORDS.test(trailing[1])) {
-    t = t.slice(0, trailing.index).trim();
-  }
-  t = t.replace(/\s{2,}/g, " ").replace(/^[-–—|,\s]+|[-–—|,\s]+$/g, "").trim();
-  if (!t) return `Document ${documentId.slice(0, 8)}`;
-  return t.length > 80 ? t.slice(0, 79).trim() + "\u2026" : t;
-}
-function readingRecordToSession(rec) {
-  const startMs = rec.startMs;
-  if (!Number.isFinite(startMs) || startMs <= 0) return null;
-  const rawDur = Math.max(0, rec.endMs - startMs);
-  const dur = rec.userEdited ? rawDur : Math.min(rawDur, MAX_SESSION_MS);
-  const title = cleanReadingTitleBlock(rec.title, rec.documentId);
-  const startedIso = new Date(startMs).toISOString();
-  const endedIso = new Date(startMs + dur).toISOString();
-  return {
-    // Synthetic, stable, collision-free path under the goodnotes family.
-    path: `goodnotes/${rec.key}`,
-    source: "goodnotes",
-    startedIso,
-    endedIso,
-    // Per-book bucket — the cleaned title is the project so chips/heatmap/trend
-    // group reading by what was read.
-    project: title,
-    // Pages read is the natural unit for reading; feeds the "msgs" stat + the
-    // project ranking. Min 1 so a zero-page record still counts as a session.
-    userMsgCount: Math.max(1, Math.round(rec.pages) || 1),
-    topic: title,
-    hadClear: false,
-    mtime: rec.harvestedAt || Math.floor(startMs / 1e3),
-    sessionId: rec.key
-  };
-}
-var dayKeyMs = (ms) => new Date(ms).toISOString().slice(0, 10);
-function parseGoodnotesReadingLog(records, opts = {}) {
-  const lastModifiedDay = /* @__PURE__ */ new Map();
-  if (opts.annotationGate) {
-    for (const rec of records) {
-      if (typeof rec.docModifiedMs === "number" && rec.docModifiedMs > 0) {
-        const day = dayKeyMs(rec.docModifiedMs);
-        const prev = lastModifiedDay.get(rec.documentId);
-        if (!prev || day > prev) lastModifiedDay.set(rec.documentId, day);
-      }
-    }
-  }
-  const out = [];
-  for (const rec of records) {
-    if (opts.annotationGate && rec.documentType !== "phantom-ipad" && !rec.userEdited) {
-      const modDay = lastModifiedDay.get(rec.documentId);
-      if (modDay && dayKeyMs(rec.endMs) > modDay) continue;
-    }
-    const s2 = readingRecordToSession(rec);
-    if (s2) out.push(s2);
-  }
-  return out;
-}
-
-// src/services/lego_blocks/integrations/goodnotesReadingBlock.ts
-init_storageKeyBlock();
-var READING_LOG_PATH = "ai-activity/raw-sessions/goodnotes/reading.jsonl";
-var lastNeedsFullDiskAccess = false;
-function getApi2() {
-  if (typeof window === "undefined") return null;
-  const api = window.electronAPI;
-  if (!api?.goodnotesHarvest || !api.goodnotesReadLog) return null;
-  return api;
-}
-function parseLogText(text) {
-  const out = [];
-  for (const line of text.split("\n")) {
-    const t = line.trim();
-    if (!t) continue;
-    try {
-      out.push(JSON.parse(t));
-    } catch {
-    }
-  }
-  return out;
-}
-async function loadGoodnotesReadingSessions(fs4) {
-  const parseOpts = { annotationGate: getGoodnotesAnnotationGate() };
-  const api = getApi2();
-  if (api) {
-    const vaultRoot = getStoredVaultRoot() ?? "";
-    if (getGoodnotesReadingEnabled()) {
-      try {
-        const result = await api.goodnotesHarvest(vaultRoot);
-        lastNeedsFullDiskAccess = result?.needsFullDiskAccess === true;
-      } catch {
-      }
-    }
-    try {
-      const records = await api.goodnotesReadLog(vaultRoot) ?? [];
-      return parseGoodnotesReadingLog(records, parseOpts);
-    } catch {
-      return [];
-    }
-  }
-  try {
-    if (!await fs4.exists(READING_LOG_PATH)) return [];
-    const text = await fs4.read(READING_LOG_PATH);
-    return parseGoodnotesReadingLog(parseLogText(text), parseOpts);
-  } catch {
-    return [];
-  }
-}
-
-// src/services/lego_blocks/integrations/memorizedReadingBlock.ts
-init_dbBlock();
-
-// src/services/lego_blocks/units/memorizedSessionParserBlock.ts
-init_memorizedSessionsBlock();
-var MAX_SESSION_MS2 = 4 * 36e5;
-function noonMs(dateIso) {
-  const t = Date.parse(dateIso + "T12:00:00");
-  return Number.isFinite(t) ? t : NaN;
-}
-function titleBucket(note) {
-  const t = (note.title ?? "").trim();
-  if (t) return t;
-  const base = note.filePath.split("/").pop() ?? note.filePath;
-  return base.replace(/\.md$/i, "").trim() || note.filePath;
-}
-function memorizedSessionToParsed(note, session, index) {
-  const startMs = session.startedAt ? Date.parse(session.startedAt) : noonMs(session.date);
-  if (!Number.isFinite(startMs) || startMs <= 0) return null;
-  const endRaw = session.endedAt ? Date.parse(session.endedAt) : startMs;
-  const dur = Math.min(Math.max(0, (Number.isFinite(endRaw) ? endRaw : startMs) - startMs), MAX_SESSION_MS2);
-  const bucket = titleBucket(note);
-  return {
-    // Synthetic, stable, collision-free path under the memorized family. The
-    // index disambiguates multiple sittings recorded on the same note.
-    path: `memorized/${note.filePath}#${index}`,
-    source: "memorized",
-    startedIso: new Date(startMs).toISOString(),
-    endedIso: new Date(startMs + dur).toISOString(),
-    project: bucket,
-    userMsgCount: 1,
-    topic: bucket,
-    hadClear: false,
-    mtime: Math.floor(startMs / 1e3),
-    sessionId: `memorized/${note.filePath}#${index}`
-  };
-}
-function parseMemorizedNotes(notes) {
-  const out = [];
-  for (const note of notes) {
-    const sessions = normalizeMemorizedSessions(note.rawSessions);
-    sessions.forEach((session, i) => {
-      const parsed = memorizedSessionToParsed(note, session, i);
-      if (parsed) out.push(parsed);
-    });
-  }
-  return out;
-}
-
-// src/services/lego_blocks/integrations/memorizedReadingBlock.ts
-async function loadMemorizedSessions() {
-  try {
-    const nodes = await getNodesByMetadataKey("memorized_sessions");
-    const notes = nodes.map((n) => ({
-      title: n.title,
-      filePath: n.filePath,
-      rawSessions: n.metadata?.memorized_sessions
-    }));
-    return parseMemorizedNotes(notes);
-  } catch {
-    return [];
-  }
-}
-
-// src/services/lego_blocks/units/thinkingspaceReadingParserBlock.ts
-var MAX_SESSION_MS3 = 4 * 36e5;
-function readingTitleFromPathBlock(filePath) {
-  const base = filePath.split("/").pop() ?? filePath;
-  return base.replace(/\.excalidraw\.md$/i, "").replace(/\.(excalidraw|md)$/i, "").trim() || filePath;
-}
-function readingRecordToSession2(rec) {
-  const startMs = rec.startMs;
-  if (!Number.isFinite(startMs) || startMs <= 0) return null;
-  const rawDur = Math.max(0, rec.endMs - startMs);
-  const dur = rec.userEdited ? rawDur : Math.min(rawDur, MAX_SESSION_MS3);
-  const title = (rec.title ?? "").trim() || readingTitleFromPathBlock(rec.filePath);
-  return {
-    path: `${rec.source}/${rec.filePath}#${startMs}`,
-    source: rec.source,
-    startedIso: new Date(startMs).toISOString(),
-    endedIso: new Date(startMs + dur).toISOString(),
-    project: title,
-    userMsgCount: Math.max(1, Math.round(rec.pages ?? 0) || 1),
-    topic: title,
-    hadClear: false,
-    mtime: Math.floor((rec.recordedAt || startMs) / 1e3),
-    sessionId: rec.key
-  };
-}
-function parseThinkingspaceReadingLog(records) {
-  const out = [];
-  for (const rec of records) {
-    const s2 = readingRecordToSession2(rec);
-    if (s2) out.push(s2);
-  }
-  return out;
-}
-
-// src/services/lego_blocks/integrations/thinkingspaceReadingBlock.ts
-var READING_DIR = "ai-activity/raw-sessions/thinkingspace";
-var READING_LOG_PATH2 = `${READING_DIR}/reading.jsonl`;
-function parseLogText2(text) {
-  const out = [];
-  for (const line of text.split("\n")) {
-    const t = line.trim();
-    if (!t) continue;
-    try {
-      out.push(JSON.parse(t));
-    } catch {
-    }
-  }
-  return out;
-}
-var _writeChain = Promise.resolve();
-var ABSORB_GRACE_MS = 5 * 6e4;
-async function loadThinkingspaceReadingSessions(fs4) {
-  try {
-    if (!await fs4.exists(READING_LOG_PATH2)) return [];
-    const text = await fs4.read(READING_LOG_PATH2);
-    return parseThinkingspaceReadingLog(parseLogText2(text));
-  } catch {
-    return [];
-  }
-}
-
-// src/services/lego_blocks/units/manualSessionParserBlock.ts
-function manualRecordToSession(rec) {
-  if (!Number.isFinite(rec.startMs) || rec.startMs <= 0) return null;
-  const dur = Math.max(0, rec.endMs - rec.startMs);
-  const project = (rec.project ?? "").trim() || "Logged";
-  const topic = (rec.topic ?? "").trim() || project;
-  return {
-    path: `manual/${rec.key}`,
-    source: "manual",
-    startedIso: new Date(rec.startMs).toISOString(),
-    endedIso: new Date(rec.startMs + dur).toISOString(),
-    project,
-    userMsgCount: 0,
-    topic,
-    hadClear: true,
-    mtime: Math.floor((rec.recordedAt || rec.startMs) / 1e3),
-    sessionId: rec.key
-  };
-}
-function parseManualSessionLog(records) {
-  const out = [];
-  for (const rec of records) {
-    const s2 = manualRecordToSession(rec);
-    if (s2) out.push(s2);
-  }
-  return out;
 }
 
 // src/services/lego_blocks/units/vaultWritePrefsBlock.ts
@@ -30204,625 +23482,7 @@ async function getVaultWriteAiActivityEnabled() {
   }
 }
 
-// src/services/lego_blocks/integrations/manualSessionBlock.ts
-var MANUAL_DIR = "ai-activity";
-var MANUAL_LOG_PATH = `${MANUAL_DIR}/manual-sessions.jsonl`;
-function parseLogText3(text) {
-  const out = [];
-  for (const line of text.split("\n")) {
-    const t = line.trim();
-    if (!t) continue;
-    try {
-      out.push(JSON.parse(t));
-    } catch {
-    }
-  }
-  return out;
-}
-var _writeChain2 = Promise.resolve();
-async function readRecords(fs4) {
-  if (!await fs4.exists(MANUAL_LOG_PATH)) return { text: "", records: [] };
-  const text = await fs4.read(MANUAL_LOG_PATH);
-  return { text, records: parseLogText3(text) };
-}
-async function loadManualSessions(fs4) {
-  try {
-    const { records } = await readRecords(fs4);
-    return parseManualSessionLog(records);
-  } catch {
-    return [];
-  }
-}
-
-// src/services/lego_blocks/integrations/aiActivitySnapshotStoreBlock.ts
-init_import_wrapper();
-var AiActivitySnapshotDB = class extends import_wrapper_default {
-  snapshots;
-  diskCacheMirrors;
-  constructor() {
-    super("ThinkingSpaceAiActivitySnapshot");
-    this.version(1).stores({
-      snapshots: "&id",
-      diskCacheMirrors: "&id"
-    });
-  }
-};
-var _db2 = null;
-function getDb2() {
-  if (!_db2) _db2 = new AiActivitySnapshotDB();
-  return _db2;
-}
-var RECORD_ID = "latest";
-async function readPersistedAiActivitySnapshotBlock(version, vaultRoot) {
-  try {
-    const rec = await getDb2().snapshots.get(RECORD_ID);
-    if (!rec || rec.version !== version || rec.vaultRoot !== vaultRoot) return null;
-    if (!Array.isArray(rec.sessions) || rec.sessions.length === 0) return null;
-    return rec.sessions;
-  } catch {
-    return null;
-  }
-}
-async function writePersistedAiActivitySnapshotBlock(version, vaultRoot, sessions) {
-  try {
-    await getDb2().snapshots.put({
-      id: RECORD_ID,
-      version,
-      vaultRoot,
-      ts: Date.now(),
-      sessions
-    });
-  } catch {
-  }
-}
-async function readPersistedDiskCacheMirrorBlock(version, vaultRoot, fingerprint) {
-  try {
-    const rec = await getDb2().diskCacheMirrors.get(RECORD_ID);
-    if (!rec || rec.version !== version || rec.vaultRoot !== vaultRoot) return null;
-    if (rec.fingerprint !== fingerprint) return null;
-    if (!rec.sessions || typeof rec.sessions !== "object") return null;
-    return { sessions: rec.sessions, updatedAt: rec.updatedAt };
-  } catch {
-    return null;
-  }
-}
-async function writePersistedDiskCacheMirrorBlock(version, vaultRoot, fingerprint, sessions, updatedAt) {
-  try {
-    await getDb2().diskCacheMirrors.put({
-      id: RECORD_ID,
-      version,
-      vaultRoot,
-      fingerprint,
-      sessions,
-      updatedAt
-    });
-  } catch {
-  }
-}
-
-// src/services/lego_blocks/integrations/aiActivityCacheBlock.ts
-init_storageKeyBlock();
-var CACHE_PATH = ".thinking-space/ai-activity-cache.json";
-var CACHE_DIR = ".thinking-space";
-var CACHE_VERSION = 18;
-var MEM_TTL_MS = 5 * 60 * 1e3;
-var READ_CONCURRENCY = 16;
-function sameMtimeBlock(a, b) {
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
-  return Math.floor(a) === Math.floor(b);
-}
-function emptyCache() {
-  return { version: CACHE_VERSION, sessions: {}, updatedAt: 0 };
-}
-function vaultRootKey() {
-  return getStoredVaultRoot() ?? "";
-}
-var _diskCacheMemo = null;
-async function statCacheFingerprint(fs4) {
-  try {
-    const st = await fs4.stat(CACHE_PATH);
-    if (st.isDirectory) return null;
-    return `${st.mtime}:${st.size}`;
-  } catch {
-    return null;
-  }
-}
-async function readCache(fs4) {
-  const fingerprint = await statCacheFingerprint(fs4);
-  if (fingerprint) {
-    if (_diskCacheMemo?.fingerprint === fingerprint) return _diskCacheMemo.cache;
-    const mirrored = await readPersistedDiskCacheMirrorBlock(
-      CACHE_VERSION,
-      vaultRootKey(),
-      fingerprint
-    );
-    if (mirrored) {
-      const cache2 = {
-        version: CACHE_VERSION,
-        sessions: mirrored.sessions,
-        updatedAt: mirrored.updatedAt
-      };
-      _diskCacheMemo = { fingerprint, cache: cache2 };
-      return cache2;
-    }
-  }
-  try {
-    if (!fingerprint && !await fs4.exists(CACHE_PATH)) return emptyCache();
-    const raw = await fs4.read(CACHE_PATH);
-    const parsed = JSON.parse(raw);
-    if (parsed.version !== CACHE_VERSION) return emptyCache();
-    if (!parsed.sessions || typeof parsed.sessions !== "object") return emptyCache();
-    if (fingerprint) {
-      _diskCacheMemo = { fingerprint, cache: parsed };
-      void writePersistedDiskCacheMirrorBlock(
-        CACHE_VERSION,
-        vaultRootKey(),
-        fingerprint,
-        parsed.sessions,
-        parsed.updatedAt
-      );
-    }
-    return parsed;
-  } catch {
-    return emptyCache();
-  }
-}
-async function writeCache(fs4, cache2) {
-  try {
-    if (!await fs4.exists(CACHE_DIR)) {
-      await fs4.mkdir(CACHE_DIR);
-    }
-    await fs4.write(CACHE_PATH, JSON.stringify(cache2));
-    const fingerprint = await statCacheFingerprint(fs4);
-    if (fingerprint) {
-      _diskCacheMemo = { fingerprint, cache: cache2 };
-      void writePersistedDiskCacheMirrorBlock(
-        CACHE_VERSION,
-        vaultRootKey(),
-        fingerprint,
-        cache2.sessions,
-        cache2.updatedAt
-      );
-    }
-  } catch {
-  }
-}
-var _snapshot = null;
-var _inflight = null;
-var _snapshotListeners = /* @__PURE__ */ new Set();
-function notifySnapshotListeners() {
-  for (const listener of [..._snapshotListeners]) {
-    try {
-      listener();
-    } catch {
-    }
-  }
-}
-async function runParallel(items, concurrency, worker) {
-  const out = new Array(items.length);
-  let cursor = 0;
-  async function pull() {
-    while (true) {
-      const i = cursor++;
-      if (i >= items.length) return;
-      out[i] = await worker(items[i], i);
-    }
-  }
-  const lanes = Array.from({ length: Math.min(concurrency, items.length) }, () => pull());
-  await Promise.all(lanes);
-  return out;
-}
-async function performLoad(fs4) {
-  const nativeAvailable = nativeAiSourcesAvailable();
-  const [vaultEntries, nativeEntries, historyText] = await Promise.all([
-    fs4.walkVault([".md"]),
-    listNativeAiSessions(),
-    readClaudeHistory()
-  ]);
-  const sourcePrefixes = readVaultSessionPrefixesBlock();
-  const vaultSessions = vaultEntries.filter(
-    (e) => sourcePrefixes.some((prefix) => e.path.startsWith(prefix))
-  );
-  const cache2 = await readCache(fs4);
-  const next = {};
-  const present = /* @__PURE__ */ new Set();
-  let reparsed = 0;
-  const cachedByVaultFile = /* @__PURE__ */ new Map();
-  for (const [path6, sess] of Object.entries(cache2.sessions)) {
-    if (path6.startsWith("native/") || path6.startsWith("history/")) continue;
-    const fileKey = path6.split("#", 1)[0];
-    const arr = cachedByVaultFile.get(fileKey) ?? [];
-    arr.push(sess);
-    cachedByVaultFile.set(fileKey, arr);
-  }
-  const vaultToParse = [];
-  for (const entry of vaultSessions) {
-    const cachedWindows = cachedByVaultFile.get(entry.path) ?? [];
-    const fresh = cachedWindows.length > 0 && cachedWindows.every((s2) => sameMtimeBlock(s2.mtime, entry.mtime));
-    if (fresh) {
-      for (const s2 of cachedWindows) {
-        present.add(s2.path);
-        next[s2.path] = s2;
-      }
-    } else {
-      present.add(entry.path);
-      vaultToParse.push(entry);
-    }
-  }
-  const vaultParsed = await runParallel(vaultToParse, READ_CONCURRENCY, async (entry) => {
-    try {
-      const text = await fs4.read(entry.path);
-      return parseVaultSessionsBlock({ path: entry.path, text, mtime: entry.mtime });
-    } catch {
-      return cachedByVaultFile.get(entry.path) ?? [];
-    }
-  });
-  for (const windows of vaultParsed) {
-    for (const s2 of windows) {
-      present.add(s2.path);
-      next[s2.path] = s2;
-    }
-    if (windows.length > 0) reparsed += 1;
-  }
-  const nativeToParse = [];
-  const cachedByFileKey = /* @__PURE__ */ new Map();
-  for (const [path6, sess] of Object.entries(cache2.sessions)) {
-    if (!path6.startsWith("native/")) continue;
-    const fileKey = path6.split("#", 1)[0];
-    const arr = cachedByFileKey.get(fileKey) ?? [];
-    arr.push(sess);
-    cachedByFileKey.set(fileKey, arr);
-  }
-  if (!nativeAvailable) {
-    for (const [, windows] of cachedByFileKey) {
-      for (const s2 of windows) {
-        present.add(s2.path);
-        next[s2.path] = s2;
-      }
-    }
-  } else {
-    for (const entry of nativeEntries) {
-      const key = `native/${entry.source}/${entry.relPath}`;
-      const cachedWindows = cachedByFileKey.get(key) ?? [];
-      const fresh = cachedWindows.length > 0 && cachedWindows.every((s2) => sameMtimeBlock(s2.mtime, entry.mtime));
-      if (fresh) {
-        for (const s2 of cachedWindows) {
-          present.add(s2.path);
-          next[s2.path] = s2;
-        }
-      } else {
-        present.add(key);
-        nativeToParse.push(entry);
-      }
-    }
-  }
-  const nativeParsed = await runParallel(nativeToParse, READ_CONCURRENCY, async (entry) => {
-    const parsed = await loadAndParseNativeAiSession(entry);
-    if (parsed.length > 0) return parsed;
-    const key = `native/${entry.source}/${entry.relPath}`;
-    return cachedByFileKey.get(key) ?? [];
-  });
-  for (const windows of nativeParsed) {
-    for (const s2 of windows) {
-      present.add(s2.path);
-      next[s2.path] = s2;
-    }
-    if (windows.length > 0) reparsed += 1;
-  }
-  if (!nativeAvailable || !historyText) {
-    for (const [path6, sess] of Object.entries(cache2.sessions)) {
-      if (!path6.startsWith("history/")) continue;
-      present.add(path6);
-      next[path6] = sess;
-    }
-  } else {
-    const historySessions = parseClaudeHistoryBlock(historyText, 0);
-    let historyChanged = false;
-    for (const s2 of historySessions) {
-      present.add(s2.path);
-      next[s2.path] = s2;
-      const cached2 = cache2.sessions[s2.path];
-      if (!cached2 || cached2.userMsgCount !== s2.userMsgCount || cached2.endedIso !== s2.endedIso) {
-        historyChanged = true;
-      }
-    }
-    if (historyChanged) reparsed += 1;
-  }
-  const stale = Object.keys(cache2.sessions).filter((p) => !present.has(p));
-  if (nativeAvailable && (reparsed > 0 || stale.length > 0 || Object.keys(cache2.sessions).length === 0)) {
-    await writeCache(fs4, {
-      version: CACHE_VERSION,
-      sessions: next,
-      updatedAt: Math.floor(Date.now() / 1e3)
-    });
-  }
-  const goodnotesSessions = await loadGoodnotesReadingSessions(fs4).catch(() => []);
-  const memorizedSessions = await loadMemorizedSessions().catch(() => []);
-  const thinkingspaceReadingSessions = await loadThinkingspaceReadingSessions(fs4).catch(() => []);
-  const manualSessions = await loadManualSessions(fs4).catch(() => []);
-  const raw = [
-    ...Object.values(next),
-    ...goodnotesSessions,
-    ...memorizedSessions,
-    ...thinkingspaceReadingSessions,
-    ...manualSessions
-  ];
-  const coveredFullIds = /* @__PURE__ */ new Set();
-  const coveredShortIds = /* @__PURE__ */ new Set();
-  for (const s2 of raw) {
-    if (s2.path.startsWith("history/")) continue;
-    const base = sessionIdOf(s2).split("::", 1)[0];
-    if (base.length === 8) coveredShortIds.add(base);
-    else coveredFullIds.add(base);
-  }
-  const all = raw.filter((s2) => {
-    if (!s2.path.startsWith("history/")) return true;
-    const base = sessionIdOf(s2).split("::", 1)[0];
-    if (coveredFullIds.has(base)) return false;
-    return !coveredShortIds.has(base.slice(0, 8));
-  });
-  const byId = /* @__PURE__ */ new Map();
-  for (const s2 of all) {
-    const id = sessionIdOf(s2);
-    const normalizedId = id.length === 8 ? findUuidByPrefix(all, id) ?? id : id;
-    const existing = byId.get(normalizedId);
-    if (!existing) {
-      byId.set(normalizedId, s2);
-      continue;
-    }
-    const existingIsNative = existing.path.startsWith("native/");
-    const candidateIsNative = s2.path.startsWith("native/");
-    if (candidateIsNative && !existingIsNative) {
-      byId.set(normalizedId, s2);
-    } else if (candidateIsNative === existingIsNative && s2.userMsgCount > existing.userMsgCount) {
-      byId.set(normalizedId, s2);
-    }
-  }
-  const sessions = [...byId.values()].sort(
-    (a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso)
-  );
-  return { sessions, reparsed };
-}
-function findUuidByPrefix(sessions, short) {
-  for (const s2 of sessions) {
-    const id = sessionIdOf(s2);
-    if (id.length > 8 && id.startsWith(short)) return id;
-  }
-  return null;
-}
-async function loadAiActivity(fs4, options = {}) {
-  const { force = false } = options;
-  if (!force && _snapshot) {
-    const age = Date.now() - _snapshot.ts;
-    if (age < MEM_TTL_MS) return _snapshot.result;
-  }
-  if (!force && _inflight) return _inflight;
-  if (force) {
-    _snapshot = null;
-    _inflight = null;
-  }
-  const hadSnapshot = _snapshot != null;
-  const promise = performLoad(fs4).then((result) => {
-    _snapshot = { result, ts: Date.now() };
-    _inflight = null;
-    void writePersistedAiActivitySnapshotBlock(CACHE_VERSION, vaultRootKey(), result.sessions);
-    notifySnapshotListeners();
-    return result;
-  }).catch((err) => {
-    _inflight = null;
-    throw err;
-  });
-  _inflight = promise;
-  if (!force && !hadSnapshot) {
-    const persisted = await readPersistedAiActivitySnapshotBlock(
-      CACHE_VERSION,
-      vaultRootKey()
-    ).catch(() => null);
-    if (persisted && !_snapshot) {
-      const seeded = { sessions: persisted, reparsed: 0 };
-      _snapshot = { result: seeded, ts: 0 };
-      void promise.catch(() => {
-      });
-      return seeded;
-    }
-  }
-  return promise;
-}
-
-// src/services/lego_blocks/integrations/projectRegistryLoaderBlock.ts
-init_fsBlock();
-
-// src/services/lego_blocks/integrations/projectsStorageBlock.ts
-init_fsBlock();
-
-// src/services/lego_blocks/units/projectBlock.ts
-var PROJECTS_SCHEMA_VERSION_BLOCK = 3;
-function readProjectUuidBlock(value) {
-  if (!value || typeof value !== "object") return "";
-  const candidate = value;
-  if (typeof candidate.uuid === "string" && candidate.uuid) return candidate.uuid;
-  if (typeof candidate.id === "string" && candidate.id) return candidate.id;
-  return "";
-}
-function isValidProjectBlock(value) {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value;
-  return readProjectUuidBlock(value).length > 0 && typeof candidate.name === "string" && typeof candidate.mission === "string";
-}
-function normalizeVaultPathBlock2(value) {
-  if (typeof value !== "string") return "";
-  return value.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "").trim();
-}
-function normalizeProjectRootBlock(value) {
-  if (typeof value !== "string") return "";
-  const clean = value.replace(/\\/g, "/").trim().replace(/\/+$/, "");
-  if (!clean) return "";
-  return clean.startsWith("/") ? clean.replace(/^\/+/, "/") : clean.replace(/^\/+/, "");
-}
-function normalizeStringListBlock(value) {
-  if (!Array.isArray(value)) return [];
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const raw of value) {
-    if (typeof raw !== "string") continue;
-    const v = raw.trim();
-    if (!v || seen.has(v)) continue;
-    seen.add(v);
-    out.push(v);
-  }
-  return out;
-}
-function normalizeRootsBlock(value) {
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const raw of normalizeStringListBlock(value)) {
-    const root = normalizeProjectRootBlock(raw);
-    if (!root || seen.has(root)) continue;
-    seen.add(root);
-    out.push(root);
-  }
-  return out;
-}
-function isValidProjectKeyBlock(value) {
-  if (typeof value !== "string") return false;
-  const key = value.trim();
-  if (!key || key.length > 64 || key !== value) return false;
-  if (key === "." || key === "..") return false;
-  for (const ch of key) {
-    if (ch === "/" || ch === "\\") return false;
-    if (ch.charCodeAt(0) < 32) return false;
-  }
-  return true;
-}
-function upgradeProjectBlock(value) {
-  const candidate = value;
-  const roots = normalizeRootsBlock(candidate.roots);
-  if (roots.length === 0) {
-    const legacy = normalizeVaultPathBlock2(candidate.vaultPath);
-    if (legacy) roots.push(legacy);
-  }
-  const key = isValidProjectKeyBlock(candidate.key) ? candidate.key : isValidProjectKeyBlock(candidate.slug) ? candidate.slug : "";
-  return {
-    uuid: readProjectUuidBlock(value),
-    key,
-    name: candidate.name ?? "",
-    mission: candidate.mission ?? "",
-    description: typeof candidate.description === "string" ? candidate.description : "",
-    roots,
-    group: typeof candidate.group === "string" ? candidate.group.trim() : "",
-    aliases: normalizeStringListBlock(candidate.aliases),
-    color: typeof candidate.color === "string" ? candidate.color.trim() : "",
-    taskDir: typeof candidate.taskDir === "string" ? candidate.taskDir.trim() : "",
-    taskLabel: typeof candidate.taskLabel === "string" ? candidate.taskLabel.trim() : ""
-  };
-}
-function normalizeProjectsFileBlock(value) {
-  if (!value || typeof value !== "object") return null;
-  const candidate = value;
-  if (typeof candidate.version !== "number") return null;
-  if (candidate.version > PROJECTS_SCHEMA_VERSION_BLOCK) return null;
-  if (!Array.isArray(candidate.projects)) return null;
-  const projects = candidate.projects.filter(isValidProjectBlock).map(upgradeProjectBlock);
-  return { version: PROJECTS_SCHEMA_VERSION_BLOCK, projects };
-}
-
-// src/services/lego_blocks/integrations/projectsStorageBlock.ts
-init_storageKeyBlock();
-var PROJECTS_FILE_PATH_BLOCK = ".thinking-space/projects.json";
-async function readProjectsStateBlock() {
-  try {
-    const fs4 = getVaultFS();
-    if (!await fs4.exists(PROJECTS_FILE_PATH_BLOCK)) return { status: "missing" };
-    const raw = await fs4.read(PROJECTS_FILE_PATH_BLOCK);
-    const parsed = JSON.parse(raw);
-    const file = normalizeProjectsFileBlock(parsed);
-    if (!file) return { status: "unreadable" };
-    return { status: "ok", projects: file.projects };
-  } catch {
-    return { status: "unreadable" };
-  }
-}
-async function readProjectsBlock() {
-  const state = await readProjectsStateBlock();
-  return state.status === "ok" ? state.projects : [];
-}
-
-// src/services/lego_blocks/integrations/projectRegistryLoaderBlock.ts
-init_storageKeyBlock();
-var FALLBACK_PROJECTS_MD_PATHS = [".thinking-space/projects.md", "kai-workspace/projects.md"];
-async function fallbackRegistryBlock(vaultRoot) {
-  const fs4 = getVaultFS();
-  for (const path6 of FALLBACK_PROJECTS_MD_PATHS) {
-    try {
-      if (!await fs4.exists(path6)) continue;
-      const entries = parseProjectRegistryMarkdownBlock(await fs4.read(path6), vaultRoot);
-      if (entries.length) return entries;
-    } catch {
-    }
-  }
-  return [];
-}
-async function loadProjectRegistryBlock() {
-  try {
-    const vaultRoot = getStoredVaultRoot() ?? "";
-    const projects = await readProjectsBlock();
-    const defined = projectRegistryFromProjectsBlock(projects, vaultRoot);
-    setCachedProjectAliasesBlock(projectAliasesFromProjectsBlock(projects));
-    setCachedProjectColorsBlock(
-      Object.fromEntries(
-        projects.filter((p) => p.key && p.color).map((p) => [p.key, p.color])
-      )
-    );
-    setCachedProjectNamesBlock(
-      Object.fromEntries(
-        projects.filter((p) => p.key && p.name.trim() && p.name.trim() !== p.key).map((p) => [p.key, p.name.trim()])
-      )
-    );
-    setCachedProjectTaskSourcesBlock(projectTaskSourcesFromProjectsBlock(projects));
-    setCachedProjectMissionsBlock(projectMissionsFromProjectsBlock(projects));
-    setCachedProjectRegistryBlock(
-      defined.length > 0 ? defined : await fallbackRegistryBlock(vaultRoot)
-    );
-  } catch {
-  }
-}
-
-// src/services/orchestrators/aiActivityChainDigestOrch.ts
-init_storageKeyBlock();
-
-// src/services/lego_blocks/integrations/aiActivityChainDigestStoreBlock.ts
-init_fsBlock();
-
-// src/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock.ts
-function getApi3() {
-  if (typeof window === "undefined") return null;
-  const api = window.electronAPI;
-  if (!api || !api.intelligenceCacheGet || !api.intelligenceCacheSet) return null;
-  return api;
-}
-var memory = /* @__PURE__ */ new Map();
-function memoryKey(taskId, cacheKey) {
-  return `${taskId}\0${cacheKey}`;
-}
-function intelligenceCacheAvailableBlock() {
-  return getApi3() !== null;
-}
-async function writeIntelligenceCacheBlock(record) {
-  const api = getApi3();
-  if (!api?.intelligenceCacheSet) return false;
-  try {
-    const res = await api.intelligenceCacheSet(record);
-    if (res?.ok) {
-      memory.set(memoryKey(record.taskId, record.cacheKey), record);
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-// src/services/lego_blocks/integrations/aiActivityChainDigestStoreBlock.ts
+// src/services/lego_blocks/integrations/aiActivitySessionDigestStoreBlock.ts
 async function ensureVaultDir(fs4, dir) {
   const segments = dir.split("/").filter(Boolean);
   let prefix = "";
@@ -30834,441 +23494,183 @@ async function ensureVaultDir(fs4, dir) {
     }
   }
 }
+async function readFromCache(projectId, sessionId) {
+  if (!intelligenceCacheAvailableBlock()) return null;
+  const rec = await readIntelligenceCacheBlock(
+    AI_ACTIVITY_SESSION_DIGEST_CACHE_TASK_ID,
+    sessionDigestCacheKeyBlock(projectId, sessionId)
+  );
+  if (!rec) return null;
+  return parseProjectSessionDigestJsonBlock(rec.valueJson);
+}
+async function readFromVault(projectId, sessionId) {
+  const fs4 = getVaultFS();
+  if (!fs4) return null;
+  const relPath = sessionDigestVaultRelPathBlock(projectId, sessionId);
+  try {
+    if (!await fs4.exists(relPath)) return null;
+    return parseProjectSessionDigestMarkdownBlock(await fs4.read(relPath));
+  } catch {
+    return null;
+  }
+}
 async function writeToVault(digest) {
-  const enabled = await getVaultWriteAiActivityEnabled();
-  if (!enabled) return;
+  if (!await getVaultWriteAiActivityEnabled()) return;
   const fs4 = getVaultFS();
   if (!fs4) return;
-  const relPath = chainDigestVaultRelPathBlock(digest.projectId, digest.chainId);
-  const dir = relPath.slice(0, relPath.lastIndexOf("/"));
+  const relPath = sessionDigestVaultRelPathBlock(digest.projectId, digest.sessionId);
   try {
-    await ensureVaultDir(fs4, dir);
-    await fs4.write(relPath, stringifyProjectChainDigestMarkdownBlock(digest));
+    await ensureVaultDir(fs4, relPath.slice(0, relPath.lastIndexOf("/")));
+    await fs4.write(relPath, stringifyProjectSessionDigestMarkdownBlock(digest));
   } catch {
   }
 }
 async function writeToCache(digest) {
   if (!intelligenceCacheAvailableBlock()) return;
   await writeIntelligenceCacheBlock({
-    taskId: AI_ACTIVITY_CHAIN_DIGEST_CACHE_TASK_ID,
-    cacheKey: chainDigestCacheKeyBlock(digest.projectId, digest.chainId),
-    providerId: "ai-activity-chain-digest",
+    taskId: AI_ACTIVITY_SESSION_DIGEST_CACHE_TASK_ID,
+    cacheKey: sessionDigestCacheKeyBlock(digest.projectId, digest.sessionId),
+    providerId: "ai-activity-session-digest",
     model: digest.model || "unknown",
     generatedAt: digest.generatedAt,
-    valueJson: stringifyProjectChainDigestJsonBlock(digest)
+    valueJson: stringifyProjectSessionDigestJsonBlock(digest)
   });
 }
-async function putProjectChainDigestBlock(digest) {
+async function getProjectSessionDigestBlock(projectId, sessionId) {
+  const cached = await readFromCache(projectId, sessionId);
+  if (cached) return cached;
+  const fromVault = await readFromVault(projectId, sessionId);
+  if (fromVault) {
+    await writeToCache(fromVault);
+    return fromVault;
+  }
+  return null;
+}
+async function putProjectSessionDigestBlock(digest) {
   await writeToCache(digest);
   await writeToVault(digest);
 }
-
-// src/services/lego_blocks/units/intelligence/promptContractBlock.ts
-function defineContractBlock(c) {
-  return c;
-}
-
-// src/services/lego_blocks/units/intelligence/contracts/chainDigestContractBlock.ts
-init_schemaBlock();
-
-// src/services/lego_blocks/units/intelligence/contracts/chainContextExtractionBlock.ts
-init_fsBlock();
-var CHAIN_DIGEST_LEAK_PREFIX_RE = /^(?:first user message|user (?:message|input|prompt|\d+)|recap \d+|the user(?:'s)?(?: message| input| prompt| ask)?|note|topic|title|label|summary|description|output|project|input|response|here(?:'s| is)|looking at|based on)\s*[:\-—–]\s*/i;
-var CHAIN_DIGEST_USER_QUOTE_LEAD_RE = /^(?:hey|hi|hello|can you|could you|please|i want|i need|let'?s)\b/i;
-function stripWrappersBlock(text) {
-  return text.replace(/^["'`*\-\s>]+/, "").replace(/["'`*\s]+$/, "").trim();
-}
-
-// src/services/lego_blocks/units/intelligence/contracts/chainDigestContractBlock.ts
-var MAX_TITLE_CHARS = 240;
-var MAX_SUMMARY_CHARS = 1800;
-var TITLE_LINE_RE = /^\s*(?:title\s*[:\-—]\s*)?(.+)$/i;
-function sanitizeTitle(raw, projectName) {
-  const lines = raw.split("\n").map(stripWrappersBlock).filter(Boolean);
-  let pick = null;
-  for (const rawLine of lines) {
-    let line = rawLine;
-    for (let i = 0; i < 2; i += 1) {
-      const next = line.replace(CHAIN_DIGEST_LEAK_PREFIX_RE, "").trim();
-      if (next === line) break;
-      line = next;
-    }
-    line = stripWrappersBlock(line);
-    if (!line) continue;
-    if (CHAIN_DIGEST_USER_QUOTE_LEAD_RE.test(line)) continue;
-    if (line.split(/\s+/).length < 3) continue;
-    pick = line;
-    break;
-  }
-  if (!pick) return null;
-  pick = pick.replace(/^(topic( label)?|title|label|summary|description|project)\s*[:\-—]\s*/i, "").trim();
-  pick = pick.replace(/[.!?;]+$/, "").trim();
-  if (!pick) return null;
-  const normalize = (v) => v.toLowerCase().replace(/[^a-z0-9]+/g, "");
-  if (projectName && normalize(pick) === normalize(projectName)) return null;
-  if (pick.length > MAX_TITLE_CHARS) {
-    const cut = pick.slice(0, MAX_TITLE_CHARS);
-    const lastSpace = cut.lastIndexOf(" ");
-    pick = (lastSpace > MAX_TITLE_CHARS * 0.6 ? cut.slice(0, lastSpace) : cut).trim() + "\u2026";
-  }
-  return pick;
-}
-function sanitizeSummary(raw) {
-  const cleaned = raw.split("\n").map((l) => l.replace(/^(summary|body|notes)\s*[:\-—]\s*/i, "")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
-  if (!cleaned) return "";
-  if (cleaned.length <= MAX_SUMMARY_CHARS) return cleaned;
-  const cut = cleaned.slice(0, MAX_SUMMARY_CHARS);
-  const bulletEnds = [];
-  const re = /\n\d+\.\s/g;
-  let m;
-  while ((m = re.exec(cut)) !== null) bulletEnds.push(m.index);
-  const lastBullet = bulletEnds.length ? bulletEnds[bulletEnds.length - 1] : -1;
-  if (lastBullet > MAX_SUMMARY_CHARS * 0.6) return cut.slice(0, lastBullet).trimEnd() + "\u2026";
-  const lastPunct = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("? "), cut.lastIndexOf("! "));
-  return (lastPunct > MAX_SUMMARY_CHARS * 0.6 ? cut.slice(0, lastPunct + 1) : cut).trim() + "\u2026";
-}
-var SYSTEM_PROMPT = [
-  "You describe what an AI-assisted session was about, in two parts: a",
-  "title and a numbered-bullet summary. Sessions cover anything \u2014 coding,",
-  "business research, studying, writing, math, life planning. Stay neutral",
-  "on domain; describe the actual subject.",
-  "",
-  "INPUT FORMAT:",
-  "  Line 1 is a session shape line (turn / tool-call counts).",
-  "  Then alternating turns marked `USER:` and `ASST:` in original order.",
-  "  Long turns may show `[\u2026Nc omitted\u2026]` mid-turn \u2014 that's a middle",
-  "  section snipped for length. Work with what's there.",
-  "  Tool_use JSON payloads and tool_results are already filtered out;",
-  "  slash-commands and mid-loop assistant stubs too. What remains is signal.",
-  "",
-  "OUTPUT FORMAT (strict):",
-  "  Line 1 must be: TITLE: <one line, no line breaks>",
-  "  Line 2 must be blank.",
-  "  Lines 3+ are the summary body as a numbered bullet list \u2014 one bullet",
-  "  per distinct sub-task or phase of the session. Use `1.` `2.` `3.`",
-  "  prefixes with a period.",
-  "",
-  "  Example (multi-task coding session \u2014 three unrelated bugs):",
-  "  TITLE: Auth middleware token-storage fix + settings modal polish",
-  "",
-  "  1. Refactored auth middleware to stop storing raw session tokens",
-  "     \u2014 moved storage into a signed-cookie helper and updated the two",
-  "     callers. Legal-driven change flagged in the last compliance pass.",
-  "  2. Fixed the settings modal briefly rendering the previous user's",
-  "     avatar during account switch (races with the auth swap).",
-  "  3. Tightened the retry backoff on the sync worker: exponential with",
-  "     jitter capped at 30s, was previously fixed at 5s.",
-  "",
-  "  Example (single-arc research/writing session):",
-  "  TITLE: Wrote the TSMC capacity note for Q3 planning",
-  "",
-  "  1. Read the last two TSMC earnings calls and pulled the wafer-capacity",
-  "     numbers into a working table under Semiconductor/Foundry/TSMC/.",
-  "  2. Landed the note at Q3-planning/tsmc-capacity.md \u2014 capacity vs.",
-  "     announced demand, three named risks, one open question about",
-  "     Arizona ramp timing.",
-  "  3. Caught a units inconsistency in the source data (300mm equivalents",
-  "     vs raw wafer starts) \u2014 normalized in the note and flagged the",
-  "     upstream sheet for correction.",
-  "",
-  "RULES:",
-  '  - NO preamble ("Here is the output", "Looking at the input"). NO',
-  "    trailing meta-notes. NO quoting the user verbatim. NO markdown",
-  "    headings or code fences.",
-  "  - Bullet count = number of distinct sub-tasks. Usually 1-5; up to 7",
-  "    for a deep ideation session; 1 for a tight single-issue session.",
-  '  - Never refer to "the user" or "the assistant". Use the work-voice:',
-  '    "Added X", "Caught Y", "Landed Z", "Deferred W".',
-  "  - Concrete nouns: name the feature, file, company, decision. Avoid",
-  '    generic words like "prompt", "request", "skill", "changes" when a',
-  "    real noun exists.",
-  "  - Title should lead with the dominant work; if the session touched",
-  "    multiple things, mention a second briefly with `+` or `;`.",
-  "  - Open loops (things left unfinished, script bugs flagged, questions",
-  "    for later) appear as narrative inside a bullet \u2014 never as their own",
-  "    structured field.",
-  "  - If nothing substantive happened (session was empty scratch or a",
-  '    single slash-command), write "TITLE: (empty session)" and one',
-  "    bullet noting that; stop there."
-].join("\n");
-var PREPARED = /* @__PURE__ */ new WeakMap();
-function splitTitleAndSummary(raw) {
-  const lines = raw.split("\n");
-  let titleIdx = -1;
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    if (/^title\s*[:\-—]/i.test(line)) {
-      titleIdx = i;
-      break;
-    }
-    titleIdx = i;
-    break;
-  }
-  if (titleIdx < 0) return { title: "", summary: "" };
-  const titleRaw = lines[titleIdx].replace(/^title\s*[:\-—]\s*/i, "").trim();
-  const titleMatch = TITLE_LINE_RE.exec(titleRaw);
-  const title = titleMatch ? titleMatch[1].trim() : titleRaw;
-  const summary = lines.slice(titleIdx + 1).join("\n").trim();
-  return { title, summary };
-}
-var chainDigestContract = defineContractBlock({
-  id: "chain-digest",
-  promptVersion: 2,
-  outputSchema: s.string({ description: "TITLE line + blank line + summary body" }),
-  buildRequest: (chain, ctx) => {
-    const userPrompt = PREPARED.get(chain);
-    const prompt = userPrompt ?? [
-      "session shape: 1 substantive turn \xB7 0 tool calls",
-      "",
-      `USER: ${chain.topic || "(none)"}`,
-      "",
-      "---",
-      "OUTPUT:"
-    ].join("\n");
-    return {
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: prompt }],
-      maxTokens: Math.max(ctx.recommendedMaxTokens, 320),
-      temperature: 0.2
-    };
-  },
-  finalize: (raw, chain) => {
-    const { title: rawTitle, summary: rawSummary } = splitTitleAndSummary(raw);
-    const title = sanitizeTitle(rawTitle, chain.project);
-    if (!title) return null;
-    const summary = sanitizeSummary(rawSummary);
-    return { value: { title, summary }, meta: {} };
-  },
-  cacheKey: (chain) => {
-    const first = chain.sessions[0]?.sessionId ?? chain.key;
-    return `${first}#${chain.msgCount}`;
-  }
-});
-
-// src/services/orchestrators/intelligenceOrch.ts
-init_providerRegistryBlock();
-init_modelProfileBlock();
-init_schemaBlock();
-
-// src/services/orchestrators/aiActivityChainDigestOrch.ts
-init_providerRegistryBlock();
-init_modelProfileBlock();
-init_storageKeyBlock();
-function chainSessionIdsBlock(chain) {
-  if (!Array.isArray(chain.sessions)) return [];
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const s2 of chain.sessions) {
-    const id = sessionIdOf(s2);
-    if (id && !seen.has(id)) {
-      seen.add(id);
-      out.push(id);
-    }
-  }
-  return out;
-}
-function toVaultRelativeBlock(paths) {
-  const vaultRoot = (getStoredVaultRoot() ?? "").replace(/\/+$/, "");
-  return paths.map(
-    (path6) => vaultRoot && path6.startsWith(`${vaultRoot}/`) ? path6.slice(vaultRoot.length + 1) : path6
-  );
-}
-function chainFilesBySessionBlock(chain) {
-  const out = [];
-  for (const s2 of chain.sessions ?? []) {
-    const id = sessionIdOf(s2);
-    if (!id) continue;
-    const paths = s2.touchedPaths ?? [];
-    if (paths.length === 0) continue;
-    const files = Array.from(new Set(toVaultRelativeBlock(paths))).sort();
-    if (files.length > 0) out.push({ session: id, files });
-  }
-  return out;
-}
-function chainPointers(chain) {
-  const written = toVaultRelativeBlock(chain.touchedPaths ?? []);
-  return {
-    filesWritten: Array.from(new Set(written)).sort(),
-    // Reads aren't captured by the native parser — it only tracks mutating
-    // tools. Left empty rather than inferred from prose.
-    filesRead: [],
-    // Filled by the end-of-session ask, not here. The digest is generated
-    // after the ask, but assignment lands on the chain via its own path.
-    undertaking: []
-  };
-}
-function sameStringSetBlock(a, b) {
-  const left = a ?? [];
-  const right = b ?? [];
-  if (left.length !== right.length) return false;
-  const set2 = new Set(left);
-  return right.every((v) => set2.has(v));
-}
-function sameFilesBySessionBlock(a, b) {
-  const left = a ?? [];
-  const right = b ?? [];
-  if (left.length !== right.length) return false;
-  const byId = new Map(left.map((e) => [e.session, e.files]));
-  return right.every((e) => sameStringSetBlock(byId.get(e.session), e.files));
-}
-function projectChainFieldsBlock(stored, chain) {
-  const next = { ...stored };
-  if (chain.touchedPaths && chain.touchedPaths.length > 0) {
-    const { filesWritten, filesRead } = chainPointers(chain);
-    next.filesWritten = filesWritten;
-    if (filesRead.length > 0) next.filesRead = filesRead;
-    const bySession = chainFilesBySessionBlock(chain);
-    if (bySession.length > 0) next.filesBySession = bySession;
-  }
-  const active = chain.activeDurationMs;
-  if (typeof active === "number" && Number.isFinite(active)) next.activeDurationMs = active;
-  if (chain.startedIso) next.startedIso = chain.startedIso;
-  if (chain.endedIso ?? chain.startedIso) next.endedIso = chain.endedIso ?? chain.startedIso;
-  if (typeof chain.msgCount === "number" && Number.isFinite(chain.msgCount)) {
-    next.msgCount = chain.msgCount;
-  }
-  const duration = chainDurationMs(chain);
-  if (duration > 0) next.durationMs = duration;
-  const sessions = chainSessionIdsBlock(chain);
-  if (sessions.length > 0) next.sessions = sessions;
-  if (chain.key) next.chainKey = chain.key;
-  const date = isoDayLocalBlock(chain.startedIso);
-  if (date && isValidChainDigestDateBlock(date)) next.date = date;
-  return next;
-}
-function chainFieldsDifferBlock(a, b) {
-  return !sameStringSetBlock(a.filesWritten, b.filesWritten) || !sameFilesBySessionBlock(a.filesBySession, b.filesBySession) || !sameStringSetBlock(a.filesRead, b.filesRead) || !sameStringSetBlock(a.sessions, b.sessions) || a.chainKey !== b.chainKey || a.date !== b.date || a.activeDurationMs !== b.activeDurationMs || a.startedIso !== b.startedIso || a.endedIso !== b.endedIso || a.msgCount !== b.msgCount || a.durationMs !== b.durationMs;
-}
-async function refreshStoredChainFieldsOrch(stored, chain) {
-  const projected = projectChainFieldsBlock(stored, chain);
-  if (!chainFieldsDifferBlock(stored, projected)) return stored;
-  await putProjectChainDigestBlock(projected).catch(() => void 0);
-  return projected;
-}
-function chainDurationMs(chain) {
-  const start = Date.parse(chain.startedIso);
-  const end = Date.parse(chain.endedIso ?? chain.startedIso);
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
-  return end - start;
-}
-function isoDayLocalBlock(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-// src/services/lego_blocks/units/aiActivityChainResolveBlock.ts
-function resolveChainDigestsBlock(chains, stored) {
-  const out = /* @__PURE__ */ new Map();
-  if (chains.length === 0 || stored.length === 0) return out;
-  const claimedDigests = /* @__PURE__ */ new Set();
-  const unmatchedChains = [];
-  const byId = /* @__PURE__ */ new Map();
-  for (const digest of stored) {
-    if (digest.chainId && !byId.has(digest.chainId)) byId.set(digest.chainId, digest);
-  }
-  for (const chain of chains) {
-    const hit = byId.get(chain.key);
-    if (hit && !claimedDigests.has(hit.chainId)) {
-      out.set(chain.key, hit);
-      claimedDigests.add(hit.chainId);
-    } else {
-      unmatchedChains.push(chain);
-    }
-  }
-  if (unmatchedChains.length === 0) return out;
-  const candidates = [];
-  for (const chain of unmatchedChains) {
-    if (chain.sessions.length === 0) continue;
-    const members = new Set(chain.sessions);
-    for (const digest of stored) {
-      if (claimedDigests.has(digest.chainId)) continue;
-      if (!digest.sessions || digest.sessions.length === 0) continue;
-      let overlap = 0;
-      for (const id of digest.sessions) {
-        if (members.has(id)) overlap += 1;
-      }
-      if (overlap > 0) candidates.push({ chainKey: chain.key, digest, overlap });
-    }
-  }
-  candidates.sort(
-    (a, b) => b.overlap - a.overlap || a.chainKey.localeCompare(b.chainKey) || a.digest.chainId.localeCompare(b.digest.chainId)
-  );
-  for (const candidate of candidates) {
-    if (out.has(candidate.chainKey)) continue;
-    if (claimedDigests.has(candidate.digest.chainId)) continue;
-    out.set(candidate.chainKey, candidate.digest);
-    claimedDigests.add(candidate.digest.chainId);
-  }
-  return out;
-}
-
-// src/services/orchestrators/aiActivityChainReconcileOrch.ts
-var inflight2 = null;
-async function deriveCanonicalChainsOrch() {
-  if (inflight2) return inflight2;
-  inflight2 = (async () => {
-    const fs4 = getVaultFS();
-    await loadProjectRegistryBlock().catch(() => void 0);
-    const { sessions } = await loadAiActivity(fs4);
-    const enriched = inheritUnknownSessions(sessions);
-    const mapped = enriched.map((s2) => {
-      const canonical = resolveCanonicalProjectBlock(s2.project, s2.path, s2.cwd);
-      return canonical === s2.project ? s2 : { ...s2, project: canonical };
-    });
-    return buildChains(mapped);
-  })();
-  try {
-    return await inflight2;
-  } finally {
-    inflight2 = null;
-  }
-}
-async function listProjectChainsOrch(projectId) {
-  const stored = await listChainsBlock({ projectId });
-  if (stored.length === 0) return stored;
-  let chains;
-  try {
-    chains = (await deriveCanonicalChainsOrch()).filter((c) => c.project === projectId);
-  } catch {
-    return stored;
-  }
-  const resolved = resolveChainDigestsBlock(
-    chains.map((c) => ({ key: c.key, sessions: chainSessionIdsBlock(c) })),
-    stored
-  );
-  const chainForDigest = /* @__PURE__ */ new Map();
-  for (const chain of chains) {
-    const digest = resolved.get(chain.key);
-    if (digest) chainForDigest.set(digest.chainId, chain);
-  }
-  return stored.map((entry) => {
-    const chain = chainForDigest.get(entry.chainId);
-    if (!chain) return entry;
-    void refreshStoredChainFieldsOrch(entry, chain);
-    return { ...projectChainFieldsBlock(entry, chain), path: entry.path };
-  });
-}
-
-// src/services/lego_blocks/integrations/aiActivityAssignmentBlock.ts
-init_fsBlock();
-var PENDING_DIR = "ai-activity/pending-assignments";
-function pendingAssignmentPathBlock(sessionId) {
-  const safe = sessionId.replace(/[^A-Za-z0-9._-]+/g, "-");
-  return `${PENDING_DIR}/${safe}.json`;
-}
-async function recordAssignmentBlock(assignment) {
+async function listSessionProjectsBlock() {
   const fs4 = getVaultFS();
-  await fs4.mkdir(PENDING_DIR);
-  const record = { ...assignment, recordedAt: (/* @__PURE__ */ new Date()).toISOString() };
-  const path6 = pendingAssignmentPathBlock(assignment.sessionId);
-  await fs4.write(path6, `${JSON.stringify(record, null, 2)}
-`);
-  return { path: path6, assignment: record };
+  try {
+    return (await fs4.list(SESSIONS_ROOT)).folders.slice().sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+async function listProjectSessionDigestsBlock(projectId) {
+  const fs4 = getVaultFS();
+  if (!fs4) return [];
+  const dir = sessionDigestProjectDirBlock(projectId);
+  let names = [];
+  try {
+    names = (await fs4.list(dir)).files.filter((name) => name.endsWith(".md"));
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const name of names) {
+    try {
+      const parsed = parseProjectSessionDigestMarkdownBlock(await fs4.read(`${dir}/${name}`));
+      if (parsed) out.push(parsed);
+    } catch {
+    }
+  }
+  out.sort((a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso));
+  return out;
+}
+
+// src/services/orchestrators/aiActivityChainsOrch.ts
+init_fsBlock();
+
+// src/services/lego_blocks/units/nativeAiSessionParserBlock.ts
+var ACTIVE_GAP_CAP_MS = 5 * 6e4;
+
+// src/services/lego_blocks/units/aiActivitySourcesBlock.ts
+init_storageKeyBlock();
+
+// src/services/lego_blocks/units/goodnotesReadingParserBlock.ts
+var MAX_SESSION_MS = 90 * 6e4;
+
+// src/services/lego_blocks/integrations/goodnotesReadingBlock.ts
+init_storageKeyBlock();
+
+// src/services/lego_blocks/integrations/memorizedReadingBlock.ts
+init_dbBlock();
+
+// src/services/lego_blocks/units/memorizedSessionParserBlock.ts
+init_memorizedSessionsBlock();
+var MAX_SESSION_MS2 = 4 * 36e5;
+
+// src/services/lego_blocks/units/thinkingspaceReadingParserBlock.ts
+var MAX_SESSION_MS3 = 4 * 36e5;
+
+// src/services/lego_blocks/integrations/thinkingspaceReadingBlock.ts
+var READING_DIR = "ai-activity/raw-sessions/thinkingspace";
+var READING_LOG_PATH = `${READING_DIR}/reading.jsonl`;
+var _writeChain = Promise.resolve();
+var ABSORB_GRACE_MS = 5 * 6e4;
+
+// src/services/lego_blocks/integrations/manualSessionBlock.ts
+var MANUAL_DIR = "ai-activity";
+var MANUAL_LOG_PATH = `${MANUAL_DIR}/manual-sessions.jsonl`;
+var _writeChain2 = Promise.resolve();
+
+// src/services/lego_blocks/integrations/aiActivitySnapshotStoreBlock.ts
+init_import_wrapper();
+
+// src/services/lego_blocks/integrations/aiActivityCacheBlock.ts
+init_storageKeyBlock();
+var MEM_TTL_MS = 5 * 60 * 1e3;
+
+// src/services/lego_blocks/integrations/projectRegistryLoaderBlock.ts
+init_fsBlock();
+
+// src/services/lego_blocks/integrations/projectsStorageBlock.ts
+init_fsBlock();
+init_storageKeyBlock();
+
+// src/services/lego_blocks/integrations/projectRegistryLoaderBlock.ts
+init_storageKeyBlock();
+
+// src/services/orchestrators/aiActivityChainsOrch.ts
+async function listProjectChainsOrch(projectId) {
+  const digests = await listProjectSessionDigestsBlock(projectId);
+  if (digests.length === 0) return [];
+  return groupSessionDigestsBlock(digests).map(rollupBlock);
+}
+function rollupBlock(sessions) {
+  const first = sessions[0];
+  const last = sessions[sessions.length - 1];
+  const written = /* @__PURE__ */ new Set();
+  const read = /* @__PURE__ */ new Set();
+  const undertaking = /* @__PURE__ */ new Set();
+  let msgCount = 0;
+  let activeDurationMs = 0;
+  for (const d of sessions) {
+    for (const f of d.filesWritten) written.add(f);
+    for (const f of d.filesRead) read.add(f);
+    for (const u of d.undertaking) undertaking.add(u);
+    msgCount += d.msgCount;
+    activeDurationMs += sessionActiveDurationMsBlock(d);
+  }
+  const startMs = Date.parse(first.startedIso);
+  const endMs = Date.parse(last.endedIso);
+  return {
+    projectId: first.projectId,
+    chainKey: `${first.projectId}::${first.sessionId}`,
+    sessions,
+    title: sessions.map((d) => d.title).filter(Boolean).join(" \xB7 "),
+    date: first.date,
+    startedIso: first.startedIso,
+    endedIso: last.endedIso,
+    durationMs: Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs ? endMs - startMs : 0,
+    activeDurationMs,
+    msgCount,
+    filesWritten: Array.from(written).sort(),
+    filesRead: Array.from(read).sort(),
+    undertaking: Array.from(undertaking).sort()
+  };
 }
 
 // src/services/lego_blocks/integrations/aiActivityTaskStoreBlock.ts
@@ -31324,7 +23726,8 @@ function bucketDensityBlock(days, options) {
 function collapseChainWindowsBlock(chains) {
   const bySession = /* @__PURE__ */ new Map();
   for (const chain of chains) {
-    const base = chain.chainKey.replace(/#w\d+$/, "");
+    const head = chain.sessions[0]?.sessionId ?? chain.chainKey;
+    const base = head.replace(/(::|#)w\d+$/, "");
     const bucket = bySession.get(base);
     if (bucket) bucket.push(chain);
     else bySession.set(base, [chain]);
@@ -31349,7 +23752,7 @@ function collapseChainWindowsBlock(chains) {
   return kept.sort((a, b) => a.startedIso.localeCompare(b.startedIso));
 }
 function activeOf(chain) {
-  return chainActiveDurationMsBlock(chain);
+  return sessionActiveDurationMsBlock(chain);
 }
 function buildTail(chains) {
   const collapsed = collapseChainWindowsBlock(chains);
@@ -31381,7 +23784,7 @@ function buildTail(chains) {
   };
 }
 function chainBelongsToBlock(chain, record, wanted) {
-  return chain.undertaking.includes(record.key) || wanted.has(chain.chainId) || wanted.has(chain.chainKey);
+  return chain.undertaking.includes(record.key) || chain.sessions.some((s) => wanted.has(s.sessionId));
 }
 async function chainsFor(projectId, record) {
   const all = await listProjectChainsOrch(projectId);
@@ -31439,33 +23842,95 @@ async function tagUndertakingOrch(projectId, key, options) {
     proposedTags: result.proposedTags,
     updatedAt: (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)
   };
-  const path6 = await writeUndertakingBlock(projectId, next);
+  const path5 = await writeUndertakingBlock(projectId, next);
   if (result.added.length) {
     await writeTagVocabularyBlock(projectId, extendVocabularyBlock(vocabulary, result.added));
   }
-  return { path: path6, record: next, rejected: result.rejected, added: result.added };
+  return { path: path5, record: next, rejected: result.rejected, added: result.added };
 }
 async function recordAssignmentOrch(params) {
-  const { path: path6 } = await recordAssignmentBlock(params);
-  return { path: path6 };
+  const sessionId = params.sessionId.trim();
+  if (!sessionId) throw new Error("Missing required field: sessionId");
+  const projectId = params.projectId?.trim() || await findSessionProjectBlock(sessionId);
+  if (!projectId) {
+    throw new Error(
+      `Could not determine the project for session ${sessionId} \u2014 pass --projectId. A proposal without a project cannot be filed: undertakings are per-project.`
+    );
+  }
+  const records = await listUndertakingsBlock(projectId);
+  const byKey = new Map(records.map((record) => [record.key, record]));
+  const newTitle = params.newTitle?.trim() ?? "";
+  const head = params.head?.trim() ?? "";
+  const section = params.section?.trim() ?? "";
+  const similar = newTitle ? similarUndertakingsBlock(newTitle, records.map((r) => ({ key: r.key, title: r.title }))) : [];
+  const rejected = [];
+  const proposals = [];
+  const proposedAt = (/* @__PURE__ */ new Date()).toISOString();
+  let mintUsed = false;
+  for (const raw of params.undertakings) {
+    const key = raw.trim();
+    if (!key) continue;
+    let target;
+    if (byKey.has(key)) {
+      target = { kind: "existing", key };
+    } else if (newTitle && !mintUsed) {
+      mintUsed = true;
+      target = {
+        kind: "new",
+        title: newTitle,
+        ...section ? { section } : {},
+        ...head ? { head } : {}
+      };
+    } else {
+      rejected.push({
+        key,
+        reason: newTitle ? "newTitle describes only one new undertaking, and it is already spoken for" : `no undertaking with this key in ${projectId} \u2014 pass --newTitle to mint one, or fix the key`
+      });
+      continue;
+    }
+    proposals.push({
+      sessionId,
+      projectId,
+      target,
+      ...proposals.length === 0 && head ? { head } : {},
+      ...target.kind === "new" && similar.length ? { similar } : {},
+      confidence: 1,
+      rationale: "Answered in-session by the agent that did the work.",
+      proposedBy: "in-session",
+      proposedAt
+    });
+  }
+  if (!proposals.length) {
+    throw new Error(
+      `Nothing recorded for ${sessionId}: ${rejected.map((r) => `${r.key} \u2014 ${r.reason}`).join("; ")}`
+    );
+  }
+  const { path: path5, verified } = await appendProposalsBlock(projectId, proposals);
+  if (!verified) {
+    throw new Error(`Recorded nothing: ${path5} could not be written durably after retries.`);
+  }
+  return { path: path5, written: proposals.length, rejected, similar, projectId };
 }
-async function setChainProjectOrch(fromProjectId, chainKey, toProjectId) {
-  const chain = await findChainBlock(fromProjectId, chainKey);
-  if (!chain) throw new Error(`Chain not found: ${chainKey}`);
-  const { path: path6 } = await patchChainBlock(chain, { projectId: toProjectId });
-  return { path: path6 };
+async function findSessionProjectBlock(sessionId) {
+  for (const project of await listSessionProjectsBlock()) {
+    if (await getProjectSessionDigestBlock(project, sessionId)) return project;
+  }
+  return "";
 }
-async function setChainFilesOrch(projectId, chainKey, files) {
-  const chain = await findChainBlock(projectId, chainKey);
-  if (!chain) throw new Error(`Chain not found: ${chainKey}`);
-  const { path: path6 } = await patchChainBlock(chain, {
-    filesWritten: files.written ?? chain.filesWritten,
-    filesRead: files.read ?? chain.filesRead
-  });
-  return { path: path6 };
+async function setSessionProjectOrch(fromProjectId, sessionId, toProjectId) {
+  const digest = await getProjectSessionDigestBlock(fromProjectId, sessionId);
+  if (!digest) throw new Error(`Session not found: ${sessionId}`);
+  await putProjectSessionDigestBlock({ ...digest, projectId: toProjectId });
+  return { sessionId };
 }
 async function listChainsOrch(params) {
-  return listChainsBlock(params);
+  const all = await listProjectChainsOrch(params.projectId);
+  return all.filter((chain) => {
+    if (params.from && chain.date < params.from) return false;
+    if (params.to && chain.date > params.to) return false;
+    if (params.undertaking && !chain.undertaking.includes(params.undertaking)) return false;
+    return true;
+  });
 }
 
 // src/services/lego_blocks/units/assignmentSweepBlock.ts
@@ -31473,187 +23938,58 @@ function undisposedChainsBlock(chains) {
   return chains.filter((chain) => !chain.undertaking.some((key) => key.trim()));
 }
 
-// src/services/lego_blocks/units/assignmentProposalBlock.ts
-function targetIdBlock(target) {
-  switch (target.kind) {
-    case "existing":
-      return `existing:${target.key}`;
-    case "new":
-      return `new:${target.title.trim().toLowerCase()}`;
-    case "bucket":
-      return "bucket";
-  }
-}
-function targetLabelBlock(target) {
-  switch (target.kind) {
-    case "existing":
-      return target.key;
-    case "new":
-      return target.title.trim();
-    case "bucket":
-      return "Not an undertaking";
-  }
-}
-function latestProposalsBlock(lines) {
-  const out = /* @__PURE__ */ new Map();
-  for (const line of lines) out.set(line.chainId, line);
-  return out;
-}
-function buildQueueGroupsBlock(proposals) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const proposal of proposals) {
-    const targetId = targetIdBlock(proposal.target);
-    const groupId = `${proposal.projectId}\0${targetId}`;
-    const existing = groups.get(groupId);
-    if (existing) {
-      existing.proposals.push(proposal);
-      existing.confidence = Math.min(existing.confidence, proposal.confidence);
-    } else {
-      groups.set(groupId, {
-        targetId,
-        target: proposal.target,
-        projectId: proposal.projectId,
-        proposals: [proposal],
-        confidence: proposal.confidence
-      });
-    }
-  }
-  const out = [...groups.values()];
-  for (const group of out) {
-    group.proposals.sort((a, b) => a.chainId.localeCompare(b.chainId));
-  }
-  out.sort(
-    (a, b) => b.confidence - a.confidence || a.projectId.localeCompare(b.projectId) || a.targetId.localeCompare(b.targetId)
-  );
-  return out;
-}
-function asStringBlock(value) {
-  return typeof value === "string" ? value : "";
-}
-function parseTargetBlock(raw) {
-  if (!raw || typeof raw !== "object") return null;
-  const obj = raw;
-  switch (obj.kind) {
-    case "existing": {
-      const key = asStringBlock(obj.key).trim();
-      return key ? { kind: "existing", key } : null;
-    }
-    case "new": {
-      const title = asStringBlock(obj.title).trim();
-      if (!title) return null;
-      const section = asStringBlock(obj.section).trim();
-      const head = asStringBlock(obj.head).trim();
-      return { kind: "new", title, ...section ? { section } : {}, ...head ? { head } : {} };
-    }
-    case "bucket":
-      return { kind: "bucket" };
-    default:
-      return null;
-  }
-}
-function parseProposalLogBlock(content) {
-  const out = [];
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    let raw;
-    try {
-      raw = JSON.parse(trimmed);
-    } catch {
-      continue;
-    }
-    const chainId = asStringBlock(raw.chainId).trim();
-    const projectId = asStringBlock(raw.projectId).trim();
-    const target = parseTargetBlock(raw.target);
-    if (!chainId || !projectId || !target) continue;
-    const confidence = typeof raw.confidence === "number" && Number.isFinite(raw.confidence) ? Math.min(1, Math.max(0, raw.confidence)) : 0;
-    out.push({
-      chainId,
-      projectId,
-      target,
-      confidence,
-      rationale: asStringBlock(raw.rationale),
-      proposedBy: asStringBlock(raw.proposedBy) || "unknown",
-      proposedAt: asStringBlock(raw.proposedAt)
-    });
-  }
-  return out;
-}
-function serializeProposalBlock(proposal) {
-  return JSON.stringify(proposal);
-}
-
-// src/services/lego_blocks/integrations/assignmentLogStoreBlock.ts
-init_fsBlock();
-var PROPOSALS_ROOT = "ai-activity/proposals";
-async function readIfPresentBlock(path6) {
-  const fs4 = getVaultFS();
-  try {
-    if (!await fs4.exists(path6)) return "";
-    return await fs4.read(path6);
-  } catch {
-    return "";
-  }
-}
-async function appendLinesBlock(root, path6, lines) {
-  if (!lines.length) return;
-  const fs4 = getVaultFS();
-  await fs4.mkdir(root);
-  const existing = await readIfPresentBlock(path6);
-  const prefix = existing && !existing.endsWith("\n") ? `${existing}
-` : existing;
-  await fs4.write(path6, `${prefix}${lines.join("\n")}
-`);
-}
-function proposalLogPathBlock(projectId) {
-  return `${PROPOSALS_ROOT}/${projectId.replace(/[^A-Za-z0-9._-]+/g, "-")}.jsonl`;
-}
-async function readProposalsBlock(projectId) {
-  return parseProposalLogBlock(await readIfPresentBlock(proposalLogPathBlock(projectId)));
-}
-async function appendProposalsBlock(projectId, proposals) {
-  const path6 = proposalLogPathBlock(projectId);
-  await appendLinesBlock(PROPOSALS_ROOT, path6, proposals.map(serializeProposalBlock));
-  return path6;
-}
-
 // src/services/orchestrators/assignmentQueueOrch.ts
-function toQueueChainBlock(chain) {
+function toQueueSessionBlock(digest, chainKeyBySession) {
   return {
-    chainId: chain.chainId,
-    chainKey: chain.chainKey,
-    projectId: chain.projectId,
-    title: chain.title,
-    date: chain.date,
-    activeMinutes: Math.round(chainActiveDurationMsBlock(chain) / 6e4),
-    sessions: chain.sessions?.length ?? 0
+    sessionId: digest.sessionId,
+    chainKey: chainKeyBySession.get(digest.sessionId) ?? digest.sessionId,
+    projectId: digest.projectId,
+    title: digest.title,
+    date: digest.date,
+    activeMinutes: Math.round(sessionActiveDurationMsBlock(digest) / 6e4)
   };
 }
+function chainKeysForBlock(digests) {
+  const out = /* @__PURE__ */ new Map();
+  for (const group of groupSessionDigestsBlock(digests)) {
+    const key = `${group[0].projectId}::${group[0].sessionId}`;
+    for (const d of group) out.set(d.sessionId, key);
+  }
+  return out;
+}
 async function getAssignmentQueueOrch(projectId) {
-  const projects = projectId ? [projectId] : await listChainProjectsBlock();
+  const projects = projectId ? [projectId] : await listSessionProjectsBlock();
   const live = [];
   const undisposed = [];
-  const chainsById = /* @__PURE__ */ new Map();
+  const digestsById = /* @__PURE__ */ new Map();
   const titlesByKey = /* @__PURE__ */ new Map();
   const sectionKeyByUndertaking = /* @__PURE__ */ new Map();
   const sectionTitles = /* @__PURE__ */ new Map();
-  const proposedChainIds = /* @__PURE__ */ new Set();
+  const proposedSessionIds = /* @__PURE__ */ new Set();
   const orphanedProposals = [];
+  const chainKeys = /* @__PURE__ */ new Map();
+  const unreadableSamples = [];
+  let unreadableProposals = 0;
   for (const project of projects) {
-    const all = await listChainsBlock({ projectId: project });
-    const known = new Set(all.map((chain) => chain.chainId));
+    const all = await listProjectSessionDigestsBlock(project);
+    const known = new Set(all.map((d) => d.sessionId));
+    for (const [id, key] of chainKeysForBlock(all)) chainKeys.set(id, key);
     const mine = undisposedChainsBlock(all);
     undisposed.push(...mine);
-    for (const chain of mine) chainsById.set(chain.chainId, chain);
-    const undisposedIds = new Set(mine.map((chain) => chain.chainId));
-    for (const [chainId, proposal] of latestProposalsBlock(await readProposalsBlock(project))) {
-      if (!known.has(chainId)) {
-        orphanedProposals.push({ chainId, projectId: project, proposedBy: proposal.proposedBy });
+    for (const digest of mine) digestsById.set(digest.sessionId, digest);
+    const undisposedIds = new Set(mine.map((d) => d.sessionId));
+    const read = await readProposalsBlock(project);
+    unreadableProposals += read.skipped;
+    for (const sample of read.samples) if (unreadableSamples.length < 3) unreadableSamples.push(sample);
+    for (const proposal of latestProposalsBlock(read.proposals)) {
+      const { sessionId } = proposal;
+      if (!known.has(sessionId)) {
+        orphanedProposals.push({ sessionId, projectId: project, proposedBy: proposal.proposedBy });
         continue;
       }
-      if (!undisposedIds.has(chainId)) continue;
+      if (!undisposedIds.has(sessionId)) continue;
       live.push(proposal);
-      proposedChainIds.add(chainId);
+      proposedSessionIds.add(sessionId);
     }
     for (const record of await listUndertakingsBlock(project)) {
       titlesByKey.set(record.key, record.title);
@@ -31669,15 +24005,24 @@ async function getAssignmentQueueOrch(projectId) {
   };
   const items = buildQueueGroupsBlock(live).map((group) => ({
     group,
-    chains: group.proposals.map((proposal) => chainsById.get(proposal.chainId)).filter((chain) => Boolean(chain)).map(toQueueChainBlock),
+    sessions: group.proposals.map((proposal) => digestsById.get(proposal.sessionId)).filter((digest) => Boolean(digest)).map((digest) => toQueueSessionBlock(digest, chainKeys)),
     targetTitle: group.target.kind === "existing" ? titlesByKey.get(group.target.key) ?? group.target.key : targetLabelBlock(group.target),
     targetSection: sectionTitleOf(group.projectId, group)
   }));
+  const verdictRead = await readAllVerdictsBlock();
+  for (const sample of verdictRead.samples) {
+    if (unreadableSamples.length < 3) unreadableSamples.push(sample);
+  }
   return {
     items,
-    unproposed: undisposed.filter((chain) => !proposedChainIds.has(chain.chainId)).map(toQueueChainBlock),
+    unproposed: undisposed.filter((digest) => !proposedSessionIds.has(digest.sessionId)).map((digest) => toQueueSessionBlock(digest, chainKeys)),
     undisposedCount: undisposed.length,
-    orphanedProposals
+    orphanedProposals,
+    unreadableLines: {
+      proposals: unreadableProposals,
+      verdicts: verdictRead.skipped,
+      samples: unreadableSamples
+    }
   };
 }
 async function proposeAssignmentsOrch(proposals) {
@@ -31690,8 +24035,16 @@ async function proposeAssignmentsOrch(proposals) {
     else byProject.set(full.projectId, [full]);
   }
   const paths = [];
+  const unverified = [];
   for (const [project, batch] of byProject) {
-    paths.push(await appendProposalsBlock(project, batch));
+    const { path: path5, verified } = await appendProposalsBlock(project, batch);
+    paths.push(path5);
+    if (!verified) unverified.push(path5);
+  }
+  if (unverified.length) {
+    throw new Error(
+      `Proposals could not be written durably after retries: ${unverified.join(", ")}`
+    );
   }
   return { written: proposals.length, paths };
 }
@@ -32425,7 +24778,7 @@ async function executeCapability(capability, input, fs4) {
       const proposedBy = payload.proposedBy?.trim() || "agent";
       const result = await proposeAssignmentsOrch(
         payload.proposals.map((proposal) => {
-          assertNonEmptyString(proposal.chainId, "chainId");
+          assertNonEmptyString(proposal.sessionId, "sessionId");
           assertNonEmptyString(proposal.projectId, "projectId");
           return { ...proposal, proposedBy };
         })
@@ -32438,26 +24791,16 @@ async function executeCapability(capability, input, fs4) {
       const chains = await listChainsOrch(payload);
       return { chains };
     }
-    case "ai_activity.chain.set_project": {
+    case "ai_activity.session.set_project": {
       const payload = input;
       assertNonEmptyString(payload.projectId, "projectId");
-      assertNonEmptyString(payload.chainKey, "chainKey");
+      assertNonEmptyString(payload.sessionId, "sessionId");
       assertNonEmptyString(payload.toProjectId, "toProjectId");
-      const result = await setChainProjectOrch(
+      const result = await setSessionProjectOrch(
         payload.projectId,
-        payload.chainKey,
+        payload.sessionId,
         payload.toProjectId
       );
-      return result;
-    }
-    case "ai_activity.chain.set_files": {
-      const payload = input;
-      assertNonEmptyString(payload.projectId, "projectId");
-      assertNonEmptyString(payload.chainKey, "chainKey");
-      const result = await setChainFilesOrch(payload.projectId, payload.chainKey, {
-        written: payload.written,
-        read: payload.read
-      });
       return result;
     }
     default:
@@ -32903,7 +25246,7 @@ function isUsableLocalStorage(value) {
 var NodeVaultFS = class {
   vaultRoot;
   constructor(vaultRoot) {
-    this.vaultRoot = path5.resolve(vaultRoot);
+    this.vaultRoot = path4.resolve(vaultRoot);
   }
   async read(relPath) {
     const full = this.assertInsideVault(relPath);
@@ -32911,7 +25254,7 @@ var NodeVaultFS = class {
   }
   async write(relPath, data) {
     const full = this.assertInsideVault(relPath);
-    await fsPromises.mkdir(path5.dirname(full), { recursive: true });
+    await fsPromises.mkdir(path4.dirname(full), { recursive: true });
     await fsPromises.writeFile(full, data, "utf-8");
   }
   async create(relPath, data) {
@@ -32944,13 +25287,13 @@ var NodeVaultFS = class {
       }
       for (const entry of entries) {
         if (entry.name.startsWith(".") || EXCLUDED_DIRS.has(entry.name)) continue;
-        const full = path5.join(dir, entry.name);
+        const full = path4.join(dir, entry.name);
         if (entry.isDirectory()) {
           await walk(full);
           continue;
         }
         if (entry.isFile()) {
-          const ext = path5.extname(entry.name).toLowerCase();
+          const ext = path4.extname(entry.name).toLowerCase();
           if (!extSet.has(ext)) continue;
           try {
             const stat2 = await fsPromises.stat(full);
@@ -33000,22 +25343,22 @@ var NodeVaultFS = class {
   }
   async writeBytes(relPath, data) {
     const full = this.assertInsideVault(relPath);
-    await fsPromises.mkdir(path5.dirname(full), { recursive: true });
+    await fsPromises.mkdir(path4.dirname(full), { recursive: true });
     await fsPromises.writeFile(full, data);
   }
   async delete(relPath) {
     await fsPromises.rm(this.assertInsideVault(relPath), { recursive: true, force: true });
   }
   assertInsideVault(relPath) {
-    const candidate = path5.resolve(this.vaultRoot, relPath || ".");
-    const relative2 = path5.relative(this.vaultRoot, candidate);
-    if (relative2.startsWith("..") || path5.isAbsolute(relative2)) {
+    const candidate = path4.resolve(this.vaultRoot, relPath || ".");
+    const relative2 = path4.relative(this.vaultRoot, candidate);
+    if (relative2.startsWith("..") || path4.isAbsolute(relative2)) {
       throw new Error(`Path traversal detected: ${relPath}`);
     }
     return candidate;
   }
   toVaultRelativePath(fullPath) {
-    return path5.relative(this.vaultRoot, fullPath).split(path5.sep).join("/");
+    return path4.relative(this.vaultRoot, fullPath).split(path4.sep).join("/");
   }
 };
 var NUMBER_FIELDS = /* @__PURE__ */ new Set(["limit", "lineNumber", "buckets"]);
@@ -33360,7 +25703,7 @@ function readVaultRootFromConfig() {
   try {
     const home = import_node_process.default.env.HOME || import_node_process.default.env.USERPROFILE;
     if (!home) return null;
-    const configPath = path5.join(home, ".thinking-space", "config.json");
+    const configPath = path4.join(home, ".thinking-space", "config.json");
     const raw = fs3.readFileSync(configPath, "utf-8");
     const parsed = JSON.parse(raw);
     if (typeof parsed.vaultRoot === "string" && parsed.vaultRoot.trim().length > 0) {
@@ -33866,7 +26209,7 @@ var CAPABILITY_INPUT_FIELDS = {
     {
       flag: "proposals",
       required: true,
-      note: 'JSON array; prefer --proposals-file. Each: {chainId, projectId, target, confidence, rationale}. target is {kind:"existing",key} | {kind:"new",title} | {kind:"bucket"}'
+      note: 'JSON array; prefer --proposals-file. Each: {sessionId, projectId, target, confidence, rationale}. target is {kind:"existing",key} | {kind:"new",title} | {kind:"bucket"}'
     },
     { flag: "proposedBy", required: false, note: 'who is proposing; defaults to "agent"' }
   ],
@@ -33970,7 +26313,7 @@ function resolveOutputFormat(args, options) {
   return { format, verbosity, args: passthrough };
 }
 async function materializeFileBackedInputs(input) {
-  const baseDir = import_node_process.default.env.THINKSPC_CALLER_CWD ? path5.resolve(import_node_process.default.env.THINKSPC_CALLER_CWD) : import_node_process.default.cwd();
+  const baseDir = import_node_process.default.env.THINKSPC_CALLER_CWD ? path4.resolve(import_node_process.default.env.THINKSPC_CALLER_CWD) : import_node_process.default.cwd();
   const entries = Object.entries(input);
   for (const [key, rawValue] of entries) {
     if (!key.endsWith("-file")) continue;
@@ -33982,7 +26325,7 @@ async function materializeFileBackedInputs(input) {
     if (input[targetKey] !== void 0) {
       throw new Error(`Cannot combine --${targetKey} with --${key}.`);
     }
-    const resolvedFilePath = path5.resolve(baseDir, filePath);
+    const resolvedFilePath = path4.resolve(baseDir, filePath);
     const fileText = await fsPromises.readFile(resolvedFilePath, "utf-8");
     const normalizedText = fileText.trimEnd();
     if (!normalizedText) {
@@ -34203,9 +26546,9 @@ function writeOutput(payload, format, context, verbosity) {
   writeText(verbosity === "brief" ? renderInvokeOutputBrief(payload) : renderInvokeOutput(payload));
 }
 async function runInsightCommand(rawArgs) {
-  const tempDir = await fsPromises.mkdtemp(path5.join(os3.tmpdir(), "insight."));
+  const tempDir = await fsPromises.mkdtemp(path4.join(os3.tmpdir(), "insight."));
   const encodedProject = "-" + tempDir.replaceAll("/", "-");
-  const claudeProjectDir = path5.join(os3.homedir(), ".claude", "projects", encodedProject);
+  const claudeProjectDir = path4.join(os3.homedir(), ".claude", "projects", encodedProject);
   const cleanup = async () => {
     try {
       await fsPromises.rm(tempDir, { recursive: true, force: true });
@@ -34357,7 +26700,7 @@ function extractProjectRootFromInput(input) {
 }
 var CLI_CACHE_VERSION = 1;
 function getCliCachePath() {
-  return path5.join((0, import_node_os.homedir)(), ".thinking-space", "cli-cache.json");
+  return path4.join((0, import_node_os.homedir)(), ".thinking-space", "cli-cache.json");
 }
 async function tryLoadCliCache(vaultRoot) {
   const cachePath = getCliCachePath();
@@ -34375,7 +26718,7 @@ async function tryLoadCliCache(vaultRoot) {
     return null;
   }
   if (snapshot2.version !== CLI_CACHE_VERSION) return null;
-  if (path5.resolve(snapshot2.vaultRoot) !== path5.resolve(vaultRoot)) return null;
+  if (path4.resolve(snapshot2.vaultRoot) !== path4.resolve(vaultRoot)) return null;
   if (!Array.isArray(snapshot2.nodes) || !Array.isArray(snapshot2.links)) return null;
   await clearAll();
   await clearAllLinks();
@@ -34389,7 +26732,7 @@ async function tryLoadCliCache(vaultRoot) {
 }
 async function saveCliCache(vaultRoot) {
   const cachePath = getCliCachePath();
-  await fsPromises.mkdir(path5.dirname(cachePath), { recursive: true });
+  await fsPromises.mkdir(path4.dirname(cachePath), { recursive: true });
   const nodes = await getAllNodes();
   const links = (await getAllLinks()).map((l) => {
     const { id: _id, ...rest } = l;
@@ -34397,7 +26740,7 @@ async function saveCliCache(vaultRoot) {
   });
   const snapshot2 = {
     version: CLI_CACHE_VERSION,
-    vaultRoot: path5.resolve(vaultRoot),
+    vaultRoot: path4.resolve(vaultRoot),
     savedAt: (/* @__PURE__ */ new Date()).toISOString(),
     lastSyncTimestamp: Math.floor(Date.now() / 1e3),
     nodes,
@@ -34495,7 +26838,7 @@ var isDirectRun = (() => {
   if (import_node_process.default.env.LTM_CAPABILITY_RUNNER_CLI === "1") return true;
   try {
     const current = (0, import_node_url.fileURLToPath)(import_meta.url);
-    const currentName = path5.basename(current);
+    const currentName = path4.basename(current);
     return import_node_process.default.argv.some((arg) => arg.includes(currentName));
   } catch {
     return false;

@@ -345,6 +345,8 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
   const undisposed = queue?.undisposedCount ?? 0
   const unproposed = unproposedChains.length
   const orphaned = queue?.orphanedProposals ?? []
+  const unreadable = queue?.unreadableLines ?? { proposals: 0, verdicts: 0, samples: [] }
+  const unreadableTotal = unreadable.proposals + unreadable.verdicts
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -396,7 +398,7 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
         />
       </div>
 
-      {(error || orphaned.length > 0) && (
+      {(error || orphaned.length > 0 || unreadableTotal > 0) && (
         <div className="shrink-0 space-y-2 border-b border-border px-5 py-2.5">
           {error && (
             <p className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
@@ -412,6 +414,26 @@ export default function AssignmentQueueBlock({ queue, loading, onReload, onClose
               exist — a proposing pass sent bad session ids (
               {[...new Set(orphaned.map(p => p.proposedBy))].join(', ')}).
             </p>
+          )}
+          {/* One level below `orphaned`: a line that never became a proposal at
+              all. This is the banner that was missing when a schema rekey made
+              the whole log unreadable and the pane rendered "Nothing suggested"
+              over it. Red rather than amber — an orphan is one bad pass, this is
+              data on disk the app cannot read. */}
+          {unreadableTotal > 0 && (
+            <div className="rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+              <p>
+                {unreadableTotal} line{unreadableTotal === 1 ? '' : 's'} on disk could not be read
+                {unreadable.proposals > 0 && ` (${unreadable.proposals} proposal${unreadable.proposals === 1 ? '' : 's'})`}
+                {unreadable.verdicts > 0 && ` (${unreadable.verdicts} verdict${unreadable.verdicts === 1 ? '' : 's'})`}
+                . This queue is incomplete, not empty.
+              </p>
+              {unreadable.samples.length > 0 && (
+                <p className="mt-1 truncate font-mono text-[11px] opacity-80" title={unreadable.samples[0]}>
+                  {unreadable.samples[0]}
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -724,6 +746,26 @@ function CardBlock({
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           {item.group.proposals[0].rationale}
         </p>
+      )}
+
+      {/* Shown only on a mint, because that is the only irreversible decision on
+          this card — a key is an address, and a second address for a strand that
+          already has one cannot be taken back by editing a pointer. The proposer
+          scored this when it wrote the claim; surfacing it anywhere but here
+          would be telling the human after they had already decided. Advisory:
+          a new strand may legitimately resemble its neighbours. */}
+      {item.group.target.kind === 'new' && (item.group.proposals[0]?.similar?.length ?? 0) > 0 && (
+        <div className="mt-3 rounded-md border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-200">
+          <p className="font-medium">This resembles an undertaking you already have:</p>
+          <ul className="mt-1 space-y-0.5">
+            {item.group.proposals[0].similar?.map(entry => (
+              <li key={entry.key} className="truncate" title={entry.key}>
+                {entry.title || entry.key}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 opacity-75">Retarget to file it there instead, or accept to mint anyway.</p>
+        </div>
       )}
 
       <div className="mt-4 flex items-center gap-2.5">

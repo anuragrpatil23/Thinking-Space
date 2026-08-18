@@ -610,6 +610,15 @@ export interface CapabilityOutputMap {
   }
   'ai_activity.assignment.record': {
     path: string
+    /** Proposals written — one per undertaking the session fed. */
+    written: number
+    /** Keys refused: they named no undertaking and no `newTitle` justified a
+     *  mint. Surfaced rather than swallowed so the agent can fix the key while
+     *  it still remembers what it meant. */
+    rejected: Array<{ key: string; reason: string }>
+    /** Existing undertakings a `newTitle` resembles. Advisory, never a block. */
+    similar: Array<{ key: string; title: string }>
+    projectId: string
   }
   /** The whole queue shape, not a restatement of it: a field added to
    *  `AssignmentQueue` and forgotten here would silently stop crossing the
@@ -872,7 +881,8 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
   },
   {
     name: 'ai_activity.assignment.record',
-    description: 'Record which undertaking(s) a session belongs to, keyed on session id before the chain exists.',
+    description:
+      'Answer, from inside the session, which undertaking(s) it fed. Writes a proposal at confidence 1.0 — first-hand, but still awaiting a human verdict in the queue. Keys are checked against the project: an unknown key needs newTitle, or it is refused as a typo.',
     readOnly: false,
   },
   {

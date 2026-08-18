@@ -6,6 +6,8 @@ import {
   parseUndertakingBlock,
   resolveTagBlock,
   serializeUndertakingBlock,
+  similarUndertakingsBlock,
+  titleSimilarityBlock,
   type TagVocabulary,
 } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
 
@@ -232,5 +234,42 @@ describe('extendVocabularyBlock', () => {
 
   it('does not duplicate a tag that already exists in another case', () => {
     expect(extendVocabularyBlock(VOCAB, ['Bucket 1']).tags).toHaveLength(VOCAB.tags.length)
+  })
+})
+
+describe('similarUndertakingsBlock', () => {
+  const records = [
+    { key: 'f9-und-the-cognition-tide', title: 'The Cognition Tide — AI and where value goes' },
+    { key: 'f9-und-micron-memory-cycle', title: 'Micron — the memory cycle' },
+    { key: 'f9-und-tsmc', title: 'TSMC — entry discipline and the HBM bottleneck' },
+    { key: 'f9-und-interest-rates', title: 'Interest rates as gravity' },
+  ]
+
+  it('surfaces the neighbour a new title is probably duplicating', () => {
+    expect(similarUndertakingsBlock('The Cognition Tide — where value actually goes', records)).toEqual([
+      { key: 'f9-und-the-cognition-tide', title: 'The Cognition Tide — AI and where value goes' },
+    ])
+  })
+
+  it('stays quiet on a genuinely new strand', () => {
+    // The failure mode that matters more than a missed duplicate: an advisory
+    // that fires on everything is one nobody reads, and this one sits next to a
+    // decision the human is already being asked to make quickly.
+    expect(similarUndertakingsBlock('Rare earths and the magnet bottleneck', records)).toEqual([])
+  })
+
+  it('does not match on stopwords alone', () => {
+    expect(similarUndertakingsBlock('The and of the', records)).toEqual([])
+  })
+
+  it('scores symmetrically, so a short title is not a subset match', () => {
+    // Overlap-over-shortest made every two-word title look like a duplicate of
+    // any longer title containing both words. Jaccard punishes the size gap.
+    expect(titleSimilarityBlock('memory cycle', 'Micron — the memory cycle')).toBeLessThan(1)
+    expect(titleSimilarityBlock('a', 'b')).toBe(0)
+  })
+
+  it('is order-independent', () => {
+    expect(titleSimilarityBlock('alpha beta', 'beta alpha')).toBe(1)
   })
 })

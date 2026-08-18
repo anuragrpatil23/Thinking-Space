@@ -1,9 +1,15 @@
 import {
   applyTagsBlock,
   extendVocabularyBlock,
+  similarUndertakingsBlock,
   type UndertakingComment,
   type UndertakingRecord,
 } from '@/services/lego_blocks/units/aiActivityUndertakingBlock'
+import { appendProposalsBlock } from '@/services/lego_blocks/integrations/assignmentLogStoreBlock'
+import type {
+  AssignmentProposalBlock,
+  ProposalTargetBlock,
+} from '@/services/lego_blocks/units/assignmentProposalBlock'
 import {
   deleteSectionBlock,
   getSectionBlock,
@@ -22,6 +28,7 @@ import {
 } from '@/services/lego_blocks/units/aiActivitySectionBlock'
 import {
   getProjectSessionDigestBlock,
+  listSessionProjectsBlock,
   putProjectSessionDigestBlock,
 } from '@/services/lego_blocks/integrations/aiActivitySessionDigestStoreBlock'
 import { sessionActiveDurationMsBlock } from '@/services/lego_blocks/units/aiActivitySessionDigestBlock'
@@ -29,7 +36,6 @@ import {
   listProjectChainsOrch,
   type ProjectChainRollup,
 } from '@/services/orchestrators/aiActivityChainsOrch'
-import { recordAssignmentBlock } from '@/services/lego_blocks/integrations/aiActivityAssignmentBlock'
 import {
   DEFAULT_TASK_DIR_BLOCK,
   createTaskFileBlock,
@@ -1277,7 +1283,52 @@ export async function tagUndertakingOrch(
   return { path, record: next, rejected: result.rejected, added: result.added }
 }
 
-/** Answer the end-of-session ask. Keyed on session id — see the block's note. */
+export interface RecordAssignmentResult {
+  path: string
+  /** Proposals actually written. Plural: a session commonly feeds more than one
+   *  strand, and each strand is its own row in the queue. */
+  written: number
+  /** Keys that named no undertaking and had no `newTitle` to justify a mint.
+   *  Refused, not written — see below. */
+  rejected: Array<{ key: string; reason: string }>
+  /** Existing undertakings a `newTitle` resembles. Advisory. */
+  similar: Array<{ key: string; title: string }>
+  projectId: string
+}
+
+/**
+ * Answer the end-of-session ask: which undertaking(s) did this session feed?
+ *
+ * ## It writes a proposal, not a private record
+ *
+ * This used to park a JSON file in `ai-activity/pending-assignments/<id>.json`,
+ * a directory with a writer and no reader — `listPendingAssignmentsBlock` had
+ * zero call sites, so every answer an agent ever gave about its own work went
+ * nowhere and no queue, index or count could see it. The claim is the same
+ * claim a sweep makes; only its *provenance* differs, and provenance is a
+ * field. So it goes in the one proposal log as `proposedBy: in-session` at
+ * confidence 1.0, where the queue sorts it to the top and one keystroke files
+ * it.
+ *
+ * Confidence 1.0 is not permission to skip the human. ASSIGNMENT.md's rule is
+ * that AI proposes and a human mints, and a first-hand report is still a report
+ * — `isAutoApplicableBlock` refuses a `new` target at any confidence, which is
+ * exactly the case an in-session answer most often carries.
+ *
+ * ## It reads before it writes
+ *
+ * The ask fires mid-session, where the agent knows what it did and nothing
+ * else. Left blind it could name a key that does not exist (a typo becomes a
+ * permanent address) or mint a second address for a strand that already has one
+ * — the granularity failure `assignmentDraftOrch` guards against by handing a
+ * model the existing titles, a guard the capability path never had.
+ *
+ * So: keys are resolved against the store, an unrecognised key with no
+ * `newTitle` is refused rather than guessed at (a typo and a deliberate mint are
+ * indistinguishable from here, and only one of them is safe to act on), and a
+ * `newTitle` is scored against existing titles so the resemblance travels with
+ * the proposal to the person deciding it.
+ */
 export async function recordAssignmentOrch(params: {
   sessionId: string
   undertakings: string[]
@@ -1285,9 +1336,95 @@ export async function recordAssignmentOrch(params: {
   head?: string
   section?: string
   projectId?: string
-}): Promise<{ path: string }> {
-  const { path } = await recordAssignmentBlock(params)
-  return { path }
+}): Promise<RecordAssignmentResult> {
+  const sessionId = params.sessionId.trim()
+  if (!sessionId) throw new Error('Missing required field: sessionId')
+
+  const projectId = params.projectId?.trim() || (await findSessionProjectBlock(sessionId))
+  if (!projectId) {
+    throw new Error(
+      `Could not determine the project for session ${sessionId} — pass --projectId. ` +
+        'A proposal without a project cannot be filed: undertakings are per-project.',
+    )
+  }
+
+  const records = await listUndertakingsBlock(projectId)
+  const byKey = new Map(records.map(record => [record.key, record]))
+  const newTitle = params.newTitle?.trim() ?? ''
+  const head = params.head?.trim() ?? ''
+  const section = params.section?.trim() ?? ''
+
+  const similar = newTitle
+    ? similarUndertakingsBlock(newTitle, records.map(r => ({ key: r.key, title: r.title })))
+    : []
+
+  const rejected: Array<{ key: string; reason: string }> = []
+  const proposals: AssignmentProposalBlock[] = []
+  const proposedAt = new Date().toISOString()
+  let mintUsed = false
+
+  for (const raw of params.undertakings) {
+    const key = raw.trim()
+    if (!key) continue
+    let target: ProposalTargetBlock
+    if (byKey.has(key)) {
+      target = { kind: 'existing', key }
+    } else if (newTitle && !mintUsed) {
+      mintUsed = true
+      target = {
+        kind: 'new',
+        title: newTitle,
+        ...(section ? { section } : {}),
+        ...(head ? { head } : {}),
+      }
+    } else {
+      rejected.push({
+        key,
+        reason: newTitle
+          ? 'newTitle describes only one new undertaking, and it is already spoken for'
+          : `no undertaking with this key in ${projectId} — pass --newTitle to mint one, or fix the key`,
+      })
+      continue
+    }
+
+    proposals.push({
+      sessionId,
+      projectId,
+      target,
+      ...(proposals.length === 0 && head ? { head } : {}),
+      ...(target.kind === 'new' && similar.length ? { similar } : {}),
+      confidence: 1,
+      rationale: 'Answered in-session by the agent that did the work.',
+      proposedBy: 'in-session',
+      proposedAt,
+    })
+  }
+
+  if (!proposals.length) {
+    throw new Error(
+      `Nothing recorded for ${sessionId}: ${rejected.map(r => `${r.key} — ${r.reason}`).join('; ')}`,
+    )
+  }
+
+  const { path, verified } = await appendProposalsBlock(projectId, proposals)
+  if (!verified) {
+    // An in-session answer is first-hand and cannot be re-derived once this
+    // agent ends. Returning a path for a write that did not land would be the
+    // same silent loss this whole change exists to remove.
+    throw new Error(`Recorded nothing: ${path} could not be written durably after retries.`)
+  }
+
+  return { path, written: proposals.length, rejected, similar, projectId }
+}
+
+/** Which project holds this session's digest. Scans, because the ask is a
+ *  once-per-session call and the alternative is making every caller know a
+ *  project id it has no reason to have. */
+async function findSessionProjectBlock(sessionId: string): Promise<string> {
+  for (const project of await listSessionProjectsBlock()) {
+    if (await getProjectSessionDigestBlock(project, sessionId)) return project
+  }
+  return ''
 }
 
 /**

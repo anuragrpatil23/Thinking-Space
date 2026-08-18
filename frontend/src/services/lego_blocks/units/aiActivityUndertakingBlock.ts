@@ -183,6 +183,66 @@ export function normalizeTagBlock(tag: string): string {
  * De-duplicated against the keys already in use, so two undertakings that
  * happen to be named alike get separate addresses rather than one shared file.
  */
+/**
+ * Undertakings whose titles resemble a proposed new one.
+ *
+ * Exists because minting is the one irreversible move in this feature — a key
+ * is an address — and the in-session ask had no way to notice it was about to
+ * mint a second address for a strand that already had one. `assignmentDraftOrch`
+ * already hands a model the existing titles before it drafts, for exactly this
+ * reason; an agent calling `assignment.record` from a terminal sees nothing.
+ *
+ * Deliberately lexical and deliberately dumb. This is not trying to decide
+ * whether two strands are the same piece of work — a human decides that, from
+ * the queue, with the resemblance shown next to the mint. It only has to be
+ * good enough to surface "this looks like The Cognition Tide" and quiet enough
+ * that it does not cry wolf on every title sharing the word "the".
+ *
+ * Advisory only. Nothing here blocks a mint: a genuinely new strand may
+ * legitimately resemble its neighbours, and refusing it would be worse than the
+ * duplicate it prevents.
+ */
+const TITLE_STOPWORDS = new Set([
+  'a', 'an', 'and', 'as', 'at', 'be', 'but', 'by', 'for', 'from', 'how', 'in', 'is', 'it', 'of',
+  'on', 'or', 'the', 'to', 'vs', 'what', 'when', 'where', 'which', 'who', 'why', 'with',
+])
+
+function titleTokensBlock(title: string): Set<string> {
+  const words = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 2 && !TITLE_STOPWORDS.has(word))
+  return new Set(words)
+}
+
+/** Jaccard over content words. Symmetric, so a short title cannot score high
+ *  merely by being a subset of a long one — which is what made an earlier
+ *  overlap-over-shortest scoring flag every two-word title as a duplicate. */
+export function titleSimilarityBlock(a: string, b: string): number {
+  const left = titleTokensBlock(a)
+  const right = titleTokensBlock(b)
+  if (!left.size || !right.size) return 0
+  let shared = 0
+  for (const token of left) if (right.has(token)) shared += 1
+  return shared / (left.size + right.size - shared)
+}
+
+export const SIMILAR_TITLE_THRESHOLD = 0.34
+
+export function similarUndertakingsBlock(
+  title: string,
+  records: ReadonlyArray<{ key: string; title: string }>,
+  limit = 3,
+): Array<{ key: string; title: string }> {
+  return records
+    .map(record => ({ record, score: titleSimilarityBlock(title, record.title) }))
+    .filter(entry => entry.score >= SIMILAR_TITLE_THRESHOLD)
+    .sort((a, b) => b.score - a.score || a.record.key.localeCompare(b.record.key))
+    .slice(0, limit)
+    .map(entry => ({ key: entry.record.key, title: entry.record.title }))
+}
+
 export function undertakingKeyFromTitleBlock(
   projectId: string,
   title: string,
