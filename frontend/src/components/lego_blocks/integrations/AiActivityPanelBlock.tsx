@@ -391,7 +391,16 @@ export default function AiActivityPanelBlock({
             totals row names the colors in the bars above it, so it reads as
             that chart's legend and has to sit close to it. The wide gap belongs
             between this pair and the table, not inside it. */}
-        <div className={stripRange ? 'space-y-3' : 'space-y-5'}>
+        {/* The timeline and its legend get a faint container of their own. The
+            day table below already sits in one, so an unboxed chart between two
+            boxed things reads as unfinished — and with the strip's divider gone
+            this is what tells the eye where the drill starts. */}
+        <div
+          className={cn(
+            'rounded-xl border border-border/40 bg-muted/20 p-4',
+            stripRange ? 'space-y-3' : 'space-y-5',
+          )}
+        >
           {withTimeline && selectedDate && drillChains.length > 0 && (
             <AiActivityDayTimelineBlock
               dateIso={selectedDate}
