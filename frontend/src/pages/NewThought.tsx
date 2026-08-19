@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Loader2, X, FolderTree, ChevronDown, ChevronRight, Save, Tag, MoreHorizontal, Info } from 'lucide-react'
+import { Loader2, X, FilePlus, FolderTree, ChevronDown, ChevronRight, Save, Tag, MoreHorizontal, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -10,6 +10,7 @@ import {
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import FolderTreePickerBlock from '@/components/lego_blocks/integrations/FolderTreePickerBlock'
 import ProjectDestinationListBlock from '@/components/lego_blocks/units/ProjectDestinationListBlock'
+import { configuredVaultNameBlock } from '@/services/lego_blocks/units/vaultNameBlock'
 import DestinationPickerSheetBlock from '@/components/lego_blocks/integrations/DestinationPickerSheetBlock'
 import MoodPickerBlock, { moodDotClassForLabelBlock } from '@/components/lego_blocks/integrations/MoodPickerBlock'
 import NoteTagsPopoverBlock from '@/components/lego_blocks/integrations/NoteTagsPopoverBlock'
@@ -635,6 +636,26 @@ function CreateTab() {
           {composer.makeThisTodo ? 'Pick a destination and date' : 'Pick a destination and file name'}
         </div>
       )}
+      {/* Sits on the line it acts on: this strip names the file being written,
+          and the button is "not that one, a new one". It keeps the folder — and
+          therefore the project — and only moves the file name, to today's date
+          or the first free `-2`, `-3` past it. Without the disk check it would
+          silently open the note already there, which is what the composer does
+          by design and the opposite of what a New note button promises.
+          Hidden in todo mode: there the file name *is* the date field, and a
+          second one would be a second answer to the same question. */}
+      {!composer.makeThisTodo && (
+        <button
+          type="button"
+          onClick={() => { void composer.startNewNote() }}
+          disabled={composer.startingNewNote || !composer.destinationPath}
+          title="Start a blank note in this folder"
+          className="ltm-motion-fast inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+        >
+          <FilePlus className="h-3 w-3" />
+          New note
+        </button>
+      )}
     </div>
   )
 
@@ -741,10 +762,16 @@ function CreateTab() {
       ) : (
       <div className={cn('space-y-2.5', panelSectionPadClass)}>
         <div className="flex items-center justify-between gap-2">
-          <div className={PANEL_LABEL_CLASS}>Project</div>
+          <div className={PANEL_LABEL_CLASS}>Recent</div>
           <button
             type="button"
-            onClick={() => setDestinationBrowserOpen(open => !open)}
+            // Closing the browser is what records the pick — see
+            // `rememberBrowsedDestination`. Every click inside the tree commits,
+            // so recording per click would list the folders you passed through.
+            onClick={() => setDestinationBrowserOpen((open) => {
+              if (open) composer.rememberBrowsedDestination()
+              return !open
+            })}
             className={cn(
               'ltm-motion-fast inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors hover:bg-muted hover:text-foreground',
               destinationBrowserOpen ? 'bg-muted text-foreground' : 'text-muted-foreground',
@@ -755,19 +782,40 @@ function CreateTab() {
           </button>
         </div>
 
-        {/* The project list, not a chip cloud of saved paths. Note type (above)
-            supplies the folder inside the project, so this control answers one
-            question — which project — and the two compose into the path shown on
-            the "Saving to" line. Built-in folder shortcuts still exist in the
-            model (todo mode reaches `todos/` through one); they are not a thing
-            you click here, for the same reason they were removed in 2026-07-31:
-            they duplicated the Note type control word for word. */}
-        <ProjectDestinationListBlock
-          destinations={composer.projectDestinations}
-          activeKey={composer.activeProjectKey}
-          onSelect={composer.selectProject}
-          listClassName="max-h-[11rem]"
-        />
+        {/* Recent whole paths, not the project list (2026-08-19). The project
+            is now picked from the path in the title bar, where it is already
+            written — repeating the picker here asked the same question twice,
+            one line below the answer. What the panel is left holding is the
+            case project + note type cannot express: a sub-area inside a project
+            (`operations/sfw/airms/meetings`), reached once through Browse and
+            cheap ever after. Clicking one sets the whole path, suffix and all. */}
+        {composer.browsedDestinations.length === 0 ? (
+          <div className="rounded-lg border border-border/60 bg-background px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground/70">
+            Folders you pick in Browse show up here. Nothing yet.
+          </div>
+        ) : (
+          <div className="max-h-[11rem] space-y-0.5 overflow-auto rounded-lg border border-border/60 bg-background p-1.5">
+            {composer.browsedDestinations.map(path => {
+              const active = path === composer.destinationPath
+              return (
+                <button
+                  key={`recent-${path}`}
+                  type="button"
+                  onClick={() => composer.applyDestinationPath(path)}
+                  title={path}
+                  className={cn(
+                    'ltm-motion-fast block w-full break-all rounded-md px-2 py-1.5 text-left font-mono text-[11px] leading-relaxed transition-colors',
+                    active
+                      ? 'bg-foreground text-background'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                  )}
+                >
+                  {path}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         {/* The browser unfolds in place rather than in a modal (2026-07-31).
             A modal put a `fixed` scrim over a popover that lives inside the
@@ -877,6 +925,7 @@ function CreateTab() {
   const activeProject = composer.projectDestinations.find(
     destination => destination.key === composer.activeProjectKey,
   ) ?? null
+  const vaultName = configuredVaultNameBlock() ?? 'Vault'
   const projectPrefix = activeProject ? `${activeProject.segments.join('/')}/` : ''
   const identityDirAfterProject = projectPrefix && identityDir.startsWith(projectPrefix)
     ? identityDir.slice(projectPrefix.length)
@@ -938,13 +987,20 @@ function CreateTab() {
               }}
               aria-expanded={projectMenuOpen}
               aria-label="Change project"
+              // No right padding, and the separator lives inside this button:
+              // the two halves are one path, so they have to *read* as one
+              // string. Padding between them opened a gap that made `sfdl/` look
+              // like a label sitting beside the path rather than the head of it.
               className={cn(
-                'ltm-motion-fast inline-flex shrink-0 items-center rounded-md px-1.5 py-1 text-sm transition-colors hover:bg-muted hover:text-foreground',
+                'ltm-motion-fast inline-flex shrink-0 items-center rounded-md py-1 pl-2 pr-0 text-sm transition-colors hover:bg-muted hover:text-foreground',
                 projectMenuOpen ? 'bg-muted text-foreground' : 'text-muted-foreground',
               )}
             >
-              <span className={cn('max-w-[10rem] truncate', !activeProject && 'italic opacity-70')}>
-                {activeProject ? activeProject.name : 'No project'}
+              {/* The vault's own name when no project is chosen — it is still a
+                  place, and the path still starts somewhere. "No project" named
+                  an absence and read as a folder literally called that. */}
+              <span className="max-w-[10rem] truncate">
+                {activeProject ? activeProject.name : vaultName}
               </span>
               <span className="opacity-40">/</span>
             </button>
@@ -971,7 +1027,9 @@ function CreateTab() {
             // label. `max-w` above still keeps it off the control cluster.
             isPhoneSurface
               ? 'h-10 rounded-lg px-2.5 text-[15px] font-medium text-foreground'
-              : 'px-2.5 py-1 text-sm',
+              // Butts straight against the project button to its left, which
+              // owns the leading padding and the separator slash.
+              : 'py-1 pl-0 pr-2.5 text-sm',
             composerPanelOpen && 'bg-muted text-foreground',
           )}
         >

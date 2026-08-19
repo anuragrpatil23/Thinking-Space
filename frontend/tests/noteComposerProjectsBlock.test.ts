@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   noteKindShortcutIdBlock,
+  numberedFilenameBlock,
   projectDestinationsBlock,
   projectForSegmentsBlock,
   unreachableQuickDestinationPathsBlock,
@@ -101,5 +102,21 @@ describe('noteComposerBlock — quick destination retirement', () => {
     ]
     expect(unreachableQuickDestinationPathsBlock(quick, destinations))
       .toEqual(['archive/2024'])
+  })
+})
+
+describe('noteComposerBlock — new note file names', () => {
+  it('keeps the plain name on the first attempt', () => {
+    expect(numberedFilenameBlock('2026-08-19.md', 1)).toBe('2026-08-19.md')
+    expect(numberedFilenameBlock('2026-08-19.md', 0)).toBe('2026-08-19.md')
+  })
+
+  it('suffixes the stem, never the extension', () => {
+    expect(numberedFilenameBlock('2026-08-19.md', 2)).toBe('2026-08-19-2.md')
+    expect(numberedFilenameBlock('2026-08-19.md', 11)).toBe('2026-08-19-11.md')
+  })
+
+  it('adds the extension when the caller left it off', () => {
+    expect(numberedFilenameBlock('notes', 3)).toBe('notes-3.md')
   })
 })

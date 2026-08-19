@@ -40,6 +40,8 @@ import {
 } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import {
   AUTO_SAVE_PREF_KEY_BLOCK,
+  BROWSED_DESTINATIONS_KEY_BLOCK,
+  BROWSED_DESTINATIONS_LIMIT_BLOCK,
   NOTE_KIND_PREF_KEY_BLOCK,
   BUILT_IN_SHORTCUTS_BLOCK,
   DEFAULT_BASE_PATH_BLOCK,
@@ -53,8 +55,10 @@ import {
   ensureMarkdownFilenameBlock,
   filenameFromTitleBlock,
   mergeDraftBlock,
+  NEW_NOTE_NAME_ATTEMPTS_BLOCK,
   noteKindShortcutIdBlock,
   normalizeSegmentsBlock,
+  numberedFilenameBlock,
   projectDestinationsBlock,
   projectForSegmentsBlock,
   readCustomShortcutsBlock,
@@ -94,6 +98,17 @@ function readRecentDestinationsBlock(): string[] {
     .slice(0, 5)
 }
 
+/** Folders picked by hand in Explorer, newest first. Same storage shape as the
+ *  save-recents above, different question: this one is "where did I go looking",
+ *  which is what the settings panel offers now that the project is picked from
+ *  the path itself. */
+function readBrowsedDestinationsBlock(): string[] {
+  return readJsonStorageBlock<string[][]>(BROWSED_DESTINATIONS_KEY_BLOCK, [])
+    .map(segments => (Array.isArray(segments) ? segments.filter(Boolean).join('/') : ''))
+    .filter(Boolean)
+    .slice(0, BROWSED_DESTINATIONS_LIMIT_BLOCK)
+}
+
 const THOUGHTS_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.new-note' }
 const TODO_ACTOR: CapabilityActor = { kind: 'human', id: 'ui.new-note.todos' }
 
@@ -118,8 +133,10 @@ export interface NoteComposerOrch {
    *  vault root / outside every project. */
   activeProjectKey: string | null
   mostUsedDestinations: Array<{ path: string; count: number }>
-  /** Recently used destination folders, newest first. */
+  /** Recently used destination folders, newest first — written on save. */
   recentDestinations: string[]
+  /** Folders picked by hand in Explorer, newest first. */
+  browsedDestinations: string[]
   destinationPath: string
 
   // --- identity ---
@@ -185,7 +202,14 @@ export interface NoteComposerOrch {
   /** Move the destination to a project's folder, keeping the note-type suffix.
    *  `null` means the vault root. */
   selectProject: (projectKey: string | null) => void
+  /** Record the current destination as an Explorer pick. Called when the browser
+   *  closes, not on every click inside it. */
+  rememberBrowsedDestination: () => void
   setAutoSaveEnabled: (enabled: boolean) => void
+  /** Start a blank note in the *current* folder, on a filename nothing occupies. */
+  startNewNote: () => Promise<void>
+  /** False while `startNewNote` is looking for a free filename. */
+  startingNewNote: boolean
   save: () => Promise<void>
 }
 
@@ -247,6 +271,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   const [savedPath, setSavedPath] = useState<string | null>(null)
   const [itemsAdded, setItemsAdded] = useState(0)
   const [saveFeedbackVisible, setSaveFeedbackVisible] = useState(false)
+  const [startingNewNote, setStartingNewNote] = useState(false)
   const [loadedTargetPath, setLoadedTargetPath] = useState<string | null>(null)
   const [targetFileState, setTargetFileState] = useState<TargetFileStateBlock | null>(null)
 
@@ -318,9 +343,11 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   // hand-rebuilding `<project>/<kind folder>` because the UI offered no way to
   // say it structurally. The picker reproduces those exactly, so they are simply
   // dropped. The ones it *cannot* reproduce — a sub-area inside a project, e.g.
-  // `operations/sfw/airms/meetings` — become recents rather than vanishing: the
-  // list was a roamed vault preference, and silently deleting one is the kind of
-  // loss noticed a week later with no way back.
+  // `operations/sfw/airms/meetings` — become Explorer picks rather than vanishing:
+  // that list is what the panel shows, and it is where a hand-found sub-area
+  // belongs. The
+  // retired list was a roamed vault preference, and silently deleting one is the
+  // kind of loss noticed a week later with no way back.
   //
   // Waits for the project list: with it still loading, every path looks
   // unreachable and the whole list would be converted.
@@ -341,10 +368,14 @@ export function useNoteComposerOrch(): NoteComposerOrch {
       if (cancelled || stored.length === 0) return
 
       for (const path of unreachableQuickDestinationPathsBlock(stored, projectDestinations)) {
-        addRecent(DESTINATION_RECENTS_KEY_BLOCK, normalizeSegmentsBlock(path))
+        addRecent(
+          BROWSED_DESTINATIONS_KEY_BLOCK,
+          normalizeSegmentsBlock(path),
+          BROWSED_DESTINATIONS_LIMIT_BLOCK,
+        )
       }
       if (cancelled) return
-      setRecentDestinations(readRecentDestinationsBlock())
+      setBrowsedDestinations(readBrowsedDestinationsBlock())
 
       clearLegacyQuickDestinationsBlock()
       try {
@@ -394,6 +425,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   // Recents are held in state, not read from storage at render time: the
   // browser needs the list to move the moment you pick something.
   const [recentDestinations, setRecentDestinations] = useState<string[]>(readRecentDestinationsBlock)
+  const [browsedDestinations, setBrowsedDestinations] = useState<string[]>(readBrowsedDestinationsBlock)
 
   const rememberDestinationUsage = useCallback((segments: string[]) => {
     const normalized = normalizeSegmentsBlock(segments)
@@ -407,6 +439,18 @@ export function useNoteComposerOrch(): NoteComposerOrch {
       return next
     })
   }, [])
+
+  /** Deliberately *not* called from `applyDestinationSegments`. Clicking through
+   *  a tree commits as you go, so recording every step filled the list with the
+   *  folders you passed through and re-sorted it under the cursor while you were
+   *  still aiming (2026-07-31). One record when the browser closes is the whole
+   *  point of the pick, and nothing else. */
+  const rememberBrowsedDestination = useCallback(() => {
+    const normalized = normalizeSegmentsBlock(destinationSegments)
+    if (normalized.length === 0) return
+    addRecent(BROWSED_DESTINATIONS_KEY_BLOCK, normalized, BROWSED_DESTINATIONS_LIMIT_BLOCK)
+    setBrowsedDestinations(readBrowsedDestinationsBlock())
+  }, [destinationSegments])
 
   // --- identity actions ------------------------------------------------------
 
@@ -430,6 +474,63 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     }
     setFilenameState(filenameFromTitleBlock(title))
   }, [title])
+
+  /** "New note" from inside the composer: same folder, same kind, blank page.
+   *
+   *  It has to look at the disk. The composer *opens* the note already at the
+   *  target path — one note per day per folder, by design — so without a free
+   *  name this button would silently drop you into today's existing note, which
+   *  is the exact opposite of what it says. So: today's name if nothing holds
+   *  it, `-2`, `-3` and so on if something does.
+   *
+   *  Content is cleared *before* the path changes, so the destination-load
+   *  effect finds no draft to carry across (`computeDraftRemainderBlock`
+   *  deliberately preserves typing when you re-target a note; here that would
+   *  paste the old note into the new one). */
+  const startNewNote = useCallback(async () => {
+    if (!destinationPath.trim()) {
+      setError('Pick a destination folder first.')
+      return
+    }
+    setStartingNewNote(true)
+    try {
+      const fs = getVaultFS()
+      const base = todayFilenameBlock()
+      let chosen: string | null = null
+      for (let attempt = 1; attempt <= NEW_NOTE_NAME_ATTEMPTS_BLOCK; attempt += 1) {
+        const candidate = numberedFilenameBlock(base, attempt)
+        const candidatePath = buildTargetPathBlock(destinationPath, candidate)
+        if (!candidatePath) break
+        // Serial on purpose: each answer decides whether the next name is even
+        // worth asking about, and the loop almost always ends on the first.
+        if (!(await fs.exists(candidatePath))) { chosen = candidate; break }
+      }
+      if (!chosen) {
+        setError(`Could not find a free file name in ${destinationPath}.`)
+        return
+      }
+
+      setContent('')
+      contentRef.current = ''
+      canvasContentRef.current = ''
+      loadedBaseContentRef.current = ''
+      setUseCustomTitleState(false)
+      setTitle('')
+      setEmotions([])
+      setTags([])
+      setFilenameState(chosen)
+      // Touched, so the custom-title effect does not rename it back.
+      setFilenameTouched(true)
+      setSavedPath(null)
+      setError(null)
+      setItemsAdded(0)
+      setMessage(`New note: ${chosen}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start a new note')
+    } finally {
+      setStartingNewNote(false)
+    }
+  }, [destinationPath])
 
   const setNoteKind = useCallback((kind: NoteKindBlock) => {
     setNoteKindState(kind)
@@ -801,6 +902,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     activeProjectKey,
     mostUsedDestinations,
     recentDestinations,
+    browsedDestinations,
     destinationPath,
 
     filename,
@@ -853,7 +955,10 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     addCustomShortcut,
     deleteCustomShortcut,
     selectProject,
+    rememberBrowsedDestination,
     setAutoSaveEnabled,
+    startNewNote,
+    startingNewNote,
     save,
   }
 }

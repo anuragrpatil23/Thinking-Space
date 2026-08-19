@@ -65,6 +65,17 @@ export interface NoteContentMetaBlock {
 }
 
 export const DESTINATION_RECENTS_KEY_BLOCK = 'ltm-new-note-destination-recents'
+/** Folders picked by hand in the composer's Explorer, newest first — distinct
+ *  from the recents above, which are written on *save* and therefore full of
+ *  places the composer sent you rather than places you went looking for.
+ *
+ *  This is the list the settings panel shows, because it is the answer to the
+ *  one question project + note type cannot answer: the sub-area inside a project
+ *  (`operations/sfw/airms/meetings`) that you found once and want back. */
+export const BROWSED_DESTINATIONS_KEY_BLOCK = 'ltm-new-note-browsed-destinations'
+/** Enough to hold the handful of odd corners a vault has, short enough that the
+ *  list stays scannable without a search field. */
+export const BROWSED_DESTINATIONS_LIMIT_BLOCK = 6
 export const CUSTOM_SHORTCUTS_KEY_BLOCK = 'ltm-new-note-custom-shortcuts'
 export const LEGACY_QUICK_DESTINATIONS_KEY_BLOCK = 'ltm-new-note-quick-destinations'
 export const DESTINATION_USAGE_COUNTS_KEY_BLOCK = 'ltm-new-note-destination-usage-counts'
@@ -228,6 +239,23 @@ export function filenameFromTitleBlock(title: string): string {
     .replace(/^-+|-+$/g, '')
   return slug ? `${slug}.md` : todayFilenameBlock()
 }
+
+/** `2026-08-19.md` → `2026-08-19.md`, `2026-08-19-2.md`, `2026-08-19-3.md`…
+ *
+ *  The composer opens whatever is already at the target path — that is the
+ *  feature, one note per day per folder — so "new note" has to *not* land on it.
+ *  Suffixing the stem is the smallest thing that keeps the date (and therefore
+ *  the sort order, and the frontmatter title) intact. */
+export function numberedFilenameBlock(filename: string, attempt: number): string {
+  const normalized = ensureMarkdownFilenameBlock(filename)
+  if (attempt <= 1) return normalized
+  return `${normalized.slice(0, -3)}-${attempt}.md`
+}
+
+/** Where the search for a free name gives up. Twenty notes in one folder on one
+ *  day is not a naming problem any more, and an unbounded loop against the file
+ *  system is not a thing to ship. */
+export const NEW_NOTE_NAME_ATTEMPTS_BLOCK = 20
 
 export function ensureMarkdownFilenameBlock(value: string): string {
   const trimmed = value.trim()

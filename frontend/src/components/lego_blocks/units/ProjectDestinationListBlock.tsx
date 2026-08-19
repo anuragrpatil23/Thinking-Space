@@ -14,6 +14,7 @@
 import { useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { configuredVaultNameBlock } from '@/services/lego_blocks/units/vaultNameBlock'
 import type { ProjectDestinationBlock } from '@/services/lego_blocks/units/noteComposerBlock'
 
 /** Past this many projects the list gets a search field. Below it, scanning is
@@ -41,6 +42,10 @@ export default function ProjectDestinationListBlock({
 }: ProjectDestinationListBlockProps) {
   const [query, setQuery] = useState('')
   const showSearch = destinations.length > SEARCH_THRESHOLD
+  // The vault has a name — the folder the user chose — and using it beats "No
+  // project", which named the absence rather than the place. Every other row on
+  // this list is a place; this one should be too.
+  const vaultName = useMemo(() => configuredVaultNameBlock() ?? 'Vault', [])
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -80,16 +85,16 @@ export default function ProjectDestinationListBlock({
       )}
 
       <div className={cn('min-h-0 overflow-auto', listClassName ?? 'max-h-[13rem]')}>
-        {/* Vault root is a real answer, not the empty state: "this note is not
-            project work" is a thing people mean, and it is the composer's
-            default. It stays pinned above the search results because it is
-            never what you are searching *for*. */}
+        {/* The vault itself is a real answer, not the empty state: "this note is
+            not project work" is a thing people mean, and it is the composer's
+            default. Pinned above the search results because it is never what you
+            are searching *for*. */}
         <button
           type="button"
           onClick={() => onSelect(null)}
           className={rowClass(activeKey === null)}
         >
-          <span className="shrink-0 font-medium">No project</span>
+          <span className="shrink-0 font-medium">{vaultName}</span>
           <span className={cn(
             'truncate font-mono text-[11px]',
             activeKey === null ? 'opacity-70' : 'text-muted-foreground',

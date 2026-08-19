@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import FolderTreePickerBlock from './FolderTreePickerBlock'
 import { useVaultFolderPathsBlock } from '../hooks/useVaultFolderPathsBlock'
 import type { ProjectDestinationBlock } from '@/services/lego_blocks/units/noteComposerBlock'
+import { configuredVaultNameBlock } from '@/services/lego_blocks/units/vaultNameBlock'
 
 // Picking a destination, as its own sheet on phone.
 //
@@ -196,7 +197,10 @@ export default function DestinationPickerSheetBlock({
               {sectionLabelBlock('Project')}
               {rowBlock('', {
                 key: 'project:none',
-                label: 'No project',
+                // The vault by name, not "No project" — it is a place like every
+                // other row, and the absence framing read as a folder called
+                // "No project".
+                label: configuredVaultNameBlock() ?? 'Vault',
                 active: activeProjectKey === null,
                 onSelect: () => onSelectProject(null),
               })}
