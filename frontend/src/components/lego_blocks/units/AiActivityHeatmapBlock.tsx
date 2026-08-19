@@ -443,24 +443,20 @@ export default function AiActivityHeatmapBlock({
     return { stripCellPx: cell, stripGapPx: gap }
   }, [stripMode, allColumns.length, containerWidth])
 
-  const cellStepPx = stripMode
-    ? stripCellPx + stripGapPx
-    : workMixMode
-      ? WORK_MIX_CELL_PX + WORK_MIX_CELL_GAP
-      : bigCells
-        ? SET_CELL_PX + SET_CELL_GAP
-        : 15
-  const leftLabelPad = showDayNumbers ? 8 : 36 // weekday labels + margin, or just padding
-  const fitVisibleWeeks =
-    containerWidth > 0
-      ? Math.max(4, Math.floor((containerWidth - leftLabelPad) / cellStepPx))
-      : MAX_VISIBLE_WEEKS
-  // The strip sizes its own cells to fit, so it is never paged — without this
-  // an off-by-one in the fit division would hide a day behind a chevron on a
-  // view whose entire point is that you can see the whole week at once.
+  // The grid shows every column it has, up to the 53-week cap, and lets the
+  // card scroll horizontally when that is wider than the container. It does
+  // NOT trim to the measured width: this used to read a container width that
+  // was permanently 0 (see the measuring effect above), so the trim never ran
+  // and scrolling is the behaviour the view has always actually had. Turning
+  // the trim on with the width fixed would swap that scroll for paging
+  // chevrons, which is a different view, not a repair.
+  //
+  // The strip is the opposite: it sizes its own cells to fit, so it is never
+  // paged — an off-by-one in a fit division would hide a day behind a chevron
+  // on a view whose entire point is seeing the whole week at once.
   const visibleWeeksCap = stripMode
     ? Math.max(1, allColumns.length)
-    : Math.min(MAX_VISIBLE_WEEKS, fitVisibleWeeks)
+    : MAX_VISIBLE_WEEKS
   const pageStep = Math.max(1, Math.floor(visibleWeeksCap / 2))
 
   const maxWeeksBack = Math.max(0, allColumns.length - visibleWeeksCap)
@@ -936,7 +932,14 @@ export default function AiActivityHeatmapBlock({
             still starts flush left while its rings have room to breathe. */}
         <div
           ref={scrollContainerRef}
-          className={cn('overflow-x-auto pt-1.5 pb-1.5', stripMode && 'px-2 py-2 -mx-2')}
+          // Horizontal only, same reason as the day timeline: `overflow-x-auto`
+          // alone promotes the y axis to `auto`, which on a touch screen makes
+          // the grid slide under a vertical swipe meant for the page. The
+          // padding above clears the cells' rings, so pinning y clips nothing.
+          className={cn(
+            'overflow-x-auto overflow-y-hidden overscroll-x-contain pt-1.5 pb-1.5',
+            stripMode && 'px-2 py-2 -mx-2',
+          )}
         >
           <div className="inline-block min-w-full">
             <div

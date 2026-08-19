@@ -245,7 +245,18 @@ export default function AiActivityDayTimelineBlock({
 
   return (
     <div ref={hostRef} className="relative">
-    <div ref={scrollWrapRef} className="overflow-x-auto">
+    {/* Horizontal only. `overflow-x-auto` alone does not mean the other axis
+        stays put: CSS promotes a `visible` axis to `auto` as soon as its
+        partner is not visible, so the wrapper was quietly scrollable up and
+        down too — on a touch screen that reads as the timeline sliding under
+        your finger when you meant to scroll the page. Hidden on y pins it and
+        lets the vertical swipe fall through to the page, and
+        overscroll-x-contain stops a horizontal fling from chaining out to
+        whatever is behind the card. */}
+    <div
+      ref={scrollWrapRef}
+      className="overflow-x-auto overflow-y-hidden overscroll-x-contain"
+    >
       <div className="relative" style={{ width: Math.max(widthPx, 320) }}>
         {/* Hour grid + pills */}
         <div
