@@ -101,12 +101,18 @@ const STRIP_EDGE_PAD_PX = 8
 const STRIP_TRAIL_PAD_DAYS = 4
 const STRIP_CELL_MIN_PX = 36
 const STRIP_CELL_MAX_PX = 44
-const STRIP_CELL_GAP_MIN = 10
-/** Leftover width past the cell cap goes into the gaps, so a 7-day strip in a
- *  1000px card spreads instead of huddling at its left edge. Capped too: past
- *  this the days stop reading as one row and start reading as seven marks that
+const STRIP_CELL_GAP_MIN = 14
+/** Leftover width past the cell cap goes into the gaps, so a short strip in a
+ *  wide card spreads instead of huddling at its left edge. Capped too: past
+ *  this the days stop reading as one row and start reading as a few marks that
  *  happen to be level with each other. */
-const STRIP_CELL_GAP_MAX = 34
+const STRIP_CELL_GAP_MAX = 40
+/** Gap as a fraction of cell size, used to size the cells themselves when the
+ *  row does not have room for the maximum. Sizing cells first and giving the
+ *  gaps the remainder collapses the spacing to the floor on a narrow card —
+ *  the cells stay fat and the row reads as a solid block. Budgeting the gap in
+ *  from the start shrinks both together, which keeps the rhythm. */
+const STRIP_GAP_RATIO = 0.55
 
 /** Hairline rings. Position, not weight, is what separates the two tracks, so
  *  the stroke only has to be thick enough to survive a non-retina pixel grid. */
@@ -395,6 +401,13 @@ export default function AiActivityHeatmapBlock({
   // rendered once loaded — the hook must (re)attach when it appears.
   useWheelScrollCaptureBlock(scrollContainerRef, 'x', !loading)
   const [containerWidth, setContainerWidth] = useState(0)
+  // Same `!loading` gate as the wheel hook above, and for the same reason: the
+  // scroll container does not exist during the initial load, so an effect with
+  // empty deps bails on a null ref and never runs again once the container
+  // appears. That left the width at 0 for the life of the panel — survivable
+  // for the grid (it just skips paging) but not for the strip, which sizes its
+  // cells and gaps from it and fell back to fat cells with minimum gaps until
+  // the section was collapsed and reopened.
   useEffect(() => {
     const el = scrollContainerRef.current
     if (!el) return
@@ -403,7 +416,7 @@ export default function AiActivityHeatmapBlock({
     const ro = new ResizeObserver(update)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [loading])
   // Strip cells are sized to the measured container so the row spans the card
   // rather than clustering at its left edge. Falls back to the max while the
   // width is still unmeasured — the strip is short enough that the fallback
@@ -414,10 +427,17 @@ export default function AiActivityHeatmapBlock({
       return { stripCellPx: STRIP_CELL_MAX_PX, stripGapPx: STRIP_CELL_GAP_MIN }
     }
     const avail = containerWidth - 2 * STRIP_EDGE_PAD_PX - 2
+    // Solve cell size with its share of the gaps already budgeted:
+    //   n * cell + (n - 1) * ratio * cell = avail
     const cell = Math.max(
       STRIP_CELL_MIN_PX,
-      Math.min(STRIP_CELL_MAX_PX, Math.floor((avail - (n - 1) * STRIP_CELL_GAP_MIN) / n)),
+      Math.min(
+        STRIP_CELL_MAX_PX,
+        Math.floor(avail / (n + STRIP_GAP_RATIO * (n - 1))),
+      ),
     )
+    // Whatever the cap left on the table still goes to the gaps, so a wide card
+    // spreads rather than stopping at the proportional gap.
     const slack = n > 1 ? Math.floor((avail - n * cell) / (n - 1)) : 0
     const gap = Math.max(STRIP_CELL_GAP_MIN, Math.min(STRIP_CELL_GAP_MAX, slack))
     return { stripCellPx: cell, stripGapPx: gap }
