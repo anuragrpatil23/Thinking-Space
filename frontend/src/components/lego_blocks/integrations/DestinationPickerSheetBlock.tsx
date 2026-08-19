@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { Check, FolderTree, Plus, Search, Star, X } from 'lucide-react'
+import { useMemo, useState, type CSSProperties } from 'react'
+import { Check, FolderTree, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import FolderTreePickerBlock from './FolderTreePickerBlock'
 import { useVaultFolderPathsBlock } from '../hooks/useVaultFolderPathsBlock'
+import type { ProjectDestinationBlock } from '@/services/lego_blocks/units/noteComposerBlock'
 
 // Picking a destination, as its own sheet on phone.
 //
@@ -22,23 +23,19 @@ import { useVaultFolderPathsBlock } from '../hooks/useVaultFolderPathsBlock'
 // knows folders that already contain notes (see `useVaultFolderPathsBlock`), so
 // dropping the tree would make brand-new empty folders unreachable.
 
-export interface DestinationPickerSheetQuickBlock {
-  id: string
-  label: string
-  pathSegments: string[]
-}
-
 export interface DestinationPickerSheetBlockProps {
   /** Current destination, vault-relative. Empty string = vault root. */
   value: string
   onChange: (path: string) => void
   onClose: () => void
-  quickDestinations: DestinationPickerSheetQuickBlock[]
+  /** The user's projects that can hold notes — the destination's project half. */
+  projectDestinations: ProjectDestinationBlock[]
+  /** Key of the project the destination sits under, or null at the vault root. */
+  activeProjectKey: string | null
+  /** Picks the project half only, leaving the note-type folder alone. */
+  onSelectProject: (projectKey: string | null) => void
   mostUsedDestinations: Array<{ path: string; count: number }>
   recentDestinations: string[]
-  onDeleteQuickDestination: (id: string) => void
-  /** Returns false when the label/folder pair is incomplete. */
-  onAddQuickDestination: (label: string, segments: string[]) => boolean
   /** Keyboard + safe-area inset, so the pinned search field rides above both. */
   bottomInsetPx?: number
   /** Top offset, leaving a sliver of the page visible above the sheet. */
@@ -55,27 +52,20 @@ export default function DestinationPickerSheetBlock({
   value,
   onChange,
   onClose,
-  quickDestinations,
+  projectDestinations,
+  activeProjectKey,
+  onSelectProject,
   mostUsedDestinations,
   recentDestinations,
-  onDeleteQuickDestination,
-  onAddQuickDestination,
   bottomInsetPx = 0,
   topOffsetPx,
 }: DestinationPickerSheetBlockProps) {
   const [query, setQuery] = useState('')
-  const [savingChip, setSavingChip] = useState(false)
-  const [chipLabel, setChipLabel] = useState('')
-  const chipInputRef = useRef<HTMLInputElement | null>(null)
 
   const searching = query.trim().length > 0
   // Unconditional because the sheet is mounted only while open — the hook's
   // `enabled` flag is for callers that keep it alive behind a closed panel.
   const { folders } = useVaultFolderPathsBlock(true)
-
-  useEffect(() => {
-    if (savingChip) chipInputRef.current?.focus()
-  }, [savingChip])
 
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -93,22 +83,29 @@ export default function DestinationPickerSheetBlock({
       .slice(0, 80)
   }, [folders, query])
 
-  const handleSaveChip = () => {
-    if (!onAddQuickDestination(chipLabel, value.split('/').filter(Boolean))) return
-    setChipLabel('')
-    setSavingChip(false)
-  }
-
   const rowBlock = (
     path: string,
-    options: { key: string; trailing?: React.ReactNode; onRemove?: () => void; label?: string },
+    options: {
+      key: string
+      trailing?: React.ReactNode
+      onRemove?: () => void
+      label?: string
+      /** Overrides "set the whole destination and close" — the project rows set
+       *  the base only, and stay open so the folder below can still be chosen. */
+      onSelect?: () => void
+      active?: boolean
+    },
   ) => {
-    const active = path === value
+    const active = options.active ?? path === value
     return (
       <div key={options.key} className="flex items-center">
         <button
           type="button"
-          onClick={() => { onChange(path); onClose() }}
+          onClick={() => {
+            if (options.onSelect) { options.onSelect(); return }
+            onChange(path)
+            onClose()
+          }}
           // Two lines at py-2.5 clears 56pt without needing a fixed height,
           // which would clip the wrapped label on the longest names.
           className="ltm-motion-fast flex min-w-0 flex-1 items-center gap-3 rounded-lg px-4 py-2.5 text-left transition-colors hover:bg-muted"
@@ -170,45 +167,10 @@ export default function DestinationPickerSheetBlock({
             Cancel
           </button>
           <div className="flex-1 text-center text-[15px] font-semibold">Destination</div>
-          <button
-            type="button"
-            onClick={() => setSavingChip(open => !open)}
-            disabled={!value}
-            aria-label="Save this folder as a shortcut"
-            className={cn(
-              'ltm-motion-fast inline-flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30',
-              savingChip && 'bg-muted text-foreground',
-            )}
-          >
-            <Plus className="h-[18px] w-[18px]" />
-          </button>
+          {/* Balances the Cancel button so the title stays centred. There used
+              to be a "save this folder as a chip" action here; chips are gone. */}
+          <span className="h-11 w-11 shrink-0" aria-hidden />
         </div>
-
-        {savingChip && (
-          <div className="flex shrink-0 items-center gap-1.5 border-b border-border/70 px-3 py-2">
-            <input
-              ref={chipInputRef}
-              value={chipLabel}
-              onChange={(event) => setChipLabel(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') { event.preventDefault(); handleSaveChip() }
-                if (event.key === 'Escape') { event.preventDefault(); setSavingChip(false) }
-              }}
-              placeholder={`Name this shortcut to ${folderLeafBlock(value)}…`}
-              aria-label="Shortcut name"
-              className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm outline-none transition-colors focus:border-foreground/30"
-            />
-            <button
-              type="button"
-              onClick={handleSaveChip}
-              disabled={!chipLabel.trim()}
-              className="ltm-motion-fast inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border border-border/70 px-3 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-40"
-            >
-              <Star className="h-3.5 w-3.5" />
-              Save
-            </button>
-          </div>
-        )}
 
         {/* --- list --- */}
         <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
@@ -225,19 +187,28 @@ export default function DestinationPickerSheetBlock({
             )
           ) : (
             <div className="pb-2">
-              {quickDestinations.length > 0 && (
-                <>
-                  {sectionLabelBlock('Saved')}
-                  {quickDestinations.map(destination => rowBlock(
-                    destination.pathSegments.join('/'),
-                    {
-                      key: `quick:${destination.id}`,
-                      label: destination.label,
-                      onRemove: () => onDeleteQuickDestination(destination.id),
-                    },
-                  ))}
-                </>
-              )}
+              {/* Projects, not saved paths (2026-08-19). Picking one sets the
+                  project half and leaves the note-type folder alone, so the
+                  sheet stays open — the row is a filter on the address, not the
+                  whole address. Most used / Recent below still are whole paths,
+                  which is what makes them the escape hatch for a sub-area
+                  inside a project that no project row can name. */}
+              {sectionLabelBlock('Project')}
+              {rowBlock('', {
+                key: 'project:none',
+                label: 'No project',
+                active: activeProjectKey === null,
+                onSelect: () => onSelectProject(null),
+              })}
+              {projectDestinations.map(destination => rowBlock(
+                destination.segments.join('/'),
+                {
+                  key: `project:${destination.key}`,
+                  label: destination.name,
+                  active: destination.key === activeProjectKey,
+                  onSelect: () => onSelectProject(destination.key),
+                },
+              ))}
 
               {mostUsedDestinations.length > 0 && (
                 <>

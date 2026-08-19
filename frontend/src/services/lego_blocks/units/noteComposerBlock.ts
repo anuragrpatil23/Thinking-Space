@@ -68,7 +68,13 @@ export const DESTINATION_RECENTS_KEY_BLOCK = 'ltm-new-note-destination-recents'
 export const CUSTOM_SHORTCUTS_KEY_BLOCK = 'ltm-new-note-custom-shortcuts'
 export const LEGACY_QUICK_DESTINATIONS_KEY_BLOCK = 'ltm-new-note-quick-destinations'
 export const DESTINATION_USAGE_COUNTS_KEY_BLOCK = 'ltm-new-note-destination-usage-counts'
-export const DEFAULT_BASE_PATH_BLOCK = ['lifeblood_systems', 'sfdl']
+/** Where a note goes before you have said anything about where it goes: the
+ *  vault root, which the `thought` kind's suffix then turns into `thoughts/`.
+ *
+ *  It used to be `['lifeblood_systems', 'sfdl']` — one user's project folder,
+ *  hardcoded into shipped source, which on any other vault names a folder that
+ *  does not exist. Empty is the honest default: no project chosen yet. */
+export const DEFAULT_BASE_PATH_BLOCK: string[] = []
 export const AUTO_SAVE_PREF_KEY_BLOCK = 'ltm-new-note-auto-save'
 
 export const BUILT_IN_SHORTCUTS_BLOCK: DestinationShortcutBlock[] = [
@@ -77,6 +83,126 @@ export const BUILT_IN_SHORTCUTS_BLOCK: DestinationShortcutBlock[] = [
   { id: 'todo', label: 'To Do', pathSegments: ['todos'], builtIn: true },
   { id: 'none', label: 'None', pathSegments: [], builtIn: true },
 ]
+
+/** The built-in shortcut a note kind seeds the destination with, or `null` for
+ *  "leave the folder where it is".
+ *
+ *  Kind and folder are *not* the same question — the kind is a tag (or, for
+ *  `todo`, a different capability), the folder is a place, and the 2026-07-31
+ *  decision to stop showing folder shortcuts named Thought/Meeting/To Do was
+ *  about exactly that confusion. So this is a seed, not a lock: picking a kind
+ *  moves the folder, and picking a folder afterwards overrides it and sticks.
+ *  Last action wins.
+ *
+ *  `none` seeds nothing. It means "no kind tag", not "no folder" — a note that
+ *  is untagged still belongs somewhere, and dumping it at the project root
+ *  would make the least-opinionated choice the most destructive one. */
+export function noteKindShortcutIdBlock(kind: NoteKindBlock): string | null {
+  if (kind === 'thought') return 'thoughts'
+  if (kind === 'meeting') return 'meetings'
+  if (kind === 'todo') return 'todo'
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Projects as destinations
+// ---------------------------------------------------------------------------
+
+/** A project offered as a destination base — the project half of the
+ *  `<project>/<kind folder>` path the composer has always built. */
+export interface ProjectDestinationBlock {
+  key: string
+  name: string
+  group: string
+  /** Vault-relative segments. Never empty. */
+  segments: string[]
+}
+
+/** The first vault-relative root a project has, or `null` when it has none.
+ *
+ *  A project may be rooted entirely outside the vault — Mount Sinai's only root
+ *  is a code checkout under `~/Documents`, and the Vault project has no roots at
+ *  all. Those are perfectly good projects for activity attribution and useless
+ *  as note destinations, so they are filtered out here rather than listed and
+ *  broken on click. */
+export function vaultRelativeProjectRootBlock(roots: readonly string[]): string[] | null {
+  for (const root of roots) {
+    if (root.startsWith('/')) continue
+    const segments = normalizeSegmentsBlock(root)
+    if (segments.length > 0) return segments
+  }
+  return null
+}
+
+export function projectDestinationsBlock(
+  projects: ReadonlyArray<{ key: string; name: string; group: string; roots: string[] }>,
+): ProjectDestinationBlock[] {
+  const out: ProjectDestinationBlock[] = []
+  for (const project of projects) {
+    const segments = vaultRelativeProjectRootBlock(project.roots)
+    if (!segments) continue
+    out.push({
+      key: project.key,
+      name: project.name.trim() || project.key,
+      group: project.group.trim(),
+      segments,
+    })
+  }
+  return out
+}
+
+/** Which project a destination base belongs to, by longest-prefix match — the
+ *  same rule the activity registry resolves session cwds with, so a base deep
+ *  inside a project (`operations/sfw/airms/meetings`, reached via Explorer)
+ *  still lights up its project rather than reading as unfiled. */
+export function projectForSegmentsBlock(
+  destinations: readonly ProjectDestinationBlock[],
+  segments: readonly string[],
+): ProjectDestinationBlock | null {
+  let best: ProjectDestinationBlock | null = null
+  for (const destination of destinations) {
+    if (destination.segments.length > segments.length) continue
+    if (best && destination.segments.length <= best.segments.length) continue
+    let matches = true
+    for (let index = 0; index < destination.segments.length; index += 1) {
+      if (destination.segments[index] !== segments[index]) { matches = false; break }
+    }
+    if (matches) best = destination
+  }
+  return best
+}
+
+/** Quick destinations that the project + note-type picker cannot reproduce, as
+ *  plain paths — the ones worth keeping as recents when the concept goes away.
+ *
+ *  A quick destination was a whole path snapshot, and most of them were a user
+ *  hand-rebuilding `<project>/<kind folder>` because there was no way to say it
+ *  structurally ("sfdl thoughts", "F9 thoughts"). Those are reproduced exactly
+ *  by the new picker and need no memorial. What is *not* reproducible is a
+ *  sub-area inside a project ("sfw airms meetings" →
+ *  `operations/sfw/airms/meetings`), and dropping those silently would delete a
+ *  roamed preference the user would only miss a week later. */
+export function unreachableQuickDestinationPathsBlock(
+  quickDestinations: ReadonlyArray<{ pathSegments: string[] }>,
+  destinations: readonly ProjectDestinationBlock[],
+): string[] {
+  const reachable = new Set<string>()
+  for (const destination of destinations) {
+    reachable.add(destination.segments.join('/'))
+    for (const shortcut of BUILT_IN_SHORTCUTS_BLOCK) {
+      reachable.add(withSuffixBlock(destination.segments, shortcut.pathSegments).join('/'))
+    }
+  }
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const quick of quickDestinations) {
+    const path = normalizeSegmentsBlock(quick.pathSegments).join('/')
+    if (!path || reachable.has(path) || seen.has(path)) continue
+    seen.add(path)
+    out.push(path)
+  }
+  return out
+}
 
 // ---------------------------------------------------------------------------
 // Dates + filenames

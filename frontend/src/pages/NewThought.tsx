@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Loader2, X, Plus, FolderTree, ChevronDown, ChevronRight, Save, Star, Tag, MoreHorizontal, Info } from 'lucide-react'
+import { Loader2, X, FolderTree, ChevronDown, ChevronRight, Save, Tag, MoreHorizontal, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -9,6 +9,7 @@ import {
 } from '@/components/lego_blocks/units/ui/tooltip'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import FolderTreePickerBlock from '@/components/lego_blocks/integrations/FolderTreePickerBlock'
+import ProjectDestinationListBlock from '@/components/lego_blocks/units/ProjectDestinationListBlock'
 import DestinationPickerSheetBlock from '@/components/lego_blocks/integrations/DestinationPickerSheetBlock'
 import MoodPickerBlock, { moodDotClassForLabelBlock } from '@/components/lego_blocks/integrations/MoodPickerBlock'
 import NoteTagsPopoverBlock from '@/components/lego_blocks/integrations/NoteTagsPopoverBlock'
@@ -75,10 +76,13 @@ function CreateTab() {
   // owns that edge). Never a permanently docked slab — the writing surface
   // stays edge to edge, which is the whole point of the iA layout.
   const [composerPanelOpen, setComposerPanelOpen] = useState(false)
+  // The project half of the path, editable from the path itself. Separate from
+  // the settings panel because it is the one part of the address that changes
+  // often enough to deserve a one-click route (2026-08-19).
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false)
   const [destinationBrowserOpen, setDestinationBrowserOpen] = useState(false)
   // Phone only: destination is its own sheet, pushed on top of Note settings.
   const [destinationSheetOpen, setDestinationSheetOpen] = useState(false)
-  const [quickDestinationLabel, setQuickDestinationLabel] = useState('')
   // Emotions and tags left the settings panel (2026-07-31). They are not
   // settings like filename or destination — one is an act of reflection, the
   // other a quick aside while writing — so each gets its own title-bar button
@@ -108,6 +112,8 @@ function CreateTab() {
 
   const panelTriggerRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const projectMenuTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const projectMenuRef = useRef<HTMLDivElement | null>(null)
   const tagsTriggerRef = useRef<HTMLButtonElement | null>(null)
   const tagsPopoverRef = useRef<HTMLDivElement | null>(null)
   const metaTriggerRef = useRef<HTMLDivElement | null>(null)
@@ -143,6 +149,28 @@ function CreateTab() {
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [composerPanelOpen, isPhoneSurface])
+
+  // Same contract for the project menu. It is a peer of the settings panel, not
+  // a child, so it dismisses on its own terms — opening one closes the other
+  // (below), which keeps two popovers from overlapping in the same bar.
+  useEffect(() => {
+    if (!projectMenuOpen) return
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (projectMenuRef.current?.contains(target)) return
+      if (projectMenuTriggerRef.current?.contains(target)) return
+      setProjectMenuOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setProjectMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [projectMenuOpen])
 
   // One dismissal contract for the three title-bar popovers: a click inside a
   // popover (or on its own trigger) leaves it alone and closes the other two,
@@ -181,17 +209,6 @@ function CreateTab() {
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [tagsPopoverOpen, showMetaPanel, moodPickerOpen, overflowMenuOpen])
-
-  // Saves whatever the tree currently points at as a labelled chip. The path
-  // comes from the composer rather than local state because the inline tree
-  // commits as you click — there is no draft to reconcile.
-  const handleSaveQuickDestination = () => {
-    const label = quickDestinationLabel.trim()
-    if (!label || !composer.destinationPath) return
-    if (composer.addQuickDestination(label, composer.destinationPath.split('/').filter(Boolean))) {
-      setQuickDestinationLabel('')
-    }
-  }
 
   // One box per job, matching the tree's box. Paths render flat — no emphasis
   // on the last segment: these are whole paths you jump to, and bolding the
@@ -724,7 +741,7 @@ function CreateTab() {
       ) : (
       <div className={cn('space-y-2.5', panelSectionPadClass)}>
         <div className="flex items-center justify-between gap-2">
-          <div className={PANEL_LABEL_CLASS}>Destination</div>
+          <div className={PANEL_LABEL_CLASS}>Project</div>
           <button
             type="button"
             onClick={() => setDestinationBrowserOpen(open => !open)}
@@ -738,48 +755,19 @@ function CreateTab() {
           </button>
         </div>
 
-        {/* Only the user's own chips. The built-in Thoughts / Meetings / To Do /
-            None shortcuts are gone from the row (2026-07-31): they duplicated
-            the Note type control word for word directly above while meaning
-            something entirely different (a folder, not a tag), which made the
-            panel look like it was asking the same question twice. They still
-            exist in the model — todo mode uses the `todo` one to reach the
-            todos folder — they are just not a thing you click here. */}
-        <div className="flex flex-wrap gap-1.5">
-          {composer.quickDestinations.map((destination) => {
-            const destinationPathValue = destination.pathSegments.join('/')
-            const active = destinationPathValue === composer.destinationPath
-            return (
-              <span key={destination.id} className={cn(PANEL_CHIP_CLASS, active && PANEL_CHIP_ACTIVE_CLASS)}>
-                <button
-                  type="button"
-                  className="px-1"
-                  title={destinationPathValue}
-                  onClick={() => composer.applyDestinationSegments(destination.pathSegments)}
-                >
-                  {destination.label}
-                </button>
-                <button
-                  type="button"
-                  className="ltm-motion-fast rounded-full p-0.5 opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100"
-                  title={`Remove quick destination ${destination.label}`}
-                  onClick={() => composer.deleteQuickDestination(destination.id)}
-                >
-                  <X className="h-2.5 w-2.5" />
-                </button>
-              </span>
-            )
-          })}
-          <button
-            type="button"
-            onClick={() => setDestinationBrowserOpen(open => !open)}
-            title="Browse for a folder"
-            aria-label="Browse for a folder"
-            className="ltm-motion-fast inline-flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
-          >
-            <Plus className="h-3 w-3" />
-          </button>
-        </div>
+        {/* The project list, not a chip cloud of saved paths. Note type (above)
+            supplies the folder inside the project, so this control answers one
+            question — which project — and the two compose into the path shown on
+            the "Saving to" line. Built-in folder shortcuts still exist in the
+            model (todo mode reaches `todos/` through one); they are not a thing
+            you click here, for the same reason they were removed in 2026-07-31:
+            they duplicated the Note type control word for word. */}
+        <ProjectDestinationListBlock
+          destinations={composer.projectDestinations}
+          activeKey={composer.activeProjectKey}
+          onSelect={composer.selectProject}
+          listClassName="max-h-[11rem]"
+        />
 
         {/* The browser unfolds in place rather than in a modal (2026-07-31).
             A modal put a `fixed` scrim over a popover that lives inside the
@@ -808,27 +796,6 @@ function CreateTab() {
                 {jumpListBlock('Most used', composer.mostUsedDestinations.map(entry => entry.path))}
                 {jumpListBlock('Recent', composer.recentDestinations)}
               </div>
-            </div>
-            <div className="flex gap-1.5">
-              <input
-                value={quickDestinationLabel}
-                onChange={(event) => setQuickDestinationLabel(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') { event.preventDefault(); handleSaveQuickDestination() }
-                }}
-                placeholder="Save this folder destination as a chip…"
-                aria-label="Quick destination name"
-                className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2.5 text-xs outline-none transition-colors focus:border-foreground/30"
-              />
-              <button
-                type="button"
-                onClick={handleSaveQuickDestination}
-                disabled={!quickDestinationLabel.trim() || !composer.destinationPath}
-                className="ltm-motion-fast inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-border/70 bg-background px-2.5 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-40"
-              >
-                <Star className="h-3 w-3" />
-                Save
-              </button>
             </div>
           </div>
         )}
@@ -903,6 +870,17 @@ function CreateTab() {
   const identityDir = composer.targetPath
     ? composer.targetPath.slice(0, composer.targetPath.lastIndexOf('/') + 1)
     : ''
+  // The path splits at the project boundary so the two halves can be clicked
+  // separately: the project name is its own control, the rest opens the settings
+  // panel. `activeProject` is resolved from the path rather than remembered, so
+  // a folder reached through Explorer still names the project it sits inside.
+  const activeProject = composer.projectDestinations.find(
+    destination => destination.key === composer.activeProjectKey,
+  ) ?? null
+  const projectPrefix = activeProject ? `${activeProject.segments.join('/')}/` : ''
+  const identityDirAfterProject = projectPrefix && identityDir.startsWith(projectPrefix)
+    ? identityDir.slice(projectPrefix.length)
+    : identityDir
   const identityLeaf = composer.targetPath
     ? composer.targetPath.slice(composer.targetPath.lastIndexOf('/') + 1)
     : identityLeafFallback
@@ -944,6 +922,35 @@ function CreateTab() {
       <div />
 
       <div className="relative flex min-w-0 items-center justify-center">
+        {/* The project segment is its own control (desktop only — the phone bar
+            has no room, and its sheet lists projects already). Clicking the part
+            of the path that names the project opens the project list right
+            there; the rest of the pill still opens the settings panel. Two
+            sibling buttons, never nested — the path *is* the picker. */}
+        {!isPhoneSurface && (
+          <TitleBarTipBlock label="Change project">
+            <button
+              ref={projectMenuTriggerRef}
+              type="button"
+              onClick={() => {
+                setComposerPanelOpen(false)
+                setProjectMenuOpen(open => !open)
+              }}
+              aria-expanded={projectMenuOpen}
+              aria-label="Change project"
+              className={cn(
+                'ltm-motion-fast inline-flex shrink-0 items-center rounded-md px-1.5 py-1 text-sm transition-colors hover:bg-muted hover:text-foreground',
+                projectMenuOpen ? 'bg-muted text-foreground' : 'text-muted-foreground',
+              )}
+            >
+              <span className={cn('max-w-[10rem] truncate', !activeProject && 'italic opacity-70')}>
+                {activeProject ? activeProject.name : 'No project'}
+              </span>
+              <span className="opacity-40">/</span>
+            </button>
+          </TitleBarTipBlock>
+        )}
+
         {/* Names the action, not the path. The path is already on screen twice —
             in the button itself and on the "Saving to" line — so repeating it on
             hover said nothing; what the button *does* was the missing part. */}
@@ -951,7 +958,10 @@ function CreateTab() {
         <button
           ref={panelTriggerRef}
           type="button"
-          onClick={() => setComposerPanelOpen(open => !open)}
+          onClick={() => {
+            setProjectMenuOpen(false)
+            setComposerPanelOpen(open => !open)
+          }}
           aria-expanded={composerPanelOpen}
           aria-label="Note settings"
           className={cn(
@@ -971,7 +981,9 @@ function CreateTab() {
                 identify nothing — and pushed the filename itself down to
                 `2026…` (2026-08-01). One legible name beats two illegible
                 ones, and the full path is a tap away on the "Saving to" line. */}
-            {identityDir && !isPhoneSurface && <span className="truncate opacity-50">{identityDir}</span>}
+            {identityDirAfterProject && !isPhoneSurface && (
+              <span className="truncate opacity-50">{identityDirAfterProject}</span>
+            )}
             {/* The folder gives way, the filename never does. */}
             <span className="shrink-0">{identityLeaf}</span>
           </span>
@@ -984,6 +996,26 @@ function CreateTab() {
           />
         </button>
         </TitleBarTipBlock>
+
+        {projectMenuOpen && !isPhoneSurface && (
+          // Anchored to the bar, not to the trigger: the trigger is inside a
+          // grid track that shrinks with the path, and a popover pinned to it
+          // slid around as the folder name changed length.
+          <div
+            ref={projectMenuRef}
+            className="absolute left-1/2 top-full z-50 mt-1.5 w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-border/70 bg-background p-2 shadow-2xl"
+          >
+            <ProjectDestinationListBlock
+              destinations={composer.projectDestinations}
+              activeKey={composer.activeProjectKey}
+              onSelect={(projectKey) => {
+                composer.selectProject(projectKey)
+                setProjectMenuOpen(false)
+              }}
+              listClassName="max-h-[16rem]"
+            />
+          </div>
+        )}
 
         {composerPanelOpen && !isPhoneSurface && (
           <div
@@ -1090,11 +1122,11 @@ function CreateTab() {
       value={composer.destinationPath}
       onChange={composer.applyDestinationPath}
       onClose={() => setDestinationSheetOpen(false)}
-      quickDestinations={composer.quickDestinations}
+      projectDestinations={composer.projectDestinations}
+      activeProjectKey={composer.activeProjectKey}
+      onSelectProject={composer.selectProject}
       mostUsedDestinations={composer.mostUsedDestinations}
       recentDestinations={composer.recentDestinations}
-      onDeleteQuickDestination={composer.deleteQuickDestination}
-      onAddQuickDestination={(label, segments) => composer.addQuickDestination(label, segments)}
       // Same dock reservation the settings sheet makes, plus the keyboard the
       // search field summons — it is pinned to the bottom edge, so it is the
       // one control that has to move out of the keyboard's way itself.

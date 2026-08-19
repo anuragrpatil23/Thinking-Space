@@ -24,6 +24,7 @@
 // Pure helpers live in `services/lego_blocks/units/noteComposerBlock`.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { addRecent } from '@/components/lego_blocks/integrations/CascadingFolderPickerBlock'
+import { useProjectsBlock } from '@/components/lego_blocks/hooks/shared/useProjectsBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { createNoteFenceCanvasStorage } from '@/services/lego_blocks/integrations/noteFenceCanvasStorageBlock'
 import { applyNoteCanvasToContent, parseNoteCanvasBlock } from '@/services/lego_blocks/units/noteCanvasBlock'
@@ -43,7 +44,6 @@ import {
   BUILT_IN_SHORTCUTS_BLOCK,
   DEFAULT_BASE_PATH_BLOCK,
   DESTINATION_RECENTS_KEY_BLOCK,
-  LEGACY_QUICK_DESTINATIONS_KEY_BLOCK,
   buildFrontmatterPreviewBlock,
   buildTargetPathBlock,
   clearLegacyQuickDestinationsBlock,
@@ -53,7 +53,10 @@ import {
   ensureMarkdownFilenameBlock,
   filenameFromTitleBlock,
   mergeDraftBlock,
+  noteKindShortcutIdBlock,
   normalizeSegmentsBlock,
+  projectDestinationsBlock,
+  projectForSegmentsBlock,
   readCustomShortcutsBlock,
   readDestinationUsageCountsBlock,
   readJsonStorageBlock,
@@ -64,6 +67,7 @@ import {
   todayDateStrBlock,
   todayFilenameBlock,
   topUsedDestinationsBlock,
+  unreachableQuickDestinationPathsBlock,
   withSuffixBlock,
   writeCustomShortcutsBlock,
   writeDestinationUsageCountsBlock,
@@ -72,7 +76,7 @@ import {
   type NoteContentMetaBlock,
   type NoteKindBlock,
   type NoteSaveStateBlock,
-  type QuickDestinationBlock,
+  type ProjectDestinationBlock,
 } from '@/services/lego_blocks/units/noteComposerBlock'
 import type { CapabilityActor } from '@/services/lego_blocks/integrations/capabilityRegistryBlock'
 import type { CascadingFolderPickerChange } from '@/components/lego_blocks/integrations/CascadingFolderPickerBlock'
@@ -108,7 +112,11 @@ export interface NoteComposerOrch {
   folderBasePath: string
   activeShortcutId: string
   allShortcuts: DestinationShortcutBlock[]
-  quickDestinations: QuickDestinationBlock[]
+  /** The user's projects that can hold notes, as destination bases. */
+  projectDestinations: ProjectDestinationBlock[]
+  /** Key of the project the current destination sits under, or null at the
+   *  vault root / outside every project. */
+  activeProjectKey: string | null
   mostUsedDestinations: Array<{ path: string; count: number }>
   /** Recently used destination folders, newest first. */
   recentDestinations: string[]
@@ -174,8 +182,9 @@ export interface NoteComposerOrch {
   applyDestinationPath: (path: string) => void
   addCustomShortcut: (label: string, pathSuffix: string) => boolean
   deleteCustomShortcut: (shortcutId: string) => void
-  addQuickDestination: (label: string, segments: string[]) => boolean
-  deleteQuickDestination: (id: string) => void
+  /** Move the destination to a project's folder, keeping the note-type suffix.
+   *  `null` means the vault root. */
+  selectProject: (projectKey: string | null) => void
   setAutoSaveEnabled: (enabled: boolean) => void
   save: () => Promise<void>
 }
@@ -184,20 +193,22 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   // --- destination ---
   const [pickerDefaultPath, setPickerDefaultPath] = useState<string[]>(DEFAULT_BASE_PATH_BLOCK)
   const [pickerVersion, setPickerVersion] = useState(0)
-  // Seeded, not empty. The base used to be filled by the cascading picker
-  // firing `onChange` as it hydrated; when that picker left the panel
-  // (2026-07-31) nothing set it, so it stayed `[]` and the built-in shortcuts
-  // composed to bare `thoughts` at the vault root instead of
-  // `lifeblood_systems/sfdl/thoughts` — notes silently landed in the wrong
-  // folder. The default belongs here, where it does not depend on a child
-  // component being mounted to take effect.
+  // Empty is the deliberate default now: no project chosen, so the `thought`
+  // suffix composes to `thoughts/` at the vault root. It used to be seeded with
+  // one user's project folder because an earlier bug left the base at `[]`
+  // unintentionally (2026-07-31) — the fix was right, the value was not, and a
+  // hardcoded `lifeblood_systems/sfdl` shipped to every vault that has no such
+  // folder. Unset-by-default is a state the picker can now express.
   const [folderBaseSegments, setFolderBaseSegments] = useState<string[]>(DEFAULT_BASE_PATH_BLOCK)
   const [folderBasePath, setFolderBasePath] = useState(DEFAULT_BASE_PATH_BLOCK.join('/'))
   const [activeShortcutId, setActiveShortcutId] = useState('thoughts')
-  const [shortcutBeforeTodoMode, setShortcutBeforeTodoMode] = useState('thoughts')
   const [customShortcuts, setCustomShortcuts] = useState<DestinationShortcutBlock[]>([])
-  const [quickDestinations, setQuickDestinations] = useState<QuickDestinationBlock[]>([])
   const [usageCounts, setUsageCounts] = useState<Record<string, number>>({})
+  // The destination base is a *project*, not a remembered path. The list is the
+  // one the user already maintains in Settings (`.thinking-space/projects.json`),
+  // which is why the composer no longer keeps a parallel list of its own.
+  const { projects, loading: projectsLoading } = useProjectsBlock()
+  const projectDestinations = useMemo(() => projectDestinationsBlock(projects), [projects])
 
   // --- identity ---
   const [filename, setFilenameState] = useState(todayFilenameBlock())
@@ -299,42 +310,54 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   useEffect(() => {
     setCustomShortcuts(readCustomShortcutsBlock())
     setUsageCounts(readDestinationUsageCountsBlock())
+  }, [])
+
+  // One-time retirement of quick destinations (2026-08-19). They were flat
+  // whole-path snapshots that set project and note-type folder at once, which is
+  // the composition this orchestrator already had — most of them were the user
+  // hand-rebuilding `<project>/<kind folder>` because the UI offered no way to
+  // say it structurally. The picker reproduces those exactly, so they are simply
+  // dropped. The ones it *cannot* reproduce — a sub-area inside a project, e.g.
+  // `operations/sfw/airms/meetings` — become recents rather than vanishing: the
+  // list was a roamed vault preference, and silently deleting one is the kind of
+  // loss noticed a week later with no way back.
+  //
+  // Waits for the project list: with it still loading, every path looks
+  // unreachable and the whole list would be converted.
+  const quickDestinationsMigratedRef = useRef(false)
+  useEffect(() => {
+    if (projectsLoading || quickDestinationsMigratedRef.current) return
+    quickDestinationsMigratedRef.current = true
 
     let cancelled = false
-    const loadQuickDestinations = async () => {
+    const migrate = async () => {
+      let stored: Array<{ pathSegments: string[] }> = []
       try {
-        const persisted = await readNewThoughtQuickDestinationsPreferenceOrch()
-        if (cancelled) return
-        if (persisted.length > 0) {
-          setQuickDestinations(persisted)
-          clearLegacyQuickDestinationsBlock()
-          return
-        }
+        stored = await readNewThoughtQuickDestinationsPreferenceOrch()
       } catch {
-        // Fall back to legacy storage.
+        // Vault preferences unavailable — the legacy key below is the fallback.
       }
+      if (stored.length === 0) stored = readLegacyQuickDestinationsBlock()
+      if (cancelled || stored.length === 0) return
 
-      const legacy = readLegacyQuickDestinationsBlock()
+      for (const path of unreachableQuickDestinationPathsBlock(stored, projectDestinations)) {
+        addRecent(DESTINATION_RECENTS_KEY_BLOCK, normalizeSegmentsBlock(path))
+      }
       if (cancelled) return
-      setQuickDestinations(legacy)
+      setRecentDestinations(readRecentDestinationsBlock())
 
-      if (legacy.length === 0) return
+      clearLegacyQuickDestinationsBlock()
       try {
-        await setNewThoughtQuickDestinationsPreferenceOrch(legacy)
-        if (cancelled) return
-        clearLegacyQuickDestinationsBlock()
+        await setNewThoughtQuickDestinationsPreferenceOrch([])
       } catch {
-        // Keep legacy storage as fallback if vault preference write fails.
+        // Leaving the roamed list in place is harmless — nothing reads it now,
+        // and the ref guard stops this from running twice in one session.
       }
     }
 
-    void loadQuickDestinations()
+    void migrate()
     return () => { cancelled = true }
-  }, [])
-
-  useEffect(() => {
-    if (activeShortcutId !== 'todo') setShortcutBeforeTodoMode(activeShortcutId)
-  }, [activeShortcutId])
+  }, [projectDestinations, projectsLoading])
 
   // --- derived destination ---------------------------------------------------
 
@@ -353,6 +376,14 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     [activeShortcut.pathSegments, folderBaseSegments],
   )
   const destinationPath = destinationSegments.join('/')
+  // Derived from the path, never stored beside it — a base reached through
+  // Explorer or a recent (`operations/sfw/airms/meetings`) still resolves to its
+  // project by longest prefix, so the picker shows where you actually are rather
+  // than only where it put you.
+  const activeProjectKey = useMemo(
+    () => projectForSegmentsBlock(projectDestinations, folderBaseSegments)?.key ?? null,
+    [folderBaseSegments, projectDestinations],
+  )
   const normalizedFilename = ensureMarkdownFilenameBlock(filename)
   const mostUsedDestinations = useMemo(() => topUsedDestinationsBlock(usageCounts, 5), [usageCounts])
 
@@ -375,16 +406,6 @@ export function useNoteComposerOrch(): NoteComposerOrch {
       writeDestinationUsageCountsBlock(next)
       return next
     })
-  }, [])
-
-  const persistQuickDestinations = useCallback(async (next: QuickDestinationBlock[]) => {
-    setQuickDestinations(next)
-    try {
-      await setNewThoughtQuickDestinationsPreferenceOrch(next)
-      clearLegacyQuickDestinationsBlock()
-    } catch {
-      writeJsonStorageBlock(LEGACY_QUICK_DESTINATIONS_KEY_BLOCK, next)
-    }
   }, [])
 
   // --- identity actions ------------------------------------------------------
@@ -413,14 +434,15 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   const setNoteKind = useCallback((kind: NoteKindBlock) => {
     setNoteKindState(kind)
     writeJsonStorageBlock(NOTE_KIND_PREF_KEY_BLOCK, kind)
-    // Todo mode owns the destination (todos live in one folder); leaving it
-    // restores whatever shortcut was active before, so switching kinds to look
-    // and switching back doesn't strand the note somewhere else.
-    setActiveShortcutId((current) => {
-      if (kind === 'todo') return current === 'todo' ? current : 'todo'
-      return current === 'todo' ? (shortcutBeforeTodoMode || 'thoughts') : current
-    })
-  }, [shortcutBeforeTodoMode])
+    // Kind seeds the folder — Thought → `thoughts/`, Meeting → `meetings/`, To
+    // Do → `todos/`, None → wherever you already were. It does not lock it: the
+    // project picker and Explorer both write the folder afterwards and win,
+    // until you touch this control again. Last action wins, in both directions,
+    // which is what lets a note tagged `meeting` live under a sub-area folder
+    // Explorer found (see `noteKindShortcutIdBlock`).
+    const seeded = noteKindShortcutIdBlock(kind)
+    if (seeded) setActiveShortcutId(seeded)
+  }, [])
 
   const setMakeThisTodo = useCallback((checked: boolean) => {
     setNoteKind(checked ? 'todo' : 'thought')
@@ -501,27 +523,23 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     setMessage('Removed custom shortcut.')
   }, [])
 
-  /** Returns false (and sets `error`) when the input is incomplete. */
-  const addQuickDestination = useCallback((label: string, segments: string[]) => {
-    const cleanLabel = label.trim()
-    const pathSegments = normalizeSegmentsBlock(segments)
-    if (!cleanLabel || pathSegments.length === 0) {
-      setError('Quick destination needs both a label and destination folder.')
-      return false
-    }
-    void persistQuickDestinations([
-      ...quickDestinations,
-      { id: createShortcutIdBlock('quick'), label: cleanLabel, pathSegments },
-    ])
-    setError(null)
-    setMessage(`Added quick destination "${cleanLabel}".`)
-    return true
-  }, [persistQuickDestinations, quickDestinations])
-
-  const deleteQuickDestination = useCallback((id: string) => {
-    void persistQuickDestinations(quickDestinations.filter(destination => destination.id !== id))
-    setMessage('Removed quick destination.')
-  }, [persistQuickDestinations, quickDestinations])
+  /** Move the base to a project, leaving the note-type suffix alone: picking a
+   *  project is half the address, not the whole one. `null` is the vault root,
+   *  which is a real answer ("this note isn't project work"), not an absence. */
+  const selectProject = useCallback((projectKey: string | null) => {
+    const project = projectKey
+      ? projectDestinations.find(candidate => candidate.key === projectKey) ?? null
+      : null
+    const segments = project ? project.segments : []
+    setPickerDefaultPath(segments)
+    setPickerVersion(current => current + 1)
+    setFolderBaseSegments(segments)
+    setFolderBasePath(segments.join('/'))
+    // Unlike `applyDestinationSegments` this does NOT force the `none`
+    // shortcut: the whole point is that the suffix survives, so switching
+    // projects keeps you in the same kind of folder.
+    clearTransientStatus()
+  }, [clearTransientStatus, projectDestinations])
 
   // --- destination note load -------------------------------------------------
 
@@ -779,7 +797,8 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     folderBasePath,
     activeShortcutId,
     allShortcuts,
-    quickDestinations,
+    projectDestinations,
+    activeProjectKey,
     mostUsedDestinations,
     recentDestinations,
     destinationPath,
@@ -833,8 +852,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     applyDestinationPath,
     addCustomShortcut,
     deleteCustomShortcut,
-    addQuickDestination,
-    deleteQuickDestination,
+    selectProject,
     setAutoSaveEnabled,
     save,
   }
