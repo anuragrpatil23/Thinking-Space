@@ -48,7 +48,9 @@ function flattenContent(content: unknown): string {
       parts.push(block)
     } else if (block && typeof block === 'object') {
       const b = block as Record<string, unknown>
-      const bt = typeof b.type === 'string' ? b.type : ''
+      // Lower-cased because Codex's `item_completed` blocks spell the same
+      // type with a capital (`Text`) while its response_items use `input_text`.
+      const bt = typeof b.type === 'string' ? b.type.toLowerCase() : ''
       if ((bt === 'text' || bt === 'input_text' || bt === 'output_text') &&
           typeof b.text === 'string') {
         parts.push(b.text)
@@ -193,6 +195,10 @@ interface ConvEvent {
    *  on every event; Codex does not). Used to anchor a window's identity to the
    *  message it starts with — see `winSessionId` below. */
   uid?: string
+  /** Which Codex event shape produced this user turn: the legacy flat
+   *  `user_message` event_msg or the current `item_completed` one. Only set for
+   *  user turns, and only used to drop the older shape when both are present. */
+  stream?: 'legacy' | 'item'
 }
 
 /**
@@ -230,11 +236,17 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   const codexSamples: Array<{ ts: number; totals: SessionTokens }> = []
 
   const convEvents: ConvEvent[] = []
-  const recordConv = (tsStr: string, isUser: boolean, body: string, uid?: string): void => {
+  const recordConv = (
+    tsStr: string,
+    isUser: boolean,
+    body: string,
+    uid?: string,
+    stream?: 'legacy' | 'item',
+  ): void => {
     if (!tsStr) return
     const ms = Date.parse(tsStr)
     if (!Number.isFinite(ms)) return
-    convEvents.push({ ts: ms, isUser, body, uid })
+    convEvents.push({ ts: ms, isUser, body, uid, stream })
   }
 
   for (const raw of lines) {
@@ -355,11 +367,27 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       //
       // Codex emits the *same* user/assistant turn twice — once as a
       // `response_item` with role and structured content, and again as an
-      // `event_msg` with a flat `payload.message` string. We use the event_msg
-      // form as the canonical body source (cleaner text, free of wrappers like
+      // `event_msg` carrying the turn on its own. We use the event_msg form as
+      // the canonical body source (cleaner text, free of wrappers like
       // <environment_context>) and treat response_item as windowing-only so
       // `userMsgCount` doesn't double.
+      //
+      // That event_msg has two shapes. Older CLIs wrote a flat
+      // `{type: 'user_message', message: '...'}`; Codex ~0.147 replaced it with
+      // `{type: 'item_completed', item: {type: 'UserMessage', content: [...]}}`.
+      // Reading only the old one is why every recently recorded Codex session
+      // parsed as zero user messages, took `(no user message)` as its topic, and
+      // was skipped by the digest (which won't spend a model call on a session
+      // whose own message count says there is nothing to summarise).
       const payloadType = String((payload as Record<string, unknown>).type ?? '')
+      const completedItem =
+        type === 'event_msg' && payloadType === 'item_completed'
+          ? (payload.item as Record<string, unknown> | undefined)
+          : undefined
+      const itemType =
+        completedItem && typeof completedItem.type === 'string' ? completedItem.type : ''
+      const isUserItem = itemType === 'UserMessage'
+      const isAgentItem = itemType === 'AgentMessage'
       const isUserEventMsg = type === 'event_msg' && payloadType === 'user_message'
       const isAgentEventMsg = type === 'event_msg' && payloadType === 'agent_message'
       const isUserResponseItem =
@@ -372,20 +400,28 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
         payloadType === 'message' &&
         typeof payload.role === 'string' &&
         payload.role === 'assistant'
-      const isUser = isUserEventMsg || isUserResponseItem
-      const isAgent = isAgentEventMsg || isAgentResponseItem
+      const isUser = isUserEventMsg || isUserItem || isUserResponseItem
+      const isAgent = isAgentEventMsg || isAgentItem || isAgentResponseItem
       if (ts && (isUser || isAgent)) {
         let body = ''
-        // Only ingest body from event_msg.user_message — it's the canonical
-        // user-input form. response_item user messages carry env-context
+        // Only ingest body from the event_msg forms — they're the canonical
+        // user-input shape. response_item user messages carry env-context
         // wrappers we'd otherwise dedupe out, and they'd double the count.
-        if (isUserEventMsg) {
+        if (isUserItem) {
+          body = flattenContent(completedItem?.content)
+        } else if (isUserEventMsg) {
           if (typeof payload.message === 'string') body = payload.message
           else if (typeof payload.text === 'string') body = payload.text
           else if (Array.isArray(payload.content)) body = flattenContent(payload.content)
           else if (typeof payload.content === 'string') body = payload.content
         }
-        recordConv(ts, isUserEventMsg, body)
+        recordConv(
+          ts,
+          isUserEventMsg || isUserItem,
+          body,
+          undefined,
+          isUserItem ? 'item' : isUserEventMsg ? 'legacy' : undefined,
+        )
       }
     }
   }
@@ -402,6 +438,19 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   // Events arrive in file order, which is chronological for both formats. Belt
   // and braces: sort defensively before windowing.
   convEvents.sort((a, b) => a.ts - b.ts)
+
+  // A transitional Codex build could write both event_msg shapes for the same
+  // turn. When the current `item_completed` form is present it is canonical, and
+  // the legacy events stay only as windowing anchors — otherwise every user
+  // message would be counted twice.
+  if (convEvents.some(e => e.stream === 'item')) {
+    for (const e of convEvents) {
+      if (e.stream === 'legacy') {
+        e.isUser = false
+        e.body = ''
+      }
+    }
+  }
 
   // ── Window split: break wherever the gap to the previous event exceeds the
   // idle threshold. Each window is a contiguous run of conversation events.
