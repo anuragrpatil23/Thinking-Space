@@ -3304,11 +3304,11 @@ function App() {
       {syncPanelOpen && createPortal(
         <div
           ref={syncPanelRef}
-          className="fixed z-[80] w-[380px] rounded-xl bg-white p-3 text-sm text-slate-900 shadow-lg [-webkit-app-region:no-drag]"
+          className="fixed z-[80] w-[380px] rounded-xl border border-border bg-card p-3 text-sm text-card-foreground shadow-lg [-webkit-app-region:no-drag]"
           style={{
             top: `${syncPanelAnchor.top}px`,
             right: `${syncPanelAnchor.right}px`,
-            backgroundColor: '#ffffff',
+            backgroundColor: 'hsl(var(--card))',
             opacity: 1,
             filter: 'none',
             backdropFilter: 'none',
@@ -3316,7 +3316,7 @@ function App() {
             mixBlendMode: 'normal',
           }}
         >
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">Sync</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Sync</p>
           <div className="mt-3 space-y-3">
             <div className="space-y-2">
               <Button
@@ -3324,7 +3324,7 @@ function App() {
                 size="sm"
                 variant="outline"
                 disabled={!!syncActionRunning || !!gitActionRunning || needsVaultSetup}
-                className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
+                className="w-full justify-start border-transparent bg-card text-foreground hover:bg-muted disabled:border-transparent disabled:bg-card disabled:text-muted-foreground"
                 onClick={() => { void runSyncAction('sync') }}
               >
                 {syncActionRunning === 'sync' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
@@ -3335,16 +3335,16 @@ function App() {
                 size="sm"
                 variant="outline"
                 disabled={!!syncActionRunning || !!gitActionRunning || needsVaultSetup}
-                className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
+                className="w-full justify-start border-transparent bg-card text-foreground hover:bg-muted disabled:border-transparent disabled:bg-card disabled:text-muted-foreground"
                 onClick={() => { void runSyncAction('rebuild') }}
               >
                 {syncActionRunning === 'rebuild' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
                 Rebuild Index + Cache
               </Button>
 
-              <div className="rounded-lg bg-white p-2 text-[11px]">
-                <p className="text-slate-600">Sync Folder Root</p>
-                <p className="truncate font-mono text-slate-900">
+              <div className="rounded-lg bg-muted/40 p-2 text-[11px]">
+                <p className="text-muted-foreground">Sync Folder Root</p>
+                <p className="truncate font-mono text-foreground">
                   {(() => {
                     const root = getStoredVaultRoot() || ''
                     if (!root) return 'Not configured'
@@ -3352,9 +3352,9 @@ function App() {
                     return root
                   })()}
                 </p>
-                <p className="mt-1 text-slate-600">
+                <p className="mt-1 text-muted-foreground">
                   Last Successful Sync:{' '}
-                  <span className="text-slate-900">
+                  <span className="text-foreground">
                     {lastSyncedAt
                       ? new Date(lastSyncedAt * 1000).toLocaleString()
                       : (lastSyncSummary?.result?.errors.length ?? 0) > 0
@@ -3362,20 +3362,20 @@ function App() {
                         : 'No successful sync yet'}
                   </span>
                 </p>
-                <p className="text-slate-600">
-                  Last Sync Attempt: <span className="text-slate-900">{formatSyncTimestamp(lastSyncAttemptAt)}</span>
+                <p className="text-muted-foreground">
+                  Last Sync Attempt: <span className="text-foreground">{formatSyncTimestamp(lastSyncAttemptAt)}</span>
                 </p>
                 {lastSyncSummary && (
                   <>
-                    <p className="mt-1 text-slate-600">
-                      Last Action: <span className="text-slate-900">{lastSyncSummary.mode === 'sync' ? 'Sync Folder' : 'Rebuild Index + Cache'}</span>
+                    <p className="mt-1 text-muted-foreground">
+                      Last Action: <span className="text-foreground">{lastSyncSummary.mode === 'sync' ? 'Sync Folder' : 'Rebuild Index + Cache'}</span>
                     </p>
                     {lastSyncSummary.result ? (
                       <>
-                        <p className="text-slate-600">
-                          Files: <span className="text-slate-900">{lastSyncSummary.result.totalFiles}</span> · Parsed:{' '}
-                          <span className="text-slate-900">{lastSyncSummary.result.parsedNodes}</span> · Errors:{' '}
-                          <span className="text-slate-900">{lastSyncSummary.result.errors.length}</span>
+                        <p className="text-muted-foreground">
+                          Files: <span className="text-foreground">{lastSyncSummary.result.totalFiles}</span> · Parsed:{' '}
+                          <span className="text-foreground">{lastSyncSummary.result.parsedNodes}</span> · Errors:{' '}
+                          <span className="text-foreground">{lastSyncSummary.result.errors.length}</span>
                         </p>
                       </>
                     ) : null}
@@ -3384,7 +3384,7 @@ function App() {
               </div>
             </div>
 
-            <div className="my-1 h-px bg-slate-200" />
+            <div className="my-1 h-px bg-border" />
 
             <div className="space-y-2">
               <Button
@@ -3392,7 +3392,7 @@ function App() {
                 size="sm"
                 variant="outline"
                 disabled={!!syncActionRunning || !!gitActionRunning || needsVaultSetup || !gitSyncToolsSupported}
-                className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
+                className="w-full justify-start border-transparent bg-card text-foreground hover:bg-muted disabled:border-transparent disabled:bg-card disabled:text-muted-foreground"
                 onClick={openGitCommitDialog}
               >
                 {gitActionRunning === 'commit' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
@@ -3403,31 +3403,31 @@ function App() {
                 size="sm"
                 variant="outline"
                 disabled={!!syncActionRunning || !!gitActionRunning || needsVaultSetup || !gitSyncToolsSupported}
-                className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50 disabled:border-transparent disabled:bg-white disabled:text-slate-500"
+                className="w-full justify-start border-transparent bg-card text-foreground hover:bg-muted disabled:border-transparent disabled:bg-card disabled:text-muted-foreground"
                 onClick={() => { void runGitAction('push') }}
               >
                 {gitActionRunning === 'push' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
                 Git Push
               </Button>
               {!gitSyncToolsSupported && (
-                <p className="px-1 text-[11px] text-slate-600">Git only supported in Electron desktop app.</p>
+                <p className="px-1 text-[11px] text-muted-foreground">Git only supported in Electron desktop app.</p>
               )}
 
-              <div className="rounded-lg bg-white p-2 text-[11px]">
-                <p className="text-slate-600">
-                  Last Git Commit: <span className="text-slate-900">{formatSyncTimestamp(lastGitCommitAt)}</span>
+              <div className="rounded-lg bg-muted/40 p-2 text-[11px]">
+                <p className="text-muted-foreground">
+                  Last Git Commit: <span className="text-foreground">{formatSyncTimestamp(lastGitCommitAt)}</span>
                 </p>
-                <p className="text-slate-600">
-                  Last Git Push: <span className="text-slate-900">{formatSyncTimestamp(lastGitPushAt)}</span>
+                <p className="text-muted-foreground">
+                  Last Git Push: <span className="text-foreground">{formatSyncTimestamp(lastGitPushAt)}</span>
                 </p>
                 {lastGitActionSummary && (
-                  <p className="mt-1 text-slate-600">
+                  <p className="mt-1 text-muted-foreground">
                     Last Git Action:{' '}
-                    <span className="text-slate-900">
+                    <span className="text-foreground">
                       {lastGitActionSummary.mode === 'commit' ? 'Commit' : 'Push'}
                     </span>
                     {' · '}
-                    <span className="text-slate-900">
+                    <span className="text-foreground">
                       {formatSyncTimestamp(lastGitActionSummary.finishedAt)}
                     </span>
                     {lastGitActionSummary.message ? (
@@ -3441,15 +3441,15 @@ function App() {
               </div>
             </div>
 
-            <div className="my-1 h-px bg-slate-200" />
+            <div className="my-1 h-px bg-border" />
 
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">Developer</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Developer</p>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                className="w-full justify-start border-transparent bg-white text-slate-900 hover:bg-slate-50"
+                className="w-full justify-start border-transparent bg-card text-foreground hover:bg-muted"
                 onClick={() => {
                   setSyncPanelOpen(false)
                   openDebugPanel()
