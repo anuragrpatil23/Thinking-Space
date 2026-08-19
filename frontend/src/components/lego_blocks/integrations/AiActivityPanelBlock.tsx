@@ -16,6 +16,10 @@ import {
   type ReadingSourceFilter,
 } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import AiActivityHeatmapBlock from '@/components/lego_blocks/units/AiActivityHeatmapBlock'
+import {
+  fmtDayMonthBlock,
+  isStripRangeBlock,
+} from '@/services/lego_blocks/units/aiActivityStripBlock'
 import { ensureSessionDigestOrch } from '@/services/orchestrators/aiActivitySessionDigestOrch'
 import type { ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import { useProjectsBlock } from '@/components/lego_blocks/hooks/shared/useProjectsBlock'
@@ -193,6 +197,38 @@ export default function AiActivityPanelBlock({
     return base
   }, [activity.chains, selectedDate, selectedRange, activeProject])
 
+  // Section heading for the heatmap. At a week or two the grid becomes a day
+  // strip, which already reads as a calendar — "Heatmap" over seven cells is a
+  // label for a view that is no longer there. The date of the day in focus is
+  // the more useful heading anyway: everything docked under this section is
+  // scoped to it.
+  const stripRange = isStripRangeBlock(activity.startIso, activity.endIso)
+  const headingDate = selectedDate ?? activity.endIso
+  const heatmapSectionTitle = useMemo(() => {
+    if (!stripRange) return 'Heatmap'
+    const { day, ordinal, month } = fmtDayMonthBlock(headingDate)
+    return (
+      // Set to be the loudest thing on the card. The numeral is the day you are
+      // standing in, so it gets display scale and a tight track; the suffix and
+      // the month ride along a size down so the number keeps the line.
+      <span className="flex items-baseline gap-2">
+        {/* The suffix rides at the cap height of the numeral, not on its
+            baseline — set as a superior, the way a date is written by hand. */}
+        <span className="flex items-start text-foreground">
+          <span className="text-[52px] font-semibold leading-[0.85] tracking-[-0.03em] tabular-nums">
+            {day}
+          </span>
+          <span className="mt-[3px] text-[20px] font-medium leading-none tracking-tight text-foreground/70">
+            {ordinal}
+          </span>
+        </span>
+        <span className="text-lg font-semibold uppercase tracking-[0.14em] text-foreground/70">
+          {month}
+        </span>
+      </span>
+    )
+  }, [stripRange, headingDate])
+
   const drillTitle = selectedDate
     ? fmtDateShort(selectedDate)
     : selectedRange
@@ -339,24 +375,30 @@ export default function AiActivityPanelBlock({
   // stable across re-renders instead of remounting it.
   function renderDrillDetail(withTimeline: boolean) {
     return (
-      <div className="mt-4 space-y-5 border-t border-border/30 pt-3">
-        {withTimeline && selectedDate && drillChains.length > 0 && (
-          <AiActivityDayTimelineBlock
-            dateIso={selectedDate}
-            chains={drillChains}
-            highlightProject={activeProject}
-          />
-        )}
-        {/* Per-project time totals for the drill — the compact, at-a-glance
-            replacement for the AI range summary. The table below is the
-            granular session breakdown; clicking a project filters to it. */}
-        {drillChains.length > 0 && (
-          <AiActivityDrillProjectTotalsBlock
-            chains={drillChains}
-            activeProject={activeProject}
-            onSelectProject={setActiveProject}
-          />
-        )}
+      <div className="mt-10 space-y-12 border-t border-border/30 pt-10">
+        {/* Timeline and the per-project totals under it are one unit: the
+            totals row names the colors in the bars above it, so it reads as
+            that chart's legend and has to sit close to it. The wide gap belongs
+            between this pair and the table, not inside it. */}
+        <div className="space-y-3">
+          {withTimeline && selectedDate && drillChains.length > 0 && (
+            <AiActivityDayTimelineBlock
+              dateIso={selectedDate}
+              chains={drillChains}
+              highlightProject={activeProject}
+            />
+          )}
+          {/* Per-project time totals for the drill — the compact, at-a-glance
+              replacement for the AI range summary. The table below is the
+              granular session breakdown; clicking a project filters to it. */}
+          {drillChains.length > 0 && (
+            <AiActivityDrillProjectTotalsBlock
+              chains={drillChains}
+              activeProject={activeProject}
+              onSelectProject={setActiveProject}
+            />
+          )}
+        </div>
         {/* Table is the only scrolling region — keeps the section header/chart
             pinned so context stays visible while you scan a multi-day drill.
             Wheel-capture stops the canvas from panning underneath while the
@@ -471,7 +513,8 @@ export default function AiActivityPanelBlock({
           only surface the range summary + table. */}
       <div className={compact ? 'mt-4' : 'mt-10 space-y-14'}>
         <PanelSection
-          title="Heatmap"
+          title={heatmapSectionTitle}
+          bodyClassName={stripRange ? 'mt-10' : undefined}
           open={sectionsOpen.heatmap}
           onToggle={() => toggleSection('heatmap')}
         >
@@ -576,12 +619,16 @@ function PanelSection({
   open,
   onToggle,
   headerRight,
+  bodyClassName,
   children,
 }: {
-  title: string
+  title: React.ReactNode
   open: boolean
   onToggle: () => void
   headerRight?: React.ReactNode
+  /** Overrides the body's top margin — a display-scale title needs more air
+   *  under it than a 14px one does. */
+  bodyClassName?: string
   children: React.ReactNode
 }) {
   return (
@@ -594,11 +641,15 @@ function PanelSection({
           aria-expanded={open}
         >
           <ChevronDown className={cn('h-4 w-4 transition-transform', !open && '-rotate-90')} />
-          <span className="text-sm font-semibold tracking-tight">{title}</span>
+          {typeof title === 'string' ? (
+            <span className="text-sm font-semibold tracking-tight">{title}</span>
+          ) : (
+            title
+          )}
         </button>
         {headerRight}
       </div>
-      {open && <div className="mt-3">{children}</div>}
+      {open && <div className={bodyClassName ?? 'mt-3'}>{children}</div>}
     </div>
   )
 }

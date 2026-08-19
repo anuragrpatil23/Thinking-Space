@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  fmtDayMonthBlock,
+  isStripRangeBlock,
+} from '@/services/lego_blocks/units/aiActivityStripBlock'
 import type { ActivityDay } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { useWheelScrollCaptureBlock } from '@/components/lego_blocks/hooks/shared/useWheelScrollCaptureBlock'
@@ -80,6 +84,30 @@ const WORK_MIX_CELL_PX = 30
  *  eye reads the *nearest* distance between two of them, not the average — at
  *  3px the outer rings of neighbouring days looked joined. */
 const WORK_MIX_CELL_GAP = 7
+/** Week-strip geometry — the ≤2-week view. The grid's cells are sized so that
+ *  53 columns fit; a strip has at most 14, so the cell can be big enough that
+ *  the rings and the day number are read rather than decoded. */
+/** Room reserved inside the scroll container, each side, for the selected
+ *  cell's offset ring. Without it the first and last cells' rings are cut off
+ *  by the scroller's own edge — the ring is drawn outside the cell box, so the
+ *  cell fitting is not enough. */
+const STRIP_EDGE_PAD_PX = 8
+
+/** Days shown past the end of the range in strip mode, dimmed and out of
+ *  range. All the padding goes on the trailing side: the range ends on today,
+ *  so trailing days are the only ones that move today off the right edge and
+ *  toward the middle of the row. Four is what puts it about centre for a 7-day
+ *  range, which is the case this view is built around. */
+const STRIP_TRAIL_PAD_DAYS = 4
+const STRIP_CELL_MIN_PX = 36
+const STRIP_CELL_MAX_PX = 44
+const STRIP_CELL_GAP_MIN = 10
+/** Leftover width past the cell cap goes into the gaps, so a 7-day strip in a
+ *  1000px card spreads instead of huddling at its left edge. Capped too: past
+ *  this the days stop reading as one row and start reading as seven marks that
+ *  happen to be level with each other. */
+const STRIP_CELL_GAP_MAX = 34
+
 /** Hairline rings. Position, not weight, is what separates the two tracks, so
  *  the stroke only has to be thick enough to survive a non-retina pixel grid. */
 const WORK_MIX_STROKE_PX = 1.5
@@ -134,16 +162,6 @@ function isoDayLocal(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
-}
-
-function fmtDateLong(iso: string): string {
-  const d = new Date(iso + 'T00:00:00')
-  return d.toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
 }
 
 interface CellModel {
@@ -204,10 +222,20 @@ export default function AiActivityHeatmapBlock({
       window.removeEventListener('storage', onPool)
     }
   }, [])
+  // A fortnight or less reads as a row of days, not a grid of weeks. At that
+  // width the week-over-week comparison the grid exists for has nothing to
+  // compare, and the padding the grid needs — out to whole weeks, and on to
+  // the end of the current month — renders several times more empty cells than
+  // real ones. Derived from the day count rather than the preset id so a
+  // hand-picked week-long custom range behaves the same as the 7d pill.
+  const stripMode = useMemo(() => isStripRangeBlock(startIso, endIso), [startIso, endIso])
+
   // "Calendar look" = same big-cell / day-of-month layout that set-mode uses,
   // but without the 3-day dividers or the current-set ring. Either toggle
   // activates the layout; set-specific decorations still gate on setMode.
-  const showDayNumbers = setMode || calendarMode
+  // Strip mode always numbers its days: with the weekday rows gone, the number
+  // is the only thing left that says which day a cell is.
+  const showDayNumbers = setMode || calendarMode || stripMode
   // Work-mix needs the big geometry unconditionally: at 12px a 2px ring leaves
   // an 8px core, so the fill — the mark that matters most — would get the least
   // area. Day numbers stay opt-in, but when they are on they show here too —
@@ -257,18 +285,31 @@ export default function AiActivityHeatmapBlock({
     return isoDayLocal(new Date(n.getFullYear(), n.getMonth() + 1, 0))
   }, [])
 
-  const allWeeks = useMemo(() => {
+  // Columns of the grid. Normally a column is a calendar week (7 cells, Mon
+  // first); in strip mode a column is a single day, which is what lets every
+  // overlay below — month dividers, the current-set ring, paging — keep working
+  // off one column model instead of growing a second layout path.
+  const allColumns = useMemo(() => {
     const start = new Date(startIso + 'T00:00:00')
+    const rawEnd = new Date(endIso + 'T00:00:00')
     // Extend past endIso when the current month falls in the range, so
     // future dates in this month still get rendered (muted, not tinted).
-    const rawEnd = new Date(endIso + 'T00:00:00')
+    // The strip never does this: it is a window on the selected range, and
+    // trailing empty days would be most of it.
     const monthEnd = new Date(endOfCurrentMonthIso + 'T00:00:00')
-    const end = monthEnd > rawEnd ? monthEnd : rawEnd
-    const firstMonday = mondayOf(start)
+    // The strip runs a few days past the range, muted and out of range: a row
+    // that stops dead on today reads as the end of the calendar rather than as
+    // where you have got to, and the run-on is what lifts today off the right
+    // edge into the middle of the row. Same move the grid makes when it runs on
+    // to the end of the current month.
+    const stripEnd = new Date(rawEnd)
+    stripEnd.setDate(stripEnd.getDate() + STRIP_TRAIL_PAD_DAYS)
+    const end = stripMode ? stripEnd : monthEnd > rawEnd ? monthEnd : rawEnd
+    const firstDate = stripMode ? start : mondayOf(start)
 
     const cells: CellModel[] = []
-    const cursor = new Date(firstMonday)
-    while (cursor <= end || cursor.getDay() !== 1) {
+    const cursor = new Date(firstDate)
+    while (cursor <= end || (!stripMode && cursor.getDay() !== 1)) {
       const date = isoDayLocal(cursor)
       const d = dayMap.get(date)
       let msgs = 0
@@ -327,13 +368,15 @@ export default function AiActivityHeatmapBlock({
     const max = cells.reduce((m, c) => (c.intensity > m ? c.intensity : m), 0)
     for (const c of cells) c.intensity = max > 0 ? Math.min(1, c.intensity / max) : 0
 
+    const perColumn = stripMode ? 1 : 7
     const w: CellModel[][] = []
-    for (let i = 0; i < cells.length; i += 7) w.push(cells.slice(i, i + 7))
+    for (let i = 0; i < cells.length; i += perColumn) w.push(cells.slice(i, i + perColumn))
     return w
   }, [
     dayMap,
     startIso,
     endIso,
+    stripMode,
     endOfCurrentMonthIso,
     filterProject,
     workMixMode,
@@ -361,26 +404,52 @@ export default function AiActivityHeatmapBlock({
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const cellStepPx = workMixMode
-    ? WORK_MIX_CELL_PX + WORK_MIX_CELL_GAP
-    : bigCells
-      ? SET_CELL_PX + SET_CELL_GAP
-      : 15
+  // Strip cells are sized to the measured container so the row spans the card
+  // rather than clustering at its left edge. Falls back to the max while the
+  // width is still unmeasured — the strip is short enough that the fallback
+  // fits everywhere the panel is rendered.
+  const { stripCellPx, stripGapPx } = useMemo(() => {
+    const n = allColumns.length
+    if (!stripMode || n === 0 || containerWidth <= 0) {
+      return { stripCellPx: STRIP_CELL_MAX_PX, stripGapPx: STRIP_CELL_GAP_MIN }
+    }
+    const avail = containerWidth - 2 * STRIP_EDGE_PAD_PX - 2
+    const cell = Math.max(
+      STRIP_CELL_MIN_PX,
+      Math.min(STRIP_CELL_MAX_PX, Math.floor((avail - (n - 1) * STRIP_CELL_GAP_MIN) / n)),
+    )
+    const slack = n > 1 ? Math.floor((avail - n * cell) / (n - 1)) : 0
+    const gap = Math.max(STRIP_CELL_GAP_MIN, Math.min(STRIP_CELL_GAP_MAX, slack))
+    return { stripCellPx: cell, stripGapPx: gap }
+  }, [stripMode, allColumns.length, containerWidth])
+
+  const cellStepPx = stripMode
+    ? stripCellPx + stripGapPx
+    : workMixMode
+      ? WORK_MIX_CELL_PX + WORK_MIX_CELL_GAP
+      : bigCells
+        ? SET_CELL_PX + SET_CELL_GAP
+        : 15
   const leftLabelPad = showDayNumbers ? 8 : 36 // weekday labels + margin, or just padding
   const fitVisibleWeeks =
     containerWidth > 0
       ? Math.max(4, Math.floor((containerWidth - leftLabelPad) / cellStepPx))
       : MAX_VISIBLE_WEEKS
-  const visibleWeeksCap = Math.min(MAX_VISIBLE_WEEKS, fitVisibleWeeks)
+  // The strip sizes its own cells to fit, so it is never paged — without this
+  // an off-by-one in the fit division would hide a day behind a chevron on a
+  // view whose entire point is that you can see the whole week at once.
+  const visibleWeeksCap = stripMode
+    ? Math.max(1, allColumns.length)
+    : Math.min(MAX_VISIBLE_WEEKS, fitVisibleWeeks)
   const pageStep = Math.max(1, Math.floor(visibleWeeksCap / 2))
 
-  const maxWeeksBack = Math.max(0, allWeeks.length - visibleWeeksCap)
+  const maxWeeksBack = Math.max(0, allColumns.length - visibleWeeksCap)
   const clampedWeeksBack = Math.min(weeksBack, maxWeeksBack)
-  const weeks = useMemo(() => {
-    if (allWeeks.length <= visibleWeeksCap) return allWeeks
+  const columns = useMemo(() => {
+    if (allColumns.length <= visibleWeeksCap) return allColumns
     const start = maxWeeksBack - clampedWeeksBack
-    return allWeeks.slice(start, start + visibleWeeksCap)
-  }, [allWeeks, maxWeeksBack, clampedWeeksBack, visibleWeeksCap])
+    return allColumns.slice(start, start + visibleWeeksCap)
+  }, [allColumns, maxWeeksBack, clampedWeeksBack, visibleWeeksCap])
   const canPageBack = clampedWeeksBack < maxWeeksBack
   const canPageForward = clampedWeeksBack > 0
 
@@ -406,10 +475,10 @@ export default function AiActivityHeatmapBlock({
   const monthTransitions = useMemo(() => {
     const transitions: Array<{ col: number; month: number; year: number }> = []
     let lastMonth = -1
-    weeks.forEach((week, idx) => {
+    columns.forEach((col, idx) => {
       let newestMonth = -1
       let newestYear = -1
-      for (const cell of week) {
+      for (const cell of col) {
         if (!cell.date) continue
         const d = new Date(cell.date + 'T00:00:00')
         const m = d.getMonth()
@@ -425,7 +494,7 @@ export default function AiActivityHeatmapBlock({
       }
     })
     return transitions
-  }, [weeks])
+  }, [columns])
 
   const monthHeaders = useMemo(() => {
     const headers: Array<{ col: number; label: string; month: number; year: number }> = []
@@ -467,6 +536,7 @@ export default function AiActivityHeatmapBlock({
   // what makes it findable.
   const readoutDate = hoverDate ?? selectedDate ?? null
   const hovered = readoutDate ? dayMap.get(readoutDate) : null
+  const readoutIsToday = readoutDate != null && readoutDate === isoDayLocal(new Date())
   // The footer reports every kind with hours on it, including conditioning and
   // `other`, which deliberately draw no mark. The cell is allowed to be
   // selective; the readout is not.
@@ -769,31 +839,35 @@ export default function AiActivityHeatmapBlock({
     return day % 3 === 0 || day === monthLen
   }
 
-  // Set-mode geometry: cells grow so day-of-month numbers stay legible.
-  const cellPx = workMixMode ? WORK_MIX_CELL_PX : bigCells ? SET_CELL_PX : 12
-  const cellGap = workMixMode ? WORK_MIX_CELL_GAP : bigCells ? SET_CELL_GAP : 3
+  // Set-mode geometry: cells grow so day-of-month numbers stay legible. Strip
+  // mode overrides both — it has a fortnight of columns to spend the card's
+  // width on instead of a year's, and the whole reason to switch layouts is
+  // that the day becomes big enough to read.
+  const cellPx = stripMode ? stripCellPx : workMixMode ? WORK_MIX_CELL_PX : bigCells ? SET_CELL_PX : 12
+  const cellGap = stripMode ? stripGapPx : workMixMode ? WORK_MIX_CELL_GAP : bigCells ? SET_CELL_GAP : 3
   const step = cellPx + cellGap
-  const gridHeight = 7 * cellPx + 6 * cellGap
-  const gridWidth = weeks.length * step - cellGap
+  const rowsPerColumn = stripMode ? 1 : 7
+  const gridHeight = rowsPerColumn * cellPx + (rowsPerColumn - 1) * cellGap
+  const gridWidth = columns.length * step - cellGap
 
   // Position map for every visible cell, keyed by ISO date. Used to overlay
   // the "current set" ring across whichever cells the set falls on.
   const cellPositions = useMemo(() => {
     const m = new Map<string, { col: number; row: number }>()
-    weeks.forEach((week, wIdx) => {
-      week.forEach((cell, rIdx) => {
+    columns.forEach((col, wIdx) => {
+      col.forEach((cell, rIdx) => {
         m.set(cell.date, { col: wIdx, row: rIdx })
       })
     })
     return m
-  }, [weeks])
+  }, [columns])
 
   // Current-set overlay rects: group the set's visible dates by column into
   // contiguous row runs so 3 dates in the same week render as one vertical
   // rectangle (and a set that straddles Sun→Mon splits into two rects).
   const currentSetRects = useMemo(() => {
     if (!setMode) return []
-    interface Rect { col: number; topRow: number; bottomRow: number }
+    interface Rect { col: number; colSpan: number; topRow: number; bottomRow: number }
     const byCol = new Map<number, number[]>()
     for (const d of currentSetDates.dates) {
       const pos = cellPositions.get(d)
@@ -805,10 +879,22 @@ export default function AiActivityHeatmapBlock({
     const rects: Rect[] = []
     for (const [col, rows] of byCol) {
       rows.sort((a, b) => a - b)
-      rects.push({ col, topRow: rows[0], bottomRow: rows[rows.length - 1] })
+      rects.push({ col, colSpan: 1, topRow: rows[0], bottomRow: rows[rows.length - 1] })
     }
-    return rects
-  }, [setMode, currentSetDates, cellPositions])
+    rects.sort((a, b) => a.col - b.col)
+    // In a strip the set runs *across* columns, one day each, so the per-column
+    // grouping above yields three boxes in a row where the grid would have
+    // drawn one. Merge neighbouring single-row rects back into one bracket —
+    // the ring marks a set, and three rings would read as three of them.
+    if (!stripMode) return rects
+    const merged: Rect[] = []
+    for (const r of rects) {
+      const prev = merged[merged.length - 1]
+      if (prev && prev.col + prev.colSpan === r.col) prev.colSpan += 1
+      else merged.push({ ...r })
+    }
+    return merged
+  }, [setMode, stripMode, currentSetDates, cellPositions])
 
   return (
     <div ref={hostRef} className="space-y-2">
@@ -826,13 +912,21 @@ export default function AiActivityHeatmapBlock({
             setGridMenu({ x: e.clientX, y: e.clientY })
           }}
         >
-        <div ref={scrollContainerRef} className="overflow-x-auto pt-1.5 pb-1.5">
+        {/* Negative margin cancels the padding against the card, so the strip
+            still starts flush left while its rings have room to breathe. */}
+        <div
+          ref={scrollContainerRef}
+          className={cn('overflow-x-auto pt-1.5 pb-1.5', stripMode && 'px-2 py-2 -mx-2')}
+        >
           <div className="inline-block min-w-full">
             <div
               className={cn('relative mb-1', !showDayNumbers && 'ml-7')}
-              style={{ height: 14, width: gridWidth }}
+              // Strip mode keeps the row (month labels still mark a month
+              // boundary mid-strip) but not its height when there is only one
+              // month in view — the dated section title above already says it.
+              style={{ height: stripMode && monthHeaders.length <= 1 ? 0 : 14, width: gridWidth }}
             >
-              {monthHeaders.map(h => (
+              {(stripMode && monthHeaders.length <= 1 ? [] : monthHeaders).map(h => (
                 <button
                   key={`${h.col}-${h.label}`}
                   type="button"
@@ -895,13 +989,18 @@ export default function AiActivityHeatmapBlock({
                     key={`curset-${rect.col}-${rect.topRow}`}
                     aria-hidden
                     className={cn(
-                      'pointer-events-none absolute ring-1 ring-foreground/40',
+                      'pointer-events-none absolute ring-1',
+                      // Barely there in strip mode: at that scale the bracket is
+                      // large and the selected day's ring is the mark that has
+                      // to win. In the grid it stays at full strength — a
+                      // hairline that faint across 30px cells reads as nothing.
+                      stripMode ? 'ring-foreground/10' : 'ring-foreground/40',
                       !workMixMode && 'rounded-[5px]',
                     )}
                     style={{
                       left: rect.col * step - (workMixMode ? 3 : 2),
                       top: rect.topRow * step - (workMixMode ? 3 : 2),
-                      width: cellPx + (workMixMode ? 6 : 4),
+                      width: rect.colSpan * step - cellGap + (workMixMode ? 6 : 4),
                       height:
                         (rect.bottomRow - rect.topRow + 1) * step -
                         cellGap +
@@ -910,9 +1009,9 @@ export default function AiActivityHeatmapBlock({
                     }}
                   />
                 ))}
-                {weeks.map((week, wIdx) => (
+                {columns.map((col, wIdx) => (
                   <div key={wIdx} className="flex flex-col" style={{ gap: cellGap }}>
-                    {week.map((cell, rIdx) => {
+                    {col.map((cell, rIdx) => {
                       const isHover = hoverDate === cell.date
                       const inRange = cell.date >= startIso && cell.date <= endIso
                       const isSelected = selectedDate === cell.date
@@ -960,12 +1059,40 @@ export default function AiActivityHeatmapBlock({
                             // Work-mix cells are activity rings, so the cell is a
                             // circle and the centre disc is drawn inside the SVG
                             // rather than as the button's own background.
-                            workMixMode ? 'rounded-full' : 'rounded-[3px]',
-                            showDayNumbers && 'font-medium tabular-nums text-[10px]',
+                            // Strip cells are day tiles, not heatmap pixels —
+                            // a 3px radius on a 44px square reads as a
+                            // rectangle nobody chose.
+                            workMixMode ? 'rounded-full' : stripMode ? 'rounded-xl' : 'rounded-[3px]',
+                            showDayNumbers && 'font-medium tabular-nums',
+                            showDayNumbers && (stripMode ? 'text-[13px]' : 'text-[10px]'),
                             showDayNumbers &&
                               (strongTint ? 'text-background/95' : 'text-foreground/75'),
-                            isHover && 'ring-1 ring-foreground/60',
-                            (isSelected || inActiveRange) && 'ring-1 ring-foreground',
+                            // Strip mode holds the ring off the cell instead of
+                            // wrapping it tight: the row has the room, and a
+                            // hairline with air around it reads as a selection
+                            // where a flush one reads as a border on the mark.
+                            // Neutral light grey, not translucent foreground:
+                            // black at any alpha over this card's cream reads as
+                            // a hard dark line, and a blue-cast grey (slate)
+                            // reads as another color beside the cells' project
+                            // tints. This one is pure value, which is what lets
+                            // the quietest mark point at the loudest cell.
+                            // The grid keeps its flush dark ring — at 30px an
+                            // offset grey hairline would vanish.
+                            isHover &&
+                              (stripMode
+                                ? cn(
+                                    'ring-1 ring-offset-[3px] ring-offset-transparent',
+                                    isDark ? 'ring-neutral-500/40' : 'ring-neutral-300/60',
+                                  )
+                                : 'ring-1 ring-foreground/60'),
+                            (isSelected || inActiveRange) &&
+                              (stripMode
+                                ? cn(
+                                    'ring-[1.5px] ring-offset-[5px] ring-offset-transparent',
+                                    isDark ? 'ring-neutral-400/50' : 'ring-neutral-300',
+                                  )
+                                : 'ring-1 ring-foreground'),
                             !inRange && 'opacity-30',
                           )}
                           style={{
@@ -1050,13 +1177,56 @@ export default function AiActivityHeatmapBlock({
       <div className="min-h-[1.5rem] text-xs">
         {hovered ? (
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-muted-foreground">
-            <span className="font-medium text-foreground/80">{fmtDateLong(hovered.date)}</span>
-            <span>
-              <strong className="tabular-nums text-foreground/80">{hovered.totalMsgs}</strong> msgs
-            </span>
-            <span>
-              <strong className="tabular-nums text-foreground/80">{hovered.totalChains}</strong> chains
-            </span>
+            {/* The date the readout is about, set as a numeral rather than a
+                sentence: everything below it — timeline, table, totals — is
+                scoped to this one day, so the day is the heading. Full-strength
+                only when it is today; any other day reads a step quieter, which
+                is the whole tell (this card has no accent hue to spend).
+                Strip mode omits it — there the heading sits above the row, in
+                place of the section title, and two of them would be one too
+                many for seven cells. */}
+            {stripMode ? (
+              // At rest this line describes the selected day, which the heading
+              // above the strip already names in display type — so it says
+              // nothing here. It appears only while hovering some *other* day,
+              // where without it the 13th's numbers would print under a heading
+              // that still reads 18th.
+              hoverDate && hoverDate !== selectedDate ? (
+                <span className="font-medium text-foreground/80">
+                  {fmtDayMonthBlock(hovered.date).day}
+                  {fmtDayMonthBlock(hovered.date).ordinal} {fmtDayMonthBlock(hovered.date).month}
+                </span>
+              ) : null
+            ) : (
+              // Plain and small in the grid. Display type belongs to the
+              // strip, where the date heads a single day's row; over a 90-day
+              // grid the readout is a caption for whichever cell is under the
+              // cursor, and a 30px numeral there fights the grid above it.
+              <span className={cn('font-medium', readoutIsToday ? 'text-foreground' : 'text-foreground/80')}>
+                {fmtDayMonthBlock(hovered.date).day}
+                {fmtDayMonthBlock(hovered.date).ordinal} {fmtDayMonthBlock(hovered.date).month}
+              </span>
+            )}
+            {/* Msgs and chains are reported again, with sessions and total
+                time, in the drill header a few rows down. In grid mode that
+                header is far enough away to be worth the repeat; under a strip
+                it sits right there, so this line keeps only what nothing else
+                says — the split of the day by kind of work. */}
+            <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            {!stripMode && (
+              <>
+                <span>
+                  <strong className="tabular-nums text-foreground/80">{hovered.totalMsgs}</strong>{' '}
+                  msgs
+                </span>
+                <span>
+                  <strong className="tabular-nums text-foreground/80">
+                    {hovered.totalChains}
+                  </strong>{' '}
+                  chains
+                </span>
+              </>
+            )}
             {hoveredMix?.hasActivity &&
               (Object.entries(hoveredMix.hoursByKind) as [string, number][])
                 .filter(([, hours]) => hours > 0)
@@ -1069,6 +1239,7 @@ export default function AiActivityHeatmapBlock({
                     {projectKindLabelBlock(kind as ProjectKindBlock).toLowerCase()}
                   </span>
                 ))}
+            </span>
           </div>
         ) : (
           <span className="text-muted-foreground/60">
