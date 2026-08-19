@@ -397,7 +397,12 @@ export default function AiActivityPanelBlock({
             this is what tells the eye where the drill starts. */}
         <div
           className={cn(
-            'rounded-xl border border-border/40 bg-muted/20 p-4',
+            // Exactly the day table's surface below it — same radius, same
+            // border, same fill. That combination is the card's established
+            // inset surface (the table, its empty state, the session chips),
+            // so matching it keeps one surface language instead of adding a
+            // third shade between the card and the table.
+            'rounded-lg border border-border/40 bg-card/40 p-4',
             stripRange ? 'space-y-3' : 'space-y-5',
           )}
         >
