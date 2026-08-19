@@ -25,10 +25,6 @@ const PILL_DEFAULT_DURATION_MIN = 15
 // their bounding boxes technically overlap. Stops a flurry of short sessions
 // from exploding the strip vertically.
 const ROW_PACK_SLACK_PX = 14
-// Cap the strip height so a busy day doesn't push everything below off-screen.
-// Tall enough that ~20 stacked rows are visible without internal scrolling.
-const STRIP_MAX_HEIGHT_PX = 440
-
 function fmtHour(h: number): string {
   // h may exceed 24 for overnight tail — wrap to 0-23 for display.
   const display = ((h % 24) + 24) % 24
@@ -190,10 +186,6 @@ export default function AiActivityDayTimelineBlock({
 
   const stripHeight = placed.rows * (ROW_HEIGHT + ROW_GAP) - ROW_GAP
 
-  // Pin hour axis below the strip; if the strip itself overflows vertically
-  // (very busy day), it scrolls internally so the axis stays visible.
-  const stripScrolls = stripHeight > STRIP_MAX_HEIGHT_PX
-
   // Horizontal-overflow affordances: chevrons + edge fades appear when there's
   // offscreen content. macOS overlay scrollbars hide the default affordance,
   // so without these the user has no idea more timeline exists to the right.
@@ -258,14 +250,12 @@ export default function AiActivityDayTimelineBlock({
       className="overflow-x-auto overflow-y-hidden overscroll-x-contain"
     >
       <div className="relative" style={{ width: Math.max(widthPx, 320) }}>
-        {/* Hour grid + pills */}
-        <div
-          className="relative"
-          style={{
-            height: stripScrolls ? STRIP_MAX_HEIGHT_PX : stripHeight,
-            overflowY: stripScrolls ? 'auto' : 'visible',
-          }}
-        >
+        {/* Hour grid + pills. The strip has no height cap and never scrolls
+            vertically: a busy day makes it taller and the card grows with it,
+            which is the panel's whole layout contract. It used to cap at 440px
+            and scroll internally, which put a second, silent scroll axis inside
+            a view whose only real axis is time. */}
+        <div className="relative">
         <div className="relative" style={{ height: stripHeight }}>
           {hourTicks.slice(0, -1).map(h => {
             const x = (h - startHour) * PIXELS_PER_HOUR
