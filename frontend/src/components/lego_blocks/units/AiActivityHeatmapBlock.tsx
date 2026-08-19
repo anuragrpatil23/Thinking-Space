@@ -88,7 +88,15 @@ const WORK_MIX_CELL_GAP = 7
  *  cell's offset ring. Without it the first and last cells' rings are cut off
  *  by the scroller's own edge — the ring is drawn outside the cell box, so the
  *  cell fitting is not enough. */
-const STRIP_EDGE_PAD_PX = 8
+const STRIP_EDGE_PAD_PX = 11
+/** Air between a strip cell's rim and the selection outline drawn around it.
+ *  The cell's outermost lap arc sits on that rim, so the gap is what keeps the
+ *  two from reading as one thick band. */
+const STRIP_SELECT_RING_GAP_PX = 7
+/** Weight of that outline. Grows *inward* from the inset — the ring's outer
+ *  edge is what the eye tracks against the neighbouring cells, so a thicker
+ *  stroke reads better tightening toward the cell than swelling away from it. */
+const STRIP_SELECT_RING_PX = 3
 
 /** Days shown past the end of the range in strip mode, dimmed and out of
  *  range. All the padding goes on the trailing side: the range ends on today,
@@ -1080,12 +1088,11 @@ export default function AiActivityHeatmapBlock({
                             // wrapping it tight: the row has the room, and a
                             // hairline with air around it reads as a selection
                             // where a flush one reads as a border on the mark.
-                            // Neutral light grey, not translucent foreground:
-                            // black at any alpha over this card's cream reads as
-                            // a hard dark line, and a blue-cast grey (slate)
-                            // reads as another color beside the cells' project
-                            // tints. This one is pure value, which is what lets
-                            // the quietest mark point at the loudest cell.
+                            // Hover is neutral light grey, not translucent
+                            // foreground: a blue-cast grey (slate) would read as
+                            // another color beside the cells' project tints, and
+                            // hover only has to say "this one", quietly. The
+                            // solid ring is reserved for the selection below.
                             // The grid keeps its flush dark ring — at 30px an
                             // offset grey hairline would vanish.
                             isHover &&
@@ -1095,13 +1102,15 @@ export default function AiActivityHeatmapBlock({
                                     isDark ? 'ring-neutral-500/40' : 'ring-neutral-300/60',
                                   )
                                 : 'ring-1 ring-foreground/60'),
+                            // Strip mode draws its selection as an outline
+                            // element below, not with `ring`: Tailwind's ring
+                            // offset is a second box-shadow in the offset
+                            // *color*, so a transparent offset lets the ring
+                            // shadow fill the gap and the hairline comes out as
+                            // a thick solid band.
                             (isSelected || inActiveRange) &&
-                              (stripMode
-                                ? cn(
-                                    'ring-[1.5px] ring-offset-[5px] ring-offset-transparent',
-                                    isDark ? 'ring-neutral-400/50' : 'ring-neutral-300',
-                                  )
-                                : 'ring-1 ring-foreground'),
+                              !stripMode &&
+                              'ring-1 ring-foreground',
                             !inRange && 'opacity-30',
                           )}
                           style={{
@@ -1121,6 +1130,21 @@ export default function AiActivityHeatmapBlock({
                               : `${cell.date}: ${cell.msgs} messages${isRest ? ' (Claude Code reset day)' : ''}`
                           }
                         >
+                          {stripMode && (isSelected || inActiveRange) && (
+                            /* Same value as the active range pill above the
+                               strip — solid foreground, so it is black on the
+                               light card and white in dark mode. Held off the
+                               cell by its own inset so the outermost lap arc
+                               keeps a clear gap inside it. */
+                            <span
+                              aria-hidden
+                              className="pointer-events-none absolute rounded-full border-foreground"
+                              style={{
+                                inset: -STRIP_SELECT_RING_GAP_PX,
+                                borderWidth: STRIP_SELECT_RING_PX,
+                              }}
+                            />
+                          )}
                           {cell.workMix && renderWorkMixRings(cell.workMix)}
                           {/* Day number rides above the rings — the disc is a
                               flat wash, so a digit on top of it costs the mark
