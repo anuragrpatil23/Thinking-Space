@@ -380,8 +380,11 @@ export default function AiActivityPanelBlock({
       // under it. The grid keeps the spacing it always had.
       <div
         className={cn(
-          'border-t border-border/30',
-          stripRange ? 'mt-10 space-y-12 pt-10' : 'mt-4 space-y-5 pt-3',
+          // No rule in strip mode. At the tighter grid spacing the line is what
+          // separates the drill from the view above it; with 40px of air on
+          // either side it separates nothing and just floats there. Space or
+          // rule — not both at this scale.
+          stripRange ? 'mt-10 space-y-12 pt-2' : 'mt-4 space-y-5 border-t border-border/30 pt-3',
         )}
       >
         {/* Timeline and the per-project totals under it are one unit: the
