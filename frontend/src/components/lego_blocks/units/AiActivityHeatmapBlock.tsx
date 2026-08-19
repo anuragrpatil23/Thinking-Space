@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   fmtDayMonthBlock,
@@ -67,8 +66,6 @@ interface AiActivityHeatmapBlockProps {
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const WEEKDAY_LABELS = ['Mon', '', 'Wed', '', 'Fri', '', '']
 
-/** Widest window the grid renders at once — longer ranges page via chevrons. */
-const MAX_VISIBLE_WEEKS = 53
 // Set-mode cell geometry — larger than default so day-of-month numbers fit
 // legibly inside each cell.
 const SET_CELL_PX = 18
@@ -272,10 +269,6 @@ export default function AiActivityHeatmapBlock({
   const [gridMenu, setGridMenu] = useState<{ x: number; y: number } | null>(null)
   const [hoverDate, setHoverDate] = useState<string | null>(null)
   const [dragAnchor, setDragAnchor] = useState<string | null>(null)
-  // Weeks paged back from the most recent window (0 = latest). Reset when the
-  // range itself changes so a new range always opens on its newest data.
-  const [weeksBack, setWeeksBack] = useState(0)
-  useEffect(() => setWeeksBack(0), [startIso, endIso])
 
   const dayMap = useMemo(() => {
     const m = new Map<string, ActivityDay>()
@@ -443,39 +436,21 @@ export default function AiActivityHeatmapBlock({
     return { stripCellPx: cell, stripGapPx: gap }
   }, [stripMode, allColumns.length, containerWidth])
 
-  // The grid shows every column it has, up to the 53-week cap, and lets the
-  // card scroll horizontally when that is wider than the container. It does
-  // NOT trim to the measured width: this used to read a container width that
-  // was permanently 0 (see the measuring effect above), so the trim never ran
-  // and scrolling is the behaviour the view has always actually had. Turning
-  // the trim on with the width fixed would swap that scroll for paging
-  // chevrons, which is a different view, not a repair.
+  // The grid renders every column in the range and lets the card scroll
+  // horizontally — the range the user picked is the range they get.
   //
-  // The strip is the opposite: it sizes its own cells to fit, so it is never
-  // paged — an off-by-one in a fit division would hide a day behind a chevron
-  // on a view whose entire point is seeing the whole week at once.
-  const visibleWeeksCap = stripMode
-    ? Math.max(1, allColumns.length)
-    : MAX_VISIBLE_WEEKS
-  const pageStep = Math.max(1, Math.floor(visibleWeeksCap / 2))
-
-  const maxWeeksBack = Math.max(0, allColumns.length - visibleWeeksCap)
-  const clampedWeeksBack = Math.min(weeksBack, maxWeeksBack)
-  const columns = useMemo(() => {
-    if (allColumns.length <= visibleWeeksCap) return allColumns
-    const start = maxWeeksBack - clampedWeeksBack
-    return allColumns.slice(start, start + visibleWeeksCap)
-  }, [allColumns, maxWeeksBack, clampedWeeksBack, visibleWeeksCap])
-  const canPageBack = clampedWeeksBack < maxWeeksBack
-  const canPageForward = clampedWeeksBack > 0
-
-  function pageBy(dir: 'back' | 'forward') {
-    setWeeksBack(prev =>
-      dir === 'back'
-        ? Math.min(maxWeeksBack, prev + pageStep)
-        : Math.max(0, prev - pageStep),
-    )
-  }
+  // It used to clip to the most recent 53 weeks and offer paging chevrons for
+  // the rest. That silently cut "all" off at about a year: with a year and a
+  // half of sessions the grid began in the middle of the range while the trend
+  // chart directly below it, reading the same `days` array, drew the whole
+  // thing. Two views of one range disagreeing about where the range starts is
+  // worse than a wide grid — and the card has scrolled horizontally in practice
+  // for as long as this view has existed, because the width the clip depended
+  // on was permanently 0 until it was fixed.
+  //
+  // `allColumns` keeps its own ~10-year hard stop, so "every column" stays
+  // bounded no matter how degenerate the range.
+  const columns = allColumns
 
   // Month labels are wider than one 12px column, so a naive per-column slot
   // makes adjacent months collide ("JanFeb"). Build an absolutely-positioned
@@ -866,6 +841,17 @@ export default function AiActivityHeatmapBlock({
   const gridHeight = rowsPerColumn * cellPx + (rowsPerColumn - 1) * cellGap
   const gridWidth = columns.length * step - cellGap
 
+  // A long range is drawn oldest-first, so without this the card opens on
+  // months-old columns and reads as "no recent activity" until you scroll. The
+  // range ends on today, so the newest data is the right-hand edge. Keyed on
+  // the range and the rendered width rather than on every render, so a scroll
+  // position you set by hand survives a hover or a repaint.
+  useEffect(() => {
+    const el = scrollContainerRef.current
+    if (!el || stripMode) return
+    el.scrollLeft = el.scrollWidth
+  }, [startIso, endIso, stripMode, gridWidth, loading])
+
   // Position map for every visible cell, keyed by ISO date. Used to overlay
   // the "current set" ring across whichever cells the set falls on.
   const cellPositions = useMemo(() => {
@@ -1173,28 +1159,6 @@ export default function AiActivityHeatmapBlock({
             </div>
           </div>
         </div>
-        {/* Page chevrons — same quiet style as the day timeline's. Only shown
-            when the range is wider than one grid window. */}
-        {canPageBack && (
-          <button
-            type="button"
-            onClick={() => pageBy('back')}
-            className="absolute bottom-1.5 left-0 z-20 rounded-full border border-border/30 bg-background/85 p-0.5 text-muted-foreground shadow-sm transition-colors hover:border-border/60 hover:text-foreground"
-            aria-label="Show earlier weeks"
-          >
-            <ChevronLeft className="h-3 w-3" />
-          </button>
-        )}
-        {canPageForward && (
-          <button
-            type="button"
-            onClick={() => pageBy('forward')}
-            className="absolute bottom-1.5 right-0 z-20 rounded-full border border-border/30 bg-background/85 p-0.5 text-muted-foreground shadow-sm transition-colors hover:border-border/60 hover:text-foreground"
-            aria-label="Show later weeks"
-          >
-            <ChevronRight className="h-3 w-3" />
-          </button>
-        )}
         </div>
       )}
       <div className="min-h-[1.5rem] text-xs">
