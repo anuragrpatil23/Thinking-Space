@@ -247,7 +247,7 @@ export default function AiActivityDayTimelineBlock({
         whatever is behind the card. */}
     <div
       ref={scrollWrapRef}
-      className="overflow-x-auto overflow-y-hidden overscroll-x-contain"
+      className="ltm-hscroll-bare overflow-x-auto overflow-y-hidden"
     >
       <div className="relative" style={{ width: Math.max(widthPx, 320) }}>
         {/* Hour grid + pills. The strip has no height cap and never scrolls

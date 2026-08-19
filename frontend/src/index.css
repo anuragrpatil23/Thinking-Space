@@ -1511,6 +1511,29 @@
     display: none;
   }
 
+  /* Horizontal scrollers that should feel native on a touch screen: no visible
+     bar, no scroll chaining. Scoped to `hover: none` rather than to the iOS
+     shell so it covers iPad as well as iPhone, and — more to the point —
+     leaves the bar alone on desktop, where for some of these scrollers it is
+     the only signal that there is more content sideways. Touch has the
+     content-under-the-finger feedback that a pointer does not. */
+  .ltm-hscroll-bare {
+    overscroll-behavior-x: contain;
+  }
+
+  @media (hover: none) {
+    .ltm-hscroll-bare {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    .ltm-hscroll-bare::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+      display: none;
+    }
+  }
+
   .safe-top {
     padding-top: var(--safe-area-inset-top);
   }

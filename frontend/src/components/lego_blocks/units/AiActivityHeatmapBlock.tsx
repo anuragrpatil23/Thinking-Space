@@ -937,7 +937,7 @@ export default function AiActivityHeatmapBlock({
           // the grid slide under a vertical swipe meant for the page. The
           // padding above clears the cells' rings, so pinning y clips nothing.
           className={cn(
-            'overflow-x-auto overflow-y-hidden overscroll-x-contain pt-1.5 pb-1.5',
+            'ltm-hscroll-bare overflow-x-auto overflow-y-hidden pt-1.5 pb-1.5',
             stripMode && 'px-2 py-2 -mx-2',
           )}
         >
