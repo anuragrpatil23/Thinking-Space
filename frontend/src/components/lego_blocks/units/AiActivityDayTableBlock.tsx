@@ -1,7 +1,6 @@
 import { Fragment, Suspense, lazy, useMemo, useState } from 'react'
 import { Check, Maximize2, Pencil, Plus, RefreshCw, Share2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import InsetSurfaceBlock from '@/components/lego_blocks/units/ui/InsetSurfaceBlock'
 import { isReadingSource, isManualSource, type ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getManualSession } from '@/services/lego_blocks/integrations/manualSessionBlock'
 import type { ManualSessionRecord } from '@/services/lego_blocks/units/manualSessionParserBlock'
@@ -347,12 +346,12 @@ export default function AiActivityDayTableBlock({
         </div>
       </div>
       {sorted.length === 0 ? (
-        <InsetSurfaceBlock className="px-3 py-4 text-xs text-muted-foreground/70">
+        <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-4 text-xs text-muted-foreground/70">
           No sessions on this day.
-        </InsetSurfaceBlock>
+        </div>
       ) : (
-        <InsetSurfaceBlock
-          className="overflow-x-auto"
+        <div
+          className="overflow-x-auto rounded-lg border border-border/40 bg-card/40"
           style={{ touchAction: 'pan-x pan-y', WebkitOverflowScrolling: 'touch' }}
         >
           {/* overflow-x-auto + the table's min-width make the table pan
@@ -639,7 +638,7 @@ export default function AiActivityDayTableBlock({
               })()}
             </tbody>
           </table>
-        </InsetSurfaceBlock>
+        </div>
       )}
       {dayTotals.chainsWithTokens > 0 && (
         <div className="flex items-baseline justify-end gap-3 px-1 text-[11px] text-muted-foreground">
