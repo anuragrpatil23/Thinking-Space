@@ -375,12 +375,20 @@ export default function AiActivityPanelBlock({
   // stable across re-renders instead of remounting it.
   function renderDrillDetail(withTimeline: boolean) {
     return (
-      <div className="mt-10 space-y-12 border-t border-border/30 pt-10">
+      // The roomier rhythm belongs to the strip, where a display-scale date
+      // heads the section and the tighter original spacing reads as cramped
+      // under it. The grid keeps the spacing it always had.
+      <div
+        className={cn(
+          'border-t border-border/30',
+          stripRange ? 'mt-10 space-y-12 pt-10' : 'mt-4 space-y-5 pt-3',
+        )}
+      >
         {/* Timeline and the per-project totals under it are one unit: the
             totals row names the colors in the bars above it, so it reads as
             that chart's legend and has to sit close to it. The wide gap belongs
             between this pair and the table, not inside it. */}
-        <div className="space-y-3">
+        <div className={stripRange ? 'space-y-3' : 'space-y-5'}>
           {withTimeline && selectedDate && drillChains.length > 0 && (
             <AiActivityDayTimelineBlock
               dateIso={selectedDate}
