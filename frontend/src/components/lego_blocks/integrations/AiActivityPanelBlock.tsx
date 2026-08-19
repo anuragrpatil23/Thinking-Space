@@ -16,6 +16,7 @@ import {
   type ReadingSourceFilter,
 } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
 import AiActivityHeatmapBlock from '@/components/lego_blocks/units/AiActivityHeatmapBlock'
+import InsetSurfaceBlock from '@/components/lego_blocks/units/ui/InsetSurfaceBlock'
 import {
   fmtDayMonthBlock,
   isStripRangeBlock,
@@ -395,17 +396,7 @@ export default function AiActivityPanelBlock({
             day table below already sits in one, so an unboxed chart between two
             boxed things reads as unfinished — and with the strip's divider gone
             this is what tells the eye where the drill starts. */}
-        <div
-          className={cn(
-            // Exactly the day table's surface below it — same radius, same
-            // border, same fill. That combination is the card's established
-            // inset surface (the table, its empty state, the session chips),
-            // so matching it keeps one surface language instead of adding a
-            // third shade between the card and the table.
-            'rounded-lg border border-border/40 bg-card/40 p-4',
-            stripRange ? 'space-y-3' : 'space-y-5',
-          )}
-        >
+        <InsetSurfaceBlock className={cn('p-4', stripRange ? 'space-y-3' : 'space-y-5')}>
           {withTimeline && selectedDate && drillChains.length > 0 && (
             <AiActivityDayTimelineBlock
               dateIso={selectedDate}
@@ -423,7 +414,7 @@ export default function AiActivityPanelBlock({
               onSelectProject={setActiveProject}
             />
           )}
-        </div>
+        </InsetSurfaceBlock>
         {/* Table is the only scrolling region — keeps the section header/chart
             pinned so context stays visible while you scan a multi-day drill.
             Wheel-capture stops the canvas from panning underneath while the
