@@ -999,7 +999,12 @@ function CreateTab() {
               {/* The vault's own name when no project is chosen — it is still a
                   place, and the path still starts somewhere. "No project" named
                   an absence and read as a folder literally called that. */}
-              <span className="max-w-[10rem] truncate">
+              {/* Never truncated. A half-eaten name ("Long-Term-Memory-iC…")
+                  identifies nothing, and this is the segment you are checking.
+                  The folder to its right gives way instead — the same
+                  give-way order the pill already uses, where the filename is
+                  the last thing to go. */}
+              <span className="whitespace-nowrap">
                 {activeProject ? activeProject.name : vaultName}
               </span>
               <span className="opacity-40">/</span>

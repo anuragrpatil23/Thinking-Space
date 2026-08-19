@@ -524,7 +524,12 @@ export function useNoteComposerOrch(): NoteComposerOrch {
       setSavedPath(null)
       setError(null)
       setItemsAdded(0)
-      setMessage(`New note: ${chosen}`)
+      // Deliberately silent. The banner it used to raise sat full-width above
+      // the editor and pushed the writing surface down to announce something
+      // already written in two places — the title bar and the "Saving to" line
+      // both now read the new name, and the page is blank. A confirmation that
+      // repeats what the screen says is just something else to dismiss.
+      setMessage(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start a new note')
     } finally {
