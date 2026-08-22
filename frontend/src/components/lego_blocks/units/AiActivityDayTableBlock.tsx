@@ -18,6 +18,7 @@ import ReadingSessionEditModalBlock, {
   isReadingSessionEditableBlock,
 } from '@/components/lego_blocks/integrations/ReadingSessionEditModalBlock'
 import { useChainDigestBlock } from '@/components/lego_blocks/hooks/units/useChainDigestBlock'
+import { heavyWorkBlockedLabelBlock } from '@/services/lego_blocks/integrations/powerStateBlock'
 import AiActivitySourceChipBlock from '@/components/lego_blocks/units/AiActivitySourceChipBlock'
 import LightMarkdownTextBlock from '@/components/lego_blocks/units/LightMarkdownTextBlock'
 import ThinkingOrbBlock from '@/components/lego_blocks/units/ThinkingOrbBlock'
@@ -825,7 +826,7 @@ function ChainTopicCellBlock({
 // label, with the original first-message snippet below for context. Keeps
 // the previous multi-session topic list intact.
 function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
-  const { title, summary, isAi, loading, generator, refresh } = useChainDigestBlock(chain)
+  const { title, summary, isAi, loading, generator, blocked, refresh } = useChainDigestBlock(chain)
   const seen = new Set<string>([chain.topic])
   const extras =
     chain.sessions.length > 1
@@ -854,6 +855,16 @@ function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
             label="Regenerating this summary"
           />
         )}
+        {/* Power gate. Automatic generation refuses to spend 400–600s of GPU
+            on battery or under Low Power Mode; the button beside this label
+            overrides it, because a person asking is not a background loop
+            deciding. Without the label the rule-based title just looks like a
+            bad summary. */}
+        {blocked && !loading && (
+          <span className="text-[9px] uppercase tracking-[0.08em] text-muted-foreground/70">
+            {heavyWorkBlockedLabelBlock(blocked)}
+          </span>
+        )}
         <button
           type="button"
           onClick={e => {
@@ -862,7 +873,11 @@ function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
           }}
           disabled={loading}
           className="ml-auto inline-flex items-center gap-1 rounded-full border border-border/40 bg-card/40 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] text-muted-foreground transition-colors hover:border-border/70 hover:text-foreground disabled:opacity-40"
-          title="Regenerate this title with the currently-selected provider (bypasses reuse — forces a re-run even if a higher-tier version is cached)"
+          title={
+            blocked
+              ? 'Generate this title now — overrides the battery / Low Power Mode pause'
+              : 'Regenerate this title with the currently-selected provider (bypasses reuse — forces a re-run even if a higher-tier version is cached)'
+          }
         >
           <RefreshCw className={cn('h-2.5 w-2.5', loading && 'animate-spin')} />
           regenerate

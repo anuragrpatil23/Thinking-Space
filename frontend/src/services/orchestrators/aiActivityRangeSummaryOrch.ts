@@ -54,6 +54,7 @@ import {
   weekPeriodContaining,
   type RangeSubunit,
 } from '@/services/lego_blocks/units/aiActivityPeriodBlock'
+import { heavyBackgroundWorkAllowedBlock } from '@/services/lego_blocks/integrations/powerStateBlock'
 
 /** Every contract in this file runs on behalf of the AI-activity surface, so
  *  they all resolve reasoning from that scope's thinking setting. */
@@ -208,6 +209,19 @@ export async function ensureRangeSummaryOrch(
         return existing
       }
     }
+  }
+
+  // POWER GATE — same rule as the digests underneath (see
+  // `aiActivitySessionDigestOrch`). The two-stage local narration is the most
+  // expensive run in the app, so it is the last thing that should fire off a
+  // panel mount on battery. Falls back to the deterministic body, which is NOT
+  // persisted as a model result the next reload would reuse... except that
+  // `buildFallbackSummary` stamps a provider of its own, and a stored fallback
+  // is exactly what the tier check above is built to overwrite once a real run
+  // becomes possible. Manual refresh always runs.
+  if (!input.refresh) {
+    const power = await heavyBackgroundWorkAllowedBlock()
+    if (!power.allowed) return buildFallbackSummary(input)
   }
 
   const generated = await generateForProvider(provider, input)

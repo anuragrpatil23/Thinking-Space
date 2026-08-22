@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { ensureChainDigestOrch } from '@/services/orchestrators/aiActivityChainDigestOrch'
 import type { GenerationSource } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
+import type { HeavyWorkBlockReason } from '@/services/lego_blocks/integrations/powerStateBlock'
 
 // Renderer-side wrapper around the chain-digest orchestrator. Renders the
 // fallback (`chain.topic`) immediately so the UI never blocks on the model,
@@ -18,6 +19,10 @@ export interface ChainDigestState {
    *  'rule-based'; '' for legacy records with no recorded source. Drives the
    *  small source chip in the drill-down. */
   generator: GenerationSource | ''
+  /** Why automatic generation was skipped, when it was: the machine is on
+   *  battery or in Low Power Mode. Manual `refresh` ignores the gate, so this
+   *  is the UI's cue to point at the regenerate button. */
+  blocked: HeavyWorkBlockReason | null
   /** Force a regeneration with the currently-selected provider, bypassing the
    *  reuse/precedence fast path (e.g. to re-run local even when a Claude
    *  digest is cached). */
@@ -31,6 +36,7 @@ export function useChainDigestBlock(chain: ActivityChain): ChainDigestState {
   const [isAi, setIsAi] = useState(false)
   const [loading, setLoading] = useState(false)
   const [generator, setGenerator] = useState<GenerationSource | ''>('')
+  const [blocked, setBlocked] = useState<HeavyWorkBlockReason | null>(null)
   const [refreshNonce, setRefreshNonce] = useState(0)
   const prevNonce = useRef(0)
   const cancelledRef = useRef(false)
@@ -61,6 +67,7 @@ export function useChainDigestBlock(chain: ActivityChain): ChainDigestState {
       setSummary(result.digest.summary || '')
       setIsAi(result.isAi)
       setGenerator(result.digest.generator)
+      setBlocked(result.blocked ?? null)
       setLoading(false)
     })()
 
@@ -71,5 +78,5 @@ export function useChainDigestBlock(chain: ActivityChain): ChainDigestState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, chain.msgCount, refreshNonce])
 
-  return { title, summary, isAi, loading, generator, refresh }
+  return { title, summary, isAi, loading, generator, blocked, refresh }
 }

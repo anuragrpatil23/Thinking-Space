@@ -237,6 +237,7 @@ interface ElectronAPI {
   profilesDelete?(profileId: string): Promise<void>
   profilesOpenWindow?(profileId: string): Promise<void>
   clearGpuCache?(): Promise<void>
+  powerStateGet?(): Promise<{ onBattery: boolean; lowPowerMode: boolean; known: boolean }>
   markdownEditorOnPasteAsTable?(handler: () => void): () => void
   sourceConfigGet?(): Promise<{ mode: string; sourcePath: string | null; vitePort: number; viteRunning: boolean }>
   sourceConfigSet?(config: { mode?: string; sourcePath?: string | null; vitePort?: number }): Promise<{ mode: string; sourcePath: string | null; vitePort: number; requiresRestart: boolean }>

@@ -24,6 +24,10 @@ import {
   runContract,
 } from '@/services/orchestrators/intelligenceOrch'
 import { intelligenceCacheAvailableBlock } from '@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock'
+import {
+  heavyBackgroundWorkAllowedBlock,
+  type HeavyWorkBlockReason,
+} from '@/services/lego_blocks/integrations/powerStateBlock'
 import { currentGenerationSourceBlock } from '@/services/lego_blocks/integrations/intelligence/providerRegistryBlock'
 import {
   generationSourceForProviderBlock,
@@ -50,6 +54,15 @@ export async function loadSessionDigestOrch(
   return stored ? projectSessionFieldsBlock(stored, session) : null
 }
 
+export interface SessionDigestResult {
+  digest: ProjectSessionDigest
+  isAi: boolean
+  /** Set when an automatic run was refused for power reasons rather than
+   *  attempted and failed. Lets the UI say "paused, and here is why" instead of
+   *  showing a rule-based title that looks like the model's best effort. */
+  blocked?: HeavyWorkBlockReason
+}
+
 /**
  * Ensure a stored digest exists for `session`. Returns:
  *   - the stored digest when the input hash matches (fast path),
@@ -61,7 +74,7 @@ export async function loadSessionDigestOrch(
 export async function ensureSessionDigestOrch(
   session: ParsedSession,
   options: { refresh?: boolean } = {},
-): Promise<{ digest: ProjectSessionDigest; isAi: boolean } | null> {
+): Promise<SessionDigestResult | null> {
   const parts = sessionStorageParts(session)
   if (!parts) return null
   const nextHash = computeSessionInputHashBlock(session)
@@ -132,6 +145,23 @@ export async function ensureSessionDigestOrch(
     return existing
       ? { digest: existing, isAi: true }
       : { digest: buildFallbackDigest(session, parts, nextHash), isAi: false }
+  }
+
+  // POWER GATE. A digest is a 400–600s local-model run; on battery that is a
+  // visible chunk of charge, and under Low Power Mode it directly contradicts
+  // what the user just told the OS. Automatic runs therefore require wall
+  // power. `refresh` is a person clicking regenerate — their machine, their
+  // call — so it never reaches this check.
+  //
+  // Blocked is not failed: any stored digest still surfaces, and the fallback
+  // is not persisted, so plugging in and reopening generates the real thing.
+  if (!options.refresh) {
+    const power = await heavyBackgroundWorkAllowedBlock()
+    if (!power.allowed) {
+      return existing
+        ? { digest: existing, isAi: true }
+        : { digest: buildFallbackDigest(session, parts, nextHash), isAi: false, blocked: power.reason }
+    }
   }
 
   const av = await availability().catch(() => ({ available: false }))

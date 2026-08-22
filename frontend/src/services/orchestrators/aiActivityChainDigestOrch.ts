@@ -12,6 +12,10 @@ import {
 } from '@/services/lego_blocks/units/intelligence/contracts/chainStitchContractBlock'
 import { availability, runContract } from '@/services/orchestrators/intelligenceOrch'
 import { intelligenceCacheAvailableBlock } from '@/services/lego_blocks/integrations/intelligence/intelligenceCacheBlock'
+import {
+  heavyBackgroundWorkAllowedBlock,
+  type HeavyWorkBlockReason,
+} from '@/services/lego_blocks/integrations/powerStateBlock'
 import { getAiActivityAiTitlesEnabled } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   generationSourceForProviderBlock,
@@ -89,6 +93,14 @@ export interface ChainDigestView {
   generator: GenerationSource | ''
 }
 
+export interface ChainDigestResult {
+  digest: ChainDigestView
+  isAi: boolean
+  /** Set when automatic generation was refused on power grounds. See the
+   *  power gate in `aiActivitySessionDigestOrch`. */
+  blocked?: HeavyWorkBlockReason
+}
+
 /** Read-only: never runs the model. Returns null when no member has a stored
  *  digest yet, and a pass-through/concatenation when they do. */
 export async function loadChainDigestOrch(chain: ActivityChain): Promise<ChainDigestView | null> {
@@ -111,25 +123,36 @@ export async function loadChainDigestOrch(chain: ActivityChain): Promise<ChainDi
 export async function ensureChainDigestOrch(
   chain: ActivityChain,
   options: { refresh?: boolean } = {},
-): Promise<{ digest: ChainDigestView; isAi: boolean } | null> {
+): Promise<ChainDigestResult | null> {
   const digests: ProjectSessionDigest[] = []
   let anyAi = false
+  let blocked: HeavyWorkBlockReason | undefined
   for (const session of chain.sessions) {
     const result = await ensureSessionDigestOrch(session, options)
     if (!result) continue
     digests.push(result.digest)
     if (result.isAi) anyAi = true
+    // First refusal wins — every member is refused for the same reason anyway,
+    // since the gate reads one machine's power state.
+    if (result.blocked && !blocked) blocked = result.blocked
   }
   if (digests.length === 0) return null
 
   // PASS-THROUGH. One sitting: the chain and the session are the same thing, so
   // composing would be paying a model to rewrite a summary into itself.
   if (digests.length === 1) {
-    return { digest: composeWithoutModelBlock(chain, digests), isAi: anyAi }
+    return { digest: composeWithoutModelBlock(chain, digests), isAi: anyAi, blocked }
   }
 
   const base = composeWithoutModelBlock(chain, digests)
   if (!intelligenceCacheAvailableBlock() || !getAiActivityAiTitlesEnabled()) return { digest: base, isAi: false }
+  // The stitch is another model call, so it answers to the same power gate as
+  // the digests beneath it. Degrading to the concatenation here is the same
+  // honest fallback a failed stitch already takes.
+  if (!options.refresh) {
+    const power = await heavyBackgroundWorkAllowedBlock()
+    if (!power.allowed) return { digest: base, isAi: anyAi, blocked: blocked ?? power.reason }
+  }
   const av = await availability().catch(() => ({ available: false }))
   if (!av.available) return { digest: base, isAi: false }
 
@@ -141,7 +164,7 @@ export async function ensureChainDigestOrch(
   )
   // A failed stitch degrades to the concatenation, which is honest rather than
   // lesser: it is exactly the member summaries, unmerged and unembellished.
-  if (!result.ok || !result.value) return { digest: base, isAi: anyAi }
+  if (!result.ok || !result.value) return { digest: base, isAi: anyAi, blocked }
 
   const output = result.value as unknown as ChainStitchOutput
   return {
@@ -153,6 +176,7 @@ export async function ensureChainDigestOrch(
       generator: generationSourceForProviderBlock(result.providerId),
     },
     isAi: true,
+    blocked,
   }
 }
 

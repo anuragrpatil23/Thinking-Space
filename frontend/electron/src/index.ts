@@ -120,6 +120,7 @@ import {
   armPmsetWakesForScheduleBlock,
   cancelPmsetWakesForLabelBlock,
 } from './lego_blocks/pmsetWakeBlock';
+import { getPowerStateBlock } from './lego_blocks/powerStateBlock';
 import { runScheduleBlock, type ScheduleRunChunkBlock, type ScheduleRunResultBlock } from './lego_blocks/scheduleRunnerBlock';
 import { listTranscriptsBlock, readTranscriptBlock } from './lego_blocks/transcriptStoreBlock';
 import {
@@ -719,6 +720,12 @@ ipcMain.handle('window:set-native-color-mode', (event, mode: unknown) => {
 
 ipcMain.handle('debug:performance:get', async () => {
   return readDebugPerformanceSnapshotBlock();
+});
+
+// Power state, for callers that refuse to spend minutes of GPU on a machine
+// running on battery or asked to conserve. See `powerStateBlock`.
+ipcMain.handle('power:state:get', async () => {
+  return getPowerStateBlock();
 });
 
 // Clearing GPU cache requires deleting userData/GPUCache while it's not in use
