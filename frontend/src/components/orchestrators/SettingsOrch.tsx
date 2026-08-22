@@ -18,6 +18,11 @@ import {
   PhoneListRowBlock,
   PhoneListSectionHeaderBlock,
 } from '@/components/lego_blocks/units/PhoneListBlock'
+import {
+  SidebarNavGroupBlock,
+  SidebarNavRowBlock,
+  SidebarNavSectionHeaderBlock,
+} from '@/components/lego_blocks/units/SidebarNavListBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
 import {
@@ -139,6 +144,8 @@ import {
   setConsoleWarningsVisible,
 } from '@/services/lego_blocks/units/consoleNoiseFilterBlock'
 
+// 'activity' is no longer a tab — it folded into 'ai_activity' — but it stays
+// here as the busyAction key for saving the file-activity paths.
 export type SettingsTabId = 'workspace_profiles' | 'navigation' | 'theme' | 'explorer' | 'moon_scene' | 'activity' | 'ai_activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer' | 'projects'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
@@ -221,8 +228,7 @@ const TAB_GROUPS: Array<{ heading: string; items: Array<{ id: SettingsTabWithPro
   {
     heading: 'Productivity',
     items: [
-      { id: 'activity', label: 'Activity Tracker' },
-      { id: 'ai_activity', label: 'AI Activity' },
+      { id: 'ai_activity', label: 'Activity' },
       { id: 'scheduler', label: 'Scheduler' },
     ],
   },
@@ -1059,59 +1065,55 @@ export default function SettingsOrch({
         {phoneListMode ? (
           <PhoneLargeTitleBlock title="Settings" />
         ) : (
-          <p className="mb-2 mt-4 px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          // The uppercase micro-label this used to be is now the group
+          // headers' style; the pane title has to outrank them, so it reads as
+          // a title (the phone's large title, scaled down).
+          <p className="mb-0.5 mt-3 px-8 text-[15px] font-semibold tracking-[-0.01em] text-foreground">
             Settings
           </p>
         )}
         <nav className={cn(
-          'min-h-0 flex-1 px-2 pb-4',
+          // No side padding: the section headers and the group cards inset
+          // themselves, on both surfaces.
+          'min-h-0 flex-1 pb-4',
           // The native dock floats over the web view (64pt above the home
           // indicator) and nothing reserves room for it, so the last row
           // could never be scrolled clear.
-          // No padding of its own: the large-title bar spans edge to edge and
-          // the list cards inset themselves.
-          phoneListMode && 'px-0 pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
+          phoneListMode && 'pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
         )}>
           {TAB_GROUPS.map((group, groupIdx) => (
-            <div key={group.heading} className={groupIdx === 0 || phoneListMode ? undefined : 'mt-5'}>
+            <div key={group.heading}>
               {phoneListMode ? (
                 <PhoneListSectionHeaderBlock className={groupIdx === 0 ? 'pt-1' : undefined}>
                   {group.heading}
                 </PhoneListSectionHeaderBlock>
               ) : (
-                <p className="mb-1 px-2.5 text-[11px] font-medium text-muted-foreground/60">
+                <SidebarNavSectionHeaderBlock className={groupIdx === 0 ? 'pt-1' : undefined}>
                   {group.heading}
-                </p>
+                </SidebarNavSectionHeaderBlock>
               )}
-              <PhoneListGroupBlock enabled={phoneListMode} className={phoneListMode ? undefined : 'space-y-0.5'}>
-                {group.items.map(tab => {
-                  const active = activeTab === tab.id
-                  if (phoneListMode) {
-                    return (
-                      <PhoneListRowBlock
-                        key={tab.id}
-                        label={tab.label}
-                        onClick={() => selectTab(tab.id)}
-                      />
-                    )
-                  }
-                  return (
-                    <button
+              {phoneListMode ? (
+                <PhoneListGroupBlock>
+                  {group.items.map(tab => (
+                    <PhoneListRowBlock
                       key={tab.id}
-                      type="button"
+                      label={tab.label}
                       onClick={() => selectTab(tab.id)}
-                      className={cn(
-                        'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors',
-                        active
-                          ? 'bg-foreground text-background'
-                          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                      )}
-                    >
-                      <span className="truncate">{tab.label}</span>
-                    </button>
-                  )
-                })}
-              </PhoneListGroupBlock>
+                    />
+                  ))}
+                </PhoneListGroupBlock>
+              ) : (
+                <SidebarNavGroupBlock>
+                  {group.items.map(tab => (
+                    <SidebarNavRowBlock
+                      key={tab.id}
+                      label={tab.label}
+                      selected={activeTab === tab.id}
+                      onClick={() => selectTab(tab.id)}
+                    />
+                  ))}
+                </SidebarNavGroupBlock>
+              )}
             </div>
           ))}
         </nav>
@@ -1554,13 +1556,26 @@ export default function SettingsOrch({
         </>
       )}
 
-      {activeTab === 'activity' && (
+      {activeTab === 'ai_activity' && (
         <>
           <SettingsSectionHeaderBlock
-            title="Activity Tracker"
-            description="Vault paths excluded from file activity tracking. Files under an ignored prefix never appear in activity calendars or daily summaries."
+            title="AI Activity"
+            description="Where AI sessions come from, how they are grouped, and which surfaces they appear on."
           />
+          <AiActivitySessionSourcesSettingsBlock />
+          <AiActivityProjectMappingSettingsBlock />
+          <AiActivityHomePostItSettingsBlock />
+          <AiActivitySetModeSettingsBlock />
+          <AiActivityCalendarModeSettingsBlock />
+          <AiActivityWorkMixSettingsBlock />
+          <AiActivityAiTitlesSettingsBlock />
+          <AiActivityRangeSummaryProviderSettingsBlock />
+          <AiActivityRestDaysSettingsBlock />
 
+          <SettingsSectionHeaderBlock
+            title="File activity"
+            description="Vault paths excluded from file activity tracking. This filters files you edit, not AI sessions — those are scoped by their sources above."
+          />
           <SettingsGroupBlock
             heading="Ignored paths"
             description="Vault-relative path prefixes. Any file whose path starts with one is filtered out."
@@ -1615,27 +1630,9 @@ export default function SettingsOrch({
               onClick={handleActivitySave}
               disabled={busyAction === 'activity' || !activityDirty}
             >
-              {busyAction === 'activity' ? 'Saving...' : 'Save Activity Settings'}
+              {busyAction === 'activity' ? 'Saving...' : 'Save File Activity Settings'}
             </Button>
           </div>
-        </>
-      )}
-
-      {activeTab === 'ai_activity' && (
-        <>
-          <SettingsSectionHeaderBlock
-            title="AI Activity"
-            description="Where AI sessions come from, how they are grouped, and which surfaces they appear on."
-          />
-          <AiActivitySessionSourcesSettingsBlock />
-          <AiActivityProjectMappingSettingsBlock />
-          <AiActivityHomePostItSettingsBlock />
-          <AiActivitySetModeSettingsBlock />
-          <AiActivityCalendarModeSettingsBlock />
-          <AiActivityWorkMixSettingsBlock />
-          <AiActivityAiTitlesSettingsBlock />
-          <AiActivityRangeSummaryProviderSettingsBlock />
-          <AiActivityRestDaysSettingsBlock />
         </>
       )}
 
