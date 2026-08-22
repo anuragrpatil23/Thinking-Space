@@ -507,3 +507,72 @@ export function extractFirstHtmlImageBlock(html: string, articleLink: string): s
   if (!match) return null
   return absoluteImageUrlBlock(match[1], articleLink)
 }
+
+/** One day's worth of articles in the timeline, in list order. */
+export interface RssTimelineDayGroupBlock {
+  /** Local calendar day, `YYYY-MM-DD`. Stable key for scroll targets. */
+  key: string
+  label: string
+  count: number
+  /** Index of the day's first article in the full filtered list — what the
+   *  rendered window has to reach before the day can be scrolled to. */
+  firstIndex: number
+}
+
+/** Local calendar day for an article, or null when the feed gave no date. */
+export function rssItemDayKeyBlock(pubDate: string | null): string | null {
+  if (!pubDate) return null
+  const date = new Date(pubDate)
+  if (Number.isNaN(date.getTime())) return null
+  // Local, not UTC: "which day did I see this" is a local-calendar question,
+  // and a UTC key would split an evening's reading across two headers.
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+function dayLabelBlock(key: string, now: Date): string {
+  const [year, month, day] = key.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const diffDays = Math.round((today.getTime() - date.getTime()) / 86_400_000)
+  if (diffDays === 0) return 'Today'
+  if (diffDays === 1) return 'Yesterday'
+  if (diffDays < 7) return date.toLocaleDateString(undefined, { weekday: 'long' })
+  return date.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  })
+}
+
+/**
+ * Collapse a date-sorted article list into day groups for headers and the
+ * date jump.
+ *
+ * Assumes the input is already newest-first (the timeline's sort). Undated
+ * articles sort to the end and collect under one trailing group rather than
+ * being dropped — a feed with no dates would otherwise have no way to navigate.
+ */
+export function buildRssTimelineDayGroupsBlock(
+  pubDates: (string | null)[],
+  now: Date = new Date(),
+): RssTimelineDayGroupBlock[] {
+  const groups: RssTimelineDayGroupBlock[] = []
+  for (let index = 0; index < pubDates.length; index++) {
+    const key = rssItemDayKeyBlock(pubDates[index]) ?? '__undated__'
+    const last = groups[groups.length - 1]
+    if (last && last.key === key) {
+      last.count++
+      continue
+    }
+    groups.push({
+      key,
+      label: key === '__undated__' ? 'No date' : dayLabelBlock(key, now),
+      count: 1,
+      firstIndex: index,
+    })
+  }
+  return groups
+}

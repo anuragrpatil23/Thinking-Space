@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent } from 'react'
-import { AlertCircle, Bookmark, Check, Circle, Eye, ListChecks, Loader2, Rss, X } from 'lucide-react'
+import { AlertCircle, Bookmark, CalendarDays, Check, Circle, Eye, ListChecks, Loader2, Rss, X } from 'lucide-react'
 import {
+  buildRssTimelineDayGroupsBlock,
   pickRssTimelineAnchorBlock,
+  rssItemDayKeyBlock,
   type RssFeedItemBlock,
   type RssFeedResultBlock,
+  type RssTimelineDayGroupBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
 import { cn } from '@/lib/utils'
 
@@ -273,6 +276,40 @@ export default function RssTimelineBlock({
     onUnmarkRead(item)
   }, [onUnmarkRead])
 
+  // Day groups over the WHOLE filtered list, not just the rendered window —
+  // the jump has to be able to reach a day that isn't rendered yet.
+  const dayGroups = useMemo(
+    () => buildRssTimelineDayGroupsBlock(filteredEntries.map(entry => entry.item.pubDate)),
+    [filteredEntries],
+  )
+  const [datePickerOpen, setDatePickerOpen] = useState(false)
+  const dayHeaderNodesRef = useRef(new Map<string, HTMLElement>())
+  const pendingJumpKeyRef = useRef<string | null>(null)
+
+  const registerDayHeader = useCallback((key: string, node: HTMLElement | null) => {
+    if (node) dayHeaderNodesRef.current.set(key, node)
+    else dayHeaderNodesRef.current.delete(key)
+  }, [])
+
+  const jumpToDay = useCallback((group: RssTimelineDayGroupBlock) => {
+    setDatePickerOpen(false)
+    // Same constraint as the scroll-anchor restore: the target must be in the
+    // DOM before it can be scrolled to, and the window only ever grows.
+    setRenderedCount(current => Math.max(current, group.firstIndex + CARD_PAGE_SIZE))
+    pendingJumpKeyRef.current = group.key
+  }, [])
+
+  // Runs after render until the target day header exists.
+  useLayoutEffect(() => {
+    const key = pendingJumpKeyRef.current
+    if (!key) return
+    const node = dayHeaderNodesRef.current.get(key)
+    const scroller = scrollerRef.current
+    if (!node || !scroller) return
+    scroller.scrollTop += node.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+    pendingJumpKeyRef.current = null
+  })
+
   const failedFeeds = useMemo(() => feeds.filter(feed => feed.error), [feeds])
   const stillLoading = loadingFeedIds.size > 0
   const showSkeleton = stillLoading && filteredEntries.length === 0
@@ -328,6 +365,19 @@ export default function RssTimelineBlock({
             </div>
             <button
               type="button"
+              onClick={() => setDatePickerOpen(open => !open)}
+              aria-label="Jump to a date"
+              aria-expanded={datePickerOpen}
+              title="Jump to a date"
+              className={cn(
+                'ltm-touch-target -mt-0.5 shrink-0 self-start rounded-full p-1.5 hover:bg-muted hover:text-foreground',
+                datePickerOpen ? 'text-foreground' : 'text-muted-foreground',
+              )}
+            >
+              <CalendarDays className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
               onClick={() => setSelectionMode(true)}
               aria-label="Select articles"
               title="Select articles"
@@ -338,6 +388,24 @@ export default function RssTimelineBlock({
           </div>
         )}
       </div>
+
+      {datePickerOpen && dayGroups.length > 0 && (
+        <div className="sticky top-0 z-20 border-b border-border/60 bg-background/95 backdrop-blur-xl">
+          <div className="flex gap-2 overflow-x-auto overscroll-x-contain px-4 py-2.5 touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            {dayGroups.map(group => (
+              <button
+                key={group.key}
+                type="button"
+                onClick={() => jumpToDay(group)}
+                className="shrink-0 rounded-full border border-border bg-muted/40 px-3 py-1.5 text-[13px] font-medium hover:bg-muted"
+              >
+                {group.label}
+                <span className="ml-1.5 text-muted-foreground">{group.count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mx-auto max-w-2xl">
         {/* A feed that fails used to just vanish. Say so instead. */}
@@ -377,9 +445,22 @@ export default function RssTimelineBlock({
           </div>
         )}
 
-        {visibleEntries.map(({ item, feedTitle }) => (
+        {visibleEntries.map(({ item, feedTitle }, index) => {
+          const dayKey = rssItemDayKeyBlock(item.pubDate) ?? '__undated__'
+          const previous = index > 0 ? visibleEntries[index - 1].item.pubDate : undefined
+          const startsDay = index === 0 || (rssItemDayKeyBlock(previous ?? null) ?? '__undated__') !== dayKey
+          const group = startsDay ? dayGroups.find(candidate => candidate.key === dayKey) : undefined
+          return (
+          <div key={item.id}>
+          {group && (
+            <div
+              ref={node => registerDayHeader(group.key, node)}
+              className="sticky top-0 z-[5] border-b border-border/40 bg-background/95 px-4 py-1.5 text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground backdrop-blur"
+            >
+              {group.label}
+            </div>
+          )}
           <TimelineCard
-            key={item.id}
             item={item}
             feedTitle={feedTitle}
             registerNode={registerCardNode}
@@ -393,7 +474,9 @@ export default function RssTimelineBlock({
             autoViewSuppressed={unmarkedIds.has(item.id)}
             onToggleSaved={() => onToggleSaved(item)}
           />
-        ))}
+          </div>
+          )
+        })}
 
         {renderedCount < filteredEntries.length && <div ref={loadMoreRef} className="h-px" aria-label="Load more articles" />}
 
