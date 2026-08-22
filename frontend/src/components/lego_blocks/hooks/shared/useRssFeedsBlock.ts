@@ -5,6 +5,7 @@ import {
   markRssItemsReadOrch,
   readRssFeedPreferencesOrch,
   removeRssItemsOrch,
+  unmarkRssItemReadOrch,
   updateRssItemMetaOrch,
 } from '@/services/orchestrators/rssFeedOrch'
 import {
@@ -251,6 +252,13 @@ export function markAllRssItemsReadBlock(feedId?: string): void {
     .filter(feed => !feedId || feed.feedId === feedId)
     .flatMap(feed => feed.items.filter(item => !item.read))
   markRssItemsReadBlock(items)
+}
+
+/** Undo a read mark — whether the reader made it or scrolling did. */
+export function unmarkRssItemReadBlock(item: RssFeedItemBlock): void {
+  if (!item.read && !item.viewedAt && !item.dismissedAt) return
+  patchItemsBlock([item.id], { viewedAt: null, dismissedAt: null, read: false })
+  void unmarkRssItemReadOrch(item.id)
 }
 
 export function toggleRssItemSavedBlock(item: RssFeedItemBlock): void {

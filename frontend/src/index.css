@@ -175,15 +175,14 @@
      instead of three unrelated colours, and it means the editor follows a theme
      change with no code involved.
      
-     The hierarchy is deliberate: the live selection is a fill, a match is a
-     *quieter* fill plus a hairline underline. A match is a secondary signal —
-     "the same word is also here" — and giving it equal weight to the thing you
+     The hierarchy is deliberate: a match is the same fill as the live
+     selection at roughly half the alpha. A match is a secondary signal — "the
+     same word is also here" — and giving it equal weight to the thing you
      actually selected is what made CodeMirror's lime default read as noise. */
   :root {
     --ltm-editor-selection: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 15%, transparent);
     --ltm-editor-selection-idle: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 7%, transparent);
     --ltm-editor-match: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 8%, transparent);
-    --ltm-editor-match-edge: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 40%, transparent);
   }
   /* Dark needs more of the accent to read at all: the same percentage over a
      near-black ground lands far closer to the background than over white. */
@@ -191,7 +190,6 @@
     --ltm-editor-selection: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 30%, transparent);
     --ltm-editor-selection-idle: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 15%, transparent);
     --ltm-editor-match: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 17%, transparent);
-    --ltm-editor-match-edge: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 55%, transparent);
   }
 
   /* Syntax highlighting for fenced code blocks in view mode (rehype-highlight

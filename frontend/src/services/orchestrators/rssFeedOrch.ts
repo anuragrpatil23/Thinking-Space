@@ -537,6 +537,19 @@ export async function markRssItemViewedOrch(itemId: string): Promise<void> {
   await updateRssItemStateOrch(itemId, { viewedAt: new Date().toISOString() })
 }
 
+/**
+ * Put an article back to unread.
+ *
+ * Clears BOTH timestamps, not just the explicit dismissal: `read` is the
+ * projection of `viewedAt || dismissedAt`, so leaving an automatic view behind
+ * would silently keep the article read and make the undo look broken. Scrolling
+ * past an article marks it viewed, so this is the only way back from a mark the
+ * reader never intended.
+ */
+export async function unmarkRssItemReadOrch(itemId: string): Promise<void> {
+  await updateRssItemStateOrch(itemId, { viewedAt: null, dismissedAt: null })
+}
+
 // ---------------------------------------------------------------------------
 // Fetch and parse
 // ---------------------------------------------------------------------------

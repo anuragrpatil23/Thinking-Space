@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent } from 'react'
-import { AlertCircle, Bookmark, Check, Eye, ListChecks, Loader2, Rss, X } from 'lucide-react'
+import { AlertCircle, Bookmark, Check, Circle, Eye, ListChecks, Loader2, Rss, X } from 'lucide-react'
 import {
   pickRssTimelineAnchorBlock,
   type RssFeedItemBlock,
@@ -68,6 +68,7 @@ interface RssTimelineBlockProps {
   onOpen: (item: RssFeedItemBlock) => void
   onViewed: (item: RssFeedItemBlock) => void
   onMarkRead: (items: RssFeedItemBlock[]) => void
+  onUnmarkRead: (item: RssFeedItemBlock) => void
   onToggleSaved: (item: RssFeedItemBlock) => void
 }
 
@@ -81,6 +82,7 @@ export default function RssTimelineBlock({
   onOpen,
   onViewed,
   onMarkRead,
+  onUnmarkRead,
   onToggleSaved,
 }: RssTimelineBlockProps) {
   // Read once, at mount: this is where the reader was before it navigated away.
@@ -255,6 +257,22 @@ export default function RssTimelineBlock({
     onMarkRead([item])
   }, [onMarkRead])
 
+  // Articles the reader put back to unread. Without this the card is still on
+  // screen when the mark clears, so the auto-view observer would re-mark it
+  // ~900ms later and the undo would look like it did nothing.
+  const [unmarkedIds, setUnmarkedIds] = useState<Set<string>>(new Set())
+
+  const handleUnmarkRead = useCallback((item: RssFeedItemBlock) => {
+    setUnmarkedIds(previous => new Set(previous).add(item.id))
+    setSessionHandledIds(previous => {
+      if (!previous.has(item.id)) return previous
+      const next = new Set(previous)
+      next.delete(item.id)
+      return next
+    })
+    onUnmarkRead(item)
+  }, [onUnmarkRead])
+
   const failedFeeds = useMemo(() => feeds.filter(feed => feed.error), [feeds])
   const stillLoading = loadingFeedIds.size > 0
   const showSkeleton = stillLoading && filteredEntries.length === 0
@@ -371,6 +389,8 @@ export default function RssTimelineBlock({
             onOpen={() => onOpen(item)}
             onViewed={() => handleViewed(item)}
             onMarkRead={() => handleMarkRead(item)}
+            onUnmarkRead={() => handleUnmarkRead(item)}
+            autoViewSuppressed={unmarkedIds.has(item.id)}
             onToggleSaved={() => onToggleSaved(item)}
           />
         ))}
@@ -446,7 +466,8 @@ function TimelineCardSkeleton() {
 }
 
 function TimelineCard({
-  item, feedTitle, registerNode, selectionMode, selected, onSelect, onOpen, onViewed, onMarkRead, onToggleSaved,
+  item, feedTitle, registerNode, selectionMode, selected, onSelect, onOpen, onViewed,
+  onMarkRead, onUnmarkRead, autoViewSuppressed, onToggleSaved,
 }: {
   item: RssFeedItemBlock
   feedTitle: string
@@ -458,6 +479,10 @@ function TimelineCard({
   onOpen: () => void
   onViewed: () => void
   onMarkRead: () => void
+  onUnmarkRead: () => void
+  /** True once the reader has put this article back to unread — stops the
+   *  auto-view observer from immediately undoing that. */
+  autoViewSuppressed: boolean
   onToggleSaved: () => void
 }) {
   const ref = useRef<HTMLElement | null>(null)
@@ -472,7 +497,7 @@ function TimelineCard({
   const [markedRead, setMarkedRead] = useState(false)
 
   useEffect(() => {
-    if (item.viewedAt || item.dismissedAt || !ref.current || typeof IntersectionObserver === 'undefined') return
+    if (autoViewSuppressed || item.viewedAt || item.dismissedAt || !ref.current || typeof IntersectionObserver === 'undefined') return
     const node = ref.current
     const observer = new IntersectionObserver(([entry]) => {
       if (entry.isIntersecting && entry.intersectionRatio >= VIEW_RATIO) {
@@ -492,7 +517,7 @@ function TimelineCard({
       if (timerRef.current !== null) window.clearTimeout(timerRef.current)
       if (markReadTimerRef.current !== null) window.clearTimeout(markReadTimerRef.current)
     }
-  }, [item.viewedAt, item.dismissedAt, onViewed])
+  }, [autoViewSuppressed, item.viewedAt, item.dismissedAt, onViewed])
 
   const date = item.pubDate ? new Date(item.pubDate) : null
   const dateLabel = date && !Number.isNaN(date.getTime())
@@ -503,10 +528,26 @@ function TimelineCard({
     })
     : ''
   const wasViewed = Boolean(item.viewedAt || viewedDuringVisit)
-  const isMarkedRead = markedRead || Boolean(item.dismissedAt)
+  // Any read signal counts here — scrolling past an article marks it viewed, and
+  // the reader needs to be able to undo that too, not just their own taps.
+  const isMarkedRead = markedRead || item.read || Boolean(item.dismissedAt || item.viewedAt)
   const hasMore = item.title.length > 150 || item.description.length > 280
-  const confirmMarkRead = () => {
-    if (isMarkedRead) return
+
+  const toggleMarkRead = () => {
+    // Cancel a mark that hasn't committed yet, so a quick double-tap is a no-op
+    // rather than a write followed by an undo.
+    if (markReadTimerRef.current !== null) {
+      window.clearTimeout(markReadTimerRef.current)
+      markReadTimerRef.current = null
+      setMarkedRead(false)
+      return
+    }
+    if (isMarkedRead) {
+      setMarkedRead(false)
+      setViewedDuringVisit(false)
+      onUnmarkRead()
+      return
+    }
     setMarkedRead(true)
     markReadTimerRef.current = window.setTimeout(() => {
       markReadTimerRef.current = null
@@ -604,15 +645,18 @@ function TimelineCard({
           <div className="mt-2 flex items-center gap-1 text-muted-foreground">
             <button
               type="button"
-              onClick={confirmMarkRead}
-              title="Mark read"
+              onClick={toggleMarkRead}
+              aria-pressed={isMarkedRead}
+              title={isMarkedRead ? 'Marked read — tap to put back to unread' : 'Mark read'}
               className={cn(
                 'ltm-touch-target inline-flex items-center gap-1 rounded-full px-2 py-1 text-[13px] transition-all duration-200 hover:bg-muted hover:text-foreground active:scale-95',
-                isMarkedRead && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 motion-safe:animate-[pulse_0.35s_ease-out_1]',
+                isMarkedRead && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
               )}
             >
-              {isMarkedRead && <Check className="h-4 w-4 scale-110 transition-transform duration-200" />}
-              {isMarkedRead ? 'Marked read' : 'Mark read'}
+              {isMarkedRead
+                ? <Check className="h-4 w-4 scale-110 transition-transform duration-200" />
+                : <Circle className="h-4 w-4" />}
+              {isMarkedRead ? 'Read' : 'Mark read'}
             </button>
             <button
               type="button"

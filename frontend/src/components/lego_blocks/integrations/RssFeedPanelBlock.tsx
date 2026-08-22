@@ -28,6 +28,7 @@ import {
   removeRssItemsBlock,
   replaceRssItemBlock,
   toggleRssItemSavedBlock,
+  unmarkRssItemReadBlock,
   useRssFeedsBlock,
 } from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
 import {
@@ -413,6 +414,7 @@ export default function RssFeedPanelBlock({
           onOpen={(item) => handleItemClick(item, rssRowIdBlock('__timeline__', item.id))}
           onViewed={markRssItemViewedBlock}
           onMarkRead={markRssItemsReadBlock}
+          onUnmarkRead={unmarkRssItemReadBlock}
           onToggleSaved={toggleRssItemSavedBlock}
         />
       ) : <div className="min-h-0 flex-1 overflow-y-auto">

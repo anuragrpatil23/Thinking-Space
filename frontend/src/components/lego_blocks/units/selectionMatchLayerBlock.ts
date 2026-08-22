@@ -69,24 +69,19 @@ export function createSelectionMatchLayerBlock(): Extension {
       markers: selectionMatchMarkersBlock,
     }),
     EditorView.baseTheme({
-      // A match is a *quieter* echo of the selection, not a peer of it: a faint
-      // wash of the same accent plus a hairline underline. CodeMirror's default
+      // A match is a *quieter* echo of the selection, not a peer of it: the same
+      // accent as the selection, at roughly half the alpha. CodeMirror's default
       // `#99ff7780` was a saturated lime that had no relationship to anything
       // else on screen and drew the eye harder than the selection it was
       // echoing. Tokens live in index.css so both tints follow the accent the
       // user picked in Settings.
       //
-      // The underline is the part that does the work. Fill alone at a low
-      // enough alpha to stay calm is nearly invisible on a light ground; the
-      // edge keeps a match findable while the fill stays out of the way.
+      // Fill only. This carried a hairline underline on the theory that a wash
+      // this faint would not register on a light ground — it does, and the rule
+      // was drawing a second line under text that already had one under the
+      // heading above it (2026-08-22). Alpha alone separates the two states.
       '.cm-selectionMatchLayer .cm-selectionMatch': {
         backgroundColor: 'var(--ltm-editor-match)',
-        // Inset shadow rather than `border-bottom`: `.cm-layer > *` has no
-        // `box-sizing` override, so it is content-box, and `RectangleMarker`
-        // writes the measured width/height as inline styles. A real border
-        // would add its 1px on top of that height and push every rectangle a
-        // pixel past the text it is marking.
-        boxShadow: 'inset 0 -1px 0 var(--ltm-editor-match-edge)',
         // Layer rectangles are their own boxes, so the softening the span
         // version could never have is free here.
         borderRadius: '2px',
