@@ -166,6 +166,85 @@
   .prose pre code {
     @apply bg-transparent p-0;
   }
+
+  /* Syntax highlighting for fenced code blocks in view mode (rehype-highlight
+     -> highlight.js token classes). Written against app tokens rather than
+     importing an hljs stylesheet: hljs ships light and dark as two files with
+     identical selectors, so shipping both would mean one permanently losing the
+     cascade, and neither matches a themed app.
+
+     The palette is deliberately low-saturation. A code block inside a note is
+     something you read past, not a terminal — the point is to separate strings
+     from keywords from comments, not to decorate. */
+  :root {
+    --ltm-hl-keyword: 265 45% 45%;
+    --ltm-hl-string: 145 40% 32%;
+    --ltm-hl-number: 25 65% 40%;
+    --ltm-hl-title: 215 55% 42%;
+    --ltm-hl-attr: 195 50% 33%;
+    --ltm-hl-meta: 0 0% 45%;
+  }
+  .dark {
+    --ltm-hl-keyword: 265 60% 76%;
+    --ltm-hl-string: 145 42% 62%;
+    --ltm-hl-number: 28 72% 66%;
+    --ltm-hl-title: 210 68% 72%;
+    --ltm-hl-attr: 190 52% 64%;
+    --ltm-hl-meta: 0 0% 60%;
+  }
+
+  .prose .hljs-keyword,
+  .prose .hljs-selector-tag,
+  .prose .hljs-literal,
+  .prose .hljs-type,
+  .prose .hljs-built_in,
+  .prose .hljs-operator {
+    color: hsl(var(--ltm-hl-keyword));
+  }
+  .prose .hljs-string,
+  .prose .hljs-regexp,
+  .prose .hljs-char.escape_,
+  .prose .hljs-addition {
+    color: hsl(var(--ltm-hl-string));
+  }
+  .prose .hljs-number,
+  .prose .hljs-symbol,
+  .prose .hljs-bullet,
+  .prose .hljs-deletion {
+    color: hsl(var(--ltm-hl-number));
+  }
+  .prose .hljs-title,
+  .prose .hljs-name,
+  .prose .hljs-section,
+  .prose .hljs-selector-id,
+  .prose .hljs-selector-class {
+    color: hsl(var(--ltm-hl-title));
+  }
+  .prose .hljs-attr,
+  .prose .hljs-attribute,
+  .prose .hljs-property,
+  .prose .hljs-variable,
+  .prose .hljs-template-variable,
+  .prose .hljs-params {
+    color: hsl(var(--ltm-hl-attr));
+  }
+  .prose .hljs-comment,
+  .prose .hljs-quote,
+  .prose .hljs-doctag {
+    color: hsl(var(--ltm-hl-meta));
+    font-style: italic;
+  }
+  .prose .hljs-meta,
+  .prose .hljs-punctuation,
+  .prose .hljs-tag {
+    color: hsl(var(--ltm-hl-meta));
+  }
+  .prose .hljs-emphasis {
+    font-style: italic;
+  }
+  .prose .hljs-strong {
+    font-weight: 600;
+  }
   .prose hr {
     @apply border-border my-4;
   }

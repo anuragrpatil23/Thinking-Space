@@ -14,6 +14,7 @@ import {
   markdownMathRehypePluginsBlock,
   markdownMathRemarkPluginsBlock,
 } from '@/services/lego_blocks/integrations/markdownMathPluginsBlock'
+import { markdownCodeHighlightRehypePluginsBlock } from '@/services/lego_blocks/integrations/markdownCodeHighlightPluginBlock'
 import TikzDiagramBlock from '@/components/lego_blocks/units/TikzDiagramBlock'
 import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow, List, LayoutDashboard, BookOpenText } from 'lucide-react'
 import {
@@ -797,7 +798,10 @@ function MarkdownTextDocumentRuntimeBlock({
     () => [remarkGfm, ...markdownMathRemarkPluginsBlock, remarkObsidianWikilinksOrch],
     [],
   )
-  const markdownRehypePlugins = useMemo(() => [...markdownMathRehypePluginsBlock], [])
+  const markdownRehypePlugins = useMemo(
+    () => [...markdownMathRehypePluginsBlock, ...markdownCodeHighlightRehypePluginsBlock],
+    [],
+  )
   const renderedViewMarkdown = useMemo(
     () => (
       editorSettings.preserveNewlinesInViewMode
