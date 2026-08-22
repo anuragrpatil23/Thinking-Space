@@ -793,31 +793,36 @@ function ChainTopicCellBlock({
         : `${title}\n\n(original: ${chain.topic})`
       : chain.topic
   return (
-    <td
-      className="max-w-0 truncate px-3 py-1.5 text-foreground/70"
-      title={tooltip}
-    >
-      {isLive && (
-        <ThinkingOrbBlock
-          state="breathing"
-          label="Session still live — summary pending"
-          className="mr-1.5 inline-block"
-        />
-      )}
-      {isReconstructed && (
-        <span
-          className="mr-1.5 rounded bg-amber-500/15 dark:bg-amber-500/25 px-1 py-px text-[9px] uppercase tracking-[0.08em] text-amber-500/90"
-          title="Rebuilt from the prompt history log — the original transcript was deleted by Claude Code's cleanup. Times and prompt counts are real; tokens and assistant turns are gone."
-        >
-          rebuilt
-        </span>
-      )}
-      <span className={cn(isAi && 'text-foreground/85')}>{title}</span>
-      {loading && (
-        <span className="ml-1 text-[9px] uppercase tracking-[0.08em] text-muted-foreground/60">
-          …
-        </span>
-      )}
+    <td className="max-w-0 px-3 py-1.5 text-foreground/70" title={tooltip}>
+      {/* The orb's canvas carries `display: block` as an inline style, which
+          the package sets and no class can override — dropped straight into
+          the cell it therefore takes a line of its own and pushes the title
+          down, which is exactly what it did until this row became a flex
+          line. `min-w-0` on the row plus `truncate` on the title span keeps
+          the ellipsis behaviour the `max-w-0` cell relies on; truncating the
+          <td> itself cannot work once its content is a flex container. */}
+      <div className="flex min-w-0 items-center gap-1.5">
+        {isLive && (
+          <ThinkingOrbBlock
+            state="weaving"
+            label="Session still live — summary pending"
+          />
+        )}
+        {isReconstructed && (
+          <span
+            className="shrink-0 rounded bg-amber-500/15 dark:bg-amber-500/25 px-1 py-px text-[9px] uppercase tracking-[0.08em] text-amber-500/90"
+            title="Rebuilt from the prompt history log — the original transcript was deleted by Claude Code's cleanup. Times and prompt counts are real; tokens and assistant turns are gone."
+          >
+            rebuilt
+          </span>
+        )}
+        <span className={cn('truncate', isAi && 'text-foreground/85')}>{title}</span>
+        {loading && (
+          <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-muted-foreground/60">
+            …
+          </span>
+        )}
+      </div>
     </td>
   )
 }

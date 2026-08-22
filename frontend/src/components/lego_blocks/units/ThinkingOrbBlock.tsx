@@ -20,12 +20,18 @@
  * the present tense*. Two states are in use, and each answers a question the
  * surrounding UI genuinely cannot:
  *
- *   `breathing` — the session is still live, so no digest exists yet.
+ *   `weaving`   — the session is still live, so no digest exists yet.
  *                 `aiActivitySessionDigestOrch` refuses to summarise an
  *                 unsettled session (see aiActivityLivenessBlock), so the row
  *                 falls back to the raw first-message topic. Without a mark,
  *                 that row just looks worse than its neighbours for no visible
- *                 reason.
+ *                 reason. `breathing` (a sparse dotted ring) held this slot
+ *                 first and was rejected on sight: at 20px it reads as a
+ *                 half-drawn loading spinner, not a live session. `weaving`
+ *                 (braid) was picked by eye against all nine rendered at 20px
+ *                 in a mock topic row: it reads as a solid, continuously
+ *                 turning body rather than a partial outline, and stays
+ *                 distinct from the ribbon below.
  *   `composing` — a digest is being (re)generated. The stale title and summary
  *                 stay on screen while the model runs, so without a mark you
  *                 cannot tell whether the text you are reading is the old
