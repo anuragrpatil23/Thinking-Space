@@ -565,22 +565,29 @@ function TimelineCard({
               )}>
                 {item.title || '(Untitled)'}
               </h3>
-              {item.description && (
-                // No `whitespace-pre-wrap` here: WebKit silently refuses to apply
+              {/* Collapsed, the teaser sits beside the thumbnail. Expanded, it
+                  moves below (see the full-width copy) so the long text uses the
+                  whole card instead of wrapping in the narrow column the image
+                  leaves behind. */}
+              {item.description && !expanded && (
+                // No `whitespace-pre-wrap`: WebKit silently refuses to apply
                 // -webkit-line-clamp when white-space is pre-wrap, which let feed
                 // descriptions run to full length and made cards enormous.
                 // Normal whitespace handling also collapses the ragged newlines
                 // that come out of stripped feed HTML.
-                <p className={cn(
-                  'mt-1 text-[14px] leading-[1.45] text-muted-foreground',
-                  !expanded && 'line-clamp-2',
-                )}>
+                <p className="mt-1 line-clamp-2 text-[14px] leading-[1.45] text-muted-foreground">
                   {item.description}
                 </p>
               )}
             </div>
             {item.imageUrl && <ArticleThumbnail url={item.imageUrl} />}
           </div>
+
+          {item.description && expanded && (
+            <p className="mt-2 text-[14px] leading-[1.5] text-muted-foreground">
+              {item.description}
+            </p>
+          )}
         </button>
 
         {hasMore && (
