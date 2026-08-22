@@ -20,6 +20,9 @@ import ReadingSessionEditModalBlock, {
 import { useChainDigestBlock } from '@/components/lego_blocks/hooks/units/useChainDigestBlock'
 import AiActivitySourceChipBlock from '@/components/lego_blocks/units/AiActivitySourceChipBlock'
 import LightMarkdownTextBlock from '@/components/lego_blocks/units/LightMarkdownTextBlock'
+import ThinkingOrbBlock from '@/components/lego_blocks/units/ThinkingOrbBlock'
+import { isLiveBlock } from '@/services/lego_blocks/units/aiActivityLivenessBlock'
+import { useVisibleIntervalBlock } from '@/components/lego_blocks/hooks/shared/useVisibleIntervalBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import { loadVaultGraph } from '@/services/orchestrators/vaultGraphOrch'
@@ -30,6 +33,12 @@ const SessionGraphSlideOverBlock = lazy(
 const ManualSessionEditModalBlock = lazy(
   () => import('@/components/lego_blocks/integrations/ManualSessionEditModalBlock'),
 )
+
+/** How often to re-check whether any visible session is still live. Coarse on
+ *  purpose: the thing being watched is a 10-minute settle window, so a minute
+ *  of lag on the orb switching off is invisible, and matching the app's other
+ *  slow clocks (`useTimeOfDayBlock`) keeps the wakeups aligned. */
+const LIVE_TICK_MS = 60_000
 
 /** Warm the shared graph snapshot on peek-intent (row hover) so the first open
  *  is instant; loadVaultGraph dedupes in-flight + reuses its 5-min snapshot. */
@@ -245,6 +254,28 @@ export default function AiActivityDayTableBlock({
   const [manualModal, setManualModal] = useState<
     { mode: 'create' } | { mode: 'edit'; record: ManualSessionRecord } | null
   >(null)
+
+  // Liveness is a statement about wall-clock quiet, so it goes stale on its own
+  // without any data changing: a row that was live when the panel opened stops
+  // being live SESSION_SETTLE_MS after its last message, with no re-render to
+  // notice. This tick exists solely to re-evaluate it.
+  //
+  // Gated twice, per the energy contract: `useVisibleIntervalBlock` stops it in
+  // a background window, and the `anyLive ? … : null` period means the timer
+  // does not exist at all unless something on screen is actually live — which
+  // is the normal case, since the settle window is only 10 minutes. When the
+  // last live session settles, the next tick flips `anyLive` false and the
+  // interval tears itself down. New activity arrives as a new `chains` array,
+  // which recomputes `anyLive` against a fresh clock and starts it again.
+  const [clockTick, setClockTick] = useState(0)
+  const anyLive = useMemo(
+    () => chains.some(c => isLiveBlock(c.endedIso ?? c.startedIso)),
+    // clockTick is a deliberate dependency: it is the only thing that makes
+    // this re-read the clock when the chain list has not changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chains, clockTick],
+  )
+  useVisibleIntervalBlock(() => setClockTick(t => t + 1), anyLive ? LIVE_TICK_MS : null)
 
   // A manual chain carries the record key on its (single) session; the note
   // isn't on the chain, so load the full record before opening the editor.
@@ -480,7 +511,11 @@ export default function AiActivityDayTableBlock({
                     <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/80">
                       {isManual ? <span className="text-muted-foreground/50">—</span> : c.msgCount}
                     </td>
-                    <ChainTopicCellBlock chain={c} isReconstructed={isReconstructed} />
+                    <ChainTopicCellBlock
+                      chain={c}
+                      isReconstructed={isReconstructed}
+                      isLive={isLiveBlock(c.endedIso ?? c.startedIso)}
+                    />
                   </tr>
                   {isExpanded && (
                     <tr className="border-b border-border/20 bg-foreground/[0.02]">
@@ -736,21 +771,38 @@ export default function AiActivityDayTableBlock({
 function ChainTopicCellBlock({
   chain,
   isReconstructed,
+  isLive,
 }: {
   chain: ActivityChain
   isReconstructed: boolean
+  /** Session is still being worked in, so no digest can exist for it yet. */
+  isLive: boolean
 }) {
   const { title, summary, isAi, loading } = useChainDigestBlock(chain)
-  const tooltip = isAi
-    ? summary
-      ? `${title}\n\n${summary}\n\n(original: ${chain.topic})`
-      : `${title}\n\n(original: ${chain.topic})`
-    : chain.topic
+  // A live row is degraded for a reason the cell can otherwise not state: the
+  // digest orchestrator refuses to summarise an unsettled session, so `title`
+  // here is the raw first message while every settled neighbour shows a real
+  // AI title. The `rebuilt` badge beside it explains the other degraded case;
+  // this is the third, and it had no mark at all.
+  const tooltip = isLive
+    ? `Still going — the summary is written once the session has been quiet for a few minutes.\n\n(opened with: ${chain.topic})`
+    : isAi
+      ? summary
+        ? `${title}\n\n${summary}\n\n(original: ${chain.topic})`
+        : `${title}\n\n(original: ${chain.topic})`
+      : chain.topic
   return (
     <td
       className="max-w-0 truncate px-3 py-1.5 text-foreground/70"
       title={tooltip}
     >
+      {isLive && (
+        <ThinkingOrbBlock
+          state="breathing"
+          label="Session still live — summary pending"
+          className="mr-1.5 inline-block"
+        />
+      )}
       {isReconstructed && (
         <span
           className="mr-1.5 rounded bg-amber-500/15 dark:bg-amber-500/25 px-1 py-px text-[9px] uppercase tracking-[0.08em] text-amber-500/90"
@@ -788,6 +840,20 @@ function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
           Topic
         </span>
         <AiActivitySourceChipBlock generator={generator} />
+        {/* While the model runs, the stale title and summary below stay on
+            screen — `useChainDigestBlock` seeds from the previous value and
+            only swaps on resolve. Without a mark you cannot tell whether what
+            you are reading is the old answer or the new one, and a
+            regeneration that lands on a similar title looks like nothing
+            happened. The orb plus the dimming below say "this is being
+            replaced"; the button's own spinner only says "your click
+            registered". */}
+        {loading && (
+          <ThinkingOrbBlock
+            state="composing"
+            label="Regenerating this summary"
+          />
+        )}
         <button
           type="button"
           onClick={e => {
@@ -807,7 +873,13 @@ function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
           sentence — which is exactly what it is not: it names the whole chain,
           while the body below is one section per session. */}
       <div
-        className="whitespace-pre-wrap pb-0.5 text-[13px] font-semibold leading-snug text-foreground"
+        className={cn(
+          'whitespace-pre-wrap pb-0.5 text-[13px] font-semibold leading-snug text-foreground transition-opacity',
+          // Dimmed, not hidden: the old summary is still the best answer
+          // available until the new one lands, and blanking it would trade one
+          // ambiguity for a worse one (an empty block reads as "no summary").
+          loading && 'opacity-40',
+        )}
         style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
       >
         {title}
@@ -815,7 +887,10 @@ function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
       {summary && (
         <LightMarkdownTextBlock
           text={summary}
-          className="border-t border-border/40 pt-1.5 text-[11px] leading-relaxed text-foreground/70"
+          className={cn(
+            'border-t border-border/40 pt-1.5 text-[11px] leading-relaxed text-foreground/70 transition-opacity',
+            loading && 'opacity-40',
+          )}
         />
       )}
       {isAi && (
