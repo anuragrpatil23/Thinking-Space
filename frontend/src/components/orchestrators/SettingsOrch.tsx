@@ -1319,7 +1319,7 @@ export default function SettingsOrch({
             />
             <SettingsRowBlock
               label="Selected item color"
-              description="Highlight color for the selected file in the explorer and the RSS feed list."
+              description="One accent, everywhere something is selected: the explorer file, the RSS feed row, the editor caret, and selected text and its matches."
               control={(
                 <>
                   <input

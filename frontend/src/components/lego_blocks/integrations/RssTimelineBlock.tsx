@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent } from 'react'
-import { AlertCircle, Bookmark, CalendarDays, Check, Circle, Eye, ListChecks, Loader2, Rss, X } from 'lucide-react'
+import { AlertCircle, Bookmark, CalendarDays, Check, Circle, ListChecks, Loader2, Rss, X } from 'lucide-react'
 import {
   buildRssTimelineDayGroupsBlock,
   pickRssTimelineAnchorBlock,
@@ -611,9 +611,13 @@ function TimelineCard({
     })
     : ''
   const wasViewed = Boolean(item.viewedAt || viewedDuringVisit)
-  // Any read signal counts here — scrolling past an article marks it viewed, and
-  // the reader needs to be able to undo that too, not just their own taps.
-  const isMarkedRead = markedRead || item.read || Boolean(item.dismissedAt || item.viewedAt)
+  // Only an EXPLICIT dismissal counts as "handled". Auto-view fires ~900ms after
+  // a card is 60% on screen — i.e. while the reader is still looking at it — so
+  // letting it flip the button and recede the card made every scroll feel like
+  // something was being done to the list. Undo stays reachable: on an
+  // auto-viewed article the first tap dismisses it, the second puts it back to
+  // unread (unmark clears both timestamps).
+  const isMarkedRead = markedRead || Boolean(item.dismissedAt)
   const hasMore = item.title.length > 150 || item.description.length > 280
 
   const toggleMarkRead = () => {
@@ -642,11 +646,14 @@ function TimelineCard({
     <article
       ref={setCardRef}
       className={cn(
-        'relative flex gap-3 border-b border-border/60 px-4 py-3.5 transition-colors',
+        'relative flex gap-3 border-b border-border/60 px-4 py-3.5',
+        // Opacity has to be named explicitly — `transition-colors` does not
+        // cover it, which is what made the dim land as a hard 45% snap.
+        'transition-[opacity,background-color] duration-500 ease-out',
         selected && 'bg-primary/5',
-        // Handled articles recede without disappearing — the reader can still
-        // see what they just dealt with.
-        !selected && isMarkedRead && 'opacity-55',
+        // Dismissed articles recede, gently. Deep enough to read as handled,
+        // shallow enough that it doesn't yank the eye down the page.
+        !selected && isMarkedRead && 'opacity-70',
       )}
     >
       <div className="shrink-0 pt-0.5">
@@ -675,10 +682,18 @@ function TimelineCard({
                 <time className="shrink-0 text-muted-foreground">{dateLabel}</time>
               </>
             )}
-            {!wasViewed && (
-              <span aria-label="Unread" className="ml-auto h-2 w-2 shrink-0 rounded-full bg-primary" />
-            )}
-            {wasViewed && <Eye aria-label="Viewed" className="ml-auto h-4 w-4 shrink-0 text-muted-foreground/70" />}
+            {/* Fixed-size slot: the old dot/eye swap changed the element and its
+                size (h-2 -> h-4), so the meta row reflowed the instant an
+                article was viewed. Now only opacity changes. */}
+            <span className="ml-auto grid h-2 w-2 shrink-0 place-items-center">
+              <span
+                aria-label={wasViewed ? undefined : 'Unread'}
+                className={cn(
+                  'h-2 w-2 rounded-full bg-primary transition-opacity duration-500 ease-out',
+                  wasViewed && 'opacity-0',
+                )}
+              />
+            </span>
           </div>
 
           <div className="mt-1 flex gap-3">

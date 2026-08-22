@@ -677,6 +677,22 @@ export async function fetchAndParseRssFeedOrch(
       await Promise.all(newItems.map(item => writeRssItemFileOrch(config.id, feedTitle, item)))
     }
 
+    // Backfill lead images onto articles persisted before `imageUrl` existed.
+    // Only reaches articles the publisher still lists: the stored body was
+    // stripped to plain text before it was written, so an older article's
+    // <img> is gone for good and cannot be recovered from the cache. Patching
+    // one field keeps any user edits to the rest of the frontmatter.
+    // Fire-and-forget — this must never delay the first paint.
+    const imageBackfill = liveItems.filter(item => {
+      const stored = storedItems.get(item.id)
+      return Boolean(stored && !stored.imageUrl && item.imageUrl)
+    })
+    if (imageBackfill.length > 0) {
+      void Promise.all(imageBackfill.map(item =>
+        patchRssItemFrontmatterOrch(item.id, { imageUrl: item.imageUrl }),
+      ))
+    }
+
     sortByPubDateDesc(liveItems)
 
     // Purge old articles in the background — doesn't block the UI.
