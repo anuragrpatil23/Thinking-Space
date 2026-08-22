@@ -977,8 +977,39 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
       '.cm-lineNumbers .cm-gutterElement': {
         padding: '0 0.35rem 0 0',
       },
-      '.cm-selectionBackground, ::selection': {
-        backgroundColor: 'hsl(var(--primary) / 0.22)',
+      // Selection tint rides the user's accent (see `--ltm-editor-selection` in
+      // index.css), so it belongs to the same family as the focus caret rather
+      // than being a second, unrelated colour.
+      //
+      // The `.cm-editor` in these selectors is load-bearing, not decoration.
+      // The rule this replaced was `'.cm-selectionBackground, ::selection'`,
+      // and it never applied to a focused editor at all — every selection you
+      // have ever seen here was CodeMirror's stock `#d7d4f0` lavender
+      // (2026-08-22). `EditorView.theme()` prefixes a rule with ONE generated
+      // class, and `@codemirror/view`'s base theme ships
+      // `&light.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground`
+      // where `&light` also resolves to one class — five classes against our
+      // two, so the vendor default won on specificity no matter what order the
+      // stylesheets mounted in. Matching its shape only ties at five (and a tie
+      // is decided by StyleModule mount order, which is exactly the coin-flip
+      // the `&` comment above warns about); adding `.cm-editor` — a class the
+      // editor root already carries — makes it six and settles it.
+      //
+      // Focused and idle are split for the same reason CM6 splits them: a
+      // fully-saturated block sitting in a pane you have clicked away from
+      // competes with whatever you moved to.
+      '&.cm-editor .cm-selectionLayer .cm-selectionBackground': {
+        backgroundColor: 'var(--ltm-editor-selection-idle)',
+        borderRadius: '2px',
+      },
+      '&.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
+        backgroundColor: 'var(--ltm-editor-selection)',
+      },
+      // iPhone runs without `drawSelection`, so there is no selection layer
+      // there and the native selection is what shows — same tint, different
+      // mechanism. Nothing in CM6 styles this, so it needs no specificity war.
+      '&.cm-editor ::selection': {
+        backgroundColor: 'var(--ltm-editor-selection)',
       },
       '.cm-focused': {
         outline: 'none',
