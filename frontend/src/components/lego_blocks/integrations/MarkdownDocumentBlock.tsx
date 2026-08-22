@@ -29,6 +29,7 @@ import {
 } from '@/services/orchestrators/excalidrawSceneOrch'
 import {
   excalidrawSaveGuardBlock,
+  excalidrawTextCharsBlock,
   type ExcalidrawSaveTriggerBlock,
 } from '@/services/lego_blocks/units/excalidrawSaveGuardBlock'
 import { useExcalidrawDraftJournalBlock } from '@/components/lego_blocks/hooks/shared/useExcalidrawDraftJournalBlock'
@@ -130,6 +131,7 @@ import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOr
 import { useScreenWakeLockBlock } from '@/components/lego_blocks/hooks/useScreenWakeLockBlock'
 import {
   clearExcalidrawCrashMarkerBlock,
+  excalidrawMarkerActionBlock,
   markExcalidrawCrashStageBlock,
 } from '@/services/lego_blocks/units/excalidrawCrashMarkerBlock'
 import {
@@ -379,6 +381,15 @@ function MarkdownTextDocumentRuntimeBlock({
    *  count only makes the guard more or less strict, and a genuine external
    *  edit is caught by the mtime/hash conflict check regardless. */
   const excalidrawBaselineCountRef = useRef<number | null>(null)
+  /** Has the Excalidraw API attached for the document currently open?
+   *
+   *  The crash marker's whole meaning depends on this: a teardown after a
+   *  successful attach is a normal close, a teardown before one is a mount that
+   *  never finished. */
+  const excalidrawApiEverAttachedRef = useRef(false)
+  /** Text characters in the drawing as it stands on disk. Counted alongside the
+   *  element count and carried forward the same way. */
+  const excalidrawBaselineTextCharsRef = useRef<number | null>(null)
 
   // Annotations are never only in the canvas. See docs/contracts/DURABILITY.md.
   // Runs regardless of `autoSaveEnabled` — that setting decides when the *file*
@@ -1100,7 +1111,11 @@ function MarkdownTextDocumentRuntimeBlock({
   }, [excalidrawJournal, isIosSurface])
 
   // A different document means a different baseline.
-  useEffect(() => { excalidrawBaselineCountRef.current = null }, [path])
+  useEffect(() => {
+    excalidrawBaselineCountRef.current = null
+    excalidrawBaselineTextCharsRef.current = null
+    excalidrawApiEverAttachedRef.current = false
+  }, [path])
 
   // Annotations from a session that ended badly. Looked for once per document,
   // and only offered — never applied on its own. Silently mutating someone's
@@ -1203,9 +1218,32 @@ function MarkdownTextDocumentRuntimeBlock({
       excalidrawCrashMarkerClearTimeoutRef.current = null
     }
     if (!api) {
-      markExcalidrawCrashStageBlock(path, 'editor_mounting')
+      // A null arrives from two very different events, and this used to treat
+      // them as one: the editor mounting before its API exists, and the editor
+      // *unmounting* because the document was closed. `ExcalidrawDocumentBlock`
+      // fires `onApiChange(null)` from an effect cleanup, so every clean exit
+      // planted a fresh `editor_mounting` marker that nothing ever cleared —
+      // and the next launch reported a crash that never happened.
+      //
+      // Whether the API ever attached is what separates them. Attached then
+      // gone means the editor stabilised and is now closing normally; never
+      // attached means we really are mid-mount, which is the state worth
+      // recording. Confirmed against a session on 2026-08-22 that reported a
+      // crash with no jetsam kill and a cleanly saved file.
+      const decision = excalidrawMarkerActionBlock({
+        hasApi: false,
+        everAttached: excalidrawApiEverAttachedRef.current,
+      })
+      if (decision.action === 'clear') {
+        excalidrawApiEverAttachedRef.current = false
+        preserveExcalidrawCrashMarkerOnUnmountRef.current = false
+        clearExcalidrawCrashMarkerBlock()
+        return
+      }
+      markExcalidrawCrashStageBlock(path, decision.stage)
       return
     }
+    excalidrawApiEverAttachedRef.current = true
     markExcalidrawCrashStageBlock(path, 'api_attached')
     excalidrawCrashMarkerClearTimeoutRef.current = window.setTimeout(() => {
       preserveExcalidrawCrashMarkerOnUnmountRef.current = false
@@ -1438,12 +1476,21 @@ function MarkdownTextDocumentRuntimeBlock({
       // every auto-save — 4.59M characters for the drawing this guard was
       // written for — on the device that is already running out of memory.
       if (excalidrawBaselineCountRef.current === null) {
-        excalidrawBaselineCountRef.current = parseExcalidrawSceneRawOrch(content)?.elements.length ?? 0
+        const parsed = parseExcalidrawSceneRawOrch(content)
+        excalidrawBaselineCountRef.current = parsed?.elements.length ?? 0
+        excalidrawBaselineTextCharsRef.current = excalidrawTextCharsBlock(
+          (parsed?.elements ?? []) as ReadonlyArray<{ type?: unknown; text?: unknown }>,
+        )
       }
       const baselineElementCount = excalidrawBaselineCountRef.current
+      const nextTextChars = excalidrawTextCharsBlock(
+        sceneForSave.elements as ReadonlyArray<{ type?: unknown; text?: unknown }>,
+      )
       const verdict = excalidrawSaveGuardBlock({
         baselineElementCount,
         nextElementCount: sceneForSave.elements.length,
+        baselineTextChars: excalidrawBaselineTextCharsRef.current ?? undefined,
+        nextTextChars,
         trigger,
       })
       if (!verdict.allow) {
@@ -1470,6 +1517,7 @@ function MarkdownTextDocumentRuntimeBlock({
         baseContent: content,
       })
       excalidrawBaselineCountRef.current = sceneForSave.elements.length
+      excalidrawBaselineTextCharsRef.current = nextTextChars
       // The write landed, so the journalled delta is accounted for.
       excalidrawJournal.resolve()
       const reloaded = await readMarkdownDocument(path, { includeHash: false })

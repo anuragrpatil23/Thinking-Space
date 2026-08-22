@@ -35,6 +35,32 @@ function readRawMarker(): ExcalidrawCrashMarkerBlock | null {
   }
 }
 
+/** What the crash marker should do when the Excalidraw API reference changes.
+ *
+ *  `onApiChange(null)` is fired both while the editor is mounting (before its
+ *  API exists) and from the effect cleanup when the document closes. Treating
+ *  those alike meant every clean exit planted an `editor_mounting` marker that
+ *  nothing cleared, so the next launch reported a crash that never happened —
+ *  observed 2026-08-22 with no jetsam kill and a cleanly saved file.
+ *
+ *  Whether the API ever attached is the discriminator. */
+export type ExcalidrawMarkerActionBlock =
+  | { action: 'mark'; stage: ExcalidrawCrashStageBlock }
+  | { action: 'clear' }
+
+export function excalidrawMarkerActionBlock(options: {
+  /** The API reference just handed to us. */
+  hasApi: boolean
+  /** Did the API attach at any point for the document currently open? */
+  everAttached: boolean
+}): ExcalidrawMarkerActionBlock {
+  if (options.hasApi) return { action: 'mark', stage: 'api_attached' }
+  // Attached, then gone: the editor stabilised and is closing normally.
+  if (options.everAttached) return { action: 'clear' }
+  // Never attached: genuinely mid-mount, which is the state worth recording.
+  return { action: 'mark', stage: 'editor_mounting' }
+}
+
 export function markExcalidrawCrashStageBlock(path: string, stage: ExcalidrawCrashStageBlock): void {
   if (!canUseStorage()) return
   try {

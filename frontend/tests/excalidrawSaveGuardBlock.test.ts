@@ -12,6 +12,8 @@ import {
   excalidrawSaveGuardBlock,
   SHRINK_MIN_LOST_ELEMENTS_BLOCK,
   SHRINK_REFUSE_RATIO_BLOCK,
+  SHRINK_MIN_LOST_TEXT_CHARS_BLOCK,
+  excalidrawTextCharsBlock,
 } from '@/services/lego_blocks/units/excalidrawSaveGuardBlock'
 
 const IDEA_FACTORY_ELEMENTS = 921
@@ -133,5 +135,89 @@ describe('the message says what was not done', () => {
       baselineElementCount: 200, nextElementCount: 50, trigger: 'auto',
     })
     expect(verdict.allow === false && verdict.reason).toMatch(/use Save/i)
+  })
+})
+
+describe('content shrink — the count-blind failure', () => {
+  // A scene can mount with every element present but their text not yet
+  // populated. By element count that is indistinguishable from a healthy save,
+  // which is exactly the hole this closes.
+  const BOOK_CHARS = 2_195_361
+
+  it('refuses an auto-save whose text collapsed while the count held', () => {
+    const verdict = excalidrawSaveGuardBlock({
+      baselineElementCount: 921,
+      nextElementCount: 921,
+      baselineTextChars: BOOK_CHARS,
+      nextTextChars: 0,
+      trigger: 'auto',
+    })
+    expect(verdict.allow).toBe(false)
+    expect(verdict.allow === false && verdict.reason).toMatch(/left untouched/)
+  })
+
+  it('allows ordinary text editing', () => {
+    for (const next of [BOOK_CHARS, BOOK_CHARS + 5_000, BOOK_CHARS - 1_500]) {
+      expect(excalidrawSaveGuardBlock({
+        baselineElementCount: 921, nextElementCount: 921,
+        baselineTextChars: BOOK_CHARS, nextTextChars: next, trigger: 'auto',
+      }).allow).toBe(true)
+    }
+  })
+
+  it('does not fire on a small drawing losing a label', () => {
+    expect(excalidrawSaveGuardBlock({
+      baselineElementCount: 6, nextElementCount: 6,
+      baselineTextChars: 120, nextTextChars: 0, trigger: 'auto',
+    }).allow).toBe(true)
+  })
+
+  it('needs both the ratio and the character floor', () => {
+    // Huge ratio, small absolute loss.
+    expect(excalidrawSaveGuardBlock({
+      baselineElementCount: 10, nextElementCount: 10,
+      baselineTextChars: 1_000, nextTextChars: 0, trigger: 'auto',
+    }).allow).toBe(true)
+    // Large absolute loss, small ratio.
+    expect(excalidrawSaveGuardBlock({
+      baselineElementCount: 10, nextElementCount: 10,
+      baselineTextChars: 1_000_000, nextTextChars: 970_000, trigger: 'auto',
+    }).allow).toBe(true)
+  })
+
+  it('an explicit save still wins', () => {
+    expect(excalidrawSaveGuardBlock({
+      baselineElementCount: 921, nextElementCount: 921,
+      baselineTextChars: BOOK_CHARS, nextTextChars: 0, trigger: 'explicit',
+    }).allow).toBe(true)
+  })
+
+  it('skips the check when no counts are supplied', () => {
+    expect(excalidrawSaveGuardBlock({
+      baselineElementCount: 921, nextElementCount: 921, trigger: 'auto',
+    }).allow).toBe(true)
+  })
+
+  it('has a floor low enough to be meaningful', () => {
+    expect(SHRINK_MIN_LOST_TEXT_CHARS_BLOCK).toBeLessThanOrEqual(5_000)
+  })
+})
+
+describe('excalidrawTextCharsBlock', () => {
+  it('sums only text elements', () => {
+    expect(excalidrawTextCharsBlock([
+      { type: 'text', text: 'hello' },
+      { type: 'freedraw' },
+      { type: 'text', text: 'world!' },
+      { type: 'rectangle', text: 'ignored' },
+    ])).toBe(11)
+  })
+
+  it('tolerates malformed elements', () => {
+    expect(excalidrawTextCharsBlock([
+      null as unknown as { type?: unknown },
+      { type: 'text' },
+      { type: 'text', text: 42 as unknown as string },
+    ])).toBe(0)
   })
 })
