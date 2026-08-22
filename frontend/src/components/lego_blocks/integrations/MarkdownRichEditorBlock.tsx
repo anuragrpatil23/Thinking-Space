@@ -61,6 +61,7 @@ import {
   FOCUS_KEYBOARD_INSET_VAR_BLOCK,
   type EditorTypographyProfileBlock,
 } from '@/components/lego_blocks/units/iaTypographyProfileBlock'
+import { createSelectionMatchLayerBlock } from '@/components/lego_blocks/units/selectionMatchLayerBlock'
 import { createMarkdownTaskCheckboxExtensionBlock } from '@/components/lego_blocks/units/markdownTaskCheckboxExtensionBlock'
 import { resolveEditorLanguageBlock } from '@/components/lego_blocks/units/editorLanguageBlock'
 import { findEditorLinkAtColumnBlock } from '@/components/lego_blocks/units/markdownEditorLinkClickBlock'
@@ -1112,6 +1113,10 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
       EditorView.lineWrapping,
       cmPlaceholder(placeholder),
       uiTheme,
+      // Same highlight as `highlightSelectionMatches`, painted underneath the
+      // text instead of wrapped around it — see the block for why the built-in
+      // made the line reflow. `basicSetup` turns the built-in off below.
+      createSelectionMatchLayerBlock(),
       ...(inlineDiffRender ? [EditorState.readOnly.of(true)] : []),
       ...(inlineDiffDecorations ? [EditorView.decorations.of(inlineDiffDecorations)] : []),
       EditorView.updateListener.of((update) => {
@@ -1688,7 +1693,8 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
             bracketMatching: true,
             closeBrackets: true,
             autocompletion: false,
-            highlightSelectionMatches: true,
+            // Replaced by `createSelectionMatchLayerBlock()` in `extensions`.
+            highlightSelectionMatches: false,
           }}
           extensions={extensions}
           onCreateEditor={(view) => {
