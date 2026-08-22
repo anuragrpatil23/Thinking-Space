@@ -271,54 +271,54 @@ export default function RssTimelineBlock({
     >
       <PullIndicator distance={pullDistance} refreshing={refreshing} />
       <div className="sticky top-0 z-10 border-b border-border/60 bg-background/85 backdrop-blur-xl">
-        <div className="flex min-w-0 items-center justify-between gap-2 px-4 pt-2.5">
-          <div className="min-w-0 truncate text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            {stillLoading && filteredEntries.length === 0
-              ? 'Loading'
-              : `${filteredEntries.length} article${filteredEntries.length === 1 ? '' : 's'}`}
+        {selectionMode ? (
+          <div className="flex items-center gap-2 px-4 py-2">
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+              {selectedItems.length === 0 ? 'Select articles' : `${selectedItems.length} selected`}
+            </span>
+            <button
+              type="button"
+              onClick={markSelectedRead}
+              disabled={selectedItems.length === 0}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[12px] font-medium text-primary-foreground transition-opacity disabled:opacity-40"
+            >
+              <Check className="h-3.5 w-3.5" />
+              Mark read
+            </button>
+            <button
+              type="button"
+              onClick={leaveSelection}
+              aria-label="Leave selection mode"
+              className="ltm-touch-target shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          {selectionMode ? (
-            <div className="flex shrink-0 items-center gap-1">
-              <button
-                type="button"
-                onClick={markSelectedRead}
-                disabled={selectedItems.length === 0}
-                className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[12px] font-medium text-primary-foreground transition-opacity disabled:opacity-40"
-              >
-                <Check className="h-3.5 w-3.5" />
-                Mark read{selectedItems.length > 0 ? ` ${selectedItems.length}` : ''}
-              </button>
-              <button
-                type="button"
-                onClick={leaveSelection}
-                aria-label="Leave selection mode"
-                className="ltm-touch-target rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
+        ) : (
+          // Tabs and the select action share one row — the article count lived
+          // here and cost a whole row for a number the panel header already shows.
+          <div className="flex items-stretch gap-2 px-4 pt-2">
+            <div
+              role="tablist"
+              aria-label="RSS sources"
+              className="flex min-w-0 flex-1 gap-5 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            >
+              <SourceTab active={selectedSourceId === '__all__'} label="For you" onClick={() => changeSource('__all__')} />
+              {sources.map(source => (
+                <SourceTab key={source.id} active={selectedSourceId === source.id} label={source.title} onClick={() => changeSource(source.id)} />
+              ))}
             </div>
-          ) : (
             <button
               type="button"
               onClick={() => setSelectionMode(true)}
               aria-label="Select articles"
               title="Select articles"
-              className="ltm-touch-target shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="ltm-touch-target -mt-0.5 shrink-0 self-start rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <ListChecks className="h-4 w-4" />
             </button>
-          )}
-        </div>
-        <div
-          role="tablist"
-          aria-label="RSS sources"
-          className="mt-1.5 flex gap-5 overflow-x-auto overflow-y-hidden px-4 overscroll-x-contain touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-        >
-          <SourceTab active={selectedSourceId === '__all__'} label="For you" onClick={() => changeSource('__all__')} />
-          {sources.map(source => (
-            <SourceTab key={source.id} active={selectedSourceId === source.id} label={source.title} onClick={() => changeSource(source.id)} />
-          ))}
-        </div>
+          </div>
+        )}
       </div>
 
       <div className="mx-auto max-w-2xl">
@@ -566,8 +566,13 @@ function TimelineCard({
                 {item.title || '(Untitled)'}
               </h3>
               {item.description && (
+                // No `whitespace-pre-wrap` here: WebKit silently refuses to apply
+                // -webkit-line-clamp when white-space is pre-wrap, which let feed
+                // descriptions run to full length and made cards enormous.
+                // Normal whitespace handling also collapses the ragged newlines
+                // that come out of stripped feed HTML.
                 <p className={cn(
-                  'mt-1 whitespace-pre-wrap text-[14px] leading-[1.45] text-muted-foreground',
+                  'mt-1 text-[14px] leading-[1.45] text-muted-foreground',
                   !expanded && 'line-clamp-2',
                 )}>
                   {item.description}
