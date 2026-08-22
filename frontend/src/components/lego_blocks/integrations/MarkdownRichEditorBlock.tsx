@@ -2,22 +2,13 @@ import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayou
 import { createPortal } from 'react-dom'
 import CodeMirror from '@uiw/react-codemirror'
 import { redo, undo } from '@codemirror/commands'
-import { EditorState, type Extension } from '@codemirror/state'
+import { EditorState, Prec, type Extension } from '@codemirror/state'
 import { Decoration, EditorView, WidgetType, keymap, placeholder as cmPlaceholder } from '@codemirror/view'
 import {
-  Bold,
-  Code,
-  Heading1,
-  Italic,
-  Link2,
-  List,
-  ListOrdered,
   AlignLeft,
-  Quote,
   RotateCcw,
   RotateCw,
   Sparkles,
-  Table,
   Workflow,
 } from 'lucide-react'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
@@ -40,9 +31,7 @@ import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import {
   buildMarkdownTableFromRowsBlock,
-  buildMarkdownTableTemplateBlock,
   detectAndParseDelimitedTableBlock,
-  formatMarkdownTableAtSelectionBlock,
 } from '@/services/orchestrators/markdownTableOrch'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import { UNIVERSAL_SEARCH_DROPDOWN_PRESET_BLOCK } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
@@ -62,6 +51,18 @@ import {
   type EditorTypographyProfileBlock,
 } from '@/components/lego_blocks/units/iaTypographyProfileBlock'
 import { createSelectionMatchLayerBlock } from '@/components/lego_blocks/units/selectionMatchLayerBlock'
+import EditorSlashCommandMenuBlock, {
+  type EditorSlashMenuPositionBlock,
+} from '@/components/lego_blocks/units/EditorSlashCommandMenuBlock'
+import {
+  CONTEXT_MENU_COMMAND_IDS_BLOCK,
+  TOOLBAR_COMMAND_IDS_BLOCK,
+  filterEditorCommandsBlock,
+  flattenEditorCommandSectionsBlock,
+  getEditorCommandBlock,
+  type EditorCommandBlock,
+  type EditorPatchFactoryBlock,
+} from '@/components/lego_blocks/units/editorCommandsBlock'
 import { createMarkdownTaskCheckboxExtensionBlock } from '@/components/lego_blocks/units/markdownTaskCheckboxExtensionBlock'
 import { resolveEditorLanguageBlock } from '@/components/lego_blocks/units/editorLanguageBlock'
 import { findEditorLinkAtColumnBlock } from '@/components/lego_blocks/units/markdownEditorLinkClickBlock'
@@ -161,63 +162,41 @@ export interface MarkdownRichEditorBlockHandle {
   focus: () => void
 }
 
-function wrapSelection(
-  source: string,
-  start: number,
-  end: number,
-  prefix: string,
-  suffix: string,
-  placeholder: string,
-): { value: string; start: number; end: number } {
-  const selected = source.slice(start, end)
-  const text = selected || placeholder
-  const value = `${source.slice(0, start)}${prefix}${text}${suffix}${source.slice(end)}`
-  const nextStart = start + prefix.length
-  const nextEnd = nextStart + text.length
-  return { value, start: nextStart, end: nextEnd }
+/** Detects an open `/` command query at the cursor.
+ *
+ *  The trigger is a `/` that is preceded by the start of the line or by
+ *  whitespace. That single rule is what keeps the menu out of the way of
+ *  `https://`, `docs/contracts/EDITOR.md` and `and/or` — all of which have a
+ *  non-space character immediately before the slash, and all of which would
+ *  otherwise pop a menu mid-word.
+ *
+ *  The query stops at the first space: a slash command is one word, and letting
+ *  the query grow through spaces meant the menu hung around for entire
+ *  sentences after a `/` that was never meant as a command. */
+/** The slash menu's keyboard surface, reached from the CM6 keymap through a
+ *  ref. Deliberately tiny: the keymap should know how to *ask* for navigation,
+ *  never how the menu is filtered or rendered. */
+interface SlashMenuNavBlock {
+  isOpen: () => boolean
+  move: (delta: number) => void
+  accept: () => boolean
+  close: () => void
 }
 
-function prefixSelectionLines(
-  source: string,
-  start: number,
-  end: number,
-  formatter: (line: string, index: number) => string,
-): { value: string; start: number; end: number } {
-  const lineStart = source.lastIndexOf('\n', Math.max(0, start - 1)) + 1
-  const lineEndRaw = source.indexOf('\n', end)
-  const lineEnd = lineEndRaw === -1 ? source.length : lineEndRaw
-  const lines = source.slice(lineStart, lineEnd).split('\n')
-  const patched = lines.map((line, index) => formatter(line, index)).join('\n')
-  const value = `${source.slice(0, lineStart)}${patched}${source.slice(lineEnd)}`
-  return { value, start: lineStart, end: lineStart + patched.length }
-}
+function getSlashCommandQueryFromState(
+  state: EditorState,
+): { from: number; to: number; query: string } | null {
+  const selection = state.selection.main
+  if (!selection.empty) return null
 
-function insertWikilink(
-  source: string,
-  start: number,
-  end: number,
-): { value: string; start: number; end: number } {
-  const selected = source.slice(start, end).trim()
-  const rawTarget = selected || 'linked note'
-  const target = toObsidianWikilinkTargetOrch(rawTarget) || rawTarget
-  const wrapped = `[[${target}]]`
-  const value = `${source.slice(0, start)}${wrapped}${source.slice(end)}`
-  return {
-    value,
-    start: start + 2,
-    end: start + 2 + target.length,
-  }
-}
+  const cursor = selection.from
+  const line = state.doc.lineAt(cursor)
+  const beforeCursor = state.sliceDoc(line.from, cursor)
+  const match = beforeCursor.match(/(?:^|\s)\/([^\s/]*)$/)
+  if (!match) return null
 
-function insertTextAtSelectionBlock(
-  source: string,
-  start: number,
-  end: number,
-  insert: string,
-): { value: string; start: number; end: number } {
-  const value = `${source.slice(0, start)}${insert}${source.slice(end)}`
-  const next = start + insert.length
-  return { value, start: next, end: next }
+  const query = match[1]
+  return { from: cursor - query.length - 1, to: cursor, query }
 }
 
 function getWikilinkCompletionQueryFromState(
@@ -586,6 +565,22 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   const [wikilinkQuery, setWikilinkQuery] = useState('')
   const [wikilinkSuggestions, setWikilinkSuggestions] = useState<WikilinkSuggestionBlock[]>([])
   const [wikilinkLoading, setWikilinkLoading] = useState(false)
+
+  // Slash menu. `slashQuery` is null when closed — one nullable value instead of
+  // an open flag plus a string, so the two can never disagree.
+  const [slashQuery, setSlashQuery] = useState<string | null>(null)
+  const [slashActiveId, setSlashActiveId] = useState<string | null>(null)
+  const [slashPosition, setSlashPosition] = useState<EditorSlashMenuPositionBlock | null>(null)
+  const editorRootRef = useRef<HTMLDivElement | null>(null)
+  const measureSlashPositionRef = useRef<(from: number) => EditorSlashMenuPositionBlock | null>(
+    () => null,
+  )
+  const slashNavRef = useRef<SlashMenuNavBlock>({
+    isOpen: () => false,
+    move: () => {},
+    accept: () => false,
+    close: () => {},
+  })
   const [relatedThoughtsOpen, setRelatedThoughtsOpen] = useState(false)
   const [stewardRunning, setStewardRunning] = useState(false)
   const [mindmapPanelOpen, setMindmapPanelOpen] = useState(false)
@@ -1122,6 +1117,19 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
       EditorView.updateListener.of((update) => {
         const nextLine = update.state.doc.lineAt(update.state.selection.main.head).number
         setCurrentCursorLine((prev) => (prev === nextLine ? prev : nextLine))
+        // Slash menu first: `[[` and `/` cannot both be open, and the wikilink
+        // picker is the heavier surface, so the cheap check goes first.
+        const slash = getSlashCommandQueryFromState(update.state)
+        if (slash) {
+          setSlashQuery(slash.query)
+          if (update.docChanged || update.selectionSet || update.geometryChanged) {
+            setSlashPosition(measureSlashPositionRef.current(slash.from))
+          }
+        } else {
+          setSlashQuery((prev) => (prev == null ? prev : null))
+          setSlashPosition((prev) => (prev == null ? prev : null))
+        }
+
         const query = getWikilinkCompletionQueryFromState(update.state)
         if (!query) {
           setWikilinkPickerOpen(false)
@@ -1177,6 +1185,50 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
           return true
         },
       }),
+      // Highest precedence: while the slash menu is open these keys belong to
+      // it, not to CM's defaults (Enter would insert a newline, Tab would
+      // indent). Every handler no-ops when the menu is closed, so normal
+      // editing is untouched.
+      Prec.highest(keymap.of([
+        {
+          key: 'ArrowDown',
+          run: () => {
+            if (!slashNavRef.current.isOpen()) return false
+            slashNavRef.current.move(1)
+            return true
+          },
+        },
+        {
+          key: 'ArrowUp',
+          run: () => {
+            if (!slashNavRef.current.isOpen()) return false
+            slashNavRef.current.move(-1)
+            return true
+          },
+        },
+        {
+          key: 'Enter',
+          run: () => {
+            if (!slashNavRef.current.isOpen()) return false
+            return slashNavRef.current.accept()
+          },
+        },
+        {
+          key: 'Tab',
+          run: () => {
+            if (!slashNavRef.current.isOpen()) return false
+            return slashNavRef.current.accept()
+          },
+        },
+        {
+          key: 'Escape',
+          run: () => {
+            if (!slashNavRef.current.isOpen()) return false
+            slashNavRef.current.close()
+            return true
+          },
+        },
+      ])),
       keymap.of([]),
       // Live-preview decorations — markdown files only; code files get their
       // grammar without markdown rendering on top. Flags are read per
@@ -1209,7 +1261,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
     // session. It rides `FOCUS_KEYBOARD_INSET_VAR_BLOCK` on the root instead.
   }, [compactMobile, editorLanguage, isIphoneRuntime, proseEditing, focusProfile, inlineDiffDecorations, inlineDiffRender, placeholder])
 
-  const applyPatch = (patchFactory: (text: string, from: number, to: number) => { value: string; start: number; end: number }) => {
+  const applyPatch = useCallback((patchFactory: EditorPatchFactoryBlock) => {
     const view = editorViewRef.current
     if (!view) return
     const state = view.state
@@ -1228,6 +1280,102 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
       },
     })
     view.focus()
+  }, [])
+
+  // --- slash menu -------------------------------------------------------
+  const slashSections = useMemo(
+    () => (slashQuery == null ? [] : filterEditorCommandsBlock(slashQuery)),
+    [slashQuery],
+  )
+  const slashCommands = useMemo(
+    () => flattenEditorCommandSectionsBlock(slashSections),
+    [slashSections],
+  )
+
+  const closeSlashMenu = useCallback(() => {
+    setSlashQuery(null)
+    setSlashActiveId(null)
+    setSlashPosition(null)
+  }, [])
+
+  // Typing narrows the list, so the previously active row can vanish. Falling
+  // back to the first match keeps Enter meaningful at every keystroke.
+  useEffect(() => {
+    if (slashQuery == null) return
+    if (slashCommands.length === 0) {
+      setSlashActiveId(null)
+      return
+    }
+    setSlashActiveId((prev) =>
+      prev && slashCommands.some((cmd) => cmd.id === prev) ? prev : slashCommands[0].id,
+    )
+  }, [slashCommands, slashQuery])
+
+  /** Anchors the panel to the caret, in coordinates relative to the editor root
+   *  (which is `position: relative`). Flips above the caret when the panel would
+   *  not fit below — measured against the root, not the window, because the
+   *  editor is often a bounded pane rather than the full page. */
+  const measureSlashPosition = useCallback((from: number) => {
+    const view = editorViewRef.current
+    const root = editorRootRef.current
+    if (!view || !root) return null
+    const coords = view.coordsAtPos(from)
+    if (!coords) return null
+
+    const rootRect = root.getBoundingClientRect()
+    const PANEL_MAX_HEIGHT = 304 // matches max-h-[19rem] in the menu
+    const GAP = 6
+    const PANEL_WIDTH = 312 // matches w-[19.5rem]
+
+    const left = Math.max(
+      8,
+      Math.min(coords.left - rootRect.left, rootRect.width - PANEL_WIDTH - 8),
+    )
+    const spaceBelow = rootRect.bottom - coords.bottom
+    if (spaceBelow < PANEL_MAX_HEIGHT + GAP) {
+      return { left, bottom: rootRect.bottom - coords.top + GAP }
+    }
+    return { left, top: coords.bottom - rootRect.top + GAP }
+  }, [])
+
+  const applySlashCommand = useCallback((command: EditorCommandBlock) => {
+    const view = editorViewRef.current
+    if (!view) return
+    const query = getSlashCommandQueryFromState(view.state)
+    closeSlashMenu()
+    if (!query) return
+
+    // Two dispatches on purpose: drop the `/query` text first, then let
+    // `applyPatch` run against the resulting document. `applyPatch` reads
+    // `view.state` fresh, so it sees the deletion — folding both into one
+    // whole-document patch would mean recomputing every offset by hand.
+    view.dispatch({
+      changes: { from: query.from, to: query.to, insert: '' },
+      selection: { anchor: query.from },
+    })
+    applyPatch(command.patch)
+  }, [applyPatch, closeSlashMenu])
+
+  measureSlashPositionRef.current = measureSlashPosition
+
+  // Assigned during render rather than in an effect: the CM6 keymap below is
+  // built once and reads this ref on keystroke, so it has to be current before
+  // the next key event, not after the next commit.
+  slashNavRef.current = {
+    isOpen: () => slashQuery != null && slashCommands.length > 0,
+    move: (delta: number) => {
+      if (slashCommands.length === 0) return
+      const index = slashCommands.findIndex((cmd) => cmd.id === slashActiveId)
+      const next = (index + delta + slashCommands.length) % slashCommands.length
+      setSlashActiveId(slashCommands[next].id)
+    },
+    accept: () => {
+      const active = slashCommands.find((cmd) => cmd.id === slashActiveId)
+      if (!active) return false
+      applySlashCommand(active)
+      return true
+    },
+    close: closeSlashMenu,
   }
 
   const jumpToHeadingLine = useCallback((lineNumber: number) => {
@@ -1360,6 +1508,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
 
   return (
     <div
+      ref={editorRootRef}
       className={cn('ltm-markdown-rich-editor relative flex min-h-0 flex-col', editorCanvasClassName, className)}
       style={focusProfile
         ? { [FOCUS_KEYBOARD_INSET_VAR_BLOCK]: `${Math.max(0, Math.round(focusKeyboardInsetPx))}px` } as CSSProperties
@@ -1374,49 +1523,24 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
       {/* Formatting toolbar */}
       {showToolbar && (
         <div className={cn("sticky top-0 z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2", toolbarClassName)}>
-          <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '# ', '', 'Heading'))} className={TOOLBAR_BTN} title="Heading">
-            <Heading1 className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '**', '**', 'bold text'))} className={TOOLBAR_BTN} title="Bold">
-            <Bold className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '*', '*', 'italic text'))} className={TOOLBAR_BTN} title="Italic">
-            <Italic className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '`', '`', 'code'))} className={TOOLBAR_BTN} title="Code">
-            <Code className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={() => applyPatch((text, from, to) => wrapSelection(text, from, to, '[', '](https://)', 'link text'))} className={TOOLBAR_BTN} title="Link">
-            <Link2 className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPatch((text, from, to) => insertTextAtSelectionBlock(text, from, to, buildMarkdownTableTemplateBlock(3, 2)))}
-            className={TOOLBAR_BTN}
-            title="Insert table"
-          >
-            <Table className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPatch(formatMarkdownTableAtSelectionBlock)}
-            className="rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="Format table"
-          >
-            Fmt Tbl
-          </button>
-          <button type="button" onClick={() => applyPatch(insertWikilink)} className="rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground" title="Wikilink">
-            [[ ]]
-          </button>
-          <button type="button" onClick={() => applyPatch((text, from, to) => prefixSelectionLines(text, from, to, (line) => `> ${line}`))} className={TOOLBAR_BTN} title="Quote">
-            <Quote className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={() => applyPatch((text, from, to) => prefixSelectionLines(text, from, to, (line) => `- ${line}`))} className={TOOLBAR_BTN} title="Bullet list">
-            <List className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={() => applyPatch((text, from, to) => prefixSelectionLines(text, from, to, (line, i) => `${i + 1}. ${line}`))} className={TOOLBAR_BTN} title="Numbered list">
-            <ListOrdered className="h-4 w-4" />
-          </button>
+          {TOOLBAR_COMMAND_IDS_BLOCK.map((id) => {
+            const command = getEditorCommandBlock(id)
+            if (!command) return null
+            const Icon = command.icon
+            return (
+              <button
+                key={command.id}
+                type="button"
+                onClick={() => applyPatch(command.patch)}
+                className={command.toolbarGlyph
+                  ? 'rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground'
+                  : TOOLBAR_BTN}
+                title={command.label}
+              >
+                {command.toolbarGlyph ?? <Icon className="h-4 w-4" />}
+              </button>
+            )
+          })}
           <MarkdownTableOfContentsBlock
             content={value}
             currentLine={currentCursorLine}
@@ -1774,32 +1898,26 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
               },
             },
             { key: 'sep1', kind: 'separator' },
-            {
-              key: 'bold',
-              label: 'Bold',
-              onClick: () => applyPatch((text, from, to) => wrapSelection(text, from, to, '**', '**', 'bold text')),
-            },
-            {
-              key: 'italic',
-              label: 'Italic',
-              onClick: () => applyPatch((text, from, to) => wrapSelection(text, from, to, '*', '*', 'italic text')),
-            },
-            {
-              key: 'code',
-              label: 'Inline Code',
-              onClick: () => applyPatch((text, from, to) => wrapSelection(text, from, to, '`', '`', 'code')),
-            },
-            {
-              key: 'link',
-              label: 'Insert Link',
-              onClick: () => applyPatch((text, from, to) => wrapSelection(text, from, to, '[', '](https://)', 'link text')),
-            },
-            {
-              key: 'wikilink',
-              label: 'Insert Wikilink',
-              onClick: () => applyPatch(insertWikilink),
-            },
+            ...CONTEXT_MENU_COMMAND_IDS_BLOCK.flatMap((id) => {
+              const command = getEditorCommandBlock(id)
+              if (!command) return []
+              return [{
+                key: command.id,
+                label: command.label,
+                onClick: () => applyPatch(command.patch),
+              }]
+            }),
           ] satisfies ContextMenuEntryBlock[]}
+        />
+      )}
+
+      {slashQuery != null && slashPosition && slashCommands.length > 0 && (
+        <EditorSlashCommandMenuBlock
+          sections={slashSections}
+          activeId={slashActiveId}
+          position={slashPosition}
+          onSelect={applySlashCommand}
+          onHover={setSlashActiveId}
         />
       )}
 
