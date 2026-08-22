@@ -24,8 +24,23 @@ import {
 } from '@/services/orchestrators/markdownDocumentsOrch'
 import {
   serializeExcalidrawSceneOrch,
+  parseExcalidrawSceneRawOrch,
   type ParsedExcalidrawScene,
 } from '@/services/orchestrators/excalidrawSceneOrch'
+import {
+  excalidrawSaveGuardBlock,
+  type ExcalidrawSaveTriggerBlock,
+} from '@/services/lego_blocks/units/excalidrawSaveGuardBlock'
+import { useExcalidrawDraftJournalBlock } from '@/components/lego_blocks/hooks/shared/useExcalidrawDraftJournalBlock'
+import {
+  applyExcalidrawDeltaBlock,
+  type ExcalidrawElementLikeBlock,
+  type ExcalidrawSceneDeltaBlock,
+} from '@/services/lego_blocks/units/excalidrawSceneDeltaBlock'
+import {
+  readAllDraftsBlock,
+  resolveDraftBlock,
+} from '@/services/lego_blocks/integrations/noteDraftJournalStoreBlock'
 import type { ExcalidrawCanvasApiOrch } from '@/services/orchestrators/excalidrawIntegrationOrch'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNativeChromeImmersionBlock } from '@/components/lego_blocks/hooks/shared/useNativeChromeImmersionBlock'
@@ -336,6 +351,12 @@ function MarkdownTextDocumentRuntimeBlock({
   const excalidrawApiRef = useRef<ExcalidrawCanvasApiOrch | null>(null)
   const ignoreInitialExcalidrawChangeRef = useRef(true)
   const [hasExcalidrawChanges, setHasExcalidrawChanges] = useState(false)
+  /** Set when the shrink guard refuses an auto-save. Auto-save must not simply
+   *  retry on its timer — the scene has not changed, so it would fail again
+   *  every 2 seconds forever, burning a wakeup each time (ENERGY contract) and
+   *  re-raising the same banner. Cleared by the next real scene change, which
+   *  is new information and worth one more attempt. */
+  const [excalidrawAutoSaveBlocked, setExcalidrawAutoSaveBlocked] = useState(false)
   const [excalidrawImmersive, setExcalidrawImmersive] = useState(false)
   // While focus mode is up, the native iOS chrome hides so the fullscreen
   // overlay owns the screen (it's a web-layer div — the native bar would
@@ -347,7 +368,26 @@ function MarkdownTextDocumentRuntimeBlock({
   const markdownCancelRevertInFlightRef = useRef(false)
   const excalidrawCrashMarkerClearTimeoutRef = useRef<number | null>(null)
   const preserveExcalidrawCrashMarkerOnUnmountRef = useRef(false)
-  const handleSaveRef = useRef<() => Promise<void>>(async () => {})
+  const handleSaveRef = useRef<(trigger?: ExcalidrawSaveTriggerBlock) => Promise<void>>(async () => {})
+  /** Elements in the drawing as it stands on disk, for the shrink guard.
+   *
+   *  `null` means "not counted yet"; the save path fills it lazily and then
+   *  carries it forward from its own writes, so a document is parsed for this
+   *  at most once per open. Reset when the document changes.
+   *
+   *  Staleness after an *external* edit is deliberate and harmless: a stale
+   *  count only makes the guard more or less strict, and a genuine external
+   *  edit is caught by the mtime/hash conflict check regardless. */
+  const excalidrawBaselineCountRef = useRef<number | null>(null)
+
+  // Annotations are never only in the canvas. See docs/contracts/DURABILITY.md.
+  // Runs regardless of `autoSaveEnabled` — that setting decides when the *file*
+  // is written, not whether a second copy of the work exists.
+  const excalidrawJournal = useExcalidrawDraftJournalBlock(useCallback(() => {
+    const api = excalidrawApiRef.current
+    if (!api) return null
+    return api.getSceneElementsBlock() as unknown as ExcalidrawElementLikeBlock[]
+  }, []))
 
   const loadDocument = useCallback(async (seedDraft = false) => {
     setLoading(true)
@@ -1052,7 +1092,107 @@ function MarkdownTextDocumentRuntimeBlock({
     }
 
     setHasExcalidrawChanges(true)
-  }, [isIosSurface])
+    // New information: worth one more attempt if the guard refused the last one.
+    setExcalidrawAutoSaveBlocked(false)
+    // Trailing debounce inside — a stroke in progress keeps resetting it, so
+    // this never runs mid-stroke.
+    excalidrawJournal.noteSceneChanged()
+  }, [excalidrawJournal, isIosSurface])
+
+  // A different document means a different baseline.
+  useEffect(() => { excalidrawBaselineCountRef.current = null }, [path])
+
+  // Annotations from a session that ended badly. Looked for once per document,
+  // and only offered — never applied on its own. Silently mutating someone's
+  // drawing on open would be its own kind of loss.
+  const [recoverableAnnotations, setRecoverableAnnotations] = useState<
+    { id: string; delta: ExcalidrawSceneDeltaBlock; updatedAt: string } | null
+  >(null)
+
+  useEffect(() => {
+    if (!isExcalidrawDoc) { setRecoverableAnnotations(null); return }
+    let cancelled = false
+    void (async () => {
+      const drafts = await readAllDraftsBlock().catch(() => [])
+      if (cancelled) return
+      const mine = drafts
+        .filter(d => d.kind === 'excalidraw-delta' && d.targetPath === path)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+      if (!mine) { setRecoverableAnnotations(null); return }
+      try {
+        setRecoverableAnnotations({
+          id: mine.id,
+          delta: JSON.parse(mine.content) as ExcalidrawSceneDeltaBlock,
+          updatedAt: mine.updatedAt,
+        })
+      } catch {
+        // Unparseable delta — nothing to offer, and nothing to be gained by
+        // putting a broken banner in front of the drawing.
+        setRecoverableAnnotations(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [isExcalidrawDoc, path])
+
+  const restoreAnnotations = useCallback(() => {
+    const recovery = recoverableAnnotations
+    const api = excalidrawApiRef.current
+    if (!recovery || !api) return
+    const baseline = api.getSceneElementsBlock() as unknown as ExcalidrawElementLikeBlock[]
+    const restored = applyExcalidrawDeltaBlock(baseline, recovery.delta)
+    if (!api.replaceSceneElementsBlock(restored)) {
+      setSaveError('Could not restore the annotations into this canvas.')
+      return
+    }
+    setHasExcalidrawChanges(true)
+    setExcalidrawAutoSaveBlocked(false)
+    setRecoverableAnnotations(null)
+  }, [recoverableAnnotations])
+
+  const discardAnnotations = useCallback(() => {
+    const recovery = recoverableAnnotations
+    if (!recovery) return
+    setRecoverableAnnotations(null)
+    void resolveDraftBlock(recovery.id)
+  }, [recoverableAnnotations])
+
+
+  const annotationRecoveryBlock = recoverableAnnotations ? (
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/20 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+      <div className="font-medium">Unsaved annotations recovered</div>
+      <div className="mt-0.5 text-xs opacity-80">
+        {recoverableAnnotations.delta.changed.length} element
+        {recoverableAnnotations.delta.changed.length === 1 ? '' : 's'} from a session that ended
+        before saving.
+      </div>
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          onClick={restoreAnnotations}
+          className="rounded-md bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700"
+        >
+          Restore them
+        </button>
+        <button
+          type="button"
+          onClick={discardAnnotations}
+          className="rounded-md px-2.5 py-1 text-xs font-medium hover:bg-amber-500/20"
+        >
+          Discard
+        </button>
+      </div>
+    </div>
+  ) : null
+
+  // Point the journal at this drawing as it stands on disk. Everything the
+  // journal stores is measured against these elements, so recovery is "the
+  // file, plus what you did to it".
+  useEffect(() => {
+    if (!isExcalidrawDoc || content === null) return
+    const elements = parseExcalidrawSceneRawOrch(content)?.elements
+    if (!elements) return
+    excalidrawJournal.setBaseline(path, elements as unknown as ExcalidrawElementLikeBlock[])
+  }, [content, excalidrawJournal, isExcalidrawDoc, path])
 
   const handleExcalidrawApiChange = useCallback((api: ExcalidrawCanvasApiOrch | null) => {
     excalidrawApiRef.current = api
@@ -1258,7 +1398,7 @@ function MarkdownTextDocumentRuntimeBlock({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [active, mode, isExcalidrawDoc])
 
-  const handleSave = async () => {
+  const handleSave = async (trigger: ExcalidrawSaveTriggerBlock = 'explicit') => {
     if (baseMtime === null) return
     if (!isExcalidrawDoc) {
       setSaving(true)
@@ -1286,6 +1426,35 @@ function MarkdownTextDocumentRuntimeBlock({
         } satisfies ParsedExcalidrawScene
       })()
       if (!sceneForSave) return
+
+      // Refuse to write a drawing that lost most of itself. The elements above
+      // can come from `api.getSceneElementsBlock()`, and `api_attached` is
+      // exactly the stage the app has been observed dying at on iPad — API
+      // attached, scene not necessarily populated. See
+      // docs/contracts/DURABILITY.md.
+      //
+      // Counted once per document open, then carried forward from our own
+      // writes. Re-parsing here would put a multi-megabyte `JSON.parse` on
+      // every auto-save — 4.59M characters for the drawing this guard was
+      // written for — on the device that is already running out of memory.
+      if (excalidrawBaselineCountRef.current === null) {
+        excalidrawBaselineCountRef.current = parseExcalidrawSceneRawOrch(content)?.elements.length ?? 0
+      }
+      const baselineElementCount = excalidrawBaselineCountRef.current
+      const verdict = excalidrawSaveGuardBlock({
+        baselineElementCount,
+        nextElementCount: sceneForSave.elements.length,
+        trigger,
+      })
+      if (!verdict.allow) {
+        setSaveError(verdict.reason)
+        if (trigger === 'auto') setExcalidrawAutoSaveBlocked(true)
+        // Deliberately leaves `hasExcalidrawChanges` set: the scene in memory
+        // still differs from disk, and clearing the flag here would mean a
+        // later, correct save never fires.
+        return
+      }
+
       await yieldToNextFrame()
       const contentToSave = serializeExcalidrawSceneOrch(content, sceneForSave)
       if (contentToSave === content) {
@@ -1300,6 +1469,9 @@ function MarkdownTextDocumentRuntimeBlock({
         baseHash,
         baseContent: content,
       })
+      excalidrawBaselineCountRef.current = sceneForSave.elements.length
+      // The write landed, so the journalled delta is accounted for.
+      excalidrawJournal.resolve()
       const reloaded = await readMarkdownDocument(path, { includeHash: false })
       setContent(reloaded.content)
       setDraft('')
@@ -1417,9 +1589,10 @@ function MarkdownTextDocumentRuntimeBlock({
     if (!autoSaveEnabled) return
     if (!isEditing || !isExcalidrawDoc || loading || error || baseMtime === null) return
     if (!hasExcalidrawChanges || saving || conflict) return
+    if (excalidrawAutoSaveBlocked) return
 
     const timeoutId = window.setTimeout(() => {
-      void handleSaveRef.current()
+      void handleSaveRef.current('auto')
     }, 2000)
 
     return () => {
@@ -1430,6 +1603,7 @@ function MarkdownTextDocumentRuntimeBlock({
     baseMtime,
     conflict,
     error,
+    excalidrawAutoSaveBlocked,
     hasExcalidrawChanges,
     isEditing,
     isExcalidrawDoc,
@@ -2049,6 +2223,7 @@ function MarkdownTextDocumentRuntimeBlock({
               onOpenPath={openLinkedPath}
               className="h-[52vh] sm:h-[60vh] lg:h-[72vh]"
             />
+            {annotationRecoveryBlock}
             {saveError && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {saveError}
@@ -2124,6 +2299,9 @@ function MarkdownTextDocumentRuntimeBlock({
                 </button>
               </div>
             </div>
+            {annotationRecoveryBlock && (
+              <div className="shrink-0 px-3 pb-2">{annotationRecoveryBlock}</div>
+            )}
             <div className="min-h-0 flex-1">
               <ExcalidrawDocumentBlock
                 content={excalidrawEditorContent}

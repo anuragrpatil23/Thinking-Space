@@ -18,6 +18,7 @@ import {
   sweepAtomicTempsBlock,
   isAtomicTempPathBlock,
   atomicTempPathBlock,
+  atomicTargetFromTempBlock,
   ATOMIC_TMP_PATTERN_BLOCK,
 } from '../electron/src/lego_blocks/atomicWriteBlock'
 
@@ -222,6 +223,26 @@ describe('sweepAtomicTempsBlock', () => {
 
     expect(removed).toBe(1)
     expect((await fsPromises.readdir(dir)).sort()).toEqual(['.hidden.md', 'note.md'])
+  })
+
+  // The rule that makes the sweep safe on every backend. A backend whose rename
+  // cannot overwrite (Capacitor/iOS) must delete the target first, and in that
+  // window the temp holds the only copy of the file. Sweeping it there would be
+  // the exact loss this module exists to prevent.
+  it('never removes a temp whose target is missing', async () => {
+    await fsPromises.writeFile(
+      path.join(dir, '.orphan.md.thinkspc-tmp-1-2-abc123'),
+      'the only copy of this file',
+    )
+    const removed = await sweepAtomicTempsBlock(dir)
+    expect(removed).toBe(0)
+    expect(await fsPromises.readdir(dir)).toEqual(['.orphan.md.thinkspc-tmp-1-2-abc123'])
+  })
+
+  it('derives the target a temp was headed for', () => {
+    expect(atomicTargetFromTempBlock('.note.md.thinkspc-tmp-1-2-abc123')).toBe('note.md')
+    expect(atomicTargetFromTempBlock('a/b/.note.md.thinkspc-tmp-9-9-zzz999')).toBe('a/b/note.md')
+    expect(atomicTargetFromTempBlock('note.md')).toBeNull()
   })
 
   it('never throws on an unreadable directory', async () => {

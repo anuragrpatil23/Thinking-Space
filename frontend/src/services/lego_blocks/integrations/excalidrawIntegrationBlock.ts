@@ -13,6 +13,11 @@ export interface ExcalidrawCanvasApiBlock {
   getFilesBlock(): Record<string, unknown>
   getViewportStateBlock(): ExcalidrawViewportStateBlock
   updateAppStateBlock(next: Record<string, unknown>): void
+  /** Replace the scene's elements. Used by annotation recovery — see
+   *  docs/contracts/DURABILITY.md. Returns false when the underlying editor
+   *  does not expose `updateScene`, so a caller can say "could not restore"
+   *  instead of silently doing nothing. */
+  replaceSceneElementsBlock(elements: readonly unknown[]): boolean
   updateViewportBlock(next: Partial<ExcalidrawViewportStateBlock>): void
   fitViewportToContentBlock(elements: readonly unknown[]): void
   onViewportChangeBlock(listener: (viewport: ExcalidrawViewportStateBlock) => void): (() => void) | null
@@ -23,7 +28,7 @@ interface RawExcalidrawApi {
   getSceneElementsIncludingDeleted?: () => readonly unknown[]
   getAppState?: () => Record<string, unknown>
   getFiles?: () => Record<string, unknown>
-  updateScene?: (scene: { appState?: Record<string, unknown> }) => void
+  updateScene?: (scene: { elements?: readonly unknown[]; appState?: Record<string, unknown> }) => void
   scrollToContent?: (
     elements: readonly unknown[],
     options: {
@@ -80,6 +85,11 @@ export function createExcalidrawCanvasApiBlock(rawApi: unknown): ExcalidrawCanva
     getAppStateBlock: () => ({ ...(rawApi.getAppState?.() ?? {}) }),
     getFilesBlock: () => ({ ...(rawApi.getFiles?.() ?? {}) }),
     getViewportStateBlock: () => readViewportState(rawApi),
+    replaceSceneElementsBlock: (elements) => {
+      if (!rawApi.updateScene) return false
+      rawApi.updateScene({ elements })
+      return true
+    },
     updateAppStateBlock: (next) => {
       const patch = Object.entries(next).reduce<Record<string, unknown>>((acc, [key, value]) => {
         if (value !== undefined) acc[key] = value

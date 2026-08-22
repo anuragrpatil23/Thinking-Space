@@ -11,6 +11,7 @@ import {
 } from '@/services/lego_blocks/units/vaultSyncExclusionsBlock'
 import { getStoredVaultRoot, setStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { notifyFileChanged } from '@/services/lego_blocks/units/crossWindowSyncBlock'
+import { atomicTempPathBlock } from '@/services/lego_blocks/units/atomicWriteNamingBlock'
 import { logDebug, logWarn } from '@/services/lego_blocks/units/debugLogBlock'
 import {
   base64ToBytesBlock,
@@ -831,12 +832,56 @@ class CapacitorVaultFS implements VaultFS {
     return result.data as string
   }
 
+  /** Crash-safe: write a temp beside the target, then rename over it.
+   *
+   *  `Filesystem.writeFile` truncates before writing, and on iPad that window
+   *  is where the OS kills WebContent. For a `.excalidraw.md` — one JSON blob —
+   *  a truncated file is not "lost recent strokes", it is an unparseable file:
+   *  the whole drawing. See docs/contracts/DURABILITY.md.
+   *
+   *  Weaker than the Electron path in two ways, both unavoidable here and both
+   *  still far better than truncating:
+   *   - no `fsync`, so a power loss can still lose the bytes behind the rename;
+   *   - `rename` may refuse an existing destination, so the target is removed
+   *     first. In that window the temp is the only copy — which is why
+   *     `sweepAtomicTempsBlock` never removes a temp whose target is missing. */
   async write(path: string, data: string): Promise<void> {
     const safePath = assertValidVaultPathBlock('write', path)
     const { Filesystem, Encoding } = await import('@capacitor/filesystem')
-    const opts = await this.fsOpts(safePath)
-    await Filesystem.writeFile({ ...opts, data, encoding: Encoding.UTF8, recursive: true })
+    const tempPath = atomicTempPathBlock(safePath)
+    const tempOpts = await this.fsOpts(tempPath)
+    const finalOpts = await this.fsOpts(safePath)
+    try {
+      await Filesystem.writeFile({ ...tempOpts, data, encoding: Encoding.UTF8, recursive: true })
+      await this.renameOverwrite(tempOpts, finalOpts)
+    } catch (err) {
+      await Filesystem.deleteFile(tempOpts).catch(() => {})
+      throw err
+    }
     notifyFileChanged(safePath)
+  }
+
+  /** Rename `from` onto `to`, removing `to` first if the platform will not
+   *  overwrite. Tries the atomic form first so the destructive path is only
+   *  taken when the platform forces it. */
+  private async renameOverwrite(
+    from: { path: string; directory?: unknown },
+    to: { path: string; directory?: unknown },
+  ): Promise<void> {
+    const { Filesystem } = await import('@capacitor/filesystem')
+    const opts = {
+      from: from.path,
+      to: to.path,
+      ...(from.directory ? { directory: from.directory } : {}),
+    } as Parameters<typeof Filesystem.rename>[0]
+    try {
+      await Filesystem.rename(opts)
+      return
+    } catch {
+      // Destination exists and this platform will not replace it.
+    }
+    await Filesystem.deleteFile(to as Parameters<typeof Filesystem.deleteFile>[0]).catch(() => {})
+    await Filesystem.rename(opts)
   }
 
   async readBytes(path: string): Promise<Uint8Array> {
@@ -854,12 +899,20 @@ class CapacitorVaultFS implements VaultFS {
   async writeBytes(path: string, data: Uint8Array): Promise<void> {
     const safePath = assertValidVaultPathBlock('writeBytes', path)
     const { Filesystem } = await import('@capacitor/filesystem')
-    const opts = await this.fsOpts(safePath)
-    await Filesystem.writeFile({
-      ...opts,
-      data: bytesToBase64Block(data),
-      recursive: true,
-    })
+    const tempPath = atomicTempPathBlock(safePath)
+    const tempOpts = await this.fsOpts(tempPath)
+    const finalOpts = await this.fsOpts(safePath)
+    try {
+      await Filesystem.writeFile({
+        ...tempOpts,
+        data: bytesToBase64Block(data),
+        recursive: true,
+      })
+      await this.renameOverwrite(tempOpts, finalOpts)
+    } catch (err) {
+      await Filesystem.deleteFile(tempOpts).catch(() => {})
+      throw err
+    }
     notifyFileChanged(safePath)
   }
 

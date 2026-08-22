@@ -28,9 +28,20 @@ export const DRAFT_HOT_DEBOUNCE_MS_BLOCK = 250
  *  iCloud-backed — the ENERGY contract's "coalesce, don't churn". */
 export const DRAFT_DURABLE_DEBOUNCE_MS_BLOCK = 2000
 
+/** What a journal entry holds.
+ *
+ *  `note` is the whole editor buffer. `excalidraw-delta` is a JSON delta
+ *  against the drawing as it was loaded — a drawing is far too large to write
+ *  whole on a timer (3,030,148 bytes for one measured file, against 71,525 for
+ *  its delta twenty strokes into a session). */
+export type NoteDraftKindBlock = 'note' | 'excalidraw-delta'
+
 export interface NoteDraftEntryBlock {
   /** Stable for the life of one composer session. */
   id: string
+  /** Absent in entries written before drawings were journaled; those are all
+   *  notes, so the parser defaults accordingly rather than discarding them. */
+  kind?: NoteDraftKindBlock
   /** Where the text was headed. `null` when no destination was chosen yet —
    *  which is a state worth journaling, not a reason to skip it. */
   targetPath: string | null
@@ -76,6 +87,7 @@ export function serializeNoteDraftBlock(entry: NoteDraftEntryBlock): string {
     `target_path: ${JSON.stringify(entry.targetPath ?? '')}`,
     `updated_at: ${JSON.stringify(entry.updatedAt)}`,
     `created_target: ${entry.createdTarget ? 'true' : 'false'}`,
+    `draft_kind: ${entry.kind ?? 'note'}`,
     '---',
     // Two entries, so the join emits the closing fence's newline *and* one
     // blank separator line. `parseNoteDraftBlock` consumes exactly one blank
@@ -129,6 +141,9 @@ export function parseNoteDraftBlock(text: string): NoteDraftEntryBlock | null {
     content: body.join('\n'),
     updatedAt: readHeaderValueBlock(header, 'updated_at'),
     createdTarget: readHeaderValueBlock(header, 'created_target') === 'true',
+    kind: readHeaderValueBlock(header, 'draft_kind') === 'excalidraw-delta'
+      ? 'excalidraw-delta'
+      : 'note',
   }
 }
 
@@ -140,7 +155,20 @@ export function parseNoteDraftBlock(text: string): NoteDraftEntryBlock | null {
  *  honest question: is every character the user typed present at the target.
  *
  *  Empty drafts are covered by definition — there is nothing to lose. */
-export function isDraftCoveredByDiskBlock(draftContent: string, diskContent: string | null): boolean {
+export function isDraftCoveredByDiskBlock(
+  draftContent: string,
+  diskContent: string | null,
+  kind: NoteDraftKindBlock = 'note',
+): boolean {
+  // A drawing delta is JSON against a scene, so text containment says nothing
+  // about it. These are cleared explicitly when a save's read-back confirms the
+  // write, so one that is still here survived a crash — which is exactly when
+  // it should be offered. Erring toward offering is the safe direction.
+  if (kind === 'excalidraw-delta') return false
+  return isNoteDraftCoveredByDiskBlock(draftContent, diskContent)
+}
+
+function isNoteDraftCoveredByDiskBlock(draftContent: string, diskContent: string | null): boolean {
   const draftBody = stripFrontmatterForCompareBlock(draftContent).trim()
   if (!draftBody) return true
   if (diskContent === null) return false
@@ -166,7 +194,7 @@ export function unresolvedDraftsBlock(
 ): NoteDraftEntryBlock[] {
   return entries.filter((entry) => {
     const disk = entry.targetPath ? (diskContentByPath.get(entry.targetPath) ?? null) : null
-    return !isDraftCoveredByDiskBlock(entry.content, disk)
+    return !isDraftCoveredByDiskBlock(entry.content, disk, entry.kind ?? 'note')
   })
 }
 

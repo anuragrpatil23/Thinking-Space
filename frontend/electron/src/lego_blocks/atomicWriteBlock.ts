@@ -35,6 +35,18 @@ export function isAtomicTempPathBlock(candidate: string): boolean {
   return ATOMIC_TMP_PATTERN_BLOCK.test(candidate);
 }
 
+/** The path a temp file was on its way to becoming, or `null` if the name is
+ *  not one of ours. Used by the sweep — see `sweepAtomicTempsBlock`. */
+export function atomicTargetFromTempBlock(tempPath: string): string | null {
+  if (!isAtomicTempPathBlock(tempPath)) return null;
+  const dir = path.dirname(tempPath);
+  const base = path.basename(tempPath);
+  const infixAt = base.lastIndexOf(ATOMIC_TMP_INFIX_BLOCK);
+  if (infixAt <= 0) return null;
+  const target = base.slice(1, infixAt);
+  return dir === '.' ? target : path.join(dir, target);
+}
+
 let tempCounterBlock = 0;
 
 /** The scratch path a write to `targetFullPath` will use. Exported so a test
@@ -174,10 +186,13 @@ export async function atomicWriteBytesBlock(
 
 /** Remove temps left behind by a process that died mid-write.
  *
- *  Only ever deletes files matching `ATOMIC_TMP_PATTERN_BLOCK`, and only inside
- *  the directory it is given. A leftover temp is by definition a write that
- *  never completed, so its target still holds the previous good version —
- *  nothing recoverable is discarded here.
+ *  Only deletes a temp **whose target exists**. On this backend the target
+ *  always survives — rename overwrites in place — so the check is nearly always
+ *  true here. It matters because the renderer's Capacitor backend cannot
+ *  overwrite on rename and has to remove the target first; in that window the
+ *  temp is the *only* copy of the file, and sweeping it would be precisely the
+ *  loss this module exists to prevent. Same rule everywhere, so the dangerous
+ *  case cannot be reintroduced by someone reading only the easy backend.
  *
  *  Returns the number removed. Never throws: a failed sweep must not block
  *  startup. */
@@ -191,6 +206,14 @@ export async function sweepAtomicTempsBlock(dir: string): Promise<number> {
   }
   for (const entry of entries) {
     if (!isAtomicTempPathBlock(entry)) continue;
+    const target = atomicTargetFromTempBlock(entry);
+    if (!target) continue;
+    try {
+      // The target is what makes this temp disposable. No target, no sweep.
+      await fsPromises.stat(path.join(dir, target));
+    } catch {
+      continue;
+    }
     try {
       await fsPromises.unlink(path.join(dir, entry));
       removed += 1;

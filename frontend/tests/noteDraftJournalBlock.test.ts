@@ -25,6 +25,7 @@ const entry = (over: Partial<NoteDraftEntryBlock> = {}): NoteDraftEntryBlock => 
   content: 'a half-written thought',
   updatedAt: '2026-08-22T10:00:00.000Z',
   createdTarget: true,
+  kind: 'note',
   ...over,
 })
 
@@ -61,6 +62,26 @@ describe('serialize / parse round trip', () => {
       .toBe(false)
     expect(parseNoteDraftBlock(serializeNoteDraftBlock(entry({ createdTarget: true })))?.createdTarget)
       .toBe(true)
+  })
+})
+
+describe('draft kind', () => {
+  it('round-trips a drawing delta', () => {
+    const delta = entry({
+      kind: 'excalidraw-delta',
+      content: JSON.stringify({ order: ['a', 'b'], changed: [{ id: 'b', version: 4 }] }),
+      targetPath: 'drawings/book.excalidraw.md',
+    })
+    expect(parseNoteDraftBlock(serializeNoteDraftBlock(delta))).toEqual(delta)
+  })
+
+  // Entries written before drawings were journaled carry no `draft_kind`.
+  // Discarding them would throw away exactly the text this all exists to save.
+  it('treats an entry with no kind as a note', () => {
+    const legacy = serializeNoteDraftBlock(entry()).replace('draft_kind: note\n', '')
+    expect(legacy).not.toContain('draft_kind')
+    expect(parseNoteDraftBlock(legacy)?.kind).toBe('note')
+    expect(parseNoteDraftBlock(legacy)?.content).toBe('a half-written thought')
   })
 })
 
@@ -124,6 +145,31 @@ describe('isDraftCoveredByDiskBlock', () => {
     expect(isDraftCoveredByDiskBlock('', null)).toBe(true)
     expect(isDraftCoveredByDiskBlock('   \n  ', null)).toBe(true)
     expect(isDraftCoveredByDiskBlock('---\ntitle: "x"\n---\n', null)).toBe(true)
+  })
+})
+
+describe('a drawing delta is always offered after a crash', () => {
+  // A delta is JSON against a scene, so text containment says nothing about
+  // whether the work landed. They are cleared explicitly when a save confirms,
+  // so one that survives is one that survived a crash.
+  it('is never considered covered by disk', () => {
+    const delta = JSON.stringify({ order: ['a'], changed: [] })
+    expect(isDraftCoveredByDiskBlock(delta, delta, 'excalidraw-delta')).toBe(false)
+    expect(isDraftCoveredByDiskBlock(delta, 'anything', 'excalidraw-delta')).toBe(false)
+  })
+
+  it('still resolves notes by containment', () => {
+    expect(isDraftCoveredByDiskBlock('typed', 'wrapper typed wrapper', 'note')).toBe(true)
+  })
+
+  it('surfaces a surviving drawing delta', () => {
+    const drawing = entry({
+      id: 'draw-1', kind: 'excalidraw-delta',
+      content: '{"order":["a"],"changed":[]}',
+      targetPath: 'd.excalidraw.md',
+    })
+    const disk = new Map<string, string | null>([['d.excalidraw.md', 'whatever is there']])
+    expect(unresolvedDraftsBlock([drawing], disk).map(d => d.id)).toEqual(['draw-1'])
   })
 })
 
