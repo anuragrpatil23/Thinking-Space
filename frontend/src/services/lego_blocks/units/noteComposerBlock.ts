@@ -496,6 +496,198 @@ export function buildFrontmatterPreviewBlock(options: {
 }
 
 // ---------------------------------------------------------------------------
+// Editor body <-> on-disk content
+//
+// The editor only ever sees prose. Two things are stripped on the way out and
+// put back on the way in: the YAML frontmatter (generated on save — ten lines
+// of uuid/key/tags appearing above the caret mid-sentence is unusable) and the
+// canvas fence (nobody should stare at raw JSON in doc mode).
+//
+// That makes this pair the one place in the composer where a pure-function bug
+// can delete text with nothing on screen to show it: the editor hands back a
+// body, and whatever this reassembles is what gets written. It lives here, and
+// is round-trip tested, for exactly that reason.
+// ---------------------------------------------------------------------------
+
+/** Split frontmatter from body *losslessly*: `frontmatter + body === content`.
+ *
+ *  `splitNoteFrontmatterBlock` strips one leading newline off the body, which
+ *  is right for display and wrong here — the composer reassembles on every
+ *  keystroke, so that strip ate one blank line off the top of the note per
+ *  save, cumulatively. Caught by the round-trip property test, 2026-08-22. */
+export function splitNoteContentExactBlock(content: string): { frontmatter: string; body: string } {
+  const lines = content.split('\n')
+  // `---\r` counts: a CRLF note must still have its frontmatter hidden from the
+  // editor. Splitting on '\n' and keeping the '\r' inside each line means the
+  // join below reproduces the original bytes, so the split stays lossless
+  // without normalising anything.
+  const isFence = (line: string | undefined) => line === '---' || line === '---\r'
+  if (!isFence(lines[0])) return { frontmatter: '', body: content }
+  let closingIndex = -1
+  for (let index = 1; index < lines.length; index += 1) {
+    if (isFence(lines[index])) { closingIndex = index; break }
+  }
+  if (closingIndex < 0) return { frontmatter: '', body: content }
+  const frontmatter = `${lines.slice(0, closingIndex + 1).join('\n')}\n`
+  return { frontmatter, body: content.slice(frontmatter.length) }
+}
+
+/** The prose the editor should show for on-disk `content`. */
+export function noteEditorBodyBlock(
+  content: string,
+  parseCanvas: (value: string) => { bodyWithoutCanvas: string },
+): string {
+  const { body } = splitNoteContentExactBlock(content)
+  return parseCanvas(body).bodyWithoutCanvas
+}
+
+/** On-disk content for a `nextBody` the editor produced, preserving whatever
+ *  frontmatter and canvas fence `content` already carried. */
+export function applyEditorBodyBlock<TTile>(
+  content: string,
+  nextBody: string,
+  canvas: {
+    parse: (value: string) => { tiles: TTile[]; hadFence: boolean; bodyWithoutCanvas: string }
+    apply: (body: string, tiles: TTile[]) => string
+  },
+): string {
+  const { frontmatter, body } = splitNoteContentExactBlock(content)
+  const parsed = canvas.parse(body)
+  // An unchanged body must reproduce the file byte for byte. Canvas placement
+  // is normalised (the fence moves to the end), so without this short-circuit
+  // a note whose fence sits mid-document would be rewritten just by being
+  // opened and touched — and the composer touches it on every keystroke.
+  if (nextBody === parsed.bodyWithoutCanvas) return content
+  const nextWithCanvas = parsed.hadFence ? canvas.apply(nextBody, parsed.tiles) : nextBody
+  return frontmatter + nextWithCanvas
+}
+
+// ---------------------------------------------------------------------------
+// Durability decisions
+//
+// See docs/contracts/DURABILITY.md. These are the predicates that decide
+// whether typed text may be discarded, and when a failed write is retried.
+// They live here rather than inline in the orchestrator because they are the
+// rules worth testing — the orchestrator around them is wiring.
+// ---------------------------------------------------------------------------
+
+/** Does the buffer hold text that is not on disk?
+ *
+ *  The single question every destructive path has to ask before it clears or
+ *  replaces `content`. `base` is the last content known to be written — it is
+ *  re-seeded after each successful save and each destination load, so equality
+ *  means "already persisted" and anything else means "would be lost".
+ *
+ *  Whitespace-only content is not worth protecting; it is also what `canSave`
+ *  refuses to write, so treating it as unsaved would deadlock every transition
+ *  behind a save that can never succeed. */
+export function bufferHasUnsavedTextBlock(content: string, base: string): boolean {
+  if (!content.trim()) return false
+  return content !== base
+}
+
+/** First retry delay after a failed save; doubles per consecutive failure. */
+export const SAVE_RETRY_BASE_MS_BLOCK = 2000
+/** Backoff ceiling. Long enough not to hammer an unavailable vault, short
+ *  enough that a vault coming back is noticed within half a minute. */
+export const SAVE_RETRY_MAX_MS_BLOCK = 30000
+
+/** Backoff for the nth consecutive failed save. `0` means "no failure
+ *  outstanding, do not schedule anything" and is the caller's cue to skip the
+ *  timer entirely rather than schedule a zero-delay one. */
+export function saveRetryDelayBlock(
+  failureCount: number,
+  baseMs = SAVE_RETRY_BASE_MS_BLOCK,
+  maxMs = SAVE_RETRY_MAX_MS_BLOCK,
+): number {
+  if (!Number.isFinite(failureCount) || failureCount <= 0) return 0
+  // 2 ** 1023 overflows to Infinity, and Math.min(Infinity, max) is still max,
+  // so this is safe for any count — but clamp the exponent anyway so the
+  // intermediate stays a real number and the behaviour is obvious to a reader.
+  const exponent = Math.min(failureCount - 1, 32)
+  return Math.min(baseMs * 2 ** exponent, maxMs)
+}
+
+/** What a completed move should do with the file it came from.
+ *
+ *  This is the one decision in the composer that deletes a file the user can
+ *  see, so it is split out here to be tested directly rather than reasoned
+ *  about inside an async callback.
+ *
+ *  `lastWritten` is what the composer last put at that path; `sessionStart` is
+ *  what was there when this session first arrived. They differ because
+ *  auto-save re-seeds the first one on every write — which is exactly why the
+ *  second has to exist. Without it, a note you appended two lines to looks
+ *  entirely yours, and the move would delete somebody's whole day. */
+export type OriginCleanupActionBlock = 'delete' | 'restore' | 'leave' | 'changed-elsewhere'
+
+export function originCleanupActionBlock(options: {
+  /** Current content at the origin, or `null` if it is already gone. */
+  onDisk: string | null
+  lastWritten: string
+  sessionStart: string
+  /** Did this session bring the origin file into existence? */
+  createdHere: boolean
+}): OriginCleanupActionBlock {
+  if (options.onDisk === null) return 'leave'
+  // Something else wrote here since we last did. Not ours to touch, in either
+  // direction — the same discipline `saveThoughtEdit` applies to conflicts.
+  if (options.onDisk !== options.lastWritten) return 'changed-elsewhere'
+  // We made it, so removing it takes nothing that predates us.
+  if (options.createdHere) return 'delete'
+  // It existed but held nothing: still safe to remove, and leaving it would be
+  // the husk this contract exists to stop creating.
+  if (!options.sessionStart.trim()) return 'delete'
+  // It existed and had content. Put it back exactly as we found it — the note
+  // moves, the additions go with it, the original day note stays whole.
+  return 'restore'
+}
+
+/** Should an explicit save (Cmd+S / Ctrl+S) do anything?
+ *
+ *  Silence is the default answer. A reflex keystroke that raises a banner
+ *  whenever there is nothing to write teaches people to stop pressing it, and
+ *  the shortcut has to stay trustworthy in manual mode where it is the *only*
+ *  way text reaches the note.
+ *
+ *  The todo branch is the sharp edge: `todos.create` appends, so re-submitting
+ *  an unchanged list adds every task a second time. Auto-save avoids this by
+ *  skipping todo mode entirely; an explicit save has to carry the guard
+ *  itself, because a keystroke repeats far more readily than a button press. */
+export function shouldRequestSaveBlock(options: {
+  makeThisTodo: boolean
+  content: string
+  base: string
+  saving: boolean
+  loadingTargetContent: boolean
+  canSave: boolean
+  todoItemCount: number
+  lastTodoSubmit: string | null
+}): boolean {
+  if (options.saving || options.loadingTargetContent) return false
+  if (options.makeThisTodo) {
+    if (options.todoItemCount === 0) return false
+    if (options.lastTodoSubmit === options.content) return false
+  } else if (!bufferHasUnsavedTextBlock(options.content, options.base)) {
+    return false
+  }
+  return options.canSave
+}
+
+/** Should the composer write on the way out (unmount, navigation, quit)?
+ *
+ *  Todo mode is excluded because `todos.create` *appends*: a flush there could
+ *  duplicate every task, which is why auto-save skips it too. */
+export function shouldFlushOnTeardownBlock(options: {
+  makeThisTodo: boolean
+  content: string
+  base: string
+}): boolean {
+  if (options.makeThisTodo) return false
+  return bufferHasUnsavedTextBlock(options.content, options.base)
+}
+
+// ---------------------------------------------------------------------------
 // Draft reconciliation
 // ---------------------------------------------------------------------------
 

@@ -7,6 +7,8 @@
 import * as chokidar from 'chokidar';
 import * as path from 'path';
 
+import { ATOMIC_TMP_PATTERN_BLOCK } from './atomicWriteBlock';
+
 export type VaultWatchEventKind = 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir';
 
 export interface VaultWatchEvent {
@@ -36,6 +38,11 @@ const IGNORED_GLOBS: RegExp[] = [
   // loop sustained itself. Measured 2026-08-11: this file was being rewritten
   // every ~2s (37KB, into an iCloud-synced folder) with the app fully idle.
   /(^|[\\/])\.thinking-space([\\/]|$)/,
+  // Scratch files from `atomicWriteBlock`. They exist for milliseconds between
+  // write and rename, but reporting them would emit a spurious add/unlink pair
+  // for every single save — and the rename onto the real target already emits
+  // the event that matters.
+  ATOMIC_TMP_PATTERN_BLOCK,
 ];
 
 function isIgnored(p: string): boolean {

@@ -50,6 +50,10 @@ import {
   resolveInsideVaultBlock,
 } from './lego_blocks/vaultPathGuardBlock';
 import {
+  atomicWriteBytesBlock,
+  atomicWriteFileBlock,
+} from './lego_blocks/atomicWriteBlock';
+import {
   DEFAULT_PROFILE_ID_BLOCK,
   createProfileBlock,
   deleteProfileBlock,
@@ -529,6 +533,10 @@ if (hasSingleInstanceLock) {
 }
 
 // Stop Vite dev server when quitting.
+/** Bounded wait for renderers to journal unsaved text on quit. Long enough for
+ *  a vault write, short enough that quitting never feels stuck. */
+const FLUSH_BEFORE_QUIT_TIMEOUT_MS = 400;
+
 app.on('will-quit', () => {
   stopViteServerBlock();
   stopHeartbeatBlock();
@@ -1587,7 +1595,7 @@ async function enableCommunityPlugin(vaultRoot: string, pluginId: string): Promi
 
   if (!plugins.includes(pluginId)) {
     plugins.push(pluginId);
-    await fsPromises.writeFile(communityPluginsPath, JSON.stringify(plugins, null, 2), 'utf-8');
+    await atomicWriteFileBlock(communityPluginsPath, JSON.stringify(plugins, null, 2));
   }
 }
 
@@ -1944,8 +1952,45 @@ ipcMain.handle('vault:watch:stop', async (_event, vaultRoot: string) => {
   return stopVaultWatcherBlock(vaultRoot);
 });
 
-app.on('before-quit', () => {
+// Give the renderer a chance to put unsaved text somewhere durable before the
+// process goes away. See docs/contracts/DURABILITY.md.
+//
+// This exists for the *app update* path in particular: the auto-updater quits
+// the app, and renderer `beforeunload` / `pagehide` are not reliable across
+// every quit route. The window is bounded and short — a quit that hangs is its
+// own kind of bug — and the renderer's hot journal tier is synchronous, so the
+// wait is only ever paying for the durable (vault) write.
+let flushedBeforeQuitBlock = false;
+
+app.on('before-quit', (event) => {
   stopAllVaultWatcherBlocks();
+
+  if (flushedBeforeQuitBlock) return;
+  const windows = BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed());
+  if (windows.length === 0) return;
+
+  flushedBeforeQuitBlock = true;
+  event.preventDefault();
+
+  const acks = windows.map((win) => new Promise<void>((resolve) => {
+    const channel = `app:flush-before-quit:ack:${win.id}`;
+    const done = () => { ipcMain.removeListener(channel, done); resolve(); };
+    ipcMain.once(channel, done);
+    try {
+      win.webContents.send('app:flush-before-quit', { ackChannel: channel });
+    } catch {
+      resolve();
+    }
+  }));
+
+  const deadline = new Promise<void>((resolve) => {
+    setTimeout(resolve, FLUSH_BEFORE_QUIT_TIMEOUT_MS);
+  });
+
+  // Whichever comes first. A renderer that is wedged must not be able to stop
+  // the user quitting.
+  void Promise.race([Promise.all(acks).then(() => undefined), deadline])
+    .then(() => { app.quit(); });
 });
 
 // -- Open external URL in default browser --
@@ -2143,8 +2188,10 @@ ipcMain.handle('vault:read', async (_event, vaultRoot: string, relPath: string) 
 // -- Write file --
 ipcMain.handle('vault:write', async (_event, vaultRoot: string, relPath: string, data: string) => {
   const full = assertInsideVault(vaultRoot, relPath);
-  await fsPromises.mkdir(path.dirname(full), { recursive: true });
-  await fsPromises.writeFile(full, data, 'utf-8');
+  // Atomic: a crash mid-write must never leave a truncated note. See
+  // docs/contracts/DURABILITY.md — plain writeFile O_TRUNCs first, so the
+  // failure mode was losing the whole file, not just the newest keystrokes.
+  await atomicWriteFileBlock(full, data);
 });
 
 // -- Read bytes (base64) --
@@ -2161,9 +2208,8 @@ ipcMain.handle('vault:readBytesBase64', async (_event, vaultRoot: string, relPat
 // -- Write bytes (base64) --
 ipcMain.handle('vault:writeBytesBase64', async (_event, vaultRoot: string, relPath: string, base64Data: string) => {
   const full = assertInsideVault(vaultRoot, relPath);
-  await fsPromises.mkdir(path.dirname(full), { recursive: true });
   const bytes = Buffer.from(base64Data, 'base64');
-  await fsPromises.writeFile(full, bytes);
+  await atomicWriteBytesBlock(full, bytes);
 });
 
 // -- List directory (returns { files, folders }) --

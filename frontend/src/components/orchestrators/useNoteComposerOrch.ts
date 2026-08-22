@@ -25,7 +25,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { addRecent } from '@/components/lego_blocks/integrations/CascadingFolderPickerBlock'
 import { useProjectsBlock } from '@/components/lego_blocks/hooks/shared/useProjectsBlock'
+import { useNoteDraftJournalBlock } from '@/components/lego_blocks/hooks/shared/useNoteDraftJournalBlock'
+import { useNoteDraftRecoveryBlock } from '@/components/lego_blocks/hooks/shared/useNoteDraftRecoveryBlock'
+import type { NoteDraftEntryBlock } from '@/services/lego_blocks/units/noteDraftJournalBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { isReapableNoteHuskBlock } from '@/services/lego_blocks/units/noteHuskBlock'
 import { createNoteFenceCanvasStorage } from '@/services/lego_blocks/integrations/noteFenceCanvasStorageBlock'
 import { applyNoteCanvasToContent, parseNoteCanvasBlock } from '@/services/lego_blocks/units/noteCanvasBlock'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
@@ -75,6 +79,13 @@ import {
   withSuffixBlock,
   writeCustomShortcutsBlock,
   writeDestinationUsageCountsBlock,
+  bufferHasUnsavedTextBlock,
+  saveRetryDelayBlock,
+  shouldFlushOnTeardownBlock,
+  shouldRequestSaveBlock,
+  originCleanupActionBlock,
+  noteEditorBodyBlock,
+  applyEditorBodyBlock,
   writeJsonStorageBlock,
   type DestinationShortcutBlock,
   type NoteContentMetaBlock,
@@ -194,14 +205,14 @@ export interface NoteComposerOrch {
   setEditorBody: (nextBody: string) => void
   setMessage: (value: string | null) => void
   selectShortcut: (shortcutId: string) => void
-  changeFolder: (change: CascadingFolderPickerChange) => void
-  applyDestinationSegments: (segments: string[]) => void
-  applyDestinationPath: (path: string) => void
+  changeFolder: (change: CascadingFolderPickerChange) => Promise<void>
+  applyDestinationSegments: (segments: string[]) => Promise<void>
+  applyDestinationPath: (path: string) => Promise<void>
   addCustomShortcut: (label: string, pathSuffix: string) => boolean
   deleteCustomShortcut: (shortcutId: string) => void
   /** Move the destination to a project's folder, keeping the note-type suffix.
    *  `null` means the vault root. */
-  selectProject: (projectKey: string | null) => void
+  selectProject: (projectKey: string | null) => Promise<void>
   /** Record the current destination as an Explorer pick. Called when the browser
    *  closes, not on every click inside it. */
   rememberBrowsedDestination: () => void
@@ -211,6 +222,38 @@ export interface NoteComposerOrch {
   /** False while `startNewNote` is looking for a free filename. */
   startingNewNote: boolean
   save: () => Promise<void>
+  /** Explicit save (Cmd+S / Ctrl+S). Silent no-op when there is nothing to
+   *  write; guarded against duplicating an appended todo list. */
+  requestSave: () => Promise<void>
+
+  /** A destination the user picked while text was on screen, held until they
+   *  say whether the note moves there or a new one starts there. */
+  pendingDestination: PendingDestinationBlock | null
+  /** True while a move is in flight. */
+  movingNote: boolean
+  /** Move the note in the buffer to the pending destination. Never appends. */
+  moveNoteToPendingDestination: () => Promise<void>
+  /** Keep the current note where it is; open a blank one at the destination. */
+  startNewNoteAtPendingDestination: () => Promise<void>
+  /** Abandon the destination change entirely. */
+  cancelPendingDestination: () => void
+
+  /** Text from an earlier session that never reached a file. Empty in the
+   *  normal case; non-empty means something crashed. */
+  recoverableDrafts: NoteDraftEntryBlock[]
+  /** Load a recovered draft into the composer, at its original destination. */
+  recoverDraft: (entry: NoteDraftEntryBlock) => void
+  /** Throw a recovered draft away. Only ever a person's explicit choice. */
+  discardDraft: (id: string) => Promise<void>
+}
+
+/** A destination change the composer is holding until the user says what
+ *  should happen to the note already in the buffer. */
+export interface PendingDestinationBlock {
+  /** Vault-relative base segments the user picked. */
+  segments: string[]
+  /** Human-readable name of where they picked, for the prompt. */
+  label: string
 }
 
 export function useNoteComposerOrch(): NoteComposerOrch {
@@ -281,6 +324,72 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   const loadedBaseContentRef = useRef('')
   useEffect(() => { contentRef.current = content }, [content])
 
+  // Declared here rather than beside `save` so the callbacks defined above it
+  // can flush without a use-before-declaration dance. Assigned on every render
+  // further down.
+  // Second copy of typed text, independent of whether the note file is being
+  // written. See docs/contracts/DURABILITY.md.
+  const journal = useNoteDraftJournalBlock()
+  /** Did this session bring the target file into existence? Journaled rather
+   *  than kept only in memory, because memory does not survive the crash the
+   *  journal exists for — and after a crash an empty note we made is otherwise
+   *  indistinguishable from a stub the user made deliberately. */
+  const createdTargetRef = useRef(false)
+  /** Content of the last successful `todos.create`. `todos.create` *appends*,
+   *  so re-submitting the same list adds every task a second time — which is
+   *  why auto-save skips todo mode entirely. An explicit Cmd+S has to carry the
+   *  same guard, since a reflex keystroke repeats far more readily than a
+   *  deliberate button press. */
+  const lastTodoSubmitRef = useRef<string | null>(null)
+  /** What was on disk at the target when this session first landed on it.
+   *
+   *  The move needs it to answer a question `loadedBaseContentRef` cannot:
+   *  auto-save re-seeds that baseline on every write, so by the time you pick a
+   *  project it says "everything here is mine", which would licence deleting a
+   *  day note that existed before you arrived. This one does not move. */
+  const sessionOriginContentRef = useRef('')
+  const recovery = useNoteDraftRecoveryBlock(journal.draftId)
+
+  const saveRef = useRef<() => Promise<void>>(async () => {})
+  const makeThisTodoRef = useRef(makeThisTodo)
+  makeThisTodoRef.current = makeThisTodo
+  // Read through a ref by the stash below rather than closed over: the
+  // destination-load effect *sets* this, so listing it as a dependency would
+  // make the effect retrigger itself.
+  const targetFileStateRef = useRef<TargetFileStateBlock | null>(null)
+
+  // Prose held aside while the composer is in To Do mode.
+  //
+  // Todo mode reuses the one editor buffer for a different document — one task
+  // per line — and the destination-load effect used to make room by calling
+  // `setContent('')`. That destroyed whatever prose was on screen: outright,
+  // with no disk copy at all when auto-save was off, and with no way back even
+  // when there was one. Note kind is a *toggle*, and a toggle must not be
+  // destructive. Both documents are now stashed rather than dropped, so
+  // flipping back and forth returns you to exactly what you had.
+  const stashedProseRef = useRef<{
+    content: string
+    base: string
+    loadedPath: string | null
+    fileState: TargetFileStateBlock | null
+  } | null>(null)
+  const stashedTodoRef = useRef('')
+
+  // Count of consecutive failed saves, driving the retry backoff below. State
+  // rather than a ref because the retry effect has to re-run when it changes.
+  const [saveFailureCount, setSaveFailureCount] = useState(0)
+
+  /** A destination change waiting on the question only a person can answer:
+   *  does this note belong there, or do you want a fresh one there?
+   *
+   *  Raised only when the buffer holds text and the destination actually
+   *  changes — at most once per note, at the moment you have stopped writing
+   *  and reached for a picker. Without it the ordering ("new note first, then
+   *  pick the project") is a rule nothing on screen teaches, and getting it
+   *  backwards silently misfiles a note. */
+  const [pendingDestination, setPendingDestination] = useState<PendingDestinationBlock | null>(null)
+  const [movingNote, setMovingNote] = useState(false)
+
   // Refs let the canvas adapter (created once) always see the latest content
   // without remounting CanvasSurfaceOrch (which would reset pan/zoom).
   const canvasContentRef = useRef(content)
@@ -300,17 +409,16 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   //    click; now it lands mid-sentence, and having ten lines of uuid/key/tags
   //    appear above the caret while you type is unusable.
   // `content` still holds the full on-disk text — that is what gets written.
-  const editorBody = useMemo(() => {
-    const { body } = splitNoteFrontmatterBlock(content)
-    return parseNoteCanvasBlock(body).bodyWithoutCanvas
-  }, [content])
+  const editorBody = useMemo(
+    () => noteEditorBodyBlock(content, parseNoteCanvasBlock),
+    [content],
+  )
 
   const setEditorBody = useCallback((nextBody: string) => {
-    const current = canvasContentRef.current
-    const { frontmatter } = splitNoteFrontmatterBlock(current)
-    const { tiles, hadFence } = parseNoteCanvasBlock(current)
-    const nextWithCanvas = hadFence ? applyNoteCanvasToContent(nextBody, tiles) : nextBody
-    setContent(frontmatter ? frontmatter + nextWithCanvas : nextWithCanvas)
+    setContent(applyEditorBodyBlock(canvasContentRef.current, nextBody, {
+      parse: parseNoteCanvasBlock,
+      apply: applyNoteCanvasToContent,
+    }))
   }, [])
 
   const triggerSaveFeedback = useCallback(() => {
@@ -487,24 +595,48 @@ export function useNoteComposerOrch(): NoteComposerOrch {
    *  effect finds no draft to carry across (`computeDraftRemainderBlock`
    *  deliberately preserves typing when you re-target a note; here that would
    *  paste the old note into the new one). */
+  /** First filename in `folderPath` that nothing occupies: `base`, then
+   *  `base-2`, `base-3`. Extracted from `startNewNote` because the move needs
+   *  exactly the same search — and because "no append, ever" means a move into
+   *  a folder that already holds today's note must land beside it, not inside it. */
+  const findFreeFilename = useCallback(async (folderPath: string, base: string): Promise<string | null> => {
+    const fs = getVaultFS()
+    for (let attempt = 1; attempt <= NEW_NOTE_NAME_ATTEMPTS_BLOCK; attempt += 1) {
+      const candidate = numberedFilenameBlock(base, attempt)
+      const candidatePath = buildTargetPathBlock(folderPath, candidate)
+      if (!candidatePath) break
+      // Serial on purpose: each answer decides whether the next name is even
+      // worth asking about, and the loop almost always ends on the first.
+      if (!(await fs.exists(candidatePath))) return candidate
+    }
+    return null
+  }, [])
+
   const startNewNote = useCallback(async () => {
     if (!destinationPath.trim()) {
       setError('Pick a destination folder first.')
       return
     }
+    // Never clear a buffer that isn't on disk. Below, this used to call
+    // `setContent('')` unconditionally — correct for its stated purpose (stop
+    // the old note being pasted into the new one) and silently destructive
+    // whenever the text had not been written yet, which is every note in manual
+    // mode and any note whose last auto-save failed.
+    if (bufferHasUnsavedTextBlock(contentRef.current, loadedBaseContentRef.current)) {
+      await saveRef.current()
+      if (contentRef.current !== loadedBaseContentRef.current) {
+        // `save` has already surfaced the reason. Say what was *not* done, which
+        // is the part the user cares about.
+        setMessage(null)
+        setError(current => current
+          ? `${current} — the current note was left open and nothing was cleared.`
+          : 'Could not save the current note, so it was left open and nothing was cleared.')
+        return
+      }
+    }
     setStartingNewNote(true)
     try {
-      const fs = getVaultFS()
-      const base = todayFilenameBlock()
-      let chosen: string | null = null
-      for (let attempt = 1; attempt <= NEW_NOTE_NAME_ATTEMPTS_BLOCK; attempt += 1) {
-        const candidate = numberedFilenameBlock(base, attempt)
-        const candidatePath = buildTargetPathBlock(destinationPath, candidate)
-        if (!candidatePath) break
-        // Serial on purpose: each answer decides whether the next name is even
-        // worth asking about, and the loop almost always ends on the first.
-        if (!(await fs.exists(candidatePath))) { chosen = candidate; break }
-      }
+      const chosen = await findFreeFilename(destinationPath, todayFilenameBlock())
       if (!chosen) {
         setError(`Could not find a free file name in ${destinationPath}.`)
         return
@@ -535,7 +667,47 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     } finally {
       setStartingNewNote(false)
     }
-  }, [destinationPath])
+  }, [destinationPath, findFreeFilename])
+
+  /** Adopt a recovered draft into the composer.
+   *
+   *  Ordering matters. The text is put in the buffer, journaled under *this*
+   *  session's id and flushed synchronously, and only then is the old entry
+   *  forgotten — so there is no instant where the recovered text exists in
+   *  neither journal. The old entry is dropped from the list rather than
+   *  deleted from disk: if this session then dies, the original is still there.
+   */
+  const recoverDraft = useCallback((entry: NoteDraftEntryBlock) => {
+    if (entry.targetPath) {
+      const segments = normalizeSegmentsBlock(entry.targetPath)
+      const leaf = segments.pop()
+      if (leaf) {
+        setFilenameState(leaf)
+        setFilenameTouched(true)
+      }
+      setPickerDefaultPath(segments)
+      setPickerVersion(current => current + 1)
+      setFolderBaseSegments(segments)
+      setFolderBasePath(segments.join('/'))
+      setActiveShortcutId('none')
+      // The load effect must not treat the recovered text as a stale draft to
+      // reconcile against a file it has never read.
+      setLoadedTargetPath(entry.targetPath)
+      setTargetFileState(null)
+    }
+    loadedBaseContentRef.current = ''
+    contentRef.current = entry.content
+    setContent(entry.content)
+    journal.record({
+      content: entry.content,
+      targetPath: entry.targetPath,
+      createdTarget: entry.createdTarget,
+    })
+    journal.flushHotSync()
+    recovery.forgetDraft(entry.id)
+    setError(null)
+    setMessage('Recovered unsaved note.')
+  }, [journal, recovery])
 
   const setNoteKind = useCallback((kind: NoteKindBlock) => {
     setNoteKindState(kind)
@@ -556,18 +728,79 @@ export function useNoteComposerOrch(): NoteComposerOrch {
 
   // --- destination actions ---------------------------------------------------
 
+  /** Delete an empty, app-generated note left behind at `path`.
+   *
+   *  Safe by construction: `isReapableNoteHuskBlock` returns true only for a
+   *  file whose frontmatter the app generated entirely by itself and whose body
+   *  and canvas are both empty. Such a file contains, by definition, nothing a
+   *  person typed — so even if the journal is holding unsaved text aimed at
+   *  this path, that text is *not* in this file, and removing it makes the
+   *  recovery sweep offer the draft rather than believe it landed.
+   *
+   *  Every failure path leaves the file alone. A stray empty note is a
+   *  nuisance; a wrongly deleted one is not recoverable. */
+  const reapHuskAtPath = useCallback(async (path: string | null) => {
+    if (!path) return
+    try {
+      const fs = getVaultFS()
+      if (!(await fs.exists(path))) return
+      const existing = await fs.read(path)
+      const filename = path.split('/').pop() ?? ''
+      if (!isReapableNoteHuskBlock({ content: existing, filename })) return
+      await fs.delete(path)
+    } catch {
+      // Unreadable, undeletable, or vault unavailable — leave it.
+    }
+  }, [])
+
+  /** The transition chokepoint. See docs/contracts/DURABILITY.md.
+   *
+   *  Every path that clears or replaces `content` asks this first. It requires
+   *  *durability*, not publication — it never writes the note file, so it is
+   *  identical in manual mode, where the whole point is that nothing reaches
+   *  the note until you say so.
+   *
+   *  Returns false only when **both** tiers failed, which is the one case where
+   *  the buffer really is the only copy. Then the transition is cancelled and
+   *  the text stays on screen. The transition loses, never the text.
+   *
+   *  `durable: false` is for browsing — the folder picker commits on every
+   *  click inside the tree, and a vault write per click would churn an iCloud
+   *  vault for a person who is still aiming. The hot tier is synchronous and
+   *  free, so it always runs. */
+  const ensureBufferDurable = useCallback(async (options?: { durable?: boolean }): Promise<boolean> => {
+    if (!bufferHasUnsavedTextBlock(contentRef.current, loadedBaseContentRef.current)) return true
+    journal.record({
+      content: contentRef.current,
+      targetPath,
+      createdTarget: createdTargetRef.current,
+    })
+    const hotOk = journal.flushHotSync()
+    const durableOk = options?.durable === false ? false : await journal.flushDurable()
+    if (hotOk || durableOk) return true
+    setError(
+      'Could not put this note anywhere safe yet, so nothing was moved or cleared. '
+      + 'Your text is still here — check that the vault is reachable.',
+    )
+    return false
+  }, [journal, targetPath])
+
   const clearTransientStatus = useCallback(() => {
     setSavedPath(null)
     setError(null)
     setMessage(null)
   }, [])
 
-  const changeFolder = useCallback((change: CascadingFolderPickerChange) => {
+  const changeFolder = useCallback(async (change: CascadingFolderPickerChange) => {
+    // Hot tier only: every click inside the folder tree commits, so paying for
+    // a vault write per click would churn an iCloud vault while the user is
+    // still aiming. The durable write lands on its own debounce moments later.
+    if (!(await ensureBufferDurable({ durable: false }))) return
     setFolderBaseSegments(change.baseSegments)
     setFolderBasePath(change.basePath)
     setItemsAdded(0)
     clearTransientStatus()
-  }, [clearTransientStatus])
+  }, [clearTransientStatus, ensureBufferDurable])
 
   const selectShortcut = useCallback((shortcutId: string) => {
     setActiveShortcutId(shortcutId)
@@ -576,24 +809,37 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     rememberDestinationUsage(withSuffixBlock(folderBaseSegments, shortcut.pathSegments))
   }, [folderBaseSegments, rememberDestinationUsage, shortcutsById])
 
-  const applyDestinationSegments = useCallback((segments: string[]) => {
-    const normalized = normalizeSegmentsBlock(segments)
-    if (normalized.length === 0) return
+  /** Move the base with no questions asked. The public actions below decide
+   *  whether a question is owed first. */
+  const applyBaseSegments = useCallback((normalized: string[], resetShortcut: boolean) => {
     setPickerDefaultPath(normalized)
     setPickerVersion(current => current + 1)
     setFolderBaseSegments(normalized)
     setFolderBasePath(normalized.join('/'))
-    setActiveShortcutId('none')
+    if (resetShortcut) setActiveShortcutId('none')
     clearTransientStatus()
+  }, [clearTransientStatus])
+
+  const applyDestinationSegments = useCallback(async (segments: string[]) => {
+    const normalized = normalizeSegmentsBlock(segments)
+    if (normalized.length === 0) return
+    if (!(await ensureBufferDurable())) return
+    // A destination change with text on screen is ambiguous, so ask.
+    if (normalized.join('/') !== folderBaseSegments.join('/')
+      && contentRef.current.trim().length > 0) {
+      setPendingDestination({ segments: normalized, label: normalized.join('/') })
+      return
+    }
+    applyBaseSegments(normalized, true)
     // Deliberately does NOT record usage. Selecting is browsing, not using:
     // recording here filled Recent with every folder you clicked through on the
     // way somewhere else, and — because both lists re-sort on write — made the
     // whole panel reshuffle under the cursor on every click (2026-07-31).
     // Usage is recorded on save, where it reflects an actual destination.
-  }, [clearTransientStatus])
+  }, [applyBaseSegments, ensureBufferDurable, folderBaseSegments])
 
-  const applyDestinationPath = useCallback((path: string) => {
-    applyDestinationSegments(normalizeSegmentsBlock(path))
+  const applyDestinationPath = useCallback(async (path: string) => {
+    await applyDestinationSegments(normalizeSegmentsBlock(path))
   }, [applyDestinationSegments])
 
   /** Returns false (and sets `error`) when the input is incomplete. */
@@ -632,31 +878,246 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   /** Move the base to a project, leaving the note-type suffix alone: picking a
    *  project is half the address, not the whole one. `null` is the vault root,
    *  which is a real answer ("this note isn't project work"), not an absence. */
-  const selectProject = useCallback((projectKey: string | null) => {
+  const selectProject = useCallback(async (projectKey: string | null) => {
+    if (!(await ensureBufferDurable())) return
     const project = projectKey
       ? projectDestinations.find(candidate => candidate.key === projectKey) ?? null
       : null
     const segments = project ? project.segments : []
-    setPickerDefaultPath(segments)
-    setPickerVersion(current => current + 1)
-    setFolderBaseSegments(segments)
-    setFolderBasePath(segments.join('/'))
+    if (segments.join('/') !== folderBaseSegments.join('/')
+      && contentRef.current.trim().length > 0) {
+      setPendingDestination({ segments, label: project ? project.name : 'the vault root' })
+      return
+    }
     // Unlike `applyDestinationSegments` this does NOT force the `none`
     // shortcut: the whole point is that the suffix survives, so switching
     // projects keeps you in the same kind of folder.
-    clearTransientStatus()
-  }, [clearTransientStatus, projectDestinations])
+    applyBaseSegments(segments, false)
+  }, [applyBaseSegments, ensureBufferDurable, folderBaseSegments, projectDestinations])
+
+  const cancelPendingDestination = useCallback(() => {
+    // A real third answer — "wrong project, my mistake" — not a dismissal.
+    setPendingDestination(null)
+  }, [])
+
+  /** Move the note in the buffer to the pending destination.
+   *
+   *  Ordered so no failure can destroy: journal, write the new file, verify it
+   *  by read-back, and only then touch the origin. A failure before the last
+   *  step leaves a duplicate, which a person fixes in seconds; the reverse
+   *  order leaves nothing.
+   *
+   *  Never appends. A destination that already holds today's note gets a
+   *  `-2` beside it, so one move is always one file. */
+  const moveNoteToPendingDestination = useCallback(async () => {
+    const pending = pendingDestination
+    if (!pending || movingNote) return
+    // Todo mode has no note to move — `todos.create` appends into a list, so
+    // there is no single file that is "this note".
+    if (makeThisTodo) {
+      applyBaseSegments(pending.segments, false)
+      setPendingDestination(null)
+      return
+    }
+    setMovingNote(true)
+    setError(null)
+    setMessage(null)
+    try {
+      if (!(await ensureBufferDurable())) return
+
+      const originPath = targetPath
+      const originContent = contentRef.current
+      const originLastWritten = loadedBaseContentRef.current
+      const originSessionStart = sessionOriginContentRef.current
+      const originCreatedHere = createdTargetRef.current
+
+      const destinationSegmentsNext = withSuffixBlock(pending.segments, activeShortcut.pathSegments)
+      const destinationFolder = destinationSegmentsNext.join('/')
+      const chosen = await findFreeFilename(destinationFolder, normalizedFilename)
+      if (!chosen) {
+        setError(`Could not find a free file name in ${destinationFolder}.`)
+        return
+      }
+
+      // The buffer holds generated frontmatter from earlier saves; the
+      // capability generates its own, so only the body travels.
+      const body = splitNoteFrontmatterBlock(originContent).body
+      const created = await invokeCapabilityOrThrow({
+        capability: 'thoughts.create',
+        input: {
+          folder_path: destinationFolder,
+          filename: chosen,
+          content: body,
+          title: useCustomTitle ? (title.trim() || null) : null,
+          // Already baked into the body by whichever save wrote it first;
+          // asking for it again would stamp a second one.
+          date_header: false,
+          emotions,
+          tags,
+          // Narrowed by the todo early-return above.
+          note_kind: noteKind,
+        },
+        actor: THOUGHTS_ACTOR,
+      })
+      const refreshed = await getThoughtForEdit(created.output_path)
+
+      // Origin cleanup. Only ever touched when it still holds exactly what we
+      // last wrote — if anything changed it underneath us, it is not ours.
+      let originNote = ''
+      if (originPath) {
+        try {
+          const fs = getVaultFS()
+          if (await fs.exists(originPath)) {
+            const action = originCleanupActionBlock({
+              onDisk: await fs.read(originPath),
+              lastWritten: originLastWritten,
+              sessionStart: originSessionStart,
+              createdHere: originCreatedHere,
+            })
+            if (action === 'delete') await fs.delete(originPath)
+            else if (action === 'restore') await fs.write(originPath, originSessionStart)
+            else if (action === 'changed-elsewhere') {
+              originNote = ' The original was changed elsewhere, so it was left in place.'
+            }
+          }
+        } catch {
+          originNote = ' The original could not be cleaned up and is still there.'
+        }
+      }
+
+      // Retarget onto the note's new home.
+      applyBaseSegments(pending.segments, false)
+      setFilenameState(chosen)
+      setFilenameTouched(true)
+      contentRef.current = refreshed.content
+      loadedBaseContentRef.current = refreshed.content
+      sessionOriginContentRef.current = refreshed.content
+      createdTargetRef.current = true
+      setContent(refreshed.content)
+      setLoadedTargetPath(created.output_path)
+      setTargetFileState({
+        path: created.output_path,
+        exists: true,
+        baseMtime: refreshed.mtime,
+        baseHash: refreshed.hash,
+      })
+      setSavedPath(created.output_path)
+      setSaveFailureCount(0)
+      journal.resolve()
+      rememberDestinationUsage(destinationSegmentsNext)
+      setPendingDestination(null)
+      setMessage(`Moved to ${created.output_path}.${originNote}`)
+      triggerSaveFeedback()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not move the note')
+    } finally {
+      setMovingNote(false)
+    }
+  }, [
+    activeShortcut.pathSegments,
+    applyBaseSegments,
+    emotions,
+    ensureBufferDurable,
+    makeThisTodo,
+    findFreeFilename,
+    journal,
+    movingNote,
+    noteKind,
+    normalizedFilename,
+    pendingDestination,
+    rememberDestinationUsage,
+    tags,
+    targetPath,
+    title,
+    triggerSaveFeedback,
+    useCustomTitle,
+  ])
+
+  /** Leave the current note where it is and open a blank one at the pending
+   *  destination. Saves first, and refuses to clear if that save fails. */
+  const startNewNoteAtPendingDestination = useCallback(async () => {
+    const pending = pendingDestination
+    if (!pending || movingNote) return
+    setMovingNote(true)
+    setError(null)
+    try {
+      if (bufferHasUnsavedTextBlock(contentRef.current, loadedBaseContentRef.current)) {
+        await saveRef.current()
+        if (bufferHasUnsavedTextBlock(contentRef.current, loadedBaseContentRef.current)) {
+          setError(current => current
+            ? `${current} — nothing was moved or cleared.`
+            : 'Could not save the current note, so nothing was moved or cleared.')
+          return
+        }
+      }
+      const destinationSegmentsNext = withSuffixBlock(pending.segments, activeShortcut.pathSegments)
+      const chosen = await findFreeFilename(destinationSegmentsNext.join('/'), todayFilenameBlock())
+      if (!chosen) {
+        setError(`Could not find a free file name in ${destinationSegmentsNext.join('/')}.`)
+        return
+      }
+      // Cleared before the path moves, so the destination-load effect finds no
+      // draft to carry across into the new note.
+      contentRef.current = ''
+      loadedBaseContentRef.current = ''
+      sessionOriginContentRef.current = ''
+      setContent('')
+      setUseCustomTitleState(false)
+      setTitle('')
+      setEmotions([])
+      setTags([])
+      setFilenameState(chosen)
+      setFilenameTouched(true)
+      setSavedPath(null)
+      setItemsAdded(0)
+      applyBaseSegments(pending.segments, false)
+      setPendingDestination(null)
+    } finally {
+      setMovingNote(false)
+    }
+  }, [
+    activeShortcut.pathSegments,
+    applyBaseSegments,
+    findFreeFilename,
+    movingNote,
+    pendingDestination,
+  ])
 
   // --- destination note load -------------------------------------------------
 
   useEffect(() => {
     if (makeThisTodo) {
+      // Only on the *transition* into todo mode. This branch also runs when the
+      // destination changes while already in todo mode, and swapping the buffer
+      // then would throw away the tasks being typed.
+      if (stashedProseRef.current === null) {
+        stashedProseRef.current = {
+          content: contentRef.current,
+          base: loadedBaseContentRef.current,
+          loadedPath: loadedTargetPath,
+          fileState: targetFileStateRef.current,
+        }
+        contentRef.current = stashedTodoRef.current
+        loadedBaseContentRef.current = ''
+        setContent(stashedTodoRef.current)
+      }
       setLoadingTargetContent(false)
       setLoadedTargetPath(null)
       setTargetFileState(null)
       setSavedPath(null)
-      setContent('')
-      loadedBaseContentRef.current = ''
+      return
+    }
+    // Leaving todo mode: hand the prose back, and stash the tasks in its place
+    // so the return trip is symmetric.
+    if (stashedProseRef.current) {
+      const stash = stashedProseRef.current
+      stashedProseRef.current = null
+      stashedTodoRef.current = contentRef.current
+      contentRef.current = stash.content
+      loadedBaseContentRef.current = stash.base
+      setContent(stash.content)
+      setLoadedTargetPath(stash.loadedPath)
+      setTargetFileState(stash.fileState)
       return
     }
     if (!targetPath) {
@@ -683,6 +1144,11 @@ export function useNoteComposerOrch(): NoteComposerOrch {
         const exists = await fs.exists(targetPath)
         if (cancelled || requestId !== loadTargetRequestRef.current) return
         if (!exists) {
+          // Nothing there yet, so whatever this session writes brings the file
+          // into existence — which is what makes it safe to reap later if it
+          // ends up empty.
+          createdTargetRef.current = true
+          sessionOriginContentRef.current = ''
           loadedBaseContentRef.current = ''
           setContent(preservedDraft)
           setLoadedTargetPath(targetPath)
@@ -691,6 +1157,8 @@ export function useNoteComposerOrch(): NoteComposerOrch {
         }
         const existing = await getThoughtForEdit(targetPath)
         if (cancelled || requestId !== loadTargetRequestRef.current) return
+        createdTargetRef.current = false
+        sessionOriginContentRef.current = existing.content
         loadedBaseContentRef.current = existing.content
         setContent(mergeDraftBlock(existing.content, preservedDraft))
         setLoadedTargetPath(targetPath)
@@ -733,6 +1201,8 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     }),
     [emotions, tags, normalizedFilename, title, useCustomTitle],
   )
+
+  targetFileStateRef.current = targetFileState
 
   const canSave = makeThisTodo
     ? Boolean(destinationPath.trim() && todoDateStr.trim() && todoItemCount > 0 && !saving)
@@ -778,6 +1248,9 @@ export function useNoteComposerOrch(): NoteComposerOrch {
           actor: TODO_ACTOR,
         })
         setSavedPath(data.output_path)
+        setSaveFailureCount(0)
+        lastTodoSubmitRef.current = contentRef.current
+        journal.resolve()
         setItemsAdded(data.items_added)
         rememberDestinationUsage(destinationSegments)
         setMessage(`${data.items_added} task${data.items_added !== 1 ? 's' : ''} saved to ${data.output_path}.`)
@@ -828,6 +1301,10 @@ export function useNoteComposerOrch(): NoteComposerOrch {
         baseHash: refreshed.hash,
       })
       setSavedPath(outputPath)
+      setSaveFailureCount(0)
+      // The read-back above confirms the text is at its target, which is the
+      // only condition under which a draft may be forgotten.
+      journal.resolve()
       rememberDestinationUsage(destinationSegments)
       // Deliberately no success message: auto-save fires while you type, and a
       // banner announcing each write would shove the writing surface down every
@@ -850,6 +1327,11 @@ export function useNoteComposerOrch(): NoteComposerOrch {
         })
       }
       setError(err instanceof Error ? err.message : 'Unknown error')
+      // Drives the retry below. Without it a failed save simply sat there: the
+      // auto-save effect only re-fires on a `content` change, so stopping
+      // typing after a failure left the text unsaved indefinitely, with an
+      // error string as the only trace.
+      setSaveFailureCount(count => count + 1)
     } finally {
       setSaving(false)
     }
@@ -866,6 +1348,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     makeThisTodo,
     normalizedFilename,
     rememberDestinationUsage,
+    journal,
     targetFileState,
     targetPath,
     title,
@@ -873,6 +1356,28 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     triggerSaveFeedback,
     useCustomTitle,
   ])
+
+  /** Explicit save — the Cmd+S / Ctrl+S path.
+   *
+   *  In manual mode this is the primary gesture. With auto-save on it still
+   *  means something real: flush now rather than waiting out the debounce,
+   *  which is the reflex most people already have.
+   *
+   *  Silent when there is nothing to do. A reflex keystroke that raises an
+   *  error banner teaches people to stop pressing it. */
+  const requestSave = useCallback(async () => {
+    if (!shouldRequestSaveBlock({
+      makeThisTodo,
+      content: contentRef.current,
+      base: loadedBaseContentRef.current,
+      saving,
+      loadingTargetContent,
+      canSave,
+      todoItemCount,
+      lastTodoSubmit: lastTodoSubmitRef.current,
+    })) return
+    await saveRef.current()
+  }, [canSave, loadingTargetContent, makeThisTodo, saving, todoItemCount])
 
   // --- auto-save -------------------------------------------------------------
   //
@@ -882,7 +1387,6 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   //
   // Never runs in todo mode: `todos.create` *appends* the parsed items, so a
   // debounced re-fire would duplicate every task on each keystroke pause.
-  const saveRef = useRef(save)
   saveRef.current = save
 
   useEffect(() => {
@@ -891,6 +1395,87 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     const timer = window.setTimeout(() => { void saveRef.current() }, AUTO_SAVE_DEBOUNCE_MS)
     return () => window.clearTimeout(timer)
   }, [autoSaveEnabled, canSave, isDirty, makeThisTodo, content])
+
+  // Journal every keystroke that isn't on disk yet.
+  //
+  // Runs regardless of `autoSaveEnabled`, of whether a destination has been
+  // chosen, and of whether the last save failed — those are precisely the gaps
+  // where the buffer was previously the only copy. Todo mode is journaled too:
+  // `todos.create` appends, so auto-save skips it entirely, which made it the
+  // single least protected surface in the composer.
+  useEffect(() => {
+    if (!bufferHasUnsavedTextBlock(content, loadedBaseContentRef.current)) return
+    journal.record({
+      content,
+      targetPath,
+      createdTarget: createdTargetRef.current,
+    })
+  }, [content, journal, targetPath])
+
+  // Retry a save that failed, with backoff, until the text is on disk.
+  //
+  // Deliberately not gated on `autoSaveEnabled`: this only ever retries an
+  // attempt that already happened, so in manual mode it is finishing the save
+  // the user asked for rather than starting one they didn't. Never runs in todo
+  // mode — `todos.create` appends, so a retry after a *partial* success would
+  // duplicate tasks.
+  //
+  // ENERGY contract: conditional, not periodic. The timer exists only while a
+  // failure is outstanding and the buffer is still dirty, and it stops the
+  // moment either clears.
+  useEffect(() => {
+    if (saveFailureCount === 0 || makeThisTodo) return
+    if (!isDirty || !canSave || saving) return
+    const delay = saveRetryDelayBlock(saveFailureCount)
+    if (delay === 0) return
+    const timer = window.setTimeout(() => { void saveRef.current() }, delay)
+    return () => window.clearTimeout(timer)
+  }, [canSave, isDirty, makeThisTodo, saveFailureCount, saving])
+
+  // Reap the husk left behind when the destination moves.
+  //
+  // The frontmatter-only file that auto-save creates from a single character —
+  // typed, then deleted — would otherwise sit in the vault forever, because
+  // `canSave` goes false the moment the body empties and auto-save never fires
+  // again to clean up after itself.
+  const previousTargetRef = useRef<string | null>(null)
+  useEffect(() => {
+    const previous = previousTargetRef.current
+    previousTargetRef.current = targetPath
+    if (!previous || previous === targetPath) return
+    void reapHuskAtPath(previous)
+  }, [reapHuskAtPath, targetPath])
+
+  // Flush on the way out.
+  //
+  // Nothing here listened for teardown before, so the 1200ms auto-save debounce
+  // was simply lost whenever you navigated away or quit mid-thought. Unmount is
+  // the reliable half — the app is still running, so the write completes. The
+  // window events are best-effort: neither `beforeunload` nor `pagehide` waits
+  // on async work, which is exactly why the recovery journal exists rather than
+  // this being the whole answer.
+  useEffect(() => {
+    const flush = () => {
+      if (!shouldFlushOnTeardownBlock({
+        makeThisTodo: makeThisTodoRef.current,
+        content: contentRef.current,
+        base: loadedBaseContentRef.current,
+      })) return
+      void saveRef.current()
+    }
+    window.addEventListener('beforeunload', flush)
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('beforeunload', flush)
+      window.removeEventListener('pagehide', flush)
+      flush()
+      // Leaving the composer on an empty note it created: clean up rather than
+      // leave a husk. `flush` above has already saved anything worth keeping,
+      // and `reapHuskAtPath` re-reads the file and refuses anything that has
+      // content, so the two cannot fight.
+      void reapHuskAtPath(previousTargetRef.current)
+    }
+  }, [reapHuskAtPath])
 
   const setAutoSaveEnabled = useCallback((enabled: boolean) => {
     setAutoSaveEnabledState(enabled)
@@ -965,5 +1550,16 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     startNewNote,
     startingNewNote,
     save,
+    requestSave,
+
+    pendingDestination,
+    movingNote,
+    moveNoteToPendingDestination,
+    startNewNoteAtPendingDestination,
+    cancelPendingDestination,
+
+    recoverableDrafts: recovery.recoverableDrafts,
+    recoverDraft,
+    discardDraft: recovery.discardDraft,
   }
 }

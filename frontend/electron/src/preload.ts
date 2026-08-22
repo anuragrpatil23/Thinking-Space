@@ -248,6 +248,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener(channel, listener); };
   },
 
+  /** Main is about to quit and is holding the quit open for us. The handler
+   *  must put unsaved text somewhere durable and then call `done()`; failing to
+   *  call it only costs the bounded timeout in main, never the quit itself.
+   *  See docs/contracts/DURABILITY.md. */
+  onFlushBeforeQuit: (handler: (done: () => void) => void) => {
+    const channel = 'app:flush-before-quit';
+    const listener = (_: unknown, data: unknown) => {
+      const ackChannel = (data as { ackChannel?: unknown })?.ackChannel;
+      if (typeof ackChannel !== 'string') return;
+      let acked = false;
+      handler(() => {
+        if (acked) return;
+        acked = true;
+        ipcRenderer.send(ackChannel);
+      });
+    };
+    ipcRenderer.on(channel, listener);
+    return () => { ipcRenderer.removeListener(channel, listener); };
+  },
+
   // Live source config
   sourceConfigGet: (): Promise<{ mode: string; sourcePath: string | null; vitePort: number; viteRunning: boolean }> =>
     ipcRenderer.invoke('source:config:get'),

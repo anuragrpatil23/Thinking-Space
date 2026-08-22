@@ -71,6 +71,7 @@ Read the file before touching that area. Each one exists because something alrea
 | Startup performance | Heavy vendors never statically reachable from the entry; startup JS ≤ 2.4 MB. | [docs/contracts/STARTUP-PERFORMANCE.md](docs/contracts/STARTUP-PERFORMANCE.md) |
 | iOS memory | An iOS-only crash with no JS error is a WebContent memory kill until proven otherwise. | [docs/contracts/IOS-MEMORY.md](docs/contracts/IOS-MEMORY.md) |
 | Energy | No unconditional periodic timers; reading holds the display awake, nothing else does. | [docs/contracts/ENERGY.md](docs/contracts/ENERGY.md) |
+| Durability | Typed text is never only in the buffer, in any save mode; a write never truncates the previous version; emptiness includes canvas; a crash during cleanup never deletes. | [docs/contracts/DURABILITY.md](docs/contracts/DURABILITY.md) |
 | Code architecture | Units / integrations / hooks / orchestrators, with mandatory `*Block` / `use*` / `*Orch` naming. | [docs/contracts/CODE-ARCHITECTURE.md](docs/contracts/CODE-ARCHITECTURE.md) |
 | Editor | One CM6 engine + decorations; markdown on disk stays byte-identical. | [docs/contracts/EDITOR.md](docs/contracts/EDITOR.md) |
 | Derivation | AI-activity strata are re-derivable from raw sessions; never file a record under a derived address or a position; a hash over inputs cannot see a code change (name the lever); absence is not evidence; derived layers fail loudly; hooks capture, the app derives. | [docs/contracts/DERIVATION.md](docs/contracts/DERIVATION.md) |

@@ -83,6 +83,11 @@ import { cn } from '@/lib/utils'
 interface MarkdownRichEditorBlockProps {
   value: string
   onChange: (next: string) => void
+  /** Cmd+S / Ctrl+S while the editor has focus. Bound inside CM6's keymap
+   *  rather than on `window`, because the editor owns key handling when it is
+   *  focused and a window listener is unreliable against it. See
+   *  docs/contracts/DURABILITY.md. */
+  onSaveRequest?: () => void
   currentPath?: string
   className?: string
   editorClassName?: string
@@ -473,6 +478,7 @@ class InlineDiffWidgetBlock extends WidgetType {
 const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, MarkdownRichEditorBlockProps>(function MarkdownRichEditorBlock({
   value,
   onChange,
+  onSaveRequest,
   currentPath = '',
   className,
   editorClassName,
@@ -517,6 +523,11 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   const editorViewRef = useRef<EditorView | null>(null)
   const currentPathRef = useRef(currentPath)
   useEffect(() => { currentPathRef.current = currentPath }, [currentPath])
+  // Read through a ref so the keymap extension never has to be rebuilt (which
+  // would tear down and remount the editor state) when the handler identity
+  // changes.
+  const onSaveRequestRef = useRef(onSaveRequest)
+  useEffect(() => { onSaveRequestRef.current = onSaveRequest }, [onSaveRequest])
   // One editor engine, per-file-type grammar: markdown files get the markdown
   // grammar + live-preview decorations, code files get real highlighting.
   const editorLanguage = useMemo(() => resolveEditorLanguageBlock(currentPath), [currentPath])
@@ -1221,6 +1232,18 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
       // indent). Every handler no-ops when the menu is closed, so normal
       // editing is untouched.
       Prec.highest(keymap.of([
+        {
+          // `Mod-` is Cmd on macOS and Ctrl elsewhere. Returning true consumes
+          // the event, which is what stops Electron opening its own save
+          // dialog over the top of the note.
+          key: 'Mod-s',
+          run: () => {
+            const handler = onSaveRequestRef.current
+            if (!handler) return false
+            handler()
+            return true
+          },
+        },
         {
           key: 'ArrowDown',
           run: () => {

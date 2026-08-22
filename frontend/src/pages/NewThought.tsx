@@ -559,10 +559,31 @@ function CreateTab() {
   // One editor instance, two framings: canvas keeps the card-in-anchor
   // shape (toolbar pinned, bounded height); doc mode runs it full-bleed
   // with the toolbar collapsed behind its own toggle — the iA surface.
+  // Window-level fallback for Cmd+S. The CM6 keymap covers the editor when it
+  // has focus; this covers everywhere else the caret can be — the filename
+  // field, the settings panel, the canvas surface — so the shortcut means the
+  // same thing wherever you are on the page.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 's' && event.key !== 'S') return
+      const isSaveChord = navigator.platform.toLowerCase().includes('mac')
+        ? event.metaKey && !event.ctrlKey
+        : event.ctrlKey && !event.metaKey
+      if (!isSaveChord || event.altKey) return
+      // Unconditional: without it Electron opens its own save dialog over the
+      // note, and the browser does the same in the web build.
+      event.preventDefault()
+      void composer.requestSave()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [composer])
+
   const editorSurfaceBlock = (
     <MarkdownRichEditorBlock
       value={composer.editorBody}
       onChange={composer.setEditorBody}
+      onSaveRequest={() => { void composer.requestSave() }}
       currentPath={composer.targetPath ?? ''}
       placeholder={composer.makeThisTodo ? 'One task per line...' : "What's on your mind?"}
       toolbarAlwaysVisible={viewSurface === 'canvas'}
@@ -1197,8 +1218,109 @@ function CreateTab() {
     />
   ) : null
 
-  const statusMessagesBlock = (composer.message || composer.error) ? (
+  // The one question the composer cannot answer for you: picking a destination
+  // with text on screen means either "this note belongs there" or "give me a
+  // fresh note there", and nothing in the gesture distinguishes them. Asked at
+  // most once per note, at the moment you have stopped writing and reached for
+  // a picker. See docs/contracts/DURABILITY.md.
+  //
+  // In manual mode the buttons say "Save and ..." because that is literally
+  // what they do — the click *is* the manual save, so nothing happens behind
+  // the user's back.
+  const pendingDestinationBlock = composer.pendingDestination ? (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Choose what happens to this note"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={composer.cancelPendingDestination}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') composer.cancelPendingDestination()
+      }}
+    >
+      <div
+        className="w-full max-w-sm rounded-lg border border-border bg-background p-4 shadow-lg"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="text-sm font-medium">
+          Move this note to {composer.pendingDestination.label}?
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          You have a note in progress. It can move with you, or stay where it is
+          while you start a fresh one here.
+        </p>
+        <div className="mt-4 flex flex-col gap-2">
+          <button
+            type="button"
+            autoFocus
+            disabled={composer.movingNote}
+            onClick={() => { void composer.moveNoteToPendingDestination() }}
+            className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+          >
+            {composer.autoSaveEnabled ? 'Move this note here' : 'Save and move here'}
+          </button>
+          <button
+            type="button"
+            disabled={composer.movingNote}
+            onClick={() => { void composer.startNewNoteAtPendingDestination() }}
+            className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60"
+          >
+            {composer.autoSaveEnabled ? 'Start a new note here' : 'Save and start new here'}
+          </button>
+          <button
+            type="button"
+            disabled={composer.movingNote}
+            onClick={composer.cancelPendingDestination}
+            className="rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-60"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
+  // Recovered text from a session that ended badly. Deliberately rendered with
+  // the status messages rather than as a modal: it must not block the person
+  // from writing, and nothing is lost by leaving it on screen — the draft stays
+  // on disk until they choose. See docs/contracts/DURABILITY.md.
+  const draftRecoveryBlock = composer.recoverableDrafts.length > 0 ? (
     <div className="space-y-2">
+      {composer.recoverableDrafts.map(draft => (
+        <div
+          key={draft.id}
+          className="rounded-md border border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/20 px-3 py-2 text-sm text-amber-800 dark:text-amber-200"
+        >
+          <div className="font-medium">Unsaved note recovered</div>
+          <div className="mt-0.5 text-xs opacity-80">
+            {draft.targetPath ? `Was headed for ${draft.targetPath}` : 'No destination was chosen'}
+            {' · '}
+            {draftWordCountBlock(draft.content)} words
+          </div>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => composer.recoverDraft(draft)}
+              className="rounded-md bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700"
+            >
+              Restore it
+            </button>
+            <button
+              type="button"
+              onClick={() => { void composer.discardDraft(draft.id) }}
+              className="rounded-md px-2.5 py-1 text-xs font-medium hover:bg-amber-500/20"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  ) : null
+
+  const statusMessagesBlock = (composer.message || composer.error || draftRecoveryBlock) ? (
+    <div className="space-y-2">
+      {draftRecoveryBlock}
       {composer.message && (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/20 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
           {composer.message}
@@ -1226,6 +1348,7 @@ function CreateTab() {
     // `ltm-page-flush-top`: this page paints its own status-bar strip (the
     // title bar's top padding), so the shell must not reserve one above it.
     <div className="ltm-newthought-shell ltm-page-flush-top flex h-full min-h-0 w-full">
+      {pendingDestinationBlock}
       <div className="relative min-w-0 flex-1 overflow-hidden">
         {titleBarBlock}
         {viewSurface === 'canvas' ? (
@@ -1303,6 +1426,13 @@ function CreateTab() {
 }
 
 // memo: persistent surface — skip re-renders caused by unrelated App shell state.
+/** Word count for the recovery banner. The one number that tells someone
+ *  whether the draft is worth restoring. */
+function draftWordCountBlock(content: string): number {
+  const trimmed = content.trim()
+  return trimmed ? trimmed.split(/\s+/).filter(Boolean).length : 0
+}
+
 export default memo(function NewThought() {
   return (
     <div className="ltm-page h-full">

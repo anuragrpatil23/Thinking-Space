@@ -82,7 +82,19 @@ export function applyNoteCanvasToContent(content: string, tiles: CanvasTile[]): 
   return appendCanvasFence(content, block)
 }
 
+/** Append the fence, adding exactly the separator that is missing.
+ *
+ *  This has to be the inverse of `parseNoteCanvasBlock`, which removes the
+ *  fence *and* one following newline. When it was not — it unconditionally
+ *  added a newline before the block — a note with a canvas gained one blank
+ *  line on every keystroke, because the composer round-trips body → content on
+ *  each change. Caught by the round-trip property test, 2026-08-22.
+ *
+ *  See docs/contracts/DURABILITY.md and docs/contracts/EDITOR.md (markdown on
+ *  disk stays byte-identical). */
 function appendCanvasFence(content: string, block: string): string {
-  if (content.length === 0) return block
-  return content.endsWith('\n') ? `${content}\n${block}\n` : `${content}\n\n${block}\n`
+  if (content.length === 0) return `${block}\n`
+  if (content.endsWith('\n\n')) return `${content}${block}\n`
+  if (content.endsWith('\n')) return `${content}\n${block}\n`
+  return `${content}\n\n${block}\n`
 }
