@@ -1095,12 +1095,17 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
       className="ltm-thinking-space-shell flex h-full min-h-0 flex-col overflow-hidden"
       data-ltm-explorer-open={showCollapsedInlineExplorer ? 'true' : 'false'}
     >
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {(showInlineSidebar || iosInlineMode) && (
           <aside
             className={cn(
               'ltm-thinking-space-explorer-surface flex min-h-0 flex-col overflow-hidden',
-              phoneListMode ? 'flex-1' : 'shrink-0',
+              // iPhone detail mode slides the list off-screen at its full width
+              // instead of collapsing it to 0px. A scroller squeezed to zero
+              // width has its scrollTop clamped to 0 by the engine, so the RSS
+              // timeline (and the explorer) lost their position on every
+              // article open. Off-screen keeps the layout — and the offset.
+              phoneListMode ? 'flex-1' : (phoneDetailMode ? 'absolute inset-y-0 left-0 w-full -translate-x-full' : 'shrink-0'),
               (isExplorerResizing || useInstantExplorerToggle || isIPhoneIosSurface)
                 ? 'transition-none'
                 : 'transition-[width,opacity] duration-200 ease-out',
@@ -1109,9 +1114,9 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
                 : (phoneDetailMode ? 'opacity-0' : (showCollapsedInlineExplorer ? 'opacity-100' : 'opacity-0')),
             )}
             style={
-              phoneListMode
-                ? undefined  // flex-1 handles width
-                : { width: phoneDetailMode ? '0px' : (showCollapsedInlineExplorer ? `${explorerWidthPx}px` : '0px') }
+              phoneListMode || phoneDetailMode
+                ? undefined  // flex-1 / absolute w-full handle width
+                : { width: showCollapsedInlineExplorer ? `${explorerWidthPx}px` : '0px' }
             }
             data-ltm-nav-region="explorer"
           >
@@ -1247,10 +1252,11 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
             </div>
             {rssPanelOpen ? (
               <div className="min-h-0 flex-1">
-                {/* No onNavStateChange here on purpose: this drawer copy has its
-                    own feeds state, so if it ever mounted alongside the inline
-                    panel the two would clobber each other's nav. Reader
-                    next/prev is a desktop affordance for now. */}
+                {/* No onNavStateChange here on purpose. Feed data is now shared
+                    (useRssFeedsBlock), but nav is per-panel: this drawer can be
+                    mounted at the same time as the inline panel on iOS, and two
+                    publishers would clobber each other's queue. The inline panel
+                    owns nav. */}
                 <RssFeedPanelBlock
                   onOpenArticle={handleRssOpenArticle}
                   onClose={() => { setRssPanelOpen(false); setRssActiveArticle(null) }}

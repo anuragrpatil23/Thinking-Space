@@ -21,13 +21,15 @@ import RssTimelineBlock from './RssTimelineBlock'
 import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
 import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
 import {
-  fetchAndParseRssFeedOrch,
-  markRssItemViewedOrch,
-  markRssItemsReadOrch,
-  readRssFeedPreferencesOrch,
-  removeRssItemsOrch,
-  updateRssItemMetaOrch,
-} from '@/services/orchestrators/rssFeedOrch'
+  forgetRssItemBlock,
+  markAllRssItemsReadBlock,
+  markRssItemViewedBlock,
+  markRssItemsReadBlock,
+  removeRssItemsBlock,
+  replaceRssItemBlock,
+  toggleRssItemSavedBlock,
+  useRssFeedsBlock,
+} from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
 import {
   RSS_UNREAD_INBOX_ID_BLOCK,
   buildFeedGroupTreeBlock,
@@ -35,10 +37,8 @@ import {
   flattenVisibleRssRowsBlock,
   rssRowIdBlock,
   type RssArticleNavStateBlock,
-  type RssFeedConfigBlock,
   type RssFeedGroupTreeNodeBlock,
   type RssFeedItemBlock,
-  type RssFeedPreferencesBlock,
   type RssFeedResultBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
 import {
@@ -125,10 +125,12 @@ export default function RssFeedPanelBlock({
     } catch { /* storage is optional */ }
     return layout.surface === 'capacitor-ios' ? 'timeline' : 'compact'
   })
-  const [feeds, setFeeds] = useState<RssFeedResultBlock[]>([])
-  const [preferences, setPreferences] = useState<RssFeedPreferencesBlock | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
+  // Feed data, read state and every article mutation live in one module-level
+  // store shared by every RSS surface — see useRssFeedsBlock.
+  const {
+    feeds, preferences, loading, refreshing, loadingFeedIds, sessionReadIds,
+    hasFeedsConfigured, refresh,
+  } = useRssFeedsBlock()
   // Feeds/groups are collapsed by default; only those explicitly expanded are in these sets.
   // Persisted in localStorage so the state survives navigation.
   const { expanded: expandedFeedIds, toggle: toggleFeedExpanded } = useExpandedSetBlock('ltm-rss-expanded-feeds')
@@ -138,129 +140,15 @@ export default function RssFeedPanelBlock({
   // Delete-preview mode
   const [deleteMode, setDeleteMode] = useState(false)
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<string>>(new Set())
-  const hasFeedsConfigured = useRef(false)
-  const rssLoadRequestIdRef = useRef(0)
-  const [loadingFeedIds, setLoadingFeedIds] = useState<Set<string>>(new Set())
   // Row buttons keyed by rowId, so arrow keys can move DOM focus between them.
   const itemButtonRefs = useRef(new Map<string, HTMLButtonElement>())
   // Row of the article currently open in the reader — anchors its next/prev.
   const [activeRowId, setActiveRowId] = useState<string | null>(null)
-  // Articles read since the last refresh. Keeps them from vanishing out of the
-  // unread inbox mid-read; see buildUnreadInboxItemsBlock.
-  const [sessionReadIds, setSessionReadIds] = useState<Set<string>>(new Set())
 
-
-  const presetTags = preferences?.presetTags ?? []
-  const tagColors = preferences?.tagColors ?? {}
-
-  const mergeFeedResult = useCallback((feedConfigs: RssFeedConfigBlock[], nextResult: RssFeedResultBlock) => {
-    setFeeds((previous) => {
-      const byFeedId = new Map(previous.map((feed) => [feed.feedId, feed]))
-      byFeedId.set(nextResult.feedId, nextResult)
-      return feedConfigs.map((config) => (
-        byFeedId.get(config.id) ?? {
-          feedId: config.id,
-          feedTitle: config.title,
-          items: [],
-          error: null,
-        }
-      ))
-    })
-  }, [])
-
-  const mergeStoredPage = useCallback((feedConfigs: RssFeedConfigBlock[], page: RssFeedResultBlock) => {
-    setFeeds(previous => {
-      const byFeedId = new Map(previous.map(feed => [feed.feedId, feed]))
-      const current = byFeedId.get(page.feedId) ?? { feedId: page.feedId, feedTitle: page.feedTitle, items: [], error: null }
-      const items = new Map(current.items.map(item => [item.id, item]))
-      // The live result or an optimistic UI update wins over an older cached
-      // copy of the same article.
-      for (const item of page.items) if (!items.has(item.id)) items.set(item.id, item)
-      const merged = [...items.values()].sort((a, b) => new Date(b.pubDate ?? 0).getTime() - new Date(a.pubDate ?? 0).getTime())
-      byFeedId.set(page.feedId, { ...current, items: merged })
-      return feedConfigs.map(config => byFeedId.get(config.id) ?? {
-        feedId: config.id, feedTitle: config.title, items: [], error: null,
-      })
-    })
-  }, [])
-
-  const loadFeeds = useCallback(async (isRefresh = false) => {
-    const requestId = rssLoadRequestIdRef.current + 1
-    rssLoadRequestIdRef.current = requestId
-    if (isRefresh) setRefreshing(true)
-    else setLoading(true)
-    try {
-      const prefs = await readRssFeedPreferencesOrch()
-      if (requestId !== rssLoadRequestIdRef.current) return
-
-      setPreferences(prefs)
-      // A refresh is the point where already-read articles finally leave the
-      // unread inbox.
-      setSessionReadIds(new Set())
-      hasFeedsConfigured.current = prefs.feeds.length > 0
-      const feedConfigs = prefs.feeds
-      setFeeds(feedConfigs.map((config) => ({
-        feedId: config.id,
-        feedTitle: config.title,
-        items: [],
-        error: null,
-      })))
-      setLoadingFeedIds(new Set(feedConfigs.map((config) => config.id)))
-      setLoading(false)
-
-      // Network responses, XML parsing, and native filesystem state hydration
-      // all settle on the renderer. A feed-sized worker pool keeps the first
-      // cards responsive instead of starting every configured source at once.
-      let nextConfigIndex = 0
-      const loadOne = async () => {
-        const config = feedConfigs[nextConfigIndex++]
-        if (!config) return
-        try {
-          const result = await fetchAndParseRssFeedOrch(config, {
-            onStoredResult: (storedResult) => {
-              if (requestId !== rssLoadRequestIdRef.current) return
-              mergeFeedResult(feedConfigs, storedResult)
-            },
-            onStoredPage: (storedPage) => {
-              if (requestId !== rssLoadRequestIdRef.current) return
-              mergeStoredPage(feedConfigs, storedPage)
-            },
-          })
-          if (requestId !== rssLoadRequestIdRef.current) return
-          mergeFeedResult(feedConfigs, result)
-        } finally {
-          if (requestId !== rssLoadRequestIdRef.current) return
-          setLoadingFeedIds((previous) => {
-            if (!previous.has(config.id)) return previous
-            const next = new Set(previous)
-            next.delete(config.id)
-            return next
-          })
-        }
-        await new Promise<void>(resolve => window.setTimeout(resolve, 0))
-        await loadOne()
-      }
-      await Promise.all(Array.from({ length: Math.min(3, feedConfigs.length) }, loadOne))
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }, [mergeFeedResult, mergeStoredPage])
-
-  useEffect(() => {
-    void loadFeeds()
-  }, [loadFeeds])
-
-  // There is deliberately no polling here (the reader is commonly open for a
-  // long time on battery). Returning to the app is the natural moment to pull
-  // vault-backed viewed/dismissed state written on another device.
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') void loadFeeds(true)
-    }
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
-  }, [loadFeeds])
+  // Memoised so `handleItemClick` keeps a stable identity — it is passed to
+  // every article row, and a fresh `[]` each render re-rendered the whole list.
+  const presetTags = useMemo(() => preferences?.presetTags ?? [], [preferences])
+  const tagColors = useMemo(() => preferences?.tagColors ?? {}, [preferences])
 
   const groupTree = useMemo<RssFeedGroupTreeNodeBlock[]>(() => {
     if (!preferences) return []
@@ -290,20 +178,9 @@ export default function RssFeedPanelBlock({
     // engagement (scrolling or dwelling) back through onItemUpdate below.
     onOpenArticle(
       item,
-      (updated) => {
-        // Pin anything that just became read into the unread inbox for the rest
-        // of this session, so the list doesn't reshuffle under the user.
-        if (updated.read) setSessionReadIds(prev => new Set(prev).add(updated.id))
-        setFeeds(prev => prev.map(f => ({
-          ...f,
-          items: f.items.map(i => i.id === updated.id ? updated : i),
-        })))
-      },
+      replaceRssItemBlock,
       () => {
-        setFeeds(prev => prev.map(f => ({
-          ...f,
-          items: f.items.filter(i => i.id !== item.id),
-        })))
+        forgetRssItemBlock(item.id)
         setSelectedItemId(null)
         setActiveRowId(null)
       },
@@ -312,52 +189,10 @@ export default function RssFeedPanelBlock({
     )
   }, [deleteMode, onOpenArticle, presetTags, tagColors])
 
-  const handleMarkAllRead = useCallback((feedId?: string) => {
-    const itemIds = feeds
-      .filter(f => !feedId || f.feedId === feedId)
-      .flatMap(f => f.items.filter(i => !i.read).map(i => i.id))
-    if (itemIds.length === 0) return
-    const dismissedAt = new Date().toISOString()
-    void markRssItemsReadOrch(itemIds)
-    setFeeds(prev => prev.map(f => {
-      if (feedId && f.feedId !== feedId) return f
-      return { ...f, items: f.items.map(i => ({ ...i, read: true, dismissedAt })) }
-    }))
-  }, [feeds])
-
   const setTimelineViewMode = useCallback((next: 'compact' | 'timeline') => {
     setViewMode(next)
     try { localStorage.setItem('ltm-rss-view-mode', next) } catch { /* optional */ }
   }, [])
-
-  const updateTimelineItems = useCallback((itemIds: string[], patch: Partial<RssFeedItemBlock>) => {
-    const ids = new Set(itemIds)
-    setFeeds(previous => previous.map(feed => ({
-      ...feed,
-      items: feed.items.map(item => ids.has(item.id) ? { ...item, ...patch } : item),
-    })))
-  }, [])
-
-  const handleTimelineViewed = useCallback((item: RssFeedItemBlock) => {
-    if (item.viewedAt || item.dismissedAt) return
-    const viewedAt = new Date().toISOString()
-    updateTimelineItems([item.id], { viewedAt, read: true })
-    void markRssItemViewedOrch(item.id)
-  }, [updateTimelineItems])
-
-  const handleTimelineMarkRead = useCallback((items: RssFeedItemBlock[]) => {
-    const pending = items.filter(item => !item.dismissedAt)
-    if (pending.length === 0) return
-    const dismissedAt = new Date().toISOString()
-    updateTimelineItems(pending.map(item => item.id), { dismissedAt, read: true })
-    void markRssItemsReadOrch(pending.map(item => item.id))
-  }, [updateTimelineItems])
-
-  const handleTimelineToggleSaved = useCallback((item: RssFeedItemBlock) => {
-    const keep = !item.keep
-    updateTimelineItems([item.id], { keep })
-    void updateRssItemMetaOrch(item.id, { keep })
-  }, [updateTimelineItems])
 
   // First click: enter delete-preview mode, select all eligible items
   const handleEnterDeleteMode = useCallback((feedId?: string) => {
@@ -377,11 +212,7 @@ export default function RssFeedPanelBlock({
       setDeleteMode(false)
       return
     }
-    void removeRssItemsOrch([...pendingDeleteIds])
-    setFeeds(prev => prev.map(f => ({
-      ...f,
-      items: f.items.filter(i => !pendingDeleteIds.has(i.id)),
-    })))
+    removeRssItemsBlock([...pendingDeleteIds])
     setDeleteMode(false)
     setPendingDeleteIds(new Set())
   }, [pendingDeleteIds])
@@ -517,13 +348,13 @@ export default function RssFeedPanelBlock({
     )
   }
 
-  if (!hasFeedsConfigured.current && feeds.length === 0) {
+  if (!hasFeedsConfigured && feeds.length === 0) {
     return (
       <div className={cn('flex h-full flex-col', className)}>
         <PanelHeader
           title="RSS Feeds"
           onClose={onClose}
-          onRefresh={() => void loadFeeds(true)}
+          onRefresh={refresh}
           refreshing={refreshing}
           deleteMode={false}
           pendingDeleteCount={0}
@@ -549,10 +380,10 @@ export default function RssFeedPanelBlock({
       <PanelHeader
         title={focusedFeedId ? (feeds.find(f => f.feedId === focusedFeedId)?.feedTitle ?? 'Feed') : 'RSS Feeds'}
         onClose={onClose}
-        onRefresh={() => void loadFeeds(true)}
+        onRefresh={refresh}
         refreshing={refreshing}
         totalUnread={totalUnread}
-        onMarkAllRead={() => handleMarkAllRead(focusedFeedId ?? undefined)}
+        onMarkAllRead={() => markAllRssItemsReadBlock(focusedFeedId ?? undefined)}
         deleteMode={deleteMode}
         pendingDeleteCount={pendingDeleteIds.size}
         onEnterDeleteMode={() => handleEnterDeleteMode(focusedFeedId ?? undefined)}
@@ -576,10 +407,13 @@ export default function RssFeedPanelBlock({
       {viewMode === 'timeline' ? (
         <RssTimelineBlock
           feeds={feeds}
+          loadingFeedIds={loadingFeedIds}
+          refreshing={refreshing}
+          onRefresh={refresh}
           onOpen={(item) => handleItemClick(item, rssRowIdBlock('__timeline__', item.id))}
-          onViewed={handleTimelineViewed}
-          onMarkRead={handleTimelineMarkRead}
-          onToggleSaved={handleTimelineToggleSaved}
+          onViewed={markRssItemViewedBlock}
+          onMarkRead={markRssItemsReadBlock}
+          onToggleSaved={toggleRssItemSavedBlock}
         />
       ) : <div className="min-h-0 flex-1 overflow-y-auto">
         {/* Merged unread inbox — one flat queue across every source, so new

@@ -8,6 +8,8 @@ import {
 import {
   generateFeedIdBlock,
   generateGroupIdBlock,
+  extractFirstHtmlImageBlock,
+  extractRssItemImageBlock,
   normalizeRssFeedItemIdBlock,
   normalizeRssFeedPreferencesBlock,
   type RssFeedConfigBlock,
@@ -46,6 +48,7 @@ interface RssItemFrontmatter {
   title: string
   link: string
   pubDate: string | null
+  imageUrl?: string | null
   fetchedAt: string
   read: boolean
   viewedAt?: string | null
@@ -66,6 +69,7 @@ function serializeRssItemFileBlock(
     title: item.title,
     link: item.link,
     pubDate: item.pubDate ?? null,
+    imageUrl: item.imageUrl ?? null,
     fetchedAt,
     read: item.read,
     viewedAt: item.viewedAt,
@@ -108,6 +112,7 @@ function parseRssItemFileBlock(content: string): RssFeedItemBlock | null {
     link: typeof f.link === 'string' ? f.link : '',
     description: body,
     pubDate: typeof f.pubDate === 'string' ? f.pubDate : null,
+    imageUrl: typeof f.imageUrl === 'string' ? f.imageUrl : null,
     // Legacy `read: true` meant that the reader had engaged with an item. Keep
     // that history as a viewed event instead of silently resurrecting it as new.
     read: f.read === true || viewedAt !== null || dismissedAt !== null,
@@ -603,6 +608,10 @@ export async function fetchAndParseRssFeedOrch(
       const bodyRaw = item.content ?? item.description ?? item.summary
       const description = typeof bodyRaw === 'string' ? bodyRaw
         : (typeof bodyRaw === 'object' && bodyRaw !== null ? String((bodyRaw as { value?: unknown }).value ?? '') : '')
+      // Structured media first; the body's first <img> is the fallback, and has
+      // to be read before `description` is stripped to plain text below.
+      const imageUrl = extractRssItemImageBlock(item, link ?? '')
+        ?? extractFirstHtmlImageBlock(description, link ?? '')
       // Slashdot and other RSS 1.0/RDF feeds carry no <pubDate>; their date is
       // Dublin Core (`dc:date`), which feedsmith exposes under item.dc / dcterms.
       const pubDate = extractDateBlock(
@@ -618,6 +627,7 @@ export async function fetchAndParseRssFeedOrch(
         link: link ?? '',
         description: stripHtmlBlock(description),
         pubDate,
+        imageUrl,
         read: false,
         viewedAt: null,
         dismissedAt: null,

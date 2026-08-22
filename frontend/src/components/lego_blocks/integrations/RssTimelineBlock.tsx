@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bookmark, Check, Eye, ListChecks, Rss, X } from 'lucide-react'
-import type { RssFeedItemBlock, RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type TouchEvent } from 'react'
+import { AlertCircle, Bookmark, Check, Eye, ListChecks, Loader2, Rss, X } from 'lucide-react'
+import {
+  pickRssTimelineAnchorBlock,
+  type RssFeedItemBlock,
+  type RssFeedResultBlock,
+} from '@/services/lego_blocks/units/rssFeedBlock'
 import { cn } from '@/lib/utils'
 
 const VIEW_RATIO = 0.6
@@ -8,8 +12,59 @@ const VIEW_DWELL_MS = 900
 const INITIAL_CARD_COUNT = 12
 const CARD_PAGE_SIZE = 8
 
+const SCROLL_ANCHOR_KEY = 'ltm-rss-timeline-anchor'
+/** How long after mount we keep trying to land on the saved anchor. Cached
+ *  backlog pages stream in for a few seconds, so the anchor article often is
+ *  not in the list yet on the first render. */
+const ANCHOR_RESTORE_WINDOW_MS = 15_000
+
+/** Pull-to-refresh: how far the finger must travel past the top edge to arm a
+ *  refresh, and how much of that travel the indicator actually shows. The
+ *  divisor is the usual rubber-band resistance — the indicator lags the finger
+ *  so the gesture feels weighted rather than twitchy. */
+const PULL_TRIGGER_PX = 72
+const PULL_RESISTANCE = 2.2
+const PULL_MAX_PX = 96
+
+/** Where the reader was, expressed as an article rather than a pixel offset.
+ *  Card heights change as the backlog hydrates, so a raw scrollTop would land
+ *  somewhere else entirely by the time the list settles. */
+interface TimelineScrollAnchor {
+  sourceId: string
+  itemId: string
+  /** Distance from the scroller's top edge to the anchor card's top edge.
+   *  Negative once the card is partly scrolled past. */
+  offset: number
+}
+
+function readTimelineAnchorBlock(): TimelineScrollAnchor | null {
+  try {
+    const raw = sessionStorage.getItem(SCROLL_ANCHOR_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<TimelineScrollAnchor>
+    if (typeof parsed?.itemId === 'string' && typeof parsed.sourceId === 'string' && typeof parsed.offset === 'number') {
+      return { sourceId: parsed.sourceId, itemId: parsed.itemId, offset: parsed.offset }
+    }
+  } catch { /* storage is optional */ }
+  return null
+}
+
+function writeTimelineAnchorBlock(anchor: TimelineScrollAnchor | null): void {
+  try {
+    if (anchor) sessionStorage.setItem(SCROLL_ANCHOR_KEY, JSON.stringify(anchor))
+    else sessionStorage.removeItem(SCROLL_ANCHOR_KEY)
+  } catch { /* storage is optional */ }
+}
+
 interface RssTimelineBlockProps {
   feeds: RssFeedResultBlock[]
+  /** Feeds whose fetch is still outstanding — drives the skeleton and the
+   *  "loading more sources" footer instead of a blank list. */
+  loadingFeedIds: Set<string>
+  /** True while an explicit refresh is in flight — keeps the spinner up after
+   *  the finger lifts. */
+  refreshing: boolean
+  onRefresh: () => void
   onOpen: (item: RssFeedItemBlock) => void
   onViewed: (item: RssFeedItemBlock) => void
   onMarkRead: (items: RssFeedItemBlock[]) => void
@@ -20,17 +75,27 @@ interface RssTimelineBlockProps {
  * feed model as the compact explorer—not a second reader implementation. */
 export default function RssTimelineBlock({
   feeds,
+  loadingFeedIds,
+  refreshing,
+  onRefresh,
   onOpen,
   onViewed,
   onMarkRead,
   onToggleSaved,
 }: RssTimelineBlockProps) {
+  // Read once, at mount: this is where the reader was before it navigated away.
+  const [initialAnchor] = useState<TimelineScrollAnchor | null>(readTimelineAnchorBlock)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [sessionHandledIds, setSessionHandledIds] = useState<Set<string>>(new Set())
   const [renderedCount, setRenderedCount] = useState(INITIAL_CARD_COUNT)
-  const [selectedSourceId, setSelectedSourceId] = useState<string>('__all__')
+  const [selectedSourceId, setSelectedSourceId] = useState<string>(() => initialAnchor?.sourceId ?? '__all__')
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
+  const scrollerRef = useRef<HTMLDivElement | null>(null)
+  const cardNodesRef = useRef(new Map<string, HTMLElement>())
+  const pendingAnchorRef = useRef<TimelineScrollAnchor | null>(initialAnchor)
+  const anchorDeadlineRef = useRef(Date.now() + ANCHOR_RESTORE_WINDOW_MS)
+  const anchorFrameRef = useRef<number | null>(null)
   const entries = useMemo(() => feeds.flatMap(feed => feed.items.map(item => ({ item, feedTitle: feed.feedTitle })))
     .sort((a, b) => new Date(b.item.pubDate ?? 0).getTime() - new Date(a.item.pubDate ?? 0).getTime()), [feeds])
   const sources = useMemo(() => feeds.map(feed => ({ id: feed.feedId, title: feed.feedTitle })), [feeds])
@@ -39,9 +104,112 @@ export default function RssTimelineBlock({
     : entries.filter(entry => entry.item.feedId === selectedSourceId)
   const visibleEntries = filteredEntries.slice(0, renderedCount)
 
+  // The restored source tab can point at a feed that has since been removed.
+  // Fall back rather than showing an permanently empty timeline.
   useEffect(() => {
+    if (selectedSourceId === '__all__' || feeds.length === 0) return
+    if (!feeds.some(feed => feed.feedId === selectedSourceId)) setSelectedSourceId('__all__')
+  }, [feeds, selectedSourceId])
+
+  const changeSource = useCallback((sourceId: string) => {
+    // A tab switch is the one moment the old anchor is meaningless.
+    pendingAnchorRef.current = null
+    writeTimelineAnchorBlock(null)
     setRenderedCount(INITIAL_CARD_COUNT)
-  }, [selectedSourceId, entries.length])
+    scrollerRef.current?.scrollTo({ top: 0 })
+    setSelectedSourceId(sourceId)
+  }, [])
+
+  // Deliberately NOT reset when `entries` grows. Cached backlog pages stream in
+  // for seconds after open, and shrinking the window mid-scroll both truncates
+  // the list under the reader and clamps scrollTop back to the top.
+  const registerCardNode = useCallback((itemId: string, node: HTMLElement | null) => {
+    if (node) cardNodesRef.current.set(itemId, node)
+    else cardNodesRef.current.delete(itemId)
+  }, [])
+
+  // Pull-to-refresh. Deliberately does not preventDefault: iOS rubber-bands the
+  // scroller itself, and the indicator rides along with that motion, which is
+  // what makes it feel native rather than like a web widget.
+  const pullStartYRef = useRef<number | null>(null)
+  const [pullDistance, setPullDistance] = useState(0)
+
+  const handleTouchStart = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    const scroller = scrollerRef.current
+    pullStartYRef.current = scroller && scroller.scrollTop <= 0
+      ? event.touches[0]?.clientY ?? null
+      : null
+  }, [])
+
+  const handleTouchMove = useCallback((event: TouchEvent<HTMLDivElement>) => {
+    const startY = pullStartYRef.current
+    if (startY === null) return
+    const scroller = scrollerRef.current
+    // The reader scrolled back into the list — this is no longer a pull.
+    if (scroller && scroller.scrollTop > 0) {
+      pullStartYRef.current = null
+      setPullDistance(0)
+      return
+    }
+    const delta = (event.touches[0]?.clientY ?? startY) - startY
+    setPullDistance(delta <= 0 ? 0 : Math.min(delta / PULL_RESISTANCE, PULL_MAX_PX))
+  }, [])
+
+  const handleTouchEnd = useCallback(() => {
+    if (pullStartYRef.current !== null && pullDistance >= PULL_TRIGGER_PX / PULL_RESISTANCE) onRefresh()
+    pullStartYRef.current = null
+    setPullDistance(0)
+  }, [pullDistance, onRefresh])
+
+  // Record the top-most on-screen card on every settled scroll frame.
+  const handleScroll = useCallback(() => {
+    if (anchorFrameRef.current !== null) return
+    anchorFrameRef.current = window.requestAnimationFrame(() => {
+      anchorFrameRef.current = null
+      const scroller = scrollerRef.current
+      if (!scroller) return
+      if (scroller.scrollTop <= 0) {
+        writeTimelineAnchorBlock(null)
+        return
+      }
+      const scrollerTop = scroller.getBoundingClientRect().top
+      const cards = [...cardNodesRef.current].map(([itemId, node]) => {
+        const rect = node.getBoundingClientRect()
+        return { itemId, top: rect.top, bottom: rect.bottom }
+      })
+      const best = pickRssTimelineAnchorBlock(scrollerTop, cards)
+      writeTimelineAnchorBlock(best ? { sourceId: selectedSourceId, ...best } : null)
+    })
+  }, [selectedSourceId])
+
+  useEffect(() => () => {
+    if (anchorFrameRef.current !== null) window.cancelAnimationFrame(anchorFrameRef.current)
+  }, [])
+
+  // Pull the anchor into the rendered window; it is usually well past the first
+  // page, and it cannot be scrolled to while it is not in the DOM.
+  const anchorIndex = pendingAnchorRef.current
+    ? filteredEntries.findIndex(entry => entry.item.id === pendingAnchorRef.current?.itemId)
+    : -1
+  useEffect(() => {
+    if (anchorIndex >= renderedCount) setRenderedCount(anchorIndex + CARD_PAGE_SIZE)
+  }, [anchorIndex, renderedCount])
+
+  // Runs on every render until it lands (or the window closes), because the
+  // anchor card appears only once its backlog page has hydrated.
+  useLayoutEffect(() => {
+    const anchor = pendingAnchorRef.current
+    if (!anchor) return
+    if (Date.now() > anchorDeadlineRef.current) {
+      pendingAnchorRef.current = null
+      return
+    }
+    const scroller = scrollerRef.current
+    const node = cardNodesRef.current.get(anchor.itemId)
+    if (!scroller || !node) return
+    scroller.scrollTop += (node.getBoundingClientRect().top - scroller.getBoundingClientRect().top) - anchor.offset
+    pendingAnchorRef.current = null
+  })
 
   useEffect(() => {
     if (!loadMoreRef.current || renderedCount >= filteredEntries.length || typeof IntersectionObserver === 'undefined') return
@@ -87,43 +255,116 @@ export default function RssTimelineBlock({
     onMarkRead([item])
   }, [onMarkRead])
 
+  const failedFeeds = useMemo(() => feeds.filter(feed => feed.error), [feeds])
+  const stillLoading = loadingFeedIds.size > 0
+  const showSkeleton = stillLoading && filteredEntries.length === 0
+
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-black pb-20 text-zinc-100">
-      <div className="sticky top-0 z-10 border-b border-white/10 bg-black/95 backdrop-blur">
-        <div className="flex min-w-0 items-center justify-between px-3 pt-2">
-          <div className="text-xs text-zinc-500">
-            {filteredEntries.length} article{filteredEntries.length === 1 ? '' : 's'} · scroll to mark viewed
+    <div
+      ref={scrollerRef}
+      onScroll={handleScroll}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain bg-background pb-20 text-foreground"
+    >
+      <PullIndicator distance={pullDistance} refreshing={refreshing} />
+      <div className="sticky top-0 z-10 border-b border-border/60 bg-background/85 backdrop-blur-xl">
+        <div className="flex min-w-0 items-center justify-between gap-2 px-4 pt-2.5">
+          <div className="min-w-0 truncate text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            {stillLoading && filteredEntries.length === 0
+              ? 'Loading'
+              : `${filteredEntries.length} article${filteredEntries.length === 1 ? '' : 's'}`}
           </div>
-        {selectionMode ? (
-          <div className="flex items-center gap-1">
-            <button type="button" onClick={markSelectedRead} disabled={selectedItems.length === 0}
-              className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground disabled:opacity-40">
-              <Check className="h-3.5 w-3.5" /> Mark read {selectedItems.length > 0 && selectedItems.length}
+          {selectionMode ? (
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={markSelectedRead}
+                disabled={selectedItems.length === 0}
+                className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-[12px] font-medium text-primary-foreground transition-opacity disabled:opacity-40"
+              >
+                <Check className="h-3.5 w-3.5" />
+                Mark read{selectedItems.length > 0 ? ` ${selectedItems.length}` : ''}
+              </button>
+              <button
+                type="button"
+                onClick={leaveSelection}
+                aria-label="Leave selection mode"
+                className="ltm-touch-target rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setSelectionMode(true)}
+              aria-label="Select articles"
+              title="Select articles"
+              className="ltm-touch-target shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <ListChecks className="h-4 w-4" />
             </button>
-            <button type="button" onClick={leaveSelection} className="rounded-md p-1 text-muted-foreground hover:bg-muted">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        ) : (
-          <button type="button" onClick={() => setSelectionMode(true)} title="Select articles"
-            className="rounded-md p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white">
-            <ListChecks className="h-4 w-4" />
-          </button>
-        )}
+          )}
         </div>
-        <div role="tablist" aria-label="RSS sources" className="mt-2 flex gap-5 overflow-x-auto overflow-y-hidden px-3 overscroll-x-contain touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          <SourceTab active={selectedSourceId === '__all__'} label="For you" onClick={() => setSelectedSourceId('__all__')} />
+        <div
+          role="tablist"
+          aria-label="RSS sources"
+          className="mt-1.5 flex gap-5 overflow-x-auto overflow-y-hidden px-4 overscroll-x-contain touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <SourceTab active={selectedSourceId === '__all__'} label="For you" onClick={() => changeSource('__all__')} />
           {sources.map(source => (
-            <SourceTab key={source.id} active={selectedSourceId === source.id} label={source.title} onClick={() => setSelectedSourceId(source.id)} />
+            <SourceTab key={source.id} active={selectedSourceId === source.id} label={source.title} onClick={() => changeSource(source.id)} />
           ))}
         </div>
       </div>
+
       <div className="mx-auto max-w-2xl">
+        {/* A feed that fails used to just vanish. Say so instead. */}
+        {failedFeeds.length > 0 && (
+          <div className="flex items-start gap-2.5 border-b border-border/60 bg-destructive/5 px-4 py-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <div className="min-w-0 text-[13px] leading-5">
+              <div className="font-medium text-destructive">
+                {failedFeeds.length === 1
+                  ? `${failedFeeds[0].feedTitle} didn't load`
+                  : `${failedFeeds.length} feeds didn't load`}
+              </div>
+              <div className="mt-0.5 truncate text-muted-foreground">
+                {failedFeeds.length === 1
+                  ? failedFeeds[0].error
+                  : failedFeeds.map(feed => feed.feedTitle).join(', ')}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showSkeleton && Array.from({ length: 5 }, (_, index) => <TimelineCardSkeleton key={index} />)}
+
+        {!showSkeleton && filteredEntries.length === 0 && (
+          <div className="flex flex-col items-center justify-center gap-2 px-8 py-20 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl border border-border bg-muted/40">
+              <Rss className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div className="mt-1 text-[15px] font-medium">
+              {selectedSourceId === '__all__' ? "You're all caught up" : 'Nothing here yet'}
+            </div>
+            <div className="max-w-xs text-[13px] leading-5 text-muted-foreground">
+              {selectedSourceId === '__all__'
+                ? 'Read articles drop out of this view. Pick a source above to browse everything.'
+                : 'This source has no articles in the current retention window.'}
+            </div>
+          </div>
+        )}
+
         {visibleEntries.map(({ item, feedTitle }) => (
           <TimelineCard
             key={item.id}
             item={item}
             feedTitle={feedTitle}
+            registerNode={registerCardNode}
             selectionMode={selectionMode}
             selected={selectedIds.has(item.id)}
             onSelect={() => toggleSelection(item.id)}
@@ -133,8 +374,42 @@ export default function RssTimelineBlock({
             onToggleSaved={() => onToggleSaved(item)}
           />
         ))}
+
         {renderedCount < filteredEntries.length && <div ref={loadMoreRef} className="h-px" aria-label="Load more articles" />}
+
+        {/* Feeds still arriving under an already-usable list. */}
+        {stillLoading && filteredEntries.length > 0 && (
+          <div className="flex items-center justify-center gap-2 py-6 text-[13px] text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Loading more sources…
+          </div>
+        )}
       </div>
+    </div>
+  )
+}
+
+/** Sits above the sticky header in the scroller's own coordinate space, so on
+ *  iOS it rides the rubber-band down with the content. */
+function PullIndicator({ distance, refreshing }: { distance: number; refreshing: boolean }) {
+  const active = refreshing || distance > 0
+  if (!active) return null
+  const armed = distance >= PULL_TRIGGER_PX / PULL_RESISTANCE
+  return (
+    <div
+      className="pointer-events-none flex items-center justify-center overflow-hidden transition-[height] duration-150"
+      style={{ height: refreshing ? 44 : Math.min(distance, PULL_MAX_PX) }}
+      aria-hidden={!refreshing}
+      aria-live="polite"
+    >
+      <Loader2
+        className={cn(
+          'h-4 w-4 text-muted-foreground',
+          refreshing ? 'animate-spin' : 'transition-transform',
+          armed && !refreshing && 'text-primary',
+        )}
+        style={refreshing ? undefined : { transform: `rotate(${distance * 4}deg)`, opacity: Math.min(distance / 24, 1) }}
+      />
     </div>
   )
 }
@@ -147,21 +422,36 @@ function SourceTab({ active, label, onClick }: { active: boolean; label: string;
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        'relative shrink-0 px-0.5 pb-3 text-[15px] font-semibold transition-colors',
-        active ? 'text-white' : 'text-zinc-500',
+        'relative shrink-0 px-0.5 pb-2.5 text-[15px] font-semibold transition-colors',
+        active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/80',
       )}
     >
       {label}
-      {active && <span className="absolute inset-x-0 -bottom-px h-1 rounded-full bg-white" />}
+      {active && <span className="absolute inset-x-0 -bottom-px h-[3px] rounded-full bg-primary" />}
     </button>
   )
 }
 
+function TimelineCardSkeleton() {
+  return (
+    <div className="flex gap-3 border-b border-border/60 px-4 py-3.5" aria-hidden>
+      <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-muted" />
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="h-3 w-28 animate-pulse rounded bg-muted" />
+        <div className="h-4 w-full animate-pulse rounded bg-muted" />
+        <div className="h-4 w-3/5 animate-pulse rounded bg-muted" />
+      </div>
+    </div>
+  )
+}
+
 function TimelineCard({
-  item, feedTitle, selectionMode, selected, onSelect, onOpen, onViewed, onMarkRead, onToggleSaved,
+  item, feedTitle, registerNode, selectionMode, selected, onSelect, onOpen, onViewed, onMarkRead, onToggleSaved,
 }: {
   item: RssFeedItemBlock
   feedTitle: string
+  /** Publishes the card element so the timeline can anchor its scroll to it. */
+  registerNode: (itemId: string, node: HTMLElement | null) => void
   selectionMode: boolean
   selected: boolean
   onSelect: () => void
@@ -171,6 +461,10 @@ function TimelineCard({
   onToggleSaved: () => void
 }) {
   const ref = useRef<HTMLElement | null>(null)
+  const setCardRef = useCallback((node: HTMLElement | null) => {
+    ref.current = node
+    registerNode(item.id, node)
+  }, [registerNode, item.id])
   const timerRef = useRef<number | null>(null)
   const markReadTimerRef = useRef<number | null>(null)
   const [expanded, setExpanded] = useState(false)
@@ -221,54 +515,168 @@ function TimelineCard({
   }
 
   return (
-    <article ref={ref} className={cn(
-      'relative flex gap-3 border-b border-white/10 bg-black px-4 py-3 transition-colors',
-      selected && 'bg-white/10',
-    )}>
+    <article
+      ref={setCardRef}
+      className={cn(
+        'relative flex gap-3 border-b border-border/60 px-4 py-3.5 transition-colors',
+        selected && 'bg-primary/5',
+        // Handled articles recede without disappearing — the reader can still
+        // see what they just dealt with.
+        !selected && isMarkedRead && 'opacity-55',
+      )}
+    >
       <div className="shrink-0 pt-0.5">
-        {selectionMode ? <button type="button" onClick={onSelect} className={cn('grid h-8 w-8 place-items-center rounded-full border border-zinc-500', selected && 'border-sky-500 bg-sky-500 text-white')}>
-            {selected && <Check className="h-3.5 w-3.5" />}
-          </button> : <SourceAvatar item={item} feedTitle={feedTitle} />}
+        {selectionMode ? (
+          <button
+            type="button"
+            onClick={onSelect}
+            aria-label={selected ? 'Deselect article' : 'Select article'}
+            className={cn(
+              'ltm-touch-target grid h-8 w-8 place-items-center rounded-full border transition-colors',
+              selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-transparent',
+            )}
+          >
+            <Check className="h-3.5 w-3.5" />
+          </button>
+        ) : <SourceAvatar item={item} feedTitle={feedTitle} />}
       </div>
+
       <div className="min-w-0 flex-1">
         <button type="button" onClick={selectionMode ? onSelect : onOpen} className="block w-full text-left">
-          <div className="flex items-center gap-1 text-[13px] leading-5">
-            <span className="min-w-0 truncate font-semibold text-white">{feedTitle}</span>
-            <span className="text-zinc-500">·</span>
-            {dateLabel && <time className="shrink-0 text-zinc-500">{dateLabel}</time>}
-            {wasViewed && <Eye aria-label="Viewed" className="ml-auto h-4 w-4 shrink-0 text-zinc-500" />}
+          <div className="flex items-center gap-1.5 text-[13px] leading-5">
+            <span className="min-w-0 truncate font-semibold">{feedTitle}</span>
+            {dateLabel && (
+              <>
+                <span aria-hidden className="text-muted-foreground">·</span>
+                <time className="shrink-0 text-muted-foreground">{dateLabel}</time>
+              </>
+            )}
+            {!wasViewed && (
+              <span aria-label="Unread" className="ml-auto h-2 w-2 shrink-0 rounded-full bg-primary" />
+            )}
+            {wasViewed && <Eye aria-label="Viewed" className="ml-auto h-4 w-4 shrink-0 text-muted-foreground/70" />}
           </div>
-          <h3 className={cn('mt-0.5 text-[16px] font-medium leading-[1.35] text-white', !expanded && 'line-clamp-3')}>{item.title || '(Untitled)'}</h3>
-          {item.description && <div className={cn('mt-1 whitespace-pre-wrap text-[14px] leading-5 text-zinc-400', !expanded && 'line-clamp-3')}>{item.description}</div>}
+
+          <div className="mt-1 flex gap-3">
+            <div className="min-w-0 flex-1">
+              <h3 className={cn(
+                'text-[16px] font-semibold leading-[1.35] tracking-[-0.01em]',
+                !expanded && 'line-clamp-3',
+              )}>
+                {item.title || '(Untitled)'}
+              </h3>
+              {item.description && (
+                <p className={cn(
+                  'mt-1 whitespace-pre-wrap text-[14px] leading-[1.45] text-muted-foreground',
+                  !expanded && 'line-clamp-2',
+                )}>
+                  {item.description}
+                </p>
+              )}
+            </div>
+            {item.imageUrl && <ArticleThumbnail url={item.imageUrl} />}
+          </div>
         </button>
-        {hasMore && !expanded && <button type="button" onClick={() => setExpanded(true)} className="mt-0.5 text-[15px] text-sky-500">Show more</button>}
-        {expanded && hasMore && <button type="button" onClick={() => setExpanded(false)} className="mt-0.5 text-[15px] text-sky-500">Show less</button>}
-        {!selectionMode && <div className="mt-1.5 flex items-center gap-1 text-zinc-500">
-          <button type="button" onClick={confirmMarkRead} className={cn('inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-[13px] transition-all duration-200 hover:bg-white/10 hover:text-white active:scale-95', isMarkedRead && 'bg-emerald-500/10 text-emerald-400 motion-safe:animate-[pulse_0.35s_ease-out_1]')} title="Mark read">
-            {isMarkedRead && <Check className="h-4 w-4 scale-110 transition-transform duration-200" />}
-            {isMarkedRead ? 'Marked read' : 'Mark read'}
+
+        {hasMore && (
+          <button
+            type="button"
+            onClick={() => setExpanded(current => !current)}
+            className="mt-1 text-[14px] font-medium text-primary"
+          >
+            {expanded ? 'Show less' : 'Show more'}
           </button>
-          <button type="button" onClick={onToggleSaved} className={cn('ml-auto rounded-full p-1.5 hover:bg-white/10', item.keep ? 'text-sky-500' : 'text-zinc-500')} title={item.keep ? 'Remove from saved' : 'Save article'}>
-            <Bookmark className={cn('h-4 w-4', item.keep && 'fill-current')} />
-          </button>
-        </div>}
+        )}
+
+        {!selectionMode && (
+          <div className="mt-2 flex items-center gap-1 text-muted-foreground">
+            <button
+              type="button"
+              onClick={confirmMarkRead}
+              title="Mark read"
+              className={cn(
+                'ltm-touch-target inline-flex items-center gap-1 rounded-full px-2 py-1 text-[13px] transition-all duration-200 hover:bg-muted hover:text-foreground active:scale-95',
+                isMarkedRead && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 motion-safe:animate-[pulse_0.35s_ease-out_1]',
+              )}
+            >
+              {isMarkedRead && <Check className="h-4 w-4 scale-110 transition-transform duration-200" />}
+              {isMarkedRead ? 'Marked read' : 'Mark read'}
+            </button>
+            <button
+              type="button"
+              onClick={onToggleSaved}
+              title={item.keep ? 'Remove from saved' : 'Save article'}
+              aria-pressed={Boolean(item.keep)}
+              className={cn(
+                'ltm-touch-target ml-auto rounded-full p-1.5 hover:bg-muted',
+                item.keep ? 'text-primary' : 'text-muted-foreground',
+              )}
+            >
+              <Bookmark className={cn('h-4 w-4', item.keep && 'fill-current')} />
+            </button>
+          </div>
+        )}
       </div>
     </article>
   )
 }
 
-function SourceAvatar({ item, feedTitle }: { item: RssFeedItemBlock; feedTitle: string }) {
-  const [imageFailed, setImageFailed] = useState(false)
-  let iconUrl: string | null = null
-  try {
-    const url = new URL(item.link)
-    iconUrl = `${url.origin}/favicon.ico`
-  } catch { /* fall back to the source monogram */ }
+/** Lead image. Collapses entirely if the URL 404s or the host blocks hotlinking,
+ *  so a broken feed never leaves a torn box in the list. */
+function ArticleThumbnail({ url }: { url: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return null
   return (
-    <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-zinc-800 text-sm font-semibold text-zinc-200" title={feedTitle}>
-      {iconUrl && !imageFailed
-        ? <img src={iconUrl} alt="" onError={() => setImageFailed(true)} className="h-5 w-5" />
-        : <span>{feedTitle.trim().slice(0, 1).toUpperCase() || <Rss className="h-4 w-4" />}</span>}
+    <img
+      src={url}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+      className="h-[76px] w-[76px] shrink-0 rounded-xl border border-border/60 object-cover"
+    />
+  )
+}
+
+/** Origins whose favicon we already tried and failed to load. Module-scoped so
+ *  a source that has no favicon costs one request per session, not one per
+ *  card — the old per-card guess produced a 404 storm while scrolling. */
+const failedFaviconOrigins = new Set<string>()
+
+function SourceAvatar({ item, feedTitle }: { item: RssFeedItemBlock; feedTitle: string }) {
+  const origin = useMemo(() => {
+    try { return new URL(item.link).origin } catch { return null }
+  }, [item.link])
+  const [failed, setFailed] = useState(() => (origin ? failedFaviconOrigins.has(origin) : true))
+  const monogram = feedTitle.trim().slice(0, 1).toUpperCase()
+  // Deterministic hue per source, so each feed keeps one identity down the list.
+  const hue = useMemo(() => {
+    let hash = 0
+    for (let index = 0; index < feedTitle.length; index++) {
+      hash = (hash * 31 + feedTitle.charCodeAt(index)) | 0
+    }
+    return Math.abs(hash) % 360
+  }, [feedTitle])
+
+  return (
+    <span
+      title={feedTitle}
+      className="grid h-9 w-9 place-items-center overflow-hidden rounded-full border border-border/60 text-[13px] font-semibold"
+      style={failed ? { backgroundColor: `hsl(${hue} 55% 92%)`, color: `hsl(${hue} 55% 28%)` } : undefined}
+    >
+      {origin && !failed ? (
+        <img
+          src={`${origin}/favicon.ico`}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => {
+            failedFaviconOrigins.add(origin)
+            setFailed(true)
+          }}
+          className="h-5 w-5"
+        />
+      ) : (monogram || <Rss className="h-4 w-4 text-muted-foreground" />)}
     </span>
   )
 }

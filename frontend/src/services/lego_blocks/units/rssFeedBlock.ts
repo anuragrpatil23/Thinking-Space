@@ -32,6 +32,9 @@ export interface RssFeedItemBlock {
   link: string
   description: string
   pubDate: string | null
+  /** Lead image for the article, when the feed offers one. Absolute URL, or
+   *  null when the feed is text-only — the card falls back to the source mark. */
+  imageUrl: string | null
   read: boolean
   /** Automatic, meaningful exposure in the timeline. This is a durable fact,
    * not a guess made from whether the article was opened. */
@@ -309,4 +312,198 @@ function simpleHashBlock(value: string): string {
     hash |= 0
   }
   return Math.abs(hash).toString(36)
+}
+
+/** One measured timeline card: where its top and bottom edges sit relative to
+ *  the viewport, in the same coordinate space as the scroller's own top edge. */
+export interface RssTimelineCardRectBlock {
+  itemId: string
+  top: number
+  bottom: number
+}
+
+/** Where the reader was, expressed as an article plus how far that article had
+ *  already scrolled past the top edge. Anchoring to an article rather than a
+ *  pixel offset is what survives the backlog hydrating in underneath. */
+export interface RssTimelineAnchorBlock {
+  itemId: string
+  offset: number
+}
+
+/**
+ * Pick the card the timeline should anchor its scroll position to: the
+ * top-most one still touching the viewport.
+ *
+ * Cards whose bottom edge has passed the scroller's top edge are fully scrolled
+ * away and can't anchor anything. Among the rest the smallest `top` wins, which
+ * is normally the card straddling the top edge — so `offset` comes back
+ * negative and restoring reproduces the partial scroll exactly rather than
+ * snapping to a card boundary.
+ *
+ * Returns null when nothing is on screen (an empty or not-yet-rendered list).
+ */
+export function pickRssTimelineAnchorBlock(
+  scrollerTop: number,
+  cards: Iterable<RssTimelineCardRectBlock>,
+): RssTimelineAnchorBlock | null {
+  let best: RssTimelineAnchorBlock | null = null
+  for (const card of cards) {
+    if (card.bottom <= scrollerTop) continue
+    const offset = card.top - scrollerTop
+    if (best === null || offset < best.offset) best = { itemId: card.itemId, offset }
+  }
+  return best
+}
+
+/**
+ * Union a batch of articles over the ones a feed already holds.
+ *
+ * A live fetch only returns the publisher's current window (a few dozen
+ * articles), while the store also holds the hydrated retained backlog. Replacing
+ * wholesale on every refresh would drop that backlog, making the list visibly
+ * shrink and regrow — and clamping every scroller back to the top.
+ *
+ * `incomingWins` decides the collision rule: a live fetch result supersedes what
+ * is on screen, whereas a page of retained cache must not clobber the live copy
+ * or an optimistic update the reader just made.
+ */
+export function unionRssFeedItemsBlock(
+  current: RssFeedItemBlock[],
+  incoming: RssFeedItemBlock[],
+  incomingWins: boolean,
+): RssFeedItemBlock[] {
+  const items = new Map(current.map(item => [item.id, item]))
+  for (const item of incoming) {
+    if (!incomingWins && items.has(item.id)) continue
+    items.set(item.id, item)
+  }
+  return [...items.values()].sort(
+    (a, b) => new Date(b.pubDate ?? 0).getTime() - new Date(a.pubDate ?? 0).getTime(),
+  )
+}
+
+/**
+ * Apply an optimistic patch to specific articles across every feed.
+ *
+ * Feeds holding no matching article are returned by reference, and the whole
+ * array is returned unchanged when nothing matched. React leans on that
+ * identity: marking one article read must not re-render every other feed's rows.
+ */
+export function patchRssFeedItemsBlock(
+  feeds: RssFeedResultBlock[],
+  itemIds: Iterable<string>,
+  patch: Partial<RssFeedItemBlock>,
+): RssFeedResultBlock[] {
+  const ids = new Set(itemIds)
+  if (ids.size === 0) return feeds
+  let changed = false
+  const next = feeds.map(feed => {
+    if (!feed.items.some(item => ids.has(item.id))) return feed
+    changed = true
+    return { ...feed, items: feed.items.map(item => (ids.has(item.id) ? { ...item, ...patch } : item)) }
+  })
+  return changed ? next : feeds
+}
+
+/**
+ * Drop articles from every feed, preserving the identity of feeds that held
+ * none of them (and of the array itself when nothing matched).
+ */
+export function dropRssFeedItemsBlock(
+  feeds: RssFeedResultBlock[],
+  itemIds: Iterable<string>,
+): RssFeedResultBlock[] {
+  const ids = new Set(itemIds)
+  if (ids.size === 0) return feeds
+  let changed = false
+  const next = feeds.map(feed => {
+    if (!feed.items.some(item => ids.has(item.id))) return feed
+    changed = true
+    return { ...feed, items: feed.items.filter(item => !ids.has(item.id)) }
+  })
+  return changed ? next : feeds
+}
+
+/** Image extensions we will trust from a feed enclosure. Feeds also attach
+ *  audio and video (podcasts), and those must not end up in an `<img>`. */
+const IMAGE_EXTENSION_RE_BLOCK = /\.(?:jpe?g|png|gif|webp|avif)(?:[?#]|$)/i
+
+function isLikelyImageUrlBlock(url: string, mimeType?: string): boolean {
+  if (mimeType) return mimeType.startsWith('image/')
+  return IMAGE_EXTENSION_RE_BLOCK.test(url)
+}
+
+/** Resolve a feed-relative image against the article link, and drop anything
+ *  that isn't http(s) — `data:` and protocol-relative URLs from arbitrary
+ *  publishers have no business being loaded by the renderer. */
+function absoluteImageUrlBlock(candidate: string, articleLink: string): string | null {
+  const trimmed = candidate.trim()
+  if (!trimmed) return null
+  try {
+    const resolved = articleLink ? new URL(trimmed, articleLink) : new URL(trimmed)
+    if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return null
+    return resolved.toString()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Pull a lead image out of a parsed feed entry.
+ *
+ * Feeds express this four incompatible ways, so all four are tried in order of
+ * how much the publisher meant it: an explicit Media RSS thumbnail, a Media RSS
+ * content object, an enclosure (shared with podcast audio, hence the type
+ * check), and finally the first `<img>` in the HTML body. Returns null rather
+ * than guessing — a wrong image is worse than none.
+ */
+export function extractRssItemImageBlock(entry: Record<string, unknown>, articleLink: string): string | null {
+  const media = entry.media as Record<string, unknown> | undefined
+
+  const fromMediaList = (value: unknown): string | null => {
+    const list = Array.isArray(value) ? value : value ? [value] : []
+    for (const candidate of list) {
+      if (!candidate || typeof candidate !== 'object') continue
+      const rec = candidate as Record<string, unknown>
+      const url = typeof rec.url === 'string' ? rec.url : null
+      if (!url) continue
+      const type = typeof rec.type === 'string' ? rec.type : undefined
+      const medium = typeof rec.medium === 'string' ? rec.medium : undefined
+      if (medium && medium !== 'image') continue
+      if (!isLikelyImageUrlBlock(url, type) && medium !== 'image') continue
+      const resolved = absoluteImageUrlBlock(url, articleLink)
+      if (resolved) return resolved
+    }
+    return null
+  }
+
+  const fromThumbnails = fromMediaList(media?.thumbnails ?? media?.thumbnail)
+  if (fromThumbnails) return fromThumbnails
+
+  const fromContents = fromMediaList(media?.contents ?? media?.content)
+  if (fromContents) return fromContents
+
+  const enclosures = Array.isArray(entry.enclosures)
+    ? entry.enclosures
+    : entry.enclosure ? [entry.enclosure] : []
+  for (const enclosure of enclosures) {
+    if (!enclosure || typeof enclosure !== 'object') continue
+    const rec = enclosure as Record<string, unknown>
+    const url = typeof rec.url === 'string' ? rec.url : null
+    if (!url) continue
+    const type = typeof rec.type === 'string' ? rec.type : undefined
+    if (!isLikelyImageUrlBlock(url, type)) continue
+    const resolved = absoluteImageUrlBlock(url, articleLink)
+    if (resolved) return resolved
+  }
+
+  return null
+}
+
+/** Last resort: the first `<img src>` in an article's HTML body. Runs on the
+ *  raw content before it is stripped to plain text. */
+export function extractFirstHtmlImageBlock(html: string, articleLink: string): string | null {
+  const match = /<img\b[^>]*?\ssrc\s*=\s*["']([^"']+)["']/i.exec(html)
+  if (!match) return null
+  return absoluteImageUrlBlock(match[1], articleLink)
 }
