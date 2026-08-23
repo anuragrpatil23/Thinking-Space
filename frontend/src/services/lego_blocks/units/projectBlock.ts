@@ -311,3 +311,40 @@ export function normalizeProjectsFileBlock(value: unknown): ProjectsFileBlock | 
   const projects = candidate.projects.filter(isValidProjectBlock).map(upgradeProjectBlock)
   return { version: PROJECTS_SCHEMA_VERSION_BLOCK, projects }
 }
+
+/**
+ * Why a detected project name cannot become a key — the same rules as
+ * `isValidProjectKeyBlock`, but naming the one that fired.
+ *
+ * The adoption panel used to fold every rejection into one message about path
+ * separators, so a name rejected for any other reason ("Austin house:land ",
+ * with a trailing space a folder listing does not show) reported a slash that
+ * isn't there, and the user had nothing to act on. A name that is only untidy
+ * is not a rejection at all: `trim()` it and adopt the tidy form, since the
+ * chain directory is derived from the key by `sanitizeSegment` and would have
+ * dropped the whitespace anyway.
+ *
+ * `taken` is here because it is the failure with no visible symptom: adopting
+ * a key another project already owns writes a project with an *empty* key, so
+ * the row never flips to "In Projects" and the button looks inert.
+ */
+export type ProjectKeyIssueBlock = 'empty' | 'too-long' | 'separator' | 'control' | 'taken'
+
+export function explainProjectKeyIssueBlock(
+  value: string,
+  takenKeys?: Iterable<string>,
+): ProjectKeyIssueBlock | null {
+  const key = value.trim()
+  if (!key || key === '.' || key === '..') return 'empty'
+  if (key.length > 64) return 'too-long'
+  for (const ch of key) {
+    if (ch === '/' || ch === '\\') return 'separator'
+    if (ch.charCodeAt(0) < 0x20) return 'control'
+  }
+  if (takenKeys) {
+    for (const taken of takenKeys) {
+      if (taken === key) return 'taken'
+    }
+  }
+  return null
+}

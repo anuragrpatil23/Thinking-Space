@@ -21,7 +21,10 @@ import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColors
 import { addProjectBlock } from '@/services/lego_blocks/integrations/projectsStorageBlock'
 import { loadProjectRegistryBlock } from '@/services/lego_blocks/integrations/projectRegistryLoaderBlock'
 import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
-import { isValidProjectKeyBlock } from '@/services/lego_blocks/units/projectBlock'
+import {
+  explainProjectKeyIssueBlock,
+  type ProjectKeyIssueBlock,
+} from '@/services/lego_blocks/units/projectBlock'
 import {
   autoInferProjectFromPathBlock,
   explainCanonicalProjectBlock,
@@ -55,6 +58,27 @@ interface DetectedDirsBlock {
   via: string
 }
 
+/** An adoption failure belongs to the row that was clicked, not to the page. */
+interface AdoptErrorBlock {
+  project: string
+  message: string
+}
+
+function keyIssueMessageBlock(issue: ProjectKeyIssueBlock, key: string): string {
+  switch (issue) {
+    case 'empty':
+      return 'This name is empty once trimmed, so it cannot be a project address.'
+    case 'too-long':
+      return `"${key}" is ${key.length} characters — a project address is capped at 64.`
+    case 'separator':
+      return `"${key}" can't be a project address: it contains a path separator (/ or \\).`
+    case 'control':
+      return `"${key}" contains an invisible control character, so it can't be a project address. Rename the folder, or map it to a clean name with a rule below.`
+    case 'taken':
+      return `A project already uses "${key}" as its address. Add this folder to that project in Projects instead.`
+  }
+}
+
 function attributionTextBlock(source: ProjectAttributionSourceBlock, via: string): string {
   if (source === 'root') return `folder ${via}`
   if (source === 'alias') return `alias "${via}"`
@@ -67,7 +91,7 @@ export default function AiActivityProjectMappingSettingsBlock() {
   const { projects: defined } = useProjectsBlock()
   const [settings, setSettings] = useState<AiActivityMappingSettings>(() => readAiActivityMappingBlock())
   const [busy, setBusy] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<AdoptErrorBlock | null>(null)
 
   const commit = (next: AiActivityMappingSettings) => {
     setSettings(writeAiActivityMappingBlock(next))
@@ -123,26 +147,48 @@ export default function AiActivityProjectMappingSettingsBlock() {
   // Adoption: the detected name becomes the key, because that is the address
   // its chains are already filed under (`ai-activity/chains/<key>/`). Choosing
   // anything else here would strand every digest this project already has.
+  //
+  // Every exit reports *why*, on the row that was clicked. Adoption is one
+  // button with no other feedback, so a failure that only writes to a footnote
+  // at the end of a hundred-row list is indistinguishable from a dead button —
+  // which is exactly how the silent cases below were experienced.
   const adopt = async (canonical: string, dirs: string[]) => {
     setError(null)
-    if (!isValidProjectKeyBlock(canonical)) {
-      setError(`"${canonical}" can't be a project address (it contains a path separator).`)
+    // Whitespace is untidiness, not a rejection: the key is trimmed and adopted,
+    // because `sanitizeSegment` derives the chain directory from it and would
+    // have dropped the padding anyway.
+    const key = canonical.trim()
+    const issue = explainProjectKeyIssueBlock(key, definedKeys)
+    if (issue) {
+      setError({ project: canonical, message: keyIssueMessageBlock(issue, key) })
       return
     }
     setBusy(canonical)
     try {
       const added = await addProjectBlock({
-        name: canonical,
-        key: canonical,
+        name: canonical.trim(),
+        key,
         roots: dirs.slice(0, ADOPT_MAX_ROOTS),
       })
       if (!added) {
-        setError('Could not write projects.json — it may be open or unreadable.')
+        setError({ project: canonical, message: 'Could not write projects.json — it may be open or unreadable.' })
         return
+      }
+      // `addProjectBlock` drops a key it cannot accept and still returns the
+      // project, so a mismatch here is a project created *without its address*:
+      // its chains stay unfiled and the row never flips to "In Projects".
+      if (added.key !== key) {
+        setError({
+          project: canonical,
+          message: `Created the project, but "${key}" could not be used as its address — another project already owns it. Merge them in Projects.`,
+        })
       }
       await loadProjectRegistryBlock()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create the project.')
+      setError({
+        project: canonical,
+        message: err instanceof Error ? err.message : 'Failed to create the project.',
+      })
     } finally {
       setBusy(null)
     }
@@ -168,7 +214,6 @@ export default function AiActivityProjectMappingSettingsBlock() {
             — anything here that isn't a project yet can be made one.
           </>
         )}
-        footnote={error ? <span className="text-destructive">{error}</span> : undefined}
       >
         {activity.loading && projects.length === 0 && <SettingsRowBlock label="Loading activity…" />}
         {!activity.loading && projects.length === 0 && (
@@ -180,10 +225,15 @@ export default function AiActivityProjectMappingSettingsBlock() {
             canonical={p.name}
             meta={`${p.totalChains} chain${p.totalChains === 1 ? '' : 's'} · ${p.totalMsgs} msg${p.totalMsgs === 1 ? '' : 's'}${p.isNoise ? ' · noise' : p.isUnknown ? ' · unknown' : ''}`}
             details={detailsByProject.get(p.name) ?? null}
-            isDefined={definedKeys.has(p.name)}
+            // Compared trimmed: a stored key never carries padding (the
+            // reader empties one that does), so an untidy detected name would
+            // otherwise never match the project it was just adopted into, and
+            // the button would stay live over a project that already exists.
+            isDefined={definedKeys.has(p.name.trim())}
             isBucket={p.isNoise || p.isUnknown}
             hasColorOverride={!!settings.colors[p.name]}
             busy={busy === p.name}
+            error={error?.project === p.name ? error.message : null}
             onColor={hex => setColor(p.name, hex)}
             onResetColor={() => setColor(p.name, null)}
             onAdopt={() => void adopt(p.name, detailsByProject.get(p.name)?.dirs ?? [])}
@@ -223,6 +273,8 @@ interface ProjectRowProps {
   isBucket: boolean
   hasColorOverride: boolean
   busy: boolean
+  /** Why this row's last adoption attempt failed, shown under the row. */
+  error: string | null
   onColor: (hex: string) => void
   onResetColor: () => void
   onAdopt: () => void
@@ -236,6 +288,7 @@ function ProjectRow({
   isBucket,
   hasColorOverride,
   busy,
+  error,
   onColor,
   onResetColor,
   onAdopt,
@@ -293,6 +346,10 @@ function ProjectRow({
           </Button>
         )}
       </div>
+
+      {error && (
+        <div className="pl-8 text-[11px] text-destructive">{error}</div>
+      )}
 
       {details && (
         <div className="space-y-0.5 pl-8">
