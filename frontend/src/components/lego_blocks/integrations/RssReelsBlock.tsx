@@ -351,7 +351,7 @@ function ReelCard({
       </div>
 
       {/* Content */}
-      <div className="relative flex min-h-0 flex-1 flex-col justify-start overflow-hidden pb-20 pl-5 pr-16 pt-6 text-white">
+      <div className="relative flex min-h-0 flex-1 flex-col justify-start overflow-hidden pl-5 pr-20 pt-6 text-white pb-[calc(env(safe-area-inset-bottom,0px)+5rem)]">
         <div className="flex items-center gap-2 text-[13px]">
           <RssSourceAvatarBlock
             link={item.link}
@@ -388,20 +388,21 @@ function ReelCard({
             </p>
           )}
         </button>
-      </div>
 
-      {/* Tag bar, pinned to the space the copy vacated when it moved to the top.
-          Pinned rather than flowed because a long headline would otherwise push
-          the chips off the card, and a tag you cannot reach is not a feature. */}
-      <div className="absolute inset-x-0 bottom-0 pb-8 pl-5 pr-3">
-        {/* Tag bar. Deliberately outside the open button above — a tag tap files
-            the article, it does not open it. `color-scheme: dark` is what makes
-            the shared chip palette correct here: tagColorStyleBlock resolves via
-            light-dark(), and this card is dark regardless of the app theme, so
-            without it a light-themed app would paint light chips on a dark card. */}
+        {/* Tag bar. In the flow directly under the body rather than pinned to
+            the card's bottom edge: that edge is iOS chrome — home indicator and
+            the app-switcher banner sit on it — so a pinned row was unreachable.
+            The body above is the flex child that gives, so the chips hold this
+            position no matter how long the article runs.
+
+            Outside the open button above, because a tag tap files the article,
+            it does not open it. `color-scheme: dark` is load-bearing:
+            tagColorStyleBlock resolves through light-dark(), and this card is
+            dark whatever the app theme, so without it a light-themed app paints
+            light chips onto a dark card. */}
         {presetTags.length > 0 && (
           <div
-            className="ltm-reels-tags flex gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="ltm-reels-tags mt-4 flex shrink-0 gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             style={{ colorScheme: 'dark' }}
           >
             {presetTags.map(tag => {
