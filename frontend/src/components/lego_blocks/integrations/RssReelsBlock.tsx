@@ -36,10 +36,11 @@ const DECK_SOURCES_KEY = 'ltm-rss-reels-sources'
 
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
-/** How close to a snap point the deck must be before a card counts as read.
- *  Loose enough for fractional card heights on scaled displays, tight enough
- *  that a half-swipe that snaps back commits nothing. */
-const SETTLE_EPSILON = 0.12
+/** How far across the gap to the next card the deck must travel before the card
+ *  being left counts as read. Past this point iOS snap carries the swipe home,
+ *  so the mark can land while the animation is still running instead of after
+ *  it. Below it, a drag the reader pulls back from commits nothing. */
+const COMMIT_THRESHOLD = 0.75
 
 interface RssReelsBlockProps {
   feeds: RssFeedResultBlock[]
@@ -82,7 +83,6 @@ export default function RssReelsBlock({
     scrollerRef.current = node
     setScrollerNode(node)
   }, [])
-  const cardNodesRef = useRef(new Map<number, HTMLElement>())
   const [activeIndex, setActiveIndex] = useState(0)
 
   const [filter, setFilter] = useState<RssDeckFilterBlock>(() => {
@@ -254,7 +254,8 @@ export default function RssReelsBlock({
     const index = pendingJumpRef.current
     if (index === null) return
     pendingJumpRef.current = null
-    cardNodesRef.current.get(index)?.scrollIntoView({ block: 'start' })
+    const scroller = scrollerRef.current
+    if (scroller) scroller.scrollTop = index * scroller.clientHeight
     // A jump that lands where we already were fires no scroll event, which
     // would leave `navigating` armed and swallow the next real swipe's read.
     requestAnimationFrame(() => { navigatingRef.current = false })
@@ -283,10 +284,6 @@ export default function RssReelsBlock({
     pendingJumpRef.current = nextUnreadIndex
   }, [nextUnreadIndex])
 
-  const registerCardNode = useCallback((index: number, node: HTMLElement | null) => {
-    if (node) cardNodesRef.current.set(index, node)
-    else cardNodesRef.current.delete(index)
-  }, [])
 
   // Which card owns the viewport, and therefore what counts as read.
   //
@@ -342,13 +339,15 @@ export default function RssReelsBlock({
     // needed — that is presentation, and being early costs nothing.
     setActiveIndex(current => (current === index ? current : index))
 
-    // Committing is a different question. Mid-swipe the nearest card flips at
-    // the halfway point, so committing on it would mark an article read that
-    // the reader dragged toward and then let snap back. Only a settled deck
-    // counts. The tolerance absorbs fractional card heights on scaled displays.
-    if (Math.abs(ratio - index) > SETTLE_EPSILON) return
+    // Committing waits for the swipe to be decisive, NOT for the deck to come
+    // to rest. Waiting for rest meant waiting out iOS's snap animation, a few
+    // hundred milliseconds after the finger had already left the screen, which
+    // is why the count lagged the gesture. Three quarters of the way across is
+    // past the point where snap will carry it home, and far enough that a drag
+    // the reader pulls back from commits nothing.
+    const reached = Math.min(total - 1, Math.max(0, Math.floor(ratio + (1 - COMMIT_THRESHOLD))))
 
-    const step = rssTraversalStepBlock(lastIndexRef.current, index, navigatingRef.current)
+    const step = rssTraversalStepBlock(lastIndexRef.current, reached, navigatingRef.current)
     navigatingRef.current = false
     if (step.commitTo > step.commitFrom) commitSpan(step.commitFrom, step.commitTo)
     lastIndexRef.current = step.nextCursor
@@ -590,8 +589,6 @@ export default function RssReelsBlock({
           return (
             <section
               key={entry.item.id}
-              data-reel-index={index}
-              ref={node => registerCardNode(index, node)}
               className="ltm-reels-card relative flex h-full w-full flex-col"
             >
               {mounted ? (
