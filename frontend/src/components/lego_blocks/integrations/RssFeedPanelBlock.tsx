@@ -427,7 +427,6 @@ export default function RssFeedPanelBlock({
       {viewMode === 'reels' ? (
         <RssReelsBlock
           feeds={feeds}
-          sessionReadIds={sessionReadIds}
           loadingFeedIds={loadingFeedIds}
           presetTags={presetTags}
           tagColors={tagColors}

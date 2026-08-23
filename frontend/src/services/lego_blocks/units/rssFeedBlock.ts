@@ -202,6 +202,75 @@ export interface RssUnreadInboxEntryBlock {
  * one while the user is reading. So items read during this session stay in
  * place (the row renders dimmed) until the next feed refresh rebuilds the list.
  */
+/** What decides membership of the reels deck.
+ *  - `all`    — every article for the days in view. A stack you traverse.
+ *  - `unread` — only what was unread when it entered. A pile that drains.
+ *
+ *  These are different objects, not two views of one. Conflating them is what
+ *  produced a denominator that was neither: "unread, plus whatever I have read
+ *  since I opened this", which drifts under the reader and means nothing.
+ */
+/** Calendar-date label for a day key, e.g. "Aug 21" (with the year once the
+ *  day is outside the current one). Distinct from the timeline's relative
+ *  label: "Friday" or "Yesterday" is useless for navigating a deep backlog,
+ *  where every stack the reader jumps to is some weekday or other. */
+export function rssDayDateLabelBlock(key: string, now: Date = new Date()): string {
+  if (key === '__undated__') return 'No date'
+  const [year, month, day] = key.split('-').map(Number)
+  if (!year || !month || !day) return 'No date'
+  const date = new Date(year, month - 1, day)
+  if (Number.isNaN(date.getTime())) return 'No date'
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    ...(year === now.getFullYear() ? {} : { year: 'numeric' }),
+  })
+}
+
+export type RssDeckFilterBlock = 'all' | 'unread'
+
+/** Every article across every feed, newest first — the stable ordering the
+ *  deck traverses. Membership is decided by the caller's admission set, not by
+ *  a live predicate, so a card never vanishes because it was just read. */
+export function buildRssDeckEntriesBlock(feeds: RssFeedResultBlock[]): RssUnreadInboxEntryBlock[] {
+  const entries: RssUnreadInboxEntryBlock[] = []
+  for (const feed of feeds) {
+    for (const item of feed.items) entries.push({ item, feedTitle: feed.feedTitle })
+  }
+  return sortRssEntriesByRecencyBlock(entries)
+}
+
+/** Unread and total per day, over whatever the deck currently holds. Both
+ *  numbers come from the same list, so `unread <= total` always holds and the
+ *  pair can be shown as one fraction without lying. */
+export function rssDeckDayCountsBlock(
+  entries: RssUnreadInboxEntryBlock[],
+): Map<string, { unread: number; total: number }> {
+  const counts = new Map<string, { unread: number; total: number }>()
+  for (const entry of entries) {
+    const key = rssItemDayKeyBlock(entry.item.pubDate) ?? '__undated__'
+    const bucket = counts.get(key) ?? { unread: 0, total: 0 }
+    bucket.total++
+    if (!entry.item.read) bucket.unread++
+    counts.set(key, bucket)
+  }
+  return counts
+}
+
+/** Newest first; undated items sink to the bottom rather than to the top. */
+function sortRssEntriesByRecencyBlock(entries: RssUnreadInboxEntryBlock[]): RssUnreadInboxEntryBlock[] {
+  return entries.sort((a, b) => {
+    const aTime = a.item.pubDate ? new Date(a.item.pubDate).getTime() : NaN
+    const bTime = b.item.pubDate ? new Date(b.item.pubDate).getTime() : NaN
+    const aValid = !Number.isNaN(aTime)
+    const bValid = !Number.isNaN(bTime)
+    if (!aValid && !bValid) return 0
+    if (!aValid) return 1
+    if (!bValid) return -1
+    return bTime - aTime
+  })
+}
+
 export function buildUnreadInboxItemsBlock(
   feeds: RssFeedResultBlock[],
   sessionReadIds: Set<string>,
@@ -213,17 +282,7 @@ export function buildUnreadInboxItemsBlock(
       entries.push({ item, feedTitle: feed.feedTitle })
     }
   }
-  // Newest first; undated items sink to the bottom rather than to the top.
-  return entries.sort((a, b) => {
-    const aTime = a.item.pubDate ? new Date(a.item.pubDate).getTime() : NaN
-    const bTime = b.item.pubDate ? new Date(b.item.pubDate).getTime() : NaN
-    const aValid = !Number.isNaN(aTime)
-    const bValid = !Number.isNaN(bTime)
-    if (!aValid && !bValid) return 0
-    if (!aValid) return 1
-    if (!bValid) return -1
-    return bTime - aTime
-  })
+  return sortRssEntriesByRecencyBlock(entries)
 }
 
 /** Next/prev state for the open article, published by the feed panel so the

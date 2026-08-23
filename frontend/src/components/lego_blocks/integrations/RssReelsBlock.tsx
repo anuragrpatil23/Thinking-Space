@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bookmark, CalendarDays, Check, ExternalLink, Loader2, Undo2 } from 'lucide-react'
 import {
+  buildRssDeckEntriesBlock,
   buildRssTimelineDayGroupsBlock,
-  buildUnreadInboxItemsBlock,
+  rssDayDateLabelBlock,
+  rssDeckDayCountsBlock,
   rssItemDayKeyBlock,
   rssSourceHueBlock,
   type RssFeedItemBlock,
+  type RssDeckFilterBlock,
   type RssFeedResultBlock,
   type RssTimelineDayGroupBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
@@ -25,11 +28,10 @@ import { cn } from '@/lib/utils'
  *  lands on an unmounted card. */
 const WINDOW_RADIUS = 2
 
+const DECK_FILTER_KEY = 'ltm-rss-reels-filter'
+
 interface RssReelsBlockProps {
   feeds: RssFeedResultBlock[]
-  /** Articles read earlier in this session — they stay pinned in the queue so
-   *  the deck does not reshuffle under the reader mid-swipe. */
-  sessionReadIds: Set<string>
   loadingFeedIds: Set<string>
   /** Tag vocabulary from RSS preferences — the chips the card offers. */
   presetTags: string[]
@@ -54,7 +56,6 @@ interface RssReelsBlockProps {
  */
 export default function RssReelsBlock({
   feeds,
-  sessionReadIds,
   loadingFeedIds,
   presetTags,
   tagColors,
@@ -64,13 +65,58 @@ export default function RssReelsBlock({
   onToggleSaved,
   onToggleTag,
 }: RssReelsBlockProps) {
-  const entries = useMemo(
-    () => buildUnreadInboxItemsBlock(feeds, sessionReadIds),
-    [feeds, sessionReadIds],
-  )
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   const cardNodesRef = useRef(new Map<number, HTMLElement>())
   const [activeIndex, setActiveIndex] = useState(0)
+
+  const [filter, setFilter] = useState<RssDeckFilterBlock>(() => {
+    try {
+      const saved = localStorage.getItem(DECK_FILTER_KEY)
+      if (saved === 'all' || saved === 'unread') return saved
+    } catch { /* storage is optional */ }
+    return 'all'
+  })
+
+  // Membership is an ADMISSION SET, not a live predicate. Once an article is in
+  // the deck it stays until the filter changes, so reading a card never removes
+  // it from under the reader — the old deck was `unread ∪ read-this-session`,
+  // which is neither a stable stack nor a true unread pile, and its size meant
+  // nothing. Admission also has to be incremental: cached backlog pages stream
+  // in for seconds after open, and a snapshot taken at mount would miss them.
+  const admittedRef = useRef<Set<string>>(new Set())
+  const [admissionTick, setAdmissionTick] = useState(0)
+
+  const allEntries = useMemo(() => buildRssDeckEntriesBlock(feeds), [feeds])
+
+  useEffect(() => {
+    let admittedAny = false
+    for (const entry of allEntries) {
+      if (admittedRef.current.has(entry.item.id)) continue
+      // `unread` admits on the state the article had when it first appeared —
+      // that is what makes the pile drain monotonically instead of churning.
+      if (filter === 'unread' && entry.item.read) continue
+      admittedRef.current.add(entry.item.id)
+      admittedAny = true
+    }
+    if (admittedAny) setAdmissionTick(tick => tick + 1)
+  }, [allEntries, filter])
+
+  const entries = useMemo(
+    () => allEntries.filter(entry => admittedRef.current.has(entry.item.id)),
+    // admissionTick is the dependency that matters — admittedRef is a ref so
+    // that admission does not re-run this memo mid-pass.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allEntries, admissionTick],
+  )
+
+  const changeFilter = useCallback((next: RssDeckFilterBlock) => {
+    // A filter change is the one moment the deck is allowed to be rebuilt.
+    admittedRef.current = new Set()
+    setAdmissionTick(tick => tick + 1)
+    setActiveIndex(0)
+    setFilter(next)
+    try { localStorage.setItem(DECK_FILTER_KEY, next) } catch { /* optional */ }
+  }, [])
 
   // Articles the reader explicitly put back to unread — leaving such a card
   // must not immediately undo the undo.
@@ -95,18 +141,14 @@ export default function RssReelsBlock({
   const activeDayKey = rssItemDayKeyBlock(entries[activeIndex]?.item.pubDate ?? null) ?? '__undated__'
   const activeGroup = dayGroups.find(group => group.key === activeDayKey) ?? null
 
-  /** Unread left in a stack. Deliberately not the group's card count: the deck
-   *  pins articles read earlier this session so it does not reshuffle, so the
-   *  count and the stack size drift apart the moment the reader starts. */
-  const unreadByDay = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const entry of entries) {
-      if (entry.item.read) continue
-      const key = rssItemDayKeyBlock(entry.item.pubDate) ?? '__undated__'
-      counts.set(key, (counts.get(key) ?? 0) + 1)
-    }
-    return counts
-  }, [entries])
+  /** Unread and total per day, both over the deck as it stands. The stack size
+   *  is fixed; only the unread half moves, and it only ever moves down. */
+  const dayCounts = useMemo(() => rssDeckDayCountsBlock(entries), [entries])
+  const activeCounts = dayCounts.get(activeDayKey) ?? { unread: 0, total: 0 }
+
+  /** Position within the day's stack, not the whole deck. A denominator of
+   *  12,000 says nothing; "4 of 47 on Friday" is a task you can finish. */
+  const positionInDay = activeGroup ? activeIndex - activeGroup.firstIndex + 1 : 0
 
   const [datePickerOpen, setDatePickerOpen] = useState(false)
   const pendingJumpRef = useRef<number | null>(null)
@@ -218,12 +260,35 @@ export default function RssReelsBlock({
         >
           <CalendarDays className={cn('h-4 w-4 shrink-0', datePickerOpen ? 'text-foreground' : 'text-muted-foreground')} />
           <span className="min-w-0 truncate text-[13px] font-semibold">
-            {activeGroup?.label ?? 'No date'}
+            {rssDayDateLabelBlock(activeDayKey)}
           </span>
           <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
-            {unreadByDay.get(activeDayKey) ?? 0} unread
+            <span className="font-semibold text-foreground">{activeCounts.unread}</span>
+            /{activeCounts.total} unread
           </span>
         </button>
+
+        {datePickerOpen && (
+          <div className="flex items-center gap-1 border-t border-border/40 px-4 py-2">
+            <span className="mr-1 text-[11px] text-muted-foreground">Stack</span>
+            {(['all', 'unread'] as const).map(option => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => changeFilter(option)}
+                aria-pressed={filter === option}
+                className={cn(
+                  'rounded-full border px-2.5 py-1 text-[12px] font-medium',
+                  filter === option
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border text-muted-foreground hover:bg-muted',
+                )}
+              >
+                {option === 'all' ? 'Everything' : 'Unread only'}
+              </button>
+            ))}
+          </div>
+        )}
 
         {datePickerOpen && dayGroups.length > 0 && (
           <div className="flex gap-2 overflow-x-auto overscroll-x-contain border-t border-border/40 px-4 py-2.5 touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
@@ -239,9 +304,9 @@ export default function RssReelsBlock({
                     : 'border-border bg-muted/40 hover:bg-muted',
                 )}
               >
-                {group.label}
+                {rssDayDateLabelBlock(group.key)}
                 <span className="ml-1.5 tabular-nums text-muted-foreground">
-                  {unreadByDay.get(group.key) ?? 0}
+                  {dayCounts.get(group.key)?.unread ?? 0}/{dayCounts.get(group.key)?.total ?? 0}
                 </span>
               </button>
             ))}
@@ -267,8 +332,9 @@ export default function RssReelsBlock({
                   item={entry.item}
                   feedTitle={entry.feedTitle}
                   active={index === activeIndex}
-                  position={index + 1}
-                  total={entries.length}
+                  position={index === activeIndex ? positionInDay : 0}
+                  total={activeCounts.total}
+                  read={Boolean(entry.item.read)}
                   onOpen={() => onOpen(entry.item)}
                   onToggleSaved={() => onToggleSaved(entry.item)}
                   presetTags={presetTags}
@@ -289,7 +355,7 @@ export default function RssReelsBlock({
 /** One article, full viewport. */
 function ReelCard({
   item, feedTitle, active, position, total, onOpen, onToggleSaved, onKeepUnread, keptUnread,
-  presetTags, tagColors, onToggleTag,
+  read, presetTags, tagColors, onToggleTag,
 }: {
   item: RssFeedItemBlock
   feedTitle: string
@@ -302,6 +368,10 @@ function ReelCard({
   onToggleSaved: () => void
   onKeepUnread: () => void
   keptUnread: boolean
+  /** Whether the article is already read. Swiping is what marks it, so the card
+   *  has to show the result — otherwise the one action the mode is built around
+   *  produces no visible feedback. */
+  read: boolean
   presetTags: string[]
   tagColors: Record<string, string>
   onToggleTag: (tag: string) => void
@@ -366,6 +436,16 @@ function ReelCard({
               <time className="shrink-0 text-white/70">{dateLabel}</time>
             </>
           )}
+          <span
+            className={cn(
+              'ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+              read
+                ? 'bg-white/15 text-white/60'
+                : 'bg-white/90 text-black',
+            )}
+          >
+            {read ? 'Read' : 'New'}
+          </span>
         </div>
 
         <button type="button" onClick={onOpen} className="mt-3 flex min-h-0 flex-1 flex-col text-left">
@@ -441,9 +521,11 @@ function ReelCard({
             a deck feel bounded rather than endless. It sits with the controls
             rather than in the meta row so the right edge owns every per-card
             affordance, and at rail width rather than the 10px it started at. */}
-        <span className="rounded-full border border-white/20 bg-black/25 px-2.5 py-1 text-[11px] font-medium tabular-nums text-white/80 backdrop-blur-sm">
-          {position}/{total}
-        </span>
+        {position > 0 && (
+          <span className="rounded-full border border-white/20 bg-black/25 px-2.5 py-1 text-[11px] font-medium tabular-nums text-white/80 backdrop-blur-sm">
+            {position}/{total}
+          </span>
+        )}
         <RailButton
           label="Read"
           active={false}
