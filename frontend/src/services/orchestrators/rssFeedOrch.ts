@@ -10,6 +10,7 @@ import {
   generateGroupIdBlock,
   extractFirstHtmlImageBlock,
   extractRssItemImageBlock,
+  mergeStoredRssItemsBlock,
   normalizeRssFeedItemIdBlock,
   normalizeRssFeedPreferencesBlock,
   type RssFeedConfigBlock,
@@ -144,7 +145,14 @@ async function readStoredFeedFilesOrch(
       try {
         const content = await fs.read(`${dir}/${filename}`)
         const item = parseRssItemFileBlock(content)
-        if (item?.id) result.set(item.id, item)
+        if (!item?.id) return
+        // iCloud conflict copies ("abc 2.md") carry the same id with an older
+        // snapshot. These batches resolve in parallel, so a plain set() let
+        // whichever copy finished last win — and a stale one would resurrect a
+        // read article as unread. Merge instead, in the direction that keeps
+        // deliberate marks.
+        const existing = result.get(item.id)
+        result.set(item.id, existing ? mergeStoredRssItemsBlock(existing, item) : item)
       } catch { /* state file may not exist yet */ }
     }))
     if (offset + 8 < files.length) await new Promise<void>(resolve => window.setTimeout(resolve, 0))
@@ -287,17 +295,35 @@ async function patchRssItemFrontmatterOrch(
   try {
     const content = await fs.read(path)
     const closeIdx = content.indexOf('\n---', 4)
-    if (closeIdx === -1) return
+    // These three paths all mean "the mark was made and then dropped on the
+    // floor". They used to be silent, which is how a per-article durability
+    // failure could look like a flaky UI for a whole session.
+    if (closeIdx === -1) {
+      console.warn(`[rss] no frontmatter in ${path}; state patch dropped`, patch)
+      return
+    }
     let fm: unknown
-    try { fm = yaml.load(content.slice(4, closeIdx)) } catch { return }
-    if (!fm || typeof fm !== 'object') return
+    try {
+      fm = yaml.load(content.slice(4, closeIdx))
+    } catch (error) {
+      console.warn(`[rss] unparseable frontmatter in ${path}; state patch dropped`, error)
+      return
+    }
+    if (!fm || typeof fm !== 'object') {
+      console.warn(`[rss] non-object frontmatter in ${path}; state patch dropped`, patch)
+      return
+    }
     const updated = { ...(fm as Record<string, unknown>), ...patch }
     const newYaml = (yaml.dump(updated, {
       lineWidth: -1, noRefs: true, sortKeys: false, quotingType: '"',
     }) as string).trimEnd()
     const body = content.slice(closeIdx + 4).replace(/^\n+/, '')
     await fs.write(path, `---\n${newYaml}\n---\n\n${body}`)
-  } catch { /* file may not exist yet; silently ignore */ }
+  } catch (error) {
+    // Most often the article was never retained, so there is nothing to patch
+    // and nothing to hydrate later either. Say so rather than losing it mutely.
+    console.warn(`[rss] could not persist state for ${itemId}`, error)
+  }
 }
 
 async function updateRssItemStateOrch(

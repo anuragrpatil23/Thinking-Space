@@ -1,3 +1,4 @@
+import { normalizeTagListBlock } from '@/services/lego_blocks/units/tagBlock'
 export interface RssFeedConfigBlock {
   id: string
   url: string
@@ -233,6 +234,47 @@ export function rssTraversalStepBlock(
   if (navigating) return { commitFrom: 0, commitTo: 0, nextCursor: landed }
   if (landed <= cursor) return { commitFrom: 0, commitTo: 0, nextCursor: landed }
   return { commitFrom: cursor, commitTo: landed, nextCursor: landed }
+}
+
+/**
+ * Reconcile two stored copies of the same article.
+ *
+ * iCloud sync produces conflict copies ("abc 2.md") holding an older snapshot
+ * of the same `id`. The loader keyed a map by that id, so whichever copy
+ * happened to resolve last won — nondeterministically, in parallel batches.
+ * A stale copy could therefore resurrect an article as unread hours after it
+ * was read, which is exactly the "some articles will not stay marked" symptom.
+ *
+ * Read state is treated as monotonic: once an article has been read somewhere,
+ * that wins. Two offline devices cannot be ordered without a clock we do not
+ * keep, and of the two possible mistakes — an article that will not stay read,
+ * or one that will not come back — the first is what makes the queue
+ * untrustworthy. `keep`/`important`/tags merge the same direction: set wins,
+ * because those are deliberate marks and losing one is worse than keeping it.
+ */
+export function mergeStoredRssItemsBlock(
+  a: RssFeedItemBlock,
+  b: RssFeedItemBlock,
+): RssFeedItemBlock {
+  const viewedAt = a.viewedAt ?? b.viewedAt
+  const dismissedAt = a.dismissedAt ?? b.dismissedAt
+  const tags = normalizeTagListBlock([...(a.tags ?? []), ...(b.tags ?? [])])
+  // Prefer whichever copy actually carries content — a conflict copy written
+  // before a backfill can be missing the image or carry a shorter body.
+  return {
+    ...a,
+    title: a.title || b.title,
+    link: a.link || b.link,
+    description: a.description.length >= b.description.length ? a.description : b.description,
+    pubDate: a.pubDate ?? b.pubDate,
+    imageUrl: a.imageUrl ?? b.imageUrl,
+    viewedAt,
+    dismissedAt,
+    read: Boolean(viewedAt || dismissedAt) || a.read || b.read,
+    tags,
+    keep: a.keep || b.keep,
+    important: a.important || b.important,
+  }
 }
 
 /** One day cell in the reels calendar. `total` is the day's stack size and
