@@ -175,6 +175,13 @@ trap - EXIT
 say "building native app (xcodebuild Release)"
 APP_VERSION="$($JQ -r '.version // empty' "$FRONTEND_DIR/package.json")"
 [ -n "$APP_VERSION" ] || fail "could not read version from $FRONTEND_DIR/package.json"
+# Build number from the build's own clock: `YYYYMMDD.HHMM`, two period-separated
+# integers (the shape CFBundleVersion wants), monotonic by construction. It was
+# pinned at 1 forever, which made two builds of the same marketing version
+# indistinguishable on the device — the exact confusion this pair of settings
+# exists to prevent. Minute resolution, because that is the floor on how often
+# a ship can complete.
+BUILD_NUMBER="$(date +%Y%m%d.%H%M)"
 xcodebuild \
   -project "$IOS_PROJ" \
   -scheme App \
@@ -183,6 +190,7 @@ xcodebuild \
   -derivedDataPath "$DERIVED_DIR" \
   -allowProvisioningUpdates \
   MARKETING_VERSION="$APP_VERSION" \
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
   build >>"$LOG" 2>&1 || fail "xcodebuild failed"
 
 APP_PATH="$DERIVED_DIR/Build/Products/Release-iphoneos/App.app"
@@ -195,6 +203,7 @@ APP_PATH="$DERIVED_DIR/Build/Products/Release-iphoneos/App.app"
 # Multi-device contract: the ship succeeds if AT LEAST ONE device took the
 # install; unreachable extras are reported, never block the checkpoint.
 MARKETING_VERSION="$(defaults read "$APP_PATH/Info.plist" CFBundleShortVersionString 2>/dev/null || echo '?')"
+BUILD_VERSION="$(defaults read "$APP_PATH/Info.plist" CFBundleVersion 2>/dev/null || echo '?')"
 ANY_INSTALLED=0
 RESULTS=()
 for i in "${!DEVICE_IDS[@]}"; do
@@ -243,6 +252,6 @@ done
 
 [ $ANY_INSTALLED = 1 ] || fail "install failed on every device — ${RESULTS[*]}"
 
-say "✓ shipped v$MARKETING_VERSION ($TREE_LABEL)"
+say "✓ shipped v$MARKETING_VERSION build $BUILD_VERSION ($TREE_LABEL)"
 for r in "${RESULTS[@]}"; do say "  $r"; done
 say "log: $LOG"
