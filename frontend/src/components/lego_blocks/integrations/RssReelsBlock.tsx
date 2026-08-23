@@ -303,9 +303,6 @@ function ReelCard({
               {item.description}
             </p>
           )}
-          <span className="mt-4 inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-[13px] font-medium backdrop-blur-sm">
-            Read article <ExternalLink className="h-3.5 w-3.5" />
-          </span>
         </button>
       </div>
 
@@ -350,7 +347,14 @@ function ReelCard({
       {/* Action rail — the familiar reels affordance, and deliberately buttons
           rather than horizontal swipes: a left/right drag here would fight the
           iOS interactive-pop edge gesture. */}
-      <div className="absolute bottom-28 right-3 flex flex-col items-center gap-4 text-white">
+      <div className="absolute bottom-24 right-3 flex flex-col items-center gap-3.5 text-white">
+        <RailButton
+          label="Read"
+          active={false}
+          onClick={onOpen}
+        >
+          <ExternalLink className="h-5 w-5" />
+        </RailButton>
         <RailButton
           label={item.keep ? 'Saved' : 'Save'}
           active={item.keep}
