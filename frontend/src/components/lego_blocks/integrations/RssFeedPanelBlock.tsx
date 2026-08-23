@@ -30,6 +30,7 @@ import {
   removeRssItemsBlock,
   replaceRssItemBlock,
   toggleRssItemSavedBlock,
+  toggleRssItemTagBlock,
   unmarkRssItemReadBlock,
   useRssFeedsBlock,
 } from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
@@ -428,10 +429,13 @@ export default function RssFeedPanelBlock({
           feeds={feeds}
           sessionReadIds={sessionReadIds}
           loadingFeedIds={loadingFeedIds}
+          presetTags={presetTags}
+          tagColors={tagColors}
           onOpen={(item) => handleItemClick(item, rssRowIdBlock('__reels__', item.id))}
           onMarkRead={markRssItemsReadBlock}
           onUnmarkRead={unmarkRssItemReadBlock}
           onToggleSaved={toggleRssItemSavedBlock}
+          onToggleTag={toggleRssItemTagBlock}
         />
       ) : viewMode === 'timeline' ? (
         <RssTimelineBlock

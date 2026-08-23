@@ -1738,11 +1738,13 @@
     flex: 0 0 100%;
   }
 
-  .ltm-reels-clamp {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 5;
-    overflow: hidden;
+  /* Article body on a reels card. It fills whatever height the card has left,
+     so a full-text feed shows a real chunk of the article rather than a fixed
+     five lines. The mask is what makes the overflow read as "continues" instead
+     of a hard cut — there is no second scroll axis inside a snap card. */
+  .ltm-reels-body {
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 2.5rem), transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 2.5rem), transparent 100%);
   }
 }
 

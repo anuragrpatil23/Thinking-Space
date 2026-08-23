@@ -17,6 +17,11 @@ import {
   type RssFeedPreferencesBlock,
   type RssFeedResultBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
+import {
+  hasTagBlock,
+  normalizeTagBlock,
+  normalizeTagListBlock,
+} from '@/services/lego_blocks/units/tagBlock'
 
 /**
  * One feed store for every RSS surface.
@@ -259,6 +264,17 @@ export function unmarkRssItemReadBlock(item: RssFeedItemBlock): void {
   if (!item.read && !item.viewedAt && !item.dismissedAt) return
   patchItemsBlock([item.id], { viewedAt: null, dismissedAt: null, read: false })
   void unmarkRssItemReadOrch(item.id)
+}
+
+/** Add or remove one tag. Lives here rather than in a surface so every reader
+ *  — article view, reels — writes tags through the same path. */
+export function toggleRssItemTagBlock(item: RssFeedItemBlock, tag: string): void {
+  const current = item.tags ?? []
+  const tags = hasTagBlock(current, tag)
+    ? current.filter(existing => normalizeTagBlock(existing).toLowerCase() !== normalizeTagBlock(tag).toLowerCase())
+    : normalizeTagListBlock([...current, tag])
+  patchItemsBlock([item.id], { tags })
+  void updateRssItemMetaOrch(item.id, { tags })
 }
 
 export function toggleRssItemSavedBlock(item: RssFeedItemBlock): void {

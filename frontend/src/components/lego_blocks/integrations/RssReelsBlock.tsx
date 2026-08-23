@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bookmark, Check, ExternalLink, Loader2, Rss, Undo2 } from 'lucide-react'
+import { Bookmark, Check, ExternalLink, Loader2, Undo2 } from 'lucide-react'
 import {
   buildUnreadInboxItemsBlock,
   rssSourceHueBlock,
@@ -7,6 +7,12 @@ import {
   type RssFeedResultBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
 import RssSourceAvatarBlock from '@/components/lego_blocks/units/RssSourceAvatarBlock'
+import {
+  hasTagBlock,
+  tagColorClassBlock,
+  tagColorStyleBlock,
+  tagLookupKeyBlock,
+} from '@/services/lego_blocks/units/tagBlock'
 import { cn } from '@/lib/utils'
 
 /** How many cards either side of the active one stay mounted. Every card is a
@@ -16,22 +22,20 @@ import { cn } from '@/lib/utils'
  *  lands on an unmounted card. */
 const WINDOW_RADIUS = 2
 
-/** Read marks are buffered and flushed in batches rather than written per
- *  swipe: a fast pass through the inbox would otherwise be one vault write per
- *  flick. Flushed on this count, and unconditionally on exit — never on a
- *  timer, per ENERGY.md. */
-const READ_FLUSH_BATCH = 4
-
 interface RssReelsBlockProps {
   feeds: RssFeedResultBlock[]
   /** Articles read earlier in this session — they stay pinned in the queue so
    *  the deck does not reshuffle under the reader mid-swipe. */
   sessionReadIds: Set<string>
   loadingFeedIds: Set<string>
+  /** Tag vocabulary from RSS preferences — the chips the card offers. */
+  presetTags: string[]
+  tagColors: Record<string, string>
   onOpen: (item: RssFeedItemBlock) => void
   onMarkRead: (items: RssFeedItemBlock[]) => void
   onUnmarkRead: (item: RssFeedItemBlock) => void
   onToggleSaved: (item: RssFeedItemBlock) => void
+  onToggleTag: (item: RssFeedItemBlock, tag: string) => void
 }
 
 /**
@@ -49,10 +53,13 @@ export default function RssReelsBlock({
   feeds,
   sessionReadIds,
   loadingFeedIds,
+  presetTags,
+  tagColors,
   onOpen,
   onMarkRead,
   onUnmarkRead,
   onToggleSaved,
+  onToggleTag,
 }: RssReelsBlockProps) {
   const entries = useMemo(
     () => buildUnreadInboxItemsBlock(feeds, sessionReadIds),
@@ -62,30 +69,18 @@ export default function RssReelsBlock({
   const cardNodesRef = useRef(new Map<number, HTMLElement>())
   const [activeIndex, setActiveIndex] = useState(0)
 
-  // Buffered read marks, keyed by id so a card left twice is written once.
-  const pendingReadRef = useRef(new Map<string, RssFeedItemBlock>())
-  // Articles the reader explicitly put back to unread — they must survive the
-  // flush, otherwise leaving the card would immediately undo the undo.
+  // Articles the reader explicitly put back to unread — leaving such a card
+  // must not immediately undo the undo.
   const keptUnreadRef = useRef(new Set<string>())
   const onMarkReadRef = useRef(onMarkRead)
   onMarkReadRef.current = onMarkRead
 
-  const flushReads = useCallback(() => {
-    const pending = [...pendingReadRef.current.values()]
-      .filter(item => !keptUnreadRef.current.has(item.id))
-    pendingReadRef.current.clear()
+  /** Commit the cards just left behind. Called with everything passed in one
+   *  scroll, so a fast flick over several cards is still a single write. */
+  const commitReads = useCallback((items: RssFeedItemBlock[]) => {
+    const pending = items.filter(item => !item.dismissedAt && !keptUnreadRef.current.has(item.id))
     if (pending.length > 0) onMarkReadRef.current(pending)
   }, [])
-
-  const queueRead = useCallback((item: RssFeedItemBlock) => {
-    if (item.dismissedAt || keptUnreadRef.current.has(item.id)) return
-    pendingReadRef.current.set(item.id, item)
-    if (pendingReadRef.current.size >= READ_FLUSH_BATCH) flushReads()
-  }, [flushReads])
-
-  // Leaving the mode is a commit point — anything still buffered is a real
-  // disposition the reader made, and dropping it would silently lose reads.
-  useEffect(() => () => { flushReads() }, [flushReads])
 
   const registerCardNode = useCallback((index: number, node: HTMLElement | null) => {
     if (node) cardNodesRef.current.set(index, node)
@@ -112,12 +107,13 @@ export default function RssReelsBlock({
         // passed over — a fast flick skips cards, and skipping is a decision
         // just as much as swiping one at a time.
         const from = activeIndexRef.current
-        const step = index > from ? 1 : -1
-        if (step === 1) {
+        if (index > from) {
+          const passed: RssFeedItemBlock[] = []
           for (let i = from; i < index; i++) {
-            const passed = entriesRef.current[i]
-            if (passed) queueRead(passed.item)
+            const entry = entriesRef.current[i]
+            if (entry) passed.push(entry.item)
           }
+          commitReads(passed)
         }
         setActiveIndex(index)
       }
@@ -126,11 +122,10 @@ export default function RssReelsBlock({
     return () => observer.disconnect()
     // Re-observes when the rendered window changes, which is how newly mounted
     // cards get picked up.
-  }, [entries.length, activeIndex, queueRead])
+  }, [entries.length, activeIndex, commitReads])
 
   const handleKeepUnread = useCallback((item: RssFeedItemBlock) => {
     keptUnreadRef.current.add(item.id)
-    pendingReadRef.current.delete(item.id)
     onUnmarkRead(item)
   }, [onUnmarkRead])
 
@@ -186,6 +181,9 @@ export default function RssReelsBlock({
                   total={entries.length}
                   onOpen={() => onOpen(entry.item)}
                   onToggleSaved={() => onToggleSaved(entry.item)}
+                  presetTags={presetTags}
+                  tagColors={tagColors}
+                  onToggleTag={(tag) => onToggleTag(entry.item, tag)}
                   onKeepUnread={() => handleKeepUnread(entry.item)}
                   keptUnread={keptUnreadRef.current.has(entry.item.id)}
                 />
@@ -201,6 +199,7 @@ export default function RssReelsBlock({
 /** One article, full viewport. */
 function ReelCard({
   item, feedTitle, active, position, total, onOpen, onToggleSaved, onKeepUnread, keptUnread,
+  presetTags, tagColors, onToggleTag,
 }: {
   item: RssFeedItemBlock
   feedTitle: string
@@ -213,6 +212,9 @@ function ReelCard({
   onToggleSaved: () => void
   onKeepUnread: () => void
   keptUnread: boolean
+  presetTags: string[]
+  tagColors: Record<string, string>
+  onToggleTag: (tag: string) => void
 }) {
   const [imageFailed, setImageFailed] = useState(false)
   const showImage = Boolean(item.imageUrl) && !imageFailed && active
@@ -259,7 +261,7 @@ function ReelCard({
       </div>
 
       {/* Content */}
-      <div className="relative flex min-h-0 flex-1 flex-col justify-start px-5 pb-16 pt-6 text-white">
+      <div className="relative flex min-h-0 flex-1 flex-col justify-start overflow-hidden pb-28 pl-5 pr-16 pt-6 text-white">
         <div className="flex items-center gap-2 text-[13px]">
           <RssSourceAvatarBlock
             link={item.link}
@@ -274,11 +276,17 @@ function ReelCard({
               <time className="shrink-0 text-white/70">{dateLabel}</time>
             </>
           )}
+          {/* Position in the queue. Reading an inbox down is a finite task, so
+              the card says how much of it is left — this is the one number that
+              makes a deck feel bounded rather than endless. */}
+          <span className="ml-auto shrink-0 rounded-full border border-white/20 bg-black/30 px-2 py-0.5 text-[11px] font-medium tabular-nums text-white/80 backdrop-blur-sm">
+            {position}/{total}
+          </span>
         </div>
 
-        <button type="button" onClick={onOpen} className="mt-3 block text-left">
+        <button type="button" onClick={onOpen} className="mt-3 flex min-h-0 flex-1 flex-col text-left">
           <h2 className={cn(
-            'font-semibold leading-[1.15] tracking-[-0.01em]',
+            'shrink-0 font-semibold leading-[1.15] tracking-[-0.01em]',
             // Short headlines get to be posters; long ones step down so they
             // still fit without truncation doing the design's job.
             item.title.length < 70 ? 'text-[30px]' : item.title.length < 130 ? 'text-[24px]' : 'text-[20px]',
@@ -286,14 +294,57 @@ function ReelCard({
             {item.title}
           </h2>
           {item.description && (
-            <p className="ltm-reels-clamp mt-3 text-[15px] leading-relaxed text-white/80">
+            // Full-text feeds (Slashdot and friends) put the whole article in
+            // `description` — the parser already prefers `content` over the
+            // summary. A fixed line clamp threw that away, so the body claims
+            // whatever height the card has left and fades out where it runs
+            // over, which is as much as fits without a second scroll axis.
+            <p className="ltm-reels-body mt-3 min-h-0 flex-1 overflow-hidden text-[15px] leading-relaxed text-white/80">
               {item.description}
             </p>
           )}
-          <span className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-[13px] font-medium backdrop-blur-sm">
+          <span className="mt-4 inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-[13px] font-medium backdrop-blur-sm">
             Read article <ExternalLink className="h-3.5 w-3.5" />
           </span>
         </button>
+      </div>
+
+      {/* Tag bar, pinned to the space the copy vacated when it moved to the top.
+          Pinned rather than flowed because a long headline would otherwise push
+          the chips off the card, and a tag you cannot reach is not a feature. */}
+      <div className="absolute inset-x-0 bottom-0 px-5 pb-8 pr-20">
+        {/* Tag bar. Deliberately outside the open button above — a tag tap files
+            the article, it does not open it. `color-scheme: dark` is what makes
+            the shared chip palette correct here: tagColorStyleBlock resolves via
+            light-dark(), and this card is dark regardless of the app theme, so
+            without it a light-themed app would paint light chips on a dark card. */}
+        {presetTags.length > 0 && (
+          <div className="ltm-reels-tags flex flex-wrap gap-1.5" style={{ colorScheme: 'dark' }}>
+            {presetTags.map(tag => {
+              const selected = hasTagBlock(item.tags ?? [], tag)
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => onToggleTag(tag)}
+                  aria-pressed={selected}
+                  title={selected ? `Remove ${tag}` : `Add ${tag}`}
+                  className={cn(
+                    'inline-flex items-center rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors',
+                    tagColorClassBlock(tag, selected ? 'selected' : 'unselected'),
+                    // The unselected chip is an outline over photography, which
+                    // the palette never had to survive — lift it so it reads on
+                    // a bright image without competing with a selected chip.
+                    !selected && 'border-white/35 bg-black/25 text-white/85 backdrop-blur-sm',
+                  )}
+                  style={tagColorStyleBlock(tag, selected ? 'selected' : 'unselected', tagColors[tagLookupKeyBlock(tag)])}
+                >
+                  {tag}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Action rail — the familiar reels affordance, and deliberately buttons
@@ -314,10 +365,6 @@ function ReelCard({
         >
           <Undo2 className="h-5 w-5" />
         </RailButton>
-        <div className="flex flex-col items-center gap-1 text-[10px] tabular-nums text-white/60">
-          <Rss className="h-3.5 w-3.5" />
-          {position}/{total}
-        </div>
       </div>
     </>
   )
