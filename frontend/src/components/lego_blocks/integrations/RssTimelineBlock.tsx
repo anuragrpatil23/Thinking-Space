@@ -8,6 +8,7 @@ import {
   type RssFeedResultBlock,
   type RssTimelineDayGroupBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
+import RssSourceAvatarBlock from '@/components/lego_blocks/units/RssSourceAvatarBlock'
 import { cn } from '@/lib/utils'
 
 const VIEW_RATIO = 0.6
@@ -669,7 +670,7 @@ function TimelineCard({
           >
             <Check className="h-3.5 w-3.5" />
           </button>
-        ) : <SourceAvatar item={item} feedTitle={feedTitle} />}
+        ) : <RssSourceAvatarBlock link={item.link} feedTitle={feedTitle} />}
       </div>
 
       <div className="min-w-0 flex-1">
@@ -789,48 +790,5 @@ function ArticleThumbnail({ url }: { url: string }) {
       onError={() => setFailed(true)}
       className="h-[76px] w-[76px] shrink-0 rounded-xl border border-border/60 object-cover"
     />
-  )
-}
-
-/** Origins whose favicon we already tried and failed to load. Module-scoped so
- *  a source that has no favicon costs one request per session, not one per
- *  card — the old per-card guess produced a 404 storm while scrolling. */
-const failedFaviconOrigins = new Set<string>()
-
-function SourceAvatar({ item, feedTitle }: { item: RssFeedItemBlock; feedTitle: string }) {
-  const origin = useMemo(() => {
-    try { return new URL(item.link).origin } catch { return null }
-  }, [item.link])
-  const [failed, setFailed] = useState(() => (origin ? failedFaviconOrigins.has(origin) : true))
-  const monogram = feedTitle.trim().slice(0, 1).toUpperCase()
-  // Deterministic hue per source, so each feed keeps one identity down the list.
-  const hue = useMemo(() => {
-    let hash = 0
-    for (let index = 0; index < feedTitle.length; index++) {
-      hash = (hash * 31 + feedTitle.charCodeAt(index)) | 0
-    }
-    return Math.abs(hash) % 360
-  }, [feedTitle])
-
-  return (
-    <span
-      title={feedTitle}
-      className="grid h-9 w-9 place-items-center overflow-hidden rounded-full border border-border/60 text-[13px] font-semibold"
-      style={failed ? { backgroundColor: `hsl(${hue} 55% 92%)`, color: `hsl(${hue} 55% 28%)` } : undefined}
-    >
-      {origin && !failed ? (
-        <img
-          src={`${origin}/favicon.ico`}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          onError={() => {
-            failedFaviconOrigins.add(origin)
-            setFailed(true)
-          }}
-          className="h-5 w-5"
-        />
-      ) : (monogram || <Rss className="h-4 w-4 text-muted-foreground" />)}
-    </span>
   )
 }

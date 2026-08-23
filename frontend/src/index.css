@@ -1714,6 +1714,36 @@
   .ltm-touch-row {
     min-height: 2.25rem;
   }
+
+  /* Reels reading mode. Snap is what makes "advanced past it" a reliable read
+     signal: the deck comes to rest with exactly one card owning the viewport,
+     so the intersection observer needs no dwell timer to disambiguate. */
+  .ltm-reels-scroller {
+    scroll-snap-type: y mandatory;
+    /* Momentum + snap misbehaves on iOS without an explicit scroll container
+       height; the parent is flex-1 so this pins it to the real viewport. */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ltm-reels-scroller::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ltm-reels-card {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    /* Cards are exactly one scroller-height tall, minus nothing — the header
+       already sits outside the scroller. */
+    height: 100%;
+    flex: 0 0 100%;
+  }
+
+  .ltm-reels-clamp {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+    overflow: hidden;
+  }
 }
 
 /* Hide stray Excalidraw chrome (bottom toolbar, zoom controls, side panels) coming

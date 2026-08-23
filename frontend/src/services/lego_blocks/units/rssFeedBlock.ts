@@ -54,6 +54,35 @@ export interface RssFeedResultBlock {
   error: string | null
 }
 
+/** Deterministic hue per source, so a feed keeps one identity across every
+ *  surface — the timeline row, the reels backdrop and the monogram agree. */
+export function rssSourceHueBlock(feedTitle: string): number {
+  let hash = 0
+  for (let index = 0; index < feedTitle.length; index++) {
+    hash = (hash * 31 + feedTitle.charCodeAt(index)) | 0
+  }
+  return Math.abs(hash) % 360
+}
+
+/** How the feed panel is rendering its articles.
+ *  - `compact`  — dense explorer tree, the desktop default.
+ *  - `timeline` — spacious scrolling cards.
+ *  - `reels`    — full-viewport one-article deck (phone only).
+ */
+export type RssViewModeBlock = 'compact' | 'timeline' | 'reels'
+
+/** Next mode for the single cycling toggle. `reels` is skipped where the
+ *  surface cannot give a card the whole viewport, so the button never lands on
+ *  a mode that would not render. */
+export function nextRssViewModeBlock(
+  current: RssViewModeBlock,
+  reelsAvailable: boolean,
+): RssViewModeBlock {
+  if (current === 'compact') return 'timeline'
+  if (current === 'timeline') return reelsAvailable ? 'reels' : 'compact'
+  return 'compact'
+}
+
 export function generateFeedIdBlock(): string {
   return `feed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }

@@ -8,6 +8,7 @@ import {
   Circle,
   FolderOpen,
   Loader2,
+  Layers,
   List,
   RefreshCw,
   Rss,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import RssTimelineBlock from './RssTimelineBlock'
+import RssReelsBlock from './RssReelsBlock'
 import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
 import SidebarGroupHeaderBlock from '@/components/lego_blocks/units/ui/SidebarGroupHeaderBlock'
 import {
@@ -39,8 +41,10 @@ import {
   rssRowIdBlock,
   type RssArticleNavStateBlock,
   type RssFeedGroupTreeNodeBlock,
+  nextRssViewModeBlock,
   type RssFeedItemBlock,
   type RssFeedResultBlock,
+  type RssViewModeBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
 import {
   tagColorClassBlock,
@@ -119,13 +123,17 @@ export default function RssFeedPanelBlock({
   const { layout } = useUILayoutBlock()
   // This is intentionally device-local: iPhone gets the spacious timeline by
   // default without changing a desktop user's compact explorer preference.
-  const [viewMode, setViewMode] = useState<'compact' | 'timeline'>(() => {
+  const [viewMode, setViewMode] = useState<RssViewModeBlock>(() => {
     try {
       const saved = localStorage.getItem('ltm-rss-view-mode')
-      if (saved === 'compact' || saved === 'timeline') return saved
+      if (saved === 'compact' || saved === 'timeline' || saved === 'reels') return saved
     } catch { /* storage is optional */ }
     return layout.surface === 'capacitor-ios' ? 'timeline' : 'compact'
   })
+  // Reels is a full-viewport deck, so it only makes sense where the viewport is
+  // the whole screen. On desktop the toggle skips it rather than offering a
+  // mode that would render one article inside a sidebar.
+  const reelsAvailable = layout.surface === 'capacitor-ios'
   // Feed data, read state and every article mutation live in one module-level
   // store shared by every RSS surface — see useRssFeedsBlock.
   const {
@@ -190,10 +198,20 @@ export default function RssFeedPanelBlock({
     )
   }, [deleteMode, onOpenArticle, presetTags, tagColors])
 
-  const setTimelineViewMode = useCallback((next: 'compact' | 'timeline') => {
+  const setTimelineViewMode = useCallback((next: RssViewModeBlock) => {
     setViewMode(next)
     try { localStorage.setItem('ltm-rss-view-mode', next) } catch { /* optional */ }
   }, [])
+
+  // Cycles compact -> timeline -> reels -> compact, so one button reaches every
+  // mode on a phone where there is no room for a segmented control.
+  const cycleViewMode = useCallback(() => {
+    setTimelineViewMode(nextRssViewModeBlock(viewMode, reelsAvailable))
+  }, [viewMode, reelsAvailable, setTimelineViewMode])
+
+  useEffect(() => {
+    if (viewMode === 'reels' && !reelsAvailable) setViewMode('timeline')
+  }, [viewMode, reelsAvailable])
 
   // First click: enter delete-preview mode, select all eligible items
   const handleEnterDeleteMode = useCallback((feedId?: string) => {
@@ -363,7 +381,7 @@ export default function RssFeedPanelBlock({
           onConfirmDelete={() => {}}
           onCancelDeleteMode={() => {}}
           viewMode={viewMode}
-          onToggleViewMode={() => setTimelineViewMode(viewMode === 'compact' ? 'timeline' : 'compact')}
+          onToggleViewMode={cycleViewMode}
         />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <Rss className="h-8 w-8 text-muted-foreground/40" />
@@ -393,7 +411,7 @@ export default function RssFeedPanelBlock({
         focusedFeedId={focusedFeedId}
         onClearFocus={() => setFocusedFeedId(null)}
         viewMode={viewMode}
-        onToggleViewMode={() => setTimelineViewMode(viewMode === 'compact' ? 'timeline' : 'compact')}
+        onToggleViewMode={cycleViewMode}
       />
 
       {/* Delete-mode hint */}
@@ -405,7 +423,17 @@ export default function RssFeedPanelBlock({
         </div>
       )}
 
-      {viewMode === 'timeline' ? (
+      {viewMode === 'reels' ? (
+        <RssReelsBlock
+          feeds={feeds}
+          sessionReadIds={sessionReadIds}
+          loadingFeedIds={loadingFeedIds}
+          onOpen={(item) => handleItemClick(item, rssRowIdBlock('__reels__', item.id))}
+          onMarkRead={markRssItemsReadBlock}
+          onUnmarkRead={unmarkRssItemReadBlock}
+          onToggleSaved={toggleRssItemSavedBlock}
+        />
+      ) : viewMode === 'timeline' ? (
         <RssTimelineBlock
           feeds={feeds}
           loadingFeedIds={loadingFeedIds}
@@ -530,7 +558,7 @@ function PanelHeader({
   onCancelDeleteMode: () => void
   focusedFeedId?: string | null
   onClearFocus?: () => void
-  viewMode: 'compact' | 'timeline'
+  viewMode: RssViewModeBlock
   onToggleViewMode: () => void
 }) {
   return (
@@ -555,10 +583,17 @@ function PanelHeader({
         <button
           type="button"
           onClick={onToggleViewMode}
-          className="shrink-0 rounded-md p-2 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-          title={viewMode === 'timeline' ? 'Use compact feed view' : 'Use timeline view'}
+          className={cn(
+            'shrink-0 rounded-md p-2 hover:bg-muted/80 hover:text-foreground',
+            viewMode === 'reels' ? 'text-primary' : 'text-muted-foreground',
+          )}
+          title={
+            viewMode === 'compact' ? 'Use timeline view'
+              : viewMode === 'timeline' ? 'Use reels view'
+                : 'Use compact feed view'
+          }
         >
-          <List className="h-4 w-4" />
+          {viewMode === 'reels' ? <Layers className="h-4 w-4" /> : <List className="h-4 w-4" />}
         </button>
       )}
 
