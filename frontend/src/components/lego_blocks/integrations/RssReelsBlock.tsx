@@ -243,8 +243,9 @@ function ReelCard({
               className="h-full w-full object-cover"
             />
             {/* Legibility scrim — the text sits on unpredictable photography,
-                so the gradient is what guarantees contrast, not the image. */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/55 to-black/25" />
+                so the gradient is what guarantees contrast, not the image.
+                Dark end is at the top, where the copy now lives. */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/55 to-black/25" />
           </>
         ) : (
           <div
@@ -258,7 +259,7 @@ function ReelCard({
       </div>
 
       {/* Content */}
-      <div className="relative flex min-h-0 flex-1 flex-col justify-end px-5 pb-10 pt-16 text-white">
+      <div className="relative flex min-h-0 flex-1 flex-col justify-start px-5 pb-16 pt-6 text-white">
         <div className="flex items-center gap-2 text-[13px]">
           <RssSourceAvatarBlock
             link={item.link}
