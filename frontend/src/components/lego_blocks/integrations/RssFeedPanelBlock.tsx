@@ -403,10 +403,10 @@ export default function RssFeedPanelBlock({
         onRefresh={refresh}
         refreshing={refreshing}
         totalUnread={viewMode === 'reels' ? undefined : totalUnread}
-        onMarkAllRead={() => markAllRssItemsReadBlock(focusedFeedId ?? undefined)}
+        onMarkAllRead={viewMode === 'reels' ? undefined : () => markAllRssItemsReadBlock(focusedFeedId ?? undefined)}
         deleteMode={deleteMode}
         pendingDeleteCount={pendingDeleteIds.size}
-        onEnterDeleteMode={() => handleEnterDeleteMode(focusedFeedId ?? undefined)}
+        onEnterDeleteMode={viewMode === 'reels' ? undefined : () => handleEnterDeleteMode(focusedFeedId ?? undefined)}
         onConfirmDelete={handleConfirmDelete}
         onCancelDeleteMode={handleCancelDeleteMode}
         focusedFeedId={focusedFeedId}
@@ -556,7 +556,10 @@ function PanelHeader({
   onMarkAllRead?: () => void
   deleteMode: boolean
   pendingDeleteCount: number
-  onEnterDeleteMode: () => void
+  /** Omitted by modes with no row-selection surface. Reels is one: entering
+   *  delete mode there selects articles invisibly, so a second tap would bulk
+   *  delete with nothing on screen to review or deselect. */
+  onEnterDeleteMode?: () => void
   onConfirmDelete: () => void
   onCancelDeleteMode: () => void
   focusedFeedId?: string | null
@@ -636,7 +639,7 @@ function PanelHeader({
             {pendingDeleteCount > 0 && pendingDeleteCount}
           </button>
         </>
-      ) : (
+      ) : onEnterDeleteMode ? (
         <button
           type="button"
           onClick={onEnterDeleteMode}
@@ -645,7 +648,7 @@ function PanelHeader({
         >
           <Trash2 className="h-4 w-4" />
         </button>
-      )}
+      ) : null}
 
       {!deleteMode && (
         <>

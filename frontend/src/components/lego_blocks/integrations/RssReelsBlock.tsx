@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Bookmark, CalendarDays, Check, ExternalLink, Loader2, Undo2 } from 'lucide-react'
 import {
   buildRssDeckEntriesBlock,
@@ -169,6 +169,48 @@ export default function RssReelsBlock({
     cardNodesRef.current.get(index)?.scrollIntoView({ block: 'start' })
   }, [activeIndex])
 
+  // Date scrubber. The deck is chronological and every card is exactly one
+  // scroller-height tall, so the scrollbar was already a date control by
+  // accident — dragging it moved through days. This makes that explicit:
+  // segments sized by each day's share of the deck, so the strip maps 1:1 onto
+  // scroll position rather than being a separate index that can disagree.
+  const scrubTrackRef = useRef<HTMLDivElement | null>(null)
+  const [scrubIndex, setScrubIndex] = useState<number | null>(null)
+
+  const indexFromPointerBlock = useCallback((clientY: number): number => {
+    const track = scrubTrackRef.current
+    if (!track || entries.length === 0) return 0
+    const rect = track.getBoundingClientRect()
+    const ratio = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height))
+    return Math.min(entries.length - 1, Math.floor(ratio * entries.length))
+  }, [entries.length])
+
+  const scrubToIndex = useCallback((index: number) => {
+    const scroller = scrollerRef.current
+    if (!scroller) return
+    setActiveIndex(index)
+    // Exact because of the card geometry — no scrollIntoView, which would fight
+    // snap while the finger is still down.
+    scroller.scrollTo({ top: index * scroller.clientHeight })
+  }, [])
+
+  const handleScrubStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const index = indexFromPointerBlock(event.clientY)
+    setScrubIndex(index)
+    scrubToIndex(index)
+  }, [indexFromPointerBlock, scrubToIndex])
+
+  const handleScrubMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (scrubIndex === null) return
+    const index = indexFromPointerBlock(event.clientY)
+    if (index === scrubIndex) return
+    setScrubIndex(index)
+    scrubToIndex(index)
+  }, [scrubIndex, indexFromPointerBlock, scrubToIndex])
+
+  const handleScrubEnd = useCallback(() => setScrubIndex(null), [])
+
   const registerCardNode = useCallback((index: number, node: HTMLElement | null) => {
     if (node) cardNodesRef.current.set(index, node)
     else cardNodesRef.current.delete(index)
@@ -319,9 +361,70 @@ export default function RssReelsBlock({
         )}
       </div>
 
+      <div className="relative min-h-0 flex-1">
+      {/* Date scrubber. Segments are sized by each day's share of the deck, so
+          the strip is the scroll position rather than a second index that could
+          disagree with it — the scrollbar was already doing this by accident.
+          Sits in its own outermost strip so it never competes with the action
+          rail for a touch. */}
+      {entries.length > 1 && (
+        <div
+          ref={scrubTrackRef}
+          onPointerDown={handleScrubStart}
+          onPointerMove={handleScrubMove}
+          onPointerUp={handleScrubEnd}
+          onPointerCancel={handleScrubEnd}
+          role="slider"
+          aria-label="Scrub through days"
+          aria-valuemin={1}
+          aria-valuemax={entries.length}
+          aria-valuenow={activeIndex + 1}
+          aria-valuetext={rssDayDateLabelBlock(activeDayKey)}
+          tabIndex={0}
+          className="absolute inset-y-0 right-0 z-20 flex w-6 touch-none flex-col py-2"
+        >
+          {dayGroups.map(group => {
+            const share = group.count / entries.length
+            const isActive = group.key === activeDayKey
+            return (
+              <div
+                key={group.key}
+                style={{ flexGrow: share }}
+                className="relative flex min-h-[2px] items-center justify-end pr-1.5"
+              >
+                <span
+                  className={cn(
+                    'w-full rounded-full transition-colors',
+                    // Every day gets a tick, but only the one you are in is
+                    // solid — a uniform strip would say nothing about position.
+                    isActive ? 'bg-white/80' : 'bg-white/25',
+                    share > 0.06 ? 'h-full' : 'h-[2px]',
+                  )}
+                />
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Date readout while scrubbing. The strip is too narrow to label, so the
+          date has to come to the finger. */}
+      {scrubIndex !== null && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
+          <div className="rounded-2xl border border-white/15 bg-black/75 px-5 py-3 text-center backdrop-blur-md">
+            <div className="text-[17px] font-semibold text-white">
+              {rssDayDateLabelBlock(rssItemDayKeyBlock(entries[scrubIndex]?.item.pubDate ?? null) ?? '__undated__')}
+            </div>
+            <div className="mt-0.5 text-[11px] tabular-nums text-white/60">
+              {scrubIndex + 1} / {entries.length}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
         ref={scrollerRef}
-        className="ltm-reels-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        className="ltm-reels-scroller h-full overflow-y-auto overscroll-contain"
       >
         {entries.map((entry, index) => {
           const mounted = index >= windowStart && index <= windowEnd
@@ -352,6 +455,7 @@ export default function RssReelsBlock({
             </section>
           )
         })}
+      </div>
       </div>
     </div>
   )
@@ -426,7 +530,7 @@ function ReelCard({
       </div>
 
       {/* Content */}
-      <div className="relative flex min-h-0 flex-1 flex-col justify-start overflow-hidden pl-5 pr-20 pt-6 text-white pb-[calc(env(safe-area-inset-bottom,0px)+5rem)]">
+      <div className="relative flex min-h-0 flex-1 flex-col justify-start overflow-hidden pl-5 pr-24 pt-6 text-white pb-[calc(env(safe-area-inset-bottom,0px)+5rem)]">
         <div className="flex items-center gap-2 text-[13px]">
           <RssSourceAvatarBlock
             link={item.link}
@@ -441,16 +545,6 @@ function ReelCard({
               <time className="shrink-0 text-white/70">{dateLabel}</time>
             </>
           )}
-          <span
-            className={cn(
-              'ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-              read
-                ? 'bg-emerald-500/90 text-white'
-                : 'bg-white/90 text-black',
-            )}
-          >
-            {read ? 'Read' : 'New'}
-          </span>
         </div>
 
         <button type="button" onClick={onOpen} className="mt-3 flex min-h-0 flex-1 flex-col text-left">
@@ -517,18 +611,29 @@ function ReelCard({
         )}
       </div>
 
-      {/* Position in the day's stack. Top-right, on the same axis as the action
-          rail, so the card's right edge reads as one column of chrome. */}
-      {position > 0 && (
-        <span className="absolute right-3 top-4 rounded-full border border-white/20 bg-black/30 px-2.5 py-1 text-[11px] font-medium tabular-nums text-white/80 backdrop-blur-sm">
-          {position}/{total}
+      {/* Status stack: where you are in the day, and what this card is. Both are
+          facts about the card rather than actions on it, so they sit apart from
+          the action rail, on the same right-hand axis. */}
+      <div className="absolute right-7 top-4 flex flex-col items-end gap-1.5">
+        {position > 0 && (
+          <span className="rounded-full border border-white/20 bg-black/30 px-2.5 py-1 text-[11px] font-medium tabular-nums text-white/80 backdrop-blur-sm">
+            {position}/{total}
+          </span>
+        )}
+        <span
+          className={cn(
+            'rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+            read ? 'bg-emerald-500/90 text-white' : 'bg-white/90 text-black',
+          )}
+        >
+          {read ? 'Read' : 'New'}
         </span>
-      )}
+      </div>
 
       {/* Action rail — the familiar reels affordance, and deliberately buttons
           rather than horizontal swipes: a left/right drag here would fight the
           iOS interactive-pop edge gesture. */}
-      <div className="absolute bottom-24 right-3 flex flex-col items-center gap-3.5 text-white">
+      <div className="absolute bottom-24 right-7 flex flex-col items-center gap-3.5 text-white">
         {/* Position in the queue. Reading an inbox down is a finite task, so the
             card says how much of it is left — this is the one number that makes
             a deck feel bounded rather than endless. It sits with the controls
@@ -549,7 +654,7 @@ function ReelCard({
           <Bookmark className={cn('h-5 w-5', item.keep && 'fill-current')} />
         </RailButton>
         <RailButton
-          label={keptUnread ? 'Kept unread' : 'Keep unread'}
+          label={keptUnread ? 'Kept' : 'Unread'}
           active={keptUnread}
           onClick={onKeepUnread}
         >
