@@ -262,9 +262,14 @@ export default function RssReelsBlock({
           <span className="min-w-0 truncate text-[13px] font-semibold">
             {rssDayDateLabelBlock(activeDayKey)}
           </span>
+          {/* Spelled out rather than "1/30 unread": a bare fraction reads as
+              "one thirtieth of them are unread", which is the opposite of what
+              it means. The two numbers describe different things — one moves,
+              one does not — so they get their own labels. */}
           <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
-            <span className="font-semibold text-foreground">{activeCounts.unread}</span>
-            /{activeCounts.total} unread
+            <span className="font-semibold text-foreground">{activeCounts.unread}</span> unread
+            <span aria-hidden className="mx-1 opacity-50">·</span>
+            {activeCounts.total} total
           </span>
         </button>
 
@@ -440,7 +445,7 @@ function ReelCard({
             className={cn(
               'ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
               read
-                ? 'bg-white/15 text-white/60'
+                ? 'bg-emerald-500/90 text-white'
                 : 'bg-white/90 text-black',
             )}
           >
@@ -512,6 +517,14 @@ function ReelCard({
         )}
       </div>
 
+      {/* Position in the day's stack. Top-right, on the same axis as the action
+          rail, so the card's right edge reads as one column of chrome. */}
+      {position > 0 && (
+        <span className="absolute right-3 top-4 rounded-full border border-white/20 bg-black/30 px-2.5 py-1 text-[11px] font-medium tabular-nums text-white/80 backdrop-blur-sm">
+          {position}/{total}
+        </span>
+      )}
+
       {/* Action rail — the familiar reels affordance, and deliberately buttons
           rather than horizontal swipes: a left/right drag here would fight the
           iOS interactive-pop edge gesture. */}
@@ -521,11 +534,6 @@ function ReelCard({
             a deck feel bounded rather than endless. It sits with the controls
             rather than in the meta row so the right edge owns every per-card
             affordance, and at rail width rather than the 10px it started at. */}
-        {position > 0 && (
-          <span className="rounded-full border border-white/20 bg-black/25 px-2.5 py-1 text-[11px] font-medium tabular-nums text-white/80 backdrop-blur-sm">
-            {position}/{total}
-          </span>
-        )}
         <RailButton
           label="Read"
           active={false}
