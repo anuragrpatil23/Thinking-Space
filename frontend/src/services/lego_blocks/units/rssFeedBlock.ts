@@ -573,6 +573,26 @@ export function pickRssTimelineAnchorBlock(
  * is on screen, whereas a page of retained cache must not clobber the live copy
  * or an optimistic update the reader just made.
  */
+/** Take `incoming`'s content but keep whichever copy is further along on
+ *  state. Same monotonic direction as the conflict-copy merge: a read that
+ *  exists somewhere is kept, and deliberate marks are never dropped. */
+export function preserveRssItemStateBlock(
+  current: RssFeedItemBlock,
+  incoming: RssFeedItemBlock,
+): RssFeedItemBlock {
+  const viewedAt = current.viewedAt ?? incoming.viewedAt
+  const dismissedAt = current.dismissedAt ?? incoming.dismissedAt
+  return {
+    ...incoming,
+    viewedAt,
+    dismissedAt,
+    read: Boolean(viewedAt || dismissedAt) || current.read || incoming.read,
+    tags: normalizeTagListBlock([...(current.tags ?? []), ...(incoming.tags ?? [])]),
+    keep: current.keep || incoming.keep,
+    important: current.important || incoming.important,
+  }
+}
+
 export function unionRssFeedItemsBlock(
   current: RssFeedItemBlock[],
   incoming: RssFeedItemBlock[],
@@ -580,8 +600,15 @@ export function unionRssFeedItemsBlock(
 ): RssFeedItemBlock[] {
   const items = new Map(current.map(item => [item.id, item]))
   for (const item of incoming) {
-    if (!incomingWins && items.has(item.id)) continue
-    items.set(item.id, item)
+    const existing = items.get(item.id)
+    if (!incomingWins && existing) continue
+    // A live fetch wins on CONTENT but never on state. Its read markers are
+    // hydrated from the vault, and the vault write that follows a read is
+    // fire-and-forget — so a refresh landing before that write completes used
+    // to overwrite an optimistic read with a stale unread, silently undoing
+    // what the reader had just done. Returning to the app triggers exactly
+    // such a refresh, which is why a mark could vanish on coming back.
+    items.set(item.id, existing ? preserveRssItemStateBlock(existing, item) : item)
   }
   return [...items.values()].sort(
     (a, b) => new Date(b.pubDate ?? 0).getTime() - new Date(a.pubDate ?? 0).getTime(),
