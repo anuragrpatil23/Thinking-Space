@@ -402,7 +402,7 @@ export default function RssFeedPanelBlock({
         onClose={onClose}
         onRefresh={refresh}
         refreshing={refreshing}
-        totalUnread={totalUnread}
+        totalUnread={viewMode === 'reels' ? undefined : totalUnread}
         onMarkAllRead={() => markAllRssItemsReadBlock(focusedFeedId ?? undefined)}
         deleteMode={deleteMode}
         pendingDeleteCount={pendingDeleteIds.size}

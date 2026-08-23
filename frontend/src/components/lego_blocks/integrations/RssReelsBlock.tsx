@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bookmark, Check, ExternalLink, Loader2, Undo2 } from 'lucide-react'
+import { Bookmark, CalendarDays, Check, ExternalLink, Loader2, Undo2 } from 'lucide-react'
 import {
+  buildRssTimelineDayGroupsBlock,
   buildUnreadInboxItemsBlock,
+  rssItemDayKeyBlock,
   rssSourceHueBlock,
   type RssFeedItemBlock,
   type RssFeedResultBlock,
+  type RssTimelineDayGroupBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
 import RssSourceAvatarBlock from '@/components/lego_blocks/units/RssSourceAvatarBlock'
 import {
@@ -82,6 +85,48 @@ export default function RssReelsBlock({
     if (pending.length > 0) onMarkReadRef.current(pending)
   }, [])
 
+  // Day stacks. The deck is chronological, so a day is a contiguous run of
+  // cards — the same grouping the timeline's date filter uses, over the same
+  // helper, so the two surfaces can never disagree about where a day starts.
+  const dayGroups = useMemo(
+    () => buildRssTimelineDayGroupsBlock(entries.map(entry => entry.item.pubDate)),
+    [entries],
+  )
+  const activeDayKey = rssItemDayKeyBlock(entries[activeIndex]?.item.pubDate ?? null) ?? '__undated__'
+  const activeGroup = dayGroups.find(group => group.key === activeDayKey) ?? null
+
+  /** Unread left in a stack. Deliberately not the group's card count: the deck
+   *  pins articles read earlier this session so it does not reshuffle, so the
+   *  count and the stack size drift apart the moment the reader starts. */
+  const unreadByDay = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const entry of entries) {
+      if (entry.item.read) continue
+      const key = rssItemDayKeyBlock(entry.item.pubDate) ?? '__undated__'
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return counts
+  }, [entries])
+
+  const [datePickerOpen, setDatePickerOpen] = useState(false)
+  const pendingJumpRef = useRef<number | null>(null)
+
+  const jumpToDay = useCallback((group: RssTimelineDayGroupBlock) => {
+    setDatePickerOpen(false)
+    // Mount the target's window first — the card sections always render, but
+    // their content is windowed, so jumping without this lands on a blank card
+    // for a frame.
+    setActiveIndex(group.firstIndex)
+    pendingJumpRef.current = group.firstIndex
+  }, [])
+
+  useEffect(() => {
+    const index = pendingJumpRef.current
+    if (index === null) return
+    pendingJumpRef.current = null
+    cardNodesRef.current.get(index)?.scrollIntoView({ block: 'start' })
+  }, [activeIndex])
+
   const registerCardNode = useCallback((index: number, node: HTMLElement | null) => {
     if (node) cardNodesRef.current.set(index, node)
     else cardNodesRef.current.delete(index)
@@ -158,10 +203,55 @@ export default function RssReelsBlock({
   const windowEnd = Math.min(entries.length - 1, activeIndex + WINDOW_RADIUS)
 
   return (
-    <div className="relative min-h-0 flex-1">
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* Date bar. Always visible, because "which day am I in" is the question
+          a chronological deck constantly raises and a full-screen card gives no
+          other way to answer — the timeline can show day headers between cards,
+          reels cannot. The count is the stack's, not the whole inbox's. */}
+      <div className="shrink-0 border-b border-border/60 bg-background/95 backdrop-blur-xl">
+        <button
+          type="button"
+          onClick={() => setDatePickerOpen(open => !open)}
+          aria-expanded={datePickerOpen}
+          aria-label="Jump to a date"
+          className="flex w-full items-center gap-2 px-4 py-2 text-left"
+        >
+          <CalendarDays className={cn('h-4 w-4 shrink-0', datePickerOpen ? 'text-foreground' : 'text-muted-foreground')} />
+          <span className="min-w-0 truncate text-[13px] font-semibold">
+            {activeGroup?.label ?? 'No date'}
+          </span>
+          <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            {unreadByDay.get(activeDayKey) ?? 0} unread
+          </span>
+        </button>
+
+        {datePickerOpen && dayGroups.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto overscroll-x-contain border-t border-border/40 px-4 py-2.5 touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            {dayGroups.map(group => (
+              <button
+                key={group.key}
+                type="button"
+                onClick={() => jumpToDay(group)}
+                className={cn(
+                  'shrink-0 rounded-full border px-3 py-1.5 text-[13px] font-medium',
+                  group.key === activeDayKey
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-muted/40 hover:bg-muted',
+                )}
+              >
+                {group.label}
+                <span className="ml-1.5 tabular-nums text-muted-foreground">
+                  {unreadByDay.get(group.key) ?? 0}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div
         ref={scrollerRef}
-        className="ltm-reels-scroller h-full overflow-y-auto overscroll-contain"
+        className="ltm-reels-scroller min-h-0 flex-1 overflow-y-auto overscroll-contain"
       >
         {entries.map((entry, index) => {
           const mounted = index >= windowStart && index <= windowEnd
@@ -261,7 +351,7 @@ function ReelCard({
       </div>
 
       {/* Content */}
-      <div className="relative flex min-h-0 flex-1 flex-col justify-start overflow-hidden pb-28 pl-5 pr-16 pt-6 text-white">
+      <div className="relative flex min-h-0 flex-1 flex-col justify-start overflow-hidden pb-20 pl-5 pr-16 pt-6 text-white">
         <div className="flex items-center gap-2 text-[13px]">
           <RssSourceAvatarBlock
             link={item.link}
@@ -276,12 +366,6 @@ function ReelCard({
               <time className="shrink-0 text-white/70">{dateLabel}</time>
             </>
           )}
-          {/* Position in the queue. Reading an inbox down is a finite task, so
-              the card says how much of it is left — this is the one number that
-              makes a deck feel bounded rather than endless. */}
-          <span className="ml-auto shrink-0 rounded-full border border-white/20 bg-black/30 px-2 py-0.5 text-[11px] font-medium tabular-nums text-white/80 backdrop-blur-sm">
-            {position}/{total}
-          </span>
         </div>
 
         <button type="button" onClick={onOpen} className="mt-3 flex min-h-0 flex-1 flex-col text-left">
@@ -309,14 +393,17 @@ function ReelCard({
       {/* Tag bar, pinned to the space the copy vacated when it moved to the top.
           Pinned rather than flowed because a long headline would otherwise push
           the chips off the card, and a tag you cannot reach is not a feature. */}
-      <div className="absolute inset-x-0 bottom-0 px-5 pb-8 pr-20">
+      <div className="absolute inset-x-0 bottom-0 pb-8 pl-5 pr-3">
         {/* Tag bar. Deliberately outside the open button above — a tag tap files
             the article, it does not open it. `color-scheme: dark` is what makes
             the shared chip palette correct here: tagColorStyleBlock resolves via
             light-dark(), and this card is dark regardless of the app theme, so
             without it a light-themed app would paint light chips on a dark card. */}
         {presetTags.length > 0 && (
-          <div className="ltm-reels-tags flex flex-wrap gap-1.5" style={{ colorScheme: 'dark' }}>
+          <div
+            className="ltm-reels-tags flex gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            style={{ colorScheme: 'dark' }}
+          >
             {presetTags.map(tag => {
               const selected = hasTagBlock(item.tags ?? [], tag)
               return (
@@ -327,7 +414,7 @@ function ReelCard({
                   aria-pressed={selected}
                   title={selected ? `Remove ${tag}` : `Add ${tag}`}
                   className={cn(
-                    'inline-flex items-center rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors',
+                    'inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors',
                     tagColorClassBlock(tag, selected ? 'selected' : 'unselected'),
                     // The unselected chip is an outline over photography, which
                     // the palette never had to survive — lift it so it reads on
@@ -348,6 +435,14 @@ function ReelCard({
           rather than horizontal swipes: a left/right drag here would fight the
           iOS interactive-pop edge gesture. */}
       <div className="absolute bottom-24 right-3 flex flex-col items-center gap-3.5 text-white">
+        {/* Position in the queue. Reading an inbox down is a finite task, so the
+            card says how much of it is left — this is the one number that makes
+            a deck feel bounded rather than endless. It sits with the controls
+            rather than in the meta row so the right edge owns every per-card
+            affordance, and at rail width rather than the 10px it started at. */}
+        <span className="rounded-full border border-white/20 bg-black/25 px-2.5 py-1 text-[11px] font-medium tabular-nums text-white/80 backdrop-blur-sm">
+          {position}/{total}
+        </span>
         <RailButton
           label="Read"
           active={false}
