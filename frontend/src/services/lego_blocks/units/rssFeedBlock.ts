@@ -211,6 +211,36 @@ export interface RssUnreadInboxEntryBlock {
  *  produced a denominator that was neither: "unread, plus whatever I have read
  *  since I opened this", which drifts under the reader and means nothing.
  */
+/**
+ * Which card the deck is settled on, given each card's own laid-out top edge.
+ *
+ * The deck used to divide `scrollTop` by `clientHeight`, which assumes every
+ * card is exactly the scroller's height. CSS says they are, but `clientHeight`
+ * is a live viewport measurement and iOS changes it mid-scroll when the toolbar
+ * collapses: `scrollTop` stays put while the divisor moves, so the ratio jumps.
+ * That is what let the window's index and the commit's index disagree and put
+ * the read cursor a card behind the one on screen.
+ *
+ * A card's own offset is a fact about the layout, not a measurement of the
+ * window, so it cannot drift. `offsets` must be ascending.
+ */
+export function rssSettledCardIndexBlock(offsets: number[], scrollTop: number): number {
+  if (offsets.length === 0) return 0
+  let lo = 0
+  let hi = offsets.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (offsets[mid] < scrollTop) lo = mid + 1
+    else hi = mid
+  }
+  // `lo` is the first card at or past the scroll position; the one before it may
+  // still be nearer, which is what makes this "settled on" rather than "past".
+  if (lo > 0 && Math.abs(offsets[lo - 1] - scrollTop) <= Math.abs(offsets[lo] - scrollTop)) {
+    return lo - 1
+  }
+  return lo
+}
+
 /** What one settle of the reels deck means: which span of cards was read on the
  *  way, and where the traversal cursor sits.
  *

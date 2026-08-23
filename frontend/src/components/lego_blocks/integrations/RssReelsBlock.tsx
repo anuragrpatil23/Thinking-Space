@@ -8,6 +8,7 @@ import {
   rssDeckDayCountsBlock,
   rssMonthLabelBlock,
   rssMonthOfDayKeyBlock,
+  rssSettledCardIndexBlock,
   rssTraversalStepBlock,
   rssItemDayKeyBlock,
   rssSourceHueBlock,
@@ -253,7 +254,11 @@ export default function RssReelsBlock({
     if (index === null) return
     pendingJumpRef.current = null
     const scroller = scrollerRef.current
-    if (scroller) scroller.scrollTop = index * scroller.clientHeight
+    const card = scroller?.children[index] as HTMLElement | undefined
+    if (scroller && card) {
+      const base = (scroller.children[0] as HTMLElement).offsetTop
+      scroller.scrollTop = card.offsetTop - base
+    }
     // A jump that lands where we already were fires no scroll event, which
     // would leave `navigating` armed and swallow the next real swipe's read.
     requestAnimationFrame(() => { navigatingRef.current = false })
@@ -348,8 +353,16 @@ export default function RssReelsBlock({
     if (!scroller || scroller.clientHeight === 0) return
     const total = entriesRef.current.length
     if (total === 0) return
-    const ratio = scroller.scrollTop / scroller.clientHeight
-    const index = Math.min(total - 1, Math.max(0, Math.round(ratio)))
+    // Ask the cards where they are rather than assuming they are all exactly one
+    // viewport tall. They are, in CSS — but `clientHeight` is a live measurement
+    // of the window, and iOS changes it mid-scroll when the toolbar collapses,
+    // so dividing by it made the index drift away from the card on screen.
+    // A section's laid-out top is a fact about the layout and cannot drift.
+    const cards = scroller.children
+    const base = (cards[0] as HTMLElement | undefined)?.offsetTop ?? 0
+    const offsets: number[] = []
+    for (let i = 0; i < cards.length; i++) offsets.push((cards[i] as HTMLElement).offsetTop - base)
+    const index = Math.min(total - 1, Math.max(0, rssSettledCardIndexBlock(offsets, scroller.scrollTop)))
 
     // Window ahead on every frame so the next card is mounted before it is
     // needed — that is presentation, and being early costs nothing.
