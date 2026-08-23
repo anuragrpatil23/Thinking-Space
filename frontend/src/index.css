@@ -1729,6 +1729,12 @@
     display: none;
   }
 
+  .ltm-reels-scroller {
+    /* Firefox/standards side of the same thing — the deck is navigated by swipe
+       and by the calendar, so a scrollbar is chrome with no job. */
+    scrollbar-width: none;
+  }
+
   .ltm-reels-card {
     scroll-snap-align: start;
     scroll-snap-stop: always;

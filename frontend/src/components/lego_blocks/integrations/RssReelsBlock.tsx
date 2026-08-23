@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Bookmark, CalendarDays, Check, ExternalLink, Loader2, Undo2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Bookmark, CalendarDays, Check, ChevronLeft, ChevronRight, ExternalLink, Loader2, SkipForward, Undo2 } from 'lucide-react'
 import {
   buildRssDeckEntriesBlock,
   buildRssTimelineDayGroupsBlock,
+  buildRssCalendarWeeksBlock,
   rssDayDateLabelBlock,
   rssDeckDayCountsBlock,
+  rssMonthLabelBlock,
+  rssMonthOfDayKeyBlock,
   rssItemDayKeyBlock,
   rssSourceHueBlock,
   type RssFeedItemBlock,
   type RssDeckFilterBlock,
   type RssFeedResultBlock,
-  type RssTimelineDayGroupBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
 import RssSourceAvatarBlock from '@/components/lego_blocks/units/RssSourceAvatarBlock'
 import {
@@ -29,6 +31,9 @@ import { cn } from '@/lib/utils'
 const WINDOW_RADIUS = 2
 
 const DECK_FILTER_KEY = 'ltm-rss-reels-filter'
+const DECK_SOURCES_KEY = 'ltm-rss-reels-sources'
+
+const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
 interface RssReelsBlockProps {
   feeds: RssFeedResultBlock[]
@@ -86,7 +91,26 @@ export default function RssReelsBlock({
   const admittedRef = useRef<Set<string>>(new Set())
   const [admissionTick, setAdmissionTick] = useState(0)
 
-  const allEntries = useMemo(() => buildRssDeckEntriesBlock(feeds), [feeds])
+  // Source filter. Empty means every source — an explicit "all" member would
+  // have to be kept in sync as feeds come and go.
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(DECK_SOURCES_KEY)
+      if (raw) return new Set(JSON.parse(raw) as string[])
+    } catch { /* storage is optional */ }
+    return new Set()
+  })
+
+  const sources = useMemo(
+    () => feeds.map(feed => ({ id: feed.feedId, title: feed.feedTitle })),
+    [feeds],
+  )
+
+  const allEntries = useMemo(() => {
+    const entries = buildRssDeckEntriesBlock(feeds)
+    if (selectedSources.size === 0) return entries
+    return entries.filter(entry => selectedSources.has(entry.item.feedId))
+  }, [feeds, selectedSources])
 
   useEffect(() => {
     let admittedAny = false
@@ -109,14 +133,37 @@ export default function RssReelsBlock({
     [allEntries, admissionTick],
   )
 
-  const changeFilter = useCallback((next: RssDeckFilterBlock) => {
-    // A filter change is the one moment the deck is allowed to be rebuilt.
+  /** Rebuilding membership is the one thing that may reorder the deck under the
+   *  reader, so it happens only on an explicit change to what the deck is of. */
+  const rebuildDeck = useCallback(() => {
     admittedRef.current = new Set()
     setAdmissionTick(tick => tick + 1)
     setActiveIndex(0)
+    scrollerRef.current?.scrollTo({ top: 0 })
+  }, [])
+
+  const changeFilter = useCallback((next: RssDeckFilterBlock) => {
+    rebuildDeck()
     setFilter(next)
     try { localStorage.setItem(DECK_FILTER_KEY, next) } catch { /* optional */ }
-  }, [])
+  }, [rebuildDeck])
+
+  const toggleSource = useCallback((feedId: string | null) => {
+    setSelectedSources(current => {
+      // null is the "All sources" chip — it clears rather than selecting every
+      // id, so a newly added feed is included by default.
+      const next = feedId === null
+        ? new Set<string>()
+        : new Set(current)
+      if (feedId !== null) {
+        if (next.has(feedId)) next.delete(feedId)
+        else next.add(feedId)
+      }
+      try { localStorage.setItem(DECK_SOURCES_KEY, JSON.stringify([...next])) } catch { /* optional */ }
+      return next
+    })
+    rebuildDeck()
+  }, [rebuildDeck])
 
   // Articles the reader explicitly put back to unread — leaving such a card
   // must not immediately undo the undo.
@@ -151,16 +198,39 @@ export default function RssReelsBlock({
   const positionInDay = activeGroup ? activeIndex - activeGroup.firstIndex + 1 : 0
 
   const [datePickerOpen, setDatePickerOpen] = useState(false)
+  const [visibleMonth, setVisibleMonth] = useState<{ year: number; monthIndex: number } | null>(null)
   const pendingJumpRef = useRef<number | null>(null)
 
-  const jumpToDay = useCallback((group: RssTimelineDayGroupBlock) => {
+  /** Day key -> where that stack starts, so a calendar cell can jump straight
+   *  into the deck without the calendar knowing anything about indices. */
+  const dayStartIndex = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const group of dayGroups) map.set(group.key, group.firstIndex)
+    return map
+  }, [dayGroups])
+
+  const calendarMonth = visibleMonth ?? rssMonthOfDayKeyBlock(activeDayKey)
+  const calendarWeeks = useMemo(
+    () => buildRssCalendarWeeksBlock(calendarMonth.year, calendarMonth.monthIndex, dayCounts),
+    [calendarMonth.year, calendarMonth.monthIndex, dayCounts],
+  )
+
+  const shiftMonth = useCallback((delta: number) => {
+    setVisibleMonth(current => {
+      const base = current ?? rssMonthOfDayKeyBlock(activeDayKey)
+      const date = new Date(base.year, base.monthIndex + delta, 1)
+      return { year: date.getFullYear(), monthIndex: date.getMonth() }
+    })
+  }, [activeDayKey])
+
+  const jumpToDayKey = useCallback((key: string) => {
+    const index = dayStartIndex.get(key)
+    if (index === undefined) return
     setDatePickerOpen(false)
-    // Mount the target's window first — the card sections always render, but
-    // their content is windowed, so jumping without this lands on a blank card
-    // for a frame.
-    setActiveIndex(group.firstIndex)
-    pendingJumpRef.current = group.firstIndex
-  }, [])
+    setActiveIndex(index)
+    pendingJumpRef.current = index
+  }, [dayStartIndex])
+
 
   useEffect(() => {
     const index = pendingJumpRef.current
@@ -169,47 +239,26 @@ export default function RssReelsBlock({
     cardNodesRef.current.get(index)?.scrollIntoView({ block: 'start' })
   }, [activeIndex])
 
-  // Date scrubber. The deck is chronological and every card is exactly one
-  // scroller-height tall, so the scrollbar was already a date control by
-  // accident — dragging it moved through days. This makes that explicit:
-  // segments sized by each day's share of the deck, so the strip maps 1:1 onto
-  // scroll position rather than being a separate index that can disagree.
-  const scrubTrackRef = useRef<HTMLDivElement | null>(null)
-  const [scrubIndex, setScrubIndex] = useState<number | null>(null)
+  /** The next unread article after the current card, or the first one anywhere
+   *  if there is none ahead — in an "Everything" deck most cards are already
+   *  read, so the reader needs a way past them that is not 40 swipes. */
+  const nextUnreadIndex = useMemo(() => {
+    for (let i = activeIndex + 1; i < entries.length; i++) {
+      if (!entries[i].item.read) return i
+    }
+    for (let i = 0; i <= activeIndex && i < entries.length; i++) {
+      if (!entries[i].item.read) return i
+    }
+    return null
+  }, [entries, activeIndex])
 
-  const indexFromPointerBlock = useCallback((clientY: number): number => {
-    const track = scrubTrackRef.current
-    if (!track || entries.length === 0) return 0
-    const rect = track.getBoundingClientRect()
-    const ratio = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height))
-    return Math.min(entries.length - 1, Math.floor(ratio * entries.length))
-  }, [entries.length])
-
-  const scrubToIndex = useCallback((index: number) => {
-    const scroller = scrollerRef.current
-    if (!scroller) return
-    setActiveIndex(index)
-    // Exact because of the card geometry — no scrollIntoView, which would fight
-    // snap while the finger is still down.
-    scroller.scrollTo({ top: index * scroller.clientHeight })
-  }, [])
-
-  const handleScrubStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    event.currentTarget.setPointerCapture(event.pointerId)
-    const index = indexFromPointerBlock(event.clientY)
-    setScrubIndex(index)
-    scrubToIndex(index)
-  }, [indexFromPointerBlock, scrubToIndex])
-
-  const handleScrubMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (scrubIndex === null) return
-    const index = indexFromPointerBlock(event.clientY)
-    if (index === scrubIndex) return
-    setScrubIndex(index)
-    scrubToIndex(index)
-  }, [scrubIndex, indexFromPointerBlock, scrubToIndex])
-
-  const handleScrubEnd = useCallback(() => setScrubIndex(null), [])
+  const skipToNextUnread = useCallback(() => {
+    if (nextUnreadIndex === null) return
+    // Deliberately does NOT mark the cards it passes. Skipping to unread is
+    // navigation; the swipe is what constitutes reading.
+    setActiveIndex(nextUnreadIndex)
+    pendingJumpRef.current = nextUnreadIndex
+  }, [nextUnreadIndex])
 
   const registerCardNode = useCallback((index: number, node: HTMLElement | null) => {
     if (node) cardNodesRef.current.set(index, node)
@@ -337,91 +386,115 @@ export default function RssReelsBlock({
           </div>
         )}
 
-        {datePickerOpen && dayGroups.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto overscroll-x-contain border-t border-border/40 px-4 py-2.5 touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            {dayGroups.map(group => (
+        {datePickerOpen && (
+          <div className="border-t border-border/40 px-4 py-3">
+            {/* Sources. "All" clears the set rather than selecting every id, so
+                a feed added later is included instead of silently missing. */}
+            {sources.length > 1 && (
+              <div className="mb-3 flex gap-1.5 overflow-x-auto overscroll-x-contain pb-1 touch-pan-x [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                <button
+                  type="button"
+                  onClick={() => toggleSource(null)}
+                  aria-pressed={selectedSources.size === 0}
+                  className={cn(
+                    'shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[12px] font-medium',
+                    selectedSources.size === 0
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  All sources
+                </button>
+                {sources.map(source => (
+                  <button
+                    key={source.id}
+                    type="button"
+                    onClick={() => toggleSource(source.id)}
+                    aria-pressed={selectedSources.has(source.id)}
+                    className={cn(
+                      'shrink-0 max-w-[9rem] truncate rounded-full border px-2.5 py-1 text-[12px] font-medium',
+                      selectedSources.has(source.id)
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:bg-muted',
+                    )}
+                  >
+                    {source.title}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Month grid. A horizontal chip row could only ever show the last
+                few days; the backlog runs months deep, and a calendar is how a
+                reader already thinks about "go to the 21st". */}
+            <div className="mb-2 flex items-center gap-1">
               <button
-                key={group.key}
                 type="button"
-                onClick={() => jumpToDay(group)}
-                className={cn(
-                  'shrink-0 rounded-full border px-3 py-1.5 text-[13px] font-medium',
-                  group.key === activeDayKey
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border bg-muted/40 hover:bg-muted',
-                )}
+                onClick={() => shiftMonth(-1)}
+                aria-label="Previous month"
+                className="ltm-touch-target rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
               >
-                {rssDayDateLabelBlock(group.key)}
-                <span className="ml-1.5 tabular-nums text-muted-foreground">
-                  {dayCounts.get(group.key)?.unread ?? 0}/{dayCounts.get(group.key)?.total ?? 0}
-                </span>
+                <ChevronLeft className="h-4 w-4" />
               </button>
-            ))}
+              <span className="min-w-0 flex-1 text-center text-[13px] font-semibold">
+                {rssMonthLabelBlock(calendarMonth.year, calendarMonth.monthIndex)}
+              </span>
+              <button
+                type="button"
+                onClick={() => shiftMonth(1)}
+                aria-label="Next month"
+                className="ltm-touch-target rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {WEEKDAY_LABELS.map(label => (
+                <div key={label} className="pb-1 text-[10px] font-medium uppercase text-muted-foreground/70">
+                  {label}
+                </div>
+              ))}
+              {calendarWeeks.flat().map((cell, index) => {
+                if (!cell) return <div key={`pad-${index}`} />
+                const hasArticles = cell.total > 0
+                const isActive = cell.key === activeDayKey
+                return (
+                  <button
+                    key={cell.key}
+                    type="button"
+                    disabled={!hasArticles}
+                    onClick={() => jumpToDayKey(cell.key)}
+                    aria-label={`${cell.day}: ${cell.unread} unread of ${cell.total}`}
+                    className={cn(
+                      'flex flex-col items-center rounded-lg py-1 text-[13px] tabular-nums transition-colors',
+                      // A day with nothing in it is not a destination. Dimming
+                      // rather than hiding keeps the grid readable as a month.
+                      !hasArticles && 'text-muted-foreground/30',
+                      hasArticles && !isActive && 'hover:bg-muted',
+                      isActive && 'bg-primary text-primary-foreground',
+                    )}
+                  >
+                    <span className={cn('leading-tight', hasArticles && !isActive && 'font-semibold')}>
+                      {cell.day}
+                    </span>
+                    {/* Unread over total, same pair as the date bar. Unread is
+                        the number that moves, so it carries the emphasis. */}
+                    <span className={cn(
+                      'text-[9px] leading-tight',
+                      isActive ? 'text-primary-foreground/80' : 'text-muted-foreground/70',
+                    )}>
+                      {hasArticles ? `${cell.unread}/${cell.total}` : '\u00A0'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
         )}
       </div>
 
       <div className="relative min-h-0 flex-1">
-      {/* Date scrubber. Segments are sized by each day's share of the deck, so
-          the strip is the scroll position rather than a second index that could
-          disagree with it — the scrollbar was already doing this by accident.
-          Sits in its own outermost strip so it never competes with the action
-          rail for a touch. */}
-      {entries.length > 1 && (
-        <div
-          ref={scrubTrackRef}
-          onPointerDown={handleScrubStart}
-          onPointerMove={handleScrubMove}
-          onPointerUp={handleScrubEnd}
-          onPointerCancel={handleScrubEnd}
-          role="slider"
-          aria-label="Scrub through days"
-          aria-valuemin={1}
-          aria-valuemax={entries.length}
-          aria-valuenow={activeIndex + 1}
-          aria-valuetext={rssDayDateLabelBlock(activeDayKey)}
-          tabIndex={0}
-          className="absolute inset-y-0 right-0 z-20 flex w-6 touch-none flex-col py-2"
-        >
-          {dayGroups.map(group => {
-            const share = group.count / entries.length
-            const isActive = group.key === activeDayKey
-            return (
-              <div
-                key={group.key}
-                style={{ flexGrow: share }}
-                className="relative flex min-h-[2px] items-center justify-end pr-1.5"
-              >
-                <span
-                  className={cn(
-                    'w-full rounded-full transition-colors',
-                    // Every day gets a tick, but only the one you are in is
-                    // solid — a uniform strip would say nothing about position.
-                    isActive ? 'bg-white/80' : 'bg-white/25',
-                    share > 0.06 ? 'h-full' : 'h-[2px]',
-                  )}
-                />
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Date readout while scrubbing. The strip is too narrow to label, so the
-          date has to come to the finger. */}
-      {scrubIndex !== null && (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
-          <div className="rounded-2xl border border-white/15 bg-black/75 px-5 py-3 text-center backdrop-blur-md">
-            <div className="text-[17px] font-semibold text-white">
-              {rssDayDateLabelBlock(rssItemDayKeyBlock(entries[scrubIndex]?.item.pubDate ?? null) ?? '__undated__')}
-            </div>
-            <div className="mt-0.5 text-[11px] tabular-nums text-white/60">
-              {scrubIndex + 1} / {entries.length}
-            </div>
-          </div>
-        </div>
-      )}
-
       <div
         ref={scrollerRef}
         className="ltm-reels-scroller h-full overflow-y-auto overscroll-contain"
@@ -448,6 +521,8 @@ export default function RssReelsBlock({
                   presetTags={presetTags}
                   tagColors={tagColors}
                   onToggleTag={(tag) => onToggleTag(entry.item, tag)}
+                  onSkipToNextUnread={skipToNextUnread}
+                  hasNextUnread={nextUnreadIndex !== null}
                   onKeepUnread={() => handleKeepUnread(entry.item)}
                   keptUnread={keptUnreadRef.current.has(entry.item.id)}
                 />
@@ -464,7 +539,7 @@ export default function RssReelsBlock({
 /** One article, full viewport. */
 function ReelCard({
   item, feedTitle, active, position, total, onOpen, onToggleSaved, onKeepUnread, keptUnread,
-  read, presetTags, tagColors, onToggleTag,
+  read, presetTags, tagColors, onToggleTag, onSkipToNextUnread, hasNextUnread,
 }: {
   item: RssFeedItemBlock
   feedTitle: string
@@ -484,6 +559,10 @@ function ReelCard({
   presetTags: string[]
   tagColors: Record<string, string>
   onToggleTag: (tag: string) => void
+  onSkipToNextUnread: () => void
+  /** Hidden rather than disabled when nothing is unread — a permanently dead
+   *  control on a card that fills the screen is just noise. */
+  hasNextUnread: boolean
 }) {
   const [imageFailed, setImageFailed] = useState(false)
   const showImage = Boolean(item.imageUrl) && !imageFailed && active
@@ -530,7 +609,7 @@ function ReelCard({
       </div>
 
       {/* Content */}
-      <div className="relative flex min-h-0 flex-1 flex-col justify-start overflow-hidden pl-5 pr-24 pt-6 text-white pb-[calc(env(safe-area-inset-bottom,0px)+5rem)]">
+      <div className="relative flex min-h-0 flex-1 flex-col justify-start overflow-hidden pl-5 pr-20 pt-6 text-white pb-[calc(env(safe-area-inset-bottom,0px)+5rem)]">
         <div className="flex items-center gap-2 text-[13px]">
           <RssSourceAvatarBlock
             link={item.link}
@@ -614,7 +693,7 @@ function ReelCard({
       {/* Status stack: where you are in the day, and what this card is. Both are
           facts about the card rather than actions on it, so they sit apart from
           the action rail, on the same right-hand axis. */}
-      <div className="absolute right-7 top-4 flex flex-col items-end gap-1.5">
+      <div className="absolute right-3 top-4 flex flex-col items-end gap-1.5">
         {position > 0 && (
           <span className="rounded-full border border-white/20 bg-black/30 px-2.5 py-1 text-[11px] font-medium tabular-nums text-white/80 backdrop-blur-sm">
             {position}/{total}
@@ -633,12 +712,21 @@ function ReelCard({
       {/* Action rail — the familiar reels affordance, and deliberately buttons
           rather than horizontal swipes: a left/right drag here would fight the
           iOS interactive-pop edge gesture. */}
-      <div className="absolute bottom-24 right-7 flex flex-col items-center gap-3.5 text-white">
+      <div className="absolute bottom-24 right-3 flex flex-col items-center gap-3.5 text-white">
         {/* Position in the queue. Reading an inbox down is a finite task, so the
             card says how much of it is left — this is the one number that makes
             a deck feel bounded rather than endless. It sits with the controls
             rather than in the meta row so the right edge owns every per-card
             affordance, and at rail width rather than the 10px it started at. */}
+        {hasNextUnread && (
+          <RailButton
+            label="Next new"
+            active={false}
+            onClick={onSkipToNextUnread}
+          >
+            <SkipForward className="h-5 w-5" />
+          </RailButton>
+        )}
         <RailButton
           label="Read"
           active={false}

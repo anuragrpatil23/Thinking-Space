@@ -210,6 +210,57 @@ export interface RssUnreadInboxEntryBlock {
  *  produced a denominator that was neither: "unread, plus whatever I have read
  *  since I opened this", which drifts under the reader and means nothing.
  */
+/** One day cell in the reels calendar. `total` is the day's stack size and
+ *  `unread` what is left in it — a day with `total === 0` has nothing to jump
+ *  to and is rendered inert. */
+export interface RssCalendarCellBlock {
+  key: string
+  day: number
+  unread: number
+  total: number
+}
+
+/** Lay a month out as weeks of seven, Sunday first, padding the leading and
+ *  trailing gaps with nulls so the grid stays rectangular. Counts are looked up
+ *  per day rather than computed here, so the calendar and the date bar always
+ *  read from one source. */
+export function buildRssCalendarWeeksBlock(
+  year: number,
+  monthIndex: number,
+  counts: Map<string, { unread: number; total: number }>,
+): (RssCalendarCellBlock | null)[][] {
+  const first = new Date(year, monthIndex, 1)
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
+  const weeks: (RssCalendarCellBlock | null)[][] = []
+  let week: (RssCalendarCellBlock | null)[] = Array.from({ length: first.getDay() }, () => null)
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const key = `${year}-${`${monthIndex + 1}`.padStart(2, '0')}-${`${day}`.padStart(2, '0')}`
+    const bucket = counts.get(key) ?? { unread: 0, total: 0 }
+    week.push({ key, day, unread: bucket.unread, total: bucket.total })
+    if (week.length === 7) {
+      weeks.push(week)
+      week = []
+    }
+  }
+  if (week.length > 0) {
+    while (week.length < 7) week.push(null)
+    weeks.push(week)
+  }
+  return weeks
+}
+
+export function rssMonthLabelBlock(year: number, monthIndex: number): string {
+  return new Date(year, monthIndex, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+}
+
+/** Month a day key belongs to, for opening the calendar where the reader is. */
+export function rssMonthOfDayKeyBlock(key: string, fallback: Date = new Date()): { year: number; monthIndex: number } {
+  const [year, month] = key.split('-').map(Number)
+  if (!year || !month) return { year: fallback.getFullYear(), monthIndex: fallback.getMonth() }
+  return { year, monthIndex: month - 1 }
+}
+
 /** Calendar-date label for a day key, e.g. "Aug 21" (with the year once the
  *  day is outside the current one). Distinct from the timeline's relative
  *  label: "Friday" or "Yesterday" is useless for navigating a deep backlog,
