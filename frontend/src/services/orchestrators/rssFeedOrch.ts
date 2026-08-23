@@ -551,6 +551,19 @@ export async function markRssItemReadOrch(itemId: string): Promise<void> {
   await updateRssItemStateOrch(itemId, { dismissedAt: new Date().toISOString() })
 }
 
+/** Write an article's read state as ONE fact: all three fields, one timestamp,
+ *  or all three cleared. Reels needs no distinction between a glance and a
+ *  decision — a card owns the screen and the swipe is the decision — and the
+ *  three fields disagreeing is what let an article get stuck: guards keyed on
+ *  `dismissedAt` turned "already partly marked" into "can never be marked". */
+export async function setRssItemsReadStateOrch(itemIds: string[], at: string | null): Promise<void> {
+  await Promise.all(itemIds.map(itemId => patchRssItemFrontmatterOrch(itemId, {
+    read: at !== null,
+    viewedAt: at,
+    dismissedAt: at,
+  })))
+}
+
 export async function markRssItemsReadOrch(itemIds: string[]): Promise<void> {
   const dismissedAt = new Date().toISOString()
   await Promise.all(itemIds.map(itemId => updateRssItemStateOrch(itemId, { dismissedAt })))

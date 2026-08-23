@@ -153,7 +153,6 @@ export default function RssReelsBlock({
     // rather than carrying a stale cursor that would mark the wrong span.
     navigatingRef.current = true
     lastIndexRef.current = 0
-    committedRef.current = new Set()
     setActiveIndex(0)
     scrollerRef.current?.scrollTo({ top: 0 })
   }, [])
@@ -190,7 +189,10 @@ export default function RssReelsBlock({
   /** Commit the cards just left behind. Called with everything passed in one
    *  scroll, so a fast flick over several cards is still a single write. */
   const commitReads = useCallback((items: RssFeedItemBlock[]) => {
-    const pending = items.filter(item => !item.dismissedAt && !keptUnreadRef.current.has(item.id))
+    // Only "keep unread" excludes an article. Nothing else may veto a mark:
+    // the previous guard skipped anything already carrying `dismissedAt`, which
+    // meant an article whose fields disagreed could never be repaired.
+    const pending = items.filter(item => !keptUnreadRef.current.has(item.id))
     if (pending.length > 0) onMarkReadRef.current(pending)
   }, [])
 
@@ -307,9 +309,6 @@ export default function RssReelsBlock({
   /** Set while a jump is in flight, so calendar and skip-to-unread move the
    *  reader without reading anything on the way. */
   const navigatingRef = useRef(false)
-  /** Ids already handed to the store, so a settle that re-reports the same
-   *  position cannot re-issue a write. */
-  const committedRef = useRef(new Set<string>())
   const settleFrameRef = useRef<number | null>(null)
 
   const commitReadsRef = useRef(commitReads)
@@ -319,9 +318,7 @@ export default function RssReelsBlock({
     const passed: RssFeedItemBlock[] = []
     for (let i = from; i < to; i++) {
       const entry = entriesRef.current[i]
-      if (!entry || committedRef.current.has(entry.item.id)) continue
-      committedRef.current.add(entry.item.id)
-      passed.push(entry.item)
+      if (entry) passed.push(entry.item)
     }
     if (passed.length > 0) commitReads(passed)
   }, [commitReads])
@@ -378,17 +375,12 @@ export default function RssReelsBlock({
   // unread — the most visible way the count "did not go down".
   useEffect(() => () => {
     const entry = entriesRef.current[lastIndexRef.current]
-    if (!entry || committedRef.current.has(entry.item.id)) return
-    committedRef.current.add(entry.item.id)
-    commitReadsRef.current([entry.item])
+    if (entry) commitReadsRef.current([entry.item])
   }, [])
 
 
   const handleKeepUnread = useCallback((item: RssFeedItemBlock) => {
     keptUnreadRef.current.add(item.id)
-    // Also mark it committed: a later settle spanning this index must not
-    // re-issue the read it just undid.
-    committedRef.current.add(item.id)
     onUnmarkRead(item)
   }, [onUnmarkRead])
 

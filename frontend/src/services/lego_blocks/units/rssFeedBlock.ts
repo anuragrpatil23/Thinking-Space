@@ -622,6 +622,29 @@ export function unionRssFeedItemsBlock(
  * array is returned unchanged when nothing matched. React leans on that
  * identity: marking one article read must not re-render every other feed's rows.
  */
+/**
+ * Does this article's stored read state disagree with `read`?
+ *
+ * Reels treats read state as ONE fact across all three fields. The timeline
+ * keeps them apart on purpose — it distinguishes a glance (`viewedAt`) from a
+ * decision (`dismissedAt`) because its own signal is a dwell guess. Reels needs
+ * no such distinction: a card owns the screen, so the swipe IS the decision.
+ *
+ * Checking all three rather than one is what keeps the lanes uncontaminated. An
+ * article the timeline glanced carries `viewedAt` alone; guards keyed on
+ * `dismissedAt` treated that as "nothing to do" and skipped it forever, so a
+ * half-written article could never be repaired. Comparing against the full
+ * target state makes a write idempotent when it agrees and corrective when it
+ * does not.
+ */
+export function rssReadStateNeedsWriteBlock(item: RssFeedItemBlock, read: boolean): boolean {
+  return (
+    item.read !== read
+    || Boolean(item.viewedAt) !== read
+    || Boolean(item.dismissedAt) !== read
+  )
+}
+
 export function patchRssFeedItemsBlock(
   feeds: RssFeedResultBlock[],
   itemIds: Iterable<string>,

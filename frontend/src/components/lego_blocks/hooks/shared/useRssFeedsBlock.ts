@@ -3,6 +3,7 @@ import {
   fetchAndParseRssFeedOrch,
   markRssItemViewedOrch,
   markRssItemsReadOrch,
+  setRssItemsReadStateOrch,
   readRssFeedPreferencesOrch,
   removeRssItemsOrch,
   unmarkRssItemReadOrch,
@@ -11,6 +12,7 @@ import {
 import {
   dropRssFeedItemsBlock,
   patchRssFeedItemsBlock,
+  rssReadStateNeedsWriteBlock,
   unionRssFeedItemsBlock,
   type RssFeedConfigBlock,
   type RssFeedItemBlock,
@@ -250,6 +252,26 @@ export function markRssItemsReadBlock(items: RssFeedItemBlock[]): void {
   const ids = pending.map(item => item.id)
   patchItemsBlock(ids, { dismissedAt: new Date().toISOString(), read: true })
   void markRssItemsReadOrch(ids)
+}
+
+/**
+ * Set read state as one atomic fact — `read`, `viewedAt` and `dismissedAt`
+ * together — rather than as three fields that have to be kept in agreement.
+ *
+ * Deliberately has no "already dismissed, skip it" guard. The old guards were
+ * keyed on `dismissedAt` alone, so an article carrying one field but not the
+ * others was permanently unmarkable: every write path filtered it out before
+ * it could be repaired. Filtering on the FULL target state instead makes this
+ * both idempotent (repeat calls cost nothing) and self-healing (a half-written
+ * article is fixed the next time it is passed).
+ */
+export function setRssItemsReadBlock(items: RssFeedItemBlock[], read: boolean): void {
+  const stale = items.filter(item => rssReadStateNeedsWriteBlock(item, read))
+  if (stale.length === 0) return
+  const at = read ? new Date().toISOString() : null
+  const ids = stale.map(item => item.id)
+  patchItemsBlock(ids, { read, viewedAt: at, dismissedAt: at })
+  void setRssItemsReadStateOrch(ids, at)
 }
 
 export function markAllRssItemsReadBlock(feedId?: string): void {

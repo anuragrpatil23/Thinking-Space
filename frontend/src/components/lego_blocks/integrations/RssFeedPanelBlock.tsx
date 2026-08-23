@@ -29,6 +29,7 @@ import {
   markRssItemsReadBlock,
   removeRssItemsBlock,
   replaceRssItemBlock,
+  setRssItemsReadBlock,
   toggleRssItemSavedBlock,
   toggleRssItemTagBlock,
   unmarkRssItemReadBlock,
@@ -431,8 +432,8 @@ export default function RssFeedPanelBlock({
           presetTags={presetTags}
           tagColors={tagColors}
           onOpen={(item) => handleItemClick(item, rssRowIdBlock('__reels__', item.id))}
-          onMarkRead={markRssItemsReadBlock}
-          onUnmarkRead={unmarkRssItemReadBlock}
+          onMarkRead={(items) => setRssItemsReadBlock(items, true)}
+          onUnmarkRead={(item) => setRssItemsReadBlock([item], false)}
           onToggleSaved={toggleRssItemSavedBlock}
           onToggleTag={toggleRssItemTagBlock}
         />
