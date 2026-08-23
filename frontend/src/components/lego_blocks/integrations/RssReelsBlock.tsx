@@ -357,14 +357,28 @@ export default function RssReelsBlock({
 
     // One index drives both what is shown and what is read. They used to be
     // computed differently — round() for the window, a threshold for the commit
-    // — and any disagreement between them put the mark a card behind the
-    // gesture, on top of the departure rule already costing a swipe.
+    // — and once the deck drifted a fraction of a card the two disagreed, which
+    // put the cursor a card behind the visible one and made every article take
+    // two swipes to turn over.
     const step = rssTraversalStepBlock(cursorIndex(), index, navigatingRef.current)
     navigatingRef.current = false
     if (step.commitTo > step.commitFrom) commitSpan(step.commitFrom, step.commitTo)
     lastIndexRef.current = step.nextCursor
     lastIdRef.current = entriesRef.current[step.nextCursor]?.item.id ?? null
   }, [commitSpan, cursorIndex])
+
+  const commitReadsRef = useRef(commitReads)
+  commitReadsRef.current = commitReads
+
+  // Leaving the deck is leaving the current card, which under a departure rule
+  // is exactly the same disposition as swiping past it. Without this the last
+  // article of every session would stay unread.
+  useEffect(() => () => {
+    const id = lastIdRef.current
+    const index = id === null ? lastIndexRef.current : indexByIdRef.current.get(id) ?? lastIndexRef.current
+    const entry = entriesRef.current[index]
+    if (entry) commitReadsRef.current([entry.item])
+  }, [])
 
   useEffect(() => {
     const scroller = scrollerNode
@@ -376,9 +390,9 @@ export default function RssReelsBlock({
         settleFrameRef.current = requestAnimationFrame(settle)
       }
     }
-    // The first card is arrived at without a scroll ever firing, so settle once
-    // on attach — otherwise the article the deck opens on is the one card the
-    // arrival rule would never reach.
+    // Settle once on attach so the cursor starts on the card actually shown
+    // rather than on index 0. It commits nothing — the reader has not left
+    // anything yet — but it anchors the first real swipe.
     if (settleFrameRef.current === null) settleFrameRef.current = requestAnimationFrame(settle)
     scroller.addEventListener('scroll', onScroll, { passive: true })
     return () => {

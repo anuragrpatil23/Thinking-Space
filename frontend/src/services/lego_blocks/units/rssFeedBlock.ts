@@ -211,23 +211,24 @@ export interface RssUnreadInboxEntryBlock {
  *  produced a denominator that was neither: "unread, plus whatever I have read
  *  since I opened this", which drifts under the reader and means nothing.
  */
-/** What one settle of the reels deck means: which span of cards is now read,
- *  and where the traversal cursor sits.
+/** What one settle of the reels deck means: which span of cards was read on the
+ *  way, and where the traversal cursor sits.
  *
- *  The rule is ARRIVAL, not departure. A card owns the whole screen, so landing
- *  on it is the reading event — there is nothing else to look at. The earlier
- *  rule marked the card just LEFT, which meant a card's mark only landed on the
- *  FOLLOWING swipe: every article took two swipes to turn over and the count
- *  trailed the gesture by one the whole way down the deck.
+ *  The rule is DEPARTURE. A card is read once the reader moves off it, not the
+ *  moment it appears — arriving marks it before it has been looked at, so a
+ *  card would never show as new while it was on screen, and coming back to it
+ *  could never show the transition.
  *
- *  The landed card is therefore always included. A forward move also includes
- *  everything crossed on the way, because skipping is a decision too. Moving
- *  backward marks only where you land — anything between was passed in the
- *  other direction and counted then. A jump marks only where you land: the
- *  calendar and skip-to-unread must not read a whole month on the way past.
+ *  Departure is only correct if the cursor and the landed index are measured
+ *  the same way. They were not: the window used `round(ratio)` while the commit
+ *  used a `floor(ratio + 0.25)` threshold, and once the deck drifted a fraction
+ *  of a card the two disagreed. The cursor then trailed the visible card by
+ *  one, so leaving card N committed card N-1 and every article appeared to need
+ *  two swipes. One settled index now feeds both, which is what makes departure
+ *  land on the first swipe.
  */
 export interface RssTraversalStepBlock {
-  /** Half-open [from, to) of indices now read. */
+  /** Half-open [from, to) of indices passed over. Empty when nothing was read. */
   commitFrom: number
   commitTo: number
   nextCursor: number
@@ -238,10 +239,12 @@ export function rssTraversalStepBlock(
   landed: number,
   navigating: boolean,
 ): RssTraversalStepBlock {
+  // A jump re-bases rather than reading its way across, and moving backward
+  // reads nothing — those cards were passed forward earlier and counted then.
   if (navigating || landed <= cursor) {
-    return { commitFrom: landed, commitTo: landed + 1, nextCursor: landed }
+    return { commitFrom: 0, commitTo: 0, nextCursor: landed }
   }
-  return { commitFrom: cursor, commitTo: landed + 1, nextCursor: landed }
+  return { commitFrom: cursor, commitTo: landed, nextCursor: landed }
 }
 
 /**
