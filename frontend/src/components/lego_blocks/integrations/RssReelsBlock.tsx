@@ -36,12 +36,6 @@ const DECK_SOURCES_KEY = 'ltm-rss-reels-sources'
 
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
-/** How far across the gap to the next card the deck must travel before the card
- *  being left counts as read. Past this point iOS snap carries the swipe home,
- *  so the mark can land while the animation is still running instead of after
- *  it. Below it, a drag the reader pulls back from commits nothing. */
-const COMMIT_THRESHOLD = 0.75
-
 interface RssReelsBlockProps {
   feeds: RssFeedResultBlock[]
   loadingFeedIds: Set<string>
@@ -322,9 +316,6 @@ export default function RssReelsBlock({
   const navigatingRef = useRef(false)
   const settleFrameRef = useRef<number | null>(null)
 
-  const commitReadsRef = useRef(commitReads)
-  commitReadsRef.current = commitReads
-
   const indexByIdRef = useRef(new Map<string, number>())
   indexByIdRef.current = useMemo(() => {
     const map = new Map<string, number>()
@@ -364,15 +355,11 @@ export default function RssReelsBlock({
     // needed — that is presentation, and being early costs nothing.
     setActiveIndex(current => (current === index ? current : index))
 
-    // Committing waits for the swipe to be decisive, NOT for the deck to come
-    // to rest. Waiting for rest meant waiting out iOS's snap animation, a few
-    // hundred milliseconds after the finger had already left the screen, which
-    // is why the count lagged the gesture. Three quarters of the way across is
-    // past the point where snap will carry it home, and far enough that a drag
-    // the reader pulls back from commits nothing.
-    const reached = Math.min(total - 1, Math.max(0, Math.floor(ratio + (1 - COMMIT_THRESHOLD))))
-
-    const step = rssTraversalStepBlock(cursorIndex(), reached, navigatingRef.current)
+    // One index drives both what is shown and what is read. They used to be
+    // computed differently — round() for the window, a threshold for the commit
+    // — and any disagreement between them put the mark a card behind the
+    // gesture, on top of the departure rule already costing a swipe.
+    const step = rssTraversalStepBlock(cursorIndex(), index, navigatingRef.current)
     navigatingRef.current = false
     if (step.commitTo > step.commitFrom) commitSpan(step.commitFrom, step.commitTo)
     lastIndexRef.current = step.nextCursor
@@ -389,6 +376,10 @@ export default function RssReelsBlock({
         settleFrameRef.current = requestAnimationFrame(settle)
       }
     }
+    // The first card is arrived at without a scroll ever firing, so settle once
+    // on attach — otherwise the article the deck opens on is the one card the
+    // arrival rule would never reach.
+    if (settleFrameRef.current === null) settleFrameRef.current = requestAnimationFrame(settle)
     scroller.addEventListener('scroll', onScroll, { passive: true })
     return () => {
       scroller.removeEventListener('scroll', onScroll)
@@ -399,15 +390,6 @@ export default function RssReelsBlock({
     }
   }, [settle, scrollerNode])
 
-  // Leaving the mode is leaving the current card, which is the same disposition
-  // as swiping past it. Without this the last article of every session stayed
-  // unread — the most visible way the count "did not go down".
-  useEffect(() => () => {
-    const id = lastIdRef.current
-    const index = id === null ? lastIndexRef.current : indexByIdRef.current.get(id) ?? lastIndexRef.current
-    const entry = entriesRef.current[index]
-    if (entry) commitReadsRef.current([entry.item])
-  }, [])
 
 
   const handleKeepUnread = useCallback((item: RssFeedItemBlock) => {

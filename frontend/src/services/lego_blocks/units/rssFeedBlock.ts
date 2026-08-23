@@ -211,16 +211,23 @@ export interface RssUnreadInboxEntryBlock {
  *  produced a denominator that was neither: "unread, plus whatever I have read
  *  since I opened this", which drifts under the reader and means nothing.
  */
-/** What one settle of the reels deck means: which span (if any) was read on
- *  the way, and where the traversal cursor now sits.
+/** What one settle of the reels deck means: which span of cards is now read,
+ *  and where the traversal cursor sits.
  *
- *  Extracted because this is where read-marking was getting it wrong. The rule
- *  is traversal, not a high-water mark: only forward movement reads, and only
- *  the span actually crossed. A jump re-bases instead, or navigating the
- *  calendar forward would mark every article it flew over.
+ *  The rule is ARRIVAL, not departure. A card owns the whole screen, so landing
+ *  on it is the reading event — there is nothing else to look at. The earlier
+ *  rule marked the card just LEFT, which meant a card's mark only landed on the
+ *  FOLLOWING swipe: every article took two swipes to turn over and the count
+ *  trailed the gesture by one the whole way down the deck.
+ *
+ *  The landed card is therefore always included. A forward move also includes
+ *  everything crossed on the way, because skipping is a decision too. Moving
+ *  backward marks only where you land — anything between was passed in the
+ *  other direction and counted then. A jump marks only where you land: the
+ *  calendar and skip-to-unread must not read a whole month on the way past.
  */
 export interface RssTraversalStepBlock {
-  /** Half-open [from, to) of indices passed over. Empty when nothing was read. */
+  /** Half-open [from, to) of indices now read. */
   commitFrom: number
   commitTo: number
   nextCursor: number
@@ -231,26 +238,24 @@ export function rssTraversalStepBlock(
   landed: number,
   navigating: boolean,
 ): RssTraversalStepBlock {
-  if (navigating) return { commitFrom: 0, commitTo: 0, nextCursor: landed }
-  if (landed <= cursor) return { commitFrom: 0, commitTo: 0, nextCursor: landed }
-  return { commitFrom: cursor, commitTo: landed, nextCursor: landed }
+  if (navigating || landed <= cursor) {
+    return { commitFrom: landed, commitTo: landed + 1, nextCursor: landed }
+  }
+  return { commitFrom: cursor, commitTo: landed + 1, nextCursor: landed }
 }
 
 /**
  * Reconcile two stored copies of the same article.
  *
  * iCloud sync produces conflict copies ("abc 2.md") holding an older snapshot
- * of the same `id`. The loader keyed a map by that id, so whichever copy
- * happened to resolve last won — nondeterministically, in parallel batches.
- * A stale copy could therefore resurrect an article as unread hours after it
- * was read, which is exactly the "some articles will not stay marked" symptom.
+ * of the same `id`. The loader keys a map by that id, so whichever copy
+ * resolved last used to win — nondeterministically, in parallel batches — and a
+ * stale one could resurrect an article as unread hours after it was read.
  *
- * Read state is treated as monotonic: once an article has been read somewhere,
- * that wins. Two offline devices cannot be ordered without a clock we do not
- * keep, and of the two possible mistakes — an article that will not stay read,
- * or one that will not come back — the first is what makes the queue
- * untrustworthy. `keep`/`important`/tags merge the same direction: set wins,
- * because those are deliberate marks and losing one is worse than keeping it.
+ * Read state is treated as monotonic: read somewhere means read. Two offline
+ * devices cannot be ordered without a clock we do not keep, and between an
+ * article that will not stay read and one that will not come back, the first is
+ * what makes the queue untrustworthy. keep/important/tags merge the same way.
  */
 export function mergeStoredRssItemsBlock(
   a: RssFeedItemBlock,
@@ -259,8 +264,6 @@ export function mergeStoredRssItemsBlock(
   const viewedAt = a.viewedAt ?? b.viewedAt
   const dismissedAt = a.dismissedAt ?? b.dismissedAt
   const tags = normalizeTagListBlock([...(a.tags ?? []), ...(b.tags ?? [])])
-  // Prefer whichever copy actually carries content — a conflict copy written
-  // before a backfill can be missing the image or carry a shorter body.
   return {
     ...a,
     title: a.title || b.title,
@@ -277,9 +280,6 @@ export function mergeStoredRssItemsBlock(
   }
 }
 
-/** One day cell in the reels calendar. `total` is the day's stack size and
- *  `unread` what is left in it — a day with `total === 0` has nothing to jump
- *  to and is rendered inert. */
 export interface RssCalendarCellBlock {
   key: string
   day: number
