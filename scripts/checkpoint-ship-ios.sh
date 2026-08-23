@@ -163,7 +163,18 @@ trap - EXIT
 # ─── Build: native app (Release, automatic signing) ──────────────────────────
 # generic/platform=iOS builds a signed device binary without requiring the
 # device to be reachable during the build — only the install step needs it.
+#
+# The version is read from frontend/package.json and passed in as a build
+# setting rather than trusted from the Xcode project. MARKETING_VERSION is a
+# hand-edited literal in project.pbxproj, so it silently fell behind: it said
+# 2.6.0 for two months of ships while the Mac (which takes its version from
+# package.json) said 2.8.0, and every iOS summary reported a version that had
+# not been true since June. Deriving it here makes drift impossible without
+# rewriting a tracked file mid-ship, which would leave the tree dirty for the
+# next run. The pbxproj value is kept in step for plain Xcode GUI builds.
 say "building native app (xcodebuild Release)"
+APP_VERSION="$($JQ -r '.version // empty' "$FRONTEND_DIR/package.json")"
+[ -n "$APP_VERSION" ] || fail "could not read version from $FRONTEND_DIR/package.json"
 xcodebuild \
   -project "$IOS_PROJ" \
   -scheme App \
@@ -171,6 +182,7 @@ xcodebuild \
   -destination 'generic/platform=iOS' \
   -derivedDataPath "$DERIVED_DIR" \
   -allowProvisioningUpdates \
+  MARKETING_VERSION="$APP_VERSION" \
   build >>"$LOG" 2>&1 || fail "xcodebuild failed"
 
 APP_PATH="$DERIVED_DIR/Build/Products/Release-iphoneos/App.app"
