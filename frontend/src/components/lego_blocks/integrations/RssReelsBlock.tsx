@@ -153,6 +153,7 @@ export default function RssReelsBlock({
     // rather than carrying a stale cursor that would mark the wrong span.
     navigatingRef.current = true
     lastIndexRef.current = 0
+    lastIdRef.current = null
     setActiveIndex(0)
     scrollerRef.current?.scrollTo({ top: 0 })
   }, [])
@@ -247,6 +248,7 @@ export default function RssReelsBlock({
     setDatePickerOpen(false)
     navigatingRef.current = true
     lastIndexRef.current = index
+    lastIdRef.current = entriesRef.current[index]?.item.id ?? null
     setActiveIndex(index)
     pendingJumpRef.current = index
   }, [dayStartIndex])
@@ -282,6 +284,7 @@ export default function RssReelsBlock({
     // navigation; the swipe is what constitutes reading.
     navigatingRef.current = true
     lastIndexRef.current = nextUnreadIndex
+    lastIdRef.current = entriesRef.current[nextUnreadIndex]?.item.id ?? null
     setActiveIndex(nextUnreadIndex)
     pendingJumpRef.current = nextUnreadIndex
   }, [nextUnreadIndex])
@@ -301,10 +304,18 @@ export default function RssReelsBlock({
   // IS `scrollTop / clientHeight` — no thresholds, no dwell, nothing to miss.
   const entriesRef = useRef(entries)
   entriesRef.current = entries
-  /** The card we were last settled on. Reads are committed for the span
-   *  between here and where we land, so marking follows actual traversal
-   *  rather than a high-water mark — otherwise jumping forward would mark the
-   *  whole backlog read. */
+  /** The card we were last settled on, held by ID rather than by index.
+   *
+   *  An index is not a stable name for an article here. The deck grows while it
+   *  is being read — cached backlog pages hydrate for seconds after open, and
+   *  every visibilitychange refresh pulls in newer articles — and entries are
+   *  ordered by date, so anything newer than the reader's position shifts it
+   *  and everything after it. A numeric cursor then names a DIFFERENT article
+   *  than the one it was set on, and the commit span marks the wrong cards:
+   *  usually already-read ones, where nothing visibly happens, while the
+   *  article actually swiped past stays unread. An id survives the reshuffle. */
+  const lastIdRef = useRef<string | null>(null)
+  /** Only used before the first settle has an id to hold. */
   const lastIndexRef = useRef(0)
   /** Set while a jump is in flight, so calendar and skip-to-unread move the
    *  reader without reading anything on the way. */
@@ -313,6 +324,23 @@ export default function RssReelsBlock({
 
   const commitReadsRef = useRef(commitReads)
   commitReadsRef.current = commitReads
+
+  const indexByIdRef = useRef(new Map<string, number>())
+  indexByIdRef.current = useMemo(() => {
+    const map = new Map<string, number>()
+    entries.forEach((entry, index) => map.set(entry.item.id, index))
+    return map
+  }, [entries])
+
+  /** Where the cursor's article sits in the deck AS IT IS NOW. Falls back to
+   *  the raw index only before the first settle, or if that article has left
+   *  the deck entirely. */
+  const cursorIndex = useCallback((): number => {
+    const id = lastIdRef.current
+    if (id === null) return lastIndexRef.current
+    const index = indexByIdRef.current.get(id)
+    return index === undefined ? lastIndexRef.current : index
+  }, [])
 
   const commitSpan = useCallback((from: number, to: number) => {
     const passed: RssFeedItemBlock[] = []
@@ -344,11 +372,12 @@ export default function RssReelsBlock({
     // the reader pulls back from commits nothing.
     const reached = Math.min(total - 1, Math.max(0, Math.floor(ratio + (1 - COMMIT_THRESHOLD))))
 
-    const step = rssTraversalStepBlock(lastIndexRef.current, reached, navigatingRef.current)
+    const step = rssTraversalStepBlock(cursorIndex(), reached, navigatingRef.current)
     navigatingRef.current = false
     if (step.commitTo > step.commitFrom) commitSpan(step.commitFrom, step.commitTo)
     lastIndexRef.current = step.nextCursor
-  }, [commitSpan])
+    lastIdRef.current = entriesRef.current[step.nextCursor]?.item.id ?? null
+  }, [commitSpan, cursorIndex])
 
   useEffect(() => {
     const scroller = scrollerNode
@@ -374,7 +403,9 @@ export default function RssReelsBlock({
   // as swiping past it. Without this the last article of every session stayed
   // unread — the most visible way the count "did not go down".
   useEffect(() => () => {
-    const entry = entriesRef.current[lastIndexRef.current]
+    const id = lastIdRef.current
+    const index = id === null ? lastIndexRef.current : indexByIdRef.current.get(id) ?? lastIndexRef.current
+    const entry = entriesRef.current[index]
     if (entry) commitReadsRef.current([entry.item])
   }, [])
 
