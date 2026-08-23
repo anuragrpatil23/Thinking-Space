@@ -210,6 +210,31 @@ export interface RssUnreadInboxEntryBlock {
  *  produced a denominator that was neither: "unread, plus whatever I have read
  *  since I opened this", which drifts under the reader and means nothing.
  */
+/** What one settle of the reels deck means: which span (if any) was read on
+ *  the way, and where the traversal cursor now sits.
+ *
+ *  Extracted because this is where read-marking was getting it wrong. The rule
+ *  is traversal, not a high-water mark: only forward movement reads, and only
+ *  the span actually crossed. A jump re-bases instead, or navigating the
+ *  calendar forward would mark every article it flew over.
+ */
+export interface RssTraversalStepBlock {
+  /** Half-open [from, to) of indices passed over. Empty when nothing was read. */
+  commitFrom: number
+  commitTo: number
+  nextCursor: number
+}
+
+export function rssTraversalStepBlock(
+  cursor: number,
+  landed: number,
+  navigating: boolean,
+): RssTraversalStepBlock {
+  if (navigating) return { commitFrom: 0, commitTo: 0, nextCursor: landed }
+  if (landed <= cursor) return { commitFrom: 0, commitTo: 0, nextCursor: landed }
+  return { commitFrom: cursor, commitTo: landed, nextCursor: landed }
+}
+
 /** One day cell in the reels calendar. `total` is the day's stack size and
  *  `unread` what is left in it — a day with `total === 0` has nothing to jump
  *  to and is rendered inert. */

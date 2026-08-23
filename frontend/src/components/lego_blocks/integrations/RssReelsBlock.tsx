@@ -8,6 +8,7 @@ import {
   rssDeckDayCountsBlock,
   rssMonthLabelBlock,
   rssMonthOfDayKeyBlock,
+  rssTraversalStepBlock,
   rssItemDayKeyBlock,
   rssSourceHueBlock,
   type RssFeedItemBlock,
@@ -138,6 +139,11 @@ export default function RssReelsBlock({
   const rebuildDeck = useCallback(() => {
     admittedRef.current = new Set()
     setAdmissionTick(tick => tick + 1)
+    // Indices no longer point at the same articles, so the traversal restarts
+    // rather than carrying a stale cursor that would mark the wrong span.
+    navigatingRef.current = true
+    lastIndexRef.current = 0
+    committedRef.current = new Set()
     setActiveIndex(0)
     scrollerRef.current?.scrollTo({ top: 0 })
   }, [])
@@ -227,6 +233,8 @@ export default function RssReelsBlock({
     const index = dayStartIndex.get(key)
     if (index === undefined) return
     setDatePickerOpen(false)
+    navigatingRef.current = true
+    lastIndexRef.current = index
     setActiveIndex(index)
     pendingJumpRef.current = index
   }, [dayStartIndex])
@@ -256,6 +264,8 @@ export default function RssReelsBlock({
     if (nextUnreadIndex === null) return
     // Deliberately does NOT mark the cards it passes. Skipping to unread is
     // navigation; the swipe is what constitutes reading.
+    navigatingRef.current = true
+    lastIndexRef.current = nextUnreadIndex
     setActiveIndex(nextUnreadIndex)
     pendingJumpRef.current = nextUnreadIndex
   }, [nextUnreadIndex])
@@ -265,45 +275,98 @@ export default function RssReelsBlock({
     else cardNodesRef.current.delete(index)
   }, [])
 
-  // Which card owns the viewport. Snap points mean exactly one card clears the
-  // majority threshold at rest, so this needs no dwell timer — the observer
-  // fires once per settled card.
+  // Which card owns the viewport, and therefore what counts as read.
+  //
+  // This used to be an IntersectionObserver, which made the read mark
+  // probabilistic in three ways: iOS drops intersection callbacks during
+  // momentum snap scrolling, so a fast pass could leave cards unmarked;
+  // `activeIndexRef` lags between the observer's setState and React's commit,
+  // so two callbacks in one frame shared a stale starting point; and the effect
+  // tore itself down and rebuilt on every index change, losing callbacks in the
+  // gap. The symptom was a day's unread count that only sometimes went down.
+  //
+  // Geometry is exact instead. Every card is one scroller-height, so the index
+  // IS `scrollTop / clientHeight` — no thresholds, no dwell, nothing to miss.
   const entriesRef = useRef(entries)
   entriesRef.current = entries
-  const activeIndexRef = useRef(activeIndex)
-  activeIndexRef.current = activeIndex
+  /** The card we were last settled on. Reads are committed for the span
+   *  between here and where we land, so marking follows actual traversal
+   *  rather than a high-water mark — otherwise jumping forward would mark the
+   *  whole backlog read. */
+  const lastIndexRef = useRef(0)
+  /** Set while a jump is in flight, so calendar and skip-to-unread move the
+   *  reader without reading anything on the way. */
+  const navigatingRef = useRef(false)
+  /** Ids already handed to the store, so a settle that re-reports the same
+   *  position cannot re-issue a write. */
+  const committedRef = useRef(new Set<string>())
+  const settleFrameRef = useRef<number | null>(null)
+
+  const commitReadsRef = useRef(commitReads)
+  commitReadsRef.current = commitReads
+
+  const commitSpan = useCallback((from: number, to: number) => {
+    const passed: RssFeedItemBlock[] = []
+    for (let i = from; i < to; i++) {
+      const entry = entriesRef.current[i]
+      if (!entry || committedRef.current.has(entry.item.id)) continue
+      committedRef.current.add(entry.item.id)
+      passed.push(entry.item)
+    }
+    if (passed.length > 0) commitReads(passed)
+  }, [commitReads])
+
+  const settle = useCallback(() => {
+    settleFrameRef.current = null
+    const scroller = scrollerRef.current
+    if (!scroller || scroller.clientHeight === 0) return
+    const total = entriesRef.current.length
+    if (total === 0) return
+    const index = Math.min(total - 1, Math.max(0, Math.round(scroller.scrollTop / scroller.clientHeight)))
+
+    const step = rssTraversalStepBlock(lastIndexRef.current, index, navigatingRef.current)
+    navigatingRef.current = false
+    if (step.commitTo > step.commitFrom) commitSpan(step.commitFrom, step.commitTo)
+    lastIndexRef.current = step.nextCursor
+    setActiveIndex(current => (current === index ? current : index))
+  }, [commitSpan])
 
   useEffect(() => {
     const scroller = scrollerRef.current
-    if (!scroller || typeof IntersectionObserver === 'undefined') return
-    const observer = new IntersectionObserver(observed => {
-      for (const entry of observed) {
-        if (!entry.isIntersecting || entry.intersectionRatio < 0.6) continue
-        const index = Number((entry.target as HTMLElement).dataset.reelIndex)
-        if (Number.isNaN(index) || index === activeIndexRef.current) continue
-        // Everything strictly between where we were and where we landed was
-        // passed over — a fast flick skips cards, and skipping is a decision
-        // just as much as swiping one at a time.
-        const from = activeIndexRef.current
-        if (index > from) {
-          const passed: RssFeedItemBlock[] = []
-          for (let i = from; i < index; i++) {
-            const entry = entriesRef.current[i]
-            if (entry) passed.push(entry.item)
-          }
-          commitReads(passed)
-        }
-        setActiveIndex(index)
+    if (!scroller) return
+    const onScroll = () => {
+      // One settle per frame: scroll fires far more often than the deck can
+      // meaningfully change, and each settle may mount a card window.
+      if (settleFrameRef.current === null) {
+        settleFrameRef.current = requestAnimationFrame(settle)
       }
-    }, { root: scroller, threshold: [0.6] })
-    for (const node of cardNodesRef.current.values()) observer.observe(node)
-    return () => observer.disconnect()
-    // Re-observes when the rendered window changes, which is how newly mounted
-    // cards get picked up.
-  }, [entries.length, activeIndex, commitReads])
+    }
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      scroller.removeEventListener('scroll', onScroll)
+      if (settleFrameRef.current !== null) {
+        cancelAnimationFrame(settleFrameRef.current)
+        settleFrameRef.current = null
+      }
+    }
+  }, [settle])
+
+  // Leaving the mode is leaving the current card, which is the same disposition
+  // as swiping past it. Without this the last article of every session stayed
+  // unread — the most visible way the count "did not go down".
+  useEffect(() => () => {
+    const entry = entriesRef.current[lastIndexRef.current]
+    if (!entry || committedRef.current.has(entry.item.id)) return
+    committedRef.current.add(entry.item.id)
+    commitReadsRef.current([entry.item])
+  }, [])
+
 
   const handleKeepUnread = useCallback((item: RssFeedItemBlock) => {
     keptUnreadRef.current.add(item.id)
+    // Also mark it committed: a later settle spanning this index must not
+    // re-issue the read it just undid.
+    committedRef.current.add(item.id)
     onUnmarkRead(item)
   }, [onUnmarkRead])
 
