@@ -36,6 +36,11 @@ const DECK_SOURCES_KEY = 'ltm-rss-reels-sources'
 
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
+/** How close to a snap point the deck must be before a card counts as read.
+ *  Loose enough for fractional card heights on scaled displays, tight enough
+ *  that a half-swipe that snaps back commits nothing. */
+const SETTLE_EPSILON = 0.12
+
 interface RssReelsBlockProps {
   feeds: RssFeedResultBlock[]
   loadingFeedIds: Set<string>
@@ -72,6 +77,11 @@ export default function RssReelsBlock({
   onToggleTag,
 }: RssReelsBlockProps) {
   const scrollerRef = useRef<HTMLDivElement | null>(null)
+  const [scrollerNode, setScrollerNode] = useState<HTMLDivElement | null>(null)
+  const attachScroller = useCallback((node: HTMLDivElement | null) => {
+    scrollerRef.current = node
+    setScrollerNode(node)
+  }, [])
   const cardNodesRef = useRef(new Map<number, HTMLElement>())
   const [activeIndex, setActiveIndex] = useState(0)
 
@@ -245,6 +255,9 @@ export default function RssReelsBlock({
     if (index === null) return
     pendingJumpRef.current = null
     cardNodesRef.current.get(index)?.scrollIntoView({ block: 'start' })
+    // A jump that lands where we already were fires no scroll event, which
+    // would leave `navigating` armed and swallow the next real swipe's read.
+    requestAnimationFrame(() => { navigatingRef.current = false })
   }, [activeIndex])
 
   /** The next unread article after the current card, or the first one anywhere
@@ -322,17 +335,27 @@ export default function RssReelsBlock({
     if (!scroller || scroller.clientHeight === 0) return
     const total = entriesRef.current.length
     if (total === 0) return
-    const index = Math.min(total - 1, Math.max(0, Math.round(scroller.scrollTop / scroller.clientHeight)))
+    const ratio = scroller.scrollTop / scroller.clientHeight
+    const index = Math.min(total - 1, Math.max(0, Math.round(ratio)))
+
+    // Window ahead on every frame so the next card is mounted before it is
+    // needed — that is presentation, and being early costs nothing.
+    setActiveIndex(current => (current === index ? current : index))
+
+    // Committing is a different question. Mid-swipe the nearest card flips at
+    // the halfway point, so committing on it would mark an article read that
+    // the reader dragged toward and then let snap back. Only a settled deck
+    // counts. The tolerance absorbs fractional card heights on scaled displays.
+    if (Math.abs(ratio - index) > SETTLE_EPSILON) return
 
     const step = rssTraversalStepBlock(lastIndexRef.current, index, navigatingRef.current)
     navigatingRef.current = false
     if (step.commitTo > step.commitFrom) commitSpan(step.commitFrom, step.commitTo)
     lastIndexRef.current = step.nextCursor
-    setActiveIndex(current => (current === index ? current : index))
   }, [commitSpan])
 
   useEffect(() => {
-    const scroller = scrollerRef.current
+    const scroller = scrollerNode
     if (!scroller) return
     const onScroll = () => {
       // One settle per frame: scroll fires far more often than the deck can
@@ -349,7 +372,7 @@ export default function RssReelsBlock({
         settleFrameRef.current = null
       }
     }
-  }, [settle])
+  }, [settle, scrollerNode])
 
   // Leaving the mode is leaving the current card, which is the same disposition
   // as swiping past it. Without this the last article of every session stayed
@@ -559,7 +582,7 @@ export default function RssReelsBlock({
 
       <div className="relative min-h-0 flex-1">
       <div
-        ref={scrollerRef}
+        ref={attachScroller}
         className="ltm-reels-scroller h-full overflow-y-auto overscroll-contain"
       >
         {entries.map((entry, index) => {
