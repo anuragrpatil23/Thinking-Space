@@ -106,6 +106,7 @@ fi
 
 DEVICE_NAMES=()
 DEVICE_IDS=()
+DEVICE_UDIDS=()
 if [ -n "$WANT_LIST" ]; then
   IFS=',' read -ra WANTED <<< "$WANT_LIST"
   for WANT in "${WANTED[@]}"; do
@@ -121,6 +122,7 @@ if [ -n "$WANT_LIST" ]; then
     [ -n "$DEVICE_ROW" ] || fail "device '$WANT' not found among paired devices (xcrun devicectl list devices)"
     DEVICE_NAMES+=("$(echo "$DEVICE_ROW" | $JQ -r '.deviceProperties.name')")
     DEVICE_IDS+=("$(echo "$DEVICE_ROW" | $JQ -r '.identifier')")
+    DEVICE_UDIDS+=("$(echo "$DEVICE_ROW" | $JQ -r '.hardwareProperties.udid // empty')")
   done
   [ "${#DEVICE_IDS[@]}" -gt 0 ] || fail "no devices resolved from '$WANT_LIST'"
 else
@@ -134,6 +136,7 @@ else
   DEVICE_ROW="$(echo "$CANDIDATES" | $JQ -c '.[0]')"
   DEVICE_NAMES+=("$(echo "$DEVICE_ROW" | $JQ -r '.deviceProperties.name')")
   DEVICE_IDS+=("$(echo "$DEVICE_ROW" | $JQ -r '.identifier')")
+  DEVICE_UDIDS+=("$(echo "$DEVICE_ROW" | $JQ -r '.hardwareProperties.udid // empty')")
   $JQ -n --arg n "${DEVICE_NAMES[0]}" '{deviceNames: [$n]}' > "$DEVICE_CONFIG"
   say "adopted sole paired iPhone as default device (saved to $DEVICE_CONFIG)"
 fi
@@ -172,6 +175,51 @@ trap - EXIT
 # not been true since June. Deriving it here makes drift impossible without
 # rewriting a tracked file mid-ship, which would leave the tree dirty for the
 # next run. The pbxproj value is kept in step for plain Xcode GUI builds.
+# ─── Profile renewal window ──────────────────────────────────────────────────
+# Free-provisioning profiles live 7 days, and -allowProvisioningUpdates mints a
+# new one ONLY when no valid cached profile exists. So an ordinary ship silently
+# re-embeds the existing profile and inherits its original expiry: on 2026-08-23
+# two ships in one evening both shipped a profile minted on 08-17, and the app
+# died on every device hours later with no warning.
+#
+# Reuse is still the right default — it holds minting to ~1 per app per 7 days
+# instead of 1 per ship. The cache is cleared only inside the expiry window, so
+# exactly one mint happens per profile lifetime: the floor a 7-day profile
+# allows. (Apple's documented free-tier quota covers registering App IDs, not
+# regenerating a profile for one already registered, but that is unverified
+# here — so the design stays at the floor and logs every mint it triggers.)
+#
+# The decision lives in ios-profile-watch.sh --prepare-mint so it can be tested
+# against fixtures rather than first running for real the day a profile lapses.
+PROFILE_STATE="$HOME/.thinking-space/ios-profile-state.json"
+WATCH_SCRIPT="$ROOT_DIR/scripts/ios-profile-watch.sh"
+PROFILE_BACKUP=""
+PROFILE_ORIGIN=""
+FORCED_MINT=0
+
+if [ -x "$WATCH_SCRIPT" ]; then
+  # Tab-delimited: the cached profile path contains spaces, so plain word
+  # splitting would truncate it and the restore-on-failure would miss.
+  # Pass the target UDIDs: a profile that is fine on time can still be missing
+  # a device that was asleep when it was minted.
+  UDID_CSV="$(IFS=','; echo "${DEVICE_UDIDS[*]}")"
+  IFS=$'\t' read -r PM_STATUS PM_A PM_B PM_C PM_D <<< "$("$WATCH_SCRIPT" --prepare-mint "$BUNDLE_ID" "$UDID_CSV" 2>/dev/null || echo none)"
+  case "${PM_STATUS:-none}" in
+    mint)
+      PROFILE_BACKUP="$PM_B"
+      PROFILE_ORIGIN="$PM_C"
+      FORCED_MINT=1
+      case "${PM_D:-}" in
+        devices:*) say "profile is missing ${PM_D#devices:} — cleared cache to re-mint with every target device" ;;
+        *)         say "profile ${PM_A}d left — cleared cache to force a fresh mint" ;;
+      esac
+      ;;
+    floor) say "profile ${PM_A}d left but minted ${PM_B}d ago — reusing (mint floor)" ;;
+    ok)    say "profile ok (${PM_A}d left)" ;;
+    *)     say "no cached profile for $BUNDLE_ID — xcodebuild will mint one" ;;
+  esac
+fi
+
 say "building native app (xcodebuild Release)"
 APP_VERSION="$($JQ -r '.version // empty' "$FRONTEND_DIR/package.json")"
 [ -n "$APP_VERSION" ] || fail "could not read version from $FRONTEND_DIR/package.json"
@@ -191,7 +239,16 @@ xcodebuild \
   -allowProvisioningUpdates \
   MARKETING_VERSION="$APP_VERSION" \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-  build >>"$LOG" 2>&1 || fail "xcodebuild failed"
+  build >>"$LOG" 2>&1 || {
+    # A cleared cache plus a failed build would leave nothing to sign with, so
+    # put the old profile back before reporting. It may still have days on it.
+    if [ -n "$PROFILE_BACKUP" ] && [ -f "$PROFILE_BACKUP" ]; then
+      mkdir -p "$(dirname "$PROFILE_ORIGIN")" 2>/dev/null || true
+      cp "$PROFILE_BACKUP" "$PROFILE_ORIGIN" 2>/dev/null || true
+      say "restored the previous profile after the failed build"
+    fi
+    fail "xcodebuild failed"
+  }
 
 APP_PATH="$DERIVED_DIR/Build/Products/Release-iphoneos/App.app"
 [ -d "$APP_PATH" ] || fail "expected artifact missing: $APP_PATH"
@@ -252,6 +309,24 @@ done
 
 [ $ANY_INSTALLED = 1 ] || fail "install failed on every device — ${RESULTS[*]}"
 
+# Profile expiry belongs in the summary. It was invisible until the day it
+# bit, so record what actually got embedded and how long it has left.
+NEW_DAYS="none"
+[ -x "$WATCH_SCRIPT" ] && NEW_DAYS="$("$WATCH_SCRIPT" --days-left "$BUNDLE_ID" 2>/dev/null || echo none)"
+if [ $FORCED_MINT = 1 ]; then
+  mkdir -p "$(dirname "$PROFILE_STATE")"
+  PREV_STATE="{}"
+  [ -f "$PROFILE_STATE" ] && PREV_STATE="$(cat "$PROFILE_STATE" 2>/dev/null || echo '{}')"
+  echo "$PREV_STATE" | $JQ -c --arg b "$BUNDLE_ID" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '.[$b] = ((.[$b] // {}) + {lastMint: $t})' > "$PROFILE_STATE"
+  rm -f "$PROFILE_BACKUP"
+fi
+
 say "✓ shipped v$MARKETING_VERSION build $BUILD_VERSION ($TREE_LABEL)"
 for r in "${RESULTS[@]}"; do say "  $r"; done
+if [ "$NEW_DAYS" = none ]; then
+  say "  profile: expiry unknown"
+else
+  say "  profile: ${NEW_DAYS}d left$([ $FORCED_MINT = 1 ] && echo ' (freshly minted)')"
+fi
 say "log: $LOG"
