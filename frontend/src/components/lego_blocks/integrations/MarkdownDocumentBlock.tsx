@@ -16,7 +16,7 @@ import {
 } from '@/services/lego_blocks/integrations/markdownMathPluginsBlock'
 import { markdownCodeHighlightRehypePluginsBlock } from '@/services/lego_blocks/integrations/markdownCodeHighlightPluginBlock'
 import TikzDiagramBlock from '@/components/lego_blocks/units/TikzDiagramBlock'
-import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow, List, LayoutDashboard, BookOpenText, Minimize2 } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow, List, LayoutDashboard, BookOpenText, Minimize2, Maximize2 } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -1949,44 +1949,52 @@ function MarkdownTextDocumentRuntimeBlock({
 
                 {isEditing && isExcalidrawDoc && (
                   <>
+                    {/* Editing badge — same live save state the text editor shows. */}
                     <button
                       type="button"
                       onClick={() => setAutoSaveEnabled(v => !v)}
                       className={cn(
-                        'font-medium transition-colors',
+                        'inline-flex items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground',
                         isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2 py-1 text-xs',
-                        autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                       )}
-                      title="Toggle auto save"
+                      title={autoSaveEnabled ? 'Auto-save is on — click to switch to manual saving' : 'Auto-save is off — click to turn it on'}
                     >
-                      {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
+                      <span
+                        className={cn(
+                          'h-1.5 w-1.5 rounded-full',
+                          (saving || autoSaving)
+                            ? 'animate-pulse bg-amber-500'
+                            : autoSaveEnabled
+                              ? 'bg-emerald-500'
+                              : 'bg-muted-foreground/50',
+                        )}
+                      />
+                      {(saving || autoSaving) ? 'Saving…' : autoSaveEnabled ? 'Editing' : 'Editing · manual'}
                     </button>
-                    <span className="hidden px-1 text-xs text-muted-foreground md:inline">
-                      {hasChanges ? 'Unsaved changes' : 'No changes'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setExcalidrawImmersive(v => !v)}
-                      className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
-                    >
-                      {excalidrawImmersive ? 'Exit Focus' : 'Focus Canvas'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={cancelEditing}
-                      className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted"
-                    >
-                      Close
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { void handleSave() }}
-                      disabled={!hasChanges || saving || baseMtime === null}
-                      className={saveButtonClassName}
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                      {saveButtonLabel}
-                    </button>
+                    {!autoSaveEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => { void handleSave() }}
+                        disabled={saving || baseMtime === null}
+                        className={saveButtonClassName}
+                      >
+                        <Save className="h-3.5 w-3.5" />
+                        {saveButtonLabel}
+                      </button>
+                    )}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => setExcalidrawImmersive(true)}
+                          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          aria-label="Focus canvas"
+                        >
+                          <Maximize2 className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Focus canvas</TooltipContent>
+                    </Tooltip>
                   </>
                 )}
 
@@ -2311,7 +2319,10 @@ function MarkdownTextDocumentRuntimeBlock({
                       <button
                         type="button"
                         onClick={() => setAutoSaveEnabled(v => !v)}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                        className={cn(
+                          'inline-flex items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground',
+                          isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2 py-1 text-xs',
+                        )}
                       >
                         <span
                           className={cn(
@@ -2323,11 +2334,7 @@ function MarkdownTextDocumentRuntimeBlock({
                                 : 'bg-muted-foreground/50',
                           )}
                         />
-                        {(saving || autoSaving)
-                          ? 'Saving…'
-                          : autoSaveEnabled
-                            ? (hasChanges ? 'Editing' : 'Saved')
-                            : 'Manual'}
+                        {(saving || autoSaving) ? 'Saving…' : autoSaveEnabled ? 'Editing' : 'Editing · manual'}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom">
@@ -2335,7 +2342,7 @@ function MarkdownTextDocumentRuntimeBlock({
                     </TooltipContent>
                   </Tooltip>
 
-                  {(hasChanges || saving || manualSaveFeedbackVisible) && (
+                  {!autoSaveEnabled && (
                     <button
                       type="button"
                       onClick={() => { void handleSave() }}
