@@ -16,7 +16,7 @@ import {
 } from '@/services/lego_blocks/integrations/markdownMathPluginsBlock'
 import { markdownCodeHighlightRehypePluginsBlock } from '@/services/lego_blocks/integrations/markdownCodeHighlightPluginBlock'
 import TikzDiagramBlock from '@/components/lego_blocks/units/TikzDiagramBlock'
-import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow, List, LayoutDashboard, BookOpenText } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow, List, LayoutDashboard, BookOpenText, Minimize2 } from 'lucide-react'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -2292,60 +2292,90 @@ function MarkdownTextDocumentRuntimeBlock({
         {!loading && !error && content !== null && isEditing && isExcalidrawDoc && excalidrawImmersive && (
           <div className="fixed inset-0 z-[70] flex flex-col bg-background">
             <div
-              className="relative z-20 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-background/95 px-3 py-2 backdrop-blur"
+              className="relative z-20 flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border/40 bg-background/95 px-3 py-2 backdrop-blur"
               style={{
                 paddingTop: isElectronSurface ? '2.25rem' : isIosSurface ? 'calc(var(--ltm-safe-top, 0px) + 0.5rem)' : '0.5rem',
                 ...isElectronSurface && { WebkitAppRegion: 'drag' } as React.CSSProperties,
               }}
             >
-              <div
-                className="min-w-0 flex items-center gap-2"
-              >
-                <span className="truncate text-sm font-medium text-foreground">
+              <div className="min-w-0 flex flex-1 items-center gap-2">
+                <span className="truncate text-sm font-medium text-foreground" title={filename}>
                   {filename}
                 </span>
-                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Excalidraw Focus Mode
-                </span>
-                <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">
-                  {hasChanges ? 'Unsaved changes' : 'Saved'}
-                </span>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-1.5" style={isElectronSurface ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
-                <button
-                  type="button"
-                  onClick={() => setAutoSaveEnabled(v => !v)}
-                  className={cn(
-                    'rounded-md px-2 py-1 text-xs font-medium transition-colors',
-                    autoSaveEnabled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              <TooltipProvider delayDuration={200}>
+                <div className="flex shrink-0 items-center gap-1" style={isElectronSurface ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
+                  {/* Save state — same dot badge the inline editor uses; click toggles auto-save. */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => setAutoSaveEnabled(v => !v)}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        <span
+                          className={cn(
+                            'h-1.5 w-1.5 rounded-full',
+                            (saving || autoSaving)
+                              ? 'animate-pulse bg-amber-500'
+                              : autoSaveEnabled
+                                ? 'bg-emerald-500'
+                                : 'bg-muted-foreground/50',
+                          )}
+                        />
+                        {(saving || autoSaving)
+                          ? 'Saving…'
+                          : autoSaveEnabled
+                            ? (hasChanges ? 'Editing' : 'Saved')
+                            : 'Manual'}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      {autoSaveEnabled ? 'Auto-save is on — click to switch to manual saving' : 'Auto-save is off — click to turn it on'}
+                    </TooltipContent>
+                  </Tooltip>
+
+                  {(hasChanges || saving || manualSaveFeedbackVisible) && (
+                    <button
+                      type="button"
+                      onClick={() => { void handleSave() }}
+                      disabled={saving || baseMtime === null}
+                      className={saveButtonClassName}
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {saveButtonLabel}
+                    </button>
                   )}
-                  title="Toggle auto save"
-                >
-                  {autoSaveEnabled ? 'Auto-save On' : 'Auto-save Off'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setExcalidrawImmersive(false)}
-                  className="rounded-md border border-border/70 px-2.5 py-1 text-xs text-foreground hover:bg-muted"
-                >
-                  Exit Focus
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelEditing}
-                  className="rounded-md border border-border/70 px-2.5 py-1 text-xs text-foreground hover:bg-muted"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { void handleSave() }}
-                  disabled={!hasChanges || saving || baseMtime === null}
-                  className="rounded-md border border-border/70 px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {saveButtonLabel}
-                </button>
-              </div>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => setExcalidrawImmersive(false)}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        aria-label="Exit focus mode"
+                      >
+                        <Minimize2 className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Exit focus mode</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={cancelEditing}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        aria-label="Close editor"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">Close editor</TooltipContent>
+                  </Tooltip>
+                </div>
+              </TooltipProvider>
             </div>
             {annotationRecoveryBlock && (
               <div className="shrink-0 px-3 pb-2">{annotationRecoveryBlock}</div>
