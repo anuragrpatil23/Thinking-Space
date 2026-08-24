@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Bookmark, CalendarDays, Check, ChevronLeft, ChevronRight, ExternalLink, Loader2, SkipForward, Undo2 } from 'lucide-react'
 import {
   buildRssDeckEntriesBlock,
@@ -347,22 +347,29 @@ export default function RssReelsBlock({
     if (passed.length > 0) commitReads(passed)
   }, [commitReads])
 
-  const settle = useCallback(() => {
-    settleFrameRef.current = null
+  /** Which card the deck is settled on, read off the cards themselves.
+   *
+   *  Asks the sections where they are rather than assuming each is exactly one
+   *  viewport tall. They are, in CSS — but `clientHeight` is a live measurement
+   *  of the window, and iOS changes it mid-scroll when the toolbar collapses,
+   *  so dividing by it made the index drift away from the card on screen. A
+   *  section's laid-out top is a fact about the layout and cannot drift. */
+  const settledIndex = useCallback((): number | null => {
     const scroller = scrollerRef.current
-    if (!scroller || scroller.clientHeight === 0) return
+    if (!scroller || scroller.clientHeight === 0) return null
     const total = entriesRef.current.length
-    if (total === 0) return
-    // Ask the cards where they are rather than assuming they are all exactly one
-    // viewport tall. They are, in CSS — but `clientHeight` is a live measurement
-    // of the window, and iOS changes it mid-scroll when the toolbar collapses,
-    // so dividing by it made the index drift away from the card on screen.
-    // A section's laid-out top is a fact about the layout and cannot drift.
+    if (total === 0) return null
     const cards = scroller.children
     const base = (cards[0] as HTMLElement | undefined)?.offsetTop ?? 0
     const offsets: number[] = []
     for (let i = 0; i < cards.length; i++) offsets.push((cards[i] as HTMLElement).offsetTop - base)
-    const index = Math.min(total - 1, Math.max(0, rssSettledCardIndexBlock(offsets, scroller.scrollTop)))
+    return Math.min(total - 1, Math.max(0, rssSettledCardIndexBlock(offsets, scroller.scrollTop)))
+  }, [])
+
+  const settle = useCallback(() => {
+    settleFrameRef.current = null
+    const index = settledIndex()
+    if (index === null) return
 
     // Window ahead on every frame so the next card is mounted before it is
     // needed — that is presentation, and being early costs nothing.
@@ -378,7 +385,7 @@ export default function RssReelsBlock({
     if (step.commitTo > step.commitFrom) commitSpan(step.commitFrom, step.commitTo)
     lastIndexRef.current = step.nextCursor
     lastIdRef.current = entriesRef.current[step.nextCursor]?.item.id ?? null
-  }, [commitSpan, cursorIndex])
+  }, [commitSpan, cursorIndex, settledIndex])
 
   const commitReadsRef = useRef(commitReads)
   commitReadsRef.current = commitReads
@@ -392,6 +399,29 @@ export default function RssReelsBlock({
     const entry = entriesRef.current[index]
     if (entry) commitReadsRef.current([entry.item])
   }, [])
+
+  /** Articles arriving is not the reader moving.
+   *
+   *  A fetch inserts a day's new articles at the top of the deck, so every
+   *  card's offset shifts and the next settle reports a position nobody
+   *  scrolled to. Read as traversal, that span marks the whole delivery read
+   *  the moment it lands — the reader never saw any of it.
+   *
+   *  So a change in the deck's COMPOSITION re-bases the cursor onto whatever is
+   *  now on screen, committing nothing. Marking an article read does not change
+   *  composition (same ids, same order, same length), so an ordinary read still
+   *  leaves the cursor alone. Done here rather than by arming a flag for the
+   *  next settle: if no scroll follows, a flag would sit armed and swallow the
+   *  reader's next genuine swipe. */
+  const deckSizeRef = useRef(0)
+  useLayoutEffect(() => {
+    if (entries.length === deckSizeRef.current) return
+    deckSizeRef.current = entries.length
+    const index = settledIndex()
+    if (index === null) return
+    lastIndexRef.current = index
+    lastIdRef.current = entriesRef.current[index]?.item.id ?? null
+  }, [entries, settledIndex])
 
   useEffect(() => {
     const scroller = scrollerNode
