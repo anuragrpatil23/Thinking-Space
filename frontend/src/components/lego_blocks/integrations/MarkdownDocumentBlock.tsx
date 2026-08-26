@@ -563,7 +563,13 @@ function MarkdownTextDocumentRuntimeBlock({
   // document in *view* mode: editing already produces a steady stream of taps
   // that keep the idle timer happy, and an inactive/background tab isn't being
   // read. Users can turn this off in Settings ▸ Theme.
-  useScreenWakeLockBlock(active && !isEditing && !loading && error === null)
+  //
+  // Excalidraw is the exception to the editing rule. A canvas in edit mode is
+  // still mostly *looked at* — a diagram or a page of handwritten notes you sit
+  // with and think about — and on iPad the Pencil hovering above the glass is
+  // not a touch, so the idle timer fires mid-thought exactly as it would while
+  // reading. The canvas therefore holds the lease in both modes.
+  useScreenWakeLockBlock(active && (!isEditing || isExcalidrawDoc) && !loading && error === null)
 
   // Live preview makes the view/edit split mostly ceremonial for text docs.
   // Entering editing is a long-press on EVERY surface (mouse and touch alike):
