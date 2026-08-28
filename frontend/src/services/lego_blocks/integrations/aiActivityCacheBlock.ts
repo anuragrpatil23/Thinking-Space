@@ -71,7 +71,17 @@ const CACHE_DIR = '.thinking-space'
 // sessions already do. Cached rows carry the old `::wN` form, which is the
 // digest's ADDRESS — without the bump they keep it and no digest lands at the
 // new one.
-const CACHE_VERSION = 21
+// v22: turns carry authorship (`human` / `agent` / `automation` / continuation),
+// and automation-driven turns — Codex `<heartbeat>`, Claude Code
+// `<task-notification>` — no longer anchor windows or own duration. This
+// changes three things a cached row froze: window BOUNDS (an automation firing
+// every ~10min was bridging the idle gap, so sittings ran hours past the last
+// human turn), window IDENTITY (a window that opened on a heartbeat now opens
+// on the first real turn, and the id is the digest's ADDRESS), and the row set
+// itself (windows that were nothing but automation are no longer emitted).
+// Cached rows carry all three in their old form, so without this bump the
+// phantom durations stay on the timeline forever.
+const CACHE_VERSION = 22
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000

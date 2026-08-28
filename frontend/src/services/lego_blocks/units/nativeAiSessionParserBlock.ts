@@ -21,6 +21,13 @@ import type {
 } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { IDLE_GAP_MS } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { autoInferProjectFromPathBlock } from '@/services/lego_blocks/units/aiActivityMappingBlock'
+import {
+  extractAutomationIdBlock,
+  isWorkAuthorBlock,
+  resolveAuthorshipBlock,
+  type TurnAuthor,
+  type TurnFlags,
+} from '@/services/lego_blocks/units/sessionAuthorshipBlock'
 
 export type NativeSource = 'claude' | 'codex'
 
@@ -199,6 +206,14 @@ interface ConvEvent {
    *  `user_message` event_msg or the current `item_completed` one. Only set for
    *  user turns, and only used to drop the older shape when both are present. */
   stream?: 'legacy' | 'item'
+  /** Transcript flags that inform authorship. Claude Code only; Codex has none. */
+  flags?: TurnFlags
+  /** Who caused this event. Filled by `resolveAuthorshipBlock` after sorting —
+   *  it is a property of the *stream*, not of the line, so it cannot be decided
+   *  while reading events one at a time. */
+  author?: TurnAuthor
+  /** The automation that fired this turn, when it names one. */
+  automationId?: string
 }
 
 /**
@@ -242,11 +257,12 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
     body: string,
     uid?: string,
     stream?: 'legacy' | 'item',
+    flags?: TurnFlags,
   ): void => {
     if (!tsStr) return
     const ms = Date.parse(tsStr)
     if (!Number.isFinite(ms)) return
-    convEvents.push({ ts: ms, isUser, body, uid, stream })
+    convEvents.push({ ts: ms, isUser, body, uid, stream, flags })
   }
 
   for (const raw of lines) {
@@ -269,7 +285,14 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
         const message = evt.message as Record<string, unknown> | undefined
         const content = message ? message.content : undefined
         const body = flattenContent(content)
-        recordConv(ts, true, body, typeof evt.uuid === 'string' ? evt.uuid : undefined)
+        // `flattenContent` drops tool_result blocks, so a tool result arrives
+        // here with an empty body — and still becomes an `isUser` event. That
+        // is fine (it is a real event on the clock) as long as authorship reads
+        // it as a continuation rather than as the human speaking.
+        recordConv(ts, true, body, typeof evt.uuid === 'string' ? evt.uuid : undefined, undefined, {
+          isSidechain: evt.isSidechain === true,
+          isMeta: evt.isMeta === true,
+        })
       }
       if (type === 'assistant') {
         const message = evt.message as Record<string, unknown> | undefined
@@ -452,11 +475,31 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
     }
   }
 
+  // ── Authorship. Must run after the sort (it is a state machine over the
+  // stream) and after the legacy-dedup above (which zeroes bodies, and a zeroed
+  // body must read as a continuation rather than as a fresh human turn).
+  resolveAuthorshipBlock(convEvents)
+  for (const e of convEvents) {
+    if (e.author === 'automation') e.automationId = extractAutomationIdBlock(e.body)
+  }
+
+  // Automation-driven events are recorded (they are real, and they cost real
+  // tokens) but they do not get to hold a sitting open. This is the fix for the
+  // load-bearing half of the bug: a heartbeat firing every ~10 minutes kept
+  // every gap under the idle threshold, so a session that ended at 5:30pm was
+  // reported as running to 8:56pm. Windowing over work events only lets the
+  // gap the human actually left reappear.
+  const workEvents = convEvents.filter(e => isWorkAuthorBlock(e.author ?? 'human'))
+  const automationEvents = convEvents.filter(e => e.author === 'automation')
+
+  // Every event in the file was automation. There is no sitting here to report.
+  if (workEvents.length === 0) return []
+
   // ── Window split: break wherever the gap to the previous event exceeds the
   // idle threshold. Each window is a contiguous run of conversation events.
   const windows: ConvEvent[][] = []
   let cur: ConvEvent[] = []
-  for (const e of convEvents) {
+  for (const e of workEvents) {
     if (cur.length === 0) {
       cur.push(e)
       continue
@@ -603,6 +646,22 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       new Set(fileEdits.filter(e => e.ts >= winStart && e.ts <= winEnd).map(e => e.path)),
     )
 
+    // Automation wakes are attributed to the window they FOLLOW — the same
+    // bound the token math uses, since a heartbeat that fires after your last
+    // human turn belongs to that sitting's aftermath, not to the next one.
+    //
+    // They are carried rather than discarded on purpose. The Derivation
+    // contract's "absence is not evidence" applies to a row we chose not to
+    // draw exactly as much as to a value we failed to measure: an automation
+    // quietly burning tokens overnight must stay *discoverable*, or the fix for
+    // a misleading timeline becomes a timeline that hides a runaway cron.
+    const winAutomation = automationEvents.filter(
+      e => e.isUser && e.ts >= winStart && e.ts < windowBoundary,
+    )
+    const automationIds = Array.from(
+      new Set(winAutomation.map(e => e.automationId).filter((v): v is string => !!v)),
+    )
+
     out.push({
       path,
       source: sourceTag,
@@ -630,6 +689,8 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       sessionId: winSessionId,
       touchedPaths: touchedPaths.length > 0 ? touchedPaths : undefined,
       activeDurationMs: activeDurationOfWindow(win),
+      automationTurns: winAutomation.length > 0 ? winAutomation.length : undefined,
+      automationIds: automationIds.length > 0 ? automationIds : undefined,
     } as ParsedSession & { sessionId?: string } as ParsedSession)
   })
 

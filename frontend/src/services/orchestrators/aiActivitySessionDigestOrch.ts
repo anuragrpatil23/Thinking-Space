@@ -61,6 +61,11 @@ export interface SessionDigestResult {
    *  attempted and failed. Lets the UI say "paused, and here is why" instead of
    *  showing a rule-based title that looks like the model's best effort. */
   blocked?: HeavyWorkBlockReason
+  /** The stored digest no longer matches its input hash — the sitting's shape
+   *  moved, or a lever was bumped — and we served it anyway. Purely advisory:
+   *  it drives the "regenerate" affordance, and is never a reason to spend on
+   *  its own. See the replacement rule in `ensureSessionDigestOrch`. */
+  stale?: boolean
 }
 
 /**
@@ -110,6 +115,32 @@ export async function ensureSessionDigestOrch(
     generationTierRankBlock(existing.generator, existing.thinking) >= targetRank
   ) {
     return { digest: existing, isAi: true }
+  }
+
+  // REPLACEMENT RULE: an automatic run may CREATE a digest. It may never
+  // REPLACE one. Only an explicit `refresh` — a person clicking regenerate —
+  // overwrites a digest that already exists.
+  //
+  // Auto-regeneration was correct while this layer was being built: a few dozen
+  // digests, the deriving code changing weekly, and re-deriving on a hash miss
+  // was how a fix reached the corpus at all. Both halves of that have inverted.
+  // The corpus is ~4,800 digests, and the code is settled — so the behaviour
+  // that used to mean "your fix propagates" now means "any change to a hash
+  // input silently bills the whole archive". The authorship change nearly
+  // demonstrated it: bumping `promptVersion` would have re-derived every digest
+  // in the vault to correct the handful whose sitting actually moved.
+  //
+  // This is the structural fix, and it is why the version levers stop being
+  // dangerous. `CACHE_VERSION` and `promptVersion` still do their job — a stale
+  // record is still *identified* as stale — but identifying is now decoupled
+  // from spending. The user is told, and decides.
+  //
+  // What this deliberately gives up: a digest whose session genuinely grew no
+  // longer silently improves itself. That is the intended trade — a wrong title
+  // on a finished sitting is cheap and visible; an unrequested five-figure token
+  // bill is neither. The `stale` flag carries the difference to the UI.
+  if (!options.refresh && existing) {
+    return { digest: existing, isAi: true, stale: existing.inputHash !== nextHash }
   }
 
   // Live sessions do not get a model call.

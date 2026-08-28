@@ -22,9 +22,11 @@ import type { ProjectSessionDigest } from '@/services/lego_blocks/units/aiActivi
  */
 
 const sessionDigests = new Map<string, ProjectSessionDigest>()
+/** Paths whose stored digest no longer matches its input hash. */
+const staleSessions = new Set<string>()
 const ensureSessionDigestOrch = vi.fn(async (session: { path: string }) => {
   const digest = sessionDigests.get(session.path)
-  return digest ? { digest, isAi: true } : null
+  return digest ? { digest, isAi: true, stale: staleSessions.has(session.path) } : null
 })
 
 vi.mock('@/services/orchestrators/aiActivitySessionDigestOrch', () => ({
@@ -109,8 +111,41 @@ function chain(sessions: Array<{ path: string }>): ActivityChain {
 
 beforeEach(() => {
   sessionDigests.clear()
+  staleSessions.clear()
   ensureSessionDigestOrch.mockClear()
   runContract.mockClear()
+})
+
+// Staleness is advisory, and under the replacement rule (an automatic run may
+// create a digest but never replace one) it is the ONLY signal a human gets
+// that a stored summary has drifted from the sitting it describes. So it has to
+// survive composition rather than being averaged away.
+describe('staleness propagates from members to the chain', () => {
+  it('is not raised when every member matches its hash', async () => {
+    const a = seed({ sessionId: 's1', title: 'A', summary: '1. First.' })
+    const b = seed({ sessionId: 's2', title: 'B', summary: '1. Second.' })
+    const result = await ensureChainDigestOrch(chain([a, b]))
+    expect(result?.stale).toBeFalsy()
+  })
+
+  it('is raised when ANY member is stale, not only the first', async () => {
+    const a = seed({ sessionId: 's1', title: 'A', summary: '1. First.' })
+    const b = seed({ sessionId: 's2', title: 'B', summary: '1. Second.' })
+    // The chain body is composed from every member, so one drifted section is
+    // enough to misdescribe the whole thing. A first-member-wins rule would
+    // silently clear the badge on exactly the mixed chains that need it.
+    staleSessions.add(b.path)
+    const result = await ensureChainDigestOrch(chain([a, b]))
+    expect(result?.stale).toBe(true)
+  })
+
+  it('survives the single-session pass-through', async () => {
+    const s = seed({ sessionId: 's1', title: 'Read the Micron 10-K' })
+    staleSessions.add(s.path)
+    const result = await ensureChainDigestOrch(chain([s]))
+    expect(result?.stale).toBe(true)
+    expect(runContract).not.toHaveBeenCalled()
+  })
 })
 
 describe('a single-session chain is a pass-through', () => {

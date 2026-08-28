@@ -84,6 +84,15 @@ export interface ParsedSession {
    *  `endedIso - startedIso` remains the wall-clock span. Native sources only —
    *  absent for chat/vault sources with no per-message timestamps. */
   activeDurationMs?: number
+  /** Automation-driven turns (Codex `<heartbeat>`, Claude Code
+   *  `<task-notification>`) that fired during or after this sitting. They are
+   *  excluded from `userMsgCount`, from windowing and from every duration —
+   *  nobody was at the keyboard — but they are counted here so a cron burning
+   *  tokens overnight stays visible instead of merely vanishing from the table. */
+  automationTurns?: number
+  /** The distinct automations behind `automationTurns`, when the transcript
+   *  names them (Codex writes `<automation_id>`; Claude Code does not). */
+  automationIds?: string[]
 }
 
 export interface SessionTokens {

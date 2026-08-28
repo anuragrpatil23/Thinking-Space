@@ -5,6 +5,7 @@ import type {
 import { readNativeAiSession } from '@/services/lego_blocks/integrations/nativeAiSessionsBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { getAiInputBudgetTokens } from '@/services/lego_blocks/units/storageKeyBlock'
+import { classifyUserTurnBlock } from '@/services/lego_blocks/units/sessionAuthorshipBlock'
 
 // Shared chain-context extraction.
 //
@@ -162,6 +163,13 @@ function filterUserText(text: string): string | null {
     .trim()
   if (!clean) return null
   if (clean.startsWith('[tool_result]')) return null
+  // Automation wakes are not part of the sitting (see sessionAuthorshipBlock),
+  // so they must not reach the model either. Windowing already drops the ones
+  // that fall outside a human span, but a heartbeat firing *between* two of
+  // your turns lands inside the window's time range and would otherwise be fed
+  // to the digest as though you had typed it — 36 of them sit inside one
+  // MountSinaiGit sitting alone.
+  if (classifyUserTurnBlock(clean) === 'automation') return null
   if (LOCAL_CMD_WRAPPER_RE.test(clean)) return null
   if (clean.startsWith(SKILL_DOCS_PREFIX)) {
     // Skill invocations dump the entire skill readme into the transcript;

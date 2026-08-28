@@ -23,6 +23,12 @@ export interface ChainDigestState {
    *  battery or in Low Power Mode. Manual `refresh` ignores the gate, so this
    *  is the UI's cue to point at the regenerate button. */
   blocked: HeavyWorkBlockReason | null
+  /** The stored digest no longer matches its input hash — the sitting's shape
+   *  moved under it (messages re-counted, window bounds shifted). Serving it
+   *  anyway is deliberate: under the replacement rule an automatic run never
+   *  rebuilds a digest, so this flag is the only thing that tells the user the
+   *  text below may describe a different span than the row above. */
+  stale: boolean
   /** Force a regeneration with the currently-selected provider, bypassing the
    *  reuse/precedence fast path (e.g. to re-run local even when a Claude
    *  digest is cached). */
@@ -37,6 +43,7 @@ export function useChainDigestBlock(chain: ActivityChain): ChainDigestState {
   const [loading, setLoading] = useState(false)
   const [generator, setGenerator] = useState<GenerationSource | ''>('')
   const [blocked, setBlocked] = useState<HeavyWorkBlockReason | null>(null)
+  const [stale, setStale] = useState(false)
   const [refreshNonce, setRefreshNonce] = useState(0)
   const prevNonce = useRef(0)
   const cancelledRef = useRef(false)
@@ -55,6 +62,10 @@ export function useChainDigestBlock(chain: ActivityChain): ChainDigestState {
     setTitle(fallback)
     setSummary('')
     setIsAi(false)
+    // Cleared on every run, including a manual one: a regeneration that lands
+    // makes the record fresh by definition, and leaving the badge up would
+    // report the drift the click just fixed.
+    setStale(false)
     if (!isManualRefresh) setGenerator('')
 
     void (async () => {
@@ -68,6 +79,7 @@ export function useChainDigestBlock(chain: ActivityChain): ChainDigestState {
       setIsAi(result.isAi)
       setGenerator(result.digest.generator)
       setBlocked(result.blocked ?? null)
+      setStale(result.stale === true)
       setLoading(false)
     })()
 
@@ -78,5 +90,5 @@ export function useChainDigestBlock(chain: ActivityChain): ChainDigestState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, chain.msgCount, refreshNonce])
 
-  return { title, summary, isAi, loading, generator, blocked, refresh }
+  return { title, summary, isAi, loading, generator, blocked, stale, refresh }
 }

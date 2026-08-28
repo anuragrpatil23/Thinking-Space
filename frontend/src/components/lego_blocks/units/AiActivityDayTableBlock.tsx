@@ -831,7 +831,8 @@ function ChainTopicCellBlock({
 // label, with the original first-message snippet below for context. Keeps
 // the previous multi-session topic list intact.
 function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
-  const { title, summary, isAi, loading, generator, blocked, refresh } = useChainDigestBlock(chain)
+  const { title, summary, isAi, loading, generator, blocked, stale, refresh } =
+    useChainDigestBlock(chain)
   const seen = new Set<string>([chain.topic])
   const extras =
     chain.sessions.length > 1
@@ -868,6 +869,24 @@ function ChainTopicExpandedBlock({ chain }: { chain: ActivityChain }) {
         {blocked && !loading && (
           <span className="text-[9px] uppercase tracking-[0.08em] text-muted-foreground/70">
             {heavyWorkBlockedLabelBlock(blocked)}
+          </span>
+        )}
+        {/* STALE. The stored summary no longer matches the sitting it describes
+            — messages were re-counted, or the window's bounds moved under it.
+            We serve it regardless, because an automatic run may never replace a
+            digest (see `ensureSessionDigestOrch`), which makes this badge the
+            only thing standing between the user and a summary that quietly
+            describes a different span of work than the row above it.
+
+            Not shown while loading: during a regeneration the old text is still
+            on screen and genuinely is stale, but saying so next to a spinner
+            reads as a problem rather than as the thing being fixed. */}
+        {stale && !loading && (
+          <span
+            className="shrink-0 rounded bg-amber-500/15 dark:bg-amber-500/25 px-1 py-px text-[9px] uppercase tracking-[0.08em] text-amber-500/90"
+            title="This summary was written for an earlier shape of the sitting — its message count or time bounds have since changed. It is kept rather than rebuilt automatically, because regenerating costs a model call. Click regenerate to bring it up to date."
+          >
+            stale
           </span>
         )}
         <button

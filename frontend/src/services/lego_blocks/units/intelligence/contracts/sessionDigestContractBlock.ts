@@ -240,6 +240,34 @@ export const sessionDigestContract = defineContractBlock({
   // between the session-digest refactor and this fix describes its whole file
   // rather than its window, and would match its own hash forever without this
   // bump. Raise it whenever a change alters what the model sees.
+  //
+  // NOT bumped for the 2026-08-28 authorship change, deliberately. Authorship
+  // does alter what the model sees — a window that fed it 28 heartbeat wakes
+  // plus one human line now feeds it the human line — which is normally exactly
+  // the trigger. It is not bumped because this lever is *global* and the change
+  // is not: it touches only sessions that contain automation.
+  //
+  // Note this is no longer a cost argument. Under the replacement rule in
+  // `ensureSessionDigestOrch` (an automatic run may create a digest, never
+  // replace one) a bump here cannot spend anything. What it would do is flag all
+  // ~4,800 stored digests `stale` in the UI when only a handful actually moved —
+  // false signal on the affordance that exists to tell the user what is worth
+  // regenerating. A lever that cries wolf over the whole archive is worse than
+  // no lever, because the next real bump is the one nobody acts on.
+  //
+  // The finer lever already exists and is exact. `computeSessionInputHashBlock`
+  // hashes `userMsgCount` plus both window bounds, and an automation turn moves
+  // at least one of them by construction: heartbeats used to reach the general
+  // `scan.count += 1`, so every affected window's count drops, and a window an
+  // automation was holding open also loses its end bound. Verified against a
+  // real record rather than argued — in the transcript that motivated all of
+  // this, three windows moved while window 0 kept `msgCount: 9` and identical
+  // bounds, so its digest ("CDMDEID delta update kickoff") hashes the same and
+  // is reused, in the same file.
+  //
+  // The general rule: prefer the narrowest lever that *provably* moves for every
+  // affected record. Reach for a global version only when no per-record input
+  // distinguishes the change — here one did.
   promptVersion: 2,
   outputSchema: s.string({ description: 'TITLE line + blank line + summary body' }),
   buildRequest: (session: ParsedSession) => {

@@ -99,6 +99,16 @@ export interface ChainDigestResult {
   /** Set when automatic generation was refused on power grounds. See the
    *  power gate in `aiActivitySessionDigestOrch`. */
   blocked?: HeavyWorkBlockReason
+  /** At least one member session's stored digest no longer matches its input
+   *  hash — the sitting's shape moved under it. True for the CHAIN when it is
+   *  true for ANY member, because the chain's body is composed from all of
+   *  them, so one stale member makes the whole composition stale.
+   *
+   *  Advisory only. Under the replacement rule an automatic run never rebuilds
+   *  a digest, so this is the *only* thing that tells a human a record has
+   *  drifted — which is exactly why it must not be raised loosely (see the
+   *  `promptVersion` note in `sessionDigestContractBlock`). */
+  stale?: boolean
 }
 
 /** Read-only: never runs the model. Returns null when no member has a stored
@@ -126,12 +136,16 @@ export async function ensureChainDigestOrch(
 ): Promise<ChainDigestResult | null> {
   const digests: ProjectSessionDigest[] = []
   let anyAi = false
+  let stale = false
   let blocked: HeavyWorkBlockReason | undefined
   for (const session of chain.sessions) {
     const result = await ensureSessionDigestOrch(session, options)
     if (!result) continue
     digests.push(result.digest)
     if (result.isAi) anyAi = true
+    // Any stale member makes the composition stale — the chain body is built
+    // from every member, so one drifted section is enough to misdescribe it.
+    if (result.stale) stale = true
     // First refusal wins — every member is refused for the same reason anyway,
     // since the gate reads one machine's power state.
     if (result.blocked && !blocked) blocked = result.blocked
@@ -141,20 +155,21 @@ export async function ensureChainDigestOrch(
   // PASS-THROUGH. One sitting: the chain and the session are the same thing, so
   // composing would be paying a model to rewrite a summary into itself.
   if (digests.length === 1) {
-    return { digest: composeWithoutModelBlock(chain, digests), isAi: anyAi, blocked }
+    return { digest: composeWithoutModelBlock(chain, digests), isAi: anyAi, blocked, stale }
   }
 
   const base = composeWithoutModelBlock(chain, digests)
-  if (!intelligenceCacheAvailableBlock() || !getAiActivityAiTitlesEnabled()) return { digest: base, isAi: false }
+  if (!intelligenceCacheAvailableBlock() || !getAiActivityAiTitlesEnabled())
+    return { digest: base, isAi: false, stale }
   // The stitch is another model call, so it answers to the same power gate as
   // the digests beneath it. Degrading to the concatenation here is the same
   // honest fallback a failed stitch already takes.
   if (!options.refresh) {
     const power = await heavyBackgroundWorkAllowedBlock()
-    if (!power.allowed) return { digest: base, isAi: anyAi, blocked: blocked ?? power.reason }
+    if (!power.allowed) return { digest: base, isAi: anyAi, blocked: blocked ?? power.reason, stale }
   }
   const av = await availability().catch(() => ({ available: false }))
-  if (!av.available) return { digest: base, isAi: false }
+  if (!av.available) return { digest: base, isAi: false, stale }
 
   const input = stitchInputBlock(chain, digests)
   const result = await runContract<ChainStitchContractInput, typeof chainStitchContract.outputSchema>(
@@ -164,7 +179,7 @@ export async function ensureChainDigestOrch(
   )
   // A failed stitch degrades to the concatenation, which is honest rather than
   // lesser: it is exactly the member summaries, unmerged and unembellished.
-  if (!result.ok || !result.value) return { digest: base, isAi: anyAi, blocked }
+  if (!result.ok || !result.value) return { digest: base, isAi: anyAi, blocked, stale }
 
   const output = result.value as unknown as ChainStitchOutput
   return {
@@ -177,6 +192,7 @@ export async function ensureChainDigestOrch(
     },
     isAi: true,
     blocked,
+    stale,
   }
 }
 
