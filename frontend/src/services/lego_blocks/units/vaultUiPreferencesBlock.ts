@@ -54,8 +54,6 @@ export interface AiActivityRoamingPrefsBlock {
   calendarMode: boolean | null
   aiTitlesEnabled: boolean | null
   restDays: number[] | null
-  goodnotesReadingEnabled: boolean | null
-  goodnotesAnnotationGate: boolean | null
 }
 
 export interface VaultUiPreferencesBlock {
@@ -134,8 +132,6 @@ export const DEFAULT_VAULT_UI_PREFERENCES_BLOCK: VaultUiPreferencesBlock = {
     calendarMode: null,
     aiTitlesEnabled: null,
     restDays: null,
-    goodnotesReadingEnabled: null,
-    goodnotesAnnotationGate: null,
   },
 }
 
@@ -165,8 +161,6 @@ export function createDefaultAiActivityRoamingPrefsBlock(): AiActivityRoamingPre
     calendarMode: null,
     aiTitlesEnabled: null,
     restDays: null,
-    goodnotesReadingEnabled: null,
-    goodnotesAnnotationGate: null,
   }
 }
 
@@ -187,8 +181,6 @@ export function normalizeAiActivityRoamingPrefsBlock(value: unknown): AiActivity
           (n): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 6,
         )
       : null,
-    goodnotesReadingEnabled: normalizeNullableBooleanBlock(record.goodnotesReadingEnabled),
-    goodnotesAnnotationGate: normalizeNullableBooleanBlock(record.goodnotesAnnotationGate),
   }
 }
 

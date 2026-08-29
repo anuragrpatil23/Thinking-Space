@@ -135,12 +135,6 @@ import {
   readClaudeHistoryBlock,
   type NativeAiSource,
 } from './lego_blocks/nativeAiSessionsBlock';
-import {
-  harvestGoodnotesReadingBlock,
-  readGoodnotesReadingLogBlock,
-  editGoodnotesReadingRecordBlock,
-  type GoodnotesEditInput,
-} from './lego_blocks/goodnotesReadingBlock';
 import { harvestAppleScreenTimeBlock } from './lego_blocks/appleScreenTimeDumperBlock';
 import { startHeartbeatBlock, stopHeartbeatBlock } from './lego_blocks/heartbeatBlock';
 import { notifyIfOfficialReleaseAheadBlock } from './lego_blocks/localBuildUpdateNoticeBlock';
@@ -2378,32 +2372,6 @@ ipcMain.handle('appleScreenTime:harvest', async (_event, vaultRoot: string) => {
   assertAuthorizedVaultRootBlock(vaultRoot);
   if (!resolveWriteAiRawEnabledBlock(vaultRoot)) return;
   return harvestAppleScreenTimeBlock(vaultRoot);
-});
-
-// -- GoodNotes reading activity (attributes app_usage focus events to docs
-//    via fts.sqlite; writes only to the vault's durable reading log). Runs
-//    the Screen Time dump first so its source data is fresh. Same gate as
-//    the Screen Time handler — both produce files under
-//    `ai-activity/raw-sessions/`. --
-ipcMain.handle('goodnotes:harvest', async (_event, vaultRoot: string) => {
-  assertAuthorizedVaultRootBlock(vaultRoot);
-  if (!resolveWriteAiRawEnabledBlock(vaultRoot)) {
-    return { added: 0, total: 0, unavailable: true };
-  }
-  if (typeof vaultRoot === 'string' && vaultRoot) {
-    await harvestAppleScreenTimeBlock(vaultRoot);
-  }
-  return harvestGoodnotesReadingBlock(vaultRoot);
-});
-ipcMain.handle('goodnotes:readLog', async (_event, vaultRoot: string) => {
-  return readGoodnotesReadingLogBlock(assertAuthorizedVaultRootBlock(vaultRoot));
-});
-ipcMain.handle('goodnotes:editRecord', async (
-  _event,
-  vaultRoot: string,
-  input: GoodnotesEditInput,
-) => {
-  return editGoodnotesReadingRecordBlock(assertAuthorizedVaultRootBlock(vaultRoot), input);
 });
 
 // -- Mkdir --

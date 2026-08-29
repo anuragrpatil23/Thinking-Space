@@ -25,8 +25,6 @@ import {
   getAiActivityHomePostItEnabled,
   getAiActivityRestDays,
   getAiActivitySetMode,
-  getGoodnotesAnnotationGate,
-  getGoodnotesReadingEnabled,
   getStoredVaultRoot,
   registerStorageWriteListenerBlock,
   setAiActivityAiTitlesEnabled,
@@ -34,8 +32,6 @@ import {
   setAiActivityHomePostItEnabled,
   setAiActivityRestDays,
   setAiActivitySetMode,
-  setGoodnotesAnnotationGate,
-  setGoodnotesReadingEnabled,
 } from '@/services/lego_blocks/units/storageKeyBlock'
 
 const THINK_SPACE_DIR_ORCH = '.thinking-space'
@@ -254,8 +250,6 @@ const AI_ACTIVITY_ROAMING_STORAGE_KEYS_ORCH = new Set<string>([
   STORAGE_KEYS.aiActivityCalendarMode,
   STORAGE_KEYS.aiActivityAiTitlesEnabled,
   STORAGE_KEYS.aiActivityRestDays,
-  STORAGE_KEYS.goodnotesReadingEnabled,
-  STORAGE_KEYS.goodnotesReadingAnnotationGate,
 ])
 
 function snapshotLocalAiActivityPrefsOrch(): AiActivityRoamingPrefsBlock {
@@ -265,8 +259,6 @@ function snapshotLocalAiActivityPrefsOrch(): AiActivityRoamingPrefsBlock {
     calendarMode: getAiActivityCalendarMode(),
     aiTitlesEnabled: getAiActivityAiTitlesEnabled(),
     restDays: getAiActivityRestDays(),
-    goodnotesReadingEnabled: getGoodnotesReadingEnabled(),
-    goodnotesAnnotationGate: getGoodnotesAnnotationGate(),
   }
 }
 
@@ -302,12 +294,6 @@ function applyRoamedAiActivityPrefsOrch(prefs: AiActivityRoamingPrefsBlock): voi
     }
     if (prefs.restDays !== null && JSON.stringify(prefs.restDays) !== JSON.stringify(getAiActivityRestDays())) {
       setAiActivityRestDays(prefs.restDays)
-    }
-    if (prefs.goodnotesReadingEnabled !== null && prefs.goodnotesReadingEnabled !== getGoodnotesReadingEnabled()) {
-      setGoodnotesReadingEnabled(prefs.goodnotesReadingEnabled)
-    }
-    if (prefs.goodnotesAnnotationGate !== null && prefs.goodnotesAnnotationGate !== getGoodnotesAnnotationGate()) {
-      setGoodnotesAnnotationGate(prefs.goodnotesAnnotationGate)
     }
   } finally {
     applyingRoamingPullOrch = false

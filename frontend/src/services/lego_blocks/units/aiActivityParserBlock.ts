@@ -11,7 +11,6 @@ export type ActivitySource =
   | 'codex'
   | 'chatgpt'
   | 'grok'
-  | 'goodnotes'
   | 'memorized'
   | 'reading-md'
   | 'reading-draw'
@@ -27,7 +26,6 @@ export function isManualSource(source: ActivitySource): boolean {
  *  These all roll up under the single "Reading" source pill and are filtered
  *  among themselves by the reading sub-source pills. */
 export const READING_SOURCES: ReadonlySet<ActivitySource> = new Set<ActivitySource>([
-  'goodnotes',
   'memorized',
   'reading-md',
   'reading-draw',
@@ -467,8 +465,8 @@ export function inheritUnknownSessions(sessions: ParsedSession[]): ParsedSession
   // session counts are in the low thousands at most.
   const anchors: Array<{ t: number; project: string }> = []
   for (const s of sorted) {
-    // Web-chat (ChatGPT/Grok) and reading/memorization (GoodNotes, memorized,
-    // markdown, excalidraw) sessions bucket under their own labels — those must
+    // Web-chat (ChatGPT/Grok) and reading/memorization (memorized, markdown,
+    // excalidraw) sessions bucket under their own labels — those must
     // never bleed onto a nearby unknown coding session via temporal inheritance.
     if (s.source === 'chatgpt' || s.source === 'grok' || isReadingSource(s.source) || isManualSource(s.source)) continue
     if (isInheritable(s.project)) {

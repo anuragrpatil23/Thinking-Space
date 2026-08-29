@@ -436,7 +436,7 @@ export default function AiActivityDayTableBlock({
                   const costUsd = hasTokens ? estimateChainCostUsd(c) : 0
                   const modelLabel = modelSummaryLabel(c)
                   const isReconstructed = c.sessions.every(s => s.reconstructed)
-                  // Reading/memorization chains (GoodNotes, memorized, markdown,
+                  // Reading/memorization chains (memorized, markdown,
                   // excalidraw) have no transcript and no tokens — they're
                   // document/practice sessions, not conversations.
                   const isReading = isReadingSource(c.source)
@@ -579,13 +579,11 @@ export default function AiActivityDayTableBlock({
                           </span>
                         ) : isReading ? (
                           <span className="text-muted-foreground/60">
-                            {c.source === 'goodnotes'
-                              ? "Reading session (GoodNotes) — harvested from the document's open-time; duration and page count are real, there's no transcript."
-                              : c.source === 'memorized'
-                                ? 'Memorization session — recorded from the notebook timer; duration is real, there’s no transcript.'
-                                : c.source === 'reading-draw'
-                                  ? 'Drawing session (Excalidraw) — recorded from time the canvas was open; duration is real, there’s no transcript.'
-                                  : 'Reading session (Markdown) — recorded from time the document was open; duration is real, there’s no transcript.'}
+                            {c.source === 'memorized'
+                              ? 'Memorization session — recorded from the notebook timer; duration is real, there’s no transcript.'
+                              : c.source === 'reading-draw'
+                                ? 'Drawing session (Excalidraw) — measured attention on the canvas; duration is real, there’s no transcript.'
+                                : 'Reading session (Markdown) — measured attention on the document; duration is real, there’s no transcript.'}
                           </span>
                         ) : c.source === 'claude-code' || c.source === 'codex' ? (
                           // A native transcript with no usage in this window —

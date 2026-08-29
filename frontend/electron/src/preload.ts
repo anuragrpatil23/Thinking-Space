@@ -611,39 +611,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   nativeAiClaudeHistoryRead: (): Promise<string> =>
     ipcRenderer.invoke('nativeAiSessions:readClaudeHistory'),
 
-  // GoodNotes reading activity — harvest macOS Screen Time's `knowledgeC.db`
-  // for GoodNotes app-focus sessions, attribute each to the doc whose
-  // last_modified falls inside the focus window (via fts.sqlite), and append
-  // to the vault's durable JSONL. Requires Full Disk Access for Thinking
-  // Space; `needsFullDiskAccess` is true when macOS denies the DB read.
-  goodnotesHarvest: (vaultRoot: string): Promise<{
-    added: number
-    total: number
-    unavailable?: boolean
-    needsFullDiskAccess?: boolean
-  }> => ipcRenderer.invoke('goodnotes:harvest', vaultRoot),
-  goodnotesReadLog: (vaultRoot: string): Promise<Array<{
-    key: string
-    documentId: string
-    title: string
-    startMs: number
-    endMs: number
-    pages: number
-    documentType: string
-    harvestedAt: number
-    docModifiedMs?: number
-    userEdited?: boolean
-  }>> => ipcRenderer.invoke('goodnotes:readLog', vaultRoot),
-  goodnotesEditRecord: (
-    vaultRoot: string,
-    input: { key: string; startMs: number; endMs: number; pages: number },
-  ): Promise<{
-    ok: boolean
-    reason?: 'not-found' | 'invalid' | 'failed'
-    absorbed: number
-    total: number
-  }> => ipcRenderer.invoke('goodnotes:editRecord', vaultRoot, input),
-
   // Git (desktop-only)
   git: (vaultRoot: string, args: string[]) =>
     ipcRenderer.invoke('vault:git', vaultRoot, args),

@@ -76,7 +76,6 @@ export type AiSourceFilter = 'all' | 'claude-code' | 'codex' | 'chatgpt' | 'grok
  *  filter AI sessions. 'all' shows every reading-family source. */
 export type ReadingSourceFilter =
   | 'all'
-  | 'goodnotes'
   | 'memorized'
   | 'reading-md'
   | 'reading-draw'
@@ -84,7 +83,6 @@ export type ReadingSourceFilter =
 /** Per-reading-source counts for the sub-source pill labels. */
 export interface ReadingCounts {
   all: number
-  goodnotes: number
   memorized: number
   readingMd: number
   readingDraw: number
@@ -124,7 +122,7 @@ export interface UseAiActivityResult {
    *  just narrows which sessions feed every downstream aggregation. */
   sourceFilter: AiSourceFilter
   setSourceFilter: (filter: AiSourceFilter) => void
-  /** Sub-source filter within the "Reading" pill (GoodNotes / Memorize /
+  /** Sub-source filter within the "Reading" pill (Memorize /
    *  Markdown / Drawing). Only meaningful while sourceFilter === 'reading'. */
   readingSource: ReadingSourceFilter
   setReadingSource: (filter: ReadingSourceFilter) => void
@@ -193,7 +191,6 @@ const VALID_SOURCE_FILTERS: ReadonlySet<AiSourceFilter> = new Set([
 ])
 const VALID_READING_SOURCES: ReadonlySet<ReadingSourceFilter> = new Set([
   'all',
-  'goodnotes',
   'memorized',
   'reading-md',
   'reading-draw',
@@ -444,7 +441,6 @@ export function useAiActivityBlock(
     let codex = 0
     let chatgpt = 0
     let grok = 0
-    let goodnotes = 0
     let memorized = 0
     let readingMd = 0
     let readingDraw = 0
@@ -456,16 +452,15 @@ export function useAiActivityBlock(
       if (src === 'codex') codex += 1
       else if (src === 'chatgpt') chatgpt += 1
       else if (src === 'grok') grok += 1
-      else if (src === 'goodnotes') goodnotes += 1
       else if (src === 'memorized') memorized += 1
       else if (src === 'reading-md') readingMd += 1
       else if (src === 'reading-draw') readingDraw += 1
       else if (src === 'claude-code') claudeCode += 1
     }
-    const reading = goodnotes + memorized + readingMd + readingDraw
+    const reading = memorized + readingMd + readingDraw
     return {
       sourceCounts: { claudeCode, codex, chatgpt, grok, reading },
-      readingCounts: { all: reading, goodnotes, memorized, readingMd, readingDraw },
+      readingCounts: { all: reading, memorized, readingMd, readingDraw },
     }
   }, [enrichedSessions, startIso, endIso])
 

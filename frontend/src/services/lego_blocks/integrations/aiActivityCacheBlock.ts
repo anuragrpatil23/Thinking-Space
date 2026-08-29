@@ -30,7 +30,6 @@ import {
 import { parseClaudeHistoryBlock } from '@/services/lego_blocks/units/claudeHistoryParserBlock'
 import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
 import { readVaultSessionPrefixesBlock } from '@/services/lego_blocks/units/aiActivitySourcesBlock'
-import { loadGoodnotesReadingSessions } from '@/services/lego_blocks/integrations/goodnotesReadingBlock'
 import { loadMemorizedSessions } from '@/services/lego_blocks/integrations/memorizedReadingBlock'
 import { loadThinkingspaceReadingSessions } from '@/services/lego_blocks/integrations/thinkingspaceReadingBlock'
 import { loadManualSessions } from '@/services/lego_blocks/integrations/manualSessionBlock'
@@ -456,29 +455,20 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
     })
   }
 
-  // ── 4b. GoodNotes reading sessions. ─────────────────────────────────────────
-  // Harvested (Electron) or read from the synced vault log (iPhone/web) into the
-  // shared ParsedSession shape, tagged source:'goodnotes'. Deliberately NOT
-  // written to the on-disk cache.json — the durable JSONL in the vault is their
-  // source of truth, so we read them fresh each load (small file) and merge them
-  // into the dedup below. They carry unique ids (no collision with claude/codex/
-  // chat sessions), so dedup leaves them intact.
-  const goodnotesSessions = await loadGoodnotesReadingSessions(fs).catch(() => [])
-
-  // ── 4c. Memorization sessions. ──────────────────────────────────────────────
+  // ── 4b. Memorization sessions. ──────────────────────────────────────────────
   // Read from the `memorized_sessions` YAML indexed into IndexedDB (the durable
-  // source of truth is the notes themselves), tagged source:'memorized'. Like
-  // GoodNotes, NOT written to cache.json — read fresh each load, unique ids
+  // source of truth is the notes themselves), tagged source:'memorized'.
+  // NOT written to cache.json — read fresh each load, unique ids
   // survive the dedup below.
   const memorizedSessions = await loadMemorizedSessions().catch(() => [])
 
-  // ── 4d. In-app reading/drawing sessions (TS markdown + Excalidraw). ──────────
+  // ── 4c. In-app reading/drawing sessions (TS markdown + Excalidraw). ──────────
   // Emitted by the viewers into a durable vault JSONL once a sitting crosses the
   // dwell threshold, tagged source:'reading-md'/'reading-draw'. Like the others,
   // NOT written to cache.json — read fresh each load, unique ids survive dedup.
   const thinkingspaceReadingSessions = await loadThinkingspaceReadingSessions(fs).catch(() => [])
 
-  // ── 4e. User-authored manual sessions (ai-activity/manual-sessions.jsonl). ───
+  // ── 4d. User-authored manual sessions (ai-activity/manual-sessions.jsonl). ───
   // Hand-logged time blocks ("painting 4h"); durable, uuid-keyed, read fresh.
   const manualSessions = await loadManualSessions(fs).catch(() => [])
 
@@ -492,7 +482,6 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
   // history windows would double-count, so coverage is all-or-nothing per id.
   const raw = [
     ...Object.values(next),
-    ...goodnotesSessions,
     ...memorizedSessions,
     ...thinkingspaceReadingSessions,
     ...manualSessions,

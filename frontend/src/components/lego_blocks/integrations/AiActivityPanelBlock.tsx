@@ -846,7 +846,6 @@ function ReadingSubPills({
   // for AI sessions. Only rendered while the Reading source pill is active.
   const opts: Array<{ id: ReadingSourceFilter; label: string; count: number }> = [
     { id: 'all', label: 'All', count: counts.all },
-    { id: 'goodnotes', label: 'GoodNotes', count: counts.goodnotes },
     { id: 'memorized', label: 'Memorize', count: counts.memorized },
     { id: 'reading-md', label: 'Markdown', count: counts.readingMd },
     { id: 'reading-draw', label: 'Drawing', count: counts.readingDraw },

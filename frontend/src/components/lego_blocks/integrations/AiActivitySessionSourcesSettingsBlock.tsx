@@ -3,10 +3,6 @@ import { SettingsGroupBlock, SettingsRowBlock } from '@/components/lego_blocks/u
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
 import {
-  getGoodnotesAnnotationGate,
-  getGoodnotesReadingEnabled,
-  setGoodnotesAnnotationGate,
-  setGoodnotesReadingEnabled,
 } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   getVaultWriteAiActivityEnabled,
@@ -31,24 +27,10 @@ export default function AiActivitySessionSourcesSettingsBlock() {
   const [roots, setRoots] = useState<NativeAiSessionRoots | null>(null)
   const [rootsUnavailable, setRootsUnavailable] = useState(false)
   const [prefixes, setPrefixes] = useState<string[]>(() => readVaultSessionPrefixesBlock())
-  const [annotationGate, setAnnotationGate] = useState<boolean>(() => getGoodnotesAnnotationGate())
-  const [readingEnabled, setReadingEnabled] = useState<boolean>(() => getGoodnotesReadingEnabled())
   const vaultWritePrefsAvailable = isVaultWritePrefsAvailable()
   const [writeAiRaw, setWriteAiRaw] = useState<boolean | null>(null)
   const [writeAiActivity, setWriteAiActivity] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  const toggleAnnotationGate = (checked: boolean) => {
-    setGoodnotesAnnotationGate(checked)
-    setAnnotationGate(checked)
-    clearAiActivitySnapshot()
-  }
-
-  const toggleReadingEnabled = (checked: boolean) => {
-    setGoodnotesReadingEnabled(checked)
-    setReadingEnabled(checked)
-    clearAiActivitySnapshot()
-  }
 
   useEffect(() => {
     let cancelled = false
@@ -174,7 +156,7 @@ export default function AiActivitySessionSourcesSettingsBlock() {
           <SettingsRowBlock
             as="label"
             label={<>Write raw activity signals to <span className="font-mono text-[12px]">ai-activity/raw-sessions/</span></>}
-            description="Mirrors macOS Screen Time streams and GoodNotes reading sessions into per-day JSONLs under your vault. Needed so activity history survives the macOS 28-day cliff and so the Reading pill has data. Requires Full Disk Access. Off by default for new vaults."
+            description="Mirrors macOS Screen Time streams into per-day JSONLs under your vault, so activity history survives the macOS 28-day cliff. Requires Full Disk Access. Off by default for new vaults."
             control={(
               <Switch
                 checked={writeAiRaw === true}
@@ -200,33 +182,6 @@ export default function AiActivitySessionSourcesSettingsBlock() {
         </SettingsGroupBlock>
       )}
 
-      <SettingsGroupBlock heading="Reading (GoodNotes)">
-        <SettingsRowBlock
-          as="label"
-          label="Harvest GoodNotes reading sessions"
-          description={'Reads GoodNotes’ local database to attribute reading time to specific documents. Off by default because it touches another app’s container and triggers macOS’s "access data from other apps" prompt.'}
-          control={(
-            <Switch
-              checked={readingEnabled}
-              onCheckedChange={toggleReadingEnabled}
-              aria-label="Harvest GoodNotes reading sessions"
-            />
-          )}
-        />
-        <SettingsRowBlock
-          as="label"
-          label="Only count annotated reading"
-          description="Counts a session only when you actually marked up the document that day (a stroke or date added), filtering out PDFs left open and idle. Leave off if you often read without annotating."
-          control={(
-            <Switch
-              checked={annotationGate}
-              onCheckedChange={toggleAnnotationGate}
-              aria-label="Only count annotated GoodNotes reading"
-              disabled={!readingEnabled}
-            />
-          )}
-        />
-      </SettingsGroupBlock>
     </>
   )
 }

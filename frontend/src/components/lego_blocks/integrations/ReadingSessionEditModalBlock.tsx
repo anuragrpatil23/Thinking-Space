@@ -2,13 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ActivityChain, ActivitySource } from '@/services/lego_blocks/units/aiActivityParserBlock'
-import { editGoodnotesReadingRecord } from '@/services/lego_blocks/integrations/goodnotesReadingBlock'
 import { editThinkingspaceReadingRecord } from '@/services/lego_blocks/integrations/thinkingspaceReadingBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 
 // Same-source same-doc rows that overlap the edited window with this much
 // grace on each side will be absorbed on save. Mirrors the backend constants
-// in goodnotesReadingBlock.ts / thinkingspaceReadingBlock.ts so the live
+// in thinkingspaceReadingBlock.ts so the live
 // preview matches what actually happens.
 const ABSORB_GRACE_MS = 5 * 60_000
 
@@ -82,7 +81,6 @@ function countAbsorbedChains(
 }
 
 const SUPPORTED_SOURCES: ReadonlySet<ActivitySource> = new Set<ActivitySource>([
-  'goodnotes',
   'reading-md',
   'reading-draw',
 ])
@@ -138,32 +136,15 @@ export default function ReadingSessionEditModalBlock({
       return
     }
     try {
-      if (chain.source === 'goodnotes') {
-        const result = await editGoodnotesReadingRecord({
-          key, startMs, endMs, pages: pagesNum,
-        })
-        if (!result) {
-          setError('Editing GoodNotes sessions requires the desktop app.')
-          setSaving(false)
-          return
-        }
-        if (!result.ok) {
-          setError('Could not save the edit. The record may have been removed.')
-          setSaving(false)
-          return
-        }
-        onSaved({ absorbed: result.absorbed })
-      } else {
-        const result = await editThinkingspaceReadingRecord(getVaultFS(), {
-          key, startMs, endMs, pages: pagesNum,
-        })
-        if (!result.ok) {
-          setError('Could not save the edit. The record may have been removed.')
-          setSaving(false)
-          return
-        }
-        onSaved({ absorbed: result.absorbed })
+      const result = await editThinkingspaceReadingRecord(getVaultFS(), {
+        key, startMs, endMs, pages: pagesNum,
+      })
+      if (!result.ok) {
+        setError('Could not save the edit. The record may have been removed.')
+        setSaving(false)
+        return
       }
+      onSaved({ absorbed: result.absorbed })
     } catch {
       setError('Save failed unexpectedly.')
       setSaving(false)
