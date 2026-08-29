@@ -10,8 +10,8 @@
 
 ## Download
 
-- macOS (Apple Silicon): [Thinking Space 2.9.0 arm64 DMG](https://github.com/anuragrpatil23/Thinking-Space/releases/download/v2.9.0/Thinking.Space-2.9.0-arm64.dmg)
-- Windows (x64): [Thinking Space 2.9.0 x64 Setup](https://github.com/anuragrpatil23/Thinking-Space/releases/download/v2.9.0/Thinking.Space.Setup.2.9.0-x64.exe)
+- macOS (Apple Silicon): [Thinking Space 2.9.1 arm64 DMG](https://github.com/anuragrpatil23/Thinking-Space/releases/download/v2.9.1/Thinking.Space-2.9.1-arm64.dmg)
+- Windows (x64): [Thinking Space 2.9.1 x64 Setup](https://github.com/anuragrpatil23/Thinking-Space/releases/download/v2.9.1/Thinking.Space.Setup.2.9.1-x64.exe)
 - iPhone / iPad: not yet distributed — the iOS app (Capacitor) builds from source via Xcode. There is no public install link yet; TestFlight distribution is planned.
 - All release assets: [GitHub Releases](https://github.com/anuragrpatil23/Thinking-Space/releases)
 
