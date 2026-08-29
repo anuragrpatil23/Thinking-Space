@@ -4199,6 +4199,24 @@ var init_crossWindowSyncBlock = __esm({
   }
 });
 
+// src/services/lego_blocks/units/atomicWriteNamingBlock.ts
+function atomicTempPathBlock(targetPath) {
+  tempCounterBlock += 1;
+  const slash = targetPath.lastIndexOf("/");
+  const dir = slash >= 0 ? targetPath.slice(0, slash + 1) : "";
+  const base = slash >= 0 ? targetPath.slice(slash + 1) : targetPath;
+  const token = Math.random().toString(36).slice(2, 10);
+  return `${dir}.${base}${ATOMIC_TMP_INFIX_BLOCK}1-${tempCounterBlock}-${token}`;
+}
+var ATOMIC_TMP_INFIX_BLOCK, tempCounterBlock;
+var init_atomicWriteNamingBlock = __esm({
+  "src/services/lego_blocks/units/atomicWriteNamingBlock.ts"() {
+    "use strict";
+    ATOMIC_TMP_INFIX_BLOCK = ".thinkspc-tmp-";
+    tempCounterBlock = 0;
+  }
+});
+
 // src/services/lego_blocks/units/consoleNoiseFilterBlock.ts
 var init_consoleNoiseFilterBlock = __esm({
   "src/services/lego_blocks/units/consoleNoiseFilterBlock.ts"() {
@@ -5074,6 +5092,7 @@ var init_fsBlock = __esm({
     init_vaultSyncExclusionsBlock();
     init_storageKeyBlock();
     init_crossWindowSyncBlock();
+    init_atomicWriteNamingBlock();
     init_debugLogBlock();
     init_byteEncodingBlock();
     warnedInvalidVaultPathKeysBlock = /* @__PURE__ */ new Set();
@@ -5306,12 +5325,53 @@ var init_fsBlock = __esm({
         const result = await Filesystem.readFile({ ...opts, encoding: Encoding.UTF8 });
         return result.data;
       }
+      /** Crash-safe: write a temp beside the target, then rename over it.
+       *
+       *  `Filesystem.writeFile` truncates before writing, and on iPad that window
+       *  is where the OS kills WebContent. For a `.excalidraw.md` — one JSON blob —
+       *  a truncated file is not "lost recent strokes", it is an unparseable file:
+       *  the whole drawing. See docs/contracts/DURABILITY.md.
+       *
+       *  Weaker than the Electron path in two ways, both unavoidable here and both
+       *  still far better than truncating:
+       *   - no `fsync`, so a power loss can still lose the bytes behind the rename;
+       *   - `rename` may refuse an existing destination, so the target is removed
+       *     first. In that window the temp is the only copy — which is why
+       *     `sweepAtomicTempsBlock` never removes a temp whose target is missing. */
       async write(path5, data) {
         const safePath = assertValidVaultPathBlock("write", path5);
         const { Filesystem, Encoding } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-        const opts = await this.fsOpts(safePath);
-        await Filesystem.writeFile({ ...opts, data, encoding: Encoding.UTF8, recursive: true });
+        const tempPath = atomicTempPathBlock(safePath);
+        const tempOpts = await this.fsOpts(tempPath);
+        const finalOpts = await this.fsOpts(safePath);
+        try {
+          await Filesystem.writeFile({ ...tempOpts, data, encoding: Encoding.UTF8, recursive: true });
+          await this.renameOverwrite(tempOpts, finalOpts);
+        } catch (err) {
+          await Filesystem.deleteFile(tempOpts).catch(() => {
+          });
+          throw err;
+        }
         notifyFileChanged(safePath);
+      }
+      /** Rename `from` onto `to`, removing `to` first if the platform will not
+       *  overwrite. Tries the atomic form first so the destructive path is only
+       *  taken when the platform forces it. */
+      async renameOverwrite(from, to) {
+        const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
+        const opts = {
+          from: from.path,
+          to: to.path,
+          ...from.directory ? { directory: from.directory } : {}
+        };
+        try {
+          await Filesystem.rename(opts);
+          return;
+        } catch {
+        }
+        await Filesystem.deleteFile(to).catch(() => {
+        });
+        await Filesystem.rename(opts);
       }
       async readBytes(path5) {
         const safePath = assertValidVaultPathBlock("readBytes", path5);
@@ -5327,12 +5387,21 @@ var init_fsBlock = __esm({
       async writeBytes(path5, data) {
         const safePath = assertValidVaultPathBlock("writeBytes", path5);
         const { Filesystem } = await Promise.resolve().then(() => __toESM(require_plugin_cjs(), 1));
-        const opts = await this.fsOpts(safePath);
-        await Filesystem.writeFile({
-          ...opts,
-          data: bytesToBase64Block(data),
-          recursive: true
-        });
+        const tempPath = atomicTempPathBlock(safePath);
+        const tempOpts = await this.fsOpts(tempPath);
+        const finalOpts = await this.fsOpts(safePath);
+        try {
+          await Filesystem.writeFile({
+            ...tempOpts,
+            data: bytesToBase64Block(data),
+            recursive: true
+          });
+          await this.renameOverwrite(tempOpts, finalOpts);
+        } catch (err) {
+          await Filesystem.deleteFile(tempOpts).catch(() => {
+          });
+          throw err;
+        }
         notifyFileChanged(safePath);
       }
       async create(path5, data) {
