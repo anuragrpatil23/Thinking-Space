@@ -70,6 +70,23 @@ esac
 
 # ─── Telegram ────────────────────────────────────────────────────────────────
 # Best-effort by design: a notification failing must never fail the check.
+#
+# But "best effort" used to mean "no effort recorded": the send discarded both
+# streams, so a lost alert left NOTHING behind — the launchd err log stayed
+# empty and the out log's warning table (printed before the send) looked like
+# proof of delivery it never was. On 2026-08-29 the reps profile reached 1 day
+# left with no alert received and no way to tell whether curl had failed or the
+# message had simply been missed. Hence: retry across a cold network, and always
+# write the outcome to NOTIFY_LOG so the next "I got no alert" is answerable.
+NOTIFY_LOG="${TS_IOS_NOTIFY_LOG:-$HOME/.thinking-space/logs/ios-profile-notify.log}"
+
+notify_log() {
+  mkdir -p "$(dirname "$NOTIFY_LOG")" 2>/dev/null || true
+  printf '%s  %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$1" >> "$NOTIFY_LOG" 2>/dev/null || true
+  # Also to stderr so the launchd err log carries it without a second lookup.
+  printf 'telegram: %s\n' "$1" >&2
+}
+
 telegram_send() {
   # TS_IOS_DRY_NOTIFY=1 prints the message instead of sending it — lets the
   # exact alert be previewed without putting a test ping on the user's phone.
@@ -79,15 +96,38 @@ telegram_send() {
     echo "------------------------------------"
     return 0
   fi
-  [ -f "$SECRETS" ] || return 0
+  if [ ! -f "$SECRETS" ]; then
+    notify_log "SKIP no secrets file at $SECRETS"
+    return 0
+  fi
   local token chat
   token="$($JQ -r .telegram.bot_token "$SECRETS" 2>/dev/null || true)"
   chat="$($JQ -r .telegram.chat_id "$SECRETS" 2>/dev/null || true)"
-  [ -n "$token" ] && [ "$token" != null ] || return 0
-  curl -sS -X POST "https://api.telegram.org/bot${token}/sendMessage" \
-    -H "Content-Type: application/json" \
-    -d "$($JQ -nc --argjson chat "$chat" --arg text "$1" '{chat_id:$chat,text:$text,parse_mode:"Markdown"}')" \
-    >/dev/null 2>&1 || true
+  if [ -z "$token" ] || [ "$token" = null ]; then
+    notify_log "SKIP no bot token in $SECRETS"
+    return 0
+  fi
+
+  local payload attempt resp ok
+  payload="$($JQ -nc --argjson chat "$chat" --arg text "$1" '{chat_id:$chat,text:$text,parse_mode:"Markdown"}')"
+
+  # A wake-triggered run fires before Wi-Fi associates, so the first attempt can
+  # fail on DNS alone. Four tries over ~75s outlast a normal network come-up;
+  # the alert matters more than the 75s, and only a warning path sends at all.
+  for attempt in 1 2 3 4; do
+    resp="$(curl -sS --max-time 20 -X POST \
+      "https://api.telegram.org/bot${token}/sendMessage" \
+      -H "Content-Type: application/json" -d "$payload" 2>&1)" || resp="${resp:-curl failed}"
+    ok="$(printf '%s' "$resp" | $JQ -r '.ok // empty' 2>/dev/null || true)"
+    if [ "$ok" = true ]; then
+      notify_log "SENT (attempt $attempt)"
+      return 0
+    fi
+    notify_log "FAIL attempt $attempt: $(printf '%s' "$resp" | tr '\n' ' ' | cut -c1-300)"
+    [ "$attempt" = 4 ] || sleep $((attempt * 5))
+  done
+  notify_log "GAVE UP after 4 attempts — alert NOT delivered"
+  return 0
 }
 
 # This repo can only re-mint its OWN app. Other apps on the same team are
