@@ -1,4 +1,4 @@
-import { getJsonStorageItem, setJsonStorageItem, STORAGE_KEYS } from './storageKeyBlock'
+import { getJsonStorageItem, getStorageItem, setJsonStorageItem, STORAGE_KEYS } from './storageKeyBlock'
 
 // Per-profile nav rail customization: which icons show and in what order.
 // Stored in localStorage — and because each workspace profile runs in its own
@@ -27,6 +27,39 @@ export interface NavRailPrefsBlock {
 export const NAV_RAIL_PREFS_EVENT = 'thinkspc:nav-rail-prefs-changed'
 
 const EMPTY_PREFS_BLOCK: NavRailPrefsBlock = { order: [], hidden: [], homePosition: 'bottom' }
+
+/** Rail items hidden on a fresh install. Both are niche surfaces — a brokerage
+ *  workspace and a tools drawer — that most new users never open, so they cost
+ *  rail space and read as clutter on first launch. Settings -> Navigation turns
+ *  them back on, and (per the hiding semantics above) the pages stay routable
+ *  and in the command palette meanwhile. */
+export const NAV_RAIL_FRESH_INSTALL_HIDDEN_BLOCK: string[] = ['/webull', '/tools']
+
+/** Keys that only exist once someone has actually used this profile. An
+ *  existing user may never have opened Settings -> Navigation, so an absent
+ *  prefs record cannot by itself mean "new user" — checking these keeps the
+ *  seeding below from yanking tabs out from under someone mid-use. */
+const PRIOR_USE_SIGNAL_KEYS_BLOCK = [
+  STORAGE_KEYS.vaultRoot,
+  STORAGE_KEYS.appShellTabs,
+  STORAGE_KEYS.appTheme,
+] as const
+
+function hasPriorUseSignalBlock(): boolean {
+  return PRIOR_USE_SIGNAL_KEYS_BLOCK.some((key) => getStorageItem(key) !== null)
+}
+
+/** Write the starting prefs record once per profile, if none exists yet.
+ *  Fresh profile -> the fresh-install hidden set; a profile that shows prior
+ *  use -> nothing hidden, preserving what that user already sees. Runs before
+ *  first render (main.tsx) so the rail never flashes the wrong shape. */
+export function seedNavRailDefaultsBlock(): void {
+  if (getStorageItem(STORAGE_KEYS.navRailPrefs) !== null) return
+  setNavRailPrefsBlock({
+    ...EMPTY_PREFS_BLOCK,
+    hidden: hasPriorUseSignalBlock() ? [] : [...NAV_RAIL_FRESH_INSTALL_HIDDEN_BLOCK],
+  })
+}
 
 /** Rail items the user may reorder/hide. Labels mirror the nav constants in
  *  App.tsx (the Webull label is user-customizable; pass the live label where
@@ -62,8 +95,10 @@ export function setNavRailPrefsBlock(prefs: NavRailPrefsBlock): void {
   }
 }
 
+/** Reset means the shipped default, which is the fresh-install shape — Webull
+ *  and Tools hidden — not "everything visible". */
 export function resetNavRailPrefsBlock(): void {
-  setNavRailPrefsBlock(EMPTY_PREFS_BLOCK)
+  setNavRailPrefsBlock({ ...EMPTY_PREFS_BLOCK, hidden: [...NAV_RAIL_FRESH_INSTALL_HIDDEN_BLOCK] })
 }
 
 export function hideNavRailItemBlock(id: string): void {
