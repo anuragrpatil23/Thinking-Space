@@ -7,8 +7,10 @@ import { seedNavRailDefaultsBlock } from './services/lego_blocks/units/navRailPr
 installConsoleNoiseFilterBlock()
 enforceIPhoneViewportNoZoomBlock()
 requestPersistentStorageBlock()
-// Must run before the first render AND before anything else writes an
-// ltm-* key, since those keys are what tell a returning user from a fresh one.
+// Before the first render, so the rail never flashes the wrong shape. It does
+// NOT need to beat the app's other storage writes: a cold boot writes theme,
+// color mode, and the shell tab record on its own, and the seeding rule knows
+// to discount exactly those.
 seedNavRailDefaultsBlock()
 import React from 'react'
 import ReactDOM from 'react-dom/client'

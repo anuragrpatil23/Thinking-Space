@@ -22,6 +22,9 @@ export interface NavRailPrefsBlock {
   hidden: string[]
   /** Home glyph anchor — top (default) or bottom corner. */
   homePosition: NavRailHomePosition
+  /** Which seeding rule decided this record's starting shape; absent on
+   *  records written before seeding existed. */
+  seedVersion?: number
 }
 
 export const NAV_RAIL_PREFS_EVENT = 'thinkspc:nav-rail-prefs-changed'
@@ -35,29 +38,74 @@ const EMPTY_PREFS_BLOCK: NavRailPrefsBlock = { order: [], hidden: [], homePositi
  *  and in the command palette meanwhile. */
 export const NAV_RAIL_FRESH_INSTALL_HIDDEN_BLOCK: string[] = ['/webull', '/tools']
 
-/** Keys that only exist once someone has actually used this profile. An
- *  existing user may never have opened Settings -> Navigation, so an absent
- *  prefs record cannot by itself mean "new user" — checking these keeps the
- *  seeding below from yanking tabs out from under someone mid-use. */
-const PRIOR_USE_SIGNAL_KEYS_BLOCK = [
-  STORAGE_KEYS.vaultRoot,
-  STORAGE_KEYS.appShellTabs,
-  STORAGE_KEYS.appTheme,
-] as const
+/** Bumped when the seeding rule below changes, so a record written by a
+ *  previous (wrong) rule can be reconsidered once. */
+const SEED_VERSION_BLOCK = 2
 
+/** Keys the app writes during a cold boot, before anyone has done anything.
+ *  Observed in this order on a freshly created profile: color mode, the shell
+ *  tab record, the active tab id, the theme. They mean "the app started", not
+ *  "someone used this", so prior-use detection must ignore them — the first
+ *  attempt at this trusted them and classified every new profile as an
+ *  existing user. Some carry a per-window `:window-<id>` suffix, hence the
+ *  prefix match. */
+const BOOT_WRITTEN_KEY_PREFIXES_BLOCK: string[] = [
+  STORAGE_KEYS.appColorMode,
+  STORAGE_KEYS.appTheme,
+  STORAGE_KEYS.appShellTabs,
+  STORAGE_KEYS.appShellActiveTabId,
+  STORAGE_KEYS.navRailPrefs,
+]
+
+/** Has anyone actually used this profile? Read straight from localStorage —
+ *  never through getStorageItem, whose vault-root path answers from the main
+ *  process, which hands a newly created profile the vault root it was created
+ *  with. That is profile configuration, not profile history. localStorage is
+ *  partitioned per profile, so what it holds is this profile's own record.
+ *  Any ltm-* key that a cold boot does not write means real use: a setting
+ *  changed, a feed added, an organizer template saved. */
 function hasPriorUseSignalBlock(): boolean {
-  return PRIOR_USE_SIGNAL_KEYS_BLOCK.some((key) => getStorageItem(key) !== null)
+  try {
+    if (typeof localStorage === 'undefined') return false
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index)
+      if (!key || !key.startsWith('ltm-')) continue
+      const isBootKey = BOOT_WRITTEN_KEY_PREFIXES_BLOCK.some(
+        (prefix) => key === prefix || key.startsWith(`${prefix}:`),
+      )
+      if (!isBootKey) return true
+    }
+    return false
+  } catch {
+    return false
+  }
 }
 
-/** Write the starting prefs record once per profile, if none exists yet.
- *  Fresh profile -> the fresh-install hidden set; a profile that shows prior
- *  use -> nothing hidden, preserving what that user already sees. Runs before
- *  first render (main.tsx) so the rail never flashes the wrong shape. */
+/** True when the stored record carries no evidence of a human choice, so
+ *  re-seeding it cannot overwrite anything the user asked for. */
+function isUntouchedRecordBlock(prefs: NavRailPrefsBlock): boolean {
+  return prefs.order.length === 0 && prefs.hidden.length === 0 && prefs.homePosition === 'bottom'
+}
+
+/** Decide this profile's starting rail once, and record which rule decided.
+ *  A fresh profile gets the fresh-install hidden set; a profile showing prior
+ *  use keeps everything it already shows. Re-runs only when an older seed
+ *  version wrote the record AND the user has not customized it since — that
+ *  is what lets a profile seeded by the earlier, broken rule be corrected. */
 export function seedNavRailDefaultsBlock(): void {
-  if (getStorageItem(STORAGE_KEYS.navRailPrefs) !== null) return
+  const raw = getStorageItem(STORAGE_KEYS.navRailPrefs)
+  if (raw !== null) {
+    const current = getNavRailPrefsBlock()
+    if (current.seedVersion === SEED_VERSION_BLOCK) return
+    if (!isUntouchedRecordBlock(current)) {
+      setNavRailPrefsBlock({ ...current, seedVersion: SEED_VERSION_BLOCK })
+      return
+    }
+  }
   setNavRailPrefsBlock({
     ...EMPTY_PREFS_BLOCK,
     hidden: hasPriorUseSignalBlock() ? [] : [...NAV_RAIL_FRESH_INSTALL_HIDDEN_BLOCK],
+    seedVersion: SEED_VERSION_BLOCK,
   })
 }
 
@@ -80,7 +128,8 @@ function sanitizePrefsBlock(value: unknown): NavRailPrefsBlock {
   const clean = (list: unknown): string[] =>
     Array.isArray(list) ? [...new Set(list.filter((entry): entry is string => typeof entry === 'string'))] : []
   const homePosition: NavRailHomePosition = record.homePosition === 'top' ? 'top' : 'bottom'
-  return { order: clean(record.order), hidden: clean(record.hidden), homePosition }
+  const seedVersion = typeof record.seedVersion === 'number' ? record.seedVersion : undefined
+  return { order: clean(record.order), hidden: clean(record.hidden), homePosition, seedVersion }
 }
 
 export function getNavRailPrefsBlock(): NavRailPrefsBlock {
