@@ -45,6 +45,7 @@ export const STORAGE_KEYS = {
   aiActivityProjectMapping: 'ltm-ai-activity-project-mapping',
   aiActivityVaultSourcePrefixes: 'ltm-ai-activity-vault-source-prefixes',
   readingKeepScreenAwake: 'ltm-reading-keep-screen-awake',
+  readingInstallId: 'ltm-reading-install-id',
   aiActivityHomePostItEnabled: 'ltm-ai-activity-home-post-it-enabled',
   aiActivitySetMode: 'ltm-ai-activity-set-mode-enabled',
   aiActivityCalendarMode: 'ltm-ai-activity-calendar-mode-enabled',
@@ -161,6 +162,27 @@ export function setJsonStorageItem<T>(key: StorageKey, value: T): void {
 
 export function getStoredVaultRoot(): string | null {
   return getStorageItem(STORAGE_KEYS.vaultRoot)
+}
+
+/**
+ * Stable id for this *install* (not this device, and not this user) — minted
+ * once, kept in localStorage, never synced.
+ *
+ * Reading spans are appended to per-day JSONLs in an iCloud-synced vault. Two
+ * installs appending to one file on the same day is a conflict-copy waiting to
+ * happen, and the rows that lose are gone. Putting this id in the filename
+ * makes the day's logs disjoint by construction, so a merge is concatenation.
+ *
+ * Deliberately opaque and local: it identifies which log file to append to,
+ * and nothing reads meaning out of it.
+ */
+export function getReadingInstallIdBlock(): string {
+  const existing = getLocalStorageItemBlock(STORAGE_KEYS.readingInstallId)
+  if (existing && /^[0-9a-f]{6,}$/.test(existing)) return existing
+  const minted = Array.from({ length: 6 }, () =>
+    Math.floor(Math.random() * 16).toString(16)).join('')
+  setLocalStorageItemBlock(STORAGE_KEYS.readingInstallId, minted)
+  return minted
 }
 
 /**

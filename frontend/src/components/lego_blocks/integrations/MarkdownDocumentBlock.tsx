@@ -129,6 +129,7 @@ import { dispatchPageTopInsetBlock } from '@/services/lego_blocks/units/pageTopI
 import { isHtmlDocumentPathBlock } from '@/services/lego_blocks/units/htmlDocumentPathBlock'
 import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
 import { useScreenWakeLockBlock } from '@/components/lego_blocks/hooks/useScreenWakeLockBlock'
+import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import {
   clearExcalidrawCrashMarkerBlock,
   excalidrawMarkerActionBlock,
@@ -150,6 +151,12 @@ export type MarkdownViewerMode = 'view' | 'edit'
 interface MarkdownDocumentBlockProps {
   path: string
   active?: boolean
+  /** Whether time on this document counts as reading. Opt-in, because this
+   *  block also renders inside canvas tiles, memory-file lists and previews —
+   *  all of which mount with `active` and would each accrue attention in
+   *  parallel for documents nobody is reading. Only real reading surfaces
+   *  (the workspace, the slide-over viewer) pass true. */
+  countsAsReading?: boolean
   initialMode?: MarkdownViewerMode
   onSaved?: (result: { output_path: string; revision_path: string | null }) => void
   onOpenPath?: (path: string) => void
@@ -281,6 +288,7 @@ function MarkdownWikilinkImageBlock({
 function MarkdownTextDocumentRuntimeBlock({
   path,
   active = true,
+  countsAsReading = false,
   initialMode = 'view',
   onSaved,
   onOpenPath,
@@ -559,7 +567,7 @@ function MarkdownTextDocumentRuntimeBlock({
 
   const isEditing = mode === 'edit'
 
-  // Reading holds the display awake (GoodNotes-style). Scoped to the *active*
+  // Reading holds the display awake. Scoped to the *active*
   // document in *view* mode: editing already produces a steady stream of taps
   // that keep the idle timer happy, and an inactive/background tab isn't being
   // read. Users can turn this off in Settings ▸ Theme.
@@ -569,7 +577,14 @@ function MarkdownTextDocumentRuntimeBlock({
   // with and think about — and on iPad the Pencil hovering above the glass is
   // not a touch, so the idle timer fires mid-thought exactly as it would while
   // reading. The canvas therefore holds the lease in both modes.
-  useScreenWakeLockBlock(active && (!isEditing || isExcalidrawDoc) && !loading && error === null)
+  //
+  // This predicate is also what "reading" means for time accounting, so the
+  // two consumers below share one expression rather than each deriving their
+  // own — a wake lock held while nothing is being counted (or the reverse)
+  // would be a silent disagreement about the same question.
+  const attending = active && (!isEditing || isExcalidrawDoc) && !loading && error === null
+  useScreenWakeLockBlock(attending)
+  useReadingAttentionBlock(countsAsReading ? path : null, attending, contentScrollRef)
 
   // Live preview makes the view/edit split mostly ceremonial for text docs.
   // Entering editing is a long-press on EVERY surface (mouse and touch alike):

@@ -2,15 +2,17 @@ import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock
 
 // User preferences for what Thinking Space is allowed to write into the
 // user's vault: `writeAiRaw` gates the raw-signal harvesters (Apple Screen
-// Time mirror, GoodNotes reading log), `writeAiActivity` the AI-digest
-// mirror. Prefs are keyed per vault root in main-process persistence
-// (userData/state/vault-write-prefs.json) — one vault per profile, so this
-// window's stored vault root scopes every call. Main is the source of truth
-// because the electron startup path fires the harvesters before the renderer
-// has mounted; this module is a thin async facade over the IPC bridge.
+// Time mirror), `writeAiActivity` the AI-digest mirror. Prefs are keyed per
+// vault root in main-process persistence (userData/state/vault-write-prefs.json)
+// — one vault per profile, so this window's stored vault root scopes every
+// call. Main is the source of truth because the electron startup path fires
+// the harvesters before the renderer has mounted; this module is a thin async
+// facade over the IPC bridge.
 //
-// On non-electron runtimes there is no vault to write into, so we report the
-// toggle as effectively off and no-op the setter.
+// Only Electron can *read* these prefs, and the individual getters report
+// false without the bridge — correct for the harvesters, which are Electron-
+// only anyway. `getVaultWriteAiActivityAnyEnabled` deliberately does NOT
+// inherit that: see the note on it.
 
 function getBridge() {
   if (typeof window === 'undefined') return null
@@ -59,11 +61,21 @@ export async function setVaultWriteAiActivityEnabled(enabled: boolean): Promise<
 
 // True when the vault accepts *any* AI-Activity write — either the raw-signal
 // harvesters (`writeAiRaw`) or the AI-derived digests mirror (`writeAiActivity`)
-// is on. This is the gate for hand-logged manual sessions: they're first-party
-// authored durable data that lives in the same `ai-activity/` folder, so they
-// ride the folder's write permission generally rather than being stuck behind
-// the digests-mirror opt-in specifically.
+// is on. This is the gate for first-party authored durable data living in the
+// `ai-activity/` folder — hand-logged manual sessions and in-app reading spans
+// — which ride the folder's write permission generally rather than being stuck
+// behind the digests-mirror opt-in specifically.
+//
+// **An unreadable preference is permissive.** The prefs live in Electron's
+// main process, so iPhone/iPad/web have no way to read them; inheriting the
+// getters' `false` would mean reading is never logged on the iPad, which is
+// where most reading happens. That is the same rule powerStateBlock follows
+// for Low Power Mode (`known: false` disables the gate, not the feature): a
+// gate that cannot see its input must not silently disable a feature on a
+// surface that has no problem. The permission it stands in for is a *desktop*
+// concern — whether harvesters may write into a vault the desktop manages.
 export async function getVaultWriteAiActivityAnyEnabled(): Promise<boolean> {
+  if (!isVaultWritePrefsAvailable()) return true
   const [raw, digests] = await Promise.all([
     getVaultWriteAiRawEnabled(),
     getVaultWriteAiActivityEnabled(),

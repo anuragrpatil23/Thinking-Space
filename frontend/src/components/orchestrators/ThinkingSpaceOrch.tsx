@@ -1068,6 +1068,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
         <MarkdownDocumentBlock
           path={path}
           active={inlinePath === path}
+          countsAsReading
           initialMode={inlineInitialModeByPath[path] ?? 'view'}
           onOpenPath={handleInlineOpenPath}
           onOpenPathForEdit={handleInlineOpenPathForEdit}
