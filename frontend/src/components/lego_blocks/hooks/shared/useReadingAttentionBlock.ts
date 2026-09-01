@@ -144,7 +144,20 @@ export function useReadingAttentionBlock(
   const lastCheckpointRef = useRef(0)
 
   useEffect(() => {
-    if (!path || !attending || !hasForeground) return
+    if (!path || !attending || !hasForeground) {
+      // An empty "Measuring now" used to have three possible causes and no way
+      // to tell them apart. Name the one that actually applies.
+      setReadingLiveStateBlock({
+        measuring: false,
+        reason: !path ? 'no path (countsAsReading off, or no document)'
+          : !attending ? 'not attending (inactive pane, editing, loading, or error)'
+            : 'another document holds foreground',
+        path: path ?? null,
+        attending,
+        hasForeground,
+      })
+      return
+    }
 
     const source = sourceForPath(path)
     const isCanvas = source === 'reading-draw'
@@ -157,6 +170,13 @@ export function useReadingAttentionBlock(
     endScrollRef.current = null
     lastCheckpointRef.current = now
     traceReadingBlock({ outcome: 'sitting-started', path })
+    // Publish immediately: waiting for the first presence signal made an empty
+    // panel ambiguous between "never started" and "started, nothing yet".
+    setReadingLiveStateBlock({
+      measuring: true, path, source,
+      startedAt: new Date(now).toISOString(),
+      activeMs: 0, signals: 0,
+    })
 
     // Reading layout forces a reflow when a mutation is pending, so this is
     // called ONLY from scroll handling, where the browser has just finished
@@ -169,11 +189,15 @@ export function useReadingAttentionBlock(
       if (ratio > maxScrollRef.current) maxScrollRef.current = ratio
     }
 
+    let signals = 0
     const creditAt = (at: number) => {
+      signals += 1
       if (stateRef.current) stateRef.current = creditReadingAttentionBlock(stateRef.current, at)
       setReadingLiveStateBlock({
-        path, source, startedAt: new Date(startedAtRef.current).toISOString(),
+        measuring: true, path, source,
+        startedAt: new Date(startedAtRef.current).toISOString(),
         activeMs: stateRef.current?.creditedMs ?? 0,
+        signals,
         stations: canvasRef.current ? canvasRef.current.closed.length + 1 : 0,
       })
       // Write-ahead: the span so far goes somewhere synchronous, so a memory
