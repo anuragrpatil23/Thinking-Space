@@ -1,5 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { X, Trash2, Copy, Check, ChevronDown, ChevronRight, AlertCircle, AlertTriangle, Info, Bug, Cpu, Sparkles } from 'lucide-react'
+import {
+  readReadingTraceBlock,
+  readReadingLiveStateBlock,
+} from '@/services/lego_blocks/units/readingTraceBlock'
 import IntelligenceRunsTabBlock from '@/components/lego_blocks/units/IntelligenceRunsTabBlock'
 import type { DebugLogEntryBlock, DebugLogLevel } from '@/services/lego_blocks/units/debugLogBlock'
 import { useVisibleIntervalBlock } from '../hooks/shared/useVisibleIntervalBlock'
@@ -19,7 +23,7 @@ interface DebugPanelBlockProps {
   onClear: () => void
 }
 
-type TabFilter = 'all' | 'error' | 'warn' | 'info' | 'debug' | 'performance' | 'ai'
+type TabFilter = 'all' | 'error' | 'warn' | 'info' | 'debug' | 'performance' | 'ai' | 'reading'
 
 interface DebugHostProcessMetricBlock {
   pid: number
@@ -200,6 +204,64 @@ function LogEntry({ entry }: { entry: DebugLogEntryBlock }) {
   )
 }
 
+
+/** Why reading spans did or didn't get written. Diagnostic only — the writer
+ *  is best-effort and must never throw, so this is the only place a failure is
+ *  visible. Readable on a device, which a JS console is not. */
+function ReadingTraceTabBlock({
+  trace,
+  live,
+}: {
+  trace: ReturnType<typeof readReadingTraceBlock>
+  live: ReturnType<typeof readReadingLiveStateBlock>
+}) {
+  const color = (outcome: string) => {
+    if (outcome === 'error' || outcome === 'gate-blocked') return 'text-destructive'
+    if (outcome === 'wrote' || outcome === 'merged') return 'text-emerald-500'
+    if (outcome === 'below-floor') return 'text-amber-500'
+    return 'text-muted-foreground'
+  }
+  return (
+    <div className="space-y-3 p-3 text-xs">
+      <div className="rounded-lg border border-border/60 p-2">
+        <div className="mb-1 font-medium text-foreground/80">Measuring now</div>
+        {live ? (
+          <pre className="overflow-x-auto whitespace-pre-wrap break-all text-muted-foreground">
+            {JSON.stringify(live, null, 2)}
+          </pre>
+        ) : (
+          <p className="text-muted-foreground/60">
+            Nothing. Open a document in the workspace and this fills in within a
+            second of any scroll or tap — if it stays empty, the sitting never started.
+          </p>
+        )}
+      </div>
+      <div className="rounded-lg border border-border/60 p-2">
+        <div className="mb-1 font-medium text-foreground/80">Recent outcomes</div>
+        {trace.length === 0 ? (
+          <p className="text-muted-foreground/60">No reading events yet this session.</p>
+        ) : (
+          <div className="space-y-1">
+            {trace.slice().reverse().map((e, i) => (
+              <div key={`${e.at}-${i}`} className="flex gap-2">
+                <span className="shrink-0 tabular-nums text-muted-foreground/50">
+                  {e.at.slice(11, 19)}
+                </span>
+                <span className={`shrink-0 font-medium ${color(e.outcome)}`}>{e.outcome}</span>
+                <span className="min-w-0 break-all text-muted-foreground">
+                  {e.path ?? ''}
+                  {e.activeMs !== undefined ? ` · ${Math.round(e.activeMs / 1000)}s` : ''}
+                  {e.detail ? ` · ${e.detail}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const TABS: { id: TabFilter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'error', label: 'Errors' },
@@ -208,6 +270,7 @@ const TABS: { id: TabFilter; label: string }[] = [
   { id: 'debug', label: 'Debug' },
   { id: 'performance', label: 'Performance' },
   { id: 'ai', label: 'AI runs' },
+  { id: 'reading', label: 'Reading' },
 ]
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -567,7 +630,8 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
   // has anything for the copy/clear buttons in the header to act on.
   const isPerfTab = activeTab === 'performance'
   const isAiTab = activeTab === 'ai'
-  const isOwnSurface = isPerfTab || isAiTab
+  const isReadingTab = activeTab === 'reading'
+  const isOwnSurface = isPerfTab || isAiTab || isReadingTab
 
   // Auto-scroll to bottom when new entries arrive
   useEffect(() => {
@@ -575,12 +639,18 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
     listRef.current.scrollTop = listRef.current.scrollHeight
   }, [entries, autoScroll])
 
+  // Reading-attention trace. Read on every render of this tab rather than
+  // subscribed: the panel is already open-on-demand, and a subscription would
+  // be a live listener on a diagnostic nobody is usually looking at.
+  const readingTrace = isReadingTab ? readReadingTraceBlock() : []
+  const readingLive = isReadingTab ? readReadingLiveStateBlock() : null
+
   const filtered = activeTab === 'all'
     ? entries
     : entries.filter(e => e.level === activeTab)
 
   const countFor = (tab: TabFilter) => {
-    if (tab === 'performance' || tab === 'ai') return 0
+    if (tab === 'performance' || tab === 'ai' || tab === 'reading') return 0
     return tab === 'all' ? entries.length : entries.filter(e => e.level === tab).length
   }
 
@@ -703,7 +773,11 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
         {/* Content */}
         {isOwnSurface ? (
           <div ref={listRef} className="ltm-nav-scroll min-h-0 flex-1 overflow-y-auto">
-            {isPerfTab ? <PerformanceTab /> : <IntelligenceRunsTabBlock />}
+            {isPerfTab
+              ? <PerformanceTab />
+              : isReadingTab
+                ? <ReadingTraceTabBlock trace={readingTrace} live={readingLive} />
+                : <IntelligenceRunsTabBlock />}
           </div>
         ) : (
           <>
