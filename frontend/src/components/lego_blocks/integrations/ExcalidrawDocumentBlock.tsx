@@ -75,6 +75,14 @@ import {
   scheduleDeferredWork,
 } from '@/services/lego_blocks/integrations/excalidrawViewportBlock'
 import type { CanvasViewportRectBlock } from '@/services/lego_blocks/units/canvasAttentionBlock'
+import type { ExcalidrawElementLikeBlock } from '@/services/lego_blocks/units/excalidrawSceneDeltaBlock'
+
+/** Readers the canvas publishes for reading-attention: where the viewport is,
+ *  and which elements a given rect covered at the moment it was left. */
+export interface ExcalidrawViewportSamplersBlock {
+  sample: () => CanvasViewportRectBlock | null
+  sampleElements: (rect: CanvasViewportRectBlock) => string[]
+}
 import { Palette } from 'lucide-react'
 import ExcalidrawPenPaletteBlock from '@/components/lego_blocks/integrations/ExcalidrawPenPaletteBlock'
 import ExcalidrawMiniMapBlock, {
@@ -113,7 +121,7 @@ interface ExcalidrawDocumentBlockProps {
   /** Publishes a reader for the canvas viewport in world coordinates, so
    *  reading attention can record *where* on the canvas it went. Called with
    *  null on unmount. See canvasAttentionBlock. */
-  onViewportSamplerChange?: (sampler: (() => CanvasViewportRectBlock | null) | null) => void
+  onViewportSamplerChange?: (sampler: ExcalidrawViewportSamplersBlock | null) => void
   className?: string
 }
 
@@ -1196,6 +1204,11 @@ export default function ExcalidrawDocumentBlock({
     const sample = (): CanvasViewportRectBlock | null => {
       const { excalidrawApi: api, containerSize: size } = viewportSamplerDepsRef.current
       if (!api) return null
+      // An empty scene is a canvas that has not finished loading, and its
+      // viewport reads as the origin at default zoom. Treating that as a place
+      // filed 17 seconds of a real sitting against (0,0) — a location nobody
+      // looked at, because there was nothing there yet. Not-ready is null.
+      if (api.getSceneElementsBlock().length === 0) return null
       const viewport = api.getViewportStateBlock()
       const zoom = Number.isFinite(viewport.zoom) ? Math.max(viewport.zoom, 0.01) : 1
       const { viewportWorldW, viewportWorldH } = resolveViewportWorldSize({
@@ -1210,7 +1223,32 @@ export default function ExcalidrawDocumentBlock({
         h: viewportWorldH,
       }
     }
-    onViewportSamplerChange(sample)
+    // Element ids intersecting a rect, sampled once when a station closes —
+    // a few dozen times a sitting, never per pointer event, so the O(elements)
+    // scan stays off the hot path. A hint for drift detection, not the record:
+    // the ids and the rect agreed when written, so a later disagreement means
+    // the scene moved.
+    const sampleElements = (rect: CanvasViewportRectBlock): string[] => {
+      const { excalidrawApi: api } = viewportSamplerDepsRef.current
+      if (!api) return []
+      const out: string[] = []
+      for (const el of api.getSceneElementsBlock() as ExcalidrawElementLikeBlock[]) {
+        if (el?.isDeleted) continue
+        const x = typeof el?.x === 'number' ? el.x : null
+        const y = typeof el?.y === 'number' ? el.y : null
+        if (x === null || y === null) continue
+        const w = typeof el?.width === 'number' ? el.width : 0
+        const h = typeof el?.height === 'number' ? el.height : 0
+        if (x + w < rect.x || x > rect.x + rect.w) continue
+        if (y + h < rect.y || y > rect.y + rect.h) continue
+        if (typeof el?.id === 'string') out.push(el.id)
+        // A viewport over a dense mindmap can cover thousands of elements;
+        // the hint only needs enough of them to detect that the scene moved.
+        if (out.length >= 200) break
+      }
+      return out
+    }
+    onViewportSamplerChange({ sample, sampleElements })
     return () => onViewportSamplerChange(null)
   }, [onViewportSamplerChange])
 

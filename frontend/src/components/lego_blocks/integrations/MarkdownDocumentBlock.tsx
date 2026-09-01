@@ -131,7 +131,7 @@ import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOr
 import { useScreenWakeLockBlock } from '@/components/lego_blocks/hooks/useScreenWakeLockBlock'
 import {
   useReadingAttentionBlock,
-  type CanvasViewportSampler,
+  type CanvasSamplersBlock,
 } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import {
   clearExcalidrawCrashMarkerBlock,
@@ -603,21 +603,16 @@ function MarkdownTextDocumentRuntimeBlock({
   // record *where* on the canvas the time went. Held as state so mounting the
   // canvas restarts the sitting with stations enabled rather than silently
   // measuring a canvas with no `where`.
-  const [canvasViewportSampler, setCanvasViewportSampler] =
-    useState<CanvasViewportSampler | null>(null)
+  const [canvasSamplers, setCanvasSamplers] = useState<CanvasSamplersBlock | null>(null)
   const handleCanvasViewportSampler = useCallback(
-    (sampler: CanvasViewportSampler | null) => {
-      // Stored via the updater form: a sampler IS a function, so the plain
-      // form would call it instead of storing it.
-      setCanvasViewportSampler(() => sampler)
-    },
+    (samplers: CanvasSamplersBlock | null) => setCanvasSamplers(samplers),
     [],
   )
 
   useReadingAttentionBlock(countsAsReading ? path : null, attending, {
     scrollRef: contentScrollRef,
     uuid: documentUuid,
-    viewportSampler: canvasViewportSampler ?? undefined,
+    canvasSamplers,
   })
 
   // Live preview makes the view/edit split mostly ceremonial for text docs.

@@ -63,13 +63,21 @@ export type CanvasViewportSampler = () => CanvasViewportRectBlock | null
 /** Element ids intersecting a rect, sampled once when a station closes. */
 export type CanvasElementSampler = (rect: CanvasViewportRectBlock) => string[]
 
+/** What a canvas surface publishes: where the viewport is, and which elements
+ *  a rect covered when it was left. Supplied together because a station close
+ *  needs both, and half of them is a station with no drift hint — which is how
+ *  the first real recording came out. */
+export interface CanvasSamplersBlock {
+  sample: CanvasViewportSampler
+  sampleElements: CanvasElementSampler
+}
+
 export interface ReadingAttentionOptions {
   /** Scroll container, for the markdown `where`. */
   scrollRef?: RefObject<HTMLElement | null>
   /** Document uuid from frontmatter, when it has one. */
   uuid?: string | null
-  viewportSampler?: CanvasViewportSampler
-  elementSampler?: CanvasElementSampler
+  canvasSamplers?: CanvasSamplersBlock | null
 }
 
 function sourceForPath(path: string): ThinkingspaceReadingSource {
@@ -163,7 +171,7 @@ export function useReadingAttentionBlock(
     const isCanvas = source === 'reading-draw'
     const now = Date.now()
     stateRef.current = createReadingAttentionBlock(now)
-    canvasRef.current = isCanvas ? createCanvasAttentionBlock() : null
+    canvasRef.current = isCanvas ? createCanvasAttentionBlock(now) : null
     startedAtRef.current = now
     lastSignalRef.current = now
     maxScrollRef.current = 0
@@ -209,10 +217,11 @@ export function useReadingAttentionBlock(
         if (snapshot) checkpointReadingJournalBlock(snapshot)
       }
       if (!canvasRef.current) return
-      const rect = optionsRef.current.viewportSampler?.() ?? null
+      const samplers = optionsRef.current.canvasSamplers
+      const rect = samplers?.sample() ?? null
       canvasRef.current = rect
         ? observeCanvasViewportBlock(
-            canvasRef.current, rect, at, optionsRef.current.elementSampler,
+            canvasRef.current, rect, at, samplers?.sampleElements,
           )
         : creditCanvasAttentionBlock(canvasRef.current, at)
     }
@@ -244,6 +253,7 @@ export function useReadingAttentionBlock(
             rect: canvasRef.current.current.rect,
             attention: resumeReadingAttentionBlock(canvasRef.current.current.attention, at),
           },
+          pendingSinceMs: null,
         }
       }
       lastSignalRef.current = at
@@ -262,7 +272,9 @@ export function useReadingAttentionBlock(
       let where: ThinkingspaceReadingWhere | undefined
       if (isCanvas) {
         const stations = canvasRef.current
-          ? finishCanvasAttentionBlock(canvasRef.current, endMs, optionsRef.current.elementSampler)
+          ? finishCanvasAttentionBlock(
+              canvasRef.current, endMs, optionsRef.current.canvasSamplers?.sampleElements,
+            )
           : []
         if (stations.length > 0) where = { kind: 'canvas', stations }
       } else if (maxScrollRef.current > 0 || endScrollRef.current !== null) {

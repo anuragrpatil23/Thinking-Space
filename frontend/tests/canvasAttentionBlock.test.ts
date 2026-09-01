@@ -45,13 +45,13 @@ describe('viewportOverlapBlock', () => {
 
 describe('canvasAttentionBlock', () => {
   it('opens a station on the first viewport it sees', () => {
-    const s = observeCanvasViewportBlock(createCanvasAttentionBlock(), RECT, T0)
+    const s = observeCanvasViewportBlock(createCanvasAttentionBlock(T0), RECT, T0)
     expect(s.current?.rect).toEqual(RECT)
     expect(s.closed).toHaveLength(0)
   })
 
   it('keeps one station while the viewport only drifts', () => {
-    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(), RECT, T0)
+    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(T0), RECT, T0)
     s = observeCanvasViewportBlock(s, SAME, T0 + 60_000)
     expect(s.closed).toHaveLength(0)
     expect(s.current?.rect).toEqual(RECT)
@@ -59,7 +59,7 @@ describe('canvasAttentionBlock', () => {
   })
 
   it('closes the station and opens another when the viewport moves away', () => {
-    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(), RECT, T0)
+    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(T0), RECT, T0)
     s = observeCanvasViewportBlock(s, FAR, T0 + 120_000)
     expect(s.closed).toHaveLength(1)
     expect(s.closed[0].activeMs).toBe(120_000)
@@ -73,7 +73,7 @@ describe('canvasAttentionBlock', () => {
     const rects = [RECT, RECT, FAR, FAR, RECT, RECT]
 
     let doc = createReadingAttentionBlock(T0)
-    let canvas = observeCanvasViewportBlock(createCanvasAttentionBlock(), rects[0], signals[0])
+    let canvas = observeCanvasViewportBlock(createCanvasAttentionBlock(T0), rects[0], signals[0])
     for (let i = 1; i < signals.length; i += 1) {
       doc = creditReadingAttentionBlock(doc, signals[i])
       canvas = observeCanvasViewportBlock(canvas, rects[i], signals[i])
@@ -85,7 +85,7 @@ describe('canvasAttentionBlock', () => {
 
   it('holds the invariant across a walk-away, ceiling and all', () => {
     let doc = createReadingAttentionBlock(T0)
-    let canvas = observeCanvasViewportBlock(createCanvasAttentionBlock(), RECT, T0)
+    let canvas = observeCanvasViewportBlock(createCanvasAttentionBlock(T0), RECT, T0)
     const away = T0 + 40 * 60_000
     doc = creditReadingAttentionBlock(doc, away)
     canvas = observeCanvasViewportBlock(canvas, RECT, away)
@@ -95,13 +95,13 @@ describe('canvasAttentionBlock', () => {
   })
 
   it('credits presence that is not a viewport change', () => {
-    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(), RECT, T0)
+    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(T0), RECT, T0)
     s = creditCanvasAttentionBlock(s, T0 + 45_000)
     expect(finishCanvasAttentionBlock(s, T0 + 45_000)[0].activeMs).toBe(45_000)
   })
 
   it('drops stations the viewport merely passed through', () => {
-    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(), RECT, T0)
+    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(T0), RECT, T0)
     // Three moves in the same instant — panning across, resting nowhere.
     s = observeCanvasViewportBlock(s, FAR, T0)
     s = observeCanvasViewportBlock(s, { x: -9000, y: 0, w: 1000, h: 800 }, T0)
@@ -114,7 +114,7 @@ describe('canvasAttentionBlock', () => {
   it('samples element ids once, only when a station closes', () => {
     const seen: Array<{ x: number }> = []
     const sampler = (rect: { x: number }) => { seen.push(rect); return ['a', 'b'] }
-    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(), RECT, T0, sampler)
+    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(T0), RECT, T0, sampler)
     s = observeCanvasViewportBlock(s, SAME, T0 + 10_000, sampler)   // no close
     expect(seen).toHaveLength(0)
     s = observeCanvasViewportBlock(s, FAR, T0 + 20_000, sampler)    // closes RECT
@@ -123,18 +123,40 @@ describe('canvasAttentionBlock', () => {
   })
 
   it('omits elementIds when the sampler finds nothing', () => {
-    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(), RECT, T0, () => [])
+    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(T0), RECT, T0, () => [])
     s = observeCanvasViewportBlock(s, FAR, T0 + 20_000, () => [])
     expect(s.closed[0].elementIds).toBeUndefined()
   })
 
   it('ignores a null viewport rather than losing the current station', () => {
-    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(), RECT, T0)
+    let s = observeCanvasViewportBlock(createCanvasAttentionBlock(T0), RECT, T0)
     s = observeCanvasViewportBlock(s, null, T0 + 30_000)
     expect(s.current?.rect).toEqual(RECT)
   })
 
   it('pins the overlap threshold that decides what one place means', () => {
     expect(STATION_OVERLAP_THRESHOLD).toBe(0.5)
+  })
+
+  // The invariant broke in production the first time it ran: the canvas is not
+  // ready when a sitting starts, so the first station opened seconds late and
+  // those seconds belonged to no station. 237s of stations against 240s of
+  // document attention.
+  it('covers the canvas load time in the first station', () => {
+    const started = T0
+    const canvasReady = T0 + 3_000
+    let doc = createReadingAttentionBlock(started)
+    let canvas = createCanvasAttentionBlock(started)
+
+    // Nothing to sample until the scene loads.
+    canvas = observeCanvasViewportBlock(canvas, null, T0 + 1_000)
+    doc = creditReadingAttentionBlock(doc, T0 + 1_000)
+    canvas = observeCanvasViewportBlock(canvas, RECT, canvasReady)
+    doc = creditReadingAttentionBlock(doc, canvasReady)
+    canvas = observeCanvasViewportBlock(canvas, RECT, T0 + 120_000)
+    doc = creditReadingAttentionBlock(doc, T0 + 120_000)
+
+    const stations = finishCanvasAttentionBlock(canvas, T0 + 120_000)
+    expect(stations.reduce((a, s) => a + s.activeMs, 0)).toBe(doc.creditedMs)
   })
 })

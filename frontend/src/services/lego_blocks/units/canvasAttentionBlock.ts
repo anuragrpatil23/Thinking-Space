@@ -56,6 +56,8 @@ export interface CanvasAttentionStateBlock {
   closed: CanvasStationBlock[]
   /** The station being credited right now. */
   current: { rect: CanvasViewportRectBlock; attention: ReadingAttentionStateBlock } | null
+  /** Sitting start, until the first station opens and inherits it. */
+  pendingSinceMs: number | null
 }
 
 /**
@@ -85,8 +87,16 @@ export function viewportOverlapBlock(
  *  un-merge them. */
 export const STATION_OVERLAP_THRESHOLD = 0.5
 
-export function createCanvasAttentionBlock(): CanvasAttentionStateBlock {
-  return { closed: [], current: null }
+/**
+ * @param sinceMs When the sitting began. The canvas is not ready at that
+ * instant — the scene has to load before a viewport means anything — so the
+ * first station opens some seconds later. Anchoring it here makes it cover
+ * that lead-in, which is what keeps the stations summing to the document's
+ * own total. Without it the first real recording was off by 3s of 240s: time
+ * the document counted and no station claimed.
+ */
+export function createCanvasAttentionBlock(sinceMs: number): CanvasAttentionStateBlock {
+  return { closed: [], current: null, pendingSinceMs: sinceMs }
 }
 
 function closeCurrent(
@@ -125,7 +135,14 @@ export function observeCanvasViewportBlock(
   if (!rect || !Number.isFinite(nowMs)) return state
 
   if (!state.current) {
-    return { closed: state.closed, current: { rect, attention: createReadingAttentionBlock(nowMs) } }
+    // Anchor the first station at the sitting's start, not at now, so the
+    // canvas's load time is credited somewhere rather than vanishing.
+    const from = state.pendingSinceMs ?? nowMs
+    return {
+      closed: state.closed,
+      current: { rect, attention: createReadingAttentionBlock(from) },
+      pendingSinceMs: null,
+    }
   }
 
   const overlap = viewportOverlapBlock(state.current.rect, rect)
@@ -136,11 +153,16 @@ export function observeCanvasViewportBlock(
         rect: state.current.rect,
         attention: creditReadingAttentionBlock(state.current.attention, nowMs),
       },
+      pendingSinceMs: null,
     }
   }
 
   const closed = closeCurrent(state, nowMs, elementIdsAt?.(state.current.rect))
-  return { closed, current: { rect, attention: createReadingAttentionBlock(nowMs) } }
+  return {
+    closed,
+    current: { rect, attention: createReadingAttentionBlock(nowMs) },
+    pendingSinceMs: null,
+  }
 }
 
 /** Credit the current station without considering a move — for signals that
@@ -156,6 +178,7 @@ export function creditCanvasAttentionBlock(
       rect: state.current.rect,
       attention: creditReadingAttentionBlock(state.current.attention, nowMs),
     },
+    pendingSinceMs: null,
   }
 }
 
