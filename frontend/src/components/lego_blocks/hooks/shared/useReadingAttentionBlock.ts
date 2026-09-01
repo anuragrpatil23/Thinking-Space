@@ -12,6 +12,11 @@ import {
   traceReadingBlock,
 } from '@/services/lego_blocks/units/readingTraceBlock'
 import {
+  JOURNAL_CHECKPOINT_INTERVAL_MS,
+  checkpointReadingJournalBlock,
+  clearReadingJournalEntryBlock,
+} from '@/services/lego_blocks/units/readingJournalBlock'
+import {
   createReadingAttentionBlock,
   creditReadingAttentionBlock,
   resumeReadingAttentionBlock,
@@ -136,6 +141,7 @@ export function useReadingAttentionBlock(
   const lastSignalRef = useRef(0)
   const maxScrollRef = useRef(0)
   const endScrollRef = useRef<number | null>(null)
+  const lastCheckpointRef = useRef(0)
 
   useEffect(() => {
     if (!path || !attending || !hasForeground) return
@@ -149,6 +155,7 @@ export function useReadingAttentionBlock(
     lastSignalRef.current = now
     maxScrollRef.current = 0
     endScrollRef.current = null
+    lastCheckpointRef.current = now
     traceReadingBlock({ outcome: 'sitting-started', path })
 
     // Reading layout forces a reflow when a mutation is pending, so this is
@@ -169,6 +176,14 @@ export function useReadingAttentionBlock(
         activeMs: stateRef.current?.creditedMs ?? 0,
         stations: canvasRef.current ? canvasRef.current.closed.length + 1 : 0,
       })
+      // Write-ahead: the span so far goes somewhere synchronous, so a memory
+      // kill or force-quit costs the last few seconds rather than the sitting.
+      // Throttled — this is a main-thread localStorage write.
+      if (at - lastCheckpointRef.current >= JOURNAL_CHECKPOINT_INTERVAL_MS) {
+        lastCheckpointRef.current = at
+        const snapshot = buildRecord(at, stateRef.current?.creditedMs ?? 0, { silent: true })
+        if (snapshot) checkpointReadingJournalBlock(snapshot)
+      }
       if (!canvasRef.current) return
       const rect = optionsRef.current.viewportSampler?.() ?? null
       canvasRef.current = rect
@@ -210,9 +225,13 @@ export function useReadingAttentionBlock(
       lastSignalRef.current = at
     }
 
-    const buildRecord = (endMs: number, creditedMs: number): ThinkingspaceReadingRecord | null => {
+    const buildRecord = (
+      endMs: number,
+      creditedMs: number,
+      opts: { silent?: boolean } = {},
+    ): ThinkingspaceReadingRecord | null => {
       if (!isReportableAttentionBlock(creditedMs)) {
-        traceReadingBlock({ outcome: 'below-floor', path, activeMs: creditedMs })
+        if (!opts.silent) traceReadingBlock({ outcome: 'below-floor', path, activeMs: creditedMs })
         return null
       }
       const startMs = startedAtRef.current
@@ -257,7 +276,11 @@ export function useReadingAttentionBlock(
       const state = stateRef.current
       if (!state) return
       const record = buildRecord(at, state.creditedMs)
-      if (record) void appendReadingSpan(getVaultFS(), record)
+      if (!record) return
+      checkpointReadingJournalBlock(record)
+      void appendReadingSpan(getVaultFS(), record).then(durable => {
+        if (durable) clearReadingJournalEntryBlock(record.key)
+      })
     }
 
     const onVisibility = () => {
@@ -293,9 +316,16 @@ export function useReadingAttentionBlock(
       stateRef.current = null
       canvasRef.current = null
       setReadingLiveStateBlock(null)
+      if (!record) return
+      // Journal first, synchronously, then attempt the vault. If the app dies
+      // between the two the next launch drains it; if the vault takes it, the
+      // journal entry is forgotten.
+      checkpointReadingJournalBlock(record)
       // Fire-and-forget: the writer is module-level and serialized, so it
       // outlives this component's unmount.
-      if (record) void appendReadingSpan(getVaultFS(), record)
+      void appendReadingSpan(getVaultFS(), record).then(durable => {
+        if (durable) clearReadingJournalEntryBlock(record.key)
+      })
     }
   }, [path, attending, hasForeground])
 }

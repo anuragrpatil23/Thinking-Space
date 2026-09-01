@@ -4,6 +4,7 @@ import { enforceIPhoneViewportNoZoomBlock } from './services/lego_blocks/units/i
 import { requestPersistentStorageBlock } from './services/lego_blocks/units/persistentStorageBlock'
 import { seedNavRailDefaultsBlock } from './services/lego_blocks/units/navRailPrefsBlock'
 import { installReadingTraceConsoleBlock } from './services/lego_blocks/units/readingTraceBlock'
+import { drainReadingJournalOrch } from './services/orchestrators/readingJournalDrainOrch'
 
 installConsoleNoiseFilterBlock()
 enforceIPhoneViewportNoZoomBlock()
@@ -14,6 +15,9 @@ requestPersistentStorageBlock()
 // to discount exactly those.
 seedNavRailDefaultsBlock()
 installReadingTraceConsoleBlock()
+// Recover any sitting the app died holding. Fire-and-forget: it must not delay
+// first paint, and an entry that fails to drain stays journalled for next time.
+void drainReadingJournalOrch()
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { HashRouter, BrowserRouter } from 'react-router-dom'

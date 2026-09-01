@@ -117,9 +117,10 @@ async function readDayFile(
  * that folder, so it follows the folder's permission rather than the
  * digests-mirror opt-in specifically.
  *
- * Best-effort: swallows all errors so a logging failure never disrupts the
- * viewer. Returns false when the gate is off, so callers can tell "not
- * allowed" from "wrote nothing".
+ * Never throws — a logging failure must not disrupt the viewer. Returns
+ * whether the vault now durably holds this span, which is what lets the
+ * write-ahead journal know it may forget it. A gate refusal and a failed write
+ * both return false: neither put the span anywhere it will survive a restart.
  */
 export async function appendReadingSpan(
   fs: VaultFS,
@@ -132,6 +133,7 @@ export async function appendReadingSpan(
   // File under the sitting's *start*, so a span running past midnight stays
   // whole rather than splitting across two files.
   const path = dayFilePath(readingDayKeyBlock(record.startMs), getReadingInstallIdBlock())
+  let durable = false
   _writeChain = _writeChain.then(async () => {
     try {
       const { text, records } = await readDayFile(fs, path)
@@ -142,6 +144,7 @@ export async function appendReadingSpan(
         const next = text && !text.endsWith('\n') ? `${text}\n${line}\n` : `${text}${line}\n`
         await fs.write(path, next)
         invalidateDayCacheBlock(path.slice(READING_DIR.length + 1))
+        durable = true
         traceReadingBlock({
           outcome: 'wrote', path: record.filePath, activeMs: record.activeMs, file: path,
         })
@@ -152,6 +155,9 @@ export async function appendReadingSpan(
       // day file costs nothing at this size.
       const merged = mergeReadingRecordsBlock(records[at], record)
       if (merged === records[at]) {
+        // The stored row already covers this span (a longer measurement, or a
+        // human's correction). Durable either way.
+        durable = true
         traceReadingBlock({ outcome: 'unchanged', path: record.filePath, file: path })
         return
       }
@@ -159,6 +165,7 @@ export async function appendReadingSpan(
       next[at] = merged
       await fs.write(path, serializeLog(next))
       invalidateDayCacheBlock(path.slice(READING_DIR.length + 1))
+      durable = true
       traceReadingBlock({
         outcome: 'merged', path: record.filePath, activeMs: merged.activeMs, file: path,
       })
@@ -174,7 +181,7 @@ export async function appendReadingSpan(
     }
   })
   await _writeChain
-  return true
+  return durable
 }
 
 /** Same-doc rows overlapping an edited window with this much grace on each
