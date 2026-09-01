@@ -40,6 +40,41 @@ mkdir -p "$LOG_DIR" "$TMP_DIR"
 say()  { echo "  $*"; }
 fail() { echo "  ✗ $*" >&2; echo "  log: $LOG" >&2; exit 1; }
 
+# Name the reason an install failed instead of guessing at it.
+#
+# This used to report "UNREACHABLE (same network / plugged in / unlocked?)" for
+# every failure — three causes collapsed into one shrug, while the devicectl
+# output sitting right there named the actual one. A locked iPad and an iPad on
+# another network are different problems with different fixes, and the operator
+# was left to open the log to find out which. Same rule as the app's derivation
+# contract: when you find yourself explaining *why* something is missing, check
+# that you measured the reason rather than inferred it from the gap.
+classify_install_failure() {
+  local f="$1"
+  if grep -qi 'DeviceLocked\|device is locked' "$f" 2>/dev/null; then
+    echo "LOCKED (unlock the screen and keep it awake — Auto-Lock ▸ Never)"
+  elif grep -qi 'unable to locate a device matching' "$f" 2>/dev/null; then
+    echo "NOT FOUND (asleep, off this network, or unpaired)"
+  elif grep -qi 'disconnected immediately after connecting' "$f" 2>/dev/null; then
+    echo "DISCONNECTED (tunnel dropped mid-install — plug in over USB?)"
+  elif grep -qi 'no space left\|insufficient' "$f" 2>/dev/null; then
+    echo "OUT OF SPACE on the device"
+  else
+    echo "UNREACHABLE (same network / plugged in / unlocked?)"
+  fi
+}
+
+# Short form for the interim retry line, so a locked device says "unlock me"
+# while there are still attempts left to benefit from it.
+retry_hint() {
+  local f="$1"
+  if grep -qi 'DeviceLocked\|device is locked' "$f" 2>/dev/null; then
+    echo "device locked — unlock it now, retrying"
+  else
+    echo "retrying (waking device tunnel)"
+  fi
+}
+
 # ─── Shared dist lock ─────────────────────────────────────────────────────────
 # The Mac and iOS checkpoint scripts both build frontend/dist (electron vs
 # capacitor targets). Running them concurrently once shipped a Mac app packed
@@ -284,12 +319,18 @@ for i in "${!DEVICE_IDS[@]}"; do
     sleep 1
   fi
   INSTALLED=0
+  # Each attempt's output goes to a scratch file first so the failure can be
+  # classified, then straight into the log. Appending directly to $LOG would
+  # mean scraping a shared, ever-growing file to find out what just happened.
+  INSTALL_OUT="$TMP_DIR/install-$DEVICE_ID.out"
   for attempt in 1 2 3 4; do
-    if xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH" >>"$LOG" 2>&1; then
+    if xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH" >"$INSTALL_OUT" 2>&1; then
+      cat "$INSTALL_OUT" >>"$LOG"
       INSTALLED=1
       break
     fi
-    say "install attempt $attempt failed — retrying (waking device tunnel)…"
+    cat "$INSTALL_OUT" >>"$LOG"
+    say "install attempt $attempt failed — $(retry_hint "$INSTALL_OUT")…"
     sleep $((attempt * 3))
   done
   if [ $INSTALLED = 1 ]; then
@@ -303,7 +344,7 @@ for i in "${!DEVICE_IDS[@]}"; do
       RESULTS+=("$DEVICE_NAME: installed (launch it manually — device likely locked)")
     fi
   else
-    RESULTS+=("$DEVICE_NAME: UNREACHABLE (same network / plugged in / unlocked?)")
+    RESULTS+=("$DEVICE_NAME: $(classify_install_failure "$INSTALL_OUT")")
   fi
 done
 
