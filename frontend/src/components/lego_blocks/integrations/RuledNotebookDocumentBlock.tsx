@@ -17,6 +17,7 @@ import {
   type RuledNotebookPageBlock,
 } from '@/services/lego_blocks/units/ruledNotebookPaginationBlock'
 import { assignOutlineLabelsBlock } from '@/services/lego_blocks/units/outlineCounterBlock'
+import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import { resolveFrontmatterDatesBlock } from '@/services/lego_blocks/units/frontmatterDatesBlock'
 import { appendMemorizedSessionInPlace } from '@/services/lego_blocks/units/memorizedSessionsBlock'
 import {
@@ -252,6 +253,14 @@ export default function RuledNotebookDocumentBlock({
   const [content, setContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // The ruled notebook is a reading surface in its own right — paginated, ink
+  // annotations, the thing you actually sit with — and it does NOT render
+  // through MarkdownDocumentBlock, so instrumenting that block left this one
+  // measuring nothing at all. It is always the foreground pane when mounted
+  // (the orchestrator renders it *instead of* the inline document), so
+  // `attending` is just "loaded and not broken"; the arbiter settles the rest.
+  useReadingAttentionBlock(path, !loading && error === null)
   const [pageIndex, setPageIndex] = useState(0)
   const [transition, setTransition] = useState<TransitionState | null>(null)
   const [pages, setPages] = useState<RuledNotebookPageBlock[]>([])
