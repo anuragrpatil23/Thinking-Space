@@ -30,7 +30,9 @@ import type { ParsedSession } from '@/services/lego_blocks/units/aiActivityParse
 import { getReadingInstallIdBlock } from '@/services/lego_blocks/units/storageKeyBlock'
 import { getVaultWriteAiActivityAnyEnabled } from '@/services/lego_blocks/units/vaultWritePrefsBlock'
 import {
+  mergeReadingRecordsBlock,
   parseThinkingspaceReadingLog,
+  readingRecordStartFromKeyBlock,
   type ThinkingspaceReadingRecord,
 } from '@/services/lego_blocks/units/thinkingspaceReadingParserBlock'
 
@@ -123,15 +125,30 @@ export async function appendReadingSpan(
   record: ThinkingspaceReadingRecord,
 ): Promise<boolean> {
   if (!(await getVaultWriteAiActivityAnyEnabled())) return false
+  // File under the sitting's *start*, so a span running past midnight stays
+  // whole rather than splitting across two files.
   const path = dayFilePath(readingDayKeyBlock(record.startMs), getReadingInstallIdBlock())
   _writeChain = _writeChain.then(async () => {
     try {
       const { text, records } = await readDayFile(fs, path)
-      if (records.some(r => r.key === record.key)) return
-      if (!text) await ensureReadingDir(fs)
-      const line = JSON.stringify(record)
-      const next = text && !text.endsWith('\n') ? `${text}\n${line}\n` : `${text}${line}\n`
-      await fs.write(path, next)
+      const at = records.findIndex(r => r.key === record.key)
+      if (at === -1) {
+        if (!text) await ensureReadingDir(fs)
+        const line = JSON.stringify(record)
+        const next = text && !text.endsWith('\n') ? `${text}\n${line}\n` : `${text}${line}\n`
+        await fs.write(path, next)
+        invalidateDayCacheBlock(path.slice(READING_DIR.length + 1))
+        return
+      }
+      // Already present — this is the hide-flush being upgraded by the real
+      // close, or the reverse. mergeReadingRecordsBlock decides; rewriting a
+      // day file costs nothing at this size.
+      const merged = mergeReadingRecordsBlock(records[at], record)
+      if (merged === records[at]) return
+      const next = [...records]
+      next[at] = merged
+      await fs.write(path, serializeLog(next))
+      invalidateDayCacheBlock(path.slice(READING_DIR.length + 1))
     } catch {
       // Logging is best-effort; never throw into the caller.
     }
@@ -169,10 +186,13 @@ export async function editThinkingspaceReadingRecord(
         || input.endMs - input.startMs < 60_000
       ) return
 
-      // The row may predate the edit's new day (someone can drag a sitting
-      // across midnight), so locate it by its own startMs, not the edited one.
-      const dayKey = readingDayKeyBlock(input.startMs)
-      const path = dayFilePath(dayKey, installId)
+      // Locate the row by the start it was FILED under, not the edited one.
+      // Dragging a sitting back across midnight changes input.startMs while
+      // the record stays in the original day's file; using the new value would
+      // look in the wrong file, find nothing, and silently no-op.
+      const filedStartMs = readingRecordStartFromKeyBlock(input.key)
+      if (filedStartMs === null) return
+      const path = dayFilePath(readingDayKeyBlock(filedStartMs), installId)
       const { records } = await readDayFile(fs, path)
       const idx = records.findIndex(r => r.key === input.key)
       if (idx === -1) return
@@ -204,6 +224,7 @@ export async function editThinkingspaceReadingRecord(
       survivors.splice(Math.min(idx, survivors.length), 0, updated)
 
       await fs.write(path, serializeLog(survivors))
+      invalidateDayCacheBlock(path.slice(READING_DIR.length + 1))
       result = { ok: true, absorbed, total: survivors.length }
     } catch {
       // Best-effort; leave result with ok:false.
@@ -211,6 +232,26 @@ export async function editThinkingspaceReadingRecord(
   })
   await _writeChain
   return result
+}
+
+// Parsed day files, keyed by filename. A sealed day cannot change — that is
+// the whole point of naming files after the day they cover — so re-reading and
+// re-parsing every one of them on each load is pure waste. The first load pays
+// for the history; every later one reads only the day still being written to.
+//
+// Without this the cost grows without bound: the panel has an "all" preset, so
+// a horizon would silently truncate history rather than bound the work. The
+// only entry that can go stale is one an edit rewrote, which invalidates it
+// explicitly.
+const _dayCache = new Map<string, ThinkingspaceReadingRecord[]>()
+
+function invalidateDayCacheBlock(fileName: string): void {
+  _dayCache.delete(fileName)
+}
+
+/** Test seam — the cache is module state and would otherwise leak between cases. */
+export function resetReadingDayCacheBlock(): void {
+  _dayCache.clear()
 }
 
 export interface LoadReadingSpansOptions {
@@ -243,11 +284,19 @@ export async function loadThinkingspaceReadingSessions(
     })
     if (names.length === 0) return []
 
+    // Any file for *today* is still live and is never served from the cache —
+    // including another install's, which iCloud can deliver more rows into
+    // while this session runs. Only a day that has closed everywhere is sealed.
+    const todayKey = readingDayKeyBlock(Date.now())
+    const isLive = (name: string) => name.startsWith(`${todayKey}.`)
+    const cold = names.filter(name => isLive(name) || !_dayCache.has(name))
     const texts = await Promise.all(
-      names.map(name => fs.read(`${READING_DIR}/${name}`).catch(() => '')),
+      cold.map(name => fs.read(`${READING_DIR}/${name}`).catch(() => '')),
     )
+    cold.forEach((name, i) => { _dayCache.set(name, parseLogText(texts[i])) })
+
     const records: ThinkingspaceReadingRecord[] = []
-    for (const text of texts) records.push(...parseLogText(text))
+    for (const name of names) records.push(...(_dayCache.get(name) ?? []))
     return parseThinkingspaceReadingLog(records)
   } catch {
     return []

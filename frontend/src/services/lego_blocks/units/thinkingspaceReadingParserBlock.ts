@@ -12,6 +12,7 @@ import type {
   ActivitySource,
   ParsedSession,
 } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import type { CanvasStationBlock } from '@/services/lego_blocks/units/canvasAttentionBlock'
 
 export type ThinkingspaceReadingSource = Extract<ActivitySource, 'reading-md' | 'reading-draw'>
 
@@ -20,12 +21,51 @@ export type ThinkingspaceReadingSource = Extract<ActivitySource, 'reading-md' | 
  *  be indistinguishable once written down. */
 export type ThinkingspaceReadingMethod = 'measured' | 'declared'
 
+/**
+ * Where within the document the attention went. A tagged union rather than a
+ * bag of optional fields, so each surface contributes the granularity it can
+ * actually support and a new surface adds a variant instead of more `?:`.
+ *
+ * The two are the same idea at different dimensions: a document has an extent,
+ * so a position in it is one number; a canvas has none, so a position is a
+ * rectangle. `scroll` is the degenerate case of `canvas`, not a special case.
+ */
+export type ThinkingspaceReadingWhere =
+  | {
+      kind: 'scroll'
+      /** Deepest point reached, as a fraction of scrollable height. */
+      max: number
+      /** Where the sitting ended. With `max`, this answers "did I bounce off,
+       *  and where" with no block-level anchoring at all. */
+      end?: number
+    }
+  | {
+      kind: 'canvas'
+      stations: CanvasStationBlock[]
+    }
+
 export interface ThinkingspaceReadingRecord {
-  /** Unique, idempotent key: `${source}|${filePath}|${startMs}`. */
+  /**
+   * Dedup identity for this *sitting*: `${source}|${filePath}|${startMs}`.
+   *
+   * Not the document's identity — see `uuid`. The trailing field is the
+   * sitting's original start, which is how the store finds the day file a
+   * record lives in even after an edit moves its window.
+   */
   key: string
   source: ThinkingspaceReadingSource
-  /** Vault-relative path of the document read/drawn. */
+  /** Vault-relative path of the document read/drawn. A *hint*: it moves when
+   *  the file is renamed, which is exactly why it is not the identity. */
   filePath: string
+  /**
+   * Identity of the document, from its YAML frontmatter, when it has one.
+   *
+   * Survives renames and moves, so history filed under it does not split when
+   * a note is reorganised. Cannot be required: in this vault 88 of 91
+   * Excalidraw documents carry a uuid but only ~24% of markdown does, so it is
+   * a strengthening where available and readers fall back to `filePath`.
+   */
+  uuid?: string
   /** Display title (best-effort, derived from the filename at emit time). */
   title: string
   /** 'measured' — the app observed it. 'declared' — a person asserted it. */
@@ -46,16 +86,42 @@ export interface ThinkingspaceReadingRecord {
   activeMs: number
   /** When the record was appended, epoch ms. */
   recordedAt: number
-  /** Deepest point reached, as a fraction of scrollable height. Markdown only
-   *  — a canvas has no extent to be a fraction of. */
-  maxScrollRatio?: number
-  /** Where the sitting ended, as a fraction of scrollable height. Together
-   *  with maxScrollRatio this answers "did I bounce off, and where" without
-   *  any block-level anchoring. Markdown only. */
-  endScrollRatio?: number
+  /** Where within the document the attention went. Absent when the surface
+   *  could not say. */
+  where?: ThinkingspaceReadingWhere
   /** Optional "pages read" count for declared spans. Defaults to 1 when
    *  missing. Surfaced as the row's msg count in the panel. */
   pages?: number
+}
+
+/** The sitting's original start, recovered from its key. The key's last field
+ *  is that timestamp, and reading it from the right survives a `|` inside a
+ *  vault path. Returns null for a key that isn't ours. */
+export function readingRecordStartFromKeyBlock(key: string): number | null {
+  const at = key.lastIndexOf('|')
+  if (at === -1) return null
+  const parsed = Number(key.slice(at + 1))
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+/**
+ * Which of two records for the same sitting to keep.
+ *
+ * Not "first one wins": the in-progress span is flushed when the app hides so
+ * that quitting cannot lose it, and the real close then re-emits the same key
+ * with more attention on it. The longer measurement is the more complete one.
+ *
+ * A declared record is never replaced. A person correcting a number outranks
+ * any later automatic emit — the same precedence ASSIGNMENT.md sets between
+ * what automation proposes and what a human mints.
+ */
+export function mergeReadingRecordsBlock(
+  existing: ThinkingspaceReadingRecord,
+  incoming: ThinkingspaceReadingRecord,
+): ThinkingspaceReadingRecord {
+  if (existing.method === 'declared') return existing
+  if (incoming.method === 'declared') return incoming
+  return incoming.activeMs > existing.activeMs ? incoming : existing
 }
 
 /** Derive a readable title from a vault path, stripping the markdown/excalidraw

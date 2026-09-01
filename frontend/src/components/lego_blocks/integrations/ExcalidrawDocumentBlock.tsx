@@ -74,6 +74,7 @@ import {
   resolveViewportWorldSize,
   scheduleDeferredWork,
 } from '@/services/lego_blocks/integrations/excalidrawViewportBlock'
+import type { CanvasViewportRectBlock } from '@/services/lego_blocks/units/canvasAttentionBlock'
 import { Palette } from 'lucide-react'
 import ExcalidrawPenPaletteBlock from '@/components/lego_blocks/integrations/ExcalidrawPenPaletteBlock'
 import ExcalidrawMiniMapBlock, {
@@ -109,6 +110,10 @@ interface ExcalidrawDocumentBlockProps {
   onApiChange?: (api: ExcalidrawCanvasApiOrch | null) => void
   filePath?: string
   onOpenPath?: (path: string) => void
+  /** Publishes a reader for the canvas viewport in world coordinates, so
+   *  reading attention can record *where* on the canvas it went. Called with
+   *  null on unmount. See canvasAttentionBlock. */
+  onViewportSamplerChange?: (sampler: (() => CanvasViewportRectBlock | null) | null) => void
   className?: string
 }
 
@@ -126,6 +131,7 @@ export default function ExcalidrawDocumentBlock({
   onApiChange,
   filePath,
   onOpenPath,
+  onViewportSamplerChange,
   className,
 }: ExcalidrawDocumentBlockProps) {
   const { layout } = useUILayoutBlock()
@@ -1178,6 +1184,35 @@ export default function ExcalidrawDocumentBlock({
   // ---------------------------------------------------------------------------
   // Compact view zoom fitting
   // ---------------------------------------------------------------------------
+
+  // Publish a viewport reader for reading-attention. A ref rather than a
+  // dependency-tracked callback: it is pulled at most once a second from an
+  // event handler, so it must reflect the live canvas without re-subscribing
+  // every time the scene or the container resizes.
+  const viewportSamplerDepsRef = useRef({ excalidrawApi, containerSize })
+  viewportSamplerDepsRef.current = { excalidrawApi, containerSize }
+  useEffect(() => {
+    if (!onViewportSamplerChange) return
+    const sample = (): CanvasViewportRectBlock | null => {
+      const { excalidrawApi: api, containerSize: size } = viewportSamplerDepsRef.current
+      if (!api) return null
+      const viewport = api.getViewportStateBlock()
+      const zoom = Number.isFinite(viewport.zoom) ? Math.max(viewport.zoom, 0.01) : 1
+      const { viewportWorldW, viewportWorldH } = resolveViewportWorldSize({
+        excalidrawApi: api, zoom,
+        fallbackWidth: size.width, fallbackHeight: size.height,
+      })
+      if (!(viewportWorldW > 0) || !(viewportWorldH > 0)) return null
+      return {
+        x: -viewport.scrollX,
+        y: -viewport.scrollY,
+        w: viewportWorldW,
+        h: viewportWorldH,
+      }
+    }
+    onViewportSamplerChange(sample)
+    return () => onViewportSamplerChange(null)
+  }, [onViewportSamplerChange])
 
   useEffect(() => {
     if (editable || !isCompactLayout || !excalidrawApi) return

@@ -45,6 +45,7 @@ const {
   editThinkingspaceReadingRecord,
   loadThinkingspaceReadingSessions,
   readingDayKeyBlock,
+  resetReadingDayCacheBlock,
 } = await import('@/services/lego_blocks/integrations/thinkingspaceReadingBlock')
 
 const DIR = 'ai-activity/raw-sessions/thinkingspace/reading'
@@ -80,6 +81,7 @@ describe('thinkingspaceReadingBlock', () => {
     files.clear()
     dirs.clear()
     store.clear()
+    resetReadingDayCacheBlock()
     writesAllowed = true
   })
 
@@ -235,6 +237,89 @@ describe('thinkingspaceReadingBlock', () => {
         pages: 1,
       })
       expect(result.ok).toBe(false)
+    })
+  })
+
+  describe('merging a repeated emit', () => {
+    // The hide-flush writes an in-progress span so quitting cannot lose it;
+    // the real close re-emits the same key with more attention on it. Keeping
+    // the first would permanently record the flush's shorter number.
+    it('upgrades a flushed span when the sitting really ends', async () => {
+      const start = localNoon(2026, 8, 30)
+      await appendReadingSpan(fakeVaultFS, span(start, { activeMs: 3 * 60_000 }))
+      await appendReadingSpan(fakeVaultFS, span(start, { activeMs: 20 * 60_000 }))
+      const name = installedFileNames()[0]
+      const rows = files.get(`${DIR}/${name}`)!.trim().split('\n').map(l => JSON.parse(l))
+      expect(rows).toHaveLength(1)
+      expect(rows[0].activeMs).toBe(20 * 60_000)
+    })
+
+    it('never lets a later emit shrink a span', async () => {
+      const start = localNoon(2026, 8, 30)
+      await appendReadingSpan(fakeVaultFS, span(start, { activeMs: 20 * 60_000 }))
+      await appendReadingSpan(fakeVaultFS, span(start, { activeMs: 3 * 60_000 }))
+      const name = installedFileNames()[0]
+      const rec = JSON.parse(files.get(`${DIR}/${name}`)!.trim())
+      expect(rec.activeMs).toBe(20 * 60_000)
+    })
+
+    // A person correcting a number outranks any later automatic emit.
+    it('never stomps a declared span with a measured one', async () => {
+      const start = localNoon(2026, 8, 30)
+      await appendReadingSpan(fakeVaultFS, span(start))
+      await editThinkingspaceReadingRecord(fakeVaultFS, {
+        key: `reading-md|notes/foo.md|${start}`,
+        startMs: start,
+        endMs: start + 90 * 60_000,
+        pages: 3,
+      })
+      await appendReadingSpan(fakeVaultFS, span(start, { activeMs: 10 * 3_600_000 }))
+      const name = installedFileNames()[0]
+      const rec = JSON.parse(files.get(`${DIR}/${name}`)!.trim())
+      expect(rec.method).toBe('declared')
+      expect(rec.activeMs).toBe(90 * 60_000)
+    })
+  })
+
+  describe('identity', () => {
+    it('carries a document uuid through to the record', async () => {
+      const start = localNoon(2026, 8, 30)
+      await appendReadingSpan(fakeVaultFS, span(start, { uuid: 'abc-123' }))
+      const name = installedFileNames()[0]
+      expect(JSON.parse(files.get(`${DIR}/${name}`)!.trim()).uuid).toBe('abc-123')
+    })
+
+    it('finds the filed day from the key even when a path contains a pipe', async () => {
+      const start = localNoon(2026, 8, 30)
+      const filePath = 'notes/a|b.md'
+      await appendReadingSpan(fakeVaultFS, span(start, { filePath }))
+      const result = await editThinkingspaceReadingRecord(fakeVaultFS, {
+        key: `reading-md|${filePath}|${start}`,
+        startMs: start,
+        endMs: start + 70 * 60_000,
+        pages: 1,
+      })
+      expect(result.ok).toBe(true)
+    })
+
+    // Dragging a sitting back across midnight changes the edited startMs while
+    // the record stays filed under the day it was recorded on. Looking in the
+    // new day's file would find nothing and silently no-op.
+    it('edits a span dragged backwards across midnight', async () => {
+      const start = localNoon(2026, 8, 30)
+      await appendReadingSpan(fakeVaultFS, span(start))
+      const movedTo = new Date(2026, 7, 29, 23, 30, 0, 0).getTime()
+      const result = await editThinkingspaceReadingRecord(fakeVaultFS, {
+        key: `reading-md|notes/foo.md|${start}`,
+        startMs: movedTo,
+        endMs: movedTo + 80 * 60_000,
+        pages: 1,
+      })
+      expect(result.ok).toBe(true)
+      const name = installedFileNames()[0]
+      expect(name).toMatch(/^2026-08-30\./)
+      const rec = JSON.parse(files.get(`${DIR}/${name}`)!.trim())
+      expect(rec.startMs).toBe(movedTo)
     })
   })
 })

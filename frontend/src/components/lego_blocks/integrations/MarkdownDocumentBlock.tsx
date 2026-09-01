@@ -129,7 +129,10 @@ import { dispatchPageTopInsetBlock } from '@/services/lego_blocks/units/pageTopI
 import { isHtmlDocumentPathBlock } from '@/services/lego_blocks/units/htmlDocumentPathBlock'
 import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
 import { useScreenWakeLockBlock } from '@/components/lego_blocks/hooks/useScreenWakeLockBlock'
-import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
+import {
+  useReadingAttentionBlock,
+  type CanvasViewportSampler,
+} from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import {
   clearExcalidrawCrashMarkerBlock,
   excalidrawMarkerActionBlock,
@@ -584,7 +587,38 @@ function MarkdownTextDocumentRuntimeBlock({
   // would be a silent disagreement about the same question.
   const attending = active && (!isEditing || isExcalidrawDoc) && !loading && error === null
   useScreenWakeLockBlock(attending)
-  useReadingAttentionBlock(countsAsReading ? path : null, attending, contentScrollRef)
+
+  // A reading span is filed against the document's uuid when it has one, so a
+  // rename doesn't split its history. Read off the saved content rather than
+  // the draft: an in-flight edit to the frontmatter should not retarget the
+  // sitting that is already underway.
+  const documentUuid = useMemo(() => {
+    const { frontmatter } = splitFrontmatter(content ?? '')
+    if (!frontmatter) return null
+    const raw = parseFrontmatterObject(frontmatter).uuid
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : null
+  }, [content])
+
+  // The canvas publishes a viewport reader; reading attention pulls it to
+  // record *where* on the canvas the time went. Held as state so mounting the
+  // canvas restarts the sitting with stations enabled rather than silently
+  // measuring a canvas with no `where`.
+  const [canvasViewportSampler, setCanvasViewportSampler] =
+    useState<CanvasViewportSampler | null>(null)
+  const handleCanvasViewportSampler = useCallback(
+    (sampler: CanvasViewportSampler | null) => {
+      // Stored via the updater form: a sampler IS a function, so the plain
+      // form would call it instead of storing it.
+      setCanvasViewportSampler(() => sampler)
+    },
+    [],
+  )
+
+  useReadingAttentionBlock(countsAsReading ? path : null, attending, {
+    scrollRef: contentScrollRef,
+    uuid: documentUuid,
+    viewportSampler: canvasViewportSampler ?? undefined,
+  })
 
   // Live preview makes the view/edit split mostly ceremonial for text docs.
   // Entering editing is a long-press on EVERY surface (mouse and touch alike):
@@ -2170,7 +2204,7 @@ function MarkdownTextDocumentRuntimeBlock({
           )}
 
           {!loading && !error && content !== null && !isEditing && isExcalidrawDoc && (
-            <ExcalidrawDocumentBlock content={content} filePath={path} onOpenPath={openLinkedPath} className="flex-1 min-h-0" />
+            <ExcalidrawDocumentBlock content={content} filePath={path} onOpenPath={openLinkedPath} onViewportSamplerChange={handleCanvasViewportSampler} className="flex-1 min-h-0" />
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && isHtmlDoc && (
@@ -2298,6 +2332,7 @@ function MarkdownTextDocumentRuntimeBlock({
               onApiChange={handleExcalidrawApiChange}
               filePath={path}
               onOpenPath={openLinkedPath}
+              onViewportSamplerChange={handleCanvasViewportSampler}
               className="h-[52vh] sm:h-[60vh] lg:h-[72vh]"
             />
             {annotationRecoveryBlock}
@@ -2416,6 +2451,7 @@ function MarkdownTextDocumentRuntimeBlock({
                 onApiChange={handleExcalidrawApiChange}
                 filePath={path}
                 onOpenPath={openLinkedPath}
+                onViewportSamplerChange={handleCanvasViewportSampler}
                 className="h-full"
               />
             </div>
