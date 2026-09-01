@@ -8,6 +8,10 @@ import {
   subscribeReadingForegroundBlock,
 } from '@/services/lego_blocks/units/readingForegroundBlock'
 import {
+  setReadingLiveStateBlock,
+  traceReadingBlock,
+} from '@/services/lego_blocks/units/readingTraceBlock'
+import {
   createReadingAttentionBlock,
   creditReadingAttentionBlock,
   resumeReadingAttentionBlock,
@@ -145,6 +149,7 @@ export function useReadingAttentionBlock(
     lastSignalRef.current = now
     maxScrollRef.current = 0
     endScrollRef.current = null
+    traceReadingBlock({ outcome: 'sitting-started', path })
 
     // Reading layout forces a reflow when a mutation is pending, so this is
     // called ONLY from scroll handling, where the browser has just finished
@@ -159,6 +164,11 @@ export function useReadingAttentionBlock(
 
     const creditAt = (at: number) => {
       if (stateRef.current) stateRef.current = creditReadingAttentionBlock(stateRef.current, at)
+      setReadingLiveStateBlock({
+        path, source, startedAt: new Date(startedAtRef.current).toISOString(),
+        activeMs: stateRef.current?.creditedMs ?? 0,
+        stations: canvasRef.current ? canvasRef.current.closed.length + 1 : 0,
+      })
       if (!canvasRef.current) return
       const rect = optionsRef.current.viewportSampler?.() ?? null
       canvasRef.current = rect
@@ -201,7 +211,10 @@ export function useReadingAttentionBlock(
     }
 
     const buildRecord = (endMs: number, creditedMs: number): ThinkingspaceReadingRecord | null => {
-      if (!isReportableAttentionBlock(creditedMs)) return null
+      if (!isReportableAttentionBlock(creditedMs)) {
+        traceReadingBlock({ outcome: 'below-floor', path, activeMs: creditedMs })
+        return null
+      }
       const startMs = startedAtRef.current
       let where: ThinkingspaceReadingWhere | undefined
       if (isCanvas) {
@@ -276,8 +289,10 @@ export function useReadingAttentionBlock(
       if (!state) return
       const { creditedMs } = creditReadingAttentionBlock(state, endMs)
       const record = buildRecord(endMs, creditedMs)
+      traceReadingBlock({ outcome: 'sitting-ended', path, activeMs: creditedMs })
       stateRef.current = null
       canvasRef.current = null
+      setReadingLiveStateBlock(null)
       // Fire-and-forget: the writer is module-level and serialized, so it
       // outlives this component's unmount.
       if (record) void appendReadingSpan(getVaultFS(), record)

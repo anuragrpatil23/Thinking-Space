@@ -29,6 +29,7 @@ import type { VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import type { ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { getReadingInstallIdBlock } from '@/services/lego_blocks/units/storageKeyBlock'
 import { getVaultWriteAiActivityAnyEnabled } from '@/services/lego_blocks/units/vaultWritePrefsBlock'
+import { traceReadingBlock } from '@/services/lego_blocks/units/readingTraceBlock'
 import {
   mergeReadingRecordsBlock,
   parseThinkingspaceReadingLog,
@@ -124,7 +125,10 @@ export async function appendReadingSpan(
   fs: VaultFS,
   record: ThinkingspaceReadingRecord,
 ): Promise<boolean> {
-  if (!(await getVaultWriteAiActivityAnyEnabled())) return false
+  if (!(await getVaultWriteAiActivityAnyEnabled())) {
+    traceReadingBlock({ outcome: 'gate-blocked', path: record.filePath })
+    return false
+  }
   // File under the sitting's *start*, so a span running past midnight stays
   // whole rather than splitting across two files.
   const path = dayFilePath(readingDayKeyBlock(record.startMs), getReadingInstallIdBlock())
@@ -138,19 +142,35 @@ export async function appendReadingSpan(
         const next = text && !text.endsWith('\n') ? `${text}\n${line}\n` : `${text}${line}\n`
         await fs.write(path, next)
         invalidateDayCacheBlock(path.slice(READING_DIR.length + 1))
+        traceReadingBlock({
+          outcome: 'wrote', path: record.filePath, activeMs: record.activeMs, file: path,
+        })
         return
       }
       // Already present — this is the hide-flush being upgraded by the real
       // close, or the reverse. mergeReadingRecordsBlock decides; rewriting a
       // day file costs nothing at this size.
       const merged = mergeReadingRecordsBlock(records[at], record)
-      if (merged === records[at]) return
+      if (merged === records[at]) {
+        traceReadingBlock({ outcome: 'unchanged', path: record.filePath, file: path })
+        return
+      }
       const next = [...records]
       next[at] = merged
       await fs.write(path, serializeLog(next))
       invalidateDayCacheBlock(path.slice(READING_DIR.length + 1))
-    } catch {
-      // Logging is best-effort; never throw into the caller.
+      traceReadingBlock({
+        outcome: 'merged', path: record.filePath, activeMs: merged.activeMs, file: path,
+      })
+    } catch (err) {
+      // Still never throws into the caller — but silence is what made a broken
+      // write path indistinguishable from "nothing to write".
+      traceReadingBlock({
+        outcome: 'error',
+        path: record.filePath,
+        file: path,
+        detail: err instanceof Error ? err.message : String(err),
+      })
     }
   })
   await _writeChain

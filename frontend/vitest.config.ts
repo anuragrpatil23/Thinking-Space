@@ -10,6 +10,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/**/*.test.ts'],
+    // .tsx too: @testing-library/react is a dependency but no component
+    // test could ever run under a .ts-only include.
+    include: ['tests/**/*.test.{ts,tsx}'],
   },
 })

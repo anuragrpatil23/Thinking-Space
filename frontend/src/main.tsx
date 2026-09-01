@@ -3,6 +3,7 @@ import { installConsoleNoiseFilterBlock } from './services/lego_blocks/units/con
 import { enforceIPhoneViewportNoZoomBlock } from './services/lego_blocks/units/iphoneViewportBlock'
 import { requestPersistentStorageBlock } from './services/lego_blocks/units/persistentStorageBlock'
 import { seedNavRailDefaultsBlock } from './services/lego_blocks/units/navRailPrefsBlock'
+import { installReadingTraceConsoleBlock } from './services/lego_blocks/units/readingTraceBlock'
 
 installConsoleNoiseFilterBlock()
 enforceIPhoneViewportNoZoomBlock()
@@ -12,6 +13,7 @@ requestPersistentStorageBlock()
 // color mode, and the shell tab record on its own, and the seeding rule knows
 // to discount exactly those.
 seedNavRailDefaultsBlock()
+installReadingTraceConsoleBlock()
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { HashRouter, BrowserRouter } from 'react-router-dom'
