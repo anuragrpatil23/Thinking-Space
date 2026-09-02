@@ -6,15 +6,18 @@
 // *measured attention* (`activeMs`) rather than how long the document was
 // open — see readingAttentionBlock for how that is accounted. The document
 // title is the bucket so the panel groups by what was read/drawn; the record's
-// `source` ('reading-md' | 'reading-draw') drives the sub-source pill.
+// `source` ('reading-md' | 'reading-draw' | 'reading-pdf') drives the
+// sub-source pill.
 
 import type {
   ActivitySource,
   ParsedSession,
 } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import type { CanvasStationBlock } from '@/services/lego_blocks/units/canvasAttentionBlock'
+import type { PdfPageDwellBlock } from '@/services/lego_blocks/units/pdfAttentionBlock'
 
-export type ThinkingspaceReadingSource = Extract<ActivitySource, 'reading-md' | 'reading-draw'>
+export type ThinkingspaceReadingSource =
+  Extract<ActivitySource, 'reading-md' | 'reading-draw' | 'reading-pdf'>
 
 /** How a span's duration came to be known. The distinction is the point of the
  *  record: a number the app observed and a number a person asserted must never
@@ -42,6 +45,14 @@ export type ThinkingspaceReadingWhere =
   | {
       kind: 'canvas'
       stations: CanvasStationBlock[]
+    }
+  | {
+      kind: 'pdf'
+      /** Per-page attention, page order. A page absent from this list was
+       *  scrolled past, not read. */
+      pages: PdfPageDwellBlock[]
+      /** Deepest page reached — "did I finish it" without walking the dwells. */
+      maxPage: number
     }
 
 export interface ThinkingspaceReadingRecord {
@@ -128,7 +139,10 @@ export function mergeReadingRecordsBlock(
  *  extensions. Used at emit time when no better title is on hand. */
 export function readingTitleFromPathBlock(filePath: string): string {
   const base = filePath.split('/').pop() ?? filePath
-  return base.replace(/\.excalidraw\.md$/i, '').replace(/\.(excalidraw|md)$/i, '').trim() || filePath
+  return base
+    .replace(/\.excalidraw\.md$/i, '')
+    .replace(/\.(excalidraw|md|pdf)$/i, '')
+    .trim() || filePath
 }
 
 /**

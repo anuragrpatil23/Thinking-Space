@@ -24,6 +24,13 @@ import {
   type ReadingAttentionStateBlock,
 } from '@/services/lego_blocks/units/readingAttentionBlock'
 import {
+  createPdfAttentionBlock,
+  creditPdfAttentionBlock,
+  finishPdfAttentionBlock,
+  observePdfPageBlock,
+  type PdfAttentionStateBlock,
+} from '@/services/lego_blocks/units/pdfAttentionBlock'
+import {
   createCanvasAttentionBlock,
   creditCanvasAttentionBlock,
   finishCanvasAttentionBlock,
@@ -63,6 +70,11 @@ export type CanvasViewportSampler = () => CanvasViewportRectBlock | null
 /** Element ids intersecting a rect, sampled once when a station closes. */
 export type CanvasElementSampler = (rect: CanvasViewportRectBlock) => string[]
 
+/** The page currently being read, 1-based, or null before the document loads.
+ *  PdfDocumentBlock already derives this from an IntersectionObserver over the
+ *  page elements; this hook consumes it rather than recomputing it. */
+export type PdfPageSampler = () => number | null
+
 /** What a canvas surface publishes: where the viewport is, and which elements
  *  a rect covered when it was left. Supplied together because a station close
  *  needs both, and half of them is a station with no drift hint — which is how
@@ -78,10 +90,13 @@ export interface ReadingAttentionOptions {
   /** Document uuid from frontmatter, when it has one. */
   uuid?: string | null
   canvasSamplers?: CanvasSamplersBlock | null
+  pageSampler?: PdfPageSampler | null
 }
 
 function sourceForPath(path: string): ThinkingspaceReadingSource {
-  return isExcalidrawPathBlock(path) ? 'reading-draw' : 'reading-md'
+  if (isExcalidrawPathBlock(path)) return 'reading-draw'
+  if (/\.pdf$/i.test(path)) return 'reading-pdf'
+  return 'reading-md'
 }
 
 function scrollRatioOf(el: HTMLElement | null): number | null {
@@ -145,6 +160,7 @@ export function useReadingAttentionBlock(
   optionsRef.current = options
   const stateRef = useRef<ReadingAttentionStateBlock | null>(null)
   const canvasRef = useRef<CanvasAttentionStateBlock | null>(null)
+  const pdfRef = useRef<PdfAttentionStateBlock | null>(null)
   const startedAtRef = useRef(0)
   const lastSignalRef = useRef(0)
   const maxScrollRef = useRef(0)
@@ -169,9 +185,11 @@ export function useReadingAttentionBlock(
 
     const source = sourceForPath(path)
     const isCanvas = source === 'reading-draw'
+    const isPdf = source === 'reading-pdf'
     const now = Date.now()
     stateRef.current = createReadingAttentionBlock(now)
     canvasRef.current = isCanvas ? createCanvasAttentionBlock(now) : null
+    pdfRef.current = isPdf ? createPdfAttentionBlock(now) : null
     startedAtRef.current = now
     lastSignalRef.current = now
     maxScrollRef.current = 0
@@ -216,6 +234,12 @@ export function useReadingAttentionBlock(
         const snapshot = buildRecord(at, stateRef.current?.creditedMs ?? 0, { silent: true })
         if (snapshot) checkpointReadingJournalBlock(snapshot)
       }
+      if (pdfRef.current) {
+        const page = optionsRef.current.pageSampler?.() ?? null
+        pdfRef.current = page !== null
+          ? observePdfPageBlock(pdfRef.current, page, at)
+          : creditPdfAttentionBlock(pdfRef.current, at)
+      }
       if (!canvasRef.current) return
       const samplers = optionsRef.current.canvasSamplers
       const rect = samplers?.sample() ?? null
@@ -256,6 +280,15 @@ export function useReadingAttentionBlock(
           pendingSinceMs: null,
         }
       }
+      if (pdfRef.current?.current) {
+        pdfRef.current = {
+          ...pdfRef.current,
+          current: {
+            page: pdfRef.current.current.page,
+            attention: resumeReadingAttentionBlock(pdfRef.current.current.attention, at),
+          },
+        }
+      }
       lastSignalRef.current = at
     }
 
@@ -277,6 +310,11 @@ export function useReadingAttentionBlock(
             )
           : []
         if (stations.length > 0) where = { kind: 'canvas', stations }
+      } else if (isPdf) {
+        const { pages, maxPage } = pdfRef.current
+          ? finishPdfAttentionBlock(pdfRef.current, endMs)
+          : { pages: [], maxPage: 0 }
+        if (pages.length > 0) where = { kind: 'pdf', pages, maxPage }
       } else if (maxScrollRef.current > 0 || endScrollRef.current !== null) {
         where = {
           kind: 'scroll',
@@ -351,6 +389,7 @@ export function useReadingAttentionBlock(
       traceReadingBlock({ outcome: 'sitting-ended', path, activeMs: creditedMs })
       stateRef.current = null
       canvasRef.current = null
+      pdfRef.current = null
       setReadingLiveStateBlock(null)
       if (!record) return
       // Journal first, synchronously, then attempt the vault. If the app dies

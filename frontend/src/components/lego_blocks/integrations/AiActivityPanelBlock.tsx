@@ -849,6 +849,7 @@ function ReadingSubPills({
     { id: 'memorized', label: 'Memorize', count: counts.memorized },
     { id: 'reading-md', label: 'Markdown', count: counts.readingMd },
     { id: 'reading-draw', label: 'Drawing', count: counts.readingDraw },
+    { id: 'reading-pdf', label: 'PDF', count: counts.readingPdf },
   ]
   return (
     <div

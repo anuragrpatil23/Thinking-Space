@@ -583,7 +583,9 @@ export default function AiActivityDayTableBlock({
                               ? 'Memorization session — recorded from the notebook timer; duration is real, there’s no transcript.'
                               : c.source === 'reading-draw'
                                 ? 'Drawing session (Excalidraw) — measured attention on the canvas; duration is real, there’s no transcript.'
-                                : 'Reading session (Markdown) — measured attention on the document; duration is real, there’s no transcript.'}
+                                : c.source === 'reading-pdf'
+                                  ? 'Reading session (PDF) — measured attention, recorded per page; duration is real, there’s no transcript.'
+                                  : 'Reading session (Markdown) — measured attention on the document; duration is real, there’s no transcript.'}
                           </span>
                         ) : c.source === 'claude-code' || c.source === 'codex' ? (
                           // A native transcript with no usage in this window —

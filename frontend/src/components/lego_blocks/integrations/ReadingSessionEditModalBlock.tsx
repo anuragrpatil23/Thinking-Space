@@ -83,6 +83,7 @@ function countAbsorbedChains(
 const SUPPORTED_SOURCES: ReadonlySet<ActivitySource> = new Set<ActivitySource>([
   'reading-md',
   'reading-draw',
+  'reading-pdf',
 ])
 
 export function isReadingSessionEditableBlock(source: ActivitySource): boolean {

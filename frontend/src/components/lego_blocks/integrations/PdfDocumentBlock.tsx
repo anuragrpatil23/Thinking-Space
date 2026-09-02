@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import { ChevronLeft, ChevronRight, Maximize2, RefreshCw, ScanLine, ZoomIn, ZoomOut } from 'lucide-react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import PdfJsWorkerBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
@@ -78,6 +79,10 @@ configurePdfWorkerBlock()
 interface PdfDocumentBlockProps {
   path: string
   className?: string
+  /** Whether this mount is a real reading surface (see MarkdownDocumentBlock's
+   *  `countsAsReading` — previews and tiles must not accrue attention). */
+  countsAsReading?: boolean
+  active?: boolean
 }
 
 function clampPageBlock(value: number, numPages: number): number {
@@ -96,6 +101,8 @@ function normalizeScaleBlock(value: number): number {
 export default function PdfDocumentBlock({
   path,
   className,
+  countsAsReading = false,
+  active = true,
 }: PdfDocumentBlockProps) {
   const electronRuntime = isElectronRuntimeBlock()
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -465,6 +472,22 @@ export default function PdfDocumentBlock({
     if (!electronRuntime) return current
     return Math.max(1, Math.min(current, ELECTRON_SAFE_MAX_DEVICE_PIXEL_RATIO_BLOCK))
   }, [electronRuntime])
+
+  // A PDF page is the cleanest address of the three reading surfaces: discrete,
+  // stable for the life of the file, and already what a person would say out
+  // loud. `pageNumber` is derived by the IntersectionObserver below, so the
+  // sampler reads it through a ref rather than re-deriving anything.
+  const pageNumberRef = useRef(pageNumber)
+  pageNumberRef.current = pageNumber
+  const pageSampler = useCallback(
+    () => (numPages > 0 ? pageNumberRef.current : null),
+    [numPages],
+  )
+  useReadingAttentionBlock(
+    countsAsReading ? path : null,
+    active && !loading && error === null,
+    { pageSampler },
+  )
 
   const canGoPrev = pageNumber > 1
   const canGoNext = numPages > 0 && pageNumber < numPages

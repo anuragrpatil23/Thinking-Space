@@ -14,6 +14,7 @@ export type ActivitySource =
   | 'memorized'
   | 'reading-md'
   | 'reading-draw'
+  | 'reading-pdf'
   /** User-authored time blocks logged by hand ("painting 4h") — not AI, not
    *  reading. Durable in ai-activity/manual-sessions.jsonl. */
   | 'manual'
@@ -29,6 +30,7 @@ export const READING_SOURCES: ReadonlySet<ActivitySource> = new Set<ActivitySour
   'memorized',
   'reading-md',
   'reading-draw',
+  'reading-pdf',
 ])
 
 export function isReadingSource(source: ActivitySource): boolean {

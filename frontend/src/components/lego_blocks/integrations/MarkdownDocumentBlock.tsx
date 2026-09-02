@@ -2544,6 +2544,8 @@ function MarkdownTextDocumentRuntimeBlock({
 
 function PdfDocumentRuntimeBlock({
   path,
+  active = true,
+  countsAsReading = false,
   onOpenPath,
   onClose,
   showCloseButton = false,
@@ -2615,7 +2617,12 @@ function PdfDocumentRuntimeBlock({
       )}
 
       <div className="min-h-0 flex-1">
-        <PdfDocumentBlock path={path} className="h-full" />
+        <PdfDocumentBlock
+          path={path}
+          active={active}
+          countsAsReading={countsAsReading}
+          className="h-full"
+        />
       </div>
     </div>
   )
@@ -2841,6 +2848,8 @@ function MarkdownDocumentBlock(props: MarkdownDocumentBlockProps) {
     return (
       <PdfDocumentRuntimeBlock
         path={props.path}
+        active={props.active}
+        countsAsReading={props.countsAsReading}
         initialMode={props.initialMode}
         onSaved={props.onSaved}
         onOpenPath={props.onOpenPath}
