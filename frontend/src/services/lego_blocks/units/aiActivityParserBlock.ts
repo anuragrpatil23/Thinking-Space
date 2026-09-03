@@ -73,6 +73,13 @@ export interface ParsedSession {
    *  Code's cleanup. Reconstructed sessions have prompt counts and a rough
    *  time window but no tokens, model, or assistant turns. */
   reconstructed?: boolean
+  /**
+   * One line describing where a reading sitting's attention went — pages,
+   * canvas places, or scroll depth. Derived on every parse from the raw span
+   * (never stored), and set only for reading sources, which have no transcript
+   * for a model to summarize. The digest layer uses it as the summary.
+   */
+  readingDetail?: string
   /** Absolute paths of files the session wrote (Edit/Write/MultiEdit/
    *  NotebookEdit tool calls). Powers the vault-graph session lens: the exact
    *  notes a session touched, not a time-window guess. Native Claude sources

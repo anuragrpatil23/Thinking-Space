@@ -136,7 +136,13 @@ function rollupBlock(sessions: ProjectSessionDigest[]): ProjectChainRollup {
     projectId: first.projectId,
     chainKey: `${first.projectId}::${first.sessionId}`,
     sessions,
-    title: sessions.map(d => d.title).filter(Boolean).join(' · '),
+    // Deduped: a chain of sittings with one document open shares one title,
+    // and repeating it once per sitting said nothing new each time.
+    title: sessions
+      .map(d => d.title)
+      .filter(Boolean)
+      .filter((t, i, all) => all.indexOf(t) === i)
+      .join(' · '),
     date: first.date,
     startedIso: first.startedIso,
     endedIso: last.endedIso,

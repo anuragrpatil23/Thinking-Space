@@ -14,6 +14,9 @@ import type {
   ParsedSession,
 } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import type { CanvasStationBlock } from '@/services/lego_blocks/units/canvasAttentionBlock'
+import { autoInferProjectFromPathBlock } from '@/services/lego_blocks/units/aiActivityMappingBlock'
+import { describeReadingWhereBlock } from '@/services/lego_blocks/units/readingDigestBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import type { PdfPageDwellBlock } from '@/services/lego_blocks/units/pdfAttentionBlock'
 
 export type ThinkingspaceReadingSource =
@@ -159,17 +162,32 @@ export function readingRecordToSession(rec: ThinkingspaceReadingRecord): ParsedS
   const activeMs = Number.isFinite(rec.activeMs) ? Math.max(0, rec.activeMs) : 0
   if (activeMs <= 0) return null
   const title = (rec.title ?? '').trim() || readingTitleFromPathBlock(rec.filePath)
+
+  // The document's folder, absolute, so the canonical-project ladder can do
+  // for reading exactly what it does for AI sessions: longest-prefix match
+  // against the registered project roots. Before this, `project` was the
+  // document's own title, so every file ever opened minted a project of its
+  // own and reading never joined the dimension the panel is actually about.
+  // `project` is now only the fallback the ladder uses when no root matches —
+  // the folder name, via the same inference a cwd gets.
+  const slash = rec.filePath.lastIndexOf('/')
+  const dir = slash === -1 ? '' : rec.filePath.slice(0, slash)
+  const vaultRoot = (getStoredVaultRoot() ?? '').replace(/\/+$/, '')
+  const cwd = dir ? (vaultRoot ? `${vaultRoot}/${dir}` : dir) : (vaultRoot || undefined)
+
   return {
     path: `${rec.source}/${rec.filePath}#${startMs}`,
     source: rec.source,
     startedIso: new Date(startMs).toISOString(),
     endedIso: new Date(startMs + activeMs).toISOString(),
-    project: title,
+    project: (dir ? autoInferProjectFromPathBlock(dir) : null) ?? title,
+    cwd,
     userMsgCount: Math.max(1, Math.round(rec.pages ?? 0) || 1),
     topic: title,
     hadClear: false,
     mtime: Math.floor((rec.recordedAt || startMs) / 1000),
     sessionId: rec.key,
+    readingDetail: describeReadingWhereBlock(rec.where, activeMs),
   }
 }
 

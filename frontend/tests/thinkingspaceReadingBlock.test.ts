@@ -142,7 +142,9 @@ describe('thinkingspaceReadingBlock', () => {
     await appendReadingSpan(fakeVaultFS, span(start))
     const sessions = await loadThinkingspaceReadingSessions(fakeVaultFS)
     expect(sessions).toHaveLength(2)
-    expect(sessions.map(s => s.project).sort()).toEqual(['foo', 'foo'])
+    // Topic is the document; project is now resolved from the path (see
+    // thinkingspaceReadingProject.test.ts), so it is deliberately not the title.
+    expect(sessions.map(s => s.topic).sort()).toEqual(['foo', 'foo'])
   })
 
   it('filters by day on the filename without opening excluded files', async () => {

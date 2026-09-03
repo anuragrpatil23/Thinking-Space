@@ -1,4 +1,4 @@
-import type { ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { isReadingSource, isManualSource, type ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { isSettledBlock } from '@/services/lego_blocks/units/aiActivityLivenessBlock'
 import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
 import {
@@ -164,6 +164,17 @@ export async function ensureSessionDigestOrch(
   // these looped: run, discard, re-queue, forever. The rule-based digest is the
   // honest and free answer.
   if (session.userMsgCount <= 0) {
+    return { digest: buildFallbackDigest(session, parts, nextHash), isAi: false }
+  }
+
+  // Reading and hand-logged sittings have no transcript. Everything worth
+  // saying about them — pages, canvas places, scroll depth, the duration
+  // itself — is mechanically derived and already on the session, so a provider
+  // call would be paying to have structured data read back. They also carry a
+  // synthetic `userMsgCount` of at least 1, so the check above does not catch
+  // them. DERIVATION.md: model-derived and mechanically-derived fields are
+  // different things and must not share a path.
+  if (isReadingSource(session.source) || isManualSource(session.source)) {
     return { digest: buildFallbackDigest(session, parts, nextHash), isAi: false }
   }
 
@@ -413,7 +424,11 @@ function buildFallbackDigest(
   return {
     ...parts,
     title: session.topic || '(untitled)',
-    summary: '',
+    // A reading sitting has no transcript, but it does have pages, canvas
+    // places or scroll depth — all mechanically derived, none of it needing a
+    // model. Without this the summary was empty and the expanded row showed a
+    // timestamp with nothing under it.
+    summary: session.readingDetail ?? '',
     source: String(session.source),
     msgCount: session.userMsgCount,
     durationMs: sessionDurationMs(session),

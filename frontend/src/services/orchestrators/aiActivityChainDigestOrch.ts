@@ -258,6 +258,13 @@ function composeWithoutModelBlock(
     ? first.summary
     : ordered.map(d => `**${formatWhenBlock(d)} — ${d.title}**\n\n${d.summary}`).join('\n\n')
 
+  // Several sittings with the same document open share one title, and joining
+  // them produced that title repeated once per sitting. The chain is still
+  // *about* one thing; say it once. Order-preserving so a genuinely mixed
+  // chain still reads as the sequence it was.
+  const titles = ordered.map(d => d.title).filter(Boolean)
+  const uniqueTitles = titles.filter((t, i) => titles.indexOf(t) === i)
+
   const startMs = Date.parse(first.startedIso)
   const endMs = Date.parse(last.endedIso)
 
@@ -266,7 +273,7 @@ function composeWithoutModelBlock(
     chainKey: chain.key,
     sessions: ordered,
     date: first.date,
-    title: single ? first.title : ordered.map(d => d.title).join(' · '),
+    title: single ? first.title : uniqueTitles.join(' · '),
     summary,
     source: first.source,
     msgCount,
