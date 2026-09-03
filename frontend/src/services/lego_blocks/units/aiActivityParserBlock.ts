@@ -80,6 +80,13 @@ export interface ParsedSession {
    * for a model to summarize. The digest layer uses it as the summary.
    */
   readingDetail?: string
+  /** Where a reading sitting's attention went, structured. Carried so the
+   *  digest layer can extract the text at those locations without re-reading
+   *  the span log. Type-only import; erased at runtime, so no cycle. */
+  readingWhere?: import('./thinkingspaceReadingParserBlock').ThinkingspaceReadingWhere
+  /** Vault-relative path of the document read. `path` is a synthetic session
+   *  id and cannot be opened. */
+  readingFilePath?: string
   /** Absolute paths of files the session wrote (Edit/Write/MultiEdit/
    *  NotebookEdit tool calls). Powers the vault-graph session lens: the exact
    *  notes a session touched, not a time-window guess. Native Claude sources

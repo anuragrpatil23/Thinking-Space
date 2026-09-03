@@ -1,4 +1,6 @@
 import { isReadingSource, isManualSource, type ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { readingDigestContract } from '@/services/lego_blocks/units/intelligence/contracts/readingDigestContractBlock'
+import { prepareReadingDigestInputOrch } from '@/services/orchestrators/readingDigestInputOrch'
 import { isSettledBlock } from '@/services/lego_blocks/units/aiActivityLivenessBlock'
 import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
 import {
@@ -167,14 +169,10 @@ export async function ensureSessionDigestOrch(
     return { digest: buildFallbackDigest(session, parts, nextHash), isAi: false }
   }
 
-  // Reading and hand-logged sittings have no transcript. Everything worth
-  // saying about them — pages, canvas places, scroll depth, the duration
-  // itself — is mechanically derived and already on the session, so a provider
-  // call would be paying to have structured data read back. They also carry a
-  // synthetic `userMsgCount` of at least 1, so the check above does not catch
-  // them. DERIVATION.md: model-derived and mechanically-derived fields are
-  // different things and must not share a path.
-  if (isReadingSource(session.source) || isManualSource(session.source)) {
+  // A hand-logged sitting is a duration someone typed. There is no content
+  // anywhere to summarise, so it never reaches a model. It carries a synthetic
+  // `userMsgCount` of at least 1, so the check above does not catch it.
+  if (isManualSource(session.source)) {
     return { digest: buildFallbackDigest(session, parts, nextHash), isAi: false }
   }
 
@@ -213,9 +211,24 @@ export async function ensureSessionDigestOrch(
       : { digest: buildFallbackDigest(session, parts, nextHash), isAi: false }
   }
 
-  await prepareSessionDigestInputBlock(session)
+  // Reading sittings run the same gauntlet above — settled, cache, kill
+  // switch, power, availability — and diverge only in what they are asked.
+  // The metrics never reach the model (readingDigestBlock already states them
+  // exactly); the excerpt is the text at the locations the attention settled
+  // on. A sitting that never settled has nothing to send and keeps the
+  // mechanical sentence instead of buying a confabulated theme.
+  const reading = isReadingSource(session.source)
+  if (reading) {
+    const prepared = await prepareReadingDigestInputOrch(session)
+    if (!prepared) {
+      return { digest: buildFallbackDigest(session, parts, nextHash), isAi: false }
+    }
+  } else {
+    await prepareSessionDigestInputBlock(session)
+  }
+  const contract = reading ? readingDigestContract : sessionDigestContract
   const result = await runContract<ParsedSession, typeof sessionDigestContract.outputSchema>(
-    sessionDigestContract,
+    contract as typeof sessionDigestContract,
     session,
     { scope: 'ai_activity' },
   )
@@ -229,7 +242,13 @@ export async function ensureSessionDigestOrch(
   const digest: ProjectSessionDigest = {
     ...parts,
     title: output.title,
-    summary: output.summary,
+    // The model says what it was about; the mechanical line says what was
+    // measured. Both are true and neither substitutes for the other, so a
+    // reading digest carries the metrics under the prose rather than letting a
+    // summary quietly replace the only exact numbers in the record.
+    summary: reading && session.readingDetail
+      ? `${output.summary}\n\n${session.readingDetail}`.trim()
+      : output.summary,
     source: String(session.source),
     msgCount: session.userMsgCount,
     durationMs: sessionDurationMs(session),

@@ -187,7 +187,12 @@ export function readingRecordToSession(rec: ThinkingspaceReadingRecord): ParsedS
     hadClear: false,
     mtime: Math.floor((rec.recordedAt || startMs) / 1000),
     sessionId: rec.key,
+    // Measured attention is the session's active duration — that is what the
+    // number means for reading, and the digest cache key reads it.
+    activeDurationMs: activeMs,
     readingDetail: describeReadingWhereBlock(rec.where, activeMs),
+    readingWhere: rec.where,
+    readingFilePath: rec.filePath,
   }
 }
 
