@@ -153,6 +153,16 @@ ensure_electron_deps() {
 # ─── Core build steps ─────────────────────────────────────────────────────────
 
 _build_frontend() {
+  # Refresh the AI cost rate table before bundling, so a build never ships a
+  # stale price. This lives here, not in an npm `prebuild` hook: build.sh calls
+  # `npx vite build` directly and never goes through `npm run build*`, so no
+  # lifecycle hook fires on this path — the Mac ship silently built without the
+  # step twice before this was caught. `_build_frontend` is the one function
+  # every packaging target routes through, so one insertion covers them all.
+  # The script tolerates being offline and never mutates held overrides.
+  do_step "Sync AI prices" \
+    bash -c "[ \"\$PRICES_CHECK\" = off ] || node '$ROOT_DIR/scripts/refresh-ai-prices.mjs' --build"
+
   do_step "Sync fonts" \
     node "$FRONTEND_DIR/scripts/syncExcalidrawFonts.mjs"
 
