@@ -1038,7 +1038,8 @@ export default function PdfDocumentBlock({
       <div
         ref={viewportRef}
         className={cn(
-          'min-h-0 flex-1 overflow-auto bg-muted/10 p-3',
+          'min-h-0 flex-1 overflow-auto p-3',
+          'bg-[#d2d2d4] dark:bg-[#1b1b1d]',
           /* Deliberately no top padding in focus mode: the page runs full
              bleed and scrolls under the overlay bar. Reserving the bar's
              height here is what made hiding it pointless. */
@@ -1094,7 +1095,7 @@ export default function PdfDocumentBlock({
                   Rendering PDF...
                 </div>
               )}
-              className="flex w-fit flex-col gap-2"
+              className="flex w-fit flex-col gap-3"
             >
               {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
                 <div
@@ -1124,7 +1125,7 @@ export default function PdfDocumentBlock({
                     <div
                       aria-hidden="true"
                       style={{ minHeight: `${pageHeightForBlock(pageNum)}px` }}
-                      className="flex items-center justify-center bg-background/70 text-xs text-muted-foreground"
+                      className="flex items-center justify-center border border-black/15 bg-background/70 text-xs text-muted-foreground shadow-[0_1px_5px_rgba(0,0,0,0.16)] dark:border-white/10"
                     >
                       Page {pageNum}
                     </div>

@@ -249,10 +249,15 @@ export default function PdfPageCanvasBlock({
 
   return (
     <div
-      /* No border, no shadow, no rounding. A card per page frames every page as
-         an object to be managed; a book is a column of paper, and the seam
-         between two pages is enough to say where one ends. */
-      className={cn('relative overflow-hidden', className)}
+      /* Matched to Preview's page presentation: a hairline border, a soft
+         shadow that sits just under the sheet, and — the detail that is easy to
+         get wrong — square corners. Preview never rounds a page, because a
+         rounded corner reads as a card in a UI rather than as paper. */
+      className={cn(
+        'relative overflow-hidden border border-black/15 shadow-[0_1px_5px_rgba(0,0,0,0.16)]',
+        'dark:border-white/10 dark:shadow-[0_1px_5px_rgba(0,0,0,0.5)]',
+        className,
+      )}
       style={{
         width: `${displayedWidth}px`,
         height: `${displayedHeight}px`,
