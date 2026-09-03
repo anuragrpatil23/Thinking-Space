@@ -28,7 +28,11 @@
     "preview": "vite preview",
     "prices:check": "node ../scripts/refresh-ai-prices.mjs --check",
     "prices:refresh": "node ../scripts/refresh-ai-prices.mjs --write",
-    "prebuild": "[ \"$PRICES_CHECK\" = \"off\" ] || node ../scripts/refresh-ai-prices.mjs --build"
+    "prebuild": "npm run prices:sync",
+    "prices:sync": "[ \"$PRICES_CHECK\" = \"off\" ] || node ../scripts/refresh-ai-prices.mjs --build",
+    "prebuild:electron": "npm run prices:sync",
+    "prebuild:ios": "npm run prices:sync",
+    "prebuild:web": "npm run prices:sync"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
