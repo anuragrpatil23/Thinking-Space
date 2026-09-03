@@ -55,3 +55,73 @@ Model-agnostic layer for internal AI tasks (session titles, structured extracts,
 - `frontend/electron/src/lego_blocks/claudeCliBlock.ts` — the summarizer's incognito `claude -p --output-format json` provider (chain digests, day atoms, range summaries). Child cwd is pinned to the vault root, `THINKSPC_INCOGNITO=1` lets the SessionEnd hook early-exit, and the captured `session_id` drives a two-pass delete (0s + 1s) through the shared `~/.thinking-space/scheduler/claudeSessionCleanupBlock.mjs`. Cleanup is not optional decoration: without it the summarizer eats its own tail — its own invocations reappear as new "activity" in the next run. **`electron/tsconfig.json` compiles main with `"module": "CommonJS"`, so a bare `await import(url)` is downlevelled to `require(url)` and cannot load a `file://` URL or an `.mjs` at all.** That silently no-op'd cleanup for the whole Electron path (fixed 2026-08-02, after ~138 haiku-only summarizer transcripts had surfaced as sessions the user never ran, inflating counts, tokens and cost). Any ESM loaded from main must go through the `new Function('url', 'return import(url);')` indirection so TypeScript cannot rewrite it. The scheduler's `runner.mjs` is real ESM and was never affected — matching behaviour there is not evidence this path works.
 - Incognito cleanup update (2026-08-10): `--no-session-persistence` is the primary boundary for scheduler one-shots and the summarizer, and the installed CLI was verified not to write either a resumable transcript or `~/.claude/history.jsonl` for it. The existing exact-session cleanup remains during rollout for legacy/plain invocations and stale historical artifacts; it removes matching history records as well as native JSONLs and vault mirrors, because the importer can reconstruct deleted legacy transcripts from that log. The five-hour `cc-anchor` probe routes through the same installed runner, so its intentional `ok` usage-window call cannot show up as activity.
 - `frontend/electron/src/lego_blocks/localBuildUpdateNoticeBlock.ts` — update story for custom builds: apps with the `local-build` marker (written by `scripts/checkpoint-ship.sh`) skip electron-updater (official DMG would erase user modifications) and instead get a native notification when a newer official release exists; their upgrade path is fork-merge + rebuild (PLAYBOOKS §12 Step 5).
+
+
+## Key PDF Reader Blocks
+
+Rebuilt 2026-09-03. The viewer no longer uses react-pdf's `<Page>`; it drives
+pdf.js directly so the bitmap can be decoupled from the layout box.
+
+- `frontend/src/components/lego_blocks/units/PdfPageCanvasBlock.tsx` — one page.
+  **The layout box and the bitmap are separate things.** The host div carries
+  `naturalMetrics * displayedScale`; the canvas inside is always
+  `width/height: 100%`. A zoom commit is therefore one inline style change and
+  the existing bitmap is stretched by the compositor — instantly, with correct
+  geometry — while a fresh raster lands asynchronously and swaps in. react-pdf
+  drove the canvas backing store from a React prop, so every scale change tore
+  down canvas + text layer + annotation layer for every windowed page and left a
+  blank frame; that was the original "zoom snap". Renders into a **detached**
+  canvas and swaps on success, so the old pixels hold until new ones exist.
+  Draws in two passes (cheap, then sharp) with a rAF between so the cheap frame
+  actually paints.
+- `frontend/src/services/lego_blocks/units/pdfRasterBudgetBlock.ts` — how big a
+  bitmap to make. Quantization ladder (~19% steps) so a pinch inside one rung
+  reuses a bitmap; per-page pixel budget that **gives up device pixel ratio
+  before raster scale** (dropping 2x to 1.4x is far less visible than softening
+  the layout box). **The iOS ceiling is a time budget, not a memory budget** —
+  pdf.js paints on the main thread, and 6 MP is roughly a second of blocked main
+  thread on an iPad. Measured from a screen recording, not reasoned about.
+- `pdfViewportBlock.ts` — two windows, not one. Pages raster and re-raster
+  inside `buildPdfRenderedWindowBlock`; they keep the bitmap they already drew
+  inside the wider `buildPdfRetainedWindowBlock`. A single window unmounted a
+  page the moment it left it, so scrolling back one page showed an empty box
+  where a rendered page had been a second earlier. Retained pages go soft after
+  a zoom until they re-enter the render band — a much better failure than blank.
+- `pdfPaperThemeBlock.ts` — paper tones as a **per-raster ImageData pass**.
+  Never a CSS filter on a live canvas: that is exactly the Excalidraw failure in
+  IOS-MEMORY.md, and its cost is per composite frame rather than per raster.
+- `usePenInkCaptureBlock.ts` — Apple Pencil. **Neither `touch-action` nor
+  `preventDefault` on the pointer event stops WebKit scrolling**; it decides a
+  touch is a scroll inside its own touch pipeline before either is consulted, so
+  a stroke dragged the page out from under the nib. `Touch.touchType === 'stylus'`
+  on a non-passive `touchstart` is the only signal early enough. Selection
+  suppression is written imperatively for the same reason — a React re-render is
+  a frame late and the selection has already begun.
+- `pdfAnnotationGeometryBlock.ts` + `pdfAnnotationSaveOrch.ts` — marks are
+  written **into the PDF** as standard `/Highlight` and `/Ink` annotations via
+  `saveDocument()` (incremental append, original bytes intact at the head of the
+  file). Decision record TP-PA-T-386. Three traps, each of which cost a session:
+  1. **The storage key must start with `pdfjs_internal_editor_`.** The worker's
+     `getNewAnnotationsMap` skips every other key silently, so `saveDocument()`
+     returns the document unchanged and the write succeeds — a no-op reporting
+     success.
+  2. **A highlight needs `outlines`, not just `quadPoints`.**
+     `createNewAppearanceStream` iterates it; omitting it throws "outlines is
+     not iterable". QuadPoints alone fills the dict entry and draws nothing.
+     Wind the polygon TL -> TR -> BR -> BL; QuadPoints order is TL, TR, BL, BR,
+     so using it directly draws a bow-tie.
+  3. **Ink needs `paths.lines`, not just `paths.points`.** `points` feeds
+     `/InkList`; the appearance is drawn from `lines`, a run of 6-tuples where a
+     leading NaN means "line to" and anything else is a cubic bezier.
+  The save refuses to report success unless the output is larger than the input,
+  because every one of these failures otherwise looks like a successful save.
+  **Verify payload changes with a node harness** (load the real PDF, apply the
+  payload, save, read it back) rather than by reasoning — that is what finally
+  found (2) and (3).
+
+**Method note, since it dominated the session.** Nearly every fix made by
+reasoning about this viewer needed correcting later; every fix made after
+measuring held first time. Two cheap tools did the work: `ffmpeg mpdecimate` over
+a screen recording to count real stalls (filter to gaps with activity on *both*
+sides, or the reader pausing to read counts as a freeze), and a node harness
+against the real file for anything touching pdf.js payloads.
