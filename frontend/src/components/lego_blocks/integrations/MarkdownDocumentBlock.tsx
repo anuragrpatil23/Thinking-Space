@@ -2566,6 +2566,46 @@ function PdfDocumentRuntimeBlock({
     })
   }, [canOpenInSystem, path])
 
+  const pdfHeaderMenuEntries = useMemo<ContextMenuEntryBlock[]>(() => [
+    {
+      key: 'open-system',
+      label: `Open in ${openInSystemButtonLabel}`,
+      disabled: !canOpenInSystem,
+      onClick: handleOpenInSystem,
+    },
+    {
+      key: 'open-default-app',
+      label: 'Open With Default App',
+      disabled: !canOpenInSystem,
+      onClick: () => {
+        setOpenInSystemError(null)
+        void openVaultPathWithDefaultAppOrch(path).catch((err) => {
+          setOpenInSystemError(err instanceof Error ? err.message : 'Failed to open file in default app')
+        })
+      },
+    },
+    ...(onOpenPath ? [{ key: 'sep-open', kind: 'separator' as const }, {
+      key: 'reveal',
+      label: 'Reveal in Explorer',
+      onClick: () => { onOpenPath(path) },
+    }] : []),
+    { key: 'sep-copy', kind: 'separator' },
+    {
+      key: 'copy-abs',
+      label: 'Copy Absolute Path',
+      disabled: getAbsolutePathForClipboardOrch(path) === null,
+      onClick: () => {
+        const absolute = getAbsolutePathForClipboardOrch(path)
+        if (absolute) void navigator.clipboard.writeText(absolute)
+      },
+    },
+    {
+      key: 'copy-rel',
+      label: 'Copy Relative Path',
+      onClick: () => { void navigator.clipboard.writeText(getRelativePathForClipboardOrch(path)) },
+    },
+  ], [canOpenInSystem, handleOpenInSystem, onOpenPath, openInSystemButtonLabel, path])
+
   return (
     <div className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}>
       <div className="ts-doc-header border-b border-border/50 px-6 py-5">
@@ -2578,29 +2618,11 @@ function PdfDocumentRuntimeBlock({
             {breadcrumb && <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>}
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {/* Icon-only and borderless, matching the markdown header's action
-                row. A bordered pill with a label sat next to four bare icons
-                and read as a different class of control. */}
-            <button
-              type="button"
-              onClick={handleOpenInSystem}
-              disabled={!canOpenInSystem}
-              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-              title={canOpenInSystem ? `Open file in ${openInSystemButtonLabel}` : 'Open in system file manager is unavailable on web'}
-              aria-label={canOpenInSystem ? `Open file in ${openInSystemButtonLabel}` : 'Open in system file manager'}
-            >
-              <FolderOpen className="h-4 w-4" />
-            </button>
-            {onOpenPath && (
-              <button
-                type="button"
-                onClick={() => onOpenPath(path)}
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                title="Open in Thinking Space explorer"
-              >
-                <ExternalLink className="h-4 w-4" />
-              </button>
-            )}
+            {/* One overflow menu, exactly as the markdown header does it. A row
+                of individually surfaced file actions is a different vocabulary
+                from every other document surface in the app, and none of these
+                is used often enough to earn a permanent button. */}
+            <OverflowMenuButtonBlock entries={pdfHeaderMenuEntries} title="File actions" />
             {showCloseButton && onClose && (
               <button
                 onClick={onClose}

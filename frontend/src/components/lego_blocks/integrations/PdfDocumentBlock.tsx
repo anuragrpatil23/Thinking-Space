@@ -446,6 +446,28 @@ export default function PdfDocumentBlock({
     /* Watch, do not claim. Nothing is zoomed, no mode is switched and no event
        is cancelled until the fingers have actually spread or pinched past the
        activation threshold; until then this is a two-finger scroll. */
+    /* Apple Pencil must never scroll the document.
+
+       `touch-action` and `preventDefault` on the pointer event both come too
+       late: WebKit decides a touch is a scroll from its own touch pipeline
+       before either is consulted, so a stroke dragged the page out from under
+       the nib and a word could not be finished. Safari exposes
+       `Touch.touchType`, which is 'stylus' for a Pencil — cancelling the
+       touchstart at that point is what actually stops the scroll from starting.
+
+       Deliberately a separate, non-passive listener: the pinch handler below
+       must stay passive to avoid making every two-finger scroll slower. */
+    const isStylusTouchBlock = (touches: TouchList): boolean => {
+      for (let index = 0; index < touches.length; index += 1) {
+        if ((touches[index] as Touch & { touchType?: string }).touchType === 'stylus') return true
+      }
+      return false
+    }
+
+    const handleStylusTouchBlock = (event: TouchEvent) => {
+      if (isStylusTouchBlock(event.touches)) event.preventDefault()
+    }
+
     const handleTouchStartBlock = (event: TouchEvent) => {
       if (event.touches.length !== 2) return
       const distance = readTouchDistanceBlock(event.touches)
@@ -535,6 +557,8 @@ export default function PdfDocumentBlock({
       scheduleCommitScaleBlock(TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK)
     }
 
+    target.addEventListener('touchstart', handleStylusTouchBlock, { passive: false })
+    target.addEventListener('touchmove', handleStylusTouchBlock, { passive: false })
     target.addEventListener('touchstart', handleTouchStartBlock, { passive: true })
     target.addEventListener('touchmove', handleTouchMoveBlock, { passive: false })
     target.addEventListener('touchend', handleTouchEndBlock, { passive: true })
@@ -546,6 +570,8 @@ export default function PdfDocumentBlock({
       clearPreviewTransformBlock()
       pinchTouchActiveRef.current = false
       pinchStartDistanceRef.current = 0
+      target.removeEventListener('touchstart', handleStylusTouchBlock)
+      target.removeEventListener('touchmove', handleStylusTouchBlock)
       target.removeEventListener('touchstart', handleTouchStartBlock)
       target.removeEventListener('touchmove', handleTouchMoveBlock)
       target.removeEventListener('touchend', handleTouchEndBlock)
@@ -903,7 +929,10 @@ export default function PdfDocumentBlock({
            which is also what Preview does — a dark *page* is the Night paper
            tone's job, not the surround's. */
         'bg-white dark:bg-[#1c1c1e]',
-        focusMode ? 'fixed inset-0 z-[70] bg-background' : 'h-full',
+        /* No background here: the root already paints the reading surround, and
+           `bg-background` is a light grey in this theme, so focus mode was
+           turning the white desk grey. */
+        focusMode ? 'fixed inset-0 z-[70]' : 'h-full',
         className,
       )}
     >
