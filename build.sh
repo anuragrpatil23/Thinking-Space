@@ -257,7 +257,13 @@ _cmd_platform() {
 }
 
 cmd_mac()   { _cmd_platform "--mac"   "macOS"   "*.dmg"; }
-cmd_win()   { _cmd_platform "--win"   "Windows" "*.exe"; }
+# --x64 is explicit: electron-builder defaults to the HOST arch, so on an
+# Apple Silicon Mac a bare `--win` silently produces a Windows-on-ARM
+# installer. It builds and packages cleanly, so nothing looks wrong — it is
+# just unusable for the x64 machines that are almost all Windows users, and
+# the only tell is `-arm64` in a filename nobody reads before uploading.
+# cmd_win_lite below has always passed --x64 for this reason.
+cmd_win()   { _cmd_platform "--win --x64" "Windows" "*.exe"; }
 cmd_linux() { _cmd_platform "--linux" "Linux"   "*.AppImage"; }
 
 cmd_win_lite() {
