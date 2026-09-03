@@ -31,6 +31,12 @@ import {
 
 export type NativeSource = 'claude' | 'codex'
 
+/** Bucket for usage whose transcript line carried no model id. Filed under a
+ *  key that no price rule can match, so the tokens still appear in the total
+ *  and the cost is honestly reported as unpriced — rather than being dropped
+ *  (undercount) or folded into whichever model happened to be nearby. */
+export const UNKNOWN_MODEL_KEY = '(unknown model)'
+
 /** Classify an absolute cwd path into a project bucket. */
 function classifyCwd(cwd: string): string {
   if (!cwd) return '<unknown>'
@@ -229,6 +235,14 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   let sessionId = ''
   let model: string | undefined
   // Claude usage is per-turn — we sum. Codex emits running totals — we take last.
+  //
+  // One API response can be written as SEVERAL assistant lines (a `thinking`
+  // block and a `tool_use` block land on separate lines), and every one of them
+  // repeats the *same* `usage` object for that single response. Summing per
+  // line therefore counts the same tokens once per content block — measured at
+  // ~1.8x on real transcripts. Key on `requestId` (falling back to the message
+  // id) and count each response exactly once.
+  const seenUsageKeys = new Set<string>()
   const claudeTotals: SessionTokens = {
     input: 0,
     output: 0,
@@ -247,8 +261,8 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   // incremental usage; Codex emits a running total. Both are kept with their
   // timestamp and reduced per window below — the same shape `fileEdits` already
   // uses to attribute writes.
-  const claudeUsage: Array<{ ts: number; tokens: SessionTokens }> = []
-  const codexSamples: Array<{ ts: number; totals: SessionTokens }> = []
+  const claudeUsage: Array<{ ts: number; model?: string; tokens: SessionTokens }> = []
+  const codexSamples: Array<{ ts: number; model?: string; totals: SessionTokens }> = []
 
   const convEvents: ConvEvent[] = []
   const recordConv = (
@@ -298,7 +312,16 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
         const message = evt.message as Record<string, unknown> | undefined
         if (message && typeof message.model === 'string') model = message.model
         const usage = message ? (message.usage as Record<string, unknown> | undefined) : undefined
-        if (usage) {
+        // See `seenUsageKeys` above: one response, many lines, one usage object.
+        const usageKey =
+          typeof evt.requestId === 'string' && evt.requestId
+            ? evt.requestId
+            : typeof message?.id === 'string' && message.id
+              ? (message.id as string)
+              : undefined
+        const usageAlreadyCounted = usageKey !== undefined && seenUsageKeys.has(usageKey)
+        if (usageKey !== undefined) seenUsageKeys.add(usageKey)
+        if (usage && !usageAlreadyCounted) {
           claudeTotals.input += numericField(usage, 'input_tokens')
           claudeTotals.output += numericField(usage, 'output_tokens')
           claudeTotals.cacheRead += numericField(usage, 'cache_read_input_tokens')
@@ -317,6 +340,9 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
           if (Number.isFinite(usageMs)) {
             claudeUsage.push({
               ts: usageMs,
+              // The model on THIS response, not the session's last — a Haiku
+              // subagent turn must not be priced at the coordinator's rate.
+              model: typeof message?.model === 'string' ? message.model : undefined,
               tokens: {
                 input: numericField(usage, 'input_tokens'),
                 output: numericField(usage, 'output_tokens'),
@@ -361,25 +387,27 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
             //   - `input_tokens` is the TOTAL input including cache hits
             //     (Claude's `input_tokens` is fresh-only with cache as a sibling).
             //   - `cached_input_tokens` is a SUBSET of `input_tokens`.
-            //   - `reasoning_output_tokens` is billed at the output rate but
-            //     reported separately from `output_tokens`.
+            //   - `reasoning_output_tokens` is a SUBSET of `output_tokens`, not
+            //     a sibling of it. Verified against every token_count sample on
+            //     disk (50,724/50,724): `total_tokens == input + output`, with
+            //     reasoning never appearing in that sum. Adding the two inflated
+            //     Codex output — the expensive bucket — by 1.44x.
             // We normalize to Claude's disjoint-bucket convention so the shared
             // cost math (estimateCostUsd) doesn't double-count cache reads.
             const totalInput = numericField(total, 'input_tokens')
             const cached = numericField(total, 'cached_input_tokens')
             const freshInput = Math.max(0, totalInput - cached)
             const output = numericField(total, 'output_tokens')
-            const reasoning = numericField(total, 'reasoning_output_tokens')
             // Running totals — overwrite each time so we end with the last seen.
             codexTotals = {
               input: freshInput,
-              output: output + reasoning,
+              output,
               cacheRead: cached,
               cacheCreation: 0, // Codex doesn't split out cache creation
             }
             const sampleMs = Date.parse(ts)
             if (Number.isFinite(sampleMs)) {
-              codexSamples.push({ ts: sampleMs, totals: codexTotals })
+              codexSamples.push({ ts: sampleMs, model: model, totals: codexTotals })
             }
           }
         }
@@ -552,6 +580,71 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
     return acc.input || acc.output || acc.cacheRead || acc.cacheCreation ? acc : undefined
   }
 
+  /** The same window, split by the model that spent each sample. Keys are model
+   *  ids; a sample with no model id is filed under `UNKNOWN_MODEL_KEY` so it
+   *  still shows up as unpriced rather than vanishing from the total. */
+  function claudeTokensByModelForWindow(
+    winStart: number,
+    boundary: number,
+  ): Record<string, SessionTokens> | undefined {
+    const out: Record<string, SessionTokens> = {}
+    for (const { ts, model: sampleModel, tokens } of claudeUsage) {
+      if (ts < winStart || ts >= boundary) continue
+      const key = sampleModel ?? UNKNOWN_MODEL_KEY
+      const acc = (out[key] ??= {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheCreation: 0,
+        cacheCreation1h: 0,
+      })
+      acc.input += tokens.input
+      acc.output += tokens.output
+      acc.cacheRead += tokens.cacheRead
+      acc.cacheCreation += tokens.cacheCreation
+      acc.cacheCreation1h = (acc.cacheCreation1h ?? 0) + (tokens.cacheCreation1h ?? 0)
+    }
+    // Drop buckets that spent nothing. Claude Code files its own notices and
+    // error messages under the model id `<synthetic>` with an all-zero usage
+    // object — 132 of them across these transcripts, not one carrying a token.
+    // Keeping them would add an unpriceable model to almost every session and
+    // mark the total as incomplete over spend that never happened, which is
+    // exactly the kind of false alarm that gets a warning ignored.
+    for (const [key, acc] of Object.entries(out)) {
+      if (!acc.input && !acc.output && !acc.cacheRead && !acc.cacheCreation) delete out[key]
+    }
+    return Object.keys(out).length > 0 ? out : undefined
+  }
+
+  /** Codex reports running totals, so a per-model split has to diff within each
+   *  model's own series rather than across the window as a whole. */
+  function codexTokensByModelForWindow(
+    winStart: number,
+    boundary: number,
+  ): Record<string, SessionTokens> | undefined {
+    const byModel = new Map<string, { last: SessionTokens | null; prior: SessionTokens | null }>()
+    for (const sample of codexSamples) {
+      const key = sample.model ?? UNKNOWN_MODEL_KEY
+      const slot = byModel.get(key) ?? { last: null, prior: null }
+      if (sample.ts < winStart) slot.prior = sample.totals
+      else if (sample.ts < boundary) slot.last = sample.totals
+      byModel.set(key, slot)
+    }
+    const out: Record<string, SessionTokens> = {}
+    for (const [key, { last, prior }] of byModel) {
+      if (!last) continue
+      const base = prior ?? { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
+      const delta: SessionTokens = {
+        input: Math.max(0, last.input - base.input),
+        output: Math.max(0, last.output - base.output),
+        cacheRead: Math.max(0, last.cacheRead - base.cacheRead),
+        cacheCreation: Math.max(0, last.cacheCreation - base.cacheCreation),
+      }
+      if (delta.input || delta.output || delta.cacheRead) out[key] = delta
+    }
+    return Object.keys(out).length > 0 ? out : undefined
+  }
+
   /** Codex emits RUNNING totals, so a window's cost is the delta between the
    *  last sample belonging to it and the last sample before it. Clamped at
    *  zero: a transcript that resets its counter mid-file would otherwise report
@@ -685,6 +778,10 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
         env.source === 'claude'
           ? claudeTokensForWindow(winStart, windowBoundary)
           : codexTokensForWindow(winStart, windowBoundary),
+      tokensByModel:
+        env.source === 'claude'
+          ? claudeTokensByModelForWindow(winStart, windowBoundary)
+          : codexTokensByModelForWindow(winStart, windowBoundary),
       model,
       sessionId: winSessionId,
       touchedPaths: touchedPaths.length > 0 ? touchedPaths : undefined,

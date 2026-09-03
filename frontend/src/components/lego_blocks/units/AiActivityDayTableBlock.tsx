@@ -8,7 +8,8 @@ import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import {
-  estimateCostUsd,
+  COST_BASIS_LABEL,
+  estimateSessionCostUsd,
   formatTokens,
   formatUsd,
   sumTokens,
@@ -168,11 +169,22 @@ function hasTokenUsage(
   return tokens.input + tokens.output + tokens.cacheRead + tokens.cacheCreation > 0
 }
 
-function estimateChainCostUsd(chain: ActivityChain): number {
-  return chain.sessions.reduce((total, session) => {
-    if (!hasTokenUsage(session.tokens)) return total
-    return total + estimateCostUsd(session.tokens, session.model)
-  }, 0)
+/**
+ * Chain cost at list rates, or null when no session in the chain could be
+ * priced. A chain that mixes priced and unpriced sessions returns the priced
+ * subtotal — the row is still worth a number — but it is a floor, not a total.
+ */
+function estimateChainCostUsd(chain: ActivityChain): number | null {
+  let usd = 0
+  let priced = 0
+  for (const session of chain.sessions) {
+    if (!hasTokenUsage(session.tokens)) continue
+    const cost = estimateSessionCostUsd(session)
+    if (cost === null) continue
+    usd += cost.usd
+    priced += 1
+  }
+  return priced > 0 ? usd : null
 }
 
 function modelSummaryLabel(chain: ActivityChain): string | null {
@@ -224,10 +236,12 @@ function buildDrillDownMarkdown(
       tokens.input + tokens.output + tokens.cacheRead + tokens.cacheCreation > 0
     const fresh = tokens.input + tokens.output
     const cached = tokens.cacheRead + tokens.cacheCreation
-    const cost = hasTokens ? estimateChainCostUsd(c) : 0
+    // null = unpriced model, which `formatUsd` renders as "unpriced". It
+    // contributes nothing to the running total rather than counting as $0.
+    const cost = hasTokens ? estimateChainCostUsd(c) : null
     totalFresh += fresh
     totalCached += cached
-    totalCost += cost
+    totalCost += cost ?? 0
     totalMsgs += c.msgCount
     lines.push(
       `| ${mdCell(fmtTime(c.startedIso))} | ${mdCell(fmtTime(c.endedIso))} | ${mdCell(
@@ -247,7 +261,11 @@ function buildDrillDownMarkdown(
       totalFresh,
     )} fresh + ${formatTokens(totalCached)} cached tokens · ~${formatUsd(
       totalCost,
-    )} est.`,
+    )} at list`,
+  )
+  lines.push('')
+  lines.push(
+    `<sub>Cost is a ${COST_BASIS_LABEL}: what these tokens would have cost at public API rates. Subscription plans meter against usage limits instead, so this is not an amount charged.</sub>`,
   )
   return lines.join('\n')
 }
@@ -326,19 +344,36 @@ export default function AiActivityDayTableBlock({
     let totalFreshTokens = 0
     let totalCachedTokens = 0
     let chainsWithTokens = 0
+    // Sessions whose model we have no rate for. They still contribute tokens —
+    // only the dollar total is short, and the footer says by how many.
+    let unpricedSessions = 0
     for (const c of sorted) {
       let chainHasTokens = false
       for (const s of c.sessions) {
         const t = s.tokens
         if (!hasTokenUsage(t)) continue
         chainHasTokens = true
-        totalCostUsd += estimateCostUsd(t, s.model)
+        const cost = estimateSessionCostUsd(s)
+        if (cost === null) unpricedSessions += 1
+        else {
+          totalCostUsd += cost.usd
+          // A session can be partly priced — an Opus coordinator with a
+          // subagent on a model we have no rate for. Count it once so the
+          // footer marks the total as a floor.
+          if (cost.unpricedModels.length > 0) unpricedSessions += 1
+        }
         totalFreshTokens += t.input + t.output
         totalCachedTokens += t.cacheRead + t.cacheCreation
       }
       if (chainHasTokens) chainsWithTokens += 1
     }
-    return { totalCostUsd, totalFreshTokens, totalCachedTokens, chainsWithTokens }
+    return {
+      totalCostUsd,
+      totalFreshTokens,
+      totalCachedTokens,
+      chainsWithTokens,
+      unpricedSessions,
+    }
   }, [sorted])
 
   /** Copy `rows` as the drill-down Markdown — the whole table, or one row of it.
@@ -570,9 +605,20 @@ export default function AiActivityDayTableBlock({
                               </strong>{' '}
                               output
                             </span>
-                            <span>
-                              ~<strong className="tabular-nums text-foreground/80">{formatUsd(costUsd)}</strong>{' '}
-                              est.
+                            <span
+                              title={`${COST_BASIS_LABEL} — what these tokens would have cost at public API rates. Subscription plans meter against usage limits instead, so this is not an amount charged.`}
+                            >
+                              {costUsd === null ? (
+                                <strong className="text-foreground/60">unpriced</strong>
+                              ) : (
+                                <>
+                                  ~
+                                  <strong className="tabular-nums text-foreground/80">
+                                    {formatUsd(costUsd)}
+                                  </strong>{' '}
+                                  at list
+                                </>
+                              )}
                             </span>
                             {modelLabel && (
                               <span className="rounded bg-muted/40 px-1.5 py-0.5 text-foreground/70">
@@ -710,13 +756,23 @@ export default function AiActivityDayTableBlock({
           >
             +{formatTokens(dayTotals.totalCachedTokens)} cached
           </span>
-          <span>
+          <span
+            title={`${COST_BASIS_LABEL} — what these tokens would have cost at public API rates. Subscription plans meter against usage limits instead, so this is not an amount charged.`}
+          >
             ~<strong className="tabular-nums text-foreground/80">{formatUsd(dayTotals.totalCostUsd)}</strong>{' '}
-            est.
+            at list
           </span>
           {dayTotals.chainsWithTokens < sorted.length && (
             <span className="text-muted-foreground/60">
               (across {dayTotals.chainsWithTokens} of {sorted.length} chains)
+            </span>
+          )}
+          {dayTotals.unpricedSessions > 0 && (
+            <span
+              className="text-muted-foreground/60"
+              title="No published rate for these models, so their tokens are counted but their cost is not. The total is a floor."
+            >
+              ({dayTotals.unpricedSessions} unpriced)
             </span>
           )}
         </div>

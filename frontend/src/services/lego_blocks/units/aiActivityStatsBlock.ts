@@ -3,7 +3,7 @@
 // already-parsed data — no IO, cheap enough to run in render memos.
 
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
-import { estimateCostUsd } from '@/services/lego_blocks/units/aiPriceTableBlock'
+import { estimateSessionCostUsd } from '@/services/lego_blocks/units/aiPriceTableBlock'
 
 /**
  * Wall-clock time across chains: merge overlapping [start, end] windows before
@@ -67,7 +67,13 @@ export interface AggregatePeriodRow {
   /** Output tokens. */
   outputTokens: number
   cachedTokens: number
+  /** List-price equivalent of the priced sessions only. See `unpricedSessions`
+   *  — when that is non-zero this figure is a floor, not a total. */
   costUsd: number
+  /** Sessions whose model has no published rate. Their tokens are counted;
+   *  their cost is not. Surfacing the count is what keeps `costUsd` from being
+   *  a quietly incomplete number. */
+  unpricedSessions: number
   hasTokens: boolean
   /** Chains with a real time window (end > start). Vault-markdown-only chains
    *  have no per-message timestamps, so they contribute 0 duration — when this
@@ -227,7 +233,11 @@ export interface ProjectPeriodMetrics {
   durationMs: number
   chains: number
   msgs: number
+  /** List-price equivalent of the priced sessions only — a floor when
+   *  `unpricedSessions` is non-zero. */
   costUsd: number
+  /** Sessions with no published rate for their model. */
+  unpricedSessions: number
 }
 
 export interface AggregateProjectMetricSeries {
@@ -264,13 +274,26 @@ export function aggregateProjectMetricsByPeriodBlock(
   const metricsOf = (list: ReadonlyArray<ActivityChain>): ProjectPeriodMetrics => {
     let msgs = 0
     let costUsd = 0
+    let unpricedSessions = 0
     for (const c of list) {
       msgs += c.msgCount
       for (const s of c.sessions) {
-        if (s.tokens) costUsd += estimateCostUsd(s.tokens, s.model)
+        if (!s.tokens) continue
+        const cost = estimateSessionCostUsd(s)
+        if (cost === null) unpricedSessions += 1
+        else {
+          costUsd += cost.usd
+          if (cost.unpricedModels.length > 0) unpricedSessions += 1
+        }
       }
     }
-    return { durationMs: mergedDurationMsBlock(list), chains: list.length, msgs, costUsd }
+    return {
+      durationMs: mergedDurationMsBlock(list),
+      chains: list.length,
+      msgs,
+      costUsd,
+      unpricedSessions,
+    }
   }
 
   const series: AggregateProjectMetricSeries[] = []
@@ -284,6 +307,7 @@ export function aggregateProjectMetricsByPeriodBlock(
         chains: perPeriod.reduce((a, m) => a + m.chains, 0),
         msgs: perPeriod.reduce((a, m) => a + m.msgs, 0),
         costUsd: perPeriod.reduce((a, m) => a + m.costUsd, 0),
+        unpricedSessions: perPeriod.reduce((a, m) => a + m.unpricedSessions, 0),
       },
       perPeriod,
     })
@@ -318,6 +342,7 @@ export function aggregateChainsByPeriodBlock(
         outputTokens: 0,
         cachedTokens: 0,
         costUsd: 0,
+        unpricedSessions: 0,
         hasTokens: false,
         chainsWithDuration: 0,
         chainsWithTokens: 0,
@@ -343,7 +368,12 @@ export function aggregateChainsByPeriodBlock(
       row.inputTokens += t.input
       row.outputTokens += t.output
       row.cachedTokens += t.cacheRead + t.cacheCreation
-      row.costUsd += estimateCostUsd(t, s.model)
+      const cost = estimateSessionCostUsd(s)
+      if (cost === null) row.unpricedSessions += 1
+      else {
+        row.costUsd += cost.usd
+        if (cost.unpricedModels.length > 0) row.unpricedSessions += 1
+      }
     }
     if (chainHasTokens) row.chainsWithTokens += 1
   }

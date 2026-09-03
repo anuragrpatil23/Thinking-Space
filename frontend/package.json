@@ -25,7 +25,10 @@
     "agent:workspace:bootstrap": "vite-node scripts/agent/bootstrapAgentWorkspace.ts",
     "agent:workspace:restructure": "vite-node scripts/agent/restructureAgentWorkspace.ts",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prices:check": "node ../scripts/refresh-ai-prices.mjs --check",
+    "prices:refresh": "node ../scripts/refresh-ai-prices.mjs --write",
+    "prebuild": "[ \"$PRICES_CHECK\" = \"off\" ] || node ../scripts/refresh-ai-prices.mjs --build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",

@@ -60,9 +60,22 @@ export interface ParsedSession {
   hadClear: boolean
   /** File mtime in unix seconds — used for incremental cache invalidation. */
   mtime: number
-  /** Token usage if the source surfaces it (native JSONL only). */
+  /** Token usage if the source surfaces it (native JSONL only). Model-agnostic
+   *  — this is the answer to "how many tokens", which is the same question
+   *  whoever spent them. For "what did it cost", use `tokensByModel`. */
   tokens?: SessionTokens
-  /** Model id last seen in the session (e.g. "claude-opus-4-7", "gpt-5"). */
+  /** The same tokens, split by the model that actually spent them.
+   *
+   *  Cost is a function of (model, bucket) pairs, and a session is routinely
+   *  not one model: a coordinator on Opus delegating to Haiku subagents is two
+   *  price tiers in one sitting. Pricing the whole session at `model` below
+   *  charges every delegated token at the coordinator's rate — silently, with
+   *  no error and nothing on screen that looks wrong. Undefined for sources
+   *  that don't report a per-turn model. */
+  tokensByModel?: Record<string, SessionTokens>
+  /** Model id last seen in the session (e.g. "claude-opus-4-7", "gpt-5").
+   *  A display label for the session's primary model — NOT a costing input.
+   *  Cost reads `tokensByModel`. */
   model?: string
   /** Full session UUID when we can extract one (Claude Code session id). Used
    *  for exact dedup against the native ~/.claude/projects/<uuid>.jsonl source.

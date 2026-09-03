@@ -1,106 +1,265 @@
-// Rough per-million-token prices for the models we see in transcripts.
-// Numbers are USD and approximate — vendor pricing changes over time. Keep
-// the table small and explicit; we surface "~$X.XX est." rather than precise
-// billing to set expectations.
+// Token counts -> a dollar figure, using the rate table in
+// `src/data/aiModelPrices.json`. Rates are data; this file is only the lookup
+// and the arithmetic.
 //
-// Sources (point-in-time, update as needed):
-//   - Anthropic Opus 4.5 / 4.6 / 4.7:  $5 input / $25 output / $0.50 cache-read / $6.25 cache-write-5m
-//   - Anthropic Opus 4.0–4.4 (legacy): $15 / $75 / $1.50 / $18.75
-//   - Anthropic Sonnet 4.x: $3 input / $15 output / cache-read 10% of input
-//   - Anthropic Haiku 4.x:  $1 input / $5 output / cache-read 10% of input
-//   - OpenAI GPT-5: ~$1.25 input / $10 output
-//   - Anthropic cache *creation* has two TTLs priced differently:
-//       5m TTL ≈ 1.25x input, 1h TTL ≈ 2.0x input. We split on the parsed
-//       `cacheCreation1h` portion; the remainder is treated as 5m.
+// Two things to hold onto:
+//
+// 1. THE NUMBER IS A LIST-PRICE EQUIVALENT, NOT A BILL. It is what these tokens
+//    would have cost at public API rates. Subscription plans meter against
+//    usage limits instead, so nobody is charged this. Every surface that
+//    renders it has to say so — see COST_BASIS_LABEL below.
+//
+// 2. AN UNKNOWN MODEL HAS NO PRICE. `priceForModel` returns null rather than
+//    guessing, and `estimateCostUsd` returns null if any part of the bundle is
+//    unpriced. There used to be a FALLBACK_PRICE and a catch-all /opus/ rule;
+//    together they meant `claude-opus-5` — which matched neither the
+//    current-Opus pattern nor anything else specific — silently landed on
+//    retired Opus 3 rates and reported 3x the real cost, for two model
+//    generations, with no error anywhere. docs/contracts/DERIVATION.md:61: a
+//    derived layer must fail loudly, never return a plausible-looking lesser
+//    result unmarked. "Unpriced" is a worse-looking answer and a truer one.
 
+import priceTable from '@/data/aiModelPrices.json'
 import type { SessionTokens } from '@/services/lego_blocks/units/aiActivityParserBlock'
 
-interface PricePerMillion {
-  /** Fresh input tokens. */
+export interface PricePerMillion {
+  /** Fresh (uncached) input tokens. */
   input: number
   /** Output tokens. */
   output: number
   /** Cache-read input tokens (10% of fresh on Anthropic). */
   cacheRead: number
-  /** Cache-creation 5-minute TTL (1.25x input on Anthropic). */
+  /** Cache-creation, 5-minute TTL (1.25x input on Anthropic). */
   cacheCreation5m: number
-  /** Cache-creation 1-hour TTL (2.0x input on Anthropic). Same as 5m when the
-   *  provider doesn't differentiate (OpenAI). */
+  /** Cache-creation, 1-hour TTL (2.0x input on Anthropic). Equal to the 5m
+   *  figure where the provider has no TTL split. */
   cacheCreation1h: number
 }
 
-const FALLBACK_PRICE: PricePerMillion = {
-  input: 3,
-  output: 15,
-  cacheRead: 0.3,
-  cacheCreation5m: 3.75,
-  cacheCreation1h: 6,
+export interface PriceEntry extends PricePerMillion {
+  /** Human name for the tier, for provenance in the UI. */
+  label: string
+  /** ISO date these rates took effect. */
+  effectiveFrom: string
+  /** Where the numbers came from. */
+  source: string
+  /** True when inherited from a sibling model rather than published for this
+   *  id — the figure is an approximation even by list-price standards. */
+  assumed: boolean
 }
 
-const PRICES: ReadonlyArray<{ match: RegExp; price: PricePerMillion }> = [
-  // Anthropic Opus 4.5 / 4.6 / 4.7 — new pricing: 5 input, 25 output, 0.50
-  // cache-read, 6.25 / 10 cache-create (5m / 1h). Must match BEFORE the legacy
-  // /opus/ rule so 4.0–4.4 model ids continue to bill at the old rate.
-  {
-    match: /opus-4-(5|6|7)/i,
-    price: { input: 5, output: 25, cacheRead: 0.5, cacheCreation5m: 6.25, cacheCreation1h: 10 },
-  },
-  // Anthropic Opus 4.0–4.4 (legacy) — 15 input, 75 output, 1.5 cache-read,
-  // 18.75 / 30 cache-create.
-  {
-    match: /opus/i,
-    price: { input: 15, output: 75, cacheRead: 1.5, cacheCreation5m: 18.75, cacheCreation1h: 30 },
-  },
-  // Anthropic Sonnet family.
-  {
-    match: /sonnet/i,
-    price: { input: 3, output: 15, cacheRead: 0.3, cacheCreation5m: 3.75, cacheCreation1h: 6 },
-  },
-  // Anthropic Haiku family.
-  {
-    match: /haiku/i,
-    price: { input: 1, output: 5, cacheRead: 0.1, cacheCreation5m: 1.25, cacheCreation1h: 2 },
-  },
-  // OpenAI GPT-5 — no TTL split, both buckets priced as cache-write equivalent.
-  {
-    match: /^gpt-5/i,
-    price: { input: 1.25, output: 10, cacheRead: 0.125, cacheCreation5m: 1.25, cacheCreation1h: 1.25 },
-  },
-  // OpenAI o-series (rough mid-tier estimate).
-  {
-    match: /^o3|^o4/i,
-    price: { input: 2, output: 8, cacheRead: 0.5, cacheCreation5m: 2, cacheCreation1h: 2 },
-  },
-]
+interface RawRate {
+  match: string
+  reason?: string
+  label: string
+  effective_from: string
+  source: string
+  assumed?: boolean
+  input: number
+  output: number
+  cacheRead: number
+  cacheCreation5m: number
+  cacheCreation1h: number
+}
 
-export function priceForModel(model: string | undefined): PricePerMillion {
-  if (!model) return FALLBACK_PRICE
-  for (const { match, price } of PRICES) {
-    if (match.test(model)) return price
+/** How to describe the figure wherever it is rendered. It is not a bill. */
+export const COST_BASIS_LABEL = 'list-price equivalent'
+
+/** Exact-id tiers, lower-cased for case-insensitive lookup. Built once. */
+function indexExact(
+  src: Record<string, Partial<RawRate> & PricePerMillion>,
+  fallbackSource: string,
+): ReadonlyMap<string, PriceEntry> {
+  const out = new Map<string, PriceEntry>()
+  for (const [id, r] of Object.entries(src)) {
+    out.set(id.toLowerCase(), {
+      label: r.label ?? id,
+      effectiveFrom: r.effective_from ?? '',
+      source: r.source ?? fallbackSource,
+      assumed: r.assumed === true,
+      input: r.input,
+      output: r.output,
+      cacheRead: r.cacheRead,
+      cacheCreation5m: r.cacheCreation5m,
+      cacheCreation1h: r.cacheCreation1h,
+    })
   }
-  return FALLBACK_PRICE
+  return out
+}
+
+/** Tier 1 — hand-written, wins over everything, never touched by a refresh. */
+const OVERRIDES = indexExact(
+  priceTable.overrides as Record<string, Partial<RawRate> & PricePerMillion>,
+  'hand-set override',
+)
+
+/** Tier 2 — generated from the price feed, keyed by exact model id.
+ *
+ *  The feed publishes rates, not effective dates, so `effectiveFrom` here is
+ *  the date we last OBSERVED the rate, not the date it took effect. Those are
+ *  different claims and the label says which one it is: for a historical
+ *  session it answers "this is what the rate was when we last looked", which is
+ *  the honest limit of what a feed snapshot can tell you. Hand-written tiers
+ *  carry real effective-from dates. */
+const EXACT = indexExact(
+  Object.fromEntries(
+    Object.entries(priceTable.exact as Record<string, PricePerMillion>).map(([id, r]) => [
+      id,
+      {
+        ...r,
+        label: id,
+        effective_from: priceTable.refreshed_at,
+        source: `${priceTable.exact_source} (observed ${priceTable.refreshed_at})`,
+      },
+    ]),
+  ),
+  priceTable.exact_source,
+)
+
+/** Tier 3 — order sensitive fallback; first match wins, so the JSON keeps
+ *  specific patterns ahead of general ones. Compiled once at module load. */
+const PATTERNS: ReadonlyArray<{ match: RegExp; entry: PriceEntry }> = (
+  priceTable.patterns as ReadonlyArray<RawRate>
+).map((r) => ({
+  match: new RegExp(r.match, 'i'),
+  entry: {
+    label: r.label,
+    effectiveFrom: r.effective_from,
+    source: r.source,
+    assumed: r.assumed === true,
+    input: r.input,
+    output: r.output,
+    cacheRead: r.cacheRead,
+    cacheCreation5m: r.cacheCreation5m,
+    cacheCreation1h: r.cacheCreation1h,
+  },
+}))
+
+/**
+ * The rate entry for a model id, or null when we have no published price for
+ * it. Null is a real answer — callers must render it as unpriced rather than
+ * substituting a default.
+ */
+export function priceForModel(model: string | undefined): PriceEntry | null {
+  if (!model) return null
+  const key = model.toLowerCase()
+  // Exact id beats any pattern. Patterns are how the original bug happened —
+  // a regex that quietly stopped matching a new id and let it fall through to
+  // the wrong tier — so anything the feed knows by name is resolved by name,
+  // and regexes are left to do only what they are actually good at: catching
+  // dated snapshots and ids released between refreshes.
+  return OVERRIDES.get(key) ?? EXACT.get(key) ?? matchPattern(model)
+}
+
+function matchPattern(model: string): PriceEntry | null {
+  for (const { match, entry } of PATTERNS) {
+    if (match.test(model)) return entry
+  }
+  return null
+}
+
+/** Which tier answered — for provenance in the UI and for tests that need to
+ *  assert an id is resolved exactly rather than by a lucky regex. */
+export function priceTierForModel(model: string | undefined): 'override' | 'exact' | 'pattern' | null {
+  if (!model) return null
+  const key = model.toLowerCase()
+  if (OVERRIDES.has(key)) return 'override'
+  if (EXACT.has(key)) return 'exact'
+  return matchPattern(model) ? 'pattern' : null
+}
+
+/** Whether we can price this model at all. Sugar for readability at call sites. */
+export function isPriced(model: string | undefined): boolean {
+  return priceForModel(model) !== null
 }
 
 /**
- * Convert token counts to a dollar estimate. `model` decides the price tier.
- * Returns the dollar amount (e.g. 0.42) — formatters live in the UI.
+ * Convert token counts to a dollar figure at list rates, or null if the model
+ * is unpriced. Formatters live in the UI.
  */
-export function estimateCostUsd(tokens: SessionTokens, model: string | undefined): number {
+export function estimateCostUsd(tokens: SessionTokens, model: string | undefined): number | null {
   const p = priceForModel(model)
+  if (!p) return null
   const cache1h = Math.min(tokens.cacheCreation1h ?? 0, tokens.cacheCreation)
   const cache5m = Math.max(0, tokens.cacheCreation - cache1h)
-  const usd =
+  return (
     (tokens.input * p.input +
       tokens.output * p.output +
       tokens.cacheRead * p.cacheRead +
       cache5m * p.cacheCreation5m +
       cache1h * p.cacheCreation1h) /
     1_000_000
-  return usd
+  )
 }
 
-/** Sum a list of token bundles. Caller is responsible for grouping by model
- *  if they want per-model cost; we just add the counts. */
+/**
+ * Cost of one session, summed over the models that actually spent the tokens.
+ *
+ * This is the entry point every caller should use. `estimateCostUsd` prices one
+ * bundle at one model, which is only correct when a session used exactly one —
+ * and 72 of 226 real transcripts here use two or more. A coordinator on Opus
+ * delegating to Haiku subagents priced entirely at Opus is wrong in the
+ * expensive direction, silently.
+ *
+ * Falls back to the single-model path when a source doesn't report per-turn
+ * models (vault-markdown chains), so nothing regresses to "unpriced" merely for
+ * lacking the finer data.
+ *
+ * Returns null only when NOTHING could be priced. A partially-priced session
+ * returns the priced subtotal plus the model ids that were missing, so a caller
+ * can render "~\$12.30+" rather than a total that quietly omits contributors.
+ */
+export function estimateSessionCostUsd(session: {
+  tokens?: SessionTokens
+  tokensByModel?: Record<string, SessionTokens>
+  model?: string
+}): { usd: number; unpricedModels: string[] } | null {
+  const byModel = session.tokensByModel
+  if (!byModel || Object.keys(byModel).length === 0) {
+    if (!session.tokens) return null
+    const usd = estimateCostUsd(session.tokens, session.model)
+    return usd === null ? null : { usd, unpricedModels: [] }
+  }
+  let usd = 0
+  let priced = 0
+  const unpricedModels: string[] = []
+  for (const [model, tokens] of Object.entries(byModel)) {
+    const cost = estimateCostUsd(tokens, model)
+    if (cost === null) unpricedModels.push(model)
+    else {
+      usd += cost
+      priced += 1
+    }
+  }
+  return priced > 0 ? { usd, unpricedModels } : null
+}
+
+/**
+ * Sum costs across a mixed-model list. Returns the total *and* how many
+ * entries had no price, so a caller can render "~$12.30 (2 sessions unpriced)"
+ * instead of quietly reporting a total that is missing rows. A total that
+ * silently omits contributors is the same failure this module exists to avoid.
+ */
+export function sumCostUsd(
+  list: ReadonlyArray<{ tokens?: SessionTokens; model?: string }>,
+): { usd: number; priced: number; unpriced: number } {
+  let usd = 0
+  let priced = 0
+  let unpriced = 0
+  for (const item of list) {
+    if (!item.tokens) continue
+    const cost = estimateCostUsd(item.tokens, item.model)
+    if (cost === null) unpriced += 1
+    else {
+      usd += cost
+      priced += 1
+    }
+  }
+  return { usd, priced, unpriced }
+}
+
+/** Sum a list of token bundles. Caller groups by model if they want per-model
+ *  cost; we just add the counts. */
 export function sumTokens(list: ReadonlyArray<SessionTokens | undefined>): SessionTokens {
   const out: SessionTokens = {
     input: 0,
@@ -127,10 +286,11 @@ export function formatTokens(n: number): string {
   return String(n)
 }
 
-/** "$0.42" / "$12.30" / "<$0.01" formatter. */
-export function formatUsd(n: number): string {
+/** "$0.42" / "$12.30" / "<$0.01" formatter. Null renders as "unpriced" — the
+ *  honest rendering of a model we have no rate for. */
+export function formatUsd(n: number | null | undefined): string {
+  if (n === null || n === undefined) return 'unpriced'
   if (n < 0.01) return '<$0.01'
-  if (n < 1) return `$${n.toFixed(2)}`
   if (n < 100) return `$${n.toFixed(2)}`
   return `$${n.toFixed(0)}`
 }

@@ -1,0 +1,1508 @@
+{
+  "version": 2,
+  "$comment": [
+    "Per-million-token LIST prices, as data. Adding a newly released model",
+    "should be an edit to this file — not a code change.",
+    "",
+    "These are public API list rates. They are NOT what a subscription plan",
+    "charges: Claude Pro/Max and ChatGPT plans meter against usage limits, not",
+    "per token. Anything derived from this file is a 'what these tokens would",
+    "have cost on the API' figure, and the UI must say so.",
+    "",
+    "THREE TIERS, CHECKED IN ORDER — `overrides`, then `exact`, then `patterns`:",
+    "",
+    "  overrides  hand-written, per exact model id, wins over everything. This is",
+    "             where a considered disagreement with the feed lives, with a",
+    "             `reason`. Never touched by the refresh script.",
+    "  exact      per exact model id, GENERATED from the LiteLLM feed by",
+    "             scripts/refresh-ai-prices.mjs. Rewritten wholesale on refresh —",
+    "             do not hand-edit, your edit will be overwritten.",
+    "  patterns   hand-written regexes, ORDER SENSITIVE (first match wins, so",
+    "             specific before general). The fallback for ids the feed has",
+    "             never heard of: dated snapshots (claude-opus-4-5-20251101),",
+    "             aliases, and models released between refreshes. This is why",
+    "             patterns still earn their place — but they are now the last",
+    "             resort rather than the only mechanism, which is what made the",
+    "             original mismatch possible.",
+    "the model id the transcript reports.",
+    "",
+    "THERE IS NO CATCH-ALL, DELIBERATELY. An unrecognised model id resolves to",
+    "no price and renders as 'unpriced' rather than a plausible wrong number.",
+    "The bug this file was extracted to fix was exactly a silent fallback: the",
+    "current-Opus rule failed to match `claude-opus-5`, the id fell through to a",
+    "catch-all /opus/ rule holding retired Opus 3 rates, and every Opus 5",
+    "session was reported at 3x its real cost for two model generations with no",
+    "error. docs/contracts/DERIVATION.md:61 — a derived layer must fail loudly,",
+    "never return a plausible-looking lesser result unmarked.",
+    "",
+    "Where a family's rate has been identical across every generation to date",
+    "(sonnet, haiku) the pattern stays family-wide. Where it has actually",
+    "changed (opus went $15 -> $5) generations are enumerated, so the next one",
+    "is unpriced until someone prices it.",
+    "",
+    "Fields:",
+    "  match           regex source, matched case-insensitively",
+    "  label           human name for the tier, shown in provenance tooltips",
+    "  effective_from  ISO date these rates took effect (for 'when did this",
+    "                  rate apply' questions against historical sessions)",
+    "  source          where the numbers came from",
+    "  assumed         true when the rate is inherited from a sibling model",
+    "                  rather than published for this id. Refreshing from the",
+    "                  LiteLLM feed (scripts/refresh-ai-prices.mjs) replaces",
+    "                  assumed entries with published ones.",
+    "  input           fresh (uncached) input tokens",
+    "  output          output tokens",
+    "  cacheRead       cache-hit input tokens (Anthropic: 10% of input)",
+    "  cacheCreation5m cache write, 5-minute TTL (Anthropic: 1.25x input)",
+    "  cacheCreation1h cache write, 1-hour TTL (Anthropic: 2.0x input).",
+    "                  Equal to the 5m figure where a provider has no TTL split."
+  ],
+  "refreshed_at": "2026-09-03",
+  "exact_source": "LiteLLM model_prices_and_context_window.json",
+  "overrides": {
+    "claude-fable-5-1": {
+      "input": 10,
+      "output": 50,
+      "cacheRead": 1,
+      "cacheCreation5m": 12.5,
+      "cacheCreation1h": 20,
+      "label": "Anthropic Fable 5.1",
+      "effective_from": "2026-06-01",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reason": "LiteLLM reports claude-fable-5-1 cacheRead at $0.25 — 2.5% of input, where every other Anthropic model is exactly 10%. Treated as an upstream typo; we keep $1.00. Revisit if the feed still says $0.25 after a release or two."
+    },
+    "claude-sonnet-5": {
+      "input": 3,
+      "output": 15,
+      "cacheRead": 0.3,
+      "cacheCreation5m": 3.75,
+      "cacheCreation1h": 6,
+      "label": "Anthropic Sonnet 5",
+      "effective_from": "2026-09-01",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "reason": "LiteLLM reports claude-sonnet-5 at $2/$10. That is the introductory rate, which ran through 2026-08-31; the standard rate is $3/$15 and is what is recorded here."
+    }
+  },
+  "exact": {
+    "gpt-4o-transcribe-diarize": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "claude-haiku-4-5-20251001": {
+      "input": 1,
+      "output": 5,
+      "cacheRead": 0.1,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 2
+    },
+    "claude-haiku-4-5": {
+      "input": 1,
+      "output": 5,
+      "cacheRead": 0.1,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 2
+    },
+    "claude-3-7-sonnet-20250219": {
+      "input": 3,
+      "output": 15,
+      "cacheRead": 0.3,
+      "cacheCreation5m": 3.75,
+      "cacheCreation1h": 6
+    },
+    "claude-3-haiku-20240307": {
+      "input": 0.25,
+      "output": 1.25,
+      "cacheRead": 0.03,
+      "cacheCreation5m": 0.3,
+      "cacheCreation1h": 0.5
+    },
+    "claude-3-opus-20240229": {
+      "input": 15,
+      "output": 75,
+      "cacheRead": 1.5,
+      "cacheCreation5m": 18.75,
+      "cacheCreation1h": 30
+    },
+    "claude-4-opus-20250514": {
+      "input": 15,
+      "output": 75,
+      "cacheRead": 1.5,
+      "cacheCreation5m": 18.75,
+      "cacheCreation1h": 30
+    },
+    "claude-4-sonnet-20250514": {
+      "input": 3,
+      "output": 15,
+      "cacheRead": 0.3,
+      "cacheCreation5m": 3.75,
+      "cacheCreation1h": 6
+    },
+    "claude-sonnet-4-5": {
+      "input": 3,
+      "output": 15,
+      "cacheRead": 0.3,
+      "cacheCreation5m": 3.75,
+      "cacheCreation1h": 6
+    },
+    "claude-sonnet-4-5-20250929": {
+      "input": 3,
+      "output": 15,
+      "cacheRead": 0.3,
+      "cacheCreation5m": 3.75,
+      "cacheCreation1h": 6
+    },
+    "claude-sonnet-4-6": {
+      "input": 3,
+      "output": 15,
+      "cacheRead": 0.3,
+      "cacheCreation5m": 3.75,
+      "cacheCreation1h": 6
+    },
+    "claude-sonnet-4-5-20250929-v1:0": {
+      "input": 3,
+      "output": 15,
+      "cacheRead": 0.3,
+      "cacheCreation5m": 3.75,
+      "cacheCreation1h": 6
+    },
+    "claude-opus-4-1": {
+      "input": 15,
+      "output": 75,
+      "cacheRead": 1.5,
+      "cacheCreation5m": 18.75,
+      "cacheCreation1h": 30
+    },
+    "claude-opus-4-1-20250805": {
+      "input": 15,
+      "output": 75,
+      "cacheRead": 1.5,
+      "cacheCreation5m": 18.75,
+      "cacheCreation1h": 30
+    },
+    "claude-opus-4-20250514": {
+      "input": 15,
+      "output": 75,
+      "cacheRead": 1.5,
+      "cacheCreation5m": 18.75,
+      "cacheCreation1h": 30
+    },
+    "claude-opus-4-5-20251101": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 6.25,
+      "cacheCreation1h": 10
+    },
+    "claude-opus-4-5": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 6.25,
+      "cacheCreation1h": 10
+    },
+    "claude-opus-4-6": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 6.25,
+      "cacheCreation1h": 10
+    },
+    "claude-opus-4-6-20260205": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 6.25,
+      "cacheCreation1h": 10
+    },
+    "claude-opus-4-7": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 6.25,
+      "cacheCreation1h": 10
+    },
+    "claude-opus-4-7-20260416": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 6.25,
+      "cacheCreation1h": 10
+    },
+    "claude-fable-5": {
+      "input": 10,
+      "output": 50,
+      "cacheRead": 1,
+      "cacheCreation5m": 12.5,
+      "cacheCreation1h": 20
+    },
+    "claude-opus-5": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 6.25,
+      "cacheCreation1h": 10
+    },
+    "claude-opus-4-8": {
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 6.25,
+      "cacheCreation1h": 10
+    },
+    "claude-sonnet-4-20250514": {
+      "input": 3,
+      "output": 15,
+      "cacheRead": 0.3,
+      "cacheCreation5m": 3.75,
+      "cacheCreation1h": 6
+    },
+    "gpt-3.5-turbo": {
+      "input": 0.5,
+      "output": 1.5,
+      "cacheRead": 0.05,
+      "cacheCreation5m": 0.5,
+      "cacheCreation1h": 0.5
+    },
+    "gpt-3.5-turbo-0125": {
+      "input": 0.5,
+      "output": 1.5,
+      "cacheRead": 0.05,
+      "cacheCreation5m": 0.5,
+      "cacheCreation1h": 0.5
+    },
+    "gpt-3.5-turbo-1106": {
+      "input": 1,
+      "output": 2,
+      "cacheRead": 0.1,
+      "cacheCreation5m": 1,
+      "cacheCreation1h": 1
+    },
+    "gpt-3.5-turbo-16k": {
+      "input": 3,
+      "output": 4,
+      "cacheRead": 0.3,
+      "cacheCreation5m": 3,
+      "cacheCreation1h": 3
+    },
+    "gpt-3.5-turbo-instruct": {
+      "input": 1.5,
+      "output": 2,
+      "cacheRead": 0.15,
+      "cacheCreation5m": 1.5,
+      "cacheCreation1h": 1.5
+    },
+    "gpt-3.5-turbo-instruct-0914": {
+      "input": 1.5,
+      "output": 2,
+      "cacheRead": 0.15,
+      "cacheCreation5m": 1.5,
+      "cacheCreation1h": 1.5
+    },
+    "gpt-4": {
+      "input": 30,
+      "output": 60,
+      "cacheRead": 3,
+      "cacheCreation5m": 30,
+      "cacheCreation1h": 30
+    },
+    "gpt-4-0125-preview": {
+      "input": 10,
+      "output": 30,
+      "cacheRead": 1,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 10
+    },
+    "gpt-4-0314": {
+      "input": 30,
+      "output": 60,
+      "cacheRead": 3,
+      "cacheCreation5m": 30,
+      "cacheCreation1h": 30
+    },
+    "gpt-4-0613": {
+      "input": 30,
+      "output": 60,
+      "cacheRead": 3,
+      "cacheCreation5m": 30,
+      "cacheCreation1h": 30
+    },
+    "gpt-4-1106-preview": {
+      "input": 10,
+      "output": 30,
+      "cacheRead": 1,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 10
+    },
+    "gpt-4-turbo": {
+      "input": 10,
+      "output": 30,
+      "cacheRead": 1,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 10
+    },
+    "gpt-4-turbo-2024-04-09": {
+      "input": 10,
+      "output": 30,
+      "cacheRead": 1,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 10
+    },
+    "gpt-4-turbo-preview": {
+      "input": 10,
+      "output": 30,
+      "cacheRead": 1,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 10
+    },
+    "gpt-4.1": {
+      "input": 2,
+      "output": 8,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 2,
+      "cacheCreation1h": 2
+    },
+    "gpt-4.1-2025-04-14": {
+      "input": 2,
+      "output": 8,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 2,
+      "cacheCreation1h": 2
+    },
+    "gpt-4.1-mini": {
+      "input": 0.4,
+      "output": 1.6,
+      "cacheRead": 0.1,
+      "cacheCreation5m": 0.4,
+      "cacheCreation1h": 0.4
+    },
+    "gpt-4.1-mini-2025-04-14": {
+      "input": 0.4,
+      "output": 1.6,
+      "cacheRead": 0.1,
+      "cacheCreation5m": 0.4,
+      "cacheCreation1h": 0.4
+    },
+    "gpt-4.1-nano": {
+      "input": 0.1,
+      "output": 0.4,
+      "cacheRead": 0.025,
+      "cacheCreation5m": 0.1,
+      "cacheCreation1h": 0.1
+    },
+    "gpt-4.1-nano-2025-04-14": {
+      "input": 0.1,
+      "output": 0.4,
+      "cacheRead": 0.025,
+      "cacheCreation5m": 0.1,
+      "cacheCreation1h": 0.1
+    },
+    "gpt-4o": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-4o-2024-05-13": {
+      "input": 5,
+      "output": 15,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 5
+    },
+    "gpt-4o-2024-08-06": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-4o-2024-11-20": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-4o-audio-preview": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-4o-audio-preview-2024-12-17": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-4o-audio-preview-2025-06-03": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-audio": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-audio-1.5": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-audio-2025-08-28": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-audio-mini": {
+      "input": 0.6,
+      "output": 2.4,
+      "cacheRead": 0.06,
+      "cacheCreation5m": 0.6,
+      "cacheCreation1h": 0.6
+    },
+    "gpt-audio-mini-2025-10-06": {
+      "input": 0.6,
+      "output": 2.4,
+      "cacheRead": 0.06,
+      "cacheCreation5m": 0.6,
+      "cacheCreation1h": 0.6
+    },
+    "gpt-audio-mini-2025-12-15": {
+      "input": 0.6,
+      "output": 2.4,
+      "cacheRead": 0.06,
+      "cacheCreation5m": 0.6,
+      "cacheCreation1h": 0.6
+    },
+    "gpt-4o-mini": {
+      "input": 0.15,
+      "output": 0.6,
+      "cacheRead": 0.075,
+      "cacheCreation5m": 0.15,
+      "cacheCreation1h": 0.15
+    },
+    "gpt-4o-mini-2024-07-18": {
+      "input": 0.15,
+      "output": 0.6,
+      "cacheRead": 0.075,
+      "cacheCreation5m": 0.15,
+      "cacheCreation1h": 0.15
+    },
+    "gpt-4o-mini-audio-preview": {
+      "input": 0.15,
+      "output": 0.6,
+      "cacheRead": 0.015,
+      "cacheCreation5m": 0.15,
+      "cacheCreation1h": 0.15
+    },
+    "gpt-4o-mini-audio-preview-2024-12-17": {
+      "input": 0.15,
+      "output": 0.6,
+      "cacheRead": 0.015,
+      "cacheCreation5m": 0.15,
+      "cacheCreation1h": 0.15
+    },
+    "gpt-4o-mini-realtime-preview": {
+      "input": 0.6,
+      "output": 2.4,
+      "cacheRead": 0.3,
+      "cacheCreation5m": 0.6,
+      "cacheCreation1h": 0.6
+    },
+    "gpt-4o-mini-realtime-preview-2024-12-17": {
+      "input": 0.6,
+      "output": 2.4,
+      "cacheRead": 0.3,
+      "cacheCreation5m": 0.6,
+      "cacheCreation1h": 0.6
+    },
+    "gpt-4o-mini-search-preview": {
+      "input": 0.15,
+      "output": 0.6,
+      "cacheRead": 0.075,
+      "cacheCreation5m": 0.15,
+      "cacheCreation1h": 0.15
+    },
+    "gpt-4o-mini-search-preview-2025-03-11": {
+      "input": 0.15,
+      "output": 0.6,
+      "cacheRead": 0.075,
+      "cacheCreation5m": 0.15,
+      "cacheCreation1h": 0.15
+    },
+    "gpt-4o-mini-transcribe": {
+      "input": 1.25,
+      "output": 5,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-4o-mini-tts": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-4o-realtime-preview": {
+      "input": 5,
+      "output": 20,
+      "cacheRead": 2.5,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 5
+    },
+    "gpt-4o-realtime-preview-2024-12-17": {
+      "input": 5,
+      "output": 20,
+      "cacheRead": 2.5,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 5
+    },
+    "gpt-4o-realtime-preview-2025-06-03": {
+      "input": 5,
+      "output": 20,
+      "cacheRead": 2.5,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 5
+    },
+    "gpt-4o-search-preview": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-4o-search-preview-2025-03-11": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-4o-transcribe": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-image-1.5": {
+      "input": 5,
+      "output": 10,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 5
+    },
+    "gpt-image-1.5-2025-12-16": {
+      "input": 5,
+      "output": 10,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 5
+    },
+    "gpt-image-2": {
+      "input": 5,
+      "output": 10,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 5
+    },
+    "gpt-image-2-2026-04-21": {
+      "input": 5,
+      "output": 10,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 5
+    },
+    "gpt-5": {
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-5.1": {
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-5.1-2025-11-13": {
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-5.1-chat-latest": {
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-5.2": {
+      "input": 1.75,
+      "output": 14,
+      "cacheRead": 0.175,
+      "cacheCreation5m": 1.75,
+      "cacheCreation1h": 1.75
+    },
+    "gpt-5.2-2025-12-11": {
+      "input": 1.75,
+      "output": 14,
+      "cacheRead": 0.175,
+      "cacheCreation5m": 1.75,
+      "cacheCreation1h": 1.75
+    },
+    "gpt-5.2-chat-latest": {
+      "input": 1.75,
+      "output": 14,
+      "cacheRead": 0.175,
+      "cacheCreation5m": 1.75,
+      "cacheCreation1h": 1.75
+    },
+    "gpt-5.3-chat-latest": {
+      "input": 1.75,
+      "output": 14,
+      "cacheRead": 0.175,
+      "cacheCreation5m": 1.75,
+      "cacheCreation1h": 1.75
+    },
+    "gpt-5.2-pro": {
+      "input": 21,
+      "output": 168,
+      "cacheRead": 2.1,
+      "cacheCreation5m": 21,
+      "cacheCreation1h": 21
+    },
+    "gpt-5.2-pro-2025-12-11": {
+      "input": 21,
+      "output": 168,
+      "cacheRead": 2.1,
+      "cacheCreation5m": 21,
+      "cacheCreation1h": 21
+    },
+    "gpt-5.6": {
+      "input": 4,
+      "output": 20,
+      "cacheRead": 0.4,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 4
+    },
+    "gpt-5.6-sol": {
+      "input": 4,
+      "output": 20,
+      "cacheRead": 0.4,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 4
+    },
+    "gpt-5.6-terra": {
+      "input": 2,
+      "output": 12,
+      "cacheRead": 0.2,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2
+    },
+    "gpt-5.6-luna": {
+      "input": 0.2,
+      "output": 1.2,
+      "cacheRead": 0.02,
+      "cacheCreation5m": 0.25,
+      "cacheCreation1h": 0.2
+    },
+    "gpt-5.6-cyber": {
+      "input": 12.5,
+      "output": 75,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 15.625,
+      "cacheCreation1h": 12.5
+    },
+    "gpt-5.5": {
+      "input": 5,
+      "output": 30,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 5
+    },
+    "gpt-5.5-2026-04-23": {
+      "input": 5,
+      "output": 30,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 5
+    },
+    "gpt-5.5-pro": {
+      "input": 30,
+      "output": 180,
+      "cacheRead": 3,
+      "cacheCreation5m": 30,
+      "cacheCreation1h": 30
+    },
+    "gpt-5.5-pro-2026-04-23": {
+      "input": 30,
+      "output": 180,
+      "cacheRead": 3,
+      "cacheCreation5m": 30,
+      "cacheCreation1h": 30
+    },
+    "gpt-5.4": {
+      "input": 2.5,
+      "output": 15,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-5.4-2026-03-05": {
+      "input": 2.5,
+      "output": 15,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-5.4-pro": {
+      "input": 30,
+      "output": 180,
+      "cacheRead": 3,
+      "cacheCreation5m": 30,
+      "cacheCreation1h": 30
+    },
+    "gpt-5.4-pro-2026-03-05": {
+      "input": 30,
+      "output": 180,
+      "cacheRead": 3,
+      "cacheCreation5m": 30,
+      "cacheCreation1h": 30
+    },
+    "gpt-5.4-mini": {
+      "input": 0.75,
+      "output": 4.5,
+      "cacheRead": 0.075,
+      "cacheCreation5m": 0.75,
+      "cacheCreation1h": 0.75
+    },
+    "gpt-5.4-mini-2026-03-17": {
+      "input": 0.75,
+      "output": 4.5,
+      "cacheRead": 0.075,
+      "cacheCreation5m": 0.75,
+      "cacheCreation1h": 0.75
+    },
+    "gpt-5.4-nano": {
+      "input": 0.2,
+      "output": 1.25,
+      "cacheRead": 0.02,
+      "cacheCreation5m": 0.2,
+      "cacheCreation1h": 0.2
+    },
+    "gpt-5.4-nano-2026-03-17": {
+      "input": 0.2,
+      "output": 1.25,
+      "cacheRead": 0.02,
+      "cacheCreation5m": 0.2,
+      "cacheCreation1h": 0.2
+    },
+    "gpt-5-pro": {
+      "input": 15,
+      "output": 120,
+      "cacheRead": 1.5,
+      "cacheCreation5m": 15,
+      "cacheCreation1h": 15
+    },
+    "gpt-5-pro-2025-10-06": {
+      "input": 15,
+      "output": 120,
+      "cacheRead": 1.5,
+      "cacheCreation5m": 15,
+      "cacheCreation1h": 15
+    },
+    "gpt-5-2025-08-07": {
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-5-chat": {
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-5-chat-latest": {
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-5-codex": {
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-5.1-codex": {
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-5.1-codex-max": {
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-5.1-codex-mini": {
+      "input": 0.25,
+      "output": 2,
+      "cacheRead": 0.025,
+      "cacheCreation5m": 0.25,
+      "cacheCreation1h": 0.25
+    },
+    "gpt-5.2-codex": {
+      "input": 1.75,
+      "output": 14,
+      "cacheRead": 0.175,
+      "cacheCreation5m": 1.75,
+      "cacheCreation1h": 1.75
+    },
+    "gpt-5.3-codex": {
+      "input": 1.75,
+      "output": 14,
+      "cacheRead": 0.175,
+      "cacheCreation5m": 1.75,
+      "cacheCreation1h": 1.75
+    },
+    "gpt-5-mini": {
+      "input": 0.25,
+      "output": 2,
+      "cacheRead": 0.025,
+      "cacheCreation5m": 0.25,
+      "cacheCreation1h": 0.25
+    },
+    "gpt-5-mini-2025-08-07": {
+      "input": 0.25,
+      "output": 2,
+      "cacheRead": 0.025,
+      "cacheCreation5m": 0.25,
+      "cacheCreation1h": 0.25
+    },
+    "gpt-5-nano": {
+      "input": 0.05,
+      "output": 0.4,
+      "cacheRead": 0.005,
+      "cacheCreation5m": 0.05,
+      "cacheCreation1h": 0.05
+    },
+    "gpt-5-nano-2025-08-07": {
+      "input": 0.05,
+      "output": 0.4,
+      "cacheRead": 0.005,
+      "cacheCreation5m": 0.05,
+      "cacheCreation1h": 0.05
+    },
+    "gpt-realtime": {
+      "input": 4,
+      "output": 16,
+      "cacheRead": 0.4,
+      "cacheCreation5m": 4,
+      "cacheCreation1h": 4
+    },
+    "gpt-realtime-1.5": {
+      "input": 4,
+      "output": 16,
+      "cacheRead": 0.4,
+      "cacheCreation5m": 4,
+      "cacheCreation1h": 4
+    },
+    "gpt-realtime-2": {
+      "input": 4,
+      "output": 16,
+      "cacheRead": 0.4,
+      "cacheCreation5m": 4,
+      "cacheCreation1h": 4
+    },
+    "gpt-realtime-2.1": {
+      "input": 4,
+      "output": 24,
+      "cacheRead": 0.4,
+      "cacheCreation5m": 4,
+      "cacheCreation1h": 4
+    },
+    "gpt-realtime-2.1-mini": {
+      "input": 0.6,
+      "output": 2.4,
+      "cacheRead": 0.06,
+      "cacheCreation5m": 0.6,
+      "cacheCreation1h": 0.6
+    },
+    "gpt-realtime-mini": {
+      "input": 0.6,
+      "output": 2.4,
+      "cacheRead": 0.06,
+      "cacheCreation5m": 0.6,
+      "cacheCreation1h": 0.6
+    },
+    "gpt-realtime-2025-08-28": {
+      "input": 4,
+      "output": 16,
+      "cacheRead": 0.4,
+      "cacheCreation5m": 4,
+      "cacheCreation1h": 4
+    },
+    "o1": {
+      "input": 15,
+      "output": 60,
+      "cacheRead": 7.5,
+      "cacheCreation5m": 15,
+      "cacheCreation1h": 15
+    },
+    "o1-2024-12-17": {
+      "input": 15,
+      "output": 60,
+      "cacheRead": 7.5,
+      "cacheCreation5m": 15,
+      "cacheCreation1h": 15
+    },
+    "o1-pro": {
+      "input": 150,
+      "output": 600,
+      "cacheRead": 15,
+      "cacheCreation5m": 150,
+      "cacheCreation1h": 150
+    },
+    "o1-pro-2025-03-19": {
+      "input": 150,
+      "output": 600,
+      "cacheRead": 15,
+      "cacheCreation5m": 150,
+      "cacheCreation1h": 150
+    },
+    "o3": {
+      "input": 2,
+      "output": 8,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 2,
+      "cacheCreation1h": 2
+    },
+    "o3-2025-04-16": {
+      "input": 2,
+      "output": 8,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 2,
+      "cacheCreation1h": 2
+    },
+    "o3-deep-research": {
+      "input": 10,
+      "output": 40,
+      "cacheRead": 2.5,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 10
+    },
+    "o3-deep-research-2025-06-26": {
+      "input": 10,
+      "output": 40,
+      "cacheRead": 2.5,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 10
+    },
+    "o3-mini": {
+      "input": 1.1,
+      "output": 4.4,
+      "cacheRead": 0.55,
+      "cacheCreation5m": 1.1,
+      "cacheCreation1h": 1.1
+    },
+    "o3-mini-2025-01-31": {
+      "input": 1.1,
+      "output": 4.4,
+      "cacheRead": 0.55,
+      "cacheCreation5m": 1.1,
+      "cacheCreation1h": 1.1
+    },
+    "o3-pro": {
+      "input": 20,
+      "output": 80,
+      "cacheRead": 2,
+      "cacheCreation5m": 20,
+      "cacheCreation1h": 20
+    },
+    "o3-pro-2025-06-10": {
+      "input": 20,
+      "output": 80,
+      "cacheRead": 2,
+      "cacheCreation5m": 20,
+      "cacheCreation1h": 20
+    },
+    "o4-mini": {
+      "input": 1.1,
+      "output": 4.4,
+      "cacheRead": 0.275,
+      "cacheCreation5m": 1.1,
+      "cacheCreation1h": 1.1
+    },
+    "o4-mini-2025-04-16": {
+      "input": 1.1,
+      "output": 4.4,
+      "cacheRead": 0.275,
+      "cacheCreation5m": 1.1,
+      "cacheCreation1h": 1.1
+    },
+    "o4-mini-deep-research": {
+      "input": 2,
+      "output": 8,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 2,
+      "cacheCreation1h": 2
+    },
+    "o4-mini-deep-research-2025-06-26": {
+      "input": 2,
+      "output": 8,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 2,
+      "cacheCreation1h": 2
+    },
+    "gpt-4o-mini-tts-2025-03-20": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-4o-mini-tts-2025-12-15": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-4o-mini-transcribe-2025-03-20": {
+      "input": 1.25,
+      "output": 5,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-4o-mini-transcribe-2025-12-15": {
+      "input": 1.25,
+      "output": 5,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-5-search-api": {
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-5-search-api-2025-10-14": {
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    "gpt-realtime-mini-2025-10-06": {
+      "input": 0.6,
+      "output": 2.4,
+      "cacheRead": 0.06,
+      "cacheCreation5m": 0.6,
+      "cacheCreation1h": 0.6
+    },
+    "gpt-realtime-mini-2025-12-15": {
+      "input": 0.6,
+      "output": 2.4,
+      "cacheRead": 0.06,
+      "cacheCreation5m": 0.6,
+      "cacheCreation1h": 0.6
+    },
+    "claude-mythos-5": {
+      "input": 10,
+      "output": 50,
+      "cacheRead": 1,
+      "cacheCreation5m": 12.5,
+      "cacheCreation1h": 20
+    },
+    "claude-mythos-preview": {
+      "input": 10,
+      "output": 50,
+      "cacheRead": 1,
+      "cacheCreation5m": 12.5,
+      "cacheCreation1h": 20
+    }
+  },
+  "patterns": [
+    {
+      "match": "(fable|mythos)",
+      "label": "Anthropic Fable 5 / Mythos 5",
+      "effective_from": "2026-06-01",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "input": 10,
+      "output": 50,
+      "cacheRead": 1,
+      "cacheCreation5m": 12.5,
+      "cacheCreation1h": 20
+    },
+    {
+      "match": "opus-4-[01](?!\\d)|opus-4-\\d{8}|opus-4(?![-\\d])|4-opus|3-opus",
+      "label": "Anthropic Opus 3 / 4.0 / 4.1 (retired pricing)",
+      "effective_from": "2024-02-29",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "input": 15,
+      "output": 75,
+      "cacheRead": 1.5,
+      "cacheCreation5m": 18.75,
+      "cacheCreation1h": 30
+    },
+    {
+      "match": "opus-4-[5-8](?!\\d)|opus-5(?![.\\d])",
+      "label": "Anthropic Opus 4.5–4.8 / Opus 5",
+      "effective_from": "2025-11-01",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "input": 5,
+      "output": 25,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 6.25,
+      "cacheCreation1h": 10
+    },
+    {
+      "match": "sonnet",
+      "label": "Anthropic Sonnet (all generations)",
+      "effective_from": "2024-03-04",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "input": 3,
+      "output": 15,
+      "cacheRead": 0.3,
+      "cacheCreation5m": 3.75,
+      "cacheCreation1h": 6
+    },
+    {
+      "match": "haiku-4",
+      "label": "Anthropic Haiku 4.x",
+      "effective_from": "2025-10-01",
+      "source": "https://platform.claude.com/docs/en/about-claude/models/overview",
+      "input": 1,
+      "output": 5,
+      "cacheRead": 0.1,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 2
+    },
+    {
+      "match": "haiku-3|3-haiku",
+      "label": "Anthropic Haiku 3 / 3.5",
+      "effective_from": "2024-03-07",
+      "source": "LiteLLM model_prices_and_context_window.json (refreshed 2026-09-03)",
+      "input": 0.25,
+      "output": 1.25,
+      "cacheRead": 0.03,
+      "cacheCreation5m": 0.3,
+      "cacheCreation1h": 0.5,
+      "assumed": false
+    },
+    {
+      "match": "^gpt-5\\.6-luna",
+      "label": "OpenAI GPT-5.6 luna",
+      "effective_from": "2026-05-01",
+      "source": "LiteLLM model_prices_and_context_window.json (refreshed 2026-09-03)",
+      "input": 0.2,
+      "output": 1.2,
+      "cacheRead": 0.02,
+      "cacheCreation5m": 0.25,
+      "cacheCreation1h": 0.2,
+      "assumed": false
+    },
+    {
+      "match": "^gpt-5\\.6-cyber",
+      "label": "OpenAI GPT-5.6 cyber",
+      "effective_from": "2026-05-01",
+      "source": "LiteLLM model_prices_and_context_window.json (refreshed 2026-09-03)",
+      "input": 12.5,
+      "output": 75,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 15.625,
+      "cacheCreation1h": 12.5,
+      "assumed": false
+    },
+    {
+      "match": "^gpt-5\\.6-terra",
+      "label": "OpenAI GPT-5.6 terra",
+      "effective_from": "2026-05-01",
+      "source": "LiteLLM model_prices_and_context_window.json (refreshed 2026-09-03)",
+      "input": 2,
+      "output": 12,
+      "cacheRead": 0.2,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2,
+      "assumed": false
+    },
+    {
+      "match": "^gpt-5\\.6",
+      "label": "OpenAI GPT-5.6 / sol",
+      "effective_from": "2026-05-01",
+      "source": "LiteLLM model_prices_and_context_window.json (refreshed 2026-09-03)",
+      "input": 4,
+      "output": 20,
+      "cacheRead": 0.4,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 4,
+      "assumed": false
+    },
+    {
+      "match": "^gpt-5\\.5-pro",
+      "label": "OpenAI GPT-5.5 pro",
+      "effective_from": "2026-04-23",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 30,
+      "output": 180,
+      "cacheRead": 3,
+      "cacheCreation5m": 30,
+      "cacheCreation1h": 30
+    },
+    {
+      "match": "^gpt-5\\.5",
+      "label": "OpenAI GPT-5.5",
+      "effective_from": "2026-04-23",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 5,
+      "output": 30,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 5
+    },
+    {
+      "match": "^gpt-5\\.4-pro",
+      "label": "OpenAI GPT-5.4 pro",
+      "effective_from": "2026-03-05",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 30,
+      "output": 180,
+      "cacheRead": 3,
+      "cacheCreation5m": 30,
+      "cacheCreation1h": 30
+    },
+    {
+      "match": "^gpt-5\\.4-mini",
+      "label": "OpenAI GPT-5.4 mini",
+      "effective_from": "2026-03-17",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 0.75,
+      "output": 4.5,
+      "cacheRead": 0.075,
+      "cacheCreation5m": 0.75,
+      "cacheCreation1h": 0.75
+    },
+    {
+      "match": "^gpt-5\\.4-nano",
+      "label": "OpenAI GPT-5.4 nano",
+      "effective_from": "2026-03-17",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 0.2,
+      "output": 1.25,
+      "cacheRead": 0.02,
+      "cacheCreation5m": 0.2,
+      "cacheCreation1h": 0.2
+    },
+    {
+      "match": "^gpt-5\\.4",
+      "label": "OpenAI GPT-5.4",
+      "effective_from": "2026-03-05",
+      "source": "LiteLLM model_prices_and_context_window.json (refreshed 2026-09-03)",
+      "input": 2.5,
+      "output": 15,
+      "cacheRead": 0.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5,
+      "assumed": false
+    },
+    {
+      "match": "^gpt-5\\.3",
+      "label": "OpenAI GPT-5.3 (incl. codex)",
+      "effective_from": "2026-02-01",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 1.75,
+      "output": 14,
+      "cacheRead": 0.175,
+      "cacheCreation5m": 1.75,
+      "cacheCreation1h": 1.75
+    },
+    {
+      "match": "^gpt-5\\.2-pro",
+      "label": "OpenAI GPT-5.2 pro",
+      "effective_from": "2025-12-11",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 21,
+      "output": 168,
+      "cacheRead": 2.1,
+      "cacheCreation5m": 21,
+      "cacheCreation1h": 21
+    },
+    {
+      "match": "^gpt-5\\.2",
+      "label": "OpenAI GPT-5.2 (incl. codex)",
+      "effective_from": "2025-12-11",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 1.75,
+      "output": 14,
+      "cacheRead": 0.175,
+      "cacheCreation5m": 1.75,
+      "cacheCreation1h": 1.75
+    },
+    {
+      "match": "^gpt-5\\.1-codex-mini",
+      "label": "OpenAI GPT-5.1 codex mini",
+      "effective_from": "2025-11-13",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 0.25,
+      "output": 2,
+      "cacheRead": 0.025,
+      "cacheCreation5m": 0.25,
+      "cacheCreation1h": 0.25
+    },
+    {
+      "match": "^gpt-5\\.1",
+      "label": "OpenAI GPT-5.1",
+      "effective_from": "2025-11-13",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    {
+      "match": "^gpt-5-pro",
+      "label": "OpenAI GPT-5 pro",
+      "effective_from": "2025-10-06",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 15,
+      "output": 120,
+      "cacheRead": 1.5,
+      "cacheCreation5m": 15,
+      "cacheCreation1h": 15
+    },
+    {
+      "match": "^gpt-5-mini",
+      "label": "OpenAI GPT-5 mini",
+      "effective_from": "2025-08-07",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 0.25,
+      "output": 2,
+      "cacheRead": 0.025,
+      "cacheCreation5m": 0.25,
+      "cacheCreation1h": 0.25
+    },
+    {
+      "match": "^gpt-5-nano",
+      "label": "OpenAI GPT-5 nano",
+      "effective_from": "2025-08-07",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 0.05,
+      "output": 0.4,
+      "cacheRead": 0.005,
+      "cacheCreation5m": 0.05,
+      "cacheCreation1h": 0.05
+    },
+    {
+      "match": "^gpt-5(-|$)",
+      "label": "OpenAI GPT-5",
+      "effective_from": "2025-08-07",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 1.25,
+      "output": 10,
+      "cacheRead": 0.125,
+      "cacheCreation5m": 1.25,
+      "cacheCreation1h": 1.25
+    },
+    {
+      "match": "^o3-deep-research",
+      "label": "OpenAI o3 deep research",
+      "effective_from": "2025-06-26",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 10,
+      "output": 40,
+      "cacheRead": 2.5,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 10
+    },
+    {
+      "match": "^o3-pro",
+      "label": "OpenAI o3 pro",
+      "effective_from": "2025-06-10",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 20,
+      "output": 80,
+      "cacheRead": 2,
+      "cacheCreation5m": 20,
+      "cacheCreation1h": 20
+    },
+    {
+      "match": "^o3-mini",
+      "label": "OpenAI o3 mini",
+      "effective_from": "2025-01-31",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 1.1,
+      "output": 4.4,
+      "cacheRead": 0.55,
+      "cacheCreation5m": 1.1,
+      "cacheCreation1h": 1.1
+    },
+    {
+      "match": "^o3(-|$)",
+      "label": "OpenAI o3",
+      "effective_from": "2025-04-16",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 2,
+      "output": 8,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 2,
+      "cacheCreation1h": 2
+    },
+    {
+      "match": "^o4-mini-deep-research",
+      "label": "OpenAI o4-mini deep research",
+      "effective_from": "2025-06-26",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 2,
+      "output": 8,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 2,
+      "cacheCreation1h": 2
+    },
+    {
+      "match": "^o4-mini",
+      "label": "OpenAI o4 mini",
+      "effective_from": "2025-04-16",
+      "source": "LiteLLM model_prices_and_context_window.json",
+      "input": 1.1,
+      "output": 4.4,
+      "cacheRead": 0.275,
+      "cacheCreation5m": 1.1,
+      "cacheCreation1h": 1.1
+    }
+  ]
+}

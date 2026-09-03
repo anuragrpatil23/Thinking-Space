@@ -22,7 +22,11 @@ import {
   type AggregatePeriodRow,
   type ProjectPeriodMetrics,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
-import { formatTokens, formatUsd } from '@/services/lego_blocks/units/aiPriceTableBlock'
+import {
+  COST_BASIS_LABEL,
+  formatTokens,
+  formatUsd,
+} from '@/services/lego_blocks/units/aiPriceTableBlock'
 import ContextMenuBlock from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
@@ -85,6 +89,24 @@ function fmtMetricValue(metric: GraphMetric, v: number): string {
   if (metric === 'cost') return `~${formatUsd(v)}`
   return Math.round(v).toLocaleString()
 }
+
+/**
+ * A cost cell that admits what it doesn't know. `costUsd` covers only the
+ * sessions we have a published rate for, so:
+ *   no tokens at all      -> "—"
+ *   tokens, none priced   -> "unpriced"
+ *   tokens, some priced   -> "~$12.30+"  (a floor, hence the +)
+ * Rendering a bare "~$12.30" over a partly-unpriced row would understate it
+ * with no signal, which is the failure this whole area was fixed for.
+ */
+function fmtCostCell(costUsd: number, unpricedSessions: number, hasTokens: boolean): string {
+  if (!hasTokens) return '—'
+  if (unpricedSessions > 0 && costUsd === 0) return 'unpriced'
+  return `~${formatUsd(costUsd)}${unpricedSessions > 0 ? '+' : ''}`
+}
+
+/** Tooltip for anything showing a dollar figure. It is not an amount charged. */
+const COST_CELL_TITLE = `${COST_BASIS_LABEL} — what these tokens would have cost at public API rates. Subscription plans meter against usage limits instead, so this is not an amount charged. A "+" means some sessions had no published rate and are missing from the figure.`
 
 function readStoredMetric(): GraphMetric | null {
   if (typeof window === 'undefined') return null
@@ -207,7 +229,7 @@ export default function AiActivityAggregateBlock({
   const copyRowsAsMarkdown = async (which: AggregatePeriodRow[]) => {
     const withTokens = which.some(r => r.hasTokens)
     const header = ['Period', 'Chains', 'Sessions', 'Msgs', 'Time']
-    if (withTokens) header.push('Tok in', 'Tok out', '~Cost')
+    if (withTokens) header.push('Tok in', 'Tok out', 'At list')
     const lines = [
       `| ${header.join(' | ')} |`,
       `| ${header.map(() => '---').join(' | ')} |`,
@@ -224,7 +246,7 @@ export default function AiActivityAggregateBlock({
         cells.push(
           r.hasTokens ? String(r.inputTokens) : '—',
           r.hasTokens ? String(r.outputTokens) : '—',
-          r.hasTokens ? `~${formatUsd(r.costUsd)}` : '—',
+          fmtCostCell(r.costUsd, r.unpricedSessions, r.hasTokens),
         )
       }
       lines.push(`| ${cells.join(' | ')} |`)
@@ -272,6 +294,7 @@ export default function AiActivityAggregateBlock({
     let inputTokens = 0
     let outputTokens = 0
     let costUsd = 0
+    let unpricedSessions = 0
     let hasTokens = false
     for (const r of rows) {
       chainCount += r.chains
@@ -280,6 +303,7 @@ export default function AiActivityAggregateBlock({
       inputTokens += r.inputTokens
       outputTokens += r.outputTokens
       costUsd += r.costUsd
+      unpricedSessions += r.unpricedSessions
       if (r.hasTokens) hasTokens = true
     }
     return {
@@ -290,6 +314,7 @@ export default function AiActivityAggregateBlock({
       inputTokens,
       outputTokens,
       costUsd,
+      unpricedSessions,
       hasTokens,
     }
   }, [rows, chains])
@@ -623,7 +648,11 @@ export default function AiActivityAggregateBlock({
                     Tok out
                   </th>
                 )}
-                {anyTokens && <th className="px-3 py-1.5 text-right font-medium">~Cost</th>}
+                {anyTokens && (
+                  <th className="px-3 py-1.5 text-right font-medium" title={COST_CELL_TITLE}>
+                    At list
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -697,8 +726,11 @@ export default function AiActivityAggregateBlock({
                     </td>
                   )}
                   {anyTokens && (
-                    <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/70">
-                      {r.hasTokens ? `~${formatUsd(r.costUsd)}` : '—'}
+                    <td
+                      className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/70"
+                      title={COST_CELL_TITLE}
+                    >
+                      {fmtCostCell(r.costUsd, r.unpricedSessions, r.hasTokens)}
                     </td>
                   )}
                 </tr>
@@ -802,8 +834,11 @@ export default function AiActivityAggregateBlock({
                   </td>
                 )}
                 {anyTokens && (
-                  <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/85">
-                    {totals.hasTokens ? `~${formatUsd(totals.costUsd)}` : '—'}
+                  <td
+                    className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/85"
+                    title={COST_CELL_TITLE}
+                  >
+                    {fmtCostCell(totals.costUsd, totals.unpricedSessions, totals.hasTokens)}
                   </td>
                 )}
               </tr>
@@ -819,7 +854,7 @@ export default function AiActivityAggregateBlock({
           <>
             {' '}· <span className="text-amber-500/80">*</span> partial data — some chains
             in that period exist only as vault markdown (no time/token data), so
-            Time, Tok and ~Cost undercount
+            Time, Tok and At list undercount
           </>
         )}
       </p>
