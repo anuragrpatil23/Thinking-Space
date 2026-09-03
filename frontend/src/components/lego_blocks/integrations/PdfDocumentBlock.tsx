@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNativeChromeImmersionBlock } from '@/components/lego_blocks/hooks/shared/useNativeChromeImmersionBlock'
-import { ChevronLeft, ChevronRight, Highlighter, Maximize2, Minimize2, RefreshCw, Undo2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, RefreshCw, Undo2 } from 'lucide-react'
 import { Document, pdfjs } from 'react-pdf'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import PdfJsWorkerBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
@@ -12,6 +12,8 @@ import PdfPageCanvasBlock from '@/components/lego_blocks/units/PdfPageCanvasBloc
 import PdfPageScrubberBlock from '@/components/lego_blocks/units/PdfPageScrubberBlock'
 import PdfToolbarMenuBlock from '@/components/lego_blocks/units/PdfToolbarMenuBlock'
 import PdfMarkSettingsBlock from '@/components/lego_blocks/units/PdfMarkSettingsBlock'
+import PdfSelectionHighlightBarBlock from '@/components/lego_blocks/units/PdfSelectionHighlightBarBlock'
+import { useTextSelectionBlock } from '@/components/lego_blocks/hooks/units/useTextSelectionBlock'
 import {
   PDF_PEN_PRESETS_BLOCK,
   readPdfMarkStyleBlock,
@@ -20,7 +22,6 @@ import {
   writePdfMarkStyleBlock,
   type PdfMarkStyleBlock,
 } from '@/services/lego_blocks/units/pdfMarkStyleBlock'
-import type { PdfAnnotationToolBlock } from '@/components/lego_blocks/units/PdfAnnotationOverlayBlock'
 import { usePdfAnnotationsBlock } from '@/components/lego_blocks/hooks/shared/usePdfAnnotationsBlock'
 import {
   screenRectToQuadPointsBlock,
@@ -61,6 +62,12 @@ const MIN_SCALE_BLOCK = 0.4
 const MAX_SCALE_BLOCK = 5
 const TRACKPAD_ZOOM_SENSITIVITY_BLOCK = 0.0015
 const TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK = 120
+/* Two fingers on a page is a scroll far more often than it is a pinch. Until
+   the distance between them has changed by this much, the gesture is left
+   alone and the browser scrolls it — which is what Preview does, and why a
+   two-finger pan there never nudges the zoom. Committing to "this is a pinch"
+   on the first touchmove is what made small touches zoom the page. */
+const PINCH_ACTIVATION_PX_BLOCK = 24
 const HIGHLIGHT_OPACITY_BLOCK = 0.4
 const PDFJS_DOCUMENT_OPTIONS_BLOCK = {
   cMapUrl: '/pdfjs/cmaps/',
@@ -138,6 +145,12 @@ export default function PdfDocumentBlock({
   const electronRuntime = isElectronRuntimeBlock()
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const pinchTouchActiveRef = useRef(false)
+  /* Two fingers are down and being watched, but the pinch has not been claimed
+     yet — see PINCH_ACTIVATION_PX_BLOCK. */
+  const pinchCandidateRef = useRef(false)
+  /* True from first touch until the commit lands. Suspends page rasters, so a
+     gesture never competes with pdf.js for the main thread. */
+  const gestureActiveRef = useRef(false)
   const pinchStartDistanceRef = useRef(0)
   const pinchStartScaleRef = useRef(1)
   const zoomModeRef = useRef<PdfZoomModeBlock>('fit-width')
@@ -171,8 +184,8 @@ export default function PdfDocumentBlock({
   const [viewportWidth, setViewportWidth] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(0)
   const [renderNonce, setRenderNonce] = useState(0)
+  const [gestureActive, setGestureActive] = useState(false)
   const [docProxy, setDocProxy] = useState<PDFDocumentProxy | null>(null)
-  const [annotationTool, setAnnotationTool] = useState<PdfAnnotationToolBlock>('none')
   const [markStyle, setMarkStyle] = useState<PdfMarkStyleBlock>(readPdfMarkStyleBlock)
 
   const applyMarkStyleBlock = useCallback((next: PdfMarkStyleBlock) => {
@@ -183,7 +196,6 @@ export default function PdfDocumentBlock({
   const inkColor = resolvePdfMarkColorBlock(markStyle.penColorKey).rgb
   const inkThickness = resolvePdfStrokeThicknessBlock(markStyle.penType, markStyle.nib)
   const inkOpacity = PDF_PEN_PRESETS_BLOCK[markStyle.penType].opacity
-  const highlightColor = resolvePdfMarkColorBlock(markStyle.highlightColorKey).rgb
   const [paperTheme, setPaperTheme] = useState<PdfPaperThemeBlock>(readPdfPaperThemeBlock)
 
   const { metricsByPage, fallbackMetrics } = usePdfPageMetricsBlock(docProxy)
@@ -374,6 +386,8 @@ export default function PdfDocumentBlock({
       pendingScaleRef.current = null
       zoomAnchorRef.current = null
       clearPreviewTransformBlock()
+      gestureActiveRef.current = false
+      setGestureActive(false)
       if (nextScale === null || Math.abs(scaleRef.current - nextScale) < 0.01) return
 
       /* Queue the scroll correction for the layout effect that fires after the
@@ -424,6 +438,9 @@ export default function PdfDocumentBlock({
       return Math.hypot(firstTouch.clientX - secondTouch.clientX, firstTouch.clientY - secondTouch.clientY)
     }
 
+    /* Watch, do not claim. Nothing is zoomed, no mode is switched and no event
+       is cancelled until the fingers have actually spread or pinched past the
+       activation threshold; until then this is a two-finger scroll. */
     const handleTouchStartBlock = (event: TouchEvent) => {
       if (event.touches.length !== 2) return
       const distance = readTouchDistanceBlock(event.touches)
@@ -434,17 +451,24 @@ export default function PdfDocumentBlock({
         commitTimerRef.current = null
       }
 
-      const currentInteractiveScale = displayedScaleRef.current
-      const [firstTouch, secondTouch] = [event.touches[0], event.touches[1]]
+      pinchCandidateRef.current = true
+      pinchTouchActiveRef.current = false
+      pinchStartDistanceRef.current = distance
+      pinchStartScaleRef.current = displayedScaleRef.current
+    }
+
+    const activatePinchBlock = (touches: TouchList) => {
+      const [firstTouch, secondTouch] = [touches[0], touches[1]]
       beginZoomGestureBlock(
         (firstTouch.clientX + secondTouch.clientX) / 2,
         (firstTouch.clientY + secondTouch.clientY) / 2,
       )
 
       pinchTouchActiveRef.current = true
-      pinchStartDistanceRef.current = distance
-      pinchStartScaleRef.current = currentInteractiveScale
+      gestureActiveRef.current = true
+      setGestureActive(true)
 
+      const currentInteractiveScale = pinchStartScaleRef.current
       if (zoomModeRef.current !== 'manual') {
         zoomModeRef.current = 'manual'
         setZoomMode('manual')
@@ -454,9 +478,14 @@ export default function PdfDocumentBlock({
     }
 
     const handleTouchMoveBlock = (event: TouchEvent) => {
-      if (!pinchTouchActiveRef.current) return
+      if (!pinchCandidateRef.current && !pinchTouchActiveRef.current) return
       const distance = readTouchDistanceBlock(event.touches)
       if (!distance || distance <= 0) return
+
+      if (!pinchTouchActiveRef.current) {
+        if (Math.abs(distance - pinchStartDistanceRef.current) < PINCH_ACTIVATION_PX_BLOCK) return
+        activatePinchBlock(event.touches)
+      }
 
       event.preventDefault()
       const nextScale = normalizeScaleBlock(pinchStartScaleRef.current * (distance / pinchStartDistanceRef.current))
@@ -465,8 +494,9 @@ export default function PdfDocumentBlock({
     }
 
     const handleTouchEndBlock = (event: TouchEvent) => {
-      if (!pinchTouchActiveRef.current) return
       if (event.touches.length >= 2) return
+      pinchCandidateRef.current = false
+      if (!pinchTouchActiveRef.current) return
       pinchTouchActiveRef.current = false
       scheduleCommitScaleBlock(0)
     }
@@ -481,6 +511,8 @@ export default function PdfDocumentBlock({
          zooming about that same point until the debounced commit lands. */
       if (!zoomAnchorRef.current) {
         beginZoomGestureBlock(event.clientX, event.clientY)
+        gestureActiveRef.current = true
+        setGestureActive(true)
       }
 
       if (zoomModeRef.current !== 'manual') {
@@ -600,9 +632,9 @@ export default function PdfDocumentBlock({
 
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
-  const scrollToPage = useCallback((page: number) => {
+  const scrollToPage = useCallback((page: number, immediate = false) => {
     const el = pageRefs.current.get(page)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (el) el.scrollIntoView({ behavior: immediate ? 'auto' : 'smooth', block: 'start' })
   }, [])
 
   useEffect(() => {
@@ -734,6 +766,11 @@ export default function PdfDocumentBlock({
   /* Uncropped geometry per page. Annotations are stored in full-page PDF
      coordinates so that toggling the margin crop never moves an existing mark
      — the crop is a view concern and must not leak into the file. */
+  const { rect: selectionRect, clearSelection } = useTextSelectionBlock({
+    containerRef: viewportRef,
+    enabled: countsAsReading && !loading && error === null,
+  })
+
   const geometryForBlock = useCallback((page: number): PdfPageGeometryBlock => {
     const natural = resolvePdfPageMetricsBlock({
       page,
@@ -766,7 +803,7 @@ export default function PdfDocumentBlock({
      contains them, so a selection running across a page break produces one
      highlight per page rather than a single annotation with coordinates that
      belong to neither. */
-  const highlightSelectionBlock = useCallback(() => {
+  const highlightSelectionBlock = useCallback((colorKey: string) => {
     const selection = window.getSelection()
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
 
@@ -775,7 +812,9 @@ export default function PdfDocumentBlock({
     const rects = [...range.getClientRects()].filter((rect) => rect.width > 1 && rect.height > 1)
     if (rects.length === 0) return
 
+    const color = resolvePdfMarkColorBlock(colorKey).rgb
     const quadsByPage = new Map<number, number[]>()
+
     for (const [page, element] of pageRefs.current) {
       const pageRect = element.getBoundingClientRect()
       const geometry = geometryForBlock(page)
@@ -806,24 +845,14 @@ export default function PdfDocumentBlock({
         id: `hl-${page}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         pageNumber: page,
         quadPoints,
-        color: highlightColor,
+        color,
         opacity: HIGHLIGHT_OPACITY_BLOCK,
         text,
       })
     }
 
-    selection.removeAllRanges()
-  }, [addAnnotation, geometryForBlock, highlightColor])
-
-  /* With the highlight tool active, finishing a selection *is* the highlight —
-     no confirm step. The pointerup listener is on the document because the
-     gesture routinely ends outside the page box it started in. */
-  useEffect(() => {
-    if (annotationTool !== 'highlight') return
-    const handleUpBlock = () => window.setTimeout(highlightSelectionBlock, 0)
-    document.addEventListener('pointerup', handleUpBlock)
-    return () => document.removeEventListener('pointerup', handleUpBlock)
-  }, [annotationTool, highlightSelectionBlock])
+    clearSelection()
+  }, [addAnnotation, clearSelection, geometryForBlock])
 
   /* Focus mode, mirroring the Excalidraw one: the reader takes the whole
      window as `fixed inset-0`, the native iOS chrome leaves, and the toolbar
@@ -893,7 +922,7 @@ export default function PdfDocumentBlock({
           type="button"
           variant="ghost"
           size="sm"
-          className="w-9 px-0"
+          className="w-9 border border-transparent px-0"
           disabled={!canGoPrev}
           onClick={() => { const p = Math.max(1, pageNumber - 1); setPageNumber(p); scrollToPage(p) }}
           title="Previous page"
@@ -907,7 +936,7 @@ export default function PdfDocumentBlock({
           type="button"
           variant="ghost"
           size="sm"
-          className="w-9 px-0"
+          className="w-9 border border-transparent px-0"
           disabled={!canGoNext}
           onClick={() => { const p = numPages > 0 ? Math.min(numPages, pageNumber + 1) : pageNumber; setPageNumber(p); scrollToPage(p) }}
           title="Next page"
@@ -930,23 +959,13 @@ export default function PdfDocumentBlock({
 
         <div className="mx-1 h-5 w-px bg-border/70" />
 
-        <Button
-          type="button"
-          variant={annotationTool === 'highlight' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setAnnotationTool((prev) => (prev === 'highlight' ? 'none' : 'highlight'))}
-          title="Selecting text marks it. A Pencil always draws, no mode needed."
-        >
-          <Highlighter className="mr-1 h-3.5 w-3.5" />
-          Highlight
-        </Button>
         <PdfMarkSettingsBlock style={markStyle} onChange={applyMarkStyleBlock} />
 
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="w-9 px-0"
+          className="w-9 border border-transparent px-0"
           onClick={undoLastAnnotation}
           title="Undo the last unsaved mark"
         >
@@ -974,7 +993,7 @@ export default function PdfDocumentBlock({
           type="button"
           variant="ghost"
           size="sm"
-          className="w-9 px-0"
+          className="w-9 border border-transparent px-0"
           onClick={() => setFocusMode((prev) => !prev)}
           title={focusMode ? 'Leave focus mode (Esc)' : 'Focus mode — full screen reading'}
         >
@@ -1090,6 +1109,7 @@ export default function PdfDocumentBlock({
                       plan={rasterPlanForBlock(pageNum)}
                       crop={crop}
                       paperTheme={paperTheme}
+                      deferRaster={gestureActive}
                       geometry={geometryForBlock(pageNum)}
                       annotations={annotations}
                       inkColor={inkColor}
@@ -1117,12 +1137,22 @@ export default function PdfDocumentBlock({
         )}
       </div>
 
+      {selectionRect && (
+        <PdfSelectionHighlightBarBlock
+          rect={selectionRect}
+          onPick={(colorKey) => {
+            applyMarkStyleBlock({ ...markStyle, highlightColorKey: colorKey })
+            highlightSelectionBlock(colorKey)
+          }}
+        />
+      )}
+
       {focusMode && !loading && !error && (
         <PdfPageScrubberBlock
           pageNumber={pageNumber}
           numPages={numPages}
           visible={chromeVisible}
-          onSeek={(page) => { setPageNumber(page); scrollToPage(page) }}
+          onSeek={(page, immediate) => { setPageNumber(page); scrollToPage(page, immediate) }}
         />
       )}
     </div>

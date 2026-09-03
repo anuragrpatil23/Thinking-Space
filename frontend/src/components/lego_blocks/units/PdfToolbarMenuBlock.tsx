@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
 import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
+import { cn } from '@/lib/utils'
 
 /* One dropdown for the whole PDF toolbar.
 
@@ -37,8 +38,17 @@ export default function PdfToolbarMenuBlock({
       <Button
         ref={buttonRef}
         type="button"
-        variant={active || menuPosition !== null ? 'default' : 'outline'}
+        /* Always the outline variant, with the open/active look applied as
+           colour only. Switching to `default` drops `border border-input`, so
+           the button lost 2px in each dimension the moment it was pressed and
+           every control after it shifted — the toolbar visibly twitching on
+           each click. State must never change an element's box. */
+        variant="outline"
         size="sm"
+        className={cn(
+          (active || menuPosition !== null)
+            && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90',
+        )}
         title={title}
         aria-haspopup="menu"
         aria-expanded={menuPosition !== null}

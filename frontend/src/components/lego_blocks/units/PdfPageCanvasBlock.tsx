@@ -57,12 +57,29 @@ interface PdfPageCanvasBlockProps {
   paperTheme?: PdfPaperThemeBlock
   enableTextLayer?: boolean
   className?: string
+  /** While a zoom gesture is in flight, hold the existing bitmap. */
+  deferRaster?: boolean
   /** Uncropped page box in PDF units, for annotation coordinate conversion. */
   geometry?: PdfPageGeometryBlock
   annotations?: readonly PdfAnnotationDraftBlock[]
   inkColor?: [number, number, number]
   inkThickness?: number
   onCommitInk?: (pageNumber: number, strokePdfPoints: PointBlock[]) => void
+}
+
+/* Page rasters run one at a time, process-wide.
+
+   pdf.js draws on the main thread, so three windowed pages re-rastering
+   together after a zoom commit is three multi-megapixel canvas jobs racing for
+   it — which reads as a freeze right after every zoom. Serializing does not
+   make the total work smaller, but it keeps each job short enough that input
+   and scrolling stay responsive between them. */
+let rasterQueueBlock: Promise<void> = Promise.resolve()
+
+function enqueueRasterBlock(job: () => Promise<void>): Promise<void> {
+  const next = rasterQueueBlock.then(job, job)
+  rasterQueueBlock = next.catch(() => undefined)
+  return next
 }
 
 /* A cancelled render rejects; that is the normal path when the user keeps
@@ -82,6 +99,7 @@ export default function PdfPageCanvasBlock({
   paperTheme = 'original',
   enableTextLayer = true,
   className,
+  deferRaster = false,
   geometry,
   annotations,
   inkColor = [250, 204, 21],
@@ -123,12 +141,18 @@ export default function PdfPageCanvasBlock({
   useEffect(() => {
     const host = canvasHostRef.current
     if (!host) return
+    /* Rastering mid-gesture is the worst possible time: pdf.js draws on the
+       main thread, so a multi-megapixel page render competes with the very
+       frames the pinch needs. The stale bitmap is already being scaled by the
+       compositor and looks correct; this just waits for the gesture to end. */
+    if (deferRaster) return
 
     let cancelled = false
     let renderTask: { cancel: () => void } | null = null
 
-    void (async () => {
+    void enqueueRasterBlock(async () => {
       try {
+        if (cancelled) return
         const page = await doc.getPage(pageNumber)
         if (cancelled) return
 
@@ -177,14 +201,14 @@ export default function PdfPageCanvasBlock({
           console.warn(`PDF page ${pageNumber} failed to render`, error)
         }
       }
-    })()
+    })
 
     return () => {
       cancelled = true
       renderTask?.cancel()
     }
   }, [
-    doc, pageNumber, planKey, cropKey, paperTheme,
+    deferRaster, doc, pageNumber, planKey, cropKey, paperTheme,
     crop.left, crop.top, plan.canvasHeight, plan.canvasWidth, plan.outputScale, plan.rasterScale,
   ])
 

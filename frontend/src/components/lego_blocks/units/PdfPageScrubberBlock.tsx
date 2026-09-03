@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
 /* The whole navigation surface for a touch reader: where you are, and a way to
@@ -17,9 +18,16 @@ export default function PdfPageScrubberBlock({
   pageNumber: number
   numPages: number
   visible: boolean
-  onSeek: (page: number) => void
+  onSeek: (page: number, immediate: boolean) => void
   className?: string
 }) {
+  /* Scrubbing scrolls, scrolling hides the chrome, and hiding the chrome faded
+     out the control being dragged — so the scrubber disappeared under the
+     finger every time it was used. While a drag is in progress the bar pins
+     itself visible and ignores the auto-hide entirely. */
+  const [scrubbing, setScrubbing] = useState(false)
+  const shown = visible || scrubbing
+
   if (numPages <= 0) return null
 
   return (
@@ -27,17 +35,17 @@ export default function PdfPageScrubberBlock({
       className={cn(
         'pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))]',
         'transition-opacity duration-200 ease-out',
-        visible ? 'opacity-100' : 'opacity-0',
+        shown ? 'opacity-100' : 'opacity-0',
         className,
       )}
       /* Hidden from assistive tech and from taps when faded out, so an
          invisible control can never swallow a tap meant for the page. */
-      aria-hidden={!visible}
+      aria-hidden={!shown}
     >
       <div
         className={cn(
           'flex w-full max-w-md items-center gap-3 rounded-full border border-border/60 bg-card/90 px-4 py-2 shadow-lg backdrop-blur',
-          visible && 'pointer-events-auto',
+          shown && 'pointer-events-auto',
         )}
         onClick={(event) => event.stopPropagation()}
       >
@@ -49,7 +57,15 @@ export default function PdfPageScrubberBlock({
           min={1}
           max={numPages}
           value={pageNumber}
-          onChange={(event) => onSeek(Number(event.target.value))}
+          onPointerDown={() => setScrubbing(true)}
+          onPointerUp={() => setScrubbing(false)}
+          onPointerCancel={() => setScrubbing(false)}
+          onKeyDown={() => setScrubbing(true)}
+          onBlur={() => setScrubbing(false)}
+          /* Jump instantly while dragging: a smooth scroll per input event
+             queues dozens of competing animations and the page never settles
+             where the thumb is. */
+          onChange={(event) => onSeek(Number(event.target.value), scrubbing)}
           className="h-1 w-full cursor-pointer appearance-none rounded-full bg-border accent-primary"
           aria-label="Page"
         />

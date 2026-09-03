@@ -53,15 +53,17 @@ export default function PdfMarkSettingsBlock({
   }, [position])
 
   const penColor = resolvePdfMarkColorBlock(style.penColorKey)
-  const highlightColor = resolvePdfMarkColorBlock(style.highlightColorKey)
 
   return (
     <>
       <Button
         ref={buttonRef}
         type="button"
-        variant={position ? 'default' : 'outline'}
+        /* Outline always — see PdfToolbarMenuBlock: swapping to `default`
+           removes the border and resizes the button on press. */
+        variant="outline"
         size="sm"
+        className={cn(position && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90')}
         title="Pen and highlighter"
         aria-haspopup="dialog"
         aria-expanded={position !== null}
@@ -89,7 +91,10 @@ export default function PdfMarkSettingsBlock({
       {position && createPortal(
         <div
           ref={panelRef}
-          className="fixed z-[80] w-64 rounded-xl border border-border bg-popover p-3 shadow-lg"
+          /* Same surface as ContextMenuBlock. `bg-popover` is not a token in
+             this app's theme, so it resolved to nothing and the panel rendered
+             transparent over the page. */
+          className="fixed z-[90] w-64 rounded-lg border border-border/80 bg-background/95 p-3 shadow-lg backdrop-blur-xl"
           style={{ left: position.x, top: position.y }}
         >
           <PdfMarkSectionLabelBlock>Pen</PdfMarkSectionLabelBlock>
@@ -134,21 +139,10 @@ export default function PdfMarkSettingsBlock({
             ))}
           </div>
 
-          <div className="my-3 h-px bg-border" />
-
-          <PdfMarkSectionLabelBlock>Highlighter</PdfMarkSectionLabelBlock>
-          <PdfSwatchRowBlock
-            selectedKey={style.highlightColorKey}
-            onSelect={(key) => onChange({ ...style, highlightColorKey: key })}
-          />
-
           <p className="mt-3 text-[11px] leading-snug text-muted-foreground">
-            A Pencil always draws — no mode to switch. Turn on Highlight to mark
-            text you select.
+            A Pencil always draws — there is no mode to switch. To highlight,
+            select text and pick a colour from the bar that appears.
           </p>
-          <span className="sr-only">
-            Current highlighter colour: {highlightColor.label}
-          </span>
         </div>,
         document.body,
       )}
@@ -186,7 +180,7 @@ function PdfSwatchRowBlock({
             'hover:scale-110',
             /* Selection is an outer ring, not a checkmark: a tick on top of a
                swatch obscures the colour it is confirming. */
-            selectedKey === color.key && 'ring-2 ring-offset-2 ring-offset-popover ring-primary',
+            selectedKey === color.key && 'ring-2 ring-offset-2 ring-offset-background ring-primary',
           )}
           style={{ background: `rgb(${color.rgb.join(' ')})` }}
         />
