@@ -1,36 +1,64 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
-import { ChevronLeft, ChevronRight, Maximize2, RefreshCw, ScanLine, ZoomIn, ZoomOut } from 'lucide-react'
-import { Document, Page, pdfjs } from 'react-pdf'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { ChevronLeft, ChevronRight, Crop, Highlighter, Maximize2, PenLine, RefreshCw, ScanLine, Undo2, ZoomIn, ZoomOut } from 'lucide-react'
+import { Document, pdfjs } from 'react-pdf'
+import type { PDFDocumentProxy } from 'pdfjs-dist'
 import PdfJsWorkerBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
 import pdfWorkerSrcBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import 'react-pdf/dist/Page/AnnotationLayer.css'
-import 'react-pdf/dist/Page/TextLayer.css'
 import { Button } from '@/components/lego_blocks/units/ui/button'
+import PdfPageCanvasBlock from '@/components/lego_blocks/units/PdfPageCanvasBlock'
+import PdfPageScrubberBlock from '@/components/lego_blocks/units/PdfPageScrubberBlock'
+import type { PdfAnnotationToolBlock } from '@/components/lego_blocks/units/PdfAnnotationOverlayBlock'
+import { usePdfAnnotationsBlock } from '@/components/lego_blocks/hooks/shared/usePdfAnnotationsBlock'
+import {
+  screenRectToQuadPointsBlock,
+  type PdfPageGeometryBlock,
+  type PointBlock,
+} from '@/services/lego_blocks/units/pdfAnnotationGeometryBlock'
 import { cn } from '@/lib/utils'
 import { readPdfDocumentOrch } from '@/services/orchestrators/pdfDocumentsOrch'
-import {
-  usePdfPageMetricsBlock,
-  type PdfDocumentProxyLikeBlock,
-} from '@/components/lego_blocks/hooks/shared/usePdfPageMetricsBlock'
+import { usePdfPageMetricsBlock } from '@/components/lego_blocks/hooks/shared/usePdfPageMetricsBlock'
 import {
   buildPdfRenderedWindowBlock,
   computeDisplayedPdfScaleBlock,
-  computePdfPageHeightBlock,
+  computePdfPageBoxBlock,
   computeZoomScrollAnchorBlock,
   DEFAULT_PDF_NATURAL_PAGE_METRICS_BLOCK,
+  resolvePdfPageMetricsBlock,
+  type PdfNaturalPageMetricsBlock,
   type PdfZoomModeBlock,
 } from '@/services/lego_blocks/units/pdfViewportBlock'
+import {
+  computePdfRasterPlanBlock,
+  resolvePdfRasterPixelBudgetBlock,
+} from '@/services/lego_blocks/units/pdfRasterBudgetBlock'
+import { usePdfMarginCropBlock } from '@/components/lego_blocks/hooks/shared/usePdfMarginCropBlock'
+import { useReaderChromeVisibilityBlock } from '@/components/lego_blocks/hooks/shared/useReaderChromeVisibilityBlock'
+import {
+  applyPdfCropToMetricsBlock,
+  EMPTY_PDF_CROP_BOX_BLOCK,
+} from '@/services/lego_blocks/units/pdfMarginCropBlock'
+import {
+  PDF_PAPER_THEME_LABELS_BLOCK,
+  PDF_PAPER_THEMES_BLOCK,
+  readPdfPaperThemeBlock,
+  writePdfPaperThemeBlock,
+  type PdfPaperThemeBlock,
+} from '@/services/lego_blocks/units/pdfPaperThemeBlock'
 
 let activePdfWorkerBlock: Worker | null = null
 let activePdfWorkerVersionBlock: string | null = null
 
-const ELECTRON_SAFE_MAX_DEVICE_PIXEL_RATIO_BLOCK = 1.25
 const LARGE_PDF_BYTES_THRESHOLD_BLOCK = 24 * 1024 * 1024
 const MIN_SCALE_BLOCK = 0.6
 const MAX_SCALE_BLOCK = 2.5
 const TRACKPAD_ZOOM_SENSITIVITY_BLOCK = 0.0015
 const TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK = 120
+const HIGHLIGHT_COLOR_BLOCK: [number, number, number] = [250, 204, 21]
+const HIGHLIGHT_OPACITY_BLOCK = 0.4
+const INK_COLOR_BLOCK: [number, number, number] = [220, 38, 38]
+const INK_THICKNESS_BLOCK = 1.6
 const PDFJS_DOCUMENT_OPTIONS_BLOCK = {
   cMapUrl: '/pdfjs/cmaps/',
   cMapPacked: true,
@@ -141,9 +169,29 @@ export default function PdfDocumentBlock({
   const [viewportWidth, setViewportWidth] = useState(0)
   const [viewportHeight, setViewportHeight] = useState(0)
   const [renderNonce, setRenderNonce] = useState(0)
-  const [docProxy, setDocProxy] = useState<PdfDocumentProxyLikeBlock | null>(null)
+  const [docProxy, setDocProxy] = useState<PDFDocumentProxy | null>(null)
+  const [cropMargins, setCropMargins] = useState(true)
+  const [annotationTool, setAnnotationTool] = useState<PdfAnnotationToolBlock>('none')
+  const [paperTheme, setPaperTheme] = useState<PdfPaperThemeBlock>(readPdfPaperThemeBlock)
 
-  const { metricsByPage, fallbackMetrics } = usePdfPageMetricsBlock(docProxy)
+  const { metricsByPage: rawMetricsByPage, fallbackMetrics: rawFallbackMetrics } =
+    usePdfPageMetricsBlock(docProxy)
+  const detectedCrop = usePdfMarginCropBlock(docProxy, cropMargins)
+  const crop = cropMargins ? detectedCrop : EMPTY_PDF_CROP_BOX_BLOCK
+
+  /* Everything downstream — fit scale, placeholder heights, raster budget —
+     works in cropped space and never has to know a crop happened. */
+  const metricsByPage = useMemo(() => {
+    const cropped = new Map<number, PdfNaturalPageMetricsBlock>()
+    for (const [page, metrics] of rawMetricsByPage) {
+      cropped.set(page, applyPdfCropToMetricsBlock(metrics, crop))
+    }
+    return cropped
+  }, [crop, rawMetricsByPage])
+  const fallbackMetrics = useMemo(
+    () => (rawFallbackMetrics ? applyPdfCropToMetricsBlock(rawFallbackMetrics, crop) : null),
+    [crop, rawFallbackMetrics],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -456,6 +504,9 @@ export default function PdfDocumentBlock({
        once for the life of the viewport rather than on every zoom. */
   }, [])
 
+  const { layout } = useUILayoutBlock()
+  const isIosSurface = layout.surface === 'capacitor-ios'
+
   const documentFile = useMemo(() => {
     if (!fileBytes) return null
     const skipCopyForLargeElectronPdf = electronRuntime && fileBytes.byteLength >= LARGE_PDF_BYTES_THRESHOLD_BLOCK
@@ -466,12 +517,30 @@ export default function PdfDocumentBlock({
     return { data: fileBytes.slice() }
   }, [electronRuntime, fileBytes, renderNonce])
 
+  /* The raw ratio. It used to be clamped to 1.25 on Electron as a blunt guard
+     against oversized canvases, which cost sharpness on every page whether or
+     not the page was actually large. The per-page pixel budget now handles
+     that case precisely, and gives up dpr only when a specific page at a
+     specific zoom would exceed the surface's ceiling. */
   const pageDevicePixelRatio = useMemo(() => {
     if (typeof window === 'undefined') return 1
-    const current = Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : 1
-    if (!electronRuntime) return current
-    return Math.max(1, Math.min(current, ELECTRON_SAFE_MAX_DEVICE_PIXEL_RATIO_BLOCK))
-  }, [electronRuntime])
+    return Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : 1
+  }, [])
+
+  const rasterPixelBudget = useMemo(
+    () => resolvePdfRasterPixelBudgetBlock(isIosSurface),
+    [isIosSurface],
+  )
+
+  /* Each page plans its own bitmap: documents mix paper sizes, and a budget
+     applied to a document-wide average would either waste memory on the small
+     pages or blow the ceiling on the large ones. */
+  const rasterPlanForBlock = useCallback((page: number) => computePdfRasterPlanBlock({
+    displayedScale,
+    devicePixelRatio: pageDevicePixelRatio,
+    pageMetrics: resolvePdfPageMetricsBlock({ page, metricsByPage, fallbackMetrics }),
+    maxPagePixels: rasterPixelBudget,
+  }), [displayedScale, fallbackMetrics, metricsByPage, pageDevicePixelRatio, rasterPixelBudget])
 
   // A PDF page is the cleanest address of the three reading surfaces: discrete,
   // stable for the life of the file, and already what a person would say out
@@ -493,7 +562,7 @@ export default function PdfDocumentBlock({
   const canGoNext = numPages > 0 && pageNumber < numPages
   /* Per-page, so placeholders for pages outside the render window reserve the
      right space and the scrollbar stops lying on mixed-size documents. */
-  const pageHeightForBlock = useCallback((page: number) => computePdfPageHeightBlock({
+  const pageBoxForBlock = useCallback((page: number) => computePdfPageBoxBlock({
     page,
     zoomMode,
     scale,
@@ -502,10 +571,17 @@ export default function PdfDocumentBlock({
     metricsByPage,
     fallbackMetrics,
   }), [fallbackMetrics, metricsByPage, scale, viewportHeight, viewportWidth, zoomMode])
+  const pageHeightForBlock = useCallback(
+    (page: number) => pageBoxForBlock(page).height,
+    [pageBoxForBlock],
+  )
+  /* Narrower on iOS: every windowed page is a retained bitmap, and WebContent
+     dies on a per-process limit rather than degrading (docs/contracts/IOS-MEMORY.md). */
   const renderWindow = useMemo(() => buildPdfRenderedWindowBlock({
     centerPage: pageNumber,
     numPages,
-  }), [numPages, pageNumber])
+    overscan: isIosSurface ? 1 : undefined,
+  }), [isIosSurface, numPages, pageNumber])
 
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
@@ -632,9 +708,133 @@ export default function PdfDocumentBlock({
     return () => window.removeEventListener('keydown', handleKeyDownBlock)
   }, [adjustManualScaleBlock, applyZoomModeBlock, numPages, scrollToPage])
 
+  const {
+    annotations,
+    addAnnotation,
+    undoLastAnnotation,
+    saveState: annotationSaveState,
+    saveError: annotationSaveError,
+  } = usePdfAnnotationsBlock({ doc: docProxy, path, enabled: countsAsReading })
+
+  /* Uncropped geometry per page. Annotations are stored in full-page PDF
+     coordinates so that toggling the margin crop never moves an existing mark
+     — the crop is a view concern and must not leak into the file. */
+  const geometryForBlock = useCallback((page: number): PdfPageGeometryBlock => {
+    const natural = resolvePdfPageMetricsBlock({
+      page,
+      metricsByPage: rawMetricsByPage,
+      fallbackMetrics: rawFallbackMetrics,
+    })
+    return {
+      naturalWidth: natural.width,
+      naturalHeight: natural.height,
+      scale: pageBoxForBlock(page).scale,
+      crop,
+    }
+  }, [crop, pageBoxForBlock, rawFallbackMetrics, rawMetricsByPage])
+
+  const commitInkBlock = useCallback((page: number, points: PointBlock[]) => {
+    const flat: number[] = []
+    for (const point of points) flat.push(point.x, point.y)
+    addAnnotation({
+      kind: 'ink',
+      id: `ink-${page}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      pageNumber: page,
+      inkList: [flat],
+      color: INK_COLOR_BLOCK,
+      opacity: 1,
+      thickness: INK_THICKNESS_BLOCK,
+    })
+  }, [addAnnotation])
+
+  /* Selection -> highlight. Rects are grouped by the page element that
+     contains them, so a selection running across a page break produces one
+     highlight per page rather than a single annotation with coordinates that
+     belong to neither. */
+  const highlightSelectionBlock = useCallback(() => {
+    const selection = window.getSelection()
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
+
+    const range = selection.getRangeAt(0)
+    const text = selection.toString().trim()
+    const rects = [...range.getClientRects()].filter((rect) => rect.width > 1 && rect.height > 1)
+    if (rects.length === 0) return
+
+    const quadsByPage = new Map<number, number[]>()
+    for (const [page, element] of pageRefs.current) {
+      const pageRect = element.getBoundingClientRect()
+      const geometry = geometryForBlock(page)
+
+      for (const rect of rects) {
+        const centerX = rect.left + rect.width / 2
+        const centerY = rect.top + rect.height / 2
+        const inside = centerX >= pageRect.left && centerX <= pageRect.right
+          && centerY >= pageRect.top && centerY <= pageRect.bottom
+        if (!inside) continue
+
+        const quad = screenRectToQuadPointsBlock({
+          left: rect.left - pageRect.left,
+          top: rect.top - pageRect.top,
+          width: rect.width,
+          height: rect.height,
+        }, geometry)
+
+        const existing = quadsByPage.get(page)
+        if (existing) existing.push(...quad)
+        else quadsByPage.set(page, [...quad])
+      }
+    }
+
+    for (const [page, quadPoints] of quadsByPage) {
+      addAnnotation({
+        kind: 'highlight',
+        id: `hl-${page}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        pageNumber: page,
+        quadPoints,
+        color: HIGHLIGHT_COLOR_BLOCK,
+        opacity: HIGHLIGHT_OPACITY_BLOCK,
+        text,
+      })
+    }
+
+    selection.removeAllRanges()
+  }, [addAnnotation, geometryForBlock])
+
+  /* With the highlight tool active, finishing a selection *is* the highlight —
+     no confirm step. The pointerup listener is on the document because the
+     gesture routinely ends outside the page box it started in. */
+  useEffect(() => {
+    if (annotationTool !== 'highlight') return
+    const handleUpBlock = () => window.setTimeout(highlightSelectionBlock, 0)
+    document.addEventListener('pointerup', handleUpBlock)
+    return () => document.removeEventListener('pointerup', handleUpBlock)
+  }, [annotationTool, highlightSelectionBlock])
+
+  /* Auto-hiding chrome is a touch-surface behaviour. On desktop the toolbar is
+     a persistent affordance next to a mouse, and hiding it there just makes
+     controls feel like they moved. */
+  const immersiveChrome = isIosSurface
+  const { chromeVisible, toggleChrome } = useReaderChromeVisibilityBlock({
+    scrollRef: viewportRef,
+    enabled: immersiveChrome && !loading && error === null,
+  })
+
+  const applyPaperThemeBlock = useCallback((next: PdfPaperThemeBlock) => {
+    setPaperTheme(next)
+    writePdfPaperThemeBlock(next)
+  }, [])
+
   return (
-    <div className={cn('flex h-full min-h-0 flex-col bg-card', className)}>
-      <div className="flex flex-wrap items-center gap-1 border-b border-border/60 px-3 py-2">
+    <div className={cn('relative flex h-full min-h-0 flex-col bg-card', className)}>
+      <div
+        className={cn(
+          'z-20 flex flex-wrap items-center gap-1 border-b border-border/60 bg-card/95 px-3 py-2 backdrop-blur',
+          /* Absolute only while immersive, so the desktop layout keeps the
+             toolbar in flow and the page column never sits under it. */
+          immersiveChrome && 'absolute inset-x-0 top-0 transition-transform duration-200 ease-out',
+          immersiveChrome && !chromeVisible && '-translate-y-full',
+        )}
+      >
         <Button
           type="button"
           variant="ghost"
@@ -665,62 +865,150 @@ export default function PdfDocumentBlock({
 
         <Button
           type="button"
-          variant={zoomMode === 'fit-width' ? 'default' : 'outline'}
+          variant={cropMargins ? 'default' : 'outline'}
           size="sm"
-          onClick={() => applyZoomModeBlock('fit-width')}
-          title="Fit page to container width"
+          onClick={() => setCropMargins((prev) => !prev)}
+          title="Trim the printed margins so the text block fills the width"
         >
-          <ScanLine className="mr-1 h-3.5 w-3.5" />
-          Fit Width
+          <Crop className="mr-1 h-3.5 w-3.5" />
+          Trim
+        </Button>
+
+        <select
+          value={paperTheme}
+          onChange={(event) => applyPaperThemeBlock(event.target.value as PdfPaperThemeBlock)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+          title="Paper tone"
+          aria-label="Paper tone"
+        >
+          {PDF_PAPER_THEMES_BLOCK.map((theme) => (
+            <option key={theme} value={theme}>{PDF_PAPER_THEME_LABELS_BLOCK[theme]}</option>
+          ))}
+        </select>
+
+        <div className="mx-1 h-5 w-px bg-border/70" />
+
+        <Button
+          type="button"
+          variant={annotationTool === 'highlight' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setAnnotationTool((prev) => (prev === 'highlight' ? 'none' : 'highlight'))}
+          title="Highlight: select text and it is marked"
+        >
+          <Highlighter className="mr-1 h-3.5 w-3.5" />
+          Highlight
         </Button>
         <Button
           type="button"
-          variant={zoomMode === 'fit-page' ? 'default' : 'outline'}
+          variant={annotationTool === 'ink' ? 'default' : 'outline'}
           size="sm"
-          onClick={() => applyZoomModeBlock('fit-page')}
-          title="Fit whole page (⌘9)"
+          onClick={() => setAnnotationTool((prev) => (prev === 'ink' ? 'none' : 'ink'))}
+          title="Draw with Apple Pencil. A finger still scrolls."
         >
-          <Maximize2 className="mr-1 h-3.5 w-3.5" />
-          Fit Page
+          <PenLine className="mr-1 h-3.5 w-3.5" />
+          Draw
         </Button>
         <Button
           type="button"
-          variant={zoomMode === 'actual' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => applyZoomModeBlock('actual')}
-          title="Actual size (⌘0)"
-        >
-          100%
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
+          variant="ghost"
           size="icon"
           className="h-8 w-8"
-          onClick={() => adjustManualScaleBlock(-0.1)}
-          title="Zoom out"
+          onClick={undoLastAnnotation}
+          title="Undo the last unsaved mark"
         >
-          <ZoomOut className="h-4 w-4" />
+          <Undo2 className="h-4 w-4" />
         </Button>
-        <span className="min-w-[3.5rem] text-center text-xs text-muted-foreground">
-          {(displayedScale * 100).toFixed(0)}%
-        </span>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => adjustManualScaleBlock(0.1)}
-          title="Zoom in"
-        >
-          <ZoomIn className="h-4 w-4" />
-        </Button>
+
+        {/* Marks are written into the PDF itself, so save state is not a
+            detail to hide — an unwritable file is the one case where a
+            reader's marks would otherwise vanish without a word. */}
+        {annotationSaveState === 'pending' && (
+          <span className="text-[11px] text-muted-foreground">Saving…</span>
+        )}
+        {annotationSaveState === 'saved' && (
+          <span className="text-[11px] text-muted-foreground">Saved to PDF</span>
+        )}
+        {annotationSaveState === 'unwritable' && (
+          <span className="text-[11px] text-destructive" title={annotationSaveError ?? undefined}>
+            This PDF can't be written
+          </span>
+        )}
+
+        {/* Zoom controls are a pointer affordance. On a touch surface pinch is
+            the zoom, and six buttons are just chrome eating a reading screen. */}
+        {!immersiveChrome && (
+          <>
+            <div className="mx-1 h-5 w-px bg-border/70" />
+            <Button
+              type="button"
+              variant={zoomMode === 'fit-width' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => applyZoomModeBlock('fit-width')}
+              title="Fit page to container width"
+            >
+              <ScanLine className="mr-1 h-3.5 w-3.5" />
+              Fit Width
+            </Button>
+            <Button
+              type="button"
+              variant={zoomMode === 'fit-page' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => applyZoomModeBlock('fit-page')}
+              title="Fit whole page (⌘9)"
+            >
+              <Maximize2 className="mr-1 h-3.5 w-3.5" />
+              Fit Page
+            </Button>
+            <Button
+              type="button"
+              variant={zoomMode === 'actual' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => applyZoomModeBlock('actual')}
+              title="Actual size (⌘0)"
+            >
+              100%
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => adjustManualScaleBlock(-0.1)}
+              title="Zoom out"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <span className="min-w-[3.5rem] text-center text-xs text-muted-foreground">
+              {(displayedScale * 100).toFixed(0)}%
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => adjustManualScaleBlock(0.1)}
+              title="Zoom in"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+          </>
+        )}
       </div>
 
       <div
         ref={viewportRef}
-        className="min-h-0 flex-1 overflow-auto bg-muted/10 p-3"
+        className={cn(
+          'min-h-0 flex-1 overflow-auto bg-muted/10 p-3',
+          /* The immersive toolbar overlays instead of sitting in flow, so the
+             column needs its height back as padding or page 1 opens underneath
+             it. Content still scrolls under the bar, which is the point. */
+          immersiveChrome && 'pt-16',
+        )}
         style={{ touchAction: 'pan-x pan-y' }}
+        /* A tap on the page brings the chrome back, the way every native
+           reader behaves. Only while immersive — on desktop a click in the
+           page is a selection gesture, not a chrome gesture. */
+        onClick={immersiveChrome ? toggleChrome : undefined}
       >
         {loading && (
           <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-muted-foreground">
@@ -776,14 +1064,22 @@ export default function PdfDocumentBlock({
                   data-page={pageNum}
                   style={{ minHeight: `${pageHeightForBlock(pageNum)}px` }}
                 >
-                  {pageNum >= renderWindow.start && pageNum <= renderWindow.end ? (
-                    <Page
+                  {pageNum >= renderWindow.start && pageNum <= renderWindow.end && docProxy ? (
+                    <PdfPageCanvasBlock
+                      doc={docProxy}
                       pageNumber={pageNum}
-                      scale={displayedScale}
-                      devicePixelRatio={pageDevicePixelRatio}
-                      renderAnnotationLayer
-                      renderTextLayer
-                      className="overflow-hidden rounded-md border bg-background shadow-sm"
+                      displayedWidth={pageBoxForBlock(pageNum).width}
+                      displayedHeight={pageBoxForBlock(pageNum).height}
+                      displayedScale={pageBoxForBlock(pageNum).scale}
+                      plan={rasterPlanForBlock(pageNum)}
+                      crop={crop}
+                      paperTheme={paperTheme}
+                      geometry={geometryForBlock(pageNum)}
+                      annotations={annotations}
+                      annotationTool={annotationTool}
+                      inkColor={INK_COLOR_BLOCK}
+                      inkThickness={INK_THICKNESS_BLOCK}
+                      onCommitInk={commitInkBlock}
                     />
                   ) : (
                     <div
@@ -805,6 +1101,15 @@ export default function PdfDocumentBlock({
           </p>
         )}
       </div>
+
+      {immersiveChrome && !loading && !error && (
+        <PdfPageScrubberBlock
+          pageNumber={pageNumber}
+          numPages={numPages}
+          visible={chromeVisible}
+          onSeek={(page) => { setPageNumber(page); scrollToPage(page) }}
+        />
+      )}
     </div>
   )
 }

@@ -1,0 +1,45 @@
+/* Minimal text layer styling for PdfPageCanvasBlock.
+
+   Deliberately NOT `pdfjs-dist/web/pdf_viewer.css`: that sheet carries the
+   whole default viewer, including selectors as generic as `.page`, and this
+   app renders PDF pages inside a workspace full of other components. Only the
+   rules the text layer actually needs are reproduced here.
+
+   Positions and font sizes arrive from pdf.js as
+   `calc(var(--total-scale-factor) * Npx)`, so zoom is handled entirely by the
+   variable the component sets on this container. */
+
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 1;
+}
+
+.textLayer :is(span, br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer span.markedContent {
+  top: 0;
+  height: 0;
+}
+
+.textLayer span[role='img'] {
+  user-select: none;
+  cursor: default;
+}
+
+.textLayer ::selection {
+  background: rgb(0 100 255 / 0.28);
+}

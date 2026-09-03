@@ -140,10 +140,23 @@ export function computeDisplayedPdfScaleBlock(params: {
   }
 }
 
-/* Height a given page occupies at the current zoom. Used both for real pages
-   and for the placeholders of pages outside the render window — which is why
-   it must be per-page: a wrong placeholder height is a scroll jump. */
-export function computePdfPageHeightBlock(params: {
+export interface PdfPageBoxBlock {
+  width: number
+  height: number
+  /** The scale this specific page is laid out at, in CSS px per PDF unit. */
+  scale: number
+}
+
+/* The on-screen box a given page occupies at the current zoom, and the scale
+   that produced it. Used both for real pages and for the placeholders of pages
+   outside the render window — which is why it must be per-page: a wrong
+   placeholder height is a scroll jump.
+
+   The scale is returned rather than recomputed by callers because in fit modes
+   it is genuinely per-page (a landscape page fits differently from a portrait
+   one), and the text layer has to be told the same number the layout used or
+   its spans land in the wrong place. */
+export function computePdfPageBoxBlock(params: {
   page: number
   zoomMode: PdfZoomModeBlock
   scale: number
@@ -152,7 +165,7 @@ export function computePdfPageHeightBlock(params: {
   metricsByPage?: PdfPageMetricsMapBlock | null
   fallbackMetrics?: PdfNaturalPageMetricsBlock | null
   rotation?: PdfRotationBlock
-}): number {
+}): PdfPageBoxBlock {
   const pageMetrics = resolvePdfPageMetricsBlock({
     page: params.page,
     metricsByPage: params.metricsByPage,
@@ -168,7 +181,24 @@ export function computePdfPageHeightBlock(params: {
     pageMetrics,
   })
 
-  return Math.max(MIN_PDF_PAGE_HEIGHT_BLOCK, Math.round(pageMetrics.height * effectiveScale))
+  return {
+    width: Math.max(1, Math.round(pageMetrics.width * effectiveScale)),
+    height: Math.max(MIN_PDF_PAGE_HEIGHT_BLOCK, Math.round(pageMetrics.height * effectiveScale)),
+    scale: effectiveScale,
+  }
+}
+
+export function computePdfPageHeightBlock(params: {
+  page: number
+  zoomMode: PdfZoomModeBlock
+  scale: number
+  viewportWidth: number
+  viewportHeight?: number
+  metricsByPage?: PdfPageMetricsMapBlock | null
+  fallbackMetrics?: PdfNaturalPageMetricsBlock | null
+  rotation?: PdfRotationBlock
+}): number {
+  return computePdfPageBoxBlock(params).height
 }
 
 /* Keep the document point under (focalX, focalY) pinned while the scale
