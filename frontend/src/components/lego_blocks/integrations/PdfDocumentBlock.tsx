@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
-import { ChevronLeft, ChevronRight, Highlighter, RefreshCw, Undo2 } from 'lucide-react'
+import { useNativeChromeImmersionBlock } from '@/components/lego_blocks/hooks/shared/useNativeChromeImmersionBlock'
+import { ChevronLeft, ChevronRight, Highlighter, Maximize2, Minimize2, RefreshCw, Undo2 } from 'lucide-react'
 import { Document, pdfjs } from 'react-pdf'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import PdfJsWorkerBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
@@ -9,7 +10,7 @@ import pdfWorkerSrcBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import PdfPageCanvasBlock from '@/components/lego_blocks/units/PdfPageCanvasBlock'
 import PdfPageScrubberBlock from '@/components/lego_blocks/units/PdfPageScrubberBlock'
-import PdfZoomMenuBlock from '@/components/lego_blocks/units/PdfZoomMenuBlock'
+import PdfToolbarMenuBlock from '@/components/lego_blocks/units/PdfToolbarMenuBlock'
 import type { PdfAnnotationToolBlock } from '@/components/lego_blocks/units/PdfAnnotationOverlayBlock'
 import { usePdfAnnotationsBlock } from '@/components/lego_blocks/hooks/shared/usePdfAnnotationsBlock'
 import {
@@ -47,8 +48,8 @@ let activePdfWorkerBlock: Worker | null = null
 let activePdfWorkerVersionBlock: string | null = null
 
 const LARGE_PDF_BYTES_THRESHOLD_BLOCK = 24 * 1024 * 1024
-const MIN_SCALE_BLOCK = 0.6
-const MAX_SCALE_BLOCK = 2.5
+const MIN_SCALE_BLOCK = 0.4
+const MAX_SCALE_BLOCK = 5
 const TRACKPAD_ZOOM_SENSITIVITY_BLOCK = 0.0015
 const TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK = 120
 const HIGHLIGHT_COLOR_BLOCK: [number, number, number] = [250, 204, 21]
@@ -130,7 +131,6 @@ export default function PdfDocumentBlock({
 }: PdfDocumentBlockProps) {
   const electronRuntime = isElectronRuntimeBlock()
   const viewportRef = useRef<HTMLDivElement | null>(null)
-  const previewContainerRef = useRef<HTMLDivElement | null>(null)
   const pinchTouchActiveRef = useRef(false)
   const pinchStartDistanceRef = useRef(0)
   const pinchStartScaleRef = useRef(1)
@@ -255,16 +255,30 @@ export default function PdfDocumentBlock({
     viewport.scrollLeft = anchor.scrollLeft
   }, [displayedScale])
 
+  /* The pinch preview scales the SCROLL CONTAINER, not the page column.
+
+     It used to scale the column, with `will-change: transform`. That column
+     holds every rendered page in the window — on iPad, 3 pages at 2x device
+     pixel ratio — so promoting it allocated and rasterized a composited layer
+     on the order of 18 megapixels at the start of every pinch. That allocation
+     is the hitch; the raster engine never touched it, because the raster
+     engine only fixed what happens when a pinch *ends*.
+
+     The scroll container is exactly one viewport, so the promoted layer is
+     ~2 MP however long the document is, and it does not grow with the render
+     window. Scaling the visible region during the gesture and re-laying out on
+     release is also precisely what iOS itself does. The root clips it. */
   const clearPreviewTransformBlock = () => {
-    const previewTarget = previewContainerRef.current
+    const previewTarget = viewportRef.current
     if (!previewTarget) return
     previewTarget.style.transform = ''
     previewTarget.style.transformOrigin = ''
     previewTarget.style.willChange = ''
+    previewTarget.style.touchAction = ''
   }
 
   const applyPreviewTransformBlock = (nextScale: number) => {
-    const previewTarget = previewContainerRef.current
+    const previewTarget = viewportRef.current
     if (!previewTarget) return
     const baseScale = displayedScaleRef.current
     if (!Number.isFinite(baseScale) || baseScale <= 0) return
@@ -275,17 +289,19 @@ export default function PdfDocumentBlock({
       return
     }
 
-    /* Scale about the gesture's focal point rather than the top of the page,
-       so the content under the fingers/cursor stays put during the preview —
-       the post-commit scroll anchor then preserves that same point. */
+    /* Because the target is the viewport itself, the focal point is already in
+       the element's own coordinates — no scroll offset, no offsetParent. That
+       removed the previous origin expression, which mixed scroll offsets with
+       `offsetLeft` against a centred `w-fit` column and could put the origin in
+       the wrong place, so content slid under the fingers mid-pinch. */
     const anchor = zoomAnchorRef.current
-    const origin = anchor
-      ? `${anchor.scrollLeft + anchor.focalX - previewTarget.offsetLeft}px ${anchor.scrollTop + anchor.focalY - previewTarget.offsetTop}px`
-      : 'top center'
+    const origin = anchor ? `${anchor.focalX}px ${anchor.focalY}px` : 'center center'
 
     previewTarget.style.transform = `scale(${transformScale})`
     previewTarget.style.transformOrigin = origin
     previewTarget.style.willChange = 'transform'
+    /* Stop the scroller competing with the pinch for the same touches. */
+    previewTarget.style.touchAction = 'none'
   }
 
   /* Capture where the gesture is pointing, in viewport-local pixels, along
@@ -792,14 +808,30 @@ export default function PdfDocumentBlock({
     return () => document.removeEventListener('pointerup', handleUpBlock)
   }, [annotationTool, highlightSelectionBlock])
 
-  /* Auto-hiding chrome is a touch-surface behaviour. On desktop the toolbar is
-     a persistent affordance next to a mouse, and hiding it there just makes
-     controls feel like they moved. */
-  const immersiveChrome = isIosSurface
+  /* Focus mode, mirroring the Excalidraw one: the reader takes the whole
+     window as `fixed inset-0`, the native iOS chrome leaves, and the toolbar
+     becomes an overlay that hides as you read.
+
+     The first attempt auto-hid the toolbar in place and reserved its height
+     with padding — which hid the controls and kept the empty strip, spending
+     the space and getting nothing. An overlay over a full-bleed page is the
+     only version where hiding the bar actually returns the pixels. */
+  const [focusMode, setFocusMode] = useState(false)
   const { chromeVisible, toggleChrome } = useReaderChromeVisibilityBlock({
     scrollRef: viewportRef,
-    enabled: immersiveChrome && !loading && error === null,
+    enabled: focusMode && !loading && error === null,
   })
+
+  useNativeChromeImmersionBlock(focusMode)
+
+  useEffect(() => {
+    if (!focusMode) return
+    const onKeyDownBlock = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setFocusMode(false)
+    }
+    window.addEventListener('keydown', onKeyDownBlock)
+    return () => window.removeEventListener('keydown', onKeyDownBlock)
+  }, [focusMode])
 
   const applyPaperThemeBlock = useCallback((next: PdfPaperThemeBlock) => {
     setPaperTheme(next)
@@ -807,21 +839,28 @@ export default function PdfDocumentBlock({
   }, [])
 
   return (
-    <div className={cn('relative flex h-full min-h-0 flex-col bg-card', className)}>
+    <div
+      className={cn(
+        'relative flex min-h-0 flex-col overflow-hidden bg-card',
+        focusMode ? 'fixed inset-0 z-[70] bg-background' : 'h-full',
+        className,
+      )}
+    >
       <div
         className={cn(
           'z-20 flex flex-wrap items-center gap-1 border-b border-border/60 bg-card/95 px-3 py-2 backdrop-blur',
           /* Absolute only while immersive, so the desktop layout keeps the
              toolbar in flow and the page column never sits under it. */
-          immersiveChrome && 'absolute inset-x-0 top-0 transition-transform duration-200 ease-out',
-          immersiveChrome && !chromeVisible && '-translate-y-full',
+          focusMode && 'absolute inset-x-0 top-0 transition-transform duration-200 ease-out',
+          focusMode && !chromeVisible && '-translate-y-full',
         )}
+        style={focusMode ? { paddingTop: 'calc(var(--ltm-safe-top, 0px) + 0.5rem)' } : undefined}
       >
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="h-8 w-8"
+          size="sm"
+          className="w-9 px-0"
           disabled={!canGoPrev}
           onClick={() => { const p = Math.max(1, pageNumber - 1); setPageNumber(p); scrollToPage(p) }}
           title="Previous page"
@@ -834,8 +873,8 @@ export default function PdfDocumentBlock({
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="h-8 w-8"
+          size="sm"
+          className="w-9 px-0"
           disabled={!canGoNext}
           onClick={() => { const p = numPages > 0 ? Math.min(numPages, pageNumber + 1) : pageNumber; setPageNumber(p); scrollToPage(p) }}
           title="Next page"
@@ -846,17 +885,15 @@ export default function PdfDocumentBlock({
         <div className="mx-1 h-5 w-px bg-border/70" />
 
 
-        <select
-          value={paperTheme}
-          onChange={(event) => applyPaperThemeBlock(event.target.value as PdfPaperThemeBlock)}
-          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+        <PdfToolbarMenuBlock
           title="Paper tone"
-          aria-label="Paper tone"
-        >
-          {PDF_PAPER_THEMES_BLOCK.map((theme) => (
-            <option key={theme} value={theme}>{PDF_PAPER_THEME_LABELS_BLOCK[theme]}</option>
-          ))}
-        </select>
+          label={PDF_PAPER_THEME_LABELS_BLOCK[paperTheme]}
+          entries={PDF_PAPER_THEMES_BLOCK.map((theme) => ({
+            key: theme,
+            label: `${paperTheme === theme ? '✓  ' : '     '}${PDF_PAPER_THEME_LABELS_BLOCK[theme]}`,
+            onClick: () => applyPaperThemeBlock(theme),
+          }))}
+        />
 
         <div className="mx-1 h-5 w-px bg-border/70" />
 
@@ -873,8 +910,8 @@ export default function PdfDocumentBlock({
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          className="h-8 w-8"
+          size="sm"
+          className="w-9 px-0"
           onClick={undoLastAnnotation}
           title="Undo the last unsaved mark"
         >
@@ -898,14 +935,43 @@ export default function PdfDocumentBlock({
 
         {/* Pinch is the zoom on touch; on a pointer surface everything lives
             behind one button that reads the current zoom. */}
-        {!immersiveChrome && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-9 px-0"
+          onClick={() => setFocusMode((prev) => !prev)}
+          title={focusMode ? 'Leave focus mode (Esc)' : 'Focus mode — full screen reading'}
+        >
+          {focusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </Button>
+
+        {!focusMode && (
           <>
             <div className="mx-1 h-5 w-px bg-border/70" />
-            <PdfZoomMenuBlock
-              zoomMode={zoomMode}
-              displayedScale={displayedScale}
-              onApplyZoomMode={applyZoomModeBlock}
-              onAdjustScale={adjustManualScaleBlock}
+            <PdfToolbarMenuBlock
+              title="Zoom"
+              label={`${(displayedScale * 100).toFixed(0)}%`}
+              entries={[
+                {
+                  key: 'fit-width',
+                  label: `${zoomMode === 'fit-width' ? '✓  ' : '     '}Fit width`,
+                  onClick: () => applyZoomModeBlock('fit-width'),
+                },
+                {
+                  key: 'fit-page',
+                  label: `${zoomMode === 'fit-page' ? '✓  ' : '     '}Fit page  ⌘9`,
+                  onClick: () => applyZoomModeBlock('fit-page'),
+                },
+                {
+                  key: 'actual',
+                  label: `${zoomMode === 'actual' ? '✓  ' : '     '}Actual size  ⌘0`,
+                  onClick: () => applyZoomModeBlock('actual'),
+                },
+                { key: 'sep', kind: 'separator' },
+                { key: 'in', label: '     Zoom in  ⌘+', onClick: () => adjustManualScaleBlock(0.1) },
+                { key: 'out', label: '     Zoom out  ⌘−', onClick: () => adjustManualScaleBlock(-0.1) },
+              ]}
             />
           </>
         )}
@@ -915,16 +981,15 @@ export default function PdfDocumentBlock({
         ref={viewportRef}
         className={cn(
           'min-h-0 flex-1 overflow-auto bg-muted/10 p-3',
-          /* The immersive toolbar overlays instead of sitting in flow, so the
-             column needs its height back as padding or page 1 opens underneath
-             it. Content still scrolls under the bar, which is the point. */
-          immersiveChrome && 'pt-16',
+          /* Deliberately no top padding in focus mode: the page runs full
+             bleed and scrolls under the overlay bar. Reserving the bar's
+             height here is what made hiding it pointless. */
         )}
         style={{ touchAction: 'pan-x pan-y' }}
         /* A tap on the page brings the chrome back, the way every native
            reader behaves. Only while immersive — on desktop a click in the
            page is a selection gesture, not a chrome gesture. */
-        onClick={immersiveChrome ? toggleChrome : undefined}
+        onClick={focusMode ? toggleChrome : undefined}
       >
         {loading && (
           <div className="flex h-full min-h-[200px] items-center justify-center text-sm text-muted-foreground">
@@ -940,7 +1005,7 @@ export default function PdfDocumentBlock({
         )}
 
         {!loading && !error && documentFile && (
-          <div ref={previewContainerRef} className="mx-auto w-fit origin-top">
+          <div className="mx-auto w-fit origin-top">
             <Document
               key={`${path}:${renderNonce}`}
               file={documentFile}
@@ -1017,7 +1082,7 @@ export default function PdfDocumentBlock({
         )}
       </div>
 
-      {immersiveChrome && !loading && !error && (
+      {focusMode && !loading && !error && (
         <PdfPageScrubberBlock
           pageNumber={pageNumber}
           numPages={numPages}
