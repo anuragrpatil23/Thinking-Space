@@ -11,6 +11,15 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import PdfPageCanvasBlock from '@/components/lego_blocks/units/PdfPageCanvasBlock'
 import PdfPageScrubberBlock from '@/components/lego_blocks/units/PdfPageScrubberBlock'
 import PdfToolbarMenuBlock from '@/components/lego_blocks/units/PdfToolbarMenuBlock'
+import PdfMarkSettingsBlock from '@/components/lego_blocks/units/PdfMarkSettingsBlock'
+import {
+  PDF_PEN_PRESETS_BLOCK,
+  readPdfMarkStyleBlock,
+  resolvePdfMarkColorBlock,
+  resolvePdfStrokeThicknessBlock,
+  writePdfMarkStyleBlock,
+  type PdfMarkStyleBlock,
+} from '@/services/lego_blocks/units/pdfMarkStyleBlock'
 import type { PdfAnnotationToolBlock } from '@/components/lego_blocks/units/PdfAnnotationOverlayBlock'
 import { usePdfAnnotationsBlock } from '@/components/lego_blocks/hooks/shared/usePdfAnnotationsBlock'
 import {
@@ -52,10 +61,7 @@ const MIN_SCALE_BLOCK = 0.4
 const MAX_SCALE_BLOCK = 5
 const TRACKPAD_ZOOM_SENSITIVITY_BLOCK = 0.0015
 const TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK = 120
-const HIGHLIGHT_COLOR_BLOCK: [number, number, number] = [250, 204, 21]
 const HIGHLIGHT_OPACITY_BLOCK = 0.4
-const INK_COLOR_BLOCK: [number, number, number] = [220, 38, 38]
-const INK_THICKNESS_BLOCK = 1.6
 const PDFJS_DOCUMENT_OPTIONS_BLOCK = {
   cMapUrl: '/pdfjs/cmaps/',
   cMapPacked: true,
@@ -167,6 +173,17 @@ export default function PdfDocumentBlock({
   const [renderNonce, setRenderNonce] = useState(0)
   const [docProxy, setDocProxy] = useState<PDFDocumentProxy | null>(null)
   const [annotationTool, setAnnotationTool] = useState<PdfAnnotationToolBlock>('none')
+  const [markStyle, setMarkStyle] = useState<PdfMarkStyleBlock>(readPdfMarkStyleBlock)
+
+  const applyMarkStyleBlock = useCallback((next: PdfMarkStyleBlock) => {
+    setMarkStyle(next)
+    writePdfMarkStyleBlock(next)
+  }, [])
+
+  const inkColor = resolvePdfMarkColorBlock(markStyle.penColorKey).rgb
+  const inkThickness = resolvePdfStrokeThicknessBlock(markStyle.penType, markStyle.nib)
+  const inkOpacity = PDF_PEN_PRESETS_BLOCK[markStyle.penType].opacity
+  const highlightColor = resolvePdfMarkColorBlock(markStyle.highlightColorKey).rgb
   const [paperTheme, setPaperTheme] = useState<PdfPaperThemeBlock>(readPdfPaperThemeBlock)
 
   const { metricsByPage, fallbackMetrics } = usePdfPageMetricsBlock(docProxy)
@@ -739,11 +756,11 @@ export default function PdfDocumentBlock({
       id: `ink-${page}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       pageNumber: page,
       inkList: [flat],
-      color: INK_COLOR_BLOCK,
-      opacity: 1,
-      thickness: INK_THICKNESS_BLOCK,
+      color: inkColor,
+      opacity: inkOpacity,
+      thickness: inkThickness,
     })
-  }, [addAnnotation])
+  }, [addAnnotation, inkColor, inkOpacity, inkThickness])
 
   /* Selection -> highlight. Rects are grouped by the page element that
      contains them, so a selection running across a page break produces one
@@ -789,14 +806,14 @@ export default function PdfDocumentBlock({
         id: `hl-${page}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         pageNumber: page,
         quadPoints,
-        color: HIGHLIGHT_COLOR_BLOCK,
+        color: highlightColor,
         opacity: HIGHLIGHT_OPACITY_BLOCK,
         text,
       })
     }
 
     selection.removeAllRanges()
-  }, [addAnnotation, geometryForBlock])
+  }, [addAnnotation, geometryForBlock, highlightColor])
 
   /* With the highlight tool active, finishing a selection *is* the highlight —
      no confirm step. The pointerup listener is on the document because the
@@ -853,8 +870,24 @@ export default function PdfDocumentBlock({
              toolbar in flow and the page column never sits under it. */
           focusMode && 'absolute inset-x-0 top-0 transition-transform duration-200 ease-out',
           focusMode && !chromeVisible && '-translate-y-full',
+          /* Same contract as `.ltm-shell-top-chrome` (index.css) and the
+             Excalidraw focus header: in focus mode this bar IS the title bar,
+             so it drags the window — and every interactive child must opt back
+             out, or the drag region swallows the click. */
+          focusMode && electronRuntime
+            && '[-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag] [&_select]:[-webkit-app-region:no-drag]',
         )}
-        style={focusMode ? { paddingTop: 'calc(var(--ltm-safe-top, 0px) + 0.5rem)' } : undefined}
+        /* Electron draws the window controls over the top-left of the content,
+           so focus mode has to leave them a strip — the same 2.25rem the
+           Excalidraw focus header reserves. Without it the page-back chevron
+           sits underneath the traffic lights and cannot be clicked. */
+        style={focusMode
+          ? {
+            paddingTop: electronRuntime
+              ? '2.25rem'
+              : 'calc(var(--ltm-safe-top, 0px) + 0.5rem)',
+          }
+          : undefined}
       >
         <Button
           type="button"
@@ -907,6 +940,8 @@ export default function PdfDocumentBlock({
           <Highlighter className="mr-1 h-3.5 w-3.5" />
           Highlight
         </Button>
+        <PdfMarkSettingsBlock style={markStyle} onChange={applyMarkStyleBlock} />
+
         <Button
           type="button"
           variant="ghost"
@@ -1057,8 +1092,8 @@ export default function PdfDocumentBlock({
                       paperTheme={paperTheme}
                       geometry={geometryForBlock(pageNum)}
                       annotations={annotations}
-                      inkColor={INK_COLOR_BLOCK}
-                      inkThickness={INK_THICKNESS_BLOCK}
+                      inkColor={inkColor}
+                      inkThickness={inkThickness}
                       onCommitInk={commitInkBlock}
                     />
                   ) : (
