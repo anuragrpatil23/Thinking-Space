@@ -1039,7 +1039,10 @@ export default function PdfDocumentBlock({
         ref={viewportRef}
         className={cn(
           'min-h-0 flex-1 overflow-auto p-3',
-          'bg-[#d2d2d4] dark:bg-[#1b1b1d]',
+          /* Near-white, not the mid grey I first used — checked against a
+             Preview screenshot, where the surround is barely tinted and the
+             page separates on shadow alone. */
+          'bg-[#f4f4f6] dark:bg-[#1b1b1d]',
           /* Deliberately no top padding in focus mode: the page runs full
              bleed and scrolls under the overlay bar. Reserving the bar's
              height here is what made hiding it pointless. */
@@ -1125,7 +1128,7 @@ export default function PdfDocumentBlock({
                     <div
                       aria-hidden="true"
                       style={{ minHeight: `${pageHeightForBlock(pageNum)}px` }}
-                      className="flex items-center justify-center border border-black/15 bg-background/70 text-xs text-muted-foreground shadow-[0_1px_5px_rgba(0,0,0,0.16)] dark:border-white/10"
+                      className="flex items-center justify-center bg-background text-xs text-muted-foreground shadow-[0_1px_6px_rgba(0,0,0,0.20)] dark:shadow-[0_1px_6px_rgba(0,0,0,0.6)]"
                     >
                       Page {pageNum}
                     </div>
