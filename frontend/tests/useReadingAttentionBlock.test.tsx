@@ -37,20 +37,42 @@ const { useReadingAttentionBlock } = await import(
 const { resetReadingForegroundBlock } = await import(
   '@/services/lego_blocks/units/readingForegroundBlock'
 )
+const { IDLE_CEILING_MS } = await import(
+  '@/services/lego_blocks/units/readingAttentionBlock'
+)
 const { readReadingJournalBlock } = await import(
   '@/services/lego_blocks/units/readingJournalBlock'
 )
 
 function Reader({ path, attending }: { path: string | null; attending: boolean }) {
   const scrollRef = useRef<HTMLElement | null>(null)
-  useReadingAttentionBlock(path, attending, { scrollRef })
-  return null
+  const surfaceRef = useRef<HTMLDivElement | null>(null)
+  useReadingAttentionBlock(path, attending, { scrollRef, surfaceRef })
+  return <div ref={surfaceRef} data-testid="surface" />
 }
 
-/** One presence signal, past the hook's 1s throttle. */
+/** A click inside the document's own surface. */
+function signalInside(atMs: number) {
+  vi.setSystemTime(atMs)
+  act(() => {
+    document.querySelector('[data-testid="surface"]')
+      ?.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+  })
+}
+
+/** A click somewhere else in the app — an explorer row, a side panel. */
+function signalElsewhere(atMs: number) {
+  vi.setSystemTime(atMs)
+  act(() => { document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })) })
+}
+
+/** One presence signal inside the document, past the hook's 1s throttle. */
 function signal(atMs: number) {
   vi.setSystemTime(atMs)
-  act(() => { document.dispatchEvent(new Event('pointerdown', { bubbles: true })) })
+  act(() => {
+    const el = document.querySelector('[data-testid="surface"]') ?? document.body
+    el.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+  })
 }
 
 describe('useReadingAttentionBlock', () => {
@@ -230,6 +252,64 @@ describe('useReadingAttentionBlock', () => {
       signal(t0 + 20_000)
       signal(t0 + 40_000)
       expect(readReadingJournalBlock()).toHaveLength(0)
+    })
+  })
+
+  describe('crediting only interaction in this document', () => {
+    // The real defect: a PDF left open on its cover collected 15 minutes while
+    // the reader worked elsewhere in the app. `attending` asks whether this is
+    // the active pane, never whether the interaction is in it.
+    it('ignores clicks elsewhere in the app', () => {
+      const t0 = Date.now()
+      const view = render(<Reader path="notes/foo.md" attending />)
+      for (let m = 1; m <= 30; m += 1) signalElsewhere(t0 + m * 60_000)
+      vi.setSystemTime(t0 + 31 * 60_000)
+      act(() => { view.unmount() })
+      // Half an hour of working elsewhere costs one idle ceiling, not the
+      // half hour — the same bound a document stared at without touching
+      // earns. Before scoping, each of those 30 clicks credited a minute.
+      expect(appended[0]?.activeMs ?? 0).toBeLessThanOrEqual(IDLE_CEILING_MS)
+    })
+
+    it('credits clicks inside the document', () => {
+      const t0 = Date.now()
+      const view = render(<Reader path="notes/foo.md" attending />)
+      signalInside(t0 + 60_000)
+      signalInside(t0 + 120_000)
+      vi.setSystemTime(t0 + 150_000)
+      act(() => { view.unmount() })
+      expect(appended).toHaveLength(1)
+      expect(appended[0].activeMs).toBe(150_000)
+    })
+
+    // Reading by arrow key with focus on body is normal, so keydown stays on
+    // window and cannot be scoped to the element.
+    it('credits keyboard reading when nothing is focused', () => {
+      const t0 = Date.now()
+      const view = render(<Reader path="notes/foo.md" attending />)
+      for (const m of [1, 2, 3]) {
+        vi.setSystemTime(t0 + m * 60_000)
+        act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' })) })
+      }
+      vi.setSystemTime(t0 + 200_000)
+      act(() => { view.unmount() })
+      expect(appended).toHaveLength(1)
+    })
+
+    it('refuses keystrokes typed into a field elsewhere', () => {
+      const t0 = Date.now()
+      const input = document.createElement('input')
+      document.body.appendChild(input)
+      input.focus()
+      const view = render(<Reader path="notes/foo.md" attending />)
+      for (let m = 1; m <= 10; m += 1) {
+        vi.setSystemTime(t0 + m * 60_000)
+        act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' })) })
+      }
+      vi.setSystemTime(t0 + 11 * 60_000)
+      act(() => { view.unmount() })
+      input.remove()
+      expect(appended[0]?.activeMs ?? 0).toBeLessThanOrEqual(IDLE_CEILING_MS)
     })
   })
 })

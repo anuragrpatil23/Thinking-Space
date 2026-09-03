@@ -260,7 +260,8 @@ export default function RuledNotebookDocumentBlock({
   // measuring nothing at all. It is always the foreground pane when mounted
   // (the orchestrator renders it *instead of* the inline document), so
   // `attending` is just "loaded and not broken"; the arbiter settles the rest.
-  useReadingAttentionBlock(path, !loading && error === null)
+  const readingSurfaceRef = useRef<HTMLElement | null>(null)
+  useReadingAttentionBlock(path, !loading && error === null, { surfaceRef: readingSurfaceRef })
   const [pageIndex, setPageIndex] = useState(0)
   const [transition, setTransition] = useState<TransitionState | null>(null)
   const [pages, setPages] = useState<RuledNotebookPageBlock[]>([])
@@ -744,7 +745,10 @@ export default function RuledNotebookDocumentBlock({
   }
 
   return (
-    <section className={cn('ltm-ruled-notebook-shell flex h-full min-h-0 flex-col', className)}>
+    <section
+      ref={readingSurfaceRef}
+      className={cn('ltm-ruled-notebook-shell flex h-full min-h-0 flex-col', className)}
+    >
       {!topBarHidden && (
         <header className="relative flex shrink-0 items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
           <div className="min-w-0">

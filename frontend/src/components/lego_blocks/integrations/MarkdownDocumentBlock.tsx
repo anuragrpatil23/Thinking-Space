@@ -344,6 +344,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const [renameError, setRenameError] = useState<string | null>(null)
   const isExcalidrawDoc = isExcalidrawPathBlock(path)
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
+  const readingSurfaceRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const [findOpen, setFindOpen] = useState(false)
   const lastScrollTopRef = useRef(0)
@@ -610,6 +611,7 @@ function MarkdownTextDocumentRuntimeBlock({
   )
 
   useReadingAttentionBlock(countsAsReading ? path : null, attending, {
+    surfaceRef: readingSurfaceRef,
     scrollRef: contentScrollRef,
     uuid: documentUuid,
     canvasSamplers,
@@ -1775,6 +1777,7 @@ function MarkdownTextDocumentRuntimeBlock({
 
   return (
     <div
+      ref={readingSurfaceRef}
       className={cn(
         // ts-md-viewer-root: a stable hook for surface-level padding
         // overrides from index.css.

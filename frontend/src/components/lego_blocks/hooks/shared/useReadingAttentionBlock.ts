@@ -46,8 +46,17 @@ import {
 } from '@/services/lego_blocks/units/thinkingspaceReadingParserBlock'
 
 /**
- * Signs that a person is present, passive and capturing so they fire wherever
- * the interaction lands — inside CM6, the Excalidraw canvas, nested scrollers.
+ * Signs that a person is present *in this document*.
+ *
+ * Bound to the surface's own root element, not to `document`. That distinction
+ * is the whole point: `attending` asks whether this is the active pane, never
+ * whether the interaction is in it, so document-level listeners credited a PDF
+ * sitting on its cover for every click in the explorer and every keystroke in a
+ * side panel. One real span collected 15 minutes on a book cover that way.
+ *
+ * Capturing, so non-bubbling `scroll` from nested scrollers still reaches the
+ * root during the capture phase, and interaction inside CM6 or the Excalidraw
+ * canvas is seen without either needing to cooperate.
  *
  * `pointermove` is canvas-only and load-bearing there: an Apple Pencil hovering
  * above the glass generates moves and no touches, which is the same reason the
@@ -55,7 +64,7 @@ import {
  * keydown + pointerdown already establish presence, so the highest-frequency
  * listener comes off the more common surface entirely.
  */
-const TEXT_PRESENCE_EVENTS = ['pointerdown', 'keydown', 'wheel', 'scroll'] as const
+const TEXT_PRESENCE_EVENTS = ['pointerdown', 'wheel', 'scroll'] as const
 const CANVAS_PRESENCE_EVENTS = [...TEXT_PRESENCE_EVENTS, 'pointermove'] as const
 
 /** Ignore presence events closer together than this. The accumulator only
@@ -85,6 +94,13 @@ export interface CanvasSamplersBlock {
 }
 
 export interface ReadingAttentionOptions {
+  /**
+   * The document surface's root element. Presence listeners bind here, so
+   * interaction anywhere else in the app is not this document's reading.
+   * Includes the surface's own chrome — a PDF's page buttons are reading
+   * interaction even though they sit outside the scroller.
+   */
+  surfaceRef?: RefObject<HTMLElement | null>
   /** Scroll container, for the markdown `where`. */
   scrollRef?: RefObject<HTMLElement | null>
   /** Document uuid from frontmatter, when it has one. */
@@ -363,10 +379,33 @@ export function useReadingAttentionBlock(
       flush()
     }
 
-    const presenceEvents = isCanvas ? CANVAS_PRESENCE_EVENTS : TEXT_PRESENCE_EVENTS
-    for (const type of presenceEvents) {
-      document.addEventListener(type, onSignal, { passive: true, capture: true })
+    // Keydown cannot be scoped to the element: a PDF binds its page-turn
+    // shortcuts on `window`, so reading by arrow key with focus on `body` is
+    // normal and must count. Instead it is refused when focus is in an editable
+    // field somewhere else — which is what "typing in a side panel while a
+    // document happens to be open" looks like.
+    const onKeySignal = (event: Event) => {
+      const focused = document.activeElement as HTMLElement | null
+      if (focused && focused !== document.body) {
+        const root = optionsRef.current.surfaceRef?.current ?? null
+        const outside = !root || !root.contains(focused)
+        const editable = focused.tagName === 'INPUT'
+          || focused.tagName === 'TEXTAREA'
+          || focused.isContentEditable === true
+        if (outside && editable) return
+      }
+      onSignal(event)
     }
+
+    const presenceEvents = isCanvas ? CANVAS_PRESENCE_EVENTS : TEXT_PRESENCE_EVENTS
+    // Bound to the element present when the sitting started. A surface that
+    // swaps its root mid-sitting ends the sitting anyway, because `attending`
+    // flips with it.
+    const bindTarget: EventTarget = options.surfaceRef?.current ?? document
+    for (const type of presenceEvents) {
+      bindTarget.addEventListener(type, onSignal, { passive: true, capture: true })
+    }
+    window.addEventListener('keydown', onKeySignal, { passive: true })
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('blur', onLeave)
     window.addEventListener('focus', onReturn)
@@ -374,8 +413,9 @@ export function useReadingAttentionBlock(
 
     return () => {
       for (const type of presenceEvents) {
-        document.removeEventListener(type, onSignal, { capture: true })
+        bindTarget.removeEventListener(type, onSignal, { capture: true })
       }
+      window.removeEventListener('keydown', onKeySignal)
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('blur', onLeave)
       window.removeEventListener('focus', onReturn)

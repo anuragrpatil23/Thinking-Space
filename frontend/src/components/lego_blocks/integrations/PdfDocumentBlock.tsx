@@ -629,6 +629,7 @@ export default function PdfDocumentBlock({
   // sampler reads it through a ref rather than re-deriving anything.
   const pageNumberRef = useRef(pageNumber)
   pageNumberRef.current = pageNumber
+  const surfaceRef = useRef<HTMLDivElement | null>(null)
   const pageSampler = useCallback(
     () => (numPages > 0 ? pageNumberRef.current : null),
     [numPages],
@@ -636,7 +637,7 @@ export default function PdfDocumentBlock({
   useReadingAttentionBlock(
     countsAsReading ? path : null,
     active && !loading && error === null,
-    { pageSampler },
+    { pageSampler, surfaceRef },
   )
 
   const canGoPrev = pageNumber > 1
@@ -971,6 +972,7 @@ export default function PdfDocumentBlock({
 
   return (
     <div
+      ref={surfaceRef}
       className={cn(
         'relative flex min-h-0 flex-col overflow-hidden',
         /* Owns the reading surround, because the scroll container cannot — see
