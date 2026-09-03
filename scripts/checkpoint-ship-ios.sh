@@ -209,7 +209,13 @@ trap - EXIT
 # package.json) said 2.8.0, and every iOS summary reported a version that had
 # not been true since June. Deriving it here makes drift impossible without
 # rewriting a tracked file mid-ship, which would leave the tree dirty for the
-# next run. The pbxproj value is kept in step for plain Xcode GUI builds.
+# next run.
+#
+# The pbxproj literal still matters for plain Xcode GUI builds, which get no
+# override — and nothing here can keep it in step without dirtying the tree.
+# So parity is asserted in the test suite instead (iosVersionParity.test.ts):
+# it drifted to 2.8.0 while package.json said 2.9.2, and a comment claiming it
+# was kept in step is precisely why nobody looked.
 # ─── Profile renewal window ──────────────────────────────────────────────────
 # Free-provisioning profiles live 7 days, and -allowProvisioningUpdates mints a
 # new one ONLY when no valid cached profile exists. So an ordinary ship silently
