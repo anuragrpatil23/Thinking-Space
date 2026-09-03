@@ -183,9 +183,8 @@ var init_storageKeyBlock = __esm({
       fileActivityIgnoredPaths: "ltm-file-activity-ignored-paths",
       aiActivityProjectMapping: "ltm-ai-activity-project-mapping",
       aiActivityVaultSourcePrefixes: "ltm-ai-activity-vault-source-prefixes",
-      goodnotesReadingAnnotationGate: "ltm-goodnotes-reading-annotation-gate",
-      goodnotesReadingEnabled: "ltm-goodnotes-reading-enabled",
       readingKeepScreenAwake: "ltm-reading-keep-screen-awake",
+      readingInstallId: "ltm-reading-install-id",
       aiActivityHomePostItEnabled: "ltm-ai-activity-home-post-it-enabled",
       aiActivitySetMode: "ltm-ai-activity-set-mode-enabled",
       aiActivityCalendarMode: "ltm-ai-activity-calendar-mode-enabled",
@@ -23667,25 +23666,15 @@ var ACTIVE_GAP_CAP_MS = 5 * 6e4;
 // src/services/lego_blocks/units/aiActivitySourcesBlock.ts
 init_storageKeyBlock();
 
-// src/services/lego_blocks/units/goodnotesReadingParserBlock.ts
-var MAX_SESSION_MS = 90 * 6e4;
-
-// src/services/lego_blocks/integrations/goodnotesReadingBlock.ts
-init_storageKeyBlock();
-
 // src/services/lego_blocks/integrations/memorizedReadingBlock.ts
 init_dbBlock();
 
 // src/services/lego_blocks/units/memorizedSessionParserBlock.ts
 init_memorizedSessionsBlock();
-var MAX_SESSION_MS2 = 4 * 36e5;
-
-// src/services/lego_blocks/units/thinkingspaceReadingParserBlock.ts
-var MAX_SESSION_MS3 = 4 * 36e5;
+var MAX_SESSION_MS = 4 * 36e5;
 
 // src/services/lego_blocks/integrations/thinkingspaceReadingBlock.ts
-var READING_DIR = "ai-activity/raw-sessions/thinkingspace";
-var READING_LOG_PATH = `${READING_DIR}/reading.jsonl`;
+init_storageKeyBlock();
 var _writeChain = Promise.resolve();
 var ABSORB_GRACE_MS = 5 * 6e4;
 
