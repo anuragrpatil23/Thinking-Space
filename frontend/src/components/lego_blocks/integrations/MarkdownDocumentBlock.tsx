@@ -2578,15 +2578,18 @@ function PdfDocumentRuntimeBlock({
             {breadcrumb && <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>}
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {/* Icon-only and borderless, matching the markdown header's action
+                row. A bordered pill with a label sat next to four bare icons
+                and read as a different class of control. */}
             <button
               type="button"
               onClick={handleOpenInSystem}
               disabled={!canOpenInSystem}
-              className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
               title={canOpenInSystem ? `Open file in ${openInSystemButtonLabel}` : 'Open in system file manager is unavailable on web'}
+              aria-label={canOpenInSystem ? `Open file in ${openInSystemButtonLabel}` : 'Open in system file manager'}
             >
-              <FolderOpen className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{openInSystemButtonLabel}</span>
+              <FolderOpen className="h-4 w-4" />
             </button>
             {onOpenPath && (
               <button
