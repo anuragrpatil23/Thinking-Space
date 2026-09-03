@@ -9,6 +9,7 @@ import {
   resolvePdfMarkColorBlock,
   type PdfMarkStyleBlock,
   type PdfNibBlock,
+  type PdfPenToolBlock,
   type PdfPenTypeBlock,
 } from '@/services/lego_blocks/units/pdfMarkStyleBlock'
 import { cn } from '@/lib/utils'
@@ -101,12 +102,43 @@ export default function PdfMarkSettingsBlock({
           className="fixed z-[90] w-64 rounded-lg border border-border/80 bg-background/95 p-3 shadow-lg backdrop-blur-xl"
           style={{ left: position.x, top: position.y }}
         >
-          <PdfMarkSectionLabelBlock>Pen</PdfMarkSectionLabelBlock>
+          {/* What the Pencil does. There was no such control at first, on the
+              reasoning that a stylus touching the page is unambiguous — it is
+              not, and without this there was no way to highlight with the
+              Pencil at all. */}
+          <PdfMarkSectionLabelBlock>Apple Pencil</PdfMarkSectionLabelBlock>
+          <div className="grid grid-cols-2 gap-1.5">
+            {(['pen', 'highlighter'] as PdfPenToolBlock[]).map((penTool) => (
+              <button
+                key={penTool}
+                type="button"
+                onClick={() => onChange({ ...style, penTool })}
+                className={cn(
+                  'rounded-md border px-2 py-1.5 text-xs transition-colors',
+                  style.penTool === penTool
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-input hover:bg-muted',
+                )}
+              >
+                {penTool === 'pen' ? 'Draw' : 'Highlight'}
+              </button>
+            ))}
+          </div>
+
+          <div className="my-3 h-px bg-border" />
+
+          <PdfMarkSectionLabelBlock>
+            {style.penTool === 'highlighter' ? 'Highlight colour' : 'Pen'}
+          </PdfMarkSectionLabelBlock>
           <PdfSwatchRowBlock
-            selectedKey={style.penColorKey}
-            onSelect={(key) => onChange({ ...style, penColorKey: key })}
+            selectedKey={style.penTool === 'highlighter' ? style.highlightColorKey : style.penColorKey}
+            onSelect={(key) => onChange(style.penTool === 'highlighter'
+              ? { ...style, highlightColorKey: key }
+              : { ...style, penColorKey: key })}
           />
 
+          {style.penTool === 'pen' && (
+          <>
           <div className="mt-3 grid grid-cols-2 gap-1.5">
             {(Object.keys(PDF_PEN_PRESETS_BLOCK) as PdfPenTypeBlock[]).map((penType) => (
               <button
@@ -142,10 +174,14 @@ export default function PdfMarkSettingsBlock({
               </button>
             ))}
           </div>
+          </>
+          )}
 
           <p className="mt-3 text-[11px] leading-snug text-muted-foreground">
-            A Pencil always draws — there is no mode to switch. To highlight,
-            select text and pick a colour from the bar that appears.
+            {style.penTool === 'highlighter'
+              ? 'Drag the Pencil across text to highlight it. A finger still scrolls.'
+              : 'Draw anywhere with the Pencil. A finger still scrolls.'}
+            {' '}Selecting text with a finger always offers highlight colours.
           </p>
         </div>,
         document.body,

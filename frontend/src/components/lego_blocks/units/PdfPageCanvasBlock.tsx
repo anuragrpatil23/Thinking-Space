@@ -64,6 +64,8 @@ interface PdfPageCanvasBlockProps {
   deferRaster?: boolean
   /** The page the reader is actually on. It skips the queue. */
   isPrimary?: boolean
+  penTool?: 'pen' | 'highlighter'
+  onCommitHighlight?: (pageNumber: number, rects: DOMRect[], text: string) => void
   /** Uncropped page box in PDF units, for annotation coordinate conversion. */
   geometry?: PdfPageGeometryBlock
   annotations?: readonly PdfAnnotationDraftBlock[]
@@ -106,6 +108,8 @@ export default function PdfPageCanvasBlock({
   className,
   deferRaster = false,
   isPrimary = false,
+  penTool = 'pen',
+  onCommitHighlight,
   geometry,
   annotations,
   inkColor = [250, 204, 21],
@@ -132,8 +136,10 @@ export default function PdfPageCanvasBlock({
   const penHandlers = usePenInkCaptureBlock({
     geometry,
     enabled: Boolean(geometry && onCommitInk),
+    tool: penTool,
     onPaint: paintLiveStrokeBlock,
     onCommit: (points) => onCommitInk?.(pageNumber, points),
+    onCommitHighlight: (rects, text) => onCommitHighlight?.(pageNumber, rects, text),
   })
 
   const canvasHostRef = useRef<HTMLDivElement | null>(null)

@@ -25,25 +25,39 @@ export type PdfAnnotationSaveOutcomeOrch =
   | { status: 'saved'; byteLength: number }
   | { status: 'unwritable'; reason: string }
 
+/* pdf.js only treats storage entries as new annotations when their key carries
+   this prefix; see the note in savePdfAnnotationsOrch. */
+const PDF_EDITOR_STORAGE_PREFIX_BLOCK = 'pdfjs_internal_editor_'
+
 export interface PdfAnnotationSaveRequestOrch {
   doc: PDFDocumentProxy
   path: string
   drafts: readonly PdfAnnotationDraftBlock[]
+  /** Size of the file as loaded, to prove the save actually added something. */
+  originalByteLength: number
 }
 
 export async function savePdfAnnotationsOrch(
   request: PdfAnnotationSaveRequestOrch,
 ): Promise<PdfAnnotationSaveOutcomeOrch> {
-  const { doc, path, drafts } = request
+  const { doc, path, drafts, originalByteLength } = request
   if (drafts.length === 0) return { status: 'saved', byteLength: 0 }
 
   const storage = doc.annotationStorage
   const now = new Date()
 
   for (const draft of drafts) {
-    /* The key must be unique per annotation and stable across saves, or a
-       second save duplicates every mark made before it. */
-    storage.setValue(draft.id, toPdfStorageEntryBlock(draft, now) as never)
+    /* The prefix is not decoration. pdf.js's worker builds its list of new
+       annotations with `getNewAnnotationsMap`, which does:
+
+           if (!key.startsWith(AnnotationEditorPrefix)) continue
+
+       where the prefix is "pdfjs_internal_editor_". Keys without it are skipped
+       silently, `saveDocument()` returns the document unchanged, and the write
+       succeeds — so every mark was discarded while the UI reported success.
+       The suffix is still our own id, so a key stays unique and stable across
+       saves and a second save cannot duplicate an earlier mark. */
+    storage.setValue(`${PDF_EDITOR_STORAGE_PREFIX_BLOCK}${draft.id}`, toPdfStorageEntryBlock(draft, now) as never)
   }
 
   let bytes: Uint8Array
@@ -53,6 +67,18 @@ export async function savePdfAnnotationsOrch(
     return {
       status: 'unwritable',
       reason: error instanceof Error ? error.message : 'This PDF could not be written.',
+    }
+  }
+
+  /* Never report a save we cannot evidence. A serializer that silently drops
+     its input returns the original bytes and every downstream signal — the
+     resolved promise, the successful write, the toolbar — reads as success.
+     That is exactly how the missing-prefix bug survived a session of testing,
+     so the length check is the guard against the whole class. */
+  if (bytes.byteLength <= originalByteLength) {
+    return {
+      status: 'unwritable',
+      reason: 'The PDF was written but gained no annotation data — the marks were not stored.',
     }
   }
 

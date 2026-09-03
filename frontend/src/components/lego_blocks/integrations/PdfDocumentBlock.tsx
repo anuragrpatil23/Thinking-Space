@@ -653,13 +653,15 @@ export default function PdfDocumentBlock({
     (page: number) => pageBoxForBlock(page).height,
     [pageBoxForBlock],
   )
-  /* Narrower on iOS: every windowed page is a retained bitmap, and WebContent
-     dies on a per-process limit rather than degrading (docs/contracts/IOS-MEMORY.md). */
+  /* The iOS window was narrowed to +/-1 when a page could cost 6 MP. At the
+     2.5 MP ceiling a page is ~2.5x cheaper to hold and to draw, and +/-1 was
+     visibly too tight: scrolling one page off centre left an empty box where
+     the previous page had just been. Back to the default overscan on both
+     surfaces. */
   const renderWindow = useMemo(() => buildPdfRenderedWindowBlock({
     centerPage: pageNumber,
     numPages,
-    overscan: isIosSurface ? 1 : undefined,
-  }), [isIosSurface, numPages, pageNumber])
+  }), [numPages, pageNumber])
 
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
@@ -792,7 +794,12 @@ export default function PdfDocumentBlock({
     undoLastAnnotation,
     saveState: annotationSaveState,
     saveError: annotationSaveError,
-  } = usePdfAnnotationsBlock({ doc: docProxy, path, enabled: countsAsReading })
+  } = usePdfAnnotationsBlock({
+    doc: docProxy,
+    path,
+    enabled: countsAsReading,
+    originalByteLength: fileSizeBytes ?? 0,
+  })
 
   /* Uncropped geometry per page. Annotations are stored in full-page PDF
      coordinates so that toggling the margin crop never moves an existing mark
@@ -829,6 +836,37 @@ export default function PdfDocumentBlock({
       thickness: inkThickness,
     })
   }, [addAnnotation, inkColor, inkOpacity, inkThickness])
+
+  /* The Pencil's highlighter: rects come from hit-testing the text layer along
+     the stroke, so they are already snapped to the line. Only one page can be
+     involved, because the stroke happened inside that page's element. */
+  const commitPenHighlightBlock = useCallback((page: number, rects: DOMRect[], text: string) => {
+    const element = pageRefs.current.get(page)
+    if (!element || rects.length === 0) return
+
+    const pageRect = element.getBoundingClientRect()
+    const geometry = geometryForBlock(page)
+    const quadPoints: number[] = []
+
+    for (const rect of rects) {
+      quadPoints.push(...screenRectToQuadPointsBlock({
+        left: rect.left - pageRect.left,
+        top: rect.top - pageRect.top,
+        width: rect.width,
+        height: rect.height,
+      }, geometry))
+    }
+
+    addAnnotation({
+      kind: 'highlight',
+      id: `hl-${page}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      pageNumber: page,
+      quadPoints,
+      color: resolvePdfMarkColorBlock(markStyle.highlightColorKey).rgb,
+      opacity: HIGHLIGHT_OPACITY_BLOCK,
+      text,
+    })
+  }, [addAnnotation, geometryForBlock, markStyle.highlightColorKey])
 
   /* Selection -> highlight. Rects are grouped by the page element that
      contains them, so a selection running across a page break produces one
@@ -1165,6 +1203,8 @@ export default function PdfDocumentBlock({
                       paperTheme={paperTheme}
                       deferRaster={gestureActive}
                       isPrimary={pageNum === pageNumber}
+                      penTool={markStyle.penTool}
+                      onCommitHighlight={commitPenHighlightBlock}
                       geometry={geometryForBlock(pageNum)}
                       annotations={annotations}
                       inkColor={inkColor}
@@ -1174,11 +1214,14 @@ export default function PdfDocumentBlock({
                   ) : (
                     <div
                       aria-hidden="true"
-                      style={{ minHeight: `${pageHeightForBlock(pageNum)}px` }}
-                      className="flex items-center justify-center bg-background text-xs text-muted-foreground shadow-[0_1px_6px_rgba(0,0,0,0.20)] dark:shadow-[0_1px_6px_rgba(0,0,0,0.6)]"
-                    >
-                      Page {pageNum}
-                    </div>
+                      style={{ minHeight: `${pageBoxForBlock(pageNum).height}px` }}
+                      /* Blank paper, not a labelled placeholder. A grey box
+                         with a shadow and "Page 11" printed in the middle reads
+                         as a page that failed rather than one that has not been
+                         drawn yet — and while scrolling that is the majority of
+                         what you see. */
+                      className="bg-white shadow-[0_1px_6px_rgba(0,0,0,0.20)] dark:bg-[#232326] dark:shadow-[0_1px_6px_rgba(0,0,0,0.6)]"
+                    />
                   )}
                 </div>
               ))}

@@ -36,8 +36,10 @@ export function usePdfAnnotationsBlock(params: {
   doc: PDFDocumentProxy | null
   path: string
   enabled: boolean
+  /** Byte length of the file as loaded, so a save can prove it added data. */
+  originalByteLength: number
 }): PdfAnnotationsStateBlock {
-  const { doc, path, enabled } = params
+  const { doc, path, enabled, originalByteLength } = params
   const [annotations, setAnnotations] = useState<readonly PdfAnnotationDraftBlock[]>([])
   const [saveState, setSaveState] = useState<PdfAnnotationsStateBlock['saveState']>('idle')
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -67,6 +69,7 @@ export function usePdfAnnotationsBlock(params: {
       doc,
       path,
       drafts: pending,
+      originalByteLength,
     })
 
     if (outcome.status === 'unwritable') {
@@ -78,7 +81,7 @@ export function usePdfAnnotationsBlock(params: {
     for (const item of pending) savedIdsRef.current.add(item.id)
     setSaveState('saved')
     setSaveError(null)
-  }, [doc, path])
+  }, [doc, originalByteLength, path])
 
   const scheduleSaveBlock = useCallback(() => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current)

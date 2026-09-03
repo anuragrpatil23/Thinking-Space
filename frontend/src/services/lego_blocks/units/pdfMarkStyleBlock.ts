@@ -26,6 +26,17 @@ export const PDF_MARK_PALETTE_BLOCK: readonly PdfMarkColorBlock[] = [
   { key: 'ink', label: 'Ink', rgb: [32, 32, 36] },
 ]
 
+/* What the Pencil does when it touches the page.
+
+   There was no tool at first, on the reasoning that "a pen touching the page is
+   unambiguous intent." It is not. A stylus dragged along a line of text means
+   *highlight this* at least as often as *draw here*, and no heuristic separates
+   them reliably — which is why Preview, Books, Notes and GoodNotes all resolve
+   it with a tool picker rather than by guessing. Without one there was no way
+   to highlight with the Pencil at all: dragging across a sentence drew a line
+   through it and the reader had to switch to a finger to select. */
+export type PdfPenToolBlock = 'pen' | 'highlighter'
+
 export type PdfPenTypeBlock = 'pen' | 'marker'
 
 export interface PdfPenPresetBlock {
@@ -62,6 +73,7 @@ export function resolvePdfStrokeThicknessBlock(penType: PdfPenTypeBlock, nib: Pd
 }
 
 export interface PdfMarkStyleBlock {
+  penTool: PdfPenToolBlock
   penColorKey: string
   penType: PdfPenTypeBlock
   nib: PdfNibBlock
@@ -69,6 +81,7 @@ export interface PdfMarkStyleBlock {
 }
 
 export const DEFAULT_PDF_MARK_STYLE_BLOCK: PdfMarkStyleBlock = {
+  penTool: 'pen',
   penColorKey: 'red',
   penType: 'pen',
   nib: 'medium',
@@ -91,6 +104,9 @@ export function readPdfMarkStyleBlock(): PdfMarkStyleBlock {
     if (!raw) return DEFAULT_PDF_MARK_STYLE_BLOCK
     const parsed = JSON.parse(raw) as Partial<PdfMarkStyleBlock>
     return {
+      penTool: parsed.penTool === 'highlighter' || parsed.penTool === 'pen'
+        ? parsed.penTool
+        : DEFAULT_PDF_MARK_STYLE_BLOCK.penTool,
       penColorKey: PDF_MARK_PALETTE_BLOCK.some((c) => c.key === parsed.penColorKey)
         ? parsed.penColorKey as string
         : DEFAULT_PDF_MARK_STYLE_BLOCK.penColorKey,
