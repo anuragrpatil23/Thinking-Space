@@ -8,13 +8,6 @@ import {
   type ReaderChromeStateBlock,
 } from '@/services/lego_blocks/units/readerChromeVisibilityBlock'
 import {
-  applyPdfCropToMetricsBlock,
-  computePdfCropBoxBlock,
-  mergePdfCropBoxesBlock,
-  readPdfTextItemBoxBlock,
-  selectPdfCropSamplePagesBlock,
-} from '@/services/lego_blocks/units/pdfMarginCropBlock'
-import {
   applyPdfPaperThemeToImageDataBlock,
   isPdfPaperThemeBlock,
 } from '@/services/lego_blocks/units/pdfPaperThemeBlock'
@@ -76,75 +69,6 @@ describe('readerChromeVisibilityBlock', () => {
       })
     }
     expect(state.visible).toBe(true)
-  })
-})
-
-describe('pdfMarginCropBlock', () => {
-  const LETTER = { width: 612, height: 792 }
-
-  it('reads a text item box from a pdf.js transform', () => {
-    const box = readPdfTextItemBoxBlock({ transform: [12, 0, 0, 12, 90, 700], width: 300, str: 'x' })
-    expect(box).toEqual({ left: 90, bottom: 700, width: 300, height: 12 })
-  })
-
-  it('ignores whitespace-only items, which would widen the box for nothing', () => {
-    expect(readPdfTextItemBoxBlock({ transform: [12, 0, 0, 12, 0, 0], width: 500, str: '   ' })).toBeNull()
-  })
-
-  it('derives margins from the text block', () => {
-    const crop = computePdfCropBoxBlock({
-      itemBoxes: [
-        { left: 90, bottom: 100, width: 432, height: 12 },
-        { left: 90, bottom: 680, width: 432, height: 12 },
-      ],
-      pageMetrics: LETTER,
-    })
-    expect(crop.left).toBeCloseTo(78, 0)
-    expect(crop.right).toBeCloseTo(78, 0)
-    expect(crop.bottom).toBeCloseTo(88, 0)
-  })
-
-  it('refuses to crop more than 40% of an axis', () => {
-    const crop = computePdfCropBoxBlock({
-      itemBoxes: [{ left: 400, bottom: 400, width: 10, height: 10 }],
-      pageMetrics: LETTER,
-    })
-    expect(crop.left).toBeLessThanOrEqual(LETTER.width * 0.4)
-    expect(crop.top).toBeLessThanOrEqual(LETTER.height * 0.4)
-  })
-
-  it('ignores a crop too small to be worth a layout change', () => {
-    const crop = computePdfCropBoxBlock({
-      itemBoxes: [{ left: 4, bottom: 4, width: 604, height: 784 }],
-      pageMetrics: LETTER,
-    })
-    expect(crop).toEqual({ left: 0, right: 0, top: 0, bottom: 0 })
-  })
-
-  it('merges by taking the most conservative edge, so no sampled page loses content', () => {
-    const merged = mergePdfCropBoxesBlock([
-      { left: 80, right: 80, top: 60, bottom: 60 },
-      { left: 40, right: 90, top: 70, bottom: 50 },
-    ])
-    expect(merged).toEqual({ left: 40, right: 80, top: 60, bottom: 50 })
-  })
-
-  it('samples a spread rather than the front matter', () => {
-    const pages = selectPdfCropSamplePagesBlock(149)
-    expect(pages.length).toBeGreaterThan(1)
-    expect(Math.max(...pages)).toBeGreaterThan(100)
-    expect(pages.every((page) => page >= 1 && page <= 149)).toBe(true)
-  })
-
-  it('returns every page when the document is smaller than the sample', () => {
-    expect(selectPdfCropSamplePagesBlock(3)).toEqual([1, 2, 3])
-  })
-
-  it('shrinks metrics into cropped space, and refuses a crop that would invert them', () => {
-    expect(applyPdfCropToMetricsBlock(LETTER, { left: 90, right: 90, top: 70, bottom: 70 }))
-      .toEqual({ width: 432, height: 652 })
-    expect(applyPdfCropToMetricsBlock(LETTER, { left: 400, right: 400, top: 0, bottom: 0 }))
-      .toEqual(LETTER)
   })
 })
 

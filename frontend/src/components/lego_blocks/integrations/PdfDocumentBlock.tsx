@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
-import { ChevronLeft, ChevronRight, Crop, Highlighter, Maximize2, PenLine, RefreshCw, ScanLine, Undo2, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Highlighter, RefreshCw, Undo2 } from 'lucide-react'
 import { Document, pdfjs } from 'react-pdf'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import PdfJsWorkerBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
@@ -9,6 +9,7 @@ import pdfWorkerSrcBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import PdfPageCanvasBlock from '@/components/lego_blocks/units/PdfPageCanvasBlock'
 import PdfPageScrubberBlock from '@/components/lego_blocks/units/PdfPageScrubberBlock'
+import PdfZoomMenuBlock from '@/components/lego_blocks/units/PdfZoomMenuBlock'
 import type { PdfAnnotationToolBlock } from '@/components/lego_blocks/units/PdfAnnotationOverlayBlock'
 import { usePdfAnnotationsBlock } from '@/components/lego_blocks/hooks/shared/usePdfAnnotationsBlock'
 import {
@@ -26,19 +27,14 @@ import {
   computeZoomScrollAnchorBlock,
   DEFAULT_PDF_NATURAL_PAGE_METRICS_BLOCK,
   resolvePdfPageMetricsBlock,
-  type PdfNaturalPageMetricsBlock,
   type PdfZoomModeBlock,
 } from '@/services/lego_blocks/units/pdfViewportBlock'
 import {
   computePdfRasterPlanBlock,
   resolvePdfRasterPixelBudgetBlock,
 } from '@/services/lego_blocks/units/pdfRasterBudgetBlock'
-import { usePdfMarginCropBlock } from '@/components/lego_blocks/hooks/shared/usePdfMarginCropBlock'
 import { useReaderChromeVisibilityBlock } from '@/components/lego_blocks/hooks/shared/useReaderChromeVisibilityBlock'
-import {
-  applyPdfCropToMetricsBlock,
-  EMPTY_PDF_CROP_BOX_BLOCK,
-} from '@/services/lego_blocks/units/pdfMarginCropBlock'
+import { EMPTY_PDF_CROP_BOX_BLOCK } from '@/services/lego_blocks/units/pdfMarginCropBlock'
 import {
   PDF_PAPER_THEME_LABELS_BLOCK,
   PDF_PAPER_THEMES_BLOCK,
@@ -170,28 +166,14 @@ export default function PdfDocumentBlock({
   const [viewportHeight, setViewportHeight] = useState(0)
   const [renderNonce, setRenderNonce] = useState(0)
   const [docProxy, setDocProxy] = useState<PDFDocumentProxy | null>(null)
-  const [cropMargins, setCropMargins] = useState(true)
   const [annotationTool, setAnnotationTool] = useState<PdfAnnotationToolBlock>('none')
   const [paperTheme, setPaperTheme] = useState<PdfPaperThemeBlock>(readPdfPaperThemeBlock)
 
-  const { metricsByPage: rawMetricsByPage, fallbackMetrics: rawFallbackMetrics } =
-    usePdfPageMetricsBlock(docProxy)
-  const detectedCrop = usePdfMarginCropBlock(docProxy, cropMargins)
-  const crop = cropMargins ? detectedCrop : EMPTY_PDF_CROP_BOX_BLOCK
+  const { metricsByPage, fallbackMetrics } = usePdfPageMetricsBlock(docProxy)
 
-  /* Everything downstream — fit scale, placeholder heights, raster budget —
-     works in cropped space and never has to know a crop happened. */
-  const metricsByPage = useMemo(() => {
-    const cropped = new Map<number, PdfNaturalPageMetricsBlock>()
-    for (const [page, metrics] of rawMetricsByPage) {
-      cropped.set(page, applyPdfCropToMetricsBlock(metrics, crop))
-    }
-    return cropped
-  }, [crop, rawMetricsByPage])
-  const fallbackMetrics = useMemo(
-    () => (rawFallbackMetrics ? applyPdfCropToMetricsBlock(rawFallbackMetrics, crop) : null),
-    [crop, rawFallbackMetrics],
-  )
+  /* The annotation layer still speaks in crop terms so its geometry stays
+     general, but the reader no longer trims: an empty crop is the identity. */
+  const crop = EMPTY_PDF_CROP_BOX_BLOCK
 
   useEffect(() => {
     let cancelled = false
@@ -722,8 +704,8 @@ export default function PdfDocumentBlock({
   const geometryForBlock = useCallback((page: number): PdfPageGeometryBlock => {
     const natural = resolvePdfPageMetricsBlock({
       page,
-      metricsByPage: rawMetricsByPage,
-      fallbackMetrics: rawFallbackMetrics,
+      metricsByPage,
+      fallbackMetrics,
     })
     return {
       naturalWidth: natural.width,
@@ -731,7 +713,7 @@ export default function PdfDocumentBlock({
       scale: pageBoxForBlock(page).scale,
       crop,
     }
-  }, [crop, pageBoxForBlock, rawFallbackMetrics, rawMetricsByPage])
+  }, [crop, fallbackMetrics, metricsByPage, pageBoxForBlock])
 
   const commitInkBlock = useCallback((page: number, points: PointBlock[]) => {
     const flat: number[] = []
@@ -863,16 +845,6 @@ export default function PdfDocumentBlock({
 
         <div className="mx-1 h-5 w-px bg-border/70" />
 
-        <Button
-          type="button"
-          variant={cropMargins ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setCropMargins((prev) => !prev)}
-          title="Trim the printed margins so the text block fills the width"
-        >
-          <Crop className="mr-1 h-3.5 w-3.5" />
-          Trim
-        </Button>
 
         <select
           value={paperTheme}
@@ -893,20 +865,10 @@ export default function PdfDocumentBlock({
           variant={annotationTool === 'highlight' ? 'default' : 'outline'}
           size="sm"
           onClick={() => setAnnotationTool((prev) => (prev === 'highlight' ? 'none' : 'highlight'))}
-          title="Highlight: select text and it is marked"
+          title="Selecting text marks it. A Pencil always draws, no mode needed."
         >
           <Highlighter className="mr-1 h-3.5 w-3.5" />
           Highlight
-        </Button>
-        <Button
-          type="button"
-          variant={annotationTool === 'ink' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setAnnotationTool((prev) => (prev === 'ink' ? 'none' : 'ink'))}
-          title="Draw with Apple Pencil. A finger still scrolls."
-        >
-          <PenLine className="mr-1 h-3.5 w-3.5" />
-          Draw
         </Button>
         <Button
           type="button"
@@ -934,63 +896,17 @@ export default function PdfDocumentBlock({
           </span>
         )}
 
-        {/* Zoom controls are a pointer affordance. On a touch surface pinch is
-            the zoom, and six buttons are just chrome eating a reading screen. */}
+        {/* Pinch is the zoom on touch; on a pointer surface everything lives
+            behind one button that reads the current zoom. */}
         {!immersiveChrome && (
           <>
             <div className="mx-1 h-5 w-px bg-border/70" />
-            <Button
-              type="button"
-              variant={zoomMode === 'fit-width' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => applyZoomModeBlock('fit-width')}
-              title="Fit page to container width"
-            >
-              <ScanLine className="mr-1 h-3.5 w-3.5" />
-              Fit Width
-            </Button>
-            <Button
-              type="button"
-              variant={zoomMode === 'fit-page' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => applyZoomModeBlock('fit-page')}
-              title="Fit whole page (⌘9)"
-            >
-              <Maximize2 className="mr-1 h-3.5 w-3.5" />
-              Fit Page
-            </Button>
-            <Button
-              type="button"
-              variant={zoomMode === 'actual' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => applyZoomModeBlock('actual')}
-              title="Actual size (⌘0)"
-            >
-              100%
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => adjustManualScaleBlock(-0.1)}
-              title="Zoom out"
-            >
-              <ZoomOut className="h-4 w-4" />
-            </Button>
-            <span className="min-w-[3.5rem] text-center text-xs text-muted-foreground">
-              {(displayedScale * 100).toFixed(0)}%
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => adjustManualScaleBlock(0.1)}
-              title="Zoom in"
-            >
-              <ZoomIn className="h-4 w-4" />
-            </Button>
+            <PdfZoomMenuBlock
+              zoomMode={zoomMode}
+              displayedScale={displayedScale}
+              onApplyZoomMode={applyZoomModeBlock}
+              onAdjustScale={adjustManualScaleBlock}
+            />
           </>
         )}
       </div>
@@ -1076,7 +992,6 @@ export default function PdfDocumentBlock({
                       paperTheme={paperTheme}
                       geometry={geometryForBlock(pageNum)}
                       annotations={annotations}
-                      annotationTool={annotationTool}
                       inkColor={INK_COLOR_BLOCK}
                       inkThickness={INK_THICKNESS_BLOCK}
                       onCommitInk={commitInkBlock}

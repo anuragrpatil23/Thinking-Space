@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { TextLayer } from 'pdfjs-dist'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { PdfRasterPlanBlock } from '@/services/lego_blocks/units/pdfRasterBudgetBlock'
@@ -13,9 +13,8 @@ import {
   type PdfPaperThemeBlock,
 } from '@/services/lego_blocks/units/pdfPaperThemeBlock'
 import { cn } from '@/lib/utils'
-import PdfAnnotationOverlayBlock, {
-  type PdfAnnotationToolBlock,
-} from '@/components/lego_blocks/units/PdfAnnotationOverlayBlock'
+import PdfAnnotationOverlayBlock from '@/components/lego_blocks/units/PdfAnnotationOverlayBlock'
+import { usePenInkCaptureBlock } from '@/components/lego_blocks/hooks/units/usePenInkCaptureBlock'
 import type {
   PdfAnnotationDraftBlock,
   PdfPageGeometryBlock,
@@ -61,7 +60,6 @@ interface PdfPageCanvasBlockProps {
   /** Uncropped page box in PDF units, for annotation coordinate conversion. */
   geometry?: PdfPageGeometryBlock
   annotations?: readonly PdfAnnotationDraftBlock[]
-  annotationTool?: PdfAnnotationToolBlock
   inkColor?: [number, number, number]
   inkThickness?: number
   onCommitInk?: (pageNumber: number, strokePdfPoints: PointBlock[]) => void
@@ -86,11 +84,34 @@ export default function PdfPageCanvasBlock({
   className,
   geometry,
   annotations,
-  annotationTool = 'none',
   inkColor = [250, 204, 21],
   inkThickness = 2,
   onCommitInk,
 }: PdfPageCanvasBlockProps) {
+  const livePathRef = useRef<SVGPathElement | null>(null)
+
+  /* The in-flight stroke is written straight onto the path element. A React
+     state update per pointer sample would cap the stroke at the render rate
+     rather than the pen's sample rate. */
+  const paintLiveStrokeBlock = useCallback((points: readonly { x: number; y: number }[]) => {
+    const path = livePathRef.current
+    if (!path) return
+    if (points.length === 0) {
+      path.removeAttribute('d')
+      return
+    }
+    path.setAttribute('d', points
+      .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+      .join(' '))
+  }, [])
+
+  const penHandlers = usePenInkCaptureBlock({
+    geometry,
+    enabled: Boolean(geometry && onCommitInk),
+    onPaint: paintLiveStrokeBlock,
+    onCommit: (points) => onCommitInk?.(pageNumber, points),
+  })
+
   const canvasHostRef = useRef<HTMLDivElement | null>(null)
   const textHostRef = useRef<HTMLDivElement | null>(null)
   const planKey = pdfRasterPlanKeyBlock(plan)
@@ -209,7 +230,12 @@ export default function PdfPageCanvasBlock({
         width: `${displayedWidth}px`,
         height: `${displayedHeight}px`,
         background: PDF_PAPER_THEME_BACKGROUNDS_BLOCK[paperTheme],
+        /* Let a pen event reach onPointerDown instead of being consumed as a
+           scroll gesture; touch still pans, which is what keeps finger-scroll
+           working while the pen draws. */
+        touchAction: 'pan-x pan-y',
       }}
+      {...penHandlers}
     >
       <div ref={canvasHostRef} className="h-full w-full" />
       {enableTextLayer && (
@@ -237,10 +263,9 @@ export default function PdfPageCanvasBlock({
           displayedWidth={displayedWidth}
           displayedHeight={displayedHeight}
           annotations={annotations}
-          tool={annotationTool}
           inkColor={inkColor}
           inkThickness={inkThickness}
-          onCommitInk={(points) => onCommitInk(pageNumber, points)}
+          livePathRef={livePathRef}
         />
       )}
     </div>
