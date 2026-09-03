@@ -44,7 +44,18 @@ const MAX_RASTER_SCALE_BLOCK = 8
    These are starting points chosen from the memory arithmetic, not from a
    measurement on device. Re-check them with a jetsam trace before treating
    them as settled. */
-export const IOS_MAX_PAGE_RASTER_PIXELS_BLOCK = 6_000_000
+/* Measured, not reasoned: a screen recording of real use on iPad averaged
+   18 fps with 30 stalls over 250ms and a worst case of 1.15s — while merely
+   sitting on a page, not mid-gesture. A one-second freeze is a blocked main
+   thread, and pdf.js paints on the main thread, so the ceiling here is a *time*
+   budget first and a memory budget second. 6 MP was chosen from the memory
+   arithmetic alone and is roughly a second of blocked main thread per page. */
+export const IOS_MAX_PAGE_RASTER_PIXELS_BLOCK = 2_500_000
+
+/* First-pass ceiling. A page is drawn cheap and immediately, then replaced by
+   the full-resolution pass, so the reader never waits on a blank box. Sized to
+   land in well under a frame budget's worth of work. */
+export const PREVIEW_PAGE_RASTER_PIXELS_BLOCK = 700_000
 /* 16 MP was set without measuring what it costs to produce. pdf.js rasterizes
    on the main thread, so the budget is a *time* budget as much as a memory one,
    and a 16 MP page is roughly half a second of blocked main thread. 8 MP still
@@ -151,4 +162,28 @@ export function computePdfRasterPlanBlock(params: {
    never cancels an in-flight render. */
 export function pdfRasterPlanKeyBlock(plan: PdfRasterPlanBlock): string {
   return `${plan.canvasWidth}x${plan.canvasHeight}`
+}
+
+
+/* A cheap version of a plan, for the progressive first pass. Scales both axes
+   by the same factor so the aspect ratio — and therefore the CSS-upscaled
+   result — is unchanged; only the sharpness differs. Returns null when the
+   real plan is already cheap enough that a first pass would just be extra
+   work. */
+export function derivePdfPreviewPlanBlock(
+  plan: PdfRasterPlanBlock,
+  maxPixels: number = PREVIEW_PAGE_RASTER_PIXELS_BLOCK,
+): PdfRasterPlanBlock | null {
+  const pixels = plan.canvasWidth * plan.canvasHeight
+  if (!Number.isFinite(pixels) || pixels <= maxPixels * 1.5) return null
+
+  const factor = Math.sqrt(maxPixels / pixels)
+  return {
+    ...plan,
+    rasterScale: plan.rasterScale * factor,
+    outputScale: plan.outputScale,
+    canvasWidth: Math.max(1, Math.floor(plan.canvasWidth * factor)),
+    canvasHeight: Math.max(1, Math.floor(plan.canvasHeight * factor)),
+    budgetLimited: true,
+  }
 }

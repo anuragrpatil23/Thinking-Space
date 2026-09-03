@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   computePdfRasterPlanBlock,
+  derivePdfPreviewPlanBlock,
+  PREVIEW_PAGE_RASTER_PIXELS_BLOCK,
   DESKTOP_MAX_PAGE_RASTER_PIXELS_BLOCK,
   IOS_MAX_PAGE_RASTER_PIXELS_BLOCK,
   pdfRasterPlanKeyBlock,
@@ -125,5 +127,37 @@ describe('pdfRasterPlanKeyBlock', () => {
       maxPagePixels: DESKTOP_MAX_PAGE_RASTER_PIXELS_BLOCK,
     })
     expect(pdfRasterPlanKeyBlock(near)).toBe(pdfRasterPlanKeyBlock(alsoNear))
+  })
+})
+
+describe('derivePdfPreviewPlanBlock', () => {
+  const fullPlan = computePdfRasterPlanBlock({
+    displayedScale: 2,
+    devicePixelRatio: 2,
+    pageMetrics: LETTER,
+    maxPagePixels: DESKTOP_MAX_PAGE_RASTER_PIXELS_BLOCK,
+  })
+
+  it('produces a first pass under the preview ceiling', () => {
+    const preview = derivePdfPreviewPlanBlock(fullPlan)
+    expect(preview).not.toBeNull()
+    const pixels = preview!.canvasWidth * preview!.canvasHeight
+    expect(pixels).toBeLessThanOrEqual(PREVIEW_PAGE_RASTER_PIXELS_BLOCK * 1.05)
+  })
+
+  it('keeps the aspect ratio, so the cheap pass fills the same box', () => {
+    const preview = derivePdfPreviewPlanBlock(fullPlan)!
+    expect(preview.canvasWidth / preview.canvasHeight)
+      .toBeCloseTo(fullPlan.canvasWidth / fullPlan.canvasHeight, 2)
+  })
+
+  it('skips the first pass when the real plan is already cheap', () => {
+    const cheap = computePdfRasterPlanBlock({
+      displayedScale: 0.5,
+      devicePixelRatio: 1,
+      pageMetrics: LETTER,
+      maxPagePixels: DESKTOP_MAX_PAGE_RASTER_PIXELS_BLOCK,
+    })
+    expect(derivePdfPreviewPlanBlock(cheap)).toBeNull()
   })
 })

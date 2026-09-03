@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef } from 'react'
 import { TextLayer } from 'pdfjs-dist'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { PdfRasterPlanBlock } from '@/services/lego_blocks/units/pdfRasterBudgetBlock'
-import { pdfRasterPlanKeyBlock } from '@/services/lego_blocks/units/pdfRasterBudgetBlock'
+import {
+  derivePdfPreviewPlanBlock,
+  pdfRasterPlanKeyBlock,
+} from '@/services/lego_blocks/units/pdfRasterBudgetBlock'
 import {
   EMPTY_PDF_CROP_BOX_BLOCK,
   type PdfCropBoxBlock,
@@ -157,49 +160,70 @@ export default function PdfPageCanvasBlock({
        Serializing every page equally meant the one being looked at could sit
        third in line behind two off-screen ones, which is most of why the
        viewer felt slow to draw. Overscan pages still queue. */
+    const drawPassBlock = async (
+      page: Awaited<ReturnType<typeof doc.getPage>>,
+      passPlan: typeof plan,
+    ) => {
+      /* Cropping is expressed as a viewport offset rather than by drawing a
+         sub-rectangle: pdf.js then rasters only the region we keep, so a
+         heavily cropped page costs proportionally less to render. */
+      const rasterScale = passPlan.rasterScale * passPlan.outputScale
+      const viewport = page.getViewport({
+        scale: rasterScale,
+        offsetX: -crop.left * rasterScale,
+        offsetY: -crop.top * rasterScale,
+      })
+
+      /* Render into a detached canvas. The one already on screen keeps its
+         pixels until this resolves, which is what removes the blank frame. */
+      const canvas = document.createElement('canvas')
+      canvas.width = passPlan.canvasWidth
+      canvas.height = passPlan.canvasHeight
+      canvas.style.display = 'block'
+      canvas.style.width = '100%'
+      canvas.style.height = '100%'
+
+      const context = canvas.getContext('2d', { alpha: false })
+      if (!context) return
+
+      const task = page.render({ canvas, canvasContext: context, viewport })
+      renderTask = task
+      await task.promise
+      if (cancelled) return
+
+      /* One pass over the bitmap, not a CSS filter on a live canvas — see the
+         header of pdfPaperThemeBlock for why that distinction is load-bearing
+         on iOS. */
+      if (paperTheme !== 'original') {
+        const image = context.getImageData(0, 0, canvas.width, canvas.height)
+        applyPdfPaperThemeToImageDataBlock(image.data, paperTheme)
+        context.putImageData(image, 0, 0)
+      }
+
+      host.replaceChildren(canvas)
+    }
+
     const runBlock = async () => {
       try {
         if (cancelled) return
         const page = await doc.getPage(pageNumber)
         if (cancelled) return
 
-        /* Cropping is expressed as a viewport offset rather than by drawing a
-           sub-rectangle: pdf.js then rasters only the region we keep, so a
-           heavily cropped page costs proportionally less to render. */
-        const rasterScale = plan.rasterScale * plan.outputScale
-        const viewport = page.getViewport({
-          scale: rasterScale,
-          offsetX: -crop.left * rasterScale,
-          offsetY: -crop.top * rasterScale,
-        })
-
-        /* Render into a detached canvas. The one already on screen keeps its
-           pixels until this resolves, which is what removes the blank frame. */
-        const canvas = document.createElement('canvas')
-        canvas.width = plan.canvasWidth
-        canvas.height = plan.canvasHeight
-        canvas.style.display = 'block'
-        canvas.style.width = '100%'
-        canvas.style.height = '100%'
-
-        const context = canvas.getContext('2d', { alpha: false })
-        if (!context) return
-
-        const task = page.render({ canvas, canvasContext: context, viewport })
-        renderTask = task
-        await task.promise
-        if (cancelled) return
-
-        /* One pass over the bitmap, not a CSS filter on a live canvas — see the
-           header of pdfPaperThemeBlock for why that distinction is load-bearing
-           on iOS. */
-        if (paperTheme !== 'original') {
-          const image = context.getImageData(0, 0, canvas.width, canvas.height)
-          applyPdfPaperThemeToImageDataBlock(image.data, paperTheme)
-          context.putImageData(image, 0, 0)
+        /* Two passes, because a full-resolution page is hundreds of
+           milliseconds of blocked main thread and the reader should not stare
+           at nothing for that long. The cheap pass is a quarter of the work and
+           lands almost immediately, upscaled by CSS into the same box; the
+           sharp pass then replaces it in place. Yielding between them lets the
+           frame with the cheap bitmap actually get painted. */
+        const previewPlan = derivePdfPreviewPlanBlock(plan)
+        if (previewPlan) {
+          await drawPassBlock(page, previewPlan)
+          if (cancelled) return
+          await new Promise((resolve) => window.requestAnimationFrame(resolve))
+          if (cancelled) return
         }
 
-        host.replaceChildren(canvas)
+        await drawPassBlock(page, plan)
       } catch (error) {
         if (!isRenderingCancelledBlock(error)) {
           /* A page that will not raster is not worth tearing the viewer down
