@@ -59,6 +59,8 @@ interface PdfPageCanvasBlockProps {
   className?: string
   /** While a zoom gesture is in flight, hold the existing bitmap. */
   deferRaster?: boolean
+  /** The page the reader is actually on. It skips the queue. */
+  isPrimary?: boolean
   /** Uncropped page box in PDF units, for annotation coordinate conversion. */
   geometry?: PdfPageGeometryBlock
   annotations?: readonly PdfAnnotationDraftBlock[]
@@ -100,6 +102,7 @@ export default function PdfPageCanvasBlock({
   enableTextLayer = true,
   className,
   deferRaster = false,
+  isPrimary = false,
   geometry,
   annotations,
   inkColor = [250, 204, 21],
@@ -150,7 +153,11 @@ export default function PdfPageCanvasBlock({
     let cancelled = false
     let renderTask: { cancel: () => void } | null = null
 
-    void enqueueRasterBlock(async () => {
+    /* The page in front of the reader never waits behind its neighbours.
+       Serializing every page equally meant the one being looked at could sit
+       third in line behind two off-screen ones, which is most of why the
+       viewer felt slow to draw. Overscan pages still queue. */
+    const runBlock = async () => {
       try {
         if (cancelled) return
         const page = await doc.getPage(pageNumber)
@@ -201,14 +208,17 @@ export default function PdfPageCanvasBlock({
           console.warn(`PDF page ${pageNumber} failed to render`, error)
         }
       }
-    })
+    }
+
+    if (isPrimary) void runBlock()
+    else void enqueueRasterBlock(runBlock)
 
     return () => {
       cancelled = true
       renderTask?.cancel()
     }
   }, [
-    deferRaster, doc, pageNumber, planKey, cropKey, paperTheme,
+    deferRaster, isPrimary, doc, pageNumber, planKey, cropKey, paperTheme,
     crop.left, crop.top, plan.canvasHeight, plan.canvasWidth, plan.outputScale, plan.rasterScale,
   ])
 

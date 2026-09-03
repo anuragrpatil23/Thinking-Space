@@ -45,7 +45,11 @@ const MAX_RASTER_SCALE_BLOCK = 8
    measurement on device. Re-check them with a jetsam trace before treating
    them as settled. */
 export const IOS_MAX_PAGE_RASTER_PIXELS_BLOCK = 6_000_000
-export const DESKTOP_MAX_PAGE_RASTER_PIXELS_BLOCK = 16_000_000
+/* 16 MP was set without measuring what it costs to produce. pdf.js rasterizes
+   on the main thread, so the budget is a *time* budget as much as a memory one,
+   and a 16 MP page is roughly half a second of blocked main thread. 8 MP still
+   exceeds any reasonable page at fit-width on a retina display. */
+export const DESKTOP_MAX_PAGE_RASTER_PIXELS_BLOCK = 8_000_000
 
 export interface PdfRasterPlanBlock {
   /** Scale the bitmap is rasterized at, in CSS pixels per PDF unit. */

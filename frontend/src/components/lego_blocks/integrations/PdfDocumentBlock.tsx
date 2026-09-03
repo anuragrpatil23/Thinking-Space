@@ -1135,6 +1135,7 @@ export default function PdfDocumentBlock({
                       crop={crop}
                       paperTheme={paperTheme}
                       deferRaster={gestureActive}
+                      isPrimary={pageNum === pageNumber}
                       geometry={geometryForBlock(pageNum)}
                       annotations={annotations}
                       inkColor={inkColor}
