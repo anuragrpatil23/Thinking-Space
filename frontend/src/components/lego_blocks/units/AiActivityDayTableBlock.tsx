@@ -109,13 +109,33 @@ function fmtSpan(startIso: string, endIso: string): string {
   return `${a}–${b}`
 }
 
-/** Format a chain's duration as `Nh Mm`, `Nh`, `Mm`, or `<1m`. Single-instant
- *  chains (end==start) render as em-dash since "0m" reads as missing data. */
-function fmtDuration(startIso: string, endIso: string): string {
+/**
+ * Format a chain's duration as `Nh Mm`, `Nh`, `Mm`, or `<1m`. Single-instant
+ * chains render as em-dash since "0m" reads as missing data.
+ *
+ * **Active duration, not wall clock.** The column used to render
+ * `endedIso - startedIso`, which counts every gap between the sittings in a
+ * chain: eleven short visits to one book across an afternoon reported 101
+ * minutes for 22 minutes of attention. It was also redundant — the TIME column
+ * beside it already shows that span, so this cell repeated it instead of
+ * saying anything new.
+ *
+ * The correct number was already computed and carried on the chain. For an AI
+ * sitting it is the sum of inter-message gaps clamped to five minutes
+ * (`activeDurationOfWindow`); for a reading sitting it is the sum of gaps
+ * between presence signals clamped to the same five minutes
+ * (`creditReadingAttentionBlock`). Same algorithm, same constant, arrived at
+ * independently — so this is not a reading special case, and AI rows were
+ * overstated by exactly the same mechanism.
+ *
+ * Falls back to wall clock when active duration is unknown (0), which is what
+ * `sessionActiveDurationMsBlock` does for sources that carry no timing.
+ */
+function fmtDuration(startIso: string, endIso: string, activeMs = 0): string {
   const start = Date.parse(startIso)
   const end = Date.parse(endIso)
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return '—'
-  const totalMin = Math.round((end - start) / 60_000)
+  const totalMin = Math.round((activeMs > 0 ? activeMs : end - start) / 60_000)
   if (totalMin < 1) return '<1m'
   const hours = Math.floor(totalMin / 60)
   const mins = totalMin % 60
@@ -211,7 +231,7 @@ function buildDrillDownMarkdown(
     totalMsgs += c.msgCount
     lines.push(
       `| ${mdCell(fmtTime(c.startedIso))} | ${mdCell(fmtTime(c.endedIso))} | ${mdCell(
-        fmtDuration(c.startedIso, c.endedIso),
+        fmtDuration(c.startedIso, c.endedIso, c.activeDurationMs ?? 0),
       )} | ${mdCell(c.project)} | ${mdCell(c.source)} | ${mdCell(
         modelSummaryLabel(c) ?? '—',
       )} | ${c.msgCount} | ${c.sessions.length} | ${
@@ -499,7 +519,7 @@ export default function AiActivityDayTableBlock({
                       {fmtSpan(c.startedIso, c.endedIso)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/70">
-                      {fmtDuration(c.startedIso, c.endedIso)}
+                      {fmtDuration(c.startedIso, c.endedIso, c.activeDurationMs ?? 0)}
                     </td>
                     <td className="px-3 py-1.5">
                       <span className="flex items-center gap-1.5" style={{ color: color.stroke }}>

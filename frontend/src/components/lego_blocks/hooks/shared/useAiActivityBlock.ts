@@ -516,7 +516,12 @@ export function useAiActivityBlock(
         day.totalChains += 1
         day.byChainProject[c.project] =
           (day.byChainProject[c.project] ?? 0) + c.msgCount
-        const durMs = Date.parse(c.endedIso) - Date.parse(c.startedIso)
+        // Active duration, not the chain's wall-clock span — the span counts
+        // every gap between sittings, so a day of short scattered visits tinted
+        // the heatmap as if it had been spent working. Falls back to the span
+        // for sources that carry no timing.
+        const spanMs = Date.parse(c.endedIso) - Date.parse(c.startedIso)
+        const durMs = (c.activeDurationMs ?? 0) > 0 ? (c.activeDurationMs as number) : spanMs
         if (Number.isFinite(durMs) && durMs > 0) {
           day.byChainProjectDurationMs[c.project] =
             (day.byChainProjectDurationMs[c.project] ?? 0) + durMs
