@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { EditorState } from '@codemirror/state'
-import { syntaxTree } from '@codemirror/language'
+import { ensureSyntaxTree, syntaxTree } from '@codemirror/language'
 import {
   resolveEditorLanguageBlock,
   resolveFencedCodeLanguageBlock,
@@ -43,13 +43,25 @@ describe('resolveFencedCodeLanguageBlock', () => {
  *  attached as a *mounted overlay*, and neither of those descends into one — a
  *  cursor walk of a highlighted Python fence reports only `CodeText` and looks
  *  exactly like a fence that was never parsed. `resolveInner` enters the mount,
- *  so it is the only traversal that can tell the two apart. */
+ *  so it is the only traversal that can tell the two apart.
+ *
+ *  `ensureSyntaxTree` rather than `syntaxTree`, and that is what makes this
+ *  deterministic. CodeMirror parses incrementally under a time budget, and
+ *  `syntaxTree` returns whatever finished inside it — a nested grammar is
+ *  mounted as parsing reaches it, so on a slow or loaded run the fence is still
+ *  `CodeText` when the assertion reads it. That failed about one run in three
+ *  and looked exactly like the feature being broken. The real editor is
+ *  unaffected: it keeps parsing in the background and highlights progressively,
+ *  which a one-shot state read cannot wait for. */
 function resolvedNamesIn(doc: string, from: number, to: number): Set<string> {
   const state = EditorState.create({
     doc,
     extensions: [resolveEditorLanguageBlock('note.md').extension],
   })
-  const tree = syntaxTree(state)
+  // Parse the whole document before reading it; fall back to the partial tree
+  // only if even the generous budget was not enough, so a failure here is a
+  // real one rather than a timing artefact.
+  const tree = ensureSyntaxTree(state, doc.length, 10_000) ?? syntaxTree(state)
   const names = new Set<string>()
   for (let pos = from; pos < to; pos += 1) {
     names.add(tree.resolveInner(pos, 1).name)
