@@ -46,6 +46,10 @@ export default function PdfToolbarMenuBlock({
         variant="outline"
         size="sm"
         className={cn(
+          /* While the menu is open the button already reads as active, so the
+             focus ring only adds a heavy offset outline on top of it. Kept for
+             the closed state, where it is the only keyboard affordance. */
+          '[&[aria-expanded=true]]:ring-0 [&[aria-expanded=true]]:ring-offset-0 [&[aria-expanded=true]]:outline-none',
           (active || menuPosition !== null)
             && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90',
         )}

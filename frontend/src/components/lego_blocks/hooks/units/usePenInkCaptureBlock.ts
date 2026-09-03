@@ -31,6 +31,35 @@ export function usePenInkCaptureBlock(params: {
   const { geometry, enabled, onPaint, onCommit } = params
   const strokeRef = useRef<PointBlock[]>([])
   const drawingRef = useRef(false)
+  const suppressedElementRef = useRef<HTMLElement | null>(null)
+
+  /* iOS starts a text selection from a pen drag despite `preventDefault` on the
+     pointer event: WebKit drives selection and the long-press callout from its
+     own touch handling, which does not consult the pointer event's default.
+     Writing a word therefore also selected the text under it and raised the
+     Copy / Look Up / Translate bar.
+
+     The styles are written imperatively rather than through React state because
+     a re-render is a frame late and the selection has already begun by then.
+     They are scoped to the page element and lifted the moment the stroke ends,
+     so a finger can still select normally. */
+  const suppressSelectionBlock = (element: HTMLElement) => {
+    suppressedElementRef.current = element
+    element.style.userSelect = 'none'
+    element.style.webkitUserSelect = 'none'
+    element.style.setProperty('-webkit-touch-callout', 'none')
+    element.style.touchAction = 'none'
+  }
+
+  const restoreSelectionBlock = () => {
+    const element = suppressedElementRef.current
+    if (!element) return
+    suppressedElementRef.current = null
+    element.style.userSelect = ''
+    element.style.webkitUserSelect = ''
+    element.style.removeProperty('-webkit-touch-callout')
+    element.style.touchAction = ''
+  }
 
   const readPdfPointBlock = useCallback((
     clientX: number,
@@ -50,9 +79,16 @@ export function usePenInkCaptureBlock(params: {
     const point = readPdfPointBlock(event.clientX, event.clientY, event.currentTarget)
     if (!point) return
 
-    /* Claim the gesture: without this the pen also drags a text selection. */
+    /* Claim the gesture. `preventDefault` alone is not enough on iOS — see
+       suppressSelectionBlock. */
     event.preventDefault()
+    suppressSelectionBlock(event.currentTarget)
     event.currentTarget.setPointerCapture?.(event.pointerId)
+
+    /* A selection may already exist from a previous gesture; leaving it up
+       means the highlight bar hovers over the page while you are writing. */
+    const selection = window.getSelection()
+    if (selection && !selection.isCollapsed) selection.removeAllRanges()
 
     drawingRef.current = true
     strokeRef.current = [point]
@@ -81,6 +117,7 @@ export function usePenInkCaptureBlock(params: {
     if (!drawingRef.current) return
     drawingRef.current = false
     event.preventDefault()
+    restoreSelectionBlock()
 
     const points = simplifyStrokeBlock(strokeRef.current)
     strokeRef.current = []

@@ -13,20 +13,23 @@ import { PDF_MARK_PALETTE_BLOCK } from '@/services/lego_blocks/units/pdfMarkStyl
    and it needs no mode at all: the selection *is* the intent. */
 export default function PdfSelectionHighlightBarBlock({
   rect,
+  boundsTop,
   onPick,
 }: {
   /** Selection bounds in client coordinates. */
   rect: DOMRect
+  /** Top of the reading area, in client coordinates. */
+  boundsTop: number
   onPick: (colorKey: string) => void
 }) {
   const BAR_HEIGHT = 44
   const BAR_WIDTH = 236
 
-  /* Above the selection by preference, below it when the selection is near the
-     top of the window — otherwise the bar covers the very text being marked,
-     or lands off screen. */
+  /* Above the selection by preference, below it when there is no room —
+     measured against the top of the reading area rather than the window, or a
+     selection on the first visible line puts the bar on top of the toolbar. */
   const preferredTop = rect.top - BAR_HEIGHT - 10
-  const top = preferredTop < 8 ? rect.bottom + 10 : preferredTop
+  const top = preferredTop < boundsTop + 8 ? rect.bottom + 10 : preferredTop
   const left = Math.max(
     8,
     Math.min(

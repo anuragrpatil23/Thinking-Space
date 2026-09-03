@@ -8,6 +8,10 @@ export interface ContextMenuItemBlock {
   onClick: () => void
   disabled?: boolean
   destructive?: boolean
+  /* Renders a checkmark column across the whole menu. Callers used to fake
+     this by prefixing labels with '✓  ' or padding spaces, which does not line
+     up in a proportional font and indents every row whether ticked or not. */
+  checked?: boolean
 }
 
 export interface ContextMenuSeparatorBlock {
@@ -90,6 +94,9 @@ export default function ContextMenuBlock({ entries, position, onClose }: Context
             disabled={item.disabled}
             role="menuitem"
           >
+            {entries.some((other) => 'checked' in other && other.checked !== undefined) && (
+              <span className="mr-1.5 w-3 shrink-0 text-center">{item.checked ? '✓' : ''}</span>
+            )}
             {item.label}
           </button>
         )

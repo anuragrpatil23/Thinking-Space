@@ -63,7 +63,10 @@ export default function PdfMarkSettingsBlock({
            removes the border and resizes the button on press. */
         variant="outline"
         size="sm"
-        className={cn(position && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90')}
+        className={cn(
+          '[&[aria-expanded=true]]:ring-0 [&[aria-expanded=true]]:ring-offset-0 [&[aria-expanded=true]]:outline-none',
+          position && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90',
+        )}
         title="Pen and highlighter"
         aria-haspopup="dialog"
         aria-expanded={position !== null}

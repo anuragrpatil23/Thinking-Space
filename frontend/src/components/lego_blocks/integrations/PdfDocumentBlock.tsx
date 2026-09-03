@@ -952,7 +952,8 @@ export default function PdfDocumentBlock({
           label={PDF_PAPER_THEME_LABELS_BLOCK[paperTheme]}
           entries={PDF_PAPER_THEMES_BLOCK.map((theme) => ({
             key: theme,
-            label: `${paperTheme === theme ? '✓  ' : '     '}${PDF_PAPER_THEME_LABELS_BLOCK[theme]}`,
+            label: PDF_PAPER_THEME_LABELS_BLOCK[theme],
+            checked: paperTheme === theme,
             onClick: () => applyPaperThemeBlock(theme),
           }))}
         />
@@ -1009,22 +1010,25 @@ export default function PdfDocumentBlock({
               entries={[
                 {
                   key: 'fit-width',
-                  label: `${zoomMode === 'fit-width' ? '✓  ' : '     '}Fit width`,
+                  label: 'Fit width',
+                  checked: zoomMode === 'fit-width',
                   onClick: () => applyZoomModeBlock('fit-width'),
                 },
                 {
                   key: 'fit-page',
-                  label: `${zoomMode === 'fit-page' ? '✓  ' : '     '}Fit page  ⌘9`,
+                  label: 'Fit page  ⌘9',
+                  checked: zoomMode === 'fit-page',
                   onClick: () => applyZoomModeBlock('fit-page'),
                 },
                 {
                   key: 'actual',
-                  label: `${zoomMode === 'actual' ? '✓  ' : '     '}Actual size  ⌘0`,
+                  label: 'Actual size  ⌘0',
+                  checked: zoomMode === 'actual',
                   onClick: () => applyZoomModeBlock('actual'),
                 },
                 { key: 'sep', kind: 'separator' },
-                { key: 'in', label: '     Zoom in  ⌘+', onClick: () => adjustManualScaleBlock(0.1) },
-                { key: 'out', label: '     Zoom out  ⌘−', onClick: () => adjustManualScaleBlock(-0.1) },
+                { key: 'in', label: 'Zoom in  ⌘+', checked: false, onClick: () => adjustManualScaleBlock(0.1) },
+                { key: 'out', label: 'Zoom out  ⌘−', checked: false, onClick: () => adjustManualScaleBlock(-0.1) },
               ]}
             />
           </>
@@ -1090,7 +1094,7 @@ export default function PdfDocumentBlock({
                   Rendering PDF...
                 </div>
               )}
-              className="flex w-fit flex-col gap-3"
+              className="flex w-fit flex-col gap-2"
             >
               {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
                 <div
@@ -1120,7 +1124,7 @@ export default function PdfDocumentBlock({
                     <div
                       aria-hidden="true"
                       style={{ minHeight: `${pageHeightForBlock(pageNum)}px` }}
-                      className="flex items-center justify-center rounded-md border border-dashed bg-background/70 text-xs text-muted-foreground shadow-sm"
+                      className="flex items-center justify-center bg-background/70 text-xs text-muted-foreground"
                     >
                       Page {pageNum}
                     </div>
@@ -1140,6 +1144,7 @@ export default function PdfDocumentBlock({
       {selectionRect && (
         <PdfSelectionHighlightBarBlock
           rect={selectionRect}
+          boundsTop={viewportRef.current?.getBoundingClientRect().top ?? 0}
           onPick={(colorKey) => {
             applyMarkStyleBlock({ ...markStyle, highlightColorKey: colorKey })
             highlightSelectionBlock(colorKey)

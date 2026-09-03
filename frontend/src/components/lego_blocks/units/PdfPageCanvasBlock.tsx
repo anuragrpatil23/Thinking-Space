@@ -249,7 +249,10 @@ export default function PdfPageCanvasBlock({
 
   return (
     <div
-      className={cn('relative overflow-hidden rounded-md border bg-background shadow-sm', className)}
+      /* No border, no shadow, no rounding. A card per page frames every page as
+         an object to be managed; a book is a column of paper, and the seam
+         between two pages is enough to say where one ends. */
+      className={cn('relative overflow-hidden', className)}
       style={{
         width: `${displayedWidth}px`,
         height: `${displayedHeight}px`,
