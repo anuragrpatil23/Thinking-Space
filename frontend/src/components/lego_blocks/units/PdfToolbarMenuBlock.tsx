@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
    sitting side by side. A native select in particular can never match, since
    its control is drawn by the platform.
 
-   Trigger is `Button variant="outline" size="sm"` — the same call every other
+   Trigger is `Button variant="ghost" size="sm"` — the same call every other
    toolbar control makes — so height, radius, focus ring and press animation
    come from one place and stay aligned when that place changes. */
 export default function PdfToolbarMenuBlock({
@@ -38,20 +38,21 @@ export default function PdfToolbarMenuBlock({
       <Button
         ref={buttonRef}
         type="button"
-        /* Always the outline variant, with the open/active look applied as
-           colour only. Switching to `default` drops `border border-input`, so
-           the button lost 2px in each dimension the moment it was pressed and
-           every control after it shifted — the toolbar visibly twitching on
-           each click. State must never change an element's box. */
-        variant="outline"
+        /* Chromeless at rest: a reading toolbar is a row of labels, not a row
+           of boxed controls. The transparent border is load-bearing — it holds
+           the button's box constant so hover and open states change colour
+           only. An earlier version swapped between bordered and borderless
+           variants, which resized the button by 2px on press and made the whole
+           toolbar twitch. State must never change an element's box. */
+        variant="ghost"
         size="sm"
         className={cn(
           /* While the menu is open the button already reads as active, so the
              focus ring only adds a heavy offset outline on top of it. Kept for
              the closed state, where it is the only keyboard affordance. */
           '[&[aria-expanded=true]]:ring-0 [&[aria-expanded=true]]:ring-offset-0 [&[aria-expanded=true]]:outline-none',
-          (active || menuPosition !== null)
-            && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90',
+          'border border-transparent',
+          (active || menuPosition !== null) && 'bg-muted text-foreground',
         )}
         title={title}
         aria-haspopup="menu"

@@ -893,11 +893,16 @@ export default function PdfDocumentBlock({
     <div
       className={cn(
         'relative flex min-h-0 flex-col overflow-hidden',
-        /* Owns the reading surround, because the scroll container cannot —
-           see the note on the viewport below. Plain app background: Preview's
-           surround is untinted, and a grey panel inside a white app reads as a
-           misplaced control surface rather than as a desk. */
-        'bg-background',
+        /* Owns the reading surround, because the scroll container cannot — see
+           the note on the viewport below.
+
+           Explicit rather than `bg-background`, which is `240 14% 97%` in this
+           theme: a light grey, which is what kept showing up around the pages.
+           Preview's surround is white, and the page separates from it on shadow
+           alone. Dark mode gets a near-black desk with the sheets left white,
+           which is also what Preview does — a dark *page* is the Night paper
+           tone's job, not the surround's. */
+        'bg-white dark:bg-[#1c1c1e]',
         focusMode ? 'fixed inset-0 z-[70] bg-background' : 'h-full',
         className,
       )}
