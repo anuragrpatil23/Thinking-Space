@@ -144,6 +144,8 @@ export default function PdfDocumentBlock({
 }: PdfDocumentBlockProps) {
   const electronRuntime = isElectronRuntimeBlock()
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  /* The page column. This, not the scroll container, is what a pinch scales. */
+  const previewContainerRef = useRef<HTMLDivElement | null>(null)
   const pinchTouchActiveRef = useRef(false)
   /* Two fingers are down and being watched, but the pinch has not been claimed
      yet — see PINCH_ACTIVATION_PX_BLOCK. */
@@ -284,30 +286,30 @@ export default function PdfDocumentBlock({
     viewport.scrollLeft = anchor.scrollLeft
   }, [displayedScale])
 
-  /* The pinch preview scales the SCROLL CONTAINER, not the page column.
+  /* The pinch preview scales the page column.
 
-     It used to scale the column, with `will-change: transform`. That column
-     holds every rendered page in the window — on iPad, 3 pages at 2x device
-     pixel ratio — so promoting it allocated and rasterized a composited layer
-     on the order of 18 megapixels at the start of every pinch. That allocation
-     is the hitch; the raster engine never touched it, because the raster
-     engine only fixed what happens when a pinch *ends*.
+     I moved this to the scroll container earlier on the theory that promoting
+     the column allocated a huge composited layer, and asserted that as the
+     cause of the jank. That was a hypothesis stated as a finding, and it was
+     wrong in a way that is visible: scaling a scroll container scales the
+     *window*, so zooming out shrank the viewport rectangle and revealed the
+     surround around it instead of showing more pages, and the background
+     itself slid under the gesture. Preview only ever scales content.
 
-     The scroll container is exactly one viewport, so the promoted layer is
-     ~2 MP however long the document is, and it does not grow with the render
-     window. Scaling the visible region during the gesture and re-laying out on
-     release is also precisely what iOS itself does. The root clips it. */
+     Back on the column, where the geometry is correct. The surround now lives
+     on the root rather than on the scroller, so nothing but the pages moves. */
   const clearPreviewTransformBlock = () => {
-    const previewTarget = viewportRef.current
+    const previewTarget = previewContainerRef.current
     if (!previewTarget) return
     previewTarget.style.transform = ''
     previewTarget.style.transformOrigin = ''
     previewTarget.style.willChange = ''
-    previewTarget.style.touchAction = ''
+    const viewport = viewportRef.current
+    if (viewport) viewport.style.touchAction = ''
   }
 
   const applyPreviewTransformBlock = (nextScale: number) => {
-    const previewTarget = viewportRef.current
+    const previewTarget = previewContainerRef.current
     if (!previewTarget) return
     const baseScale = displayedScaleRef.current
     if (!Number.isFinite(baseScale) || baseScale <= 0) return
@@ -318,19 +320,22 @@ export default function PdfDocumentBlock({
       return
     }
 
-    /* Because the target is the viewport itself, the focal point is already in
-       the element's own coordinates — no scroll offset, no offsetParent. That
-       removed the previous origin expression, which mixed scroll offsets with
-       `offsetLeft` against a centred `w-fit` column and could put the origin in
-       the wrong place, so content slid under the fingers mid-pinch. */
+    /* The focal point is in viewport coordinates; the column's origin needs it
+       in the column's own box. Scroll offset converts viewport to content
+       space, and offsetLeft/offsetTop accounts for the column being centred
+       inside the scroller. */
     const anchor = zoomAnchorRef.current
-    const origin = anchor ? `${anchor.focalX}px ${anchor.focalY}px` : 'center center'
+    const origin = anchor
+      ? `${anchor.scrollLeft + anchor.focalX - previewTarget.offsetLeft}px ${anchor.scrollTop + anchor.focalY - previewTarget.offsetTop}px`
+      : 'top center'
 
     previewTarget.style.transform = `scale(${transformScale})`
     previewTarget.style.transformOrigin = origin
     previewTarget.style.willChange = 'transform'
+
     /* Stop the scroller competing with the pinch for the same touches. */
-    previewTarget.style.touchAction = 'none'
+    const viewport = viewportRef.current
+    if (viewport) viewport.style.touchAction = 'none'
   }
 
   /* Capture where the gesture is pointing, in viewport-local pixels, along
@@ -887,7 +892,12 @@ export default function PdfDocumentBlock({
   return (
     <div
       className={cn(
-        'relative flex min-h-0 flex-col overflow-hidden bg-card',
+        'relative flex min-h-0 flex-col overflow-hidden',
+        /* Owns the reading surround, because the scroll container cannot —
+           see the note on the viewport below. Plain app background: Preview's
+           surround is untinted, and a grey panel inside a white app reads as a
+           misplaced control surface rather than as a desk. */
+        'bg-background',
         focusMode ? 'fixed inset-0 z-[70] bg-background' : 'h-full',
         className,
       )}
@@ -1039,10 +1049,12 @@ export default function PdfDocumentBlock({
         ref={viewportRef}
         className={cn(
           'min-h-0 flex-1 overflow-auto p-3',
-          /* Near-white, not the mid grey I first used — checked against a
-             Preview screenshot, where the surround is barely tinted and the
-             page separates on shadow alone. */
-          'bg-[#f4f4f6] dark:bg-[#1b1b1d]',
+          /* Deliberately transparent. The pinch preview scales THIS element,
+             so any background painted here scales and slides with the gesture —
+             the surround visibly moving during a zoom, which Preview never
+             does because it only ever scales the pages. The surround is painted
+             by the parent instead, where the transform cannot reach it. */
+          'bg-transparent',
           /* Deliberately no top padding in focus mode: the page runs full
              bleed and scrolls under the overlay bar. Reserving the bar's
              height here is what made hiding it pointless. */
@@ -1067,7 +1079,7 @@ export default function PdfDocumentBlock({
         )}
 
         {!loading && !error && documentFile && (
-          <div className="mx-auto w-fit origin-top">
+          <div ref={previewContainerRef} className="mx-auto w-fit origin-top">
             <Document
               key={`${path}:${renderNonce}`}
               file={documentFile}
