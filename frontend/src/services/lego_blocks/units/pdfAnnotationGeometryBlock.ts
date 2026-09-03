@@ -146,10 +146,32 @@ export function toPdfStorageEntryBlock(
     for (let index = 0; index + 1 < draft.quadPoints.length; index += 2) {
       points.push({ x: draft.quadPoints[index], y: draft.quadPoints[index + 1] })
     }
+
+    /* `outlines` is not optional, whatever the presence of `quadPoints`
+       suggests. `HighlightAnnotation.createNewAppearanceStream` iterates it to
+       build the filled appearance, so omitting it throws "outlines is not
+       iterable" out of `saveDocument()` — which is what made every save fail.
+       QuadPoints alone only populates the dictionary entry; nothing would be
+       drawn even if it did save.
+
+       One polygon per quad, wound TL -> TR -> BR -> BL. QuadPoints order is
+       TL, TR, BL, BR, so using it directly draws a bow-tie. */
+    const outlines: number[][] = []
+    for (let index = 0; index + 7 < draft.quadPoints.length; index += 8) {
+      const q = draft.quadPoints
+      outlines.push([
+        q[index], q[index + 1],
+        q[index + 2], q[index + 3],
+        q[index + 6], q[index + 7],
+        q[index + 4], q[index + 5],
+      ])
+    }
+
     return {
       ...shared,
       annotationType: PDF_ANNOTATION_EDITOR_TYPE_BLOCK.HIGHLIGHT,
       quadPoints: draft.quadPoints,
+      outlines,
       rect: boundingRectBlock(points),
     }
   }
@@ -167,13 +189,75 @@ export function toPdfStorageEntryBlock(
   const [xMin, yMin, xMax, yMax] = boundingRectBlock(points)
   const pad = draft.thickness / 2
 
+  /* `paths.lines` is what the appearance stream is drawn from; `paths.points`
+     only feeds `/InkList`. Each entry is a run of 6-tuples: the first is a
+     moveto read from slots 4 and 5, and thereafter a leading NaN means "line
+     to", anything else is a cubic bezier [c1x, c1y, c2x, c2y, x, y]. Emitting
+     beziers here is what makes saved handwriting curve the way it did on
+     screen instead of arriving as a polyline of spikes. */
+  const lines: number[][] = []
+  for (const stroke of draft.inkList) {
+    const strokePoints: PointBlock[] = []
+    for (let index = 0; index + 1 < stroke.length; index += 2) {
+      strokePoints.push({ x: stroke[index], y: stroke[index + 1] })
+    }
+    if (strokePoints.length < 2) continue
+
+    const line: number[] = [NaN, NaN, NaN, NaN, strokePoints[0].x, strokePoints[0].y]
+    for (const { c1, c2, to } of buildStrokeCubicsBlock(strokePoints)) {
+      line.push(c1.x, c1.y, c2.x, c2.y, to.x, to.y)
+    }
+    lines.push(line)
+  }
+
   return {
     ...shared,
     annotationType: PDF_ANNOTATION_EDITOR_TYPE_BLOCK.INK,
     thickness: draft.thickness,
-    paths: { points: draft.inkList },
+    paths: { points: draft.inkList, lines },
     rect: [xMin - pad, yMin - pad, xMax + pad, yMax + pad],
   }
+}
+
+/* Catmull-Rom through the sampled points, expressed as cubic beziers.
+
+   Straight segments between raw samples are what made handwriting look spiky:
+   a pen samples fast enough that every tiny direction change becomes a visible
+   corner. A Catmull-Rom spline passes exactly through the points the nib
+   actually visited while curving between them, which is what ink does.
+
+   Used for both the on-screen path and the PDF appearance stream, so what is
+   saved is the same curve that was drawn. */
+export function buildStrokeCubicsBlock(
+  points: readonly PointBlock[],
+): { c1: PointBlock; c2: PointBlock; to: PointBlock }[] {
+  const cubics: { c1: PointBlock; c2: PointBlock; to: PointBlock }[] = []
+  if (points.length < 2) return cubics
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const p0 = points[index - 1] ?? points[index]
+    const p1 = points[index]
+    const p2 = points[index + 1]
+    const p3 = points[index + 2] ?? p2
+
+    cubics.push({
+      c1: { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 },
+      c2: { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 },
+      to: { x: p2.x, y: p2.y },
+    })
+  }
+  return cubics
+}
+
+export function strokeToSvgPathBlock(points: readonly PointBlock[]): string {
+  if (points.length === 0) return ''
+  if (points.length === 1) return `M${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`
+
+  const parts = [`M${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`]
+  for (const { c1, c2, to } of buildStrokeCubicsBlock(points)) {
+    parts.push(`C${c1.x.toFixed(2)} ${c1.y.toFixed(2)} ${c2.x.toFixed(2)} ${c2.y.toFixed(2)} ${to.x.toFixed(2)} ${to.y.toFixed(2)}`)
+  }
+  return parts.join(' ')
 }
 
 /* Simplify a captured stroke before it is stored.
@@ -182,7 +266,7 @@ export function toPdfStorageEntryBlock(
    them is bytes in the PDF and work for whatever opens it later. Perpendicular
    distance against the segment being built keeps corners and drops only points
    that lie along a line already being drawn. */
-export function simplifyStrokeBlock(points: readonly PointBlock[], tolerance = 0.6): PointBlock[] {
+export function simplifyStrokeBlock(points: readonly PointBlock[], tolerance = 0.25): PointBlock[] {
   if (points.length <= 2) return [...points]
 
   const kept: PointBlock[] = [points[0]]

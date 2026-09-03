@@ -18,10 +18,11 @@ import {
 import { cn } from '@/lib/utils'
 import PdfAnnotationOverlayBlock from '@/components/lego_blocks/units/PdfAnnotationOverlayBlock'
 import { usePenInkCaptureBlock } from '@/components/lego_blocks/hooks/units/usePenInkCaptureBlock'
-import type {
-  PdfAnnotationDraftBlock,
-  PdfPageGeometryBlock,
-  PointBlock,
+import {
+  strokeToSvgPathBlock,
+  type PdfAnnotationDraftBlock,
+  type PdfPageGeometryBlock,
+  type PointBlock,
 } from '@/services/lego_blocks/units/pdfAnnotationGeometryBlock'
 import './pdfTextLayerBlock.css'
 
@@ -128,9 +129,7 @@ export default function PdfPageCanvasBlock({
       path.removeAttribute('d')
       return
     }
-    path.setAttribute('d', points
-      .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
-      .join(' '))
+    path.setAttribute('d', strokeToSvgPathBlock(points))
   }, [])
 
   const penHandlers = usePenInkCaptureBlock({

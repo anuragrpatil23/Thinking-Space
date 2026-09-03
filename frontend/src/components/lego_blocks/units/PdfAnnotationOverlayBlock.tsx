@@ -1,7 +1,8 @@
 import type { Ref } from 'react'
-import type {
-  PdfAnnotationDraftBlock,
-  PdfPageGeometryBlock,
+import {
+  strokeToSvgPathBlock,
+  type PdfAnnotationDraftBlock,
+  type PdfPageGeometryBlock,
 } from '@/services/lego_blocks/units/pdfAnnotationGeometryBlock'
 
 /* Draws the marks on one page. Purely presentational — pen capture lives in
@@ -113,14 +114,17 @@ function PdfInkMarksBlock({
   return (
     <>
       {annotation.inkList.map((stroke, index) => {
-        let d = ''
+        /* Same spline the PDF appearance stream uses, so what is on screen and
+           what is in the file are the same curve. Straight segments between raw
+           samples are what made handwriting look spiky. */
+        const points = []
         for (let position = 0; position + 1 < stroke.length; position += 2) {
-          d += `${position === 0 ? 'M' : 'L'}${stroke[position].toFixed(2)} ${stroke[position + 1].toFixed(2)} `
+          points.push({ x: stroke[position], y: stroke[position + 1] })
         }
         return (
           <path
             key={index}
-            d={d.trim()}
+            d={strokeToSvgPathBlock(points)}
             fill="none"
             stroke={rgbBlock(annotation.color)}
             strokeOpacity={annotation.opacity}

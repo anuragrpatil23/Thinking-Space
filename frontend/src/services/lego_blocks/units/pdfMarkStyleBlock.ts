@@ -37,22 +37,12 @@ export const PDF_MARK_PALETTE_BLOCK: readonly PdfMarkColorBlock[] = [
    through it and the reader had to switch to a finger to select. */
 export type PdfPenToolBlock = 'pen' | 'highlighter'
 
-export type PdfPenTypeBlock = 'pen' | 'marker'
-
-export interface PdfPenPresetBlock {
-  label: string
-  /** Stroke width in PDF units. */
-  thickness: number
-  opacity: number
-}
-
-/* A marker is not just a fat pen: it is translucent, so overlapping strokes
-   build up and the text underneath survives. That is why opacity belongs to
-   the pen type rather than being its own control. */
-export const PDF_PEN_PRESETS_BLOCK: Record<PdfPenTypeBlock, PdfPenPresetBlock> = {
-  pen: { label: 'Pen', thickness: 1.6, opacity: 1 },
-  marker: { label: 'Marker', thickness: 10, opacity: 0.35 },
-}
+/* There used to be a Pen/Marker choice here. Once the Pencil gained a real
+   Highlight tool, Marker was a second highlighter that wrote ink instead of a
+   highlight — the same job done worse, and a control the reader had to reason
+   about to discover that. Drawing is drawing; the nib covers the range. */
+export const PDF_PEN_THICKNESS_BLOCK = 1.6
+export const PDF_PEN_OPACITY_BLOCK = 1
 
 export type PdfNibBlock = 'fine' | 'medium' | 'bold'
 
@@ -68,14 +58,13 @@ const NIB_MULTIPLIERS_BLOCK: Record<PdfNibBlock, number> = {
   bold: 1.8,
 }
 
-export function resolvePdfStrokeThicknessBlock(penType: PdfPenTypeBlock, nib: PdfNibBlock): number {
-  return Number((PDF_PEN_PRESETS_BLOCK[penType].thickness * NIB_MULTIPLIERS_BLOCK[nib]).toFixed(2))
+export function resolvePdfStrokeThicknessBlock(nib: PdfNibBlock): number {
+  return Number((PDF_PEN_THICKNESS_BLOCK * NIB_MULTIPLIERS_BLOCK[nib]).toFixed(2))
 }
 
 export interface PdfMarkStyleBlock {
   penTool: PdfPenToolBlock
   penColorKey: string
-  penType: PdfPenTypeBlock
   nib: PdfNibBlock
   highlightColorKey: string
 }
@@ -83,7 +72,6 @@ export interface PdfMarkStyleBlock {
 export const DEFAULT_PDF_MARK_STYLE_BLOCK: PdfMarkStyleBlock = {
   penTool: 'pen',
   penColorKey: 'red',
-  penType: 'pen',
   nib: 'medium',
   highlightColorKey: 'yellow',
 }
@@ -113,9 +101,6 @@ export function readPdfMarkStyleBlock(): PdfMarkStyleBlock {
       highlightColorKey: PDF_MARK_PALETTE_BLOCK.some((c) => c.key === parsed.highlightColorKey)
         ? parsed.highlightColorKey as string
         : DEFAULT_PDF_MARK_STYLE_BLOCK.highlightColorKey,
-      penType: parsed.penType === 'marker' || parsed.penType === 'pen'
-        ? parsed.penType
-        : DEFAULT_PDF_MARK_STYLE_BLOCK.penType,
       nib: parsed.nib === 'fine' || parsed.nib === 'medium' || parsed.nib === 'bold'
         ? parsed.nib
         : DEFAULT_PDF_MARK_STYLE_BLOCK.nib,

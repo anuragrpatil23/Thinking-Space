@@ -26,6 +26,18 @@ export type PdfPageMetricsMapBlock = ReadonlyMap<number, PdfNaturalPageMetricsBl
 const PDF_VIEWPORT_HORIZONTAL_PADDING_BLOCK = 24
 const PDF_VIEWPORT_VERTICAL_PADDING_BLOCK = 24
 const PDF_RENDER_OVERSCAN_PAGES_BLOCK = 2
+
+/* How far from the reader a page keeps the bitmap it already drew.
+
+   A single window meant a page was torn down the moment it left it, so
+   scrolling back one page showed an empty box where a rendered page had been a
+   second earlier — the reader outrunning the renderer in both directions. The
+   retain band is wider than the render band and costs nothing but memory: those
+   pages are never re-rastered, they simply keep the pixels they have. They go
+   soft after a zoom until they re-enter the render band, which is a far better
+   failure than going blank. */
+export const PDF_RETAIN_PAGES_DESKTOP_BLOCK = 6
+export const PDF_RETAIN_PAGES_IOS_BLOCK = 4
 const MIN_PDF_PAGE_HEIGHT_BLOCK = 160
 
 function isUsableMetricBlock(value: number | undefined): value is number {
@@ -278,4 +290,20 @@ export function buildPdfRenderedWindowBlock(params: {
     start: Math.max(1, centerPage - overscan),
     end: Math.min(numPages, centerPage + overscan),
   }
+}
+
+
+/* The band of pages that keep their bitmaps. Always at least as wide as the
+   render window, or a page could be asked to raster while unmounted. */
+export function buildPdfRetainedWindowBlock(params: {
+  centerPage: number
+  numPages: number
+  retain: number
+}): { start: number; end: number } {
+  const overscan = Math.max(params.retain, PDF_RENDER_OVERSCAN_PAGES_BLOCK)
+  return buildPdfRenderedWindowBlock({
+    centerPage: params.centerPage,
+    numPages: params.numPages,
+    overscan,
+  })
 }

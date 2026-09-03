@@ -6,6 +6,7 @@ import {
   screenPointToPdfBlock,
   screenRectToQuadPointsBlock,
   simplifyStrokeBlock,
+  strokeToSvgPathBlock,
   toPdfStorageEntryBlock,
   type PdfPageGeometryBlock,
 } from '@/services/lego_blocks/units/pdfAnnotationGeometryBlock'
@@ -100,6 +101,15 @@ describe('toPdfStorageEntryBlock', () => {
     expect(entry.pageIndex).toBe(2)
     expect(entry.quadPoints).toHaveLength(8)
     expect(entry.rect).toEqual([10, 80, 60, 100])
+
+    /* `outlines` is mandatory even alongside quadPoints:
+       `createNewAppearanceStream` iterates it, and omitting it throws
+       "outlines is not iterable" out of saveDocument() — which silently broke
+       every save. Wound TL -> TR -> BR -> BL, not QuadPoints order, or the
+       filled path is a bow-tie. */
+    const outlines = entry.outlines as number[][]
+    expect(outlines).toHaveLength(1)
+    expect(outlines[0]).toEqual([10, 100, 60, 100, 60, 80, 10, 80])
   })
 
   it('pads an ink rect by half the stroke width so the drawn shape is not clipped', () => {
@@ -114,8 +124,33 @@ describe('toPdfStorageEntryBlock', () => {
     })
 
     expect(entry.annotationType).toBe(PDF_ANNOTATION_EDITOR_TYPE_BLOCK.INK)
-    expect(entry.paths).toEqual({ points: [[10, 10, 30, 40]] })
     expect(entry.rect).toEqual([8, 8, 32, 42])
+
+    /* `paths.lines` is what the appearance stream is drawn from; `points` only
+       feeds /InkList. Omitting `lines` produced an ink annotation with nothing
+       visible in it. */
+    const paths = entry.paths as { points: number[][]; lines: number[][] }
+    expect(paths.points).toEqual([[10, 10, 30, 40]])
+    expect(paths.lines).toHaveLength(1)
+    // First tuple is the moveto, read from slots 4 and 5.
+    expect(paths.lines[0].slice(4, 6)).toEqual([10, 10])
+    expect(paths.lines[0].length % 6).toBe(0)
+  })
+})
+
+describe('strokeToSvgPathBlock', () => {
+  it('emits cubics rather than straight segments, so ink does not look spiky', () => {
+    const path = strokeToSvgPathBlock([
+      { x: 0, y: 0 }, { x: 10, y: 5 }, { x: 20, y: 0 }, { x: 30, y: 5 },
+    ])
+    expect(path.startsWith('M0.00 0.00')).toBe(true)
+    expect(path).toContain('C')
+    expect(path).not.toContain('L')
+  })
+
+  it('degrades safely on short input', () => {
+    expect(strokeToSvgPathBlock([])).toBe('')
+    expect(strokeToSvgPathBlock([{ x: 1, y: 2 }])).toBe('M1.00 2.00')
   })
 })
 

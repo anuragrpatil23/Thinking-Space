@@ -15,7 +15,7 @@ import PdfMarkSettingsBlock from '@/components/lego_blocks/units/PdfMarkSettings
 import PdfSelectionHighlightBarBlock from '@/components/lego_blocks/units/PdfSelectionHighlightBarBlock'
 import { useTextSelectionBlock } from '@/components/lego_blocks/hooks/units/useTextSelectionBlock'
 import {
-  PDF_PEN_PRESETS_BLOCK,
+  PDF_PEN_OPACITY_BLOCK,
   readPdfMarkStyleBlock,
   resolvePdfMarkColorBlock,
   resolvePdfStrokeThicknessBlock,
@@ -33,6 +33,9 @@ import { readPdfDocumentOrch } from '@/services/orchestrators/pdfDocumentsOrch'
 import { usePdfPageMetricsBlock } from '@/components/lego_blocks/hooks/shared/usePdfPageMetricsBlock'
 import {
   buildPdfRenderedWindowBlock,
+  buildPdfRetainedWindowBlock,
+  PDF_RETAIN_PAGES_DESKTOP_BLOCK,
+  PDF_RETAIN_PAGES_IOS_BLOCK,
   computeDisplayedPdfScaleBlock,
   computePdfPageBoxBlock,
   computeZoomScrollAnchorBlock,
@@ -196,8 +199,8 @@ export default function PdfDocumentBlock({
   }, [])
 
   const inkColor = resolvePdfMarkColorBlock(markStyle.penColorKey).rgb
-  const inkThickness = resolvePdfStrokeThicknessBlock(markStyle.penType, markStyle.nib)
-  const inkOpacity = PDF_PEN_PRESETS_BLOCK[markStyle.penType].opacity
+  const inkThickness = resolvePdfStrokeThicknessBlock(markStyle.nib)
+  const inkOpacity = PDF_PEN_OPACITY_BLOCK
   const [paperTheme, setPaperTheme] = useState<PdfPaperThemeBlock>(readPdfPaperThemeBlock)
 
   const { metricsByPage, fallbackMetrics } = usePdfPageMetricsBlock(docProxy)
@@ -653,15 +656,28 @@ export default function PdfDocumentBlock({
     (page: number) => pageBoxForBlock(page).height,
     [pageBoxForBlock],
   )
-  /* The iOS window was narrowed to +/-1 when a page could cost 6 MP. At the
-     2.5 MP ceiling a page is ~2.5x cheaper to hold and to draw, and +/-1 was
-     visibly too tight: scrolling one page off centre left an empty box where
-     the previous page had just been. Back to the default overscan on both
-     surfaces. */
+  /* Two bands, not one.
+
+     A single window is why pages kept going blank: a page was unmounted the
+     moment it left it, so scrolling back one page showed an empty box where a
+     fully rendered page had been a second earlier. Widening one window trades
+     that for memory on every page equally, which is the wrong trade — most of
+     those pages never need to be re-rastered, they just need to keep the pixels
+     they already have.
+
+     `renderWindow` is where pages raster and re-raster on zoom. `retainWindow`
+     is where they stay mounted holding the bitmap they last drew. Outside both,
+     a page is blank paper. */
   const renderWindow = useMemo(() => buildPdfRenderedWindowBlock({
     centerPage: pageNumber,
     numPages,
   }), [numPages, pageNumber])
+
+  const retainWindow = useMemo(() => buildPdfRetainedWindowBlock({
+    centerPage: pageNumber,
+    numPages,
+    retain: isIosSurface ? PDF_RETAIN_PAGES_IOS_BLOCK : PDF_RETAIN_PAGES_DESKTOP_BLOCK,
+  }), [isIosSurface, numPages, pageNumber])
 
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
@@ -1191,7 +1207,7 @@ export default function PdfDocumentBlock({
                   data-page={pageNum}
                   style={{ minHeight: `${pageHeightForBlock(pageNum)}px` }}
                 >
-                  {pageNum >= renderWindow.start && pageNum <= renderWindow.end && docProxy ? (
+                  {pageNum >= retainWindow.start && pageNum <= retainWindow.end && docProxy ? (
                     <PdfPageCanvasBlock
                       doc={docProxy}
                       pageNumber={pageNum}
@@ -1201,7 +1217,11 @@ export default function PdfDocumentBlock({
                       plan={rasterPlanForBlock(pageNum)}
                       crop={crop}
                       paperTheme={paperTheme}
-                      deferRaster={gestureActive}
+                      /* Retained-but-not-rendering pages hold their bitmap
+                         instead of re-drawing: soft after a zoom, never blank. */
+                      deferRaster={gestureActive
+                        || pageNum < renderWindow.start
+                        || pageNum > renderWindow.end}
                       isPrimary={pageNum === pageNumber}
                       penTool={markStyle.penTool}
                       onCommitHighlight={commitPenHighlightBlock}

@@ -5,12 +5,10 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
   PDF_MARK_PALETTE_BLOCK,
   PDF_NIB_LABELS_BLOCK,
-  PDF_PEN_PRESETS_BLOCK,
   resolvePdfMarkColorBlock,
   type PdfMarkStyleBlock,
   type PdfNibBlock,
   type PdfPenToolBlock,
-  type PdfPenTypeBlock,
 } from '@/services/lego_blocks/units/pdfMarkStyleBlock'
 import { cn } from '@/lib/utils'
 
@@ -138,24 +136,6 @@ export default function PdfMarkSettingsBlock({
           />
 
           {style.penTool === 'pen' && (
-          <>
-          <div className="mt-3 grid grid-cols-2 gap-1.5">
-            {(Object.keys(PDF_PEN_PRESETS_BLOCK) as PdfPenTypeBlock[]).map((penType) => (
-              <button
-                key={penType}
-                type="button"
-                onClick={() => onChange({ ...style, penType })}
-                className={cn(
-                  'rounded-md border px-2 py-1.5 text-xs transition-colors',
-                  style.penType === penType
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-input hover:bg-muted',
-                )}
-              >
-                {PDF_PEN_PRESETS_BLOCK[penType].label}
-              </button>
-            ))}
-          </div>
 
           <div className="mt-1.5 grid grid-cols-3 gap-1.5">
             {(Object.keys(PDF_NIB_LABELS_BLOCK) as PdfNibBlock[]).map((nib) => (
@@ -174,7 +154,6 @@ export default function PdfMarkSettingsBlock({
               </button>
             ))}
           </div>
-          </>
           )}
 
           <p className="mt-3 text-[11px] leading-snug text-muted-foreground">
