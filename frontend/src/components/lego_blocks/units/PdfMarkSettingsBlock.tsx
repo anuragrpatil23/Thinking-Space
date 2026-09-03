@@ -59,13 +59,14 @@ export default function PdfMarkSettingsBlock({
       <Button
         ref={buttonRef}
         type="button"
-        /* Outline always — see PdfToolbarMenuBlock: swapping to `default`
-           removes the border and resizes the button on press. */
-        variant="outline"
+        /* Chromeless, with a transparent border holding the box constant —
+           see PdfToolbarMenuBlock. */
+        variant="ghost"
         size="sm"
         className={cn(
+          'border border-transparent',
           '[&[aria-expanded=true]]:ring-0 [&[aria-expanded=true]]:ring-offset-0 [&[aria-expanded=true]]:outline-none',
-          position && 'border-primary bg-primary text-primary-foreground hover:bg-primary/90',
+          position && 'bg-muted text-foreground',
         )}
         title="Pen and highlighter"
         aria-haspopup="dialog"
