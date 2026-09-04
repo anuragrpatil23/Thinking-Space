@@ -97,6 +97,9 @@ const STRIP_SELECT_RING_GAP_PX = 7
  *  edge is what the eye tracks against the neighbouring cells, so a thicker
  *  stroke reads better tightening toward the cell than swelling away from it. */
 const STRIP_SELECT_RING_PX = 3
+/** Matches the `rounded-xl` on strip cells; the selection ring grows it by
+ *  the gap so the two curves stay concentric. */
+const STRIP_CELL_RADIUS_PX = 12
 
 /** Days shown past the end of the range in strip mode, dimmed and out of
  *  range. All the padding goes on the trailing side: the range ends on today,
@@ -1138,10 +1141,19 @@ export default function AiActivityHeatmapBlock({
                                keeps a clear gap inside it. */
                             <span
                               aria-hidden
-                              className="pointer-events-none absolute rounded-full border-foreground"
+                              className="pointer-events-none absolute border-foreground"
                               style={{
                                 inset: -STRIP_SELECT_RING_GAP_PX,
                                 borderWidth: STRIP_SELECT_RING_PX,
+                                // The ring brackets the cell, so it takes the
+                                // cell's shape: a circle around work-mix rings,
+                                // and the strip tile's own 12px radius grown by
+                                // the gap around it so the two stay concentric.
+                                // A circle around a rounded square reads as a
+                                // ring that missed.
+                                borderRadius: workMixMode
+                                  ? 9999
+                                  : STRIP_CELL_RADIUS_PX + STRIP_SELECT_RING_GAP_PX,
                               }}
                             />
                           )}

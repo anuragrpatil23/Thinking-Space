@@ -700,6 +700,14 @@ ipcMain.handle('window:context:get', (event) => {
 // forward.
 const nativeColorModeByWindowIdBlock = new Map<number, 'light' | 'dark' | 'system'>();
 
+// Which window last held focus. When the whole app is in the background there
+// is no focused window, so a report would otherwise be dropped and the native
+// vibrancy would keep the old scheme until the user clicked back in — the
+// auto light/dark flip visibly landing on focus instead of when it happened.
+// Attributing an unfocused report to the last-focused window fixes that
+// without letting a background profile window steal the material.
+let lastFocusedWindowIdBlock: number | null = null;
+
 ipcMain.handle('window:set-native-color-mode', (event, mode: unknown) => {
   const normalized = mode === 'dark' ? 'dark' : mode === 'light' ? 'light' : 'system';
   const win = BrowserWindow.fromWebContents(event.sender);
@@ -711,11 +719,21 @@ ipcMain.handle('window:set-native-color-mode', (event, mode: unknown) => {
   nativeColorModeByWindowIdBlock.set(win.id, normalized);
   if (isFirstReport) {
     win.on('focus', () => {
+      lastFocusedWindowIdBlock = win.id;
       nativeTheme.themeSource = nativeColorModeByWindowIdBlock.get(win.id) ?? 'system';
     });
-    win.on('closed', () => nativeColorModeByWindowIdBlock.delete(win.id));
+    win.on('closed', () => {
+      nativeColorModeByWindowIdBlock.delete(win.id);
+      if (lastFocusedWindowIdBlock === win.id) lastFocusedWindowIdBlock = null;
+    });
   }
-  if (win.isFocused()) {
+  const appIsUnfocused = !BrowserWindow.getFocusedWindow();
+  const ownsTheMaterial =
+    win.isFocused() ||
+    (appIsUnfocused &&
+      (lastFocusedWindowIdBlock === null || lastFocusedWindowIdBlock === win.id));
+  if (ownsTheMaterial) {
+    if (appIsUnfocused) lastFocusedWindowIdBlock = win.id;
     nativeTheme.themeSource = normalized;
   }
 });
