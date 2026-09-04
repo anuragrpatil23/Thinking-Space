@@ -1,7 +1,7 @@
 {
   "name": "thinking-space-frontend",
   "private": true,
-  "version": "2.9.2",
+  "version": "2.9.3",
   "type": "module",
   "scripts": {
     "sync:excalidraw-fonts": "node scripts/syncExcalidrawFonts.mjs",
