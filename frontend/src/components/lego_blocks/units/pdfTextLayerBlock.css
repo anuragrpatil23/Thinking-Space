@@ -10,6 +10,23 @@
    variable the component sets on this container. */
 
 .textLayer {
+  /* Load-bearing, and the reason text selection did nothing at all.
+
+     pdf.js's `setLayerDimensions` overwrites this element's width and height
+     with `round(down, var(--total-scale-factor) * Npx, var(--scale-round-x))`.
+     Upstream defines the two rounding variables on `.pdfViewer .page` — a
+     selector this trimmed sheet deliberately does not carry — so the `var()`
+     stayed unresolved, the declaration was invalid at computed-value time, and
+     `width`/`height` fell back to `auto`. On an absolutely positioned box whose
+     children are themselves absolutely positioned that computes to 0×0, and
+     `overflow: clip` then removed every span from hit-testing. The spans were
+     laid out correctly the whole time; there was simply no box to catch a
+     mouse. Measured in Electron's Chromium: 0×0 without these, 795×1029 with.
+
+     1px means "round to whole pixels", which is upstream's own default. */
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+
   position: absolute;
   inset: 0;
   overflow: clip;
