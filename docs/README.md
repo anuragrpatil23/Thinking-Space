@@ -25,6 +25,7 @@ Reference (`reference/`):
 - [ADR-005-Agent-Capabilities.md](ADR-005-Agent-Capabilities.md) — agent capability contract
 - [ADR-006-Agent-Workspace-Schema.md](ADR-006-Agent-Workspace-Schema.md) — organizer workspace schema
 - [EPIC-3-LOCAL-EXTENSION-PLATFORM.md](EPIC-3-LOCAL-EXTENSION-PLATFORM.md) — extension platform design
+- [EPIC-7-SETTINGS-REWORK.md](EPIC-7-SETTINGS-REWORK.md) — settings schema, primitives, pane consolidation, sync correctness
 - [CAPABILITY_ROLLOUT_MATRIX.md](CAPABILITY_ROLLOUT_MATRIX.md) — capability rollout state
 - [BUILD-macOS-LOCAL.md](BUILD-macOS-LOCAL.md) / [BUILD-iOS.md](BUILD-iOS.md) — packaging guides
 - [EXCALIDRAW_UPGRADE_PLAYBOOK.md](EXCALIDRAW_UPGRADE_PLAYBOOK.md), [OPS_REPO_SYNC_CHECKLIST.md](OPS_REPO_SYNC_CHECKLIST.md), [UI-ADAPTIVE-VALIDATION-MATRIX.md](UI-ADAPTIVE-VALIDATION-MATRIX.md) — occasional operations
