@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   boundingRectBlock,
+  mergeSelectionRectsBlock,
   PDF_ANNOTATION_EDITOR_TYPE_BLOCK,
   pdfPointToScreenBlock,
   screenPointToPdfBlock,
@@ -174,5 +175,51 @@ describe('simplifyStrokeBlock', () => {
   it('leaves short strokes alone', () => {
     expect(simplifyStrokeBlock([{ x: 1, y: 1 }, { x: 2, y: 2 }]))
       .toEqual([{ x: 1, y: 1 }, { x: 2, y: 2 }])
+  })
+})
+
+describe('mergeSelectionRectsBlock', () => {
+  /* The exact pair Chromium reports for one line in the middle of a multi-line
+     selection: the span's own box, and the taller selection box over it. */
+  it('collapses the duplicate rects a selection reports for one line', () => {
+    const merged = mergeSelectionRectsBlock([
+      { left: 52, top: 126, width: 660, height: 14 },
+      { left: 52, top: 125, width: 660, height: 17 },
+    ])
+
+    expect(merged).toEqual([{ left: 52, top: 125, width: 660, height: 17 }])
+  })
+
+  it('keeps separate lines separate', () => {
+    const merged = mergeSelectionRectsBlock([
+      { left: 52, top: 107, width: 667, height: 17 },
+      { left: 52, top: 126, width: 660, height: 14 },
+      { left: 52, top: 125, width: 660, height: 17 },
+      { left: 52, top: 161, width: 103, height: 17 },
+    ])
+
+    expect(merged).toHaveLength(3)
+    expect(merged.map((rect) => rect.height)).toEqual([17, 17, 17])
+  })
+
+  /* A two-column page: same band, no horizontal overlap. Merging these would
+     paint a highlight straight across the gutter. */
+  it('keeps two runs on the same line separate', () => {
+    const merged = mergeSelectionRectsBlock([
+      { left: 40, top: 100, width: 200, height: 16 },
+      { left: 320, top: 100, width: 200, height: 16 },
+    ])
+
+    expect(merged).toHaveLength(2)
+  })
+
+  it('absorbs a rect reached only after an earlier union grew', () => {
+    const merged = mergeSelectionRectsBlock([
+      { left: 0, top: 100, width: 100, height: 16 },
+      { left: 260, top: 100, width: 100, height: 16 },
+      { left: 40, top: 100, width: 280, height: 16 },
+    ])
+
+    expect(merged).toEqual([{ left: 0, top: 100, width: 360, height: 16 }])
   })
 })

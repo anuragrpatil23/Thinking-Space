@@ -24,6 +24,7 @@ import {
 } from '@/services/lego_blocks/units/pdfMarkStyleBlock'
 import { usePdfAnnotationsBlock } from '@/components/lego_blocks/hooks/shared/usePdfAnnotationsBlock'
 import {
+  mergeSelectionRectsBlock,
   screenRectToQuadPointsBlock,
   type PdfPageGeometryBlock,
   type PointBlock,
@@ -865,13 +866,15 @@ export default function PdfDocumentBlock({
     const geometry = geometryForBlock(page)
     const quadPoints: number[] = []
 
-    for (const rect of rects) {
-      quadPoints.push(...screenRectToQuadPointsBlock({
-        left: rect.left - pageRect.left,
-        top: rect.top - pageRect.top,
-        width: rect.width,
-        height: rect.height,
-      }, geometry))
+    /* Merged first: overlapping quads cancel each other under the even-odd
+       fill pdf.js writes into the appearance stream. */
+    for (const rect of mergeSelectionRectsBlock(rects.map((rect) => ({
+      left: rect.left - pageRect.left,
+      top: rect.top - pageRect.top,
+      width: rect.width,
+      height: rect.height,
+    })))) {
+      quadPoints.push(...screenRectToQuadPointsBlock(rect, geometry))
     }
 
     addAnnotation({
@@ -905,20 +908,23 @@ export default function PdfDocumentBlock({
       const pageRect = element.getBoundingClientRect()
       const geometry = geometryForBlock(page)
 
-      for (const rect of rects) {
+      const onThisPage = rects.filter((rect) => {
         const centerX = rect.left + rect.width / 2
         const centerY = rect.top + rect.height / 2
-        const inside = centerX >= pageRect.left && centerX <= pageRect.right
+        return centerX >= pageRect.left && centerX <= pageRect.right
           && centerY >= pageRect.top && centerY <= pageRect.bottom
-        if (!inside) continue
+      })
 
-        const quad = screenRectToQuadPointsBlock({
-          left: rect.left - pageRect.left,
-          top: rect.top - pageRect.top,
-          width: rect.width,
-          height: rect.height,
-        }, geometry)
-
+      /* Merged before conversion. A browser reports two overlapping rects for
+         every line in the middle of a selection, and two stacked quads cancel
+         under the even-odd fill pdf.js writes — see mergeSelectionRectsBlock. */
+      for (const rect of mergeSelectionRectsBlock(onThisPage.map((rect) => ({
+        left: rect.left - pageRect.left,
+        top: rect.top - pageRect.top,
+        width: rect.width,
+        height: rect.height,
+      })))) {
+        const quad = screenRectToQuadPointsBlock(rect, geometry)
         const existing = quadsByPage.get(page)
         if (existing) existing.push(...quad)
         else quadsByPage.set(page, [...quad])

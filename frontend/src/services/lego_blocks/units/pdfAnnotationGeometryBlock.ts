@@ -85,6 +85,70 @@ export function screenRectToQuadPointsBlock(
   ]
 }
 
+/* Collapse the duplicate rects a browser selection reports for one line.
+
+   Chromium returns *two* client rects for a line in the middle of a multi-line
+   selection — the text span's own box and the taller selection box drawn over
+   it — while the first and last lines report only one. Passed through as-is
+   that becomes two nearly identical quads, and pdf.js writes a highlight's
+   appearance stream as a single path filled with the even-odd rule (`f*`). Two
+   stacked quads therefore have winding count 2 over their overlap and are
+   filled as a *hole*: the middle lines of a highlight rendered as two hairlines
+   along the top and bottom edges with the text left unmarked, while the first
+   and last lines were solid. Read from the appearance stream of a real saved
+   file, which is what made the pattern legible.
+
+   Merging is deliberately conservative — both axes must overlap by more than
+   half the smaller extent — so the duplicates collapse while two genuinely
+   separate runs on the same line (a two-column page) stay separate quads. */
+const RECT_MERGE_OVERLAP_FRACTION_BLOCK = 0.5
+
+function overlapsEnoughBlock(aMin: number, aMax: number, bMin: number, bMax: number): boolean {
+  const overlap = Math.min(aMax, bMax) - Math.max(aMin, bMin)
+  if (overlap <= 0) return false
+  const smaller = Math.min(aMax - aMin, bMax - bMin)
+  return smaller <= 0 || overlap > smaller * RECT_MERGE_OVERLAP_FRACTION_BLOCK
+}
+
+function unionRectBlock(a: ScreenRectBlock, b: ScreenRectBlock): ScreenRectBlock {
+  const left = Math.min(a.left, b.left)
+  const top = Math.min(a.top, b.top)
+  return {
+    left,
+    top,
+    width: Math.max(a.left + a.width, b.left + b.width) - left,
+    height: Math.max(a.top + a.height, b.top + b.height) - top,
+  }
+}
+
+/** One rect per line of a selection, with the browser's duplicates unioned. */
+export function mergeSelectionRectsBlock(rects: readonly ScreenRectBlock[]): ScreenRectBlock[] {
+  const merged: ScreenRectBlock[] = []
+
+  for (const rect of rects) {
+    let candidate = rect
+    /* Absorb every rect the candidate now overlaps, not just the first: a
+       union can grow enough to reach one that did not overlap the original. */
+    for (let index = merged.length - 1; index >= 0; index -= 1) {
+      const existing = merged[index]
+      const sameBand = overlapsEnoughBlock(
+        candidate.top, candidate.top + candidate.height,
+        existing.top, existing.top + existing.height,
+      )
+      const sameRun = overlapsEnoughBlock(
+        candidate.left, candidate.left + candidate.width,
+        existing.left, existing.left + existing.width,
+      )
+      if (!sameBand || !sameRun) continue
+      candidate = unionRectBlock(candidate, existing)
+      merged.splice(index, 1)
+    }
+    merged.push(candidate)
+  }
+
+  return merged
+}
+
 /** Bounding box of a set of PDF-space points, as PDF's [xMin, yMin, xMax, yMax]. */
 export function boundingRectBlock(points: readonly PointBlock[]): [number, number, number, number] {
   let xMin = Infinity
