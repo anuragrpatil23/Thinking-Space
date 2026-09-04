@@ -20,6 +20,18 @@
   transform-origin: 0 0;
   caret-color: CanvasText;
   z-index: 1;
+  /* The page container around this layer is deliberately unselectable so a
+     drag can never grab the bitmap or the page box; the text has to opt back
+     in, or there is nothing to select at all. */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Spans sit above the end-of-content element, which is what lets that element
+   cover the page during a drag without stealing the caret from real text. */
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
 }
 
 .textLayer :is(span, br) {
@@ -42,4 +54,21 @@
 
 .textLayer ::selection {
   background: rgb(0 100 255 / 0.28);
+}
+
+/* Selection anchor. Parked just below the page until a drag starts, then moved
+   next to the selection anchor and stretched over the page by `.selecting` —
+   see pdfTextLayerSelectionBlock for why a drag needs something to land on. */
+.textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.textLayer.selecting .endOfContent {
+  top: 0;
 }

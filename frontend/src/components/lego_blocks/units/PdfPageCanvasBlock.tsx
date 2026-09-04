@@ -24,6 +24,7 @@ import {
   type PdfPageGeometryBlock,
   type PointBlock,
 } from '@/services/lego_blocks/units/pdfAnnotationGeometryBlock'
+import { attachPdfTextLayerSelectionBlock } from '@/components/lego_blocks/units/pdfTextLayerSelectionBlock'
 import './pdfTextLayerBlock.css'
 
 /* One rendered PDF page, with the bitmap decoupled from the layout box.
@@ -258,6 +259,7 @@ export default function PdfPageCanvasBlock({
 
     let cancelled = false
     let layer: { cancel: () => void } | null = null
+    let detachSelection: (() => void) | null = null
 
     void (async () => {
       try {
@@ -273,6 +275,11 @@ export default function PdfPageCanvasBlock({
 
         layer = textLayer
         await textLayer.render()
+        if (cancelled) return
+
+        /* `TextLayer` renders the spans; it does not make a mouse drag select
+           them. That half lived in pdf.js's viewer, and is reproduced here. */
+        detachSelection = attachPdfTextLayerSelectionBlock(host)
       } catch {
         /* Selection is a convenience; a page whose text layer fails is still
            readable, so this stays silent. */
@@ -282,6 +289,7 @@ export default function PdfPageCanvasBlock({
     return () => {
       cancelled = true
       layer?.cancel()
+      detachSelection?.()
       host.replaceChildren()
     }
   }, [doc, pageNumber, enableTextLayer])
@@ -298,6 +306,10 @@ export default function PdfPageCanvasBlock({
       className={cn(
         'relative overflow-hidden shadow-[0_1px_6px_rgba(0,0,0,0.20)]',
         'dark:shadow-[0_1px_6px_rgba(0,0,0,0.6)]',
+        /* Only the text layer opts back in. Without this a drag that starts on
+           the page rather than on a word selects the page box and the bitmap
+           inside it — the blue block over the whole sheet. */
+        'select-none',
         className,
       )}
       style={{
