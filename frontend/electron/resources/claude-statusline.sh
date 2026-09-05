@@ -23,6 +23,28 @@ mkdir -p "$(dirname "$out")"
 # this on window focus and must never catch a half-written file.
 printf '%s' "$input" > "$out.tmp" && mv "$out.tmp" "$out"
 
+# Per-session copy, keyed by session id.
+#
+# The file above is last-writer-wins: with two Claude Code sessions open, each
+# overwrites the other. That is harmless for rate limits (account-wide, same
+# number from any session) but makes every session-scoped field in the payload —
+# cost, context window, session name, lines changed — a coin flip between
+# whichever rendered most recently. Keyed by session, they all become readable.
+#
+# sed rather than jq so this keeps working on a machine without it. A payload
+# with no session_id simply skips this write.
+session_id=$(printf '%s' "$input" | sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p' | head -1)
+case "$session_id" in
+  # Guard the filename: it lands in a path, and the value is external input.
+  *[!A-Za-z0-9-]* | '') ;;
+  *)
+    sessions="$HOME/.thinking-space/claude-sessions"
+    mkdir -p "$sessions"
+    printf '%s' "$input" > "$sessions/$session_id.json.tmp" \
+      && mv "$sessions/$session_id.json.tmp" "$sessions/$session_id.json"
+    ;;
+esac
+
 # Display only — jq is optional, and its absence never breaks the card.
 if command -v jq >/dev/null 2>&1; then
   printf '%s' "$input" | jq -r '[

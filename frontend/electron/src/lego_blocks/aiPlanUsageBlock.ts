@@ -446,6 +446,50 @@ export function claudeStatusLineModeBlock(): ClaudeStatusLineModeBlock {
   }
 }
 
+/**
+ * Per-session snapshots the status line writes, one file per Claude Code
+ * session.
+ *
+ * The shared bridge file is last-writer-wins, which is fine for rate limits
+ * (account-wide) and useless for everything else in the payload — cost, context
+ * window, session name, lines changed are all session-scoped, so from a shared
+ * file they belong to whichever session rendered most recently. Keyed by
+ * session id they become readable per session.
+ */
+export const CLAUDE_SESSIONS_DIR_BLOCK = path.join(
+  os.homedir(),
+  '.thinking-space',
+  'claude-sessions',
+);
+
+/** A snapshot older than this is from a session nobody is coming back to. */
+const SESSION_SNAPSHOT_RETENTION_MS_BLOCK = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Drop snapshots for sessions that stopped reporting a month ago.
+ *
+ * The status line writes one file per session on every assistant message, so
+ * without a retention policy the directory only ever grows. Pruning lives here
+ * rather than in the script to keep the spawned-per-message path minimal and
+ * the policy in code we can change and reason about.
+ */
+export function pruneClaudeSessionSnapshotsBlock(nowMs: number = Date.now()): void {
+  try {
+    for (const name of fs.readdirSync(CLAUDE_SESSIONS_DIR_BLOCK)) {
+      if (!name.endsWith('.json')) continue;
+      const file = path.join(CLAUDE_SESSIONS_DIR_BLOCK, name);
+      try {
+        const { mtimeMs } = fs.statSync(file);
+        if (nowMs - mtimeMs > SESSION_SNAPSHOT_RETENTION_MS_BLOCK) fs.unlinkSync(file);
+      } catch {
+        // A file that vanished under us, or one we can't stat — leave it.
+      }
+    }
+  } catch {
+    // Directory absent until the status line runs at least once.
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Claude — reading the bridge file
 // ---------------------------------------------------------------------------
@@ -523,6 +567,10 @@ export interface AiPlanUsageReadingBlock {
 }
 
 export async function readAiPlanUsageBlock(): Promise<AiPlanUsageReadingBlock> {
+  // Cheap directory scan, and this is the one path guaranteed to run while the
+  // snapshots are being written. Nothing reads them yet — they are being
+  // collected now so the history exists when something does.
+  pruneClaudeSessionSnapshotsBlock();
   const codex = await readCodexPlanUsageBlock();
   return {
     providers: [readClaudePlanUsageBlock(), codex],
