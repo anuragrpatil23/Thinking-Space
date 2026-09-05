@@ -31,10 +31,11 @@ interface AnchorElementProps {
 // top of the stack so their expansion pushes everything below in one shot.
 const ANCHOR_ELEMENTS = {
   welcome: { w: 640, h: 200, offsetY: -540 },
-  // Heads the cascade at AI-Activity's anchor and pushes it down only when it
-  // actually renders — a person using neither Claude Code nor Codex sees the
-  // canvas exactly as before.
-  planUsage: { w: 880, gap: 24 },
+  // Heads the cascade and pushes AI activity down only when it actually
+  // renders — a person using neither Claude Code nor Codex sees the canvas
+  // exactly as before. Its own offsetY sits lower than AI-Activity's old
+  // anchor so the card clears the mission statement rather than crowding it.
+  planUsage: { w: 880, gap: 40, offsetY: -300 },
   aiActivity: { w: 880, initialH: 620, offsetY: -380 },
   thisWeek: { w: 880, initialH: 700, gap: 40 },
   wakeList: { w: 880, gap: 40 },
@@ -280,9 +281,14 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
     h: welcomeSpec.h,
   }
   const planUsageSpec = ANCHOR_ELEMENTS.planUsage
-  const planUsageTop = centerY + aiSpec.offsetY
+  const planUsageTop = centerY + planUsageSpec.offsetY
+  // Falls back to AI-Activity's own anchor when the card is absent, so hiding
+  // it restores the previous layout exactly rather than leaving the stack
+  // parked at the card's lower offset.
   const aiActivityTop =
-    planUsageHeight > 0 ? planUsageTop + planUsageHeight + planUsageSpec.gap : planUsageTop
+    planUsageHeight > 0
+      ? planUsageTop + planUsageHeight + planUsageSpec.gap
+      : centerY + aiSpec.offsetY
   const aiActivityBottom = aiActivityTop + aiActivityHeight
   const thisWeekTop = aiActivityBottom + thisWeekSpec.gap
   const thisWeekBottom = thisWeekTop + thisWeekHeight
