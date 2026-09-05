@@ -150,7 +150,20 @@ function buildCodexEnvBlock(binary: string): NodeJS.ProcessEnv {
     path.join(home, '.local', 'bin'),
   ];
   const merged = [...extraPaths, ...(process.env.PATH ?? '').split(':').filter(Boolean)].join(':');
-  return { ...process.env, PATH: merged };
+  return {
+    ...process.env,
+    PATH: merged,
+    // Pin the read to the person's own Codex login.
+    //
+    // codexProfileBlock reassigns `process.env.CODEX_HOME` to whichever agent
+    // profile is active, and a child would inherit it — which sent this read at
+    // a profile whose token no longer parses and came back 401, while the same
+    // code worked from a terminal. Detection already looks at `~/.codex`, so
+    // inheriting the override also meant deciding "Codex is installed" from one
+    // account and reporting usage for another. The card is about the plan the
+    // person is spending, not the profile the app happens to run agents under.
+    CODEX_HOME: CODEX_HOME_BLOCK,
+  };
 }
 
 interface PendingRequestBlock {
