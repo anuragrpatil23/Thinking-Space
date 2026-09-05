@@ -40,7 +40,7 @@ export interface PdfAttentionStateBlock {
   maxPage: number
 }
 
-export function createPdfAttentionBlock(sinceMs: number): PdfAttentionStateBlock {
+export function createPdfAttentionBlock(sinceMs: number | null): PdfAttentionStateBlock {
   return { closed: [], current: null, pendingSinceMs: sinceMs, maxPage: 0 }
 }
 

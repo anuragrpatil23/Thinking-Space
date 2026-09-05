@@ -95,14 +95,20 @@ describe('useReadingAttentionBlock', () => {
     signal(t0 + 30_000)
     signal(t0 + 60_000)
     signal(t0 + 90_000)
-    vi.setSystemTime(t0 + 95_000)
+    signal(t0 + 120_000)
+    vi.setSystemTime(t0 + 125_000)
     act(() => { view.unmount() })
 
     expect(appended).toHaveLength(1)
     expect(appended[0].filePath).toBe('notes/foo.md')
     expect(appended[0].source).toBe('reading-md')
     expect(appended[0].method).toBe('measured')
-    expect(appended[0].activeMs).toBe(95_000)
+    // Three gaps of 30s between four signals. The 30s before the first and the
+    // 5s after the last were never observed, so neither is credited, and the
+    // record's own extent is first-signal to last-signal.
+    expect(appended[0].activeMs).toBe(90_000)
+    expect(appended[0].startMs).toBe(t0 + 30_000)
+    expect(appended[0].endMs).toBe(t0 + 120_000)
   })
 
   it('writes nothing for a glance under the floor', () => {
@@ -118,17 +124,20 @@ describe('useReadingAttentionBlock', () => {
     const t0 = Date.now()
     const view = render(<Reader path="notes/foo.md" attending />)
     signal(t0 + 60_000)
-    vi.setSystemTime(t0 + 120_000)
+    signal(t0 + 150_000)
+    vi.setSystemTime(t0 + 200_000)
     act(() => { view.rerender(<Reader path="notes/foo.md" attending={false} />) })
     expect(appended).toHaveLength(1)
-    expect(appended[0].activeMs).toBe(120_000)
+    expect(appended[0].activeMs).toBe(90_000)
+    expect(appended[0].endMs).toBe(t0 + 150_000)
   })
 
   it('tags an excalidraw path as a drawing span', () => {
     const t0 = Date.now()
     const view = render(<Reader path="notes/board.excalidraw.md" attending />)
-    signal(t0 + 90_000)
-    vi.setSystemTime(t0 + 95_000)
+    signal(t0 + 30_000)
+    signal(t0 + 120_000)
+    vi.setSystemTime(t0 + 125_000)
     act(() => { view.unmount() })
     expect(appended[0]?.source).toBe('reading-draw')
   })
@@ -143,8 +152,19 @@ describe('useReadingAttentionBlock', () => {
         <Reader path="notes/overlay.md" attending />
       </>,
     )
-    signal(t0 + 90_000)
-    vi.setSystemTime(t0 + 95_000)
+    // Dispatch into BOTH surfaces, which is the situation the arbiter exists
+    // for: two mounted readers, both active, both seeing presence.
+    const signalBoth = (atMs: number) => {
+      vi.setSystemTime(atMs)
+      act(() => {
+        document.querySelectorAll('[data-testid="surface"]').forEach(el => {
+          el.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+        })
+      })
+    }
+    signalBoth(t0 + 30_000)
+    signalBoth(t0 + 120_000)
+    vi.setSystemTime(t0 + 125_000)
     act(() => { view.unmount() })
 
     const paths = appended.map(r => r.filePath)
@@ -154,21 +174,24 @@ describe('useReadingAttentionBlock', () => {
   it('flushes the in-progress span when the app hides', () => {
     const t0 = Date.now()
     render(<Reader path="notes/foo.md" attending />)
-    signal(t0 + 90_000)
-    vi.setSystemTime(t0 + 100_000)
+    signal(t0 + 30_000)
+    signal(t0 + 120_000)
+    vi.setSystemTime(t0 + 130_000)
     act(() => { window.dispatchEvent(new Event('pagehide')) })
 
     expect(appended).toHaveLength(1)
-    expect(appended[0].activeMs).toBe(100_000)
+    // The flush itself is not a sign anyone was reading, so it credits nothing.
+    expect(appended[0].activeMs).toBe(90_000)
   })
 
   it('re-emits the same key when the sitting really ends, so the merge upgrades it', () => {
     const t0 = Date.now()
     const view = render(<Reader path="notes/foo.md" attending />)
-    signal(t0 + 90_000)
-    vi.setSystemTime(t0 + 100_000)
+    signal(t0 + 30_000)
+    signal(t0 + 120_000)
+    vi.setSystemTime(t0 + 130_000)
     act(() => { window.dispatchEvent(new Event('pagehide')) })
-    signal(t0 + 150_000)
+    signal(t0 + 180_000)
     vi.setSystemTime(t0 + 200_000)
     act(() => { view.unmount() })
 
@@ -177,25 +200,56 @@ describe('useReadingAttentionBlock', () => {
     expect(appended[1].activeMs).toBeGreaterThan(appended[0].activeMs)
   })
 
-  it('does not credit time spent blurred', () => {
+  // The defect this replaces: blur used to credit the gap up to the moment of
+  // leaving, on the theory you were reading right until you switched away. For
+  // a document sitting open in a pane while you work elsewhere, that minted up
+  // to one ceiling on EVERY app switch. A real Mac span log collected 5.4m
+  // overnight on a book nobody was awake to read.
+  it('credits nothing for the stretch before a blur', () => {
     const t0 = Date.now()
     const view = render(<Reader path="notes/foo.md" attending />)
-    signal(t0 + 60_000)
-    vi.setSystemTime(t0 + 70_000)
+    signal(t0 + 30_000)
+    signal(t0 + 120_000)                              // 90s of real reading
+    vi.setSystemTime(t0 + 240_000)                    // two idle minutes, then
     act(() => { window.dispatchEvent(new Event('blur')) })
-    vi.setSystemTime(t0 + 3_600_000)
-    act(() => { window.dispatchEvent(new Event('focus')) })
-    signal(t0 + 3_660_000)
-    vi.setSystemTime(t0 + 3_665_000)
+    signal(t0 + 300_000)                              // back: re-arms, no credit
+    signal(t0 + 360_000)                              // 60s more of reading
+    vi.setSystemTime(t0 + 400_000)
     act(() => { view.unmount() })
 
-    // 70s before the blur, 65s after the focus. The hour away contributes none.
-    expect(appended[0].activeMs).toBe(135_000)
+    expect(appended).toHaveLength(1)
+    expect(appended[0].activeMs).toBe(150_000)
+  })
+
+  // Falling asleep over a book is not a five-hour sitting. Because a span is
+  // filed by the day it STARTED, an unbroken overnight span also files the next
+  // morning's reading under yesterday, which is how an afternoon of reading
+  // vanished from the day it happened on.
+  it('splits a sitting when the reader goes away for longer than the ceiling', () => {
+    const t0 = Date.now()
+    const view = render(<Reader path="notes/foo.md" attending />)
+    signal(t0 + 30_000)
+    signal(t0 + 120_000)
+    act(() => { window.dispatchEvent(new Event('blur')) })
+    const nextDay = t0 + 10 * 60 * 60_000
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    signal(nextDay)
+    signal(nextDay + 90_000)
+    vi.setSystemTime(nextDay + 100_000)
+    act(() => { view.unmount() })
+
+    expect(appended).toHaveLength(2)
+    expect(appended[0].activeMs).toBe(90_000)
+    expect(appended[0].endMs).toBe(t0 + 120_000)      // ends where it was left
+    expect(appended[1].startMs).toBe(nextDay)         // the morning is its own
+    expect(appended[1].activeMs).toBe(90_000)
+    expect(appended[0].key).not.toBe(appended[1].key)
   })
 
   it('writes nothing when there is no path', () => {
     const t0 = Date.now()
     const view = render(<Reader path={null} attending />)
+    signal(t0 + 30_000)
     signal(t0 + 90_000)
     vi.setSystemTime(t0 + 95_000)
     act(() => { view.unmount() })
@@ -216,15 +270,17 @@ describe('useReadingAttentionBlock', () => {
       const journalled = readReadingJournalBlock()
       expect(journalled).toHaveLength(1)
       expect(journalled[0].filePath).toBe('notes/foo.md')
-      // Within one checkpoint interval of the full 45 minutes.
-      expect(journalled[0].activeMs).toBeGreaterThan(44 * 60_000)
+      // 45 signals a minute apart: the first arms, the other 44 each credit a
+      // minute. The minute before the first signal was never observed.
+      expect(journalled[0].activeMs).toBe(44 * 60_000)
     })
 
     it('forgets the journalled span once the vault confirms it', async () => {
       const t0 = Date.now()
       const view = render(<Reader path="notes/foo.md" attending />)
-      signal(t0 + 90_000)
-      vi.setSystemTime(t0 + 95_000)
+      signal(t0 + 30_000)
+      signal(t0 + 120_000)
+      vi.setSystemTime(t0 + 125_000)
       act(() => { view.unmount() })
       await act(async () => { await Promise.resolve() })
 
@@ -238,8 +294,9 @@ describe('useReadingAttentionBlock', () => {
       gateOpen = false
       const t0 = Date.now()
       const view = render(<Reader path="notes/foo.md" attending />)
-      signal(t0 + 90_000)
-      vi.setSystemTime(t0 + 95_000)
+      signal(t0 + 30_000)
+      signal(t0 + 120_000)
+      vi.setSystemTime(t0 + 125_000)
       act(() => { view.unmount() })
       await act(async () => { await Promise.resolve() })
 
@@ -265,10 +322,11 @@ describe('useReadingAttentionBlock', () => {
       for (let m = 1; m <= 30; m += 1) signalElsewhere(t0 + m * 60_000)
       vi.setSystemTime(t0 + 31 * 60_000)
       act(() => { view.unmount() })
-      // Half an hour of working elsewhere costs one idle ceiling, not the
-      // half hour — the same bound a document stared at without touching
-      // earns. Before scoping, each of those 30 clicks credited a minute.
-      expect(appended[0]?.activeMs ?? 0).toBeLessThanOrEqual(IDLE_CEILING_MS)
+      // Nothing at all. Scoping the listeners stopped those clicks counting;
+      // bounding the sitting by its own signals removed the ceiling that the
+      // close used to credit on top, so a document open beside half an hour of
+      // work elsewhere now records no sitting rather than a short one.
+      expect(appended).toHaveLength(0)
     })
 
     it('credits clicks inside the document', () => {
@@ -276,10 +334,11 @@ describe('useReadingAttentionBlock', () => {
       const view = render(<Reader path="notes/foo.md" attending />)
       signalInside(t0 + 60_000)
       signalInside(t0 + 120_000)
-      vi.setSystemTime(t0 + 150_000)
+      signalInside(t0 + 180_000)
+      vi.setSystemTime(t0 + 200_000)
       act(() => { view.unmount() })
       expect(appended).toHaveLength(1)
-      expect(appended[0].activeMs).toBe(150_000)
+      expect(appended[0].activeMs).toBe(120_000)
     })
 
     // Reading by arrow key with focus on body is normal, so keydown stays on

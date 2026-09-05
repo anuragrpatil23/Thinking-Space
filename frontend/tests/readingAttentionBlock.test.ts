@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest'
 import {
   IDLE_CEILING_MS,
   MIN_ATTENTION_MS,
+  createPendingReadingAttentionBlock,
   createReadingAttentionBlock,
   creditReadingAttentionBlock,
-  resumeReadingAttentionBlock,
+  isReadingSittingBreakBlock,
   isReportableAttentionBlock,
+  suspendReadingAttentionBlock,
 } from '@/services/lego_blocks/units/readingAttentionBlock'
 
 const T0 = 1_756_500_000_000
@@ -41,22 +43,66 @@ describe('readingAttentionBlock', () => {
     expect(s.creditedMs).toBe(2 * IDLE_CEILING_MS)
   })
 
-  it('credits nothing for the gap a resume spans', () => {
-    let s = createReadingAttentionBlock(T0)
-    s = creditReadingAttentionBlock(s, T0 + 60_000) // read for a minute
-    s = resumeReadingAttentionBlock(s, T0 + 60 * 60_000) // away an hour, came back
+  // Arrival is not evidence. A sitting that has seen one signal has observed a
+  // moment, not a duration, and must credit nothing for the time before it —
+  // this is what stopped every app launch with a restored document from
+  // minting up to one ceiling of reading nobody did.
+  it('credits nothing for the first signal of a sitting', () => {
+    let s = createPendingReadingAttentionBlock()
+    s = creditReadingAttentionBlock(s, T0 + 40 * 60_000)
+    expect(s.creditedMs).toBe(0)
+    expect(s.firstEventMs).toBe(T0 + 40 * 60_000)
+    s = creditReadingAttentionBlock(s, T0 + 41 * 60_000)
     expect(s.creditedMs).toBe(60_000)
-    expect(s.lastEventMs).toBe(T0 + 60 * 60_000)
   })
 
-  // A blur credits the real elapsed time and freezes; the focus that follows
-  // resumes. The hour in between must not appear anywhere.
-  it('models blur-then-focus as credit-then-resume', () => {
-    let s = createReadingAttentionBlock(T0)
-    s = creditReadingAttentionBlock(s, T0 + 120_000) // blur after 2 min
-    s = resumeReadingAttentionBlock(s, T0 + 62 * 60_000) // focus an hour later
-    s = creditReadingAttentionBlock(s, T0 + 63 * 60_000) // read another minute
+  // Departure is not evidence either. Suspending freezes without paying for
+  // the gap that led up to it, and the next signal resumes from itself.
+  it('credits nothing across a suspension', () => {
+    let s = createPendingReadingAttentionBlock()
+    s = creditReadingAttentionBlock(s, T0)
+    s = creditReadingAttentionBlock(s, T0 + 120_000) // read two minutes
+    s = suspendReadingAttentionBlock(s)              // blur
+    s = creditReadingAttentionBlock(s, T0 + 240_000) // back two minutes later
+    expect(s.creditedMs).toBe(120_000)
+    s = creditReadingAttentionBlock(s, T0 + 300_000) // read another minute
     expect(s.creditedMs).toBe(180_000)
+  })
+
+  // The bounds are the sitting's extent, and they come only from observations.
+  it('bounds the sitting by its first and last signal', () => {
+    let s = createPendingReadingAttentionBlock()
+    s = creditReadingAttentionBlock(s, T0 + 10_000)
+    s = creditReadingAttentionBlock(s, T0 + 70_000)
+    s = suspendReadingAttentionBlock(s)
+    expect(s.firstEventMs).toBe(T0 + 10_000)
+    expect(s.lastEventMs).toBe(T0 + 70_000)
+  })
+
+  describe('breaking a sitting on a long absence', () => {
+    // Without this a document left open overnight is ONE span, and since a span
+    // is filed by the day it started, the next day's real reading is swallowed
+    // into yesterday. A 945-minute record did exactly that.
+    it('calls a gap wider than the ceiling a different sitting', () => {
+      let s = createPendingReadingAttentionBlock()
+      s = creditReadingAttentionBlock(s, T0)
+      expect(isReadingSittingBreakBlock(s, T0 + IDLE_CEILING_MS)).toBe(false)
+      expect(isReadingSittingBreakBlock(s, T0 + IDLE_CEILING_MS + 1)).toBe(true)
+    })
+
+    // Suspended or not makes no difference: the question is how long ago the
+    // last observation was, not whether the clock happened to be running.
+    it('breaks on a long absence even while suspended', () => {
+      let s = createPendingReadingAttentionBlock()
+      s = creditReadingAttentionBlock(s, T0)
+      s = suspendReadingAttentionBlock(s)
+      expect(isReadingSittingBreakBlock(s, T0 + 10 * 60 * 60_000)).toBe(true)
+    })
+
+    it('never breaks a sitting that has observed nothing', () => {
+      const s = createPendingReadingAttentionBlock()
+      expect(isReadingSittingBreakBlock(s, T0 + 10 * 60 * 60_000)).toBe(false)
+    })
   })
 
   it('credits nothing when the clock jumps backwards', () => {
@@ -71,7 +117,7 @@ describe('readingAttentionBlock', () => {
     const before = { ...s }
     s = creditReadingAttentionBlock(s, Number.NaN)
     expect(s).toEqual(before)
-    expect(resumeReadingAttentionBlock(s, Number.NaN)).toEqual(before)
+    expect(isReadingSittingBreakBlock(s, Number.NaN)).toBe(false)
   })
 
   it('accepts an explicit ceiling so callers can tighten it', () => {

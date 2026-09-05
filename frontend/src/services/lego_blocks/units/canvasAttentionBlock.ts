@@ -95,7 +95,7 @@ export const STATION_OVERLAP_THRESHOLD = 0.5
  * own total. Without it the first real recording was off by 3s of 240s: time
  * the document counted and no station claimed.
  */
-export function createCanvasAttentionBlock(sinceMs: number): CanvasAttentionStateBlock {
+export function createCanvasAttentionBlock(sinceMs: number | null): CanvasAttentionStateBlock {
   return { closed: [], current: null, pendingSinceMs: sinceMs }
 }
 

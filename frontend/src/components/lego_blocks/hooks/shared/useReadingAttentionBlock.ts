@@ -17,10 +17,11 @@ import {
   clearReadingJournalEntryBlock,
 } from '@/services/lego_blocks/units/readingJournalBlock'
 import {
-  createReadingAttentionBlock,
+  createPendingReadingAttentionBlock,
   creditReadingAttentionBlock,
-  resumeReadingAttentionBlock,
+  isReadingSittingBreakBlock,
   isReportableAttentionBlock,
+  suspendReadingAttentionBlock,
   type ReadingAttentionStateBlock,
 } from '@/services/lego_blocks/units/readingAttentionBlock'
 import {
@@ -177,7 +178,6 @@ export function useReadingAttentionBlock(
   const stateRef = useRef<ReadingAttentionStateBlock | null>(null)
   const canvasRef = useRef<CanvasAttentionStateBlock | null>(null)
   const pdfRef = useRef<PdfAttentionStateBlock | null>(null)
-  const startedAtRef = useRef(0)
   const lastSignalRef = useRef(0)
   const maxScrollRef = useRef(0)
   const endScrollRef = useRef<number | null>(null)
@@ -202,23 +202,46 @@ export function useReadingAttentionBlock(
     const source = sourceForPath(path)
     const isCanvas = source === 'reading-draw'
     const isPdf = source === 'reading-pdf'
-    const now = Date.now()
-    stateRef.current = createReadingAttentionBlock(now)
-    canvasRef.current = isCanvas ? createCanvasAttentionBlock(now) : null
-    pdfRef.current = isPdf ? createPdfAttentionBlock(now) : null
-    startedAtRef.current = now
-    lastSignalRef.current = now
-    maxScrollRef.current = 0
-    endScrollRef.current = null
-    lastCheckpointRef.current = now
+
+    // Mounting does not start a sitting — the first sign of presence does.
+    // Everything below is armed and waiting, holding no time.
+    let signals = 0
+
+    const startSitting = () => {
+      stateRef.current = createPendingReadingAttentionBlock()
+      // `null` rather than a timestamp: the first station / page dwell anchors
+      // itself to the first observed signal, which is also where the document
+      // total starts accruing. That is what keeps them summing to each other.
+      canvasRef.current = isCanvas ? createCanvasAttentionBlock(null) : null
+      pdfRef.current = isPdf ? createPdfAttentionBlock(null) : null
+      maxScrollRef.current = 0
+      endScrollRef.current = null
+      lastCheckpointRef.current = 0
+      signals = 0
+    }
+
+    const publishLive = () => {
+      const state = stateRef.current
+      setReadingLiveStateBlock({
+        measuring: true,
+        path,
+        source,
+        startedAt: state?.firstEventMs !== null && state?.firstEventMs !== undefined
+          ? new Date(state.firstEventMs).toISOString()
+          : null,
+        awaitingFirstSignal: state?.firstEventMs === null || state?.firstEventMs === undefined,
+        activeMs: state?.creditedMs ?? 0,
+        signals,
+        stations: canvasRef.current ? canvasRef.current.closed.length + 1 : 0,
+      })
+    }
+
+    startSitting()
+    lastSignalRef.current = 0
     traceReadingBlock({ outcome: 'sitting-started', path })
-    // Publish immediately: waiting for the first presence signal made an empty
-    // panel ambiguous between "never started" and "started, nothing yet".
-    setReadingLiveStateBlock({
-      measuring: true, path, source,
-      startedAt: new Date(now).toISOString(),
-      activeMs: 0, signals: 0,
-    })
+    // Publish immediately: an empty panel was ambiguous between "never started"
+    // and "started, nothing yet", and now those are genuinely different states.
+    publishLive()
 
     // Reading layout forces a reflow when a mutation is pending, so this is
     // called ONLY from scroll handling, where the browser has just finished
@@ -231,93 +254,26 @@ export function useReadingAttentionBlock(
       if (ratio > maxScrollRef.current) maxScrollRef.current = ratio
     }
 
-    let signals = 0
-    const creditAt = (at: number) => {
-      signals += 1
-      if (stateRef.current) stateRef.current = creditReadingAttentionBlock(stateRef.current, at)
-      setReadingLiveStateBlock({
-        measuring: true, path, source,
-        startedAt: new Date(startedAtRef.current).toISOString(),
-        activeMs: stateRef.current?.creditedMs ?? 0,
-        signals,
-        stations: canvasRef.current ? canvasRef.current.closed.length + 1 : 0,
-      })
-      // Write-ahead: the span so far goes somewhere synchronous, so a memory
-      // kill or force-quit costs the last few seconds rather than the sitting.
-      // Throttled — this is a main-thread localStorage write.
-      if (at - lastCheckpointRef.current >= JOURNAL_CHECKPOINT_INTERVAL_MS) {
-        lastCheckpointRef.current = at
-        const snapshot = buildRecord(at, stateRef.current?.creditedMs ?? 0, { silent: true })
-        if (snapshot) checkpointReadingJournalBlock(snapshot)
-      }
-      if (pdfRef.current) {
-        const page = optionsRef.current.pageSampler?.() ?? null
-        pdfRef.current = page !== null
-          ? observePdfPageBlock(pdfRef.current, page, at)
-          : creditPdfAttentionBlock(pdfRef.current, at)
-      }
-      if (!canvasRef.current) return
-      const samplers = optionsRef.current.canvasSamplers
-      const rect = samplers?.sample() ?? null
-      canvasRef.current = rect
-        ? observeCanvasViewportBlock(
-            canvasRef.current, rect, at, samplers?.sampleElements,
-          )
-        : creditCanvasAttentionBlock(canvasRef.current, at)
-    }
-
-    const onSignal = (event: Event) => {
-      const at = Date.now()
-      if (at - lastSignalRef.current < SIGNAL_THROTTLE_MS) return
-      lastSignalRef.current = at
-      creditAt(at)
-      if (event.type === 'scroll') sampleScroll()
-    }
-
-    // Leaving credits the time up to the moment of leaving and freezes;
-    // returning resumes without crediting the absence. In Electron a window
-    // that is blurred but still visible never fires visibilitychange, so
-    // `blur` is the only event that catches switching to another app.
-    const onLeave = () => {
-      const at = Date.now()
-      creditAt(at)
-      lastSignalRef.current = at
-    }
-    const onReturn = () => {
-      const at = Date.now()
-      if (stateRef.current) stateRef.current = resumeReadingAttentionBlock(stateRef.current, at)
-      if (canvasRef.current?.current) {
-        canvasRef.current = {
-          closed: canvasRef.current.closed,
-          current: {
-            rect: canvasRef.current.current.rect,
-            attention: resumeReadingAttentionBlock(canvasRef.current.current.attention, at),
-          },
-          pendingSinceMs: null,
-        }
-      }
-      if (pdfRef.current?.current) {
-        pdfRef.current = {
-          ...pdfRef.current,
-          current: {
-            page: pdfRef.current.current.page,
-            attention: resumeReadingAttentionBlock(pdfRef.current.current.attention, at),
-          },
-        }
-      }
-      lastSignalRef.current = at
-    }
-
+    /**
+     * The finished sitting, or null when it never became one.
+     *
+     * Bounds come from the sitting's own observations — first signal to last —
+     * never from now. A record that ended at `Date.now()` was claiming the
+     * unobserved tail between the last scroll and whatever closed the document,
+     * which is how a book left open overnight produced a 945-minute span.
+     */
     const buildRecord = (
-      endMs: number,
-      creditedMs: number,
       opts: { silent?: boolean } = {},
     ): ThinkingspaceReadingRecord | null => {
+      const state = stateRef.current
+      if (!state || state.firstEventMs === null || state.lastEventMs === null) return null
+      const creditedMs = state.creditedMs
       if (!isReportableAttentionBlock(creditedMs)) {
         if (!opts.silent) traceReadingBlock({ outcome: 'below-floor', path, activeMs: creditedMs })
         return null
       }
-      const startMs = startedAtRef.current
+      const startMs = state.firstEventMs
+      const endMs = state.lastEventMs
       let where: ThinkingspaceReadingWhere | undefined
       if (isCanvas) {
         const stations = canvasRef.current
@@ -349,8 +305,104 @@ export function useReadingAttentionBlock(
         startMs,
         endMs,
         activeMs: creditedMs,
-        recordedAt: endMs,
+        recordedAt: Date.now(),
         ...(where ? { where } : {}),
+      }
+    }
+
+    // Journal first, synchronously, then attempt the vault. If the app dies
+    // between the two the next launch drains it; if the vault takes it, the
+    // journal entry is forgotten.
+    const emit = (record: ThinkingspaceReadingRecord) => {
+      checkpointReadingJournalBlock(record)
+      // Fire-and-forget: the writer is module-level and serialized, so it
+      // outlives this component's unmount.
+      void appendReadingSpan(getVaultFS(), record).then(durable => {
+        if (durable) clearReadingJournalEntryBlock(record.key)
+      })
+    }
+
+    const creditAt = (at: number) => {
+      // A gap wider than the ceiling is not a quiet stretch of reading, it is
+      // two sittings with an absence between them. Closing the first one here —
+      // retroactively, at the last thing it observed — is what keeps a document
+      // left open across a night from swallowing the next day's reading into a
+      // span filed under yesterday.
+      const previous = stateRef.current
+      if (previous && isReadingSittingBreakBlock(previous, at)) {
+        const record = buildRecord()
+        traceReadingBlock({
+          outcome: 'sitting-ended', path, activeMs: previous.creditedMs, detail: 'idle break',
+        })
+        if (record) emit(record)
+        startSitting()
+      }
+
+      signals += 1
+      if (stateRef.current) stateRef.current = creditReadingAttentionBlock(stateRef.current, at)
+      publishLive()
+      // Write-ahead: the span so far goes somewhere synchronous, so a memory
+      // kill or force-quit costs the last few seconds rather than the sitting.
+      // Throttled — this is a main-thread localStorage write.
+      if (at - lastCheckpointRef.current >= JOURNAL_CHECKPOINT_INTERVAL_MS) {
+        lastCheckpointRef.current = at
+        const snapshot = buildRecord({ silent: true })
+        if (snapshot) checkpointReadingJournalBlock(snapshot)
+      }
+      if (pdfRef.current) {
+        const page = optionsRef.current.pageSampler?.() ?? null
+        pdfRef.current = page !== null
+          ? observePdfPageBlock(pdfRef.current, page, at)
+          : creditPdfAttentionBlock(pdfRef.current, at)
+      }
+      if (!canvasRef.current) return
+      const samplers = optionsRef.current.canvasSamplers
+      const rect = samplers?.sample() ?? null
+      canvasRef.current = rect
+        ? observeCanvasViewportBlock(
+            canvasRef.current, rect, at, samplers?.sampleElements,
+          )
+        : creditCanvasAttentionBlock(canvasRef.current, at)
+    }
+
+    const onSignal = (event: Event) => {
+      const at = Date.now()
+      if (at - lastSignalRef.current < SIGNAL_THROTTLE_MS) return
+      lastSignalRef.current = at
+      creditAt(at)
+      if (event.type === 'scroll') sampleScroll()
+    }
+
+    /**
+     * Leaving freezes the clock. It does *not* credit.
+     *
+     * The old version credited the gap up to the moment of leaving, on the
+     * theory that you were reading right until you switched away. That holds
+     * for a document you close when you finish and fails for one sitting open
+     * in a pane while you work elsewhere — where it minted up to five minutes
+     * on every app switch, for a document nobody had looked at. In Electron a
+     * window that is blurred but still visible never fires visibilitychange,
+     * so `blur` is the only event that catches switching to another app.
+     */
+    const onLeave = () => {
+      if (stateRef.current) stateRef.current = suspendReadingAttentionBlock(stateRef.current)
+      if (canvasRef.current?.current) {
+        canvasRef.current = {
+          ...canvasRef.current,
+          current: {
+            rect: canvasRef.current.current.rect,
+            attention: suspendReadingAttentionBlock(canvasRef.current.current.attention),
+          },
+        }
+      }
+      if (pdfRef.current?.current) {
+        pdfRef.current = {
+          ...pdfRef.current,
+          current: {
+            page: pdfRef.current.current.page,
+            attention: suspendReadingAttentionBlock(pdfRef.current.current.attention),
+          },
+        }
       }
     }
 
@@ -359,22 +411,17 @@ export function useReadingAttentionBlock(
     // one that ends by quitting — would be lost silently. The key is stable,
     // so the real close merges over this row rather than duplicating it, and
     // mergeReadingRecordsBlock keeps whichever measured more attention.
+    // Nothing is credited here: a flush is not a sign that anyone was reading.
     const flush = () => {
-      const at = Date.now()
-      creditAt(at)
-      lastSignalRef.current = at
-      const state = stateRef.current
-      if (!state) return
-      const record = buildRecord(at, state.creditedMs)
-      if (!record) return
-      checkpointReadingJournalBlock(record)
-      void appendReadingSpan(getVaultFS(), record).then(durable => {
-        if (durable) clearReadingJournalEntryBlock(record.key)
-      })
+      const record = buildRecord()
+      if (record) emit(record)
     }
 
+    // Returning needs no handler. The state is suspended, so the next real
+    // signal re-arms the clock from itself and the absence costs nothing —
+    // and if the absence was long enough, `creditAt` breaks the sitting first.
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') { onReturn(); return }
+      if (document.visibilityState === 'visible') return
       onLeave()
       flush()
     }
@@ -408,7 +455,6 @@ export function useReadingAttentionBlock(
     window.addEventListener('keydown', onKeySignal, { passive: true })
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('blur', onLeave)
-    window.addEventListener('focus', onReturn)
     window.addEventListener('pagehide', flush)
 
     return () => {
@@ -418,29 +464,16 @@ export function useReadingAttentionBlock(
       window.removeEventListener('keydown', onKeySignal)
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('blur', onLeave)
-      window.removeEventListener('focus', onReturn)
       window.removeEventListener('pagehide', flush)
 
-      const endMs = Date.now()
       const state = stateRef.current
-      if (!state) return
-      const { creditedMs } = creditReadingAttentionBlock(state, endMs)
-      const record = buildRecord(endMs, creditedMs)
-      traceReadingBlock({ outcome: 'sitting-ended', path, activeMs: creditedMs })
+      const record = buildRecord()
+      traceReadingBlock({ outcome: 'sitting-ended', path, activeMs: state?.creditedMs ?? 0 })
       stateRef.current = null
       canvasRef.current = null
       pdfRef.current = null
       setReadingLiveStateBlock(null)
-      if (!record) return
-      // Journal first, synchronously, then attempt the vault. If the app dies
-      // between the two the next launch drains it; if the vault takes it, the
-      // journal entry is forgotten.
-      checkpointReadingJournalBlock(record)
-      // Fire-and-forget: the writer is module-level and serialized, so it
-      // outlives this component's unmount.
-      void appendReadingSpan(getVaultFS(), record).then(durable => {
-        if (durable) clearReadingJournalEntryBlock(record.key)
-      })
+      if (record) emit(record)
     }
   }, [path, attending, hasForeground])
 }
