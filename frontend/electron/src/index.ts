@@ -43,6 +43,7 @@ import {
   saveWebullCredentialsBlock,
   type WebullStoredAccessTokenBlock,
 } from './lego_blocks/webullCredentialStoreBlock';
+import { readAiPlanUsageBlock, disposeAiPlanUsageBlock } from './lego_blocks/aiPlanUsageBlock';
 import { readPersistedVaultRootBlock } from './lego_blocks/vaultRootPersistenceBlock';
 import {
   authorizeVaultRootBlock,
@@ -531,6 +532,7 @@ if (hasSingleInstanceLock) {
  *  a vault write, short enough that quitting never feels stuck. */
 const FLUSH_BEFORE_QUIT_TIMEOUT_MS = 400;
 
+app.on('will-quit', () => { disposeAiPlanUsageBlock(); });
 app.on('will-quit', () => {
   stopViteServerBlock();
   stopHeartbeatBlock();
@@ -612,6 +614,17 @@ ipcMain.on('profile:getSync', (event) => {
   event.returnValue = serializeProfileSummaryBlock(
     myCapacitorApp.getProfileIdForWebContents(event.sender),
   );
+});
+
+ipcMain.handle('ai:plan-usage:read', async () => {
+  // Reads only local, first-party surfaces (the codex app-server and the
+  // Claude status-line bridge file). No credential is read and no provider
+  // endpoint is called from here — see aiPlanUsageBlock for why.
+  try {
+    return await readAiPlanUsageBlock();
+  } catch {
+    return [];
+  }
 });
 
 ipcMain.handle('profiles:list', async () => {

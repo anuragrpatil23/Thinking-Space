@@ -3,6 +3,8 @@ import Starfield from '@/components/lego_blocks/units/StarfieldBlock'
 import MoonSceneBlock from '@/components/lego_blocks/units/MoonSceneBlock'
 import HomeWelcomeBlock from '@/components/lego_blocks/integrations/HomeWelcomeBlock'
 import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
+import AiLimitsStripBlock from '@/components/lego_blocks/integrations/AiLimitsStripBlock'
+import { useAiPlanUsageBlock } from '@/components/lego_blocks/hooks/shared/useAiPlanUsageBlock'
 import ThisWeekDigestBlock from '@/components/lego_blocks/integrations/ThisWeekDigestBlock'
 import WakeListBlock from '@/components/lego_blocks/integrations/WakeListBlock'
 import HomeBoardFeedBlock from '@/components/lego_blocks/integrations/HomeBoardFeedBlock'
@@ -95,6 +97,7 @@ export default function HomeFlatOrch() {
   // sat under light-mode text, so no cream fallback is needed.
   const followPhase = isCapacitorNative()
   const theme = useCanvasThemeBlock({ followPhase })
+  const planUsage = useAiPlanUsageBlock()
 
   // When the resolved backdrop is dark but the app color mode is still light
   // (only on Capacitor, where the phase forces a night backdrop), scope a
@@ -136,7 +139,13 @@ export default function HomeFlatOrch() {
           </div>
         </header>
 
-        <div className="mt-10 space-y-6 sm:mt-12">
+        <div className="mt-14 space-y-6 sm:mt-16">
+          <AiLimitsStripBlock
+            providers={planUsage.providers}
+            theme={theme}
+            nowMs={planUsage.nowMs}
+          />
+
           <FlatPanel theme={theme}>
             <AiActivityPanelBlock enableManualSessions />
           </FlatPanel>

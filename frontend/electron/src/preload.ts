@@ -395,6 +395,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on(channel, listener)
     return () => { ipcRenderer.removeListener(channel, listener) }
   },
+  aiPlanUsageRead: (): Promise<Array<{
+    id: 'claude' | 'codex'
+    label: string
+    plan: string | null
+    state: 'ready' | 'waiting' | 'unconfigured'
+    detected: boolean
+    hasPlan: boolean
+    session: { usedPercent: number; resetsAt: number | null; windowMinutes: number | null } | null
+    weekly: { usedPercent: number; resetsAt: number | null; windowMinutes: number | null } | null
+  }>> => ipcRenderer.invoke('ai:plan-usage:read'),
   profilesList: (): Promise<ElectronProfileSummaryBlock[]> =>
     ipcRenderer.invoke('profiles:list'),
   profilesCreate: (input: { name: string; vaultRoot: string; accentColor?: string | null; icon?: string | null }): Promise<ElectronProfileSummaryBlock> =>

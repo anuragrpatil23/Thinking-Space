@@ -463,6 +463,16 @@ interface ElectronAPI {
     configured: boolean
     appKeyHint: string | null
   }>
+  aiPlanUsageRead?(): Promise<Array<{
+    id: 'claude' | 'codex'
+    label: string
+    plan: string | null
+    state: 'ready' | 'waiting' | 'unconfigured'
+    detected: boolean
+    hasPlan: boolean
+    session: { usedPercent: number; resetsAt: number | null; windowMinutes: number | null } | null
+    weekly: { usedPercent: number; resetsAt: number | null; windowMinutes: number | null } | null
+  }>>
   webullTokenGet?(): Promise<{
     token: string
     expires: number | null
