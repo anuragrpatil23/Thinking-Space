@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
 import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNativeChromeImmersionBlock } from '@/components/lego_blocks/hooks/shared/useNativeChromeImmersionBlock'
@@ -635,9 +636,12 @@ export default function PdfDocumentBlock({
     () => (numPages > 0 ? pageNumberRef.current : null),
     [numPages],
   )
+  // See MarkdownDocumentBlock: `active` is pane selection, not visibility, and
+  // every workspace tab stays mounted when you navigate away from it.
+  const surfaceVisible = useRouteActivityBlock()
   useReadingAttentionBlock(
     countsAsReading ? path : null,
-    active && !loading && error === null,
+    surfaceVisible && active && !loading && error === null,
     { pageSampler, surfaceRef },
   )
 

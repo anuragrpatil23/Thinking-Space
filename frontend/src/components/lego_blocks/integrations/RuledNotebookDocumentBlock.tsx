@@ -17,6 +17,7 @@ import {
   type RuledNotebookPageBlock,
 } from '@/services/lego_blocks/units/ruledNotebookPaginationBlock'
 import { assignOutlineLabelsBlock } from '@/services/lego_blocks/units/outlineCounterBlock'
+import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
 import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import { resolveFrontmatterDatesBlock } from '@/services/lego_blocks/units/frontmatterDatesBlock'
 import { appendMemorizedSessionInPlace } from '@/services/lego_blocks/units/memorizedSessionsBlock'
@@ -260,8 +261,14 @@ export default function RuledNotebookDocumentBlock({
   // measuring nothing at all. It is always the foreground pane when mounted
   // (the orchestrator renders it *instead of* the inline document), so
   // `attending` is just "loaded and not broken"; the arbiter settles the rest.
+  // ...but the whole surface stays mounted behind `visibility: hidden` when
+  // you navigate to another tab, so "mounted" is not "on screen" and the
+  // route's own activity has to be part of the predicate too.
+  const surfaceVisible = useRouteActivityBlock()
   const readingSurfaceRef = useRef<HTMLElement | null>(null)
-  useReadingAttentionBlock(path, !loading && error === null, { surfaceRef: readingSurfaceRef })
+  useReadingAttentionBlock(path, surfaceVisible && !loading && error === null, {
+    surfaceRef: readingSurfaceRef,
+  })
   const [pageIndex, setPageIndex] = useState(0)
   const [transition, setTransition] = useState<TransitionState | null>(null)
   const [pages, setPages] = useState<RuledNotebookPageBlock[]>([])

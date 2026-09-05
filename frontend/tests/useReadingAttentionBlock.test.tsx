@@ -43,6 +43,22 @@ const { IDLE_CEILING_MS } = await import(
 const { readReadingJournalBlock } = await import(
   '@/services/lego_blocks/units/readingJournalBlock'
 )
+const { useRouteActivityBlock } = await import(
+  '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
+)
+const { default: RouteActivityProviderBlock } = await import(
+  '@/components/lego_blocks/units/RouteActivityProviderBlock'
+)
+
+/** A reader composed the way the real surfaces are: pane selection AND the
+ *  route's own visibility, which is the fact they were missing. */
+function SurfaceReader({ path, active }: { path: string; active: boolean }) {
+  const scrollRef = useRef<HTMLElement | null>(null)
+  const surfaceRef = useRef<HTMLDivElement | null>(null)
+  const surfaceVisible = useRouteActivityBlock()
+  useReadingAttentionBlock(path, surfaceVisible && active, { scrollRef, surfaceRef })
+  return <div ref={surfaceRef} data-testid="surface" />
+}
 
 function Reader({ path, attending }: { path: string | null; attending: boolean }) {
   const scrollRef = useRef<HTMLElement | null>(null)
@@ -244,6 +260,55 @@ describe('useReadingAttentionBlock', () => {
     expect(appended[1].startMs).toBe(nextDay)         // the morning is its own
     expect(appended[1].activeMs).toBe(90_000)
     expect(appended[0].key).not.toBe(appended[1].key)
+  })
+
+  // Every workspace tab stays mounted behind `visibility: hidden`, so a
+  // document left in a tab you navigated away from kept `active` true and went
+  // on measuring — and holding the screen awake — for as long as it stayed
+  // open. Three hours of "reading" were logged for a file nobody could see.
+  describe('a surface that is mounted but off screen', () => {
+    it('stops measuring when the route goes hidden', () => {
+      const t0 = Date.now()
+      const view = render(
+        <RouteActivityProviderBlock active>
+          <SurfaceReader path="notes/foo.md" active />
+        </RouteActivityProviderBlock>,
+      )
+      signal(t0 + 30_000)
+      signal(t0 + 120_000)
+
+      // Navigate to another tab. The component stays mounted.
+      vi.setSystemTime(t0 + 130_000)
+      act(() => {
+        view.rerender(
+          <RouteActivityProviderBlock active={false}>
+            <SurfaceReader path="notes/foo.md" active />
+          </RouteActivityProviderBlock>,
+        )
+      })
+
+      expect(appended).toHaveLength(1)
+      expect(appended[0].activeMs).toBe(90_000)
+      expect(appended[0].endMs).toBe(t0 + 120_000)
+
+      // Two hours elsewhere in the app, with the document still mounted and
+      // still "active" in its own pane. Nothing more may be recorded.
+      vi.setSystemTime(t0 + 2 * 60 * 60_000)
+      act(() => { view.unmount() })
+      expect(appended).toHaveLength(1)
+    })
+
+    it('never starts measuring while the route is hidden', () => {
+      const t0 = Date.now()
+      render(
+        <RouteActivityProviderBlock active={false}>
+          <SurfaceReader path="notes/foo.md" active />
+        </RouteActivityProviderBlock>,
+      )
+      for (let m = 1; m <= 30; m += 1) signal(t0 + m * 60_000)
+      expect(appended).toHaveLength(0)
+      expect(readReadingJournalBlock()).toHaveLength(0)
+    })
   })
 
   it('writes nothing when there is no path', () => {

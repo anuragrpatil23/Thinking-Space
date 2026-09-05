@@ -128,6 +128,7 @@ import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPa
 import { dispatchPageTopInsetBlock } from '@/services/lego_blocks/units/pageTopInsetBlock'
 import { isHtmlDocumentPathBlock } from '@/services/lego_blocks/units/htmlDocumentPathBlock'
 import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
+import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
 import { useScreenWakeLockBlock } from '@/components/lego_blocks/hooks/useScreenWakeLockBlock'
 import {
   useReadingAttentionBlock,
@@ -586,7 +587,16 @@ function MarkdownTextDocumentRuntimeBlock({
   // two consumers below share one expression rather than each deriving their
   // own — a wake lock held while nothing is being counted (or the reverse)
   // would be a silent disagreement about the same question.
-  const attending = active && (!isEditing || isExcalidrawDoc) && !loading && error === null
+  // `active` is pane selection *within* a surface — it stays true for a
+  // document in a workspace tab you navigated away from, because every tab
+  // stays mounted behind `visibility: hidden`. A document nobody can see is
+  // not being read and must not hold the screen awake, so surface visibility
+  // is part of the same predicate. RouteActivityContextBlock defaults to true,
+  // so surfaces outside a provider (the slide-over, which is always on top)
+  // are unaffected.
+  const surfaceVisible = useRouteActivityBlock()
+  const attending = surfaceVisible && active && (!isEditing || isExcalidrawDoc)
+    && !loading && error === null
   useScreenWakeLockBlock(attending)
 
   // A reading span is filed against the document's uuid when it has one, so a
