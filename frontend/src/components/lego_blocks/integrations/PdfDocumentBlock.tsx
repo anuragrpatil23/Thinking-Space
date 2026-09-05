@@ -642,7 +642,11 @@ export default function PdfDocumentBlock({
   useReadingAttentionBlock(
     countsAsReading ? path : null,
     surfaceVisible && active && !loading && error === null,
-    { pageSampler, surfaceRef },
+    {
+      pageSampler,
+      surfaceRef,
+      inputs: { surfaceVisible, active, loading, errored: error !== null },
+    },
   )
 
   const canGoPrev = pageNumber > 1

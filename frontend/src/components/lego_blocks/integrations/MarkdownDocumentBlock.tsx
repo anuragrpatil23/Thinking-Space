@@ -625,6 +625,7 @@ function MarkdownTextDocumentRuntimeBlock({
     scrollRef: contentScrollRef,
     uuid: documentUuid,
     canvasSamplers,
+    inputs: { surfaceVisible, active, isEditing, loading, errored: error !== null },
   })
 
   // Live preview makes the view/edit split mostly ceremonial for text docs.

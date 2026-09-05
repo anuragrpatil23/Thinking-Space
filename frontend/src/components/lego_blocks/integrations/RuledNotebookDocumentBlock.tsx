@@ -268,6 +268,7 @@ export default function RuledNotebookDocumentBlock({
   const readingSurfaceRef = useRef<HTMLElement | null>(null)
   useReadingAttentionBlock(path, surfaceVisible && !loading && error === null, {
     surfaceRef: readingSurfaceRef,
+    inputs: { surfaceVisible, loading, errored: error !== null },
   })
   const [pageIndex, setPageIndex] = useState(0)
   const [transition, setTransition] = useState<TransitionState | null>(null)

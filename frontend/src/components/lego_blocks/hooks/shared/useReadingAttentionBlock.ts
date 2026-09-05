@@ -108,6 +108,17 @@ export interface ReadingAttentionOptions {
   uuid?: string | null
   canvasSamplers?: CanvasSamplersBlock | null
   pageSampler?: PdfPageSampler | null
+  /**
+   * The surface's own reasons for the `attending` it passed, recorded with
+   * every sitting boundary.
+   *
+   * `attending` arrives here as a single boolean, so a sitting that restarted
+   * and one that never ended are the same line in the trace. Two records
+   * sharing a boundary millisecond prove the effect re-ran; only these say
+   * which input moved — a reload flipping `loading`, an edit, a pane going
+   * inactive, a surface leaving the screen.
+   */
+  inputs?: Record<string, unknown>
 }
 
 function sourceForPath(path: string): ThinkingspaceReadingSource {
@@ -238,7 +249,11 @@ export function useReadingAttentionBlock(
 
     startSitting()
     lastSignalRef.current = 0
-    traceReadingBlock({ outcome: 'sitting-started', path })
+    traceReadingBlock({
+      outcome: 'sitting-started',
+      path,
+      inputs: { ...optionsRef.current.inputs, attending, hasForeground },
+    })
     // Publish immediately: an empty panel was ambiguous between "never started"
     // and "started, nothing yet", and now those are genuinely different states.
     publishLive()
@@ -332,7 +347,11 @@ export function useReadingAttentionBlock(
       if (previous && isReadingSittingBreakBlock(previous, at)) {
         const record = buildRecord()
         traceReadingBlock({
-          outcome: 'sitting-ended', path, activeMs: previous.creditedMs, detail: 'idle break',
+          outcome: 'sitting-ended',
+          path,
+          activeMs: previous.creditedMs,
+          detail: 'idle break',
+          inputs: { ...optionsRef.current.inputs, attending, hasForeground },
         })
         if (record) emit(record)
         startSitting()
@@ -468,7 +487,12 @@ export function useReadingAttentionBlock(
 
       const state = stateRef.current
       const record = buildRecord()
-      traceReadingBlock({ outcome: 'sitting-ended', path, activeMs: state?.creditedMs ?? 0 })
+      traceReadingBlock({
+        outcome: 'sitting-ended',
+        path,
+        activeMs: state?.creditedMs ?? 0,
+        inputs: { ...optionsRef.current.inputs, attending, hasForeground },
+      })
       stateRef.current = null
       canvasRef.current = null
       pdfRef.current = null
