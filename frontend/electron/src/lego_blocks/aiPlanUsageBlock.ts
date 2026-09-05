@@ -108,6 +108,29 @@ function resolveCodexBinaryBlock(): string | null {
   }
 }
 
+/**
+ * Environment for the app-server child.
+ *
+ * `codex` is a `#!/usr/bin/env node` script, and on an nvm install the `node`
+ * it needs sits in the same bin directory as `codex` itself. A Finder-launched
+ * app inherits neither on PATH, so the shebang fails and the child dies the
+ * instant it spawns — which surfaced as a permanently "waiting" Codex row in a
+ * packaged build while working fine from a terminal. Prepending the binary's
+ * own directory is what makes the interpreter resolvable; the rest are the
+ * usual install roots, matching claudeCliBlock's approach.
+ */
+function buildCodexEnvBlock(binary: string): NodeJS.ProcessEnv {
+  const home = os.homedir();
+  const extraPaths = [
+    path.dirname(binary),
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    path.join(home, '.local', 'bin'),
+  ];
+  const merged = [...extraPaths, ...(process.env.PATH ?? '').split(':').filter(Boolean)].join(':');
+  return { ...process.env, PATH: merged };
+}
+
 interface PendingRequestBlock {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
@@ -165,7 +188,7 @@ class CodexAppServerClientBlock {
       try {
         child = spawn(binary, ['app-server'], {
           stdio: ['pipe', 'pipe', 'ignore'],
-          env: { ...process.env },
+          env: buildCodexEnvBlock(binary),
         });
       } catch (error) {
         reject(error instanceof Error ? error : new Error(String(error)));
