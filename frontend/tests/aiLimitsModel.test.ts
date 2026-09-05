@@ -77,12 +77,15 @@ describe('time remaining (left of the bar)', () => {
 })
 
 describe('reset moment (right of the bar)', () => {
-  it('names today or tomorrow for a session, which never lands further out', () => {
-    expect(formatResetAtBlock(reset(3 * 3600_000), 'session', NOW)).toMatch(/^Today /)
-    expect(formatResetAtBlock(reset(20 * 3600_000), 'session', NOW)).toMatch(/^Tomorrow /)
+  it('uses one date format for both windows, so the rows read alike', () => {
+    // "Today" told the reader nothing on a 5h window and made the two rows look
+    // like they measured different things.
+    const session = formatResetAtBlock(reset(3 * 3600_000), 'session', NOW)
+    expect(session).not.toMatch(/Today|Tomorrow/)
+    expect(session).toMatch(/^[A-Za-z]{3} \d+, /)
   })
 
-  it('names a date for a week, since a weekday alone is ambiguous that far out', () => {
+  it('names the date and time it comes back', () => {
     const out = formatResetAtBlock(
       Math.floor(new Date(2026, 8, 12, 11, 15).getTime() / 1000),
       'weekly',
