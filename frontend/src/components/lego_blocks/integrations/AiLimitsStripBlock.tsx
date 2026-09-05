@@ -181,7 +181,11 @@ function claudeSetupCommandBlock(
   if (mode === 'theirs') {
     return `/statusline keep my current status line output exactly as it is, and also write the raw stdin JSON to ~/.thinking-space/claude-limits.json using write-then-rename`
   }
-  return `/statusline use ${scriptPath || '~/.thinking-space/claude-statusline.sh'}`
+  // Quoted, always. Claude Code runs `statusLine.command` through a shell, and
+  // the app's own bundle path contains a space ("Thinking Space.app") — bare,
+  // the shell splits it at /Applications/Thinking and the script silently never
+  // runs, which looks exactly like the feature not working.
+  return `/statusline use "${scriptPath}"`
 }
 
 /**
