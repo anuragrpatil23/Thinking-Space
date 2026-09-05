@@ -3,6 +3,7 @@ import AiLimitsMeterBlock from '@/components/lego_blocks/units/AiLimitsMeterBloc
 import type { CanvasThemeTokens } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 import {
   accentForBlock,
+  formatUpdatedAgoBlock,
   visibleProvidersBlock,
   type AiLimitsProviderBlock,
 } from '@/services/lego_blocks/units/aiLimitsModelBlock'
@@ -20,6 +21,10 @@ interface AiLimitsStripBlockProps {
   statusLineScriptPath: string
   /** Whether Claude Code already has a status line, and whose. */
   statusLineMode: 'none' | 'ours' | 'theirs'
+  /** When the reading was taken, for the freshness line. */
+  readAtMs: number
+  /** Take a new reading now. */
+  onRefresh: () => void
 }
 
 /**
@@ -37,6 +42,8 @@ export default function AiLimitsStripBlock({
   nowMs,
   statusLineScriptPath,
   statusLineMode,
+  readAtMs,
+  onRefresh,
 }: AiLimitsStripBlockProps) {
   const visible = visibleProvidersBlock(providers)
   // Renders its own card rather than being wrapped by the caller, so a strip
@@ -129,6 +136,26 @@ export default function AiLimitsStripBlock({
           </div>
         ))}
       </div>
+
+      {/* The card reads on open and on window focus, never on a poll, so a
+          figure can be minutes old with nothing else on screen admitting it.
+          Doubles as the manual refresh — the thing you reach for the moment you
+          notice the number is stale. */}
+      <button
+        type="button"
+        onClick={onRefresh}
+        title="Take a new reading"
+        className="mt-4 rounded text-[10.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
+        style={{ color: muted }}
+        onMouseEnter={(event) => {
+          event.currentTarget.style.color = heading
+        }}
+        onMouseLeave={(event) => {
+          event.currentTarget.style.color = muted
+        }}
+      >
+        Updated {formatUpdatedAgoBlock(readAtMs, nowMs)} · refresh
+      </button>
     </section>
   )
 }

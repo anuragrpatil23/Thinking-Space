@@ -372,6 +372,8 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
           nowMs={planUsage.nowMs}
           statusLineScriptPath={planUsage.statusLineScriptPath}
           statusLineMode={planUsage.statusLineMode}
+            readAtMs={planUsage.readAtMs}
+            onRefresh={planUsage.refresh}
         />
       </FloatingPanel>
 

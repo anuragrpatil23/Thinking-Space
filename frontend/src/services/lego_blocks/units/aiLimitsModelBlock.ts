@@ -182,6 +182,24 @@ export function formatResetAtBlock(
   return `${date}, ${clockBlock(at)}`
 }
 
+/**
+ * How long ago the reading was taken.
+ *
+ * Worth showing because the card doesn't poll: it reads on mount and on window
+ * focus, so figures can be minutes old and nothing else on the card would say
+ * so. Coarse on purpose — the exact second is noise, and rounding up past a
+ * minute avoids a label that claims "just now" for a reading from last night.
+ */
+export function formatUpdatedAgoBlock(readAtMs: number, nowMs: number = Date.now()): string {
+  const seconds = Math.max(0, Math.floor((nowMs - readAtMs) / 1000))
+  if (seconds < 45) return 'just now'
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.round(hours / 24)}d ago`
+}
+
 /** Clamp for the meter fill. Overage still reads as a full bar. */
 export function fillFractionBlock(usedPercent: number): number {
   return Math.min(1, Math.max(0, usedPercent / 100))

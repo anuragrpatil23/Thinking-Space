@@ -146,6 +146,8 @@ export default function HomeFlatOrch() {
             nowMs={planUsage.nowMs}
             statusLineScriptPath={planUsage.statusLineScriptPath}
             statusLineMode={planUsage.statusLineMode}
+            readAtMs={planUsage.readAtMs}
+            onRefresh={planUsage.refresh}
           />
 
           <FlatPanel theme={theme}>

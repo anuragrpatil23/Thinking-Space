@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   accentForBlock,
   fillFractionBlock,
+  formatUpdatedAgoBlock,
   formatRemainingBlock,
   formatResetAtBlock,
   toneForWindowBlock,
@@ -104,6 +105,23 @@ describe('accent', () => {
   it('gives each provider a hue tuned to the ground it sits on', () => {
     expect(accentForBlock('claude', false)).not.toBe(accentForBlock('claude', true))
     expect(accentForBlock('claude', false)).not.toBe(accentForBlock('codex', false))
+  })
+})
+
+describe('freshness label', () => {
+  it('says just now inside the first minute, so a fresh read reads as fresh', () => {
+    expect(formatUpdatedAgoBlock(NOW - 5_000, NOW)).toBe('just now')
+    expect(formatUpdatedAgoBlock(NOW - 44_000, NOW)).toBe('just now')
+  })
+
+  it('counts minutes, then hours, then days', () => {
+    expect(formatUpdatedAgoBlock(NOW - 2 * 60_000, NOW)).toBe('2m ago')
+    expect(formatUpdatedAgoBlock(NOW - 3 * 3600_000, NOW)).toBe('3h ago')
+    expect(formatUpdatedAgoBlock(NOW - 2 * 86_400_000, NOW)).toBe('2d ago')
+  })
+
+  it('never reports a negative age when the clock jumps back', () => {
+    expect(formatUpdatedAgoBlock(NOW + 30_000, NOW)).toBe('just now')
   })
 })
 

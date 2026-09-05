@@ -11,8 +11,14 @@ interface AiPlanUsageStateBlock {
   providers: AiLimitsProviderBlock[]
   statusLineScriptPath: string
   statusLineMode: ClaudeStatusLineModeBlock
-  /** Frozen clock captured with the reading, so countdowns match the data. */
+  /**
+   * Live clock, ticked once a minute while the window is visible. Countdowns
+   * and the freshness label both read from it, so neither sits frozen at the
+   * value it had when the data last arrived.
+   */
   nowMs: number
+  /** When the reading itself was taken — the basis for "updated 2m ago". */
+  readAtMs: number
   refresh: () => void
 }
 
@@ -32,6 +38,7 @@ export function useAiPlanUsageBlock(): AiPlanUsageStateBlock {
   const [providers, setProviders] = useState<AiLimitsProviderBlock[]>([])
   const [statusLineScriptPath, setStatusLineScriptPath] = useState('')
   const [statusLineMode, setStatusLineMode] = useState<ClaudeStatusLineModeBlock>('none')
+  const [readAtMs, setReadAtMs] = useState(() => Date.now())
   const [nowMs, setNowMs] = useState(() => Date.now())
 
   const refresh = useCallback(() => {
@@ -42,7 +49,9 @@ export function useAiPlanUsageBlock(): AiPlanUsageStateBlock {
         setProviders(next.providers)
         setStatusLineScriptPath(next.statusLineScriptPath)
         setStatusLineMode(next.statusLineMode)
-        setNowMs(Date.now())
+        const at = Date.now()
+        setReadAtMs(at)
+        setNowMs(at)
       })
       .catch(() => {
         // Main-process read failed. Keep the last good reading rather than
@@ -57,5 +66,37 @@ export function useAiPlanUsageBlock(): AiPlanUsageStateBlock {
     return () => window.removeEventListener('focus', onFocus)
   }, [refresh])
 
-  return { providers, statusLineScriptPath, statusLineMode, nowMs, refresh }
+  // Minute clock for the displayed times only — it re-renders text, it never
+  // re-reads. Gated on page visibility and torn down with the card, so a
+  // backgrounded or closed window wakes nothing (ENERGY.md forbids timers that
+  // run unconditionally, not ones that stop when nobody is looking).
+  useEffect(() => {
+    let timer: number | undefined
+
+    const stop = (): void => {
+      if (timer !== undefined) window.clearInterval(timer)
+      timer = undefined
+    }
+    const start = (): void => {
+      if (timer !== undefined) return
+      timer = window.setInterval(() => setNowMs(Date.now()), 60_000)
+    }
+    const sync = (): void => {
+      if (document.visibilityState === 'visible') {
+        setNowMs(Date.now())
+        start()
+      } else {
+        stop()
+      }
+    }
+
+    sync()
+    document.addEventListener('visibilitychange', sync)
+    return () => {
+      stop()
+      document.removeEventListener('visibilitychange', sync)
+    }
+  }, [])
+
+  return { providers, statusLineScriptPath, statusLineMode, nowMs, readAtMs, refresh }
 }
