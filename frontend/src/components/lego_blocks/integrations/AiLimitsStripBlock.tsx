@@ -128,13 +128,14 @@ export default function AiLimitsStripBlock({
 /**
  * The one-time setup for Claude, as a command the user can run verbatim.
  *
- * `/statusline` on its own writes a status line but not the file this card
- * reads, so the instruction has to carry that requirement — passing it as the
- * command's argument lets Claude Code write the script itself, which is a lot
- * less to ask than "hand-write this bash".
+ * Thinking Space ships the script itself — the bridge is our contract, down to
+ * its path, shape, and atomic write, so having another tool reconstruct it from
+ * a prose description would mean a script we don't control implementing a spec
+ * only we know. All that's left is pointing Claude Code at it, which is the
+ * user's config and stays their call.
  */
 const CLAUDE_SETUP_COMMAND_BLOCK =
-  '/statusline also write .rate_limits to ~/.thinking-space/claude-limits.json'
+  '/statusline use ~/.thinking-space/claude-statusline.sh'
 
 /**
  * The state most people are in on day one.
@@ -180,7 +181,8 @@ function ConnectInviteBlock({
   return (
     <div className="space-y-1.5">
       <p className="text-[11px] leading-snug" style={{ color: muted }}>
-        Claude Code shares its limits through a status line. Run this in Claude Code once:
+        Claude Code shares its limits through a status line. The script is ready — run this in
+        Claude Code once:
       </p>
       <button
         type="button"

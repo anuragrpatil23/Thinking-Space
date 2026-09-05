@@ -381,6 +381,83 @@ async function readCodexPlanUsageBlock(): Promise<AiPlanUsageProviderBlock> {
 }
 
 // ---------------------------------------------------------------------------
+// Claude — the status-line script we ship
+// ---------------------------------------------------------------------------
+
+/** Our script, in our directory. Pointing Claude Code at it stays the user's call. */
+export const CLAUDE_STATUSLINE_SCRIPT_PATH_BLOCK = path.join(
+  os.homedir(),
+  '.thinking-space',
+  'claude-statusline.sh',
+);
+
+/**
+ * The status-line script, owned by us because the bridge is our contract — its
+ * path, its shape, and the atomic write the card depends on. Asking the user
+ * (or another tool) to reconstruct that from a description would mean a script
+ * we don't control implementing a spec only we know.
+ *
+ * The bridge write has no dependencies: it stores the status-line JSON verbatim
+ * and lets the app pick out what it needs, so a machine without `jq` still
+ * feeds the card. `jq` only ever affects the cosmetic line printed back to the
+ * terminal.
+ *
+ * It prints something rather than nothing on purpose: Claude Code hides several
+ * footer hints once a status line exists, so a silent script would quietly cost
+ * the user something they had before.
+ */
+const CLAUDE_STATUSLINE_SCRIPT_BLOCK = [
+  '#!/usr/bin/env bash',
+  '# Installed by Thinking Space — feeds the "AI Plan usage" card.',
+  '# Safe to delete; also remove "statusLine" from ~/.claude/settings.json.',
+  'set -u',
+  'input=$(cat)',
+  'out="$HOME/.thinking-space/claude-limits.json"',
+  'mkdir -p "$(dirname "$out")"',
+  '# Write-then-rename: the app reads this on focus and must never see a',
+  '# half-written file.',
+  'printf \'%s\' "$input" > "$out.tmp" && mv "$out.tmp" "$out"',
+  '',
+  'if command -v jq >/dev/null 2>&1; then',
+  '  printf \'%s\' "$input" | jq -r \'[',
+  '    .model.display_name,',
+  '    (if .rate_limits.seven_day.used_percentage != null',
+  '       then "\\(.rate_limits.seven_day.used_percentage | floor)% wk" else empty end)',
+  '  ] | map(select(. != null)) | join("  ·  ")\'',
+  'else',
+  '  printf \'%s\' "$input" | sed -n \'s/.*"display_name" *: *"\\([^"]*\\)".*/\\1/p\' | head -1',
+  'fi',
+  '',
+].join('\n');
+
+/**
+ * Keep our script on disk and executable.
+ *
+ * Writes only inside `~/.thinking-space` — it never touches `~/.claude`, so
+ * nothing the user configured is changed by the app deciding to run.
+ */
+export function ensureClaudeStatusLineScriptBlock(): void {
+  try {
+    let current: string | null = null;
+    try {
+      current = fs.readFileSync(CLAUDE_STATUSLINE_SCRIPT_PATH_BLOCK, 'utf8');
+    } catch {
+      current = null;
+    }
+    if (current === CLAUDE_STATUSLINE_SCRIPT_BLOCK) return;
+    fs.mkdirSync(path.dirname(CLAUDE_STATUSLINE_SCRIPT_PATH_BLOCK), { recursive: true });
+    fs.writeFileSync(CLAUDE_STATUSLINE_SCRIPT_PATH_BLOCK, CLAUDE_STATUSLINE_SCRIPT_BLOCK, {
+      mode: 0o755,
+    });
+    logPlanUsageBlock('wrote claude status-line script');
+  } catch (error) {
+    logPlanUsageBlock(
+      `status-line script write failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Claude — reading the bridge file
 // ---------------------------------------------------------------------------
 
@@ -418,8 +495,13 @@ function readClaudePlanUsageBlock(): AiPlanUsageProviderBlock {
     return base;
   }
 
-  const session = liveWindowBlock(claudeWindowBlock(parsed.five_hour, 300));
-  const weekly = liveWindowBlock(claudeWindowBlock(parsed.seven_day, 10080));
+  // Our script stores the status-line payload verbatim — no `jq` required on
+  // the machine — so the windows sit under `rate_limits`. A bridge file written
+  // by an earlier hand-rolled script held that object at the top level; accept
+  // both rather than break anyone who wired this up before.
+  const limits = (parsed.rate_limits as Record<string, unknown> | undefined) ?? parsed;
+  const session = liveWindowBlock(claudeWindowBlock(limits.five_hour, 300));
+  const weekly = liveWindowBlock(claudeWindowBlock(limits.seven_day, 10080));
 
   // A bridge file with both windows rolled over means the status line ran but
   // Claude Code had nothing to publish yet — connected, not yet reporting.
@@ -439,6 +521,9 @@ function readClaudePlanUsageBlock(): AiPlanUsageProviderBlock {
 
 /** Both providers, in the order they appear on the card. */
 export async function readAiPlanUsageBlock(): Promise<AiPlanUsageProviderBlock[]> {
+  // Ours to provide, so it is always on disk and current by the time the card
+  // asks the user to point Claude Code at it.
+  ensureClaudeStatusLineScriptBlock();
   const codex = await readCodexPlanUsageBlock();
   return [readClaudePlanUsageBlock(), codex];
 }
