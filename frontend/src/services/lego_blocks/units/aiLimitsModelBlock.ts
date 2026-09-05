@@ -130,12 +130,6 @@ function clockBlock(at: Date): string {
   return at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
-function startOfDayBlock(ms: number): number {
-  const d = new Date(ms)
-  d.setHours(0, 0, 0, 0)
-  return d.getTime()
-}
-
 /**
  * How much of the window is left — the left-hand figure on a row.
  *
@@ -168,30 +162,24 @@ export function formatRemainingBlock(
 /**
  * When the window actually comes back — the right-hand figure on a row.
  *
- * A session window is at most a few hours long, so its reset always lands today
- * or tomorrow and those words read faster than a weekday name. A weekly reset
- * is far enough out that only a calendar date pins it down.
+ * The same date format for every window, deliberately. A session reset is
+ * nearly always later today, so "Today" carried no information and just made
+ * the two rows look like they were measuring different things. A date reads the
+ * same way in both, and stays correct when a late-night session rolls over past
+ * midnight.
+ *
+ * Time remaining is the field that scales to the window — see
+ * `formatRemainingBlock`. This one only answers "when".
  */
 export function formatResetAtBlock(
   resetsAt: number | null,
-  kind: AiLimitWindowKindBlock,
-  nowMs: number = Date.now(),
+  _kind: AiLimitWindowKindBlock,
+  _nowMs: number = Date.now(),
 ): string | null {
   if (resetsAt == null) return null
   const at = new Date(resetsAt * 1000)
-
-  if (kind === 'weekly') {
-    const date = at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-    return `${date}, ${clockBlock(at)}`
-  }
-
-  const dayDelta = Math.round(
-    (startOfDayBlock(at.getTime()) - startOfDayBlock(nowMs)) / 86_400_000,
-  )
-  if (dayDelta === 0) return `Today ${clockBlock(at)}`
-  if (dayDelta === 1) return `Tomorrow ${clockBlock(at)}`
-  const weekday = at.toLocaleDateString(undefined, { weekday: 'short' })
-  return `${weekday} ${clockBlock(at)}`
+  const date = at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return `${date}, ${clockBlock(at)}`
 }
 
 /** Clamp for the meter fill. Overage still reads as a full bar. */

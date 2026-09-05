@@ -16,6 +16,10 @@ interface AiLimitsStripBlockProps {
    * readings arrive, which is often enough for a figure rendered in minutes.
    */
   nowMs: number
+  /** Absolute path to the bundled status-line script, from the main process. */
+  statusLineScriptPath: string
+  /** Whether Claude Code already has a status line, and whose. */
+  statusLineMode: 'none' | 'ours' | 'theirs'
 }
 
 /**
@@ -31,6 +35,8 @@ export default function AiLimitsStripBlock({
   providers,
   theme,
   nowMs,
+  statusLineScriptPath,
+  statusLineMode,
 }: AiLimitsStripBlockProps) {
   const visible = visibleProvidersBlock(providers)
   // Renders its own card rather than being wrapped by the caller, so a strip
@@ -95,6 +101,8 @@ export default function AiLimitsStripBlock({
               muted={muted}
               heading={heading}
               isDark={theme.isDark}
+              statusLineScriptPath={statusLineScriptPath}
+              statusLineMode={statusLineMode}
             />
           ) : (
             <div className="space-y-1.5">
@@ -126,16 +134,28 @@ export default function AiLimitsStripBlock({
 }
 
 /**
- * The one-time setup for Claude, as a command the user can run verbatim.
+ * The one-time setup for Claude, as a command to run verbatim — which one
+ * depends on whether the person already has a status line.
  *
- * Thinking Space ships the script itself — the bridge is our contract, down to
- * its path, shape, and atomic write, so having another tool reconstruct it from
- * a prose description would mean a script we don't control implementing a spec
- * only we know. All that's left is pointing Claude Code at it, which is the
- * user's config and stays their call.
+ * Only one status line can be configured, so telling someone with an existing
+ * one to point Claude Code at ours would silently destroy their branch, context
+ * meter, whatever they built. That is a trap, not an instruction. So when they
+ * have one, the card asks their Claude to *add* the bridge write to the script
+ * they already have and leave its output alone.
+ *
+ * With no status line there is nothing to lose, and ours can be used directly —
+ * the bridge is our contract (path, shape, atomic write), so shipping the
+ * script beats describing it and hoping.
  */
-const CLAUDE_SETUP_COMMAND_BLOCK =
-  '/statusline use ~/.thinking-space/claude-statusline.sh'
+function claudeSetupCommandBlock(
+  mode: 'none' | 'ours' | 'theirs',
+  scriptPath: string,
+): string {
+  if (mode === 'theirs') {
+    return `/statusline keep my current status line output exactly as it is, and also write the raw stdin JSON to ~/.thinking-space/claude-limits.json using write-then-rename`
+  }
+  return `/statusline use ${scriptPath || '~/.thinking-space/claude-statusline.sh'}`
+}
 
 /**
  * The state most people are in on day one.
@@ -150,13 +170,18 @@ function ConnectInviteBlock({
   muted,
   heading,
   isDark,
+  statusLineScriptPath,
+  statusLineMode,
 }: {
   providerId: AiLimitsProviderBlock['id']
   muted: string
   heading: string
   isDark: boolean
+  statusLineScriptPath: string
+  statusLineMode: 'none' | 'ours' | 'theirs'
 }) {
   const [copied, setCopied] = useState(false)
+  const command = claudeSetupCommandBlock(statusLineMode, statusLineScriptPath)
 
   if (providerId !== 'claude') {
     return (
@@ -168,7 +193,7 @@ function ConnectInviteBlock({
 
   const copyCommand = (): void => {
     void navigator.clipboard
-      ?.writeText(CLAUDE_SETUP_COMMAND_BLOCK)
+      ?.writeText(command)
       .then(() => {
         setCopied(true)
         window.setTimeout(() => setCopied(false), 1600)
@@ -181,20 +206,21 @@ function ConnectInviteBlock({
   return (
     <div className="space-y-1.5">
       <p className="text-[11px] leading-snug" style={{ color: muted }}>
-        Claude Code shares its limits through a status line. The script is ready — run this in
-        Claude Code once:
+        {statusLineMode === 'theirs'
+          ? 'You already have a status line. Run this in Claude Code to add usage sharing to it — your own output stays exactly as it is:'
+          : 'Claude Code shares its limits through a status line. The script is ready — run this in Claude Code once:'}
       </p>
       <button
         type="button"
         onClick={copyCommand}
         title="Copy this command"
-        className="w-full truncate rounded px-2 py-1 text-left font-mono text-[10.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
+        className="w-full rounded break-all px-2 py-1 text-left font-mono text-[10.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
         style={{
           color: heading,
           background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(28,25,23,0.05)',
         }}
       >
-        {CLAUDE_SETUP_COMMAND_BLOCK}
+        {command}
       </button>
       <p className="text-[10.5px]" style={{ color: muted }}>
         {copied ? 'Copied' : 'Click to copy · then send one message'}

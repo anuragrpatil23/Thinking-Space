@@ -370,6 +370,8 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
           providers={planUsage.providers}
           theme={theme}
           nowMs={planUsage.nowMs}
+          statusLineScriptPath={planUsage.statusLineScriptPath}
+          statusLineMode={planUsage.statusLineMode}
         />
       </FloatingPanel>
 

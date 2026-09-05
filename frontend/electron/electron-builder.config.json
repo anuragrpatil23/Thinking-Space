@@ -30,6 +30,10 @@
       "from": "resources/cli",
       "to": "cli",
       "filter": ["**/*"]
+    },
+    {
+      "from": "resources/claude-statusline.sh",
+      "to": "claude-statusline.sh"
     }
   ],
   "publish": {

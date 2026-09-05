@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AiLimitsProviderBlock } from '@/services/lego_blocks/units/aiLimitsModelBlock'
 
+/**
+ * What Claude Code's status line currently is. Decides which setup instruction
+ * the card can safely show — see `AiLimitsStripBlock`.
+ */
+export type ClaudeStatusLineModeBlock = 'none' | 'ours' | 'theirs'
+
 interface AiPlanUsageStateBlock {
   providers: AiLimitsProviderBlock[]
+  statusLineScriptPath: string
+  statusLineMode: ClaudeStatusLineModeBlock
   /** Frozen clock captured with the reading, so countdowns match the data. */
   nowMs: number
   refresh: () => void
@@ -22,6 +30,8 @@ interface AiPlanUsageStateBlock {
  */
 export function useAiPlanUsageBlock(): AiPlanUsageStateBlock {
   const [providers, setProviders] = useState<AiLimitsProviderBlock[]>([])
+  const [statusLineScriptPath, setStatusLineScriptPath] = useState('')
+  const [statusLineMode, setStatusLineMode] = useState<ClaudeStatusLineModeBlock>('none')
   const [nowMs, setNowMs] = useState(() => Date.now())
 
   const refresh = useCallback(() => {
@@ -29,7 +39,9 @@ export function useAiPlanUsageBlock(): AiPlanUsageStateBlock {
     if (!read) return
     void read()
       .then((next) => {
-        setProviders(next)
+        setProviders(next.providers)
+        setStatusLineScriptPath(next.statusLineScriptPath)
+        setStatusLineMode(next.statusLineMode)
         setNowMs(Date.now())
       })
       .catch(() => {
@@ -45,5 +57,5 @@ export function useAiPlanUsageBlock(): AiPlanUsageStateBlock {
     return () => window.removeEventListener('focus', onFocus)
   }, [refresh])
 
-  return { providers, nowMs, refresh }
+  return { providers, statusLineScriptPath, statusLineMode, nowMs, refresh }
 }

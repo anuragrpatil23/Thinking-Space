@@ -25,8 +25,16 @@ const TONE_COLOR_BLOCK = {
   dark: { watch: '#DDA43F', urgent: '#E0625A' },
 } as const
 
-/** Shared so the empty row and the live row keep identical column widths. */
-const ROW_GRID_BLOCK = 'grid grid-cols-[3.25rem_1fr_2.25rem_auto]'
+/**
+ * One template for every row, in every provider column.
+ *
+ * All four tracks share it so the bars are the same length and the figures line
+ * up down the card. The reset column is a fixed width rather than `auto` for
+ * exactly that reason: sized to content, "Sep 6, 6:27 AM" and "Sep 12, 11:15 AM"
+ * measure differently, and the `1fr` bar silently absorbs the difference —
+ * which is what left the two bars visibly unequal.
+ */
+const ROW_GRID_BLOCK = 'grid grid-cols-[3.25rem_1fr_2.25rem_6.75rem]'
 
 const KIND_LABEL_BLOCK: Record<AiLimitWindowKindBlock, string> = {
   session: 'Session',

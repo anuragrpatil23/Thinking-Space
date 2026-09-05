@@ -1,3 +1,4 @@
+import { app } from 'electron';
 import { spawn, type ChildProcess } from 'child_process';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
@@ -35,6 +36,18 @@ export const CLAUDE_LIMITS_BRIDGE_PATH_BLOCK = path.join(
 
 export type AiPlanUsageProviderIdBlock = 'claude' | 'codex';
 export type AiPlanUsageStateBlock = 'ready' | 'waiting' | 'unconfigured';
+
+/**
+ * What Claude Code's status line currently is, which decides what we can safely
+ * ask the user to do.
+ *
+ * `theirs` is the case that matters: pointing Claude Code at our script would
+ * replace whatever they built — their branch, their context meter — because
+ * only one status line runs. Telling someone to run a command that quietly
+ * destroys their setup is not an instruction, it's a trap, so the card asks
+ * them to add a line to their own script instead.
+ */
+export type ClaudeStatusLineModeBlock = 'none' | 'ours' | 'theirs';
 
 export interface AiPlanUsageWindowBlock {
   usedPercent: number;
@@ -384,76 +397,52 @@ async function readCodexPlanUsageBlock(): Promise<AiPlanUsageProviderBlock> {
 // Claude — the status-line script we ship
 // ---------------------------------------------------------------------------
 
-/** Our script, in our directory. Pointing Claude Code at it stays the user's call. */
-export const CLAUDE_STATUSLINE_SCRIPT_PATH_BLOCK = path.join(
-  os.homedir(),
-  '.thinking-space',
-  'claude-statusline.sh',
-);
+const STATUSLINE_SCRIPT_RELATIVE_PATH_BLOCK = 'claude-statusline.sh';
 
 /**
- * The status-line script, owned by us because the bridge is our contract — its
- * path, its shape, and the atomic write the card depends on. Asking the user
- * (or another tool) to reconstruct that from a description would mean a script
- * we don't control implementing a spec only we know.
+ * Where the bundled status-line script lives.
  *
- * The bridge write has no dependencies: it stores the status-line JSON verbatim
- * and lets the app pick out what it needs, so a machine without `jq` still
- * feeds the card. `jq` only ever affects the cosmetic line printed back to the
- * terminal.
- *
- * It prints something rather than nothing on purpose: Claude Code hides several
- * footer hints once a status line exists, so a silent script would quietly cost
- * the user something they had before.
+ * Inside the app bundle rather than copied into the user's home: it is part of
+ * Thinking Space, versioned with it, and updates when the app does — no loose
+ * copy for anyone to maintain, trust, or find drifting out of date. Resolution
+ * mirrors cliProvisionBlock's: `process.resourcesPath` when packaged, the repo
+ * folder in development.
  */
-const CLAUDE_STATUSLINE_SCRIPT_BLOCK = [
-  '#!/usr/bin/env bash',
-  '# Installed by Thinking Space — feeds the "AI Plan usage" card.',
-  '# Safe to delete; also remove "statusLine" from ~/.claude/settings.json.',
-  'set -u',
-  'input=$(cat)',
-  'out="$HOME/.thinking-space/claude-limits.json"',
-  'mkdir -p "$(dirname "$out")"',
-  '# Write-then-rename: the app reads this on focus and must never see a',
-  '# half-written file.',
-  'printf \'%s\' "$input" > "$out.tmp" && mv "$out.tmp" "$out"',
-  '',
-  'if command -v jq >/dev/null 2>&1; then',
-  '  printf \'%s\' "$input" | jq -r \'[',
-  '    .model.display_name,',
-  '    (if .rate_limits.seven_day.used_percentage != null',
-  '       then "\\(.rate_limits.seven_day.used_percentage | floor)% wk" else empty end)',
-  '  ] | map(select(. != null)) | join("  ·  ")\'',
-  'else',
-  '  printf \'%s\' "$input" | sed -n \'s/.*"display_name" *: *"\\([^"]*\\)".*/\\1/p\' | head -1',
-  'fi',
-  '',
-].join('\n');
+export function claudeStatusLineScriptPathBlock(): string {
+  const packaged = process.resourcesPath
+    ? path.join(process.resourcesPath, STATUSLINE_SCRIPT_RELATIVE_PATH_BLOCK)
+    : null;
+  if (packaged && fs.existsSync(packaged)) return packaged;
+  return path.join(
+    app.getAppPath(),
+    'electron',
+    'resources',
+    STATUSLINE_SCRIPT_RELATIVE_PATH_BLOCK,
+  );
+}
 
 /**
- * Keep our script on disk and executable.
+ * Read-only look at Claude Code's status-line setting.
  *
- * Writes only inside `~/.thinking-space` — it never touches `~/.claude`, so
- * nothing the user configured is changed by the app deciding to run.
+ * Never writes: `~/.claude` is the user's, and the app's job here is to know
+ * which instruction is safe to show, not to change anything.
  */
-export function ensureClaudeStatusLineScriptBlock(): void {
+export function claudeStatusLineModeBlock(): ClaudeStatusLineModeBlock {
   try {
-    let current: string | null = null;
-    try {
-      current = fs.readFileSync(CLAUDE_STATUSLINE_SCRIPT_PATH_BLOCK, 'utf8');
-    } catch {
-      current = null;
-    }
-    if (current === CLAUDE_STATUSLINE_SCRIPT_BLOCK) return;
-    fs.mkdirSync(path.dirname(CLAUDE_STATUSLINE_SCRIPT_PATH_BLOCK), { recursive: true });
-    fs.writeFileSync(CLAUDE_STATUSLINE_SCRIPT_PATH_BLOCK, CLAUDE_STATUSLINE_SCRIPT_BLOCK, {
-      mode: 0o755,
-    });
-    logPlanUsageBlock('wrote claude status-line script');
-  } catch (error) {
-    logPlanUsageBlock(
-      `status-line script write failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(CLAUDE_HOME_BLOCK, 'settings.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    const statusLine = settings.statusLine as Record<string, unknown> | undefined;
+    const command = typeof statusLine?.command === 'string' ? statusLine.command : null;
+    if (!command) return 'none';
+    // Match on the filename rather than the full path: the app can be installed
+    // anywhere, and a settings file written against an older install location
+    // still points at our script.
+    return command.includes(STATUSLINE_SCRIPT_RELATIVE_PATH_BLOCK) ? 'ours' : 'theirs';
+  } catch {
+    // No settings file, or unreadable — treat as unconfigured, which shows the
+    // gentler of the two instructions.
+    return 'none';
   }
 }
 
@@ -520,10 +509,24 @@ function readClaudePlanUsageBlock(): AiPlanUsageProviderBlock {
 // ---------------------------------------------------------------------------
 
 /** Both providers, in the order they appear on the card. */
-export async function readAiPlanUsageBlock(): Promise<AiPlanUsageProviderBlock[]> {
-  // Ours to provide, so it is always on disk and current by the time the card
-  // asks the user to point Claude Code at it.
-  ensureClaudeStatusLineScriptBlock();
+export interface AiPlanUsageReadingBlock {
+  /** Both providers, in the order they appear on the card. */
+  providers: AiPlanUsageProviderBlock[];
+  /**
+   * Absolute path to the bundled status-line script, so the card can print the
+   * command verbatim wherever the app is installed rather than assuming
+   * /Applications.
+   */
+  statusLineScriptPath: string;
+  /** Decides which setup instruction is safe to show. */
+  statusLineMode: ClaudeStatusLineModeBlock;
+}
+
+export async function readAiPlanUsageBlock(): Promise<AiPlanUsageReadingBlock> {
   const codex = await readCodexPlanUsageBlock();
-  return [readClaudePlanUsageBlock(), codex];
+  return {
+    providers: [readClaudePlanUsageBlock(), codex],
+    statusLineScriptPath: claudeStatusLineScriptPathBlock(),
+    statusLineMode: claudeStatusLineModeBlock(),
+  };
 }

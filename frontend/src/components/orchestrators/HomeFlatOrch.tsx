@@ -144,6 +144,8 @@ export default function HomeFlatOrch() {
             providers={planUsage.providers}
             theme={theme}
             nowMs={planUsage.nowMs}
+            statusLineScriptPath={planUsage.statusLineScriptPath}
+            statusLineMode={planUsage.statusLineMode}
           />
 
           <FlatPanel theme={theme}>

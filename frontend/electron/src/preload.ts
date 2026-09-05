@@ -395,7 +395,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on(channel, listener)
     return () => { ipcRenderer.removeListener(channel, listener) }
   },
-  aiPlanUsageRead: (): Promise<Array<{
+  aiPlanUsageRead: (): Promise<{
+    statusLineScriptPath: string
+    statusLineMode: 'none' | 'ours' | 'theirs'
+    providers: Array<{
     id: 'claude' | 'codex'
     label: string
     plan: string | null
@@ -404,7 +407,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hasPlan: boolean
     session: { usedPercent: number; resetsAt: number | null; windowMinutes: number | null } | null
     weekly: { usedPercent: number; resetsAt: number | null; windowMinutes: number | null } | null
-  }>> => ipcRenderer.invoke('ai:plan-usage:read'),
+    }>
+  }> => ipcRenderer.invoke('ai:plan-usage:read'),
   profilesList: (): Promise<ElectronProfileSummaryBlock[]> =>
     ipcRenderer.invoke('profiles:list'),
   profilesCreate: (input: { name: string; vaultRoot: string; accentColor?: string | null; icon?: string | null }): Promise<ElectronProfileSummaryBlock> =>
