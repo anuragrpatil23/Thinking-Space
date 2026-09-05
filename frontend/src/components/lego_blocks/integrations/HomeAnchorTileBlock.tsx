@@ -5,6 +5,8 @@ const DashboardChartsBlock = lazy(() => import('@/components/lego_blocks/integra
 import ThisWeekDigestBlock from '@/components/lego_blocks/integrations/ThisWeekDigestBlock'
 import WakeListBlock from '@/components/lego_blocks/integrations/WakeListBlock'
 import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
+import AiLimitsStripBlock from '@/components/lego_blocks/integrations/AiLimitsStripBlock'
+import { useAiPlanUsageBlock } from '@/components/lego_blocks/hooks/shared/useAiPlanUsageBlock'
 import TodayFileActivityOrch from '@/components/orchestrators/TodayFileActivityOrch'
 import HomeWelcomeBlock from '@/components/lego_blocks/integrations/HomeWelcomeBlock'
 import { useDashboardActivityBlock } from '@/components/lego_blocks/hooks/shared/useDashboardActivityBlock'
@@ -29,6 +31,10 @@ interface AnchorElementProps {
 // top of the stack so their expansion pushes everything below in one shot.
 const ANCHOR_ELEMENTS = {
   welcome: { w: 640, h: 200, offsetY: -540 },
+  // Heads the cascade at AI-Activity's anchor and pushes it down only when it
+  // actually renders — a person using neither Claude Code nor Codex sees the
+  // canvas exactly as before.
+  planUsage: { w: 880, gap: 24 },
   aiActivity: { w: 880, initialH: 620, offsetY: -380 },
   thisWeek: { w: 880, initialH: 700, gap: 40 },
   wakeList: { w: 880, gap: 40 },
@@ -183,6 +189,12 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
   // leave a phantom gap at the bottom of the canvas world. Its measured height
   // grows the world only when it actually has content.
   const [wakeListHeight, setWakeListHeight] = useState<number>(0)
+  // Seeded at 0 and allowed to collapse for the same reason as the wake list:
+  // the card hides itself when no provider is in use, and a floor would leave
+  // a phantom gap above AI activity.
+  const [planUsageHeight, setPlanUsageHeight] = useState<number>(0)
+  const planUsageRef = useRef<HTMLDivElement | null>(null)
+  const planUsage = useAiPlanUsageBlock()
   const aiActivityRef = useRef<HTMLDivElement | null>(null)
   const thisWeekRef = useRef<HTMLDivElement | null>(null)
   const wakeListRef = useRef<HTMLDivElement | null>(null)
@@ -232,6 +244,21 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
     return () => ro.disconnect()
   }, [])
 
+  // Collapsible measurement, like the wake list — observeIntrinsicPanel floors
+  // at 100px, which would pin a hidden card open.
+  useEffect(() => {
+    const el = planUsageRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const measured = Math.ceil(entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height)
+        setPlanUsageHeight(prev => (Math.abs(prev - measured) < 1 ? prev : measured))
+      }
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   // Legacy home tiles (the "Activity" charts panel + "What you did today" file-
   // activity panel) are hidden — the AI-Activity panel now covers this ground.
   // Kept wired (imports, layout, components) behind this flag so they can be
@@ -252,7 +279,10 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
     w: welcomeSpec.w,
     h: welcomeSpec.h,
   }
-  const aiActivityTop = centerY + aiSpec.offsetY
+  const planUsageSpec = ANCHOR_ELEMENTS.planUsage
+  const planUsageTop = centerY + aiSpec.offsetY
+  const aiActivityTop =
+    planUsageHeight > 0 ? planUsageTop + planUsageHeight + planUsageSpec.gap : planUsageTop
   const aiActivityBottom = aiActivityTop + aiActivityHeight
   const thisWeekTop = aiActivityBottom + thisWeekSpec.gap
   const thisWeekBottom = thisWeekTop + thisWeekHeight
@@ -266,6 +296,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
   const todayTop = chartsBottom + todaySpec.gap
   const todayBottom = todayTop + todaySpec.h
 
+  const planUsagePanel = { x: centerX - w / 2, y: planUsageTop, w }
   const aiActivity = { x: centerX - w / 2, y: aiActivityTop, w }
   const thisWeek = { x: centerX - w / 2, y: thisWeekTop, w }
   const wakeList = { x: centerX - w / 2, y: wakeListTop, w }
@@ -327,6 +358,14 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
           />
         </FloatingPanel>
       )}
+
+      <FloatingPanel {...planUsagePanel} variant="text" theme={theme} innerRef={planUsageRef}>
+        <AiLimitsStripBlock
+          providers={planUsage.providers}
+          theme={theme}
+          nowMs={planUsage.nowMs}
+        />
+      </FloatingPanel>
 
       <FloatingPanel {...aiActivity} theme={theme} innerRef={aiActivityRef}>
         {/* The AI-Activity panel caps its own drill table internally, so
