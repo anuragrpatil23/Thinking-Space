@@ -462,8 +462,31 @@ export const CLAUDE_SESSIONS_DIR_BLOCK = path.join(
   'claude-sessions',
 );
 
+/**
+ * Append-only usage history, one file per month.
+ *
+ * Separate from the snapshots because it answers a different question: the
+ * snapshots say where each session ended up, this says how usage moved over
+ * time. Neither can be derived from the other.
+ */
+export const CLAUDE_USAGE_LOG_DIR_BLOCK = path.join(
+  os.homedir(),
+  '.thinking-space',
+  'claude-usage-log',
+);
+
 /** A snapshot older than this is from a session nobody is coming back to. */
 const SESSION_SNAPSHOT_RETENTION_MS_BLOCK = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * The usage log keeps far longer than the snapshots — a year of monthly files.
+ *
+ * It is the one artifact here that cannot be regenerated: a deleted month is a
+ * permanent hole in the curve, where a deleted snapshot just means one stale
+ * session is forgotten. At roughly a megabyte a busy month, keeping it is
+ * cheaper than regretting it.
+ */
+const USAGE_LOG_RETENTION_MS_BLOCK = 365 * 24 * 60 * 60 * 1000;
 
 /**
  * Drop snapshots for sessions that stopped reporting a month ago.
@@ -473,14 +496,14 @@ const SESSION_SNAPSHOT_RETENTION_MS_BLOCK = 30 * 24 * 60 * 60 * 1000;
  * rather than in the script to keep the spawned-per-message path minimal and
  * the policy in code we can change and reason about.
  */
-export function pruneClaudeSessionSnapshotsBlock(nowMs: number = Date.now()): void {
+function pruneDirectoryBlock(dir: string, suffix: string, maxAgeMs: number, nowMs: number): void {
   try {
-    for (const name of fs.readdirSync(CLAUDE_SESSIONS_DIR_BLOCK)) {
-      if (!name.endsWith('.json')) continue;
-      const file = path.join(CLAUDE_SESSIONS_DIR_BLOCK, name);
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.endsWith(suffix)) continue;
+      const file = path.join(dir, name);
       try {
         const { mtimeMs } = fs.statSync(file);
-        if (nowMs - mtimeMs > SESSION_SNAPSHOT_RETENTION_MS_BLOCK) fs.unlinkSync(file);
+        if (nowMs - mtimeMs > maxAgeMs) fs.unlinkSync(file);
       } catch {
         // A file that vanished under us, or one we can't stat — leave it.
       }
@@ -488,6 +511,16 @@ export function pruneClaudeSessionSnapshotsBlock(nowMs: number = Date.now()): vo
   } catch {
     // Directory absent until the status line runs at least once.
   }
+}
+
+export function pruneClaudeSessionSnapshotsBlock(nowMs: number = Date.now()): void {
+  pruneDirectoryBlock(
+    CLAUDE_SESSIONS_DIR_BLOCK,
+    '.json',
+    SESSION_SNAPSHOT_RETENTION_MS_BLOCK,
+    nowMs,
+  );
+  pruneDirectoryBlock(CLAUDE_USAGE_LOG_DIR_BLOCK, '.jsonl', USAGE_LOG_RETENTION_MS_BLOCK, nowMs);
 }
 
 // ---------------------------------------------------------------------------

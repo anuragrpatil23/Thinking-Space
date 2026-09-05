@@ -45,6 +45,79 @@ case "$session_id" in
     ;;
 esac
 
+# Append-only history, one monthly file.
+#
+# The snapshot above is last-value-per-session: a session that ran all week
+# leaves one row holding its final number, so there is no curve in it to plot.
+# Usage over time only exists if something writes it down as it happens — it
+# cannot be reconstructed later, which is why this starts collecting before
+# anything reads it.
+#
+# Each line is a small projection — the fields a usage curve and per-session
+# attribution actually need — at roughly 110 bytes against 1.4 KB for the whole
+# payload. Over a year that is the difference between a few megabytes and most
+# of a gigabyte, for fields nothing would plot. The full payload is already kept
+# per session in claude-sessions/, so nothing is lost by summarising here.
+#
+# Three ways to build it, in order, so no machine is left without history:
+# jq when installed; a narrow grep for the numbers when not; and failing both,
+# the raw payload, which the reader detects by its "payload" key. session_id is
+# copied through untouched so these lines still join against AI-activity
+# records.
+log_dir="$HOME/.thinking-space/claude-usage-log"
+mkdir -p "$log_dir"
+log_file="$log_dir/$(date +%Y-%m).jsonl"
+now=$(date +%s)
+
+# One line every five minutes.
+#
+# Rate-limit windows are 5 hours and 7 days, so five-minute resolution is 60
+# samples across the short window and 2000 across the long one — far more than a
+# curve needs. The interval is the size control: the payload goes in whole
+# (~1.4 KB), so a minute's resolution would cost roughly 13 MB a month against
+# about 2.5 MB here, for detail nothing would ever plot.
+#
+# `t` is our own field in a known format, so reading it back with sed is safe in
+# a way parsing Claude Code's payload would not be.
+last_t=$(tail -c 4096 "$log_file" 2>/dev/null | tail -1 | sed -n 's/^{"t":\([0-9]*\).*/\1/p')
+if [ -z "$last_t" ] || [ $((now - last_t)) -ge 300 ]; then
+  line=''
+
+  if command -v jq >/dev/null 2>&1; then
+    line=$(printf '%s' "$input" | jq -c --argjson t "$now" '{
+      t: $t,
+      sid: .session_id,
+      fh: .rate_limits.five_hour.used_percentage,
+      fhr: .rate_limits.five_hour.resets_at,
+      sd: .rate_limits.seven_day.used_percentage,
+      sdr: .rate_limits.seven_day.resets_at,
+      cost: .cost.total_cost_usd,
+      ctx: .context_window.used_percentage,
+      model: .model.id
+    }' 2>/dev/null)
+  fi
+
+  if [ -z "$line" ]; then
+    # No jq. Narrow to the rate_limits object *before* matching, because
+    # "used_percentage" is not unique in this payload — context_window has one
+    # too, and it appears first. Matching the bare key across the whole document
+    # silently logged context usage as the session limit.
+    rl=$(printf '%s' "$input" | sed -n 's/.*"rate_limits"://p')
+    pcts=$(printf '%s' "$rl" | grep -o '"used_percentage":[0-9]*' | grep -o '[0-9]*$' | grep -v '^$')
+    fh=$(printf '%s\n' "$pcts" | sed -n 1p)
+    sd=$(printf '%s\n' "$pcts" | sed -n 2p)
+    if [ -n "$fh" ] && [ -n "$sd" ]; then
+      line=$(printf '{"t":%s,"sid":"%s","fh":%s,"sd":%s}' "$now" "$session_id" "$fh" "$sd")
+    fi
+  fi
+
+  # Neither worked — keep the raw payload rather than drop the sample. History
+  # is the one thing that cannot be backfilled.
+  [ -n "$line" ] || line=$(printf '{"t":%s,"payload":%s}' "$now" "$input")
+
+  printf '%s\n' "$line" >> "$log_file"
+fi
+
 # Display only — jq is optional, and its absence never breaks the card.
 if command -v jq >/dev/null 2>&1; then
   printf '%s' "$input" | jq -r '[
