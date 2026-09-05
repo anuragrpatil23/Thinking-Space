@@ -467,52 +467,87 @@ export function claudeStatusLineModeBlock(): ClaudeStatusLineModeBlock {
  * file they belong to whichever session rendered most recently. Keyed by
  * session id they become readable per session.
  */
-export const CLAUDE_SESSIONS_DIR_BLOCK = path.join(
-  os.homedir(),
-  '.thinking-space',
-  'claude-sessions',
-);
-
-/**
- * Append-only usage history, one file per month.
- *
- * Separate from the snapshots because it answers a different question: the
- * snapshots say where each session ended up, this says how usage moved over
- * time. Neither can be derived from the other.
- */
+export const AI_SESSIONS_DIR_BLOCK = path.join(os.homedir(), '.thinking-space', 'ai-sessions');
 export const AI_USAGE_LOG_DIR_BLOCK = path.join(os.homedir(), '.thinking-space', 'ai-usage-log');
 
-/** Previous name, before Codex samples joined the same directory. */
-const LEGACY_CLAUDE_USAGE_LOG_DIR_BLOCK = path.join(
-  os.homedir(),
-  '.thinking-space',
-  'claude-usage-log',
-);
+/** A snapshot older than this is from a session nobody is coming back to. */
+const SESSION_SNAPSHOT_RETENTION_MS_BLOCK = 30 * 24 * 60 * 60 * 1000;
 
 /**
- * Move history written under the old Claude-only name.
+ * The usage log keeps far longer than the snapshots — a year of monthly files.
  *
- * Renaming a directory people already have data in would otherwise orphan it,
- * and this is the one artifact that cannot be regenerated — a lost month is a
- * permanent hole in the curve.
+ * It is the one artifact here that cannot be regenerated: a deleted month is a
+ * permanent hole in the curve, where a deleted snapshot just means one stale
+ * session is forgotten. At well under a megabyte a busy month, keeping it is
+ * cheaper than regretting it.
  */
-function migrateLegacyUsageLogBlock(): void {
-  try {
-    if (!fs.existsSync(LEGACY_CLAUDE_USAGE_LOG_DIR_BLOCK)) return;
-    fs.mkdirSync(AI_USAGE_LOG_DIR_BLOCK, { recursive: true });
-    for (const name of fs.readdirSync(LEGACY_CLAUDE_USAGE_LOG_DIR_BLOCK)) {
-      if (!name.endsWith('.jsonl')) continue;
-      const from = path.join(LEGACY_CLAUDE_USAGE_LOG_DIR_BLOCK, name);
-      // Old files held Claude rows only, so they take the provider prefix the
-      // new layout expects.
-      const to = path.join(AI_USAGE_LOG_DIR_BLOCK, name.startsWith('claude-') ? name : `claude-${name}`);
-      if (!fs.existsSync(to)) fs.renameSync(from, to);
+const USAGE_LOG_RETENTION_MS_BLOCK = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * Earlier layouts of the same data, moved rather than orphaned.
+ *
+ * Both directories were renamed while this was being built — first to drop the
+ * Claude-only naming once Codex joined, then to put the provider in a folder so
+ * a session file is named by nothing but its session id. History is the one
+ * thing here that cannot be regenerated, so each rename brings its files along.
+ */
+const LEGACY_LAYOUTS_BLOCK: Array<{ from: string; to: string; strip?: string }> = [
+  {
+    from: path.join(os.homedir(), '.thinking-space', 'claude-sessions'),
+    to: path.join(AI_SESSIONS_DIR_BLOCK, 'claude'),
+  },
+  {
+    from: path.join(os.homedir(), '.thinking-space', 'claude-usage-log'),
+    to: path.join(AI_USAGE_LOG_DIR_BLOCK, 'claude'),
+  },
+  { from: AI_USAGE_LOG_DIR_BLOCK, to: path.join(AI_USAGE_LOG_DIR_BLOCK, 'claude'), strip: 'claude-' },
+  { from: AI_USAGE_LOG_DIR_BLOCK, to: path.join(AI_USAGE_LOG_DIR_BLOCK, 'codex'), strip: 'codex-' },
+];
+
+function migrateLegacyLayoutsBlock(): void {
+  for (const { from, to, strip } of LEGACY_LAYOUTS_BLOCK) {
+    try {
+      if (!fs.existsSync(from)) continue;
+      for (const name of fs.readdirSync(from)) {
+        if (strip && !name.startsWith(strip)) continue;
+        if (!name.endsWith('.json') && !name.endsWith('.jsonl')) continue;
+        fs.mkdirSync(to, { recursive: true });
+        const source = path.join(from, name);
+        const target = path.join(to, strip ? name.slice(strip.length) : name);
+
+        if (!fs.existsSync(target)) {
+          fs.renameSync(source, target);
+          continue;
+        }
+
+        // Two layouts can map to the same destination — a month written under
+        // the old directory name and again under the old flat filename. Skipping
+        // on conflict would quietly strand one of them, which is the exact
+        // failure this migration exists to prevent.
+        if (name.endsWith('.jsonl')) {
+          // Append-only history: both halves are real samples, so keep both.
+          // Readers sort by `t`, so interleaved order is fine.
+          fs.appendFileSync(target, fs.readFileSync(source));
+          fs.unlinkSync(source);
+        } else {
+          // A session snapshot is a single latest-state document, so the newer
+          // one wins outright rather than being merged.
+          if (fs.statSync(source).mtimeMs > fs.statSync(target).mtimeMs) {
+            fs.renameSync(source, target);
+          } else {
+            fs.unlinkSync(source);
+          }
+        }
+      }
+      // Only fully-renamed directories go away, and only once empty — the
+      // previously-installed status line keeps writing to the old path until
+      // the app ships a new script, so a non-empty directory here is expected
+      // rather than an error.
+      if (!strip && fs.readdirSync(from).length === 0) fs.rmdirSync(from);
+      logPlanUsageBlock(`migrated ${path.basename(from)} -> ${path.basename(to)}`);
+    } catch {
+      // Leave the old location alone if the move fails; the data is still there.
     }
-    fs.rmdirSync(LEGACY_CLAUDE_USAGE_LOG_DIR_BLOCK);
-    logPlanUsageBlock('migrated usage log to ai-usage-log');
-  } catch {
-    // Leave the old directory alone if anything about the move fails; the data
-    // is still on disk under its previous name.
   }
 }
 
@@ -550,11 +585,9 @@ function appendCodexUsageSampleBlock(rateLimits: Record<string, unknown>, nowMs:
     };
 
     const month = new Date(nowMs).toISOString().slice(0, 7);
-    fs.mkdirSync(AI_USAGE_LOG_DIR_BLOCK, { recursive: true });
-    fs.appendFileSync(
-      path.join(AI_USAGE_LOG_DIR_BLOCK, `codex-${month}.jsonl`),
-      `${JSON.stringify(row)}\n`,
-    );
+    const dir = path.join(AI_USAGE_LOG_DIR_BLOCK, 'codex');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, `${month}.jsonl`), `${JSON.stringify(row)}\n`);
     lastCodexSampleMsBlock = nowMs;
   } catch (error) {
     logPlanUsageBlock(
@@ -562,19 +595,6 @@ function appendCodexUsageSampleBlock(rateLimits: Record<string, unknown>, nowMs:
     );
   }
 }
-
-/** A snapshot older than this is from a session nobody is coming back to. */
-const SESSION_SNAPSHOT_RETENTION_MS_BLOCK = 30 * 24 * 60 * 60 * 1000;
-
-/**
- * The usage log keeps far longer than the snapshots — a year of monthly files.
- *
- * It is the one artifact here that cannot be regenerated: a deleted month is a
- * permanent hole in the curve, where a deleted snapshot just means one stale
- * session is forgotten. At roughly a megabyte a busy month, keeping it is
- * cheaper than regretting it.
- */
-const USAGE_LOG_RETENTION_MS_BLOCK = 365 * 24 * 60 * 60 * 1000;
 
 /**
  * Drop snapshots for sessions that stopped reporting a month ago.
@@ -602,14 +622,22 @@ function pruneDirectoryBlock(dir: string, suffix: string, maxAgeMs: number, nowM
 }
 
 export function pruneClaudeSessionSnapshotsBlock(nowMs: number = Date.now()): void {
-  pruneDirectoryBlock(
-    CLAUDE_SESSIONS_DIR_BLOCK,
-    '.json',
-    SESSION_SNAPSHOT_RETENTION_MS_BLOCK,
-    nowMs,
-  );
-  migrateLegacyUsageLogBlock();
-  pruneDirectoryBlock(AI_USAGE_LOG_DIR_BLOCK, '.jsonl', USAGE_LOG_RETENTION_MS_BLOCK, nowMs);
+  migrateLegacyLayoutsBlock();
+  // One directory per provider under each root, so prune a level down.
+  for (const provider of ['claude', 'codex']) {
+    pruneDirectoryBlock(
+      path.join(AI_SESSIONS_DIR_BLOCK, provider),
+      '.json',
+      SESSION_SNAPSHOT_RETENTION_MS_BLOCK,
+      nowMs,
+    );
+    pruneDirectoryBlock(
+      path.join(AI_USAGE_LOG_DIR_BLOCK, provider),
+      '.jsonl',
+      USAGE_LOG_RETENTION_MS_BLOCK,
+      nowMs,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

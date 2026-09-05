@@ -38,7 +38,9 @@ case "$session_id" in
   # Guard the filename: it lands in a path, and the value is external input.
   *[!A-Za-z0-9-]* | '') ;;
   *)
-    sessions="$HOME/.thinking-space/claude-sessions"
+    # Provider is a directory, so the filename is exactly the session id and a
+    # lookup from an AI-activity record is a direct path build.
+    sessions="$HOME/.thinking-space/ai-sessions/claude"
     mkdir -p "$sessions"
     printf '%s' "$input" > "$sessions/$session_id.json.tmp" \
       && mv "$sessions/$session_id.json.tmp" "$sessions/$session_id.json"
@@ -57,19 +59,19 @@ esac
 # attribution actually need — at roughly 110 bytes against 1.4 KB for the whole
 # payload. Over a year that is the difference between a few megabytes and most
 # of a gigabyte, for fields nothing would plot. The full payload is already kept
-# per session in claude-sessions/, so nothing is lost by summarising here.
+# per session in ai-sessions/claude/, so nothing is lost by summarising here.
 #
 # Three ways to build it, in order, so no machine is left without history:
 # jq when installed; a narrow grep for the numbers when not; and failing both,
 # the raw payload, which the reader detects by its "payload" key. session_id is
 # copied through untouched so these lines still join against AI-activity
 # records.
-# Provider-neutral directory: Codex samples land here too, written by the app
-# rather than this script. Separate file per provider so each side's
-# five-minute dedupe only ever reads its own last sample.
-log_dir="$HOME/.thinking-space/ai-usage-log"
+# Provider-neutral root with a directory per provider — Codex samples land in a
+# sibling folder, written by the app rather than this script. Separate files so
+# each side's five-minute dedupe only ever reads its own last sample.
+log_dir="$HOME/.thinking-space/ai-usage-log/claude"
 mkdir -p "$log_dir"
-log_file="$log_dir/claude-$(date +%Y-%m).jsonl"
+log_file="$log_dir/$(date +%Y-%m).jsonl"
 now=$(date +%s)
 
 # One line every five minutes.
