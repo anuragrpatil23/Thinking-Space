@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import AiLimitsMeterBlock from '@/components/lego_blocks/units/AiLimitsMeterBlock'
 import type { CanvasThemeTokens } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
 import {
@@ -15,8 +16,6 @@ interface AiLimitsStripBlockProps {
    * readings arrive, which is often enough for a figure rendered in minutes.
    */
   nowMs: number
-  /** Opens the short how-to for wiring a provider up. */
-  onConnect?: (providerId: AiLimitsProviderBlock['id']) => void
 }
 
 /**
@@ -32,7 +31,6 @@ export default function AiLimitsStripBlock({
   providers,
   theme,
   nowMs,
-  onConnect,
 }: AiLimitsStripBlockProps) {
   const visible = visibleProvidersBlock(providers)
   // Renders its own card rather than being wrapped by the caller, so a strip
@@ -96,7 +94,7 @@ export default function AiLimitsStripBlock({
               providerId={provider.id}
               muted={muted}
               heading={heading}
-              onConnect={onConnect}
+              isDark={theme.isDark}
             />
           ) : (
             <div className="space-y-1.5">
@@ -127,53 +125,78 @@ export default function AiLimitsStripBlock({
   )
 }
 
-const CONNECT_COPY_BLOCK: Record<AiLimitsProviderBlock['id'], string> = {
-  // Claude publishes rate limits through the status line, so there is a real
-  // one-time setup step. Say what to do, not that something is missing.
-  claude: 'Add a status line to show limits',
-  codex: 'Start Codex once to show limits',
-}
+/**
+ * The one-time setup for Claude, as a command the user can run verbatim.
+ *
+ * `/statusline` on its own writes a status line but not the file this card
+ * reads, so the instruction has to carry that requirement — passing it as the
+ * command's argument lets Claude Code write the script itself, which is a lot
+ * less to ask than "hand-write this bash".
+ */
+const CLAUDE_SETUP_COMMAND_BLOCK =
+  '/statusline also write .rate_limits to ~/.thinking-space/claude-limits.json'
 
 /**
- * The state most people are in on day one. Occupies the same height as two
- * meters so connecting a provider doesn't shift the page, and reads as an
- * invitation rather than a warning — nothing is broken here.
+ * The state most people are in on day one.
+ *
+ * Reads as an invitation rather than a warning — nothing is broken here, the
+ * provider simply hasn't been asked to share its numbers yet. For Claude that
+ * means a real one-time step, so the card hands over the exact command instead
+ * of describing the outcome and leaving the user to work out how.
  */
 function ConnectInviteBlock({
   providerId,
   muted,
   heading,
-  onConnect,
+  isDark,
 }: {
   providerId: AiLimitsProviderBlock['id']
   muted: string
   heading: string
-  onConnect?: (providerId: AiLimitsProviderBlock['id']) => void
+  isDark: boolean
 }) {
-  const copy = CONNECT_COPY_BLOCK[providerId]
+  const [copied, setCopied] = useState(false)
 
-  if (!onConnect) {
+  if (providerId !== 'claude') {
     return (
       <p className="flex h-[27px] items-center text-[11px]" style={{ color: muted }}>
-        {copy}
+        Start Codex once to show limits
       </p>
     )
   }
 
+  const copyCommand = (): void => {
+    void navigator.clipboard
+      ?.writeText(CLAUDE_SETUP_COMMAND_BLOCK)
+      .then(() => {
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1600)
+      })
+      .catch(() => {
+        // Clipboard can be refused; the command is on screen either way.
+      })
+  }
+
   return (
-    <button
-      type="button"
-      onClick={() => onConnect(providerId)}
-      className="flex h-[27px] items-center rounded text-left text-[11px] underline decoration-dotted underline-offset-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
-      style={{ color: muted }}
-      onMouseEnter={(event) => {
-        event.currentTarget.style.color = heading
-      }}
-      onMouseLeave={(event) => {
-        event.currentTarget.style.color = muted
-      }}
-    >
-      {copy}
-    </button>
+    <div className="space-y-1.5">
+      <p className="text-[11px] leading-snug" style={{ color: muted }}>
+        Claude Code shares its limits through a status line. Run this in Claude Code once:
+      </p>
+      <button
+        type="button"
+        onClick={copyCommand}
+        title="Copy this command"
+        className="w-full truncate rounded px-2 py-1 text-left font-mono text-[10.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
+        style={{
+          color: heading,
+          background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(28,25,23,0.05)',
+        }}
+      >
+        {CLAUDE_SETUP_COMMAND_BLOCK}
+      </button>
+      <p className="text-[10.5px]" style={{ color: muted }}>
+        {copied ? 'Copied' : 'Click to copy · then send one message'}
+      </p>
+    </div>
   )
 }

@@ -58,6 +58,28 @@ function isFiniteNumberBlock(value: unknown): value is number {
 }
 
 /**
+ * Failure diary for the Codex read.
+ *
+ * Every path here degrades to an empty row rather than an error, which is right
+ * for the UI and useless for debugging — a packaged build that silently shows
+ * nothing gives no way to tell "not installed" from "spawn died" from "request
+ * timed out". Costs one line per failure and is the only way to diagnose this
+ * outside a terminal.
+ */
+function logPlanUsageBlock(message: string): void {
+  try {
+    const dir = path.join(os.homedir(), '.thinking-space', 'logs');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(
+      path.join(dir, 'ai-plan-usage.log'),
+      `${new Date().toISOString()} ${message}\n`,
+    );
+  } catch {
+    // Diagnostics must never be the thing that breaks the feature.
+  }
+}
+
+/**
  * A window whose reset has already passed is stale, not full — both providers
  * drop windows once they roll over, and showing the old figure would be a lie
  * that gets worse the longer the app sits open.
@@ -208,7 +230,8 @@ class CodexAppServerClientBlock {
         }
       });
 
-      const onGone = (): void => {
+      const onGone = (cause?: unknown): void => {
+        if (cause) logPlanUsageBlock(`codex app-server gone: ${String(cause)}`);
         for (const [, entry] of this.pending) {
           clearTimeout(entry.timer);
           entry.reject(new Error('codex app-server exited'));
@@ -218,7 +241,7 @@ class CodexAppServerClientBlock {
         this.ready = null;
         this.latestRateLimits = null;
       };
-      child.on('exit', onGone);
+      child.on('exit', (code, signal) => onGone(`exit code=${code} signal=${signal}`));
       child.on('error', onGone);
 
       this.request('initialize', {
@@ -308,7 +331,11 @@ async function readCodexPlanUsageBlock(): Promise<AiPlanUsageProviderBlock> {
   // "Detected" means the person actually uses Codex here — the binary alone
   // isn't enough, since an install with no login has nothing to report.
   const binary = resolveCodexBinaryBlock();
-  if (!binary || !fs.existsSync(path.join(CODEX_HOME_BLOCK, 'auth.json'))) return base;
+  const hasAuth = fs.existsSync(path.join(CODEX_HOME_BLOCK, 'auth.json'));
+  if (!binary || !hasAuth) {
+    logPlanUsageBlock(`codex not detected (binary=${binary ?? 'none'} auth=${hasAuth})`);
+    return base;
+  }
   base.detected = true;
 
   try {
@@ -319,7 +346,10 @@ async function readCodexPlanUsageBlock(): Promise<AiPlanUsageProviderBlock> {
     const rateLimits = (result?.rateLimits ?? codexClientBlock.latestRateLimits) as
       | Record<string, unknown>
       | undefined;
-    if (!rateLimits) return base;
+    if (!rateLimits) {
+      logPlanUsageBlock(`codex read returned no rateLimits (keys=${Object.keys(result ?? {}).join(',')})`);
+      return base;
+    }
 
     return {
       ...base,
@@ -329,15 +359,16 @@ async function readCodexPlanUsageBlock(): Promise<AiPlanUsageProviderBlock> {
       session: liveWindowBlock(codexWindowBlock(rateLimits.primary)),
       weekly: liveWindowBlock(codexWindowBlock(rateLimits.secondary)),
     };
-  } catch {
-    // App-server unreachable or the account has no metered plan. Stay in
-    // `waiting` rather than inventing a reading.
+  } catch (error) {
+    logPlanUsageBlock(
+      `codex read failed (binary=${binary}): ${error instanceof Error ? error.message : String(error)}`,
+    );
     return base;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Claude — status-line bridge file
+// Claude — reading the bridge file
 // ---------------------------------------------------------------------------
 
 function claudeWindowBlock(raw: unknown, windowMinutes: number): AiPlanUsageWindowBlock | null {
