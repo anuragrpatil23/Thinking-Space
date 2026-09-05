@@ -64,9 +64,12 @@ esac
 # the raw payload, which the reader detects by its "payload" key. session_id is
 # copied through untouched so these lines still join against AI-activity
 # records.
-log_dir="$HOME/.thinking-space/claude-usage-log"
+# Provider-neutral directory: Codex samples land here too, written by the app
+# rather than this script. Separate file per provider so each side's
+# five-minute dedupe only ever reads its own last sample.
+log_dir="$HOME/.thinking-space/ai-usage-log"
 mkdir -p "$log_dir"
-log_file="$log_dir/$(date +%Y-%m).jsonl"
+log_file="$log_dir/claude-$(date +%Y-%m).jsonl"
 now=$(date +%s)
 
 # One line every five minutes.
@@ -86,6 +89,7 @@ if [ -z "$last_t" ] || [ $((now - last_t)) -ge 300 ]; then
   if command -v jq >/dev/null 2>&1; then
     line=$(printf '%s' "$input" | jq -c --argjson t "$now" '{
       t: $t,
+      p: "claude",
       sid: .session_id,
       fh: .rate_limits.five_hour.used_percentage,
       fhr: .rate_limits.five_hour.resets_at,
@@ -107,13 +111,13 @@ if [ -z "$last_t" ] || [ $((now - last_t)) -ge 300 ]; then
     fh=$(printf '%s\n' "$pcts" | sed -n 1p)
     sd=$(printf '%s\n' "$pcts" | sed -n 2p)
     if [ -n "$fh" ] && [ -n "$sd" ]; then
-      line=$(printf '{"t":%s,"sid":"%s","fh":%s,"sd":%s}' "$now" "$session_id" "$fh" "$sd")
+      line=$(printf '{"t":%s,"p":"claude","sid":"%s","fh":%s,"sd":%s}' "$now" "$session_id" "$fh" "$sd")
     fi
   fi
 
   # Neither worked — keep the raw payload rather than drop the sample. History
   # is the one thing that cannot be backfilled.
-  [ -n "$line" ] || line=$(printf '{"t":%s,"payload":%s}' "$now" "$input")
+  [ -n "$line" ] || line=$(printf '{"t":%s,"p":"claude","payload":%s}' "$now" "$input")
 
   printf '%s\n' "$line" >> "$log_file"
 fi

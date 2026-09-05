@@ -377,6 +377,10 @@ async function readCodexPlanUsageBlock(): Promise<AiPlanUsageProviderBlock> {
       return base;
     }
 
+    // Sample here rather than on a timer — this is the read the card already
+    // makes, and Codex has nothing that pushes.
+    appendCodexUsageSampleBlock(rateLimits, Date.now());
+
     return {
       ...base,
       state: 'ready',
@@ -413,12 +417,19 @@ export function claudeStatusLineScriptPathBlock(): string {
     ? path.join(process.resourcesPath, STATUSLINE_SCRIPT_RELATIVE_PATH_BLOCK)
     : null;
   if (packaged && fs.existsSync(packaged)) return packaged;
-  return path.join(
-    app.getAppPath(),
-    'electron',
-    'resources',
-    STATUSLINE_SCRIPT_RELATIVE_PATH_BLOCK,
-  );
+  try {
+    return path.join(
+      app.getAppPath(),
+      'electron',
+      'resources',
+      STATUSLINE_SCRIPT_RELATIVE_PATH_BLOCK,
+    );
+  } catch {
+    // No Electron `app` — a test or a bare-node probe. Returning empty keeps the
+    // whole reading alive; only the setup command loses its path, and the card
+    // already handles that. A throw here would take the meters down with it.
+    return '';
+  }
 }
 
 /**
@@ -469,11 +480,88 @@ export const CLAUDE_SESSIONS_DIR_BLOCK = path.join(
  * snapshots say where each session ended up, this says how usage moved over
  * time. Neither can be derived from the other.
  */
-export const CLAUDE_USAGE_LOG_DIR_BLOCK = path.join(
+export const AI_USAGE_LOG_DIR_BLOCK = path.join(os.homedir(), '.thinking-space', 'ai-usage-log');
+
+/** Previous name, before Codex samples joined the same directory. */
+const LEGACY_CLAUDE_USAGE_LOG_DIR_BLOCK = path.join(
   os.homedir(),
   '.thinking-space',
   'claude-usage-log',
 );
+
+/**
+ * Move history written under the old Claude-only name.
+ *
+ * Renaming a directory people already have data in would otherwise orphan it,
+ * and this is the one artifact that cannot be regenerated — a lost month is a
+ * permanent hole in the curve.
+ */
+function migrateLegacyUsageLogBlock(): void {
+  try {
+    if (!fs.existsSync(LEGACY_CLAUDE_USAGE_LOG_DIR_BLOCK)) return;
+    fs.mkdirSync(AI_USAGE_LOG_DIR_BLOCK, { recursive: true });
+    for (const name of fs.readdirSync(LEGACY_CLAUDE_USAGE_LOG_DIR_BLOCK)) {
+      if (!name.endsWith('.jsonl')) continue;
+      const from = path.join(LEGACY_CLAUDE_USAGE_LOG_DIR_BLOCK, name);
+      // Old files held Claude rows only, so they take the provider prefix the
+      // new layout expects.
+      const to = path.join(AI_USAGE_LOG_DIR_BLOCK, name.startsWith('claude-') ? name : `claude-${name}`);
+      if (!fs.existsSync(to)) fs.renameSync(from, to);
+    }
+    fs.rmdirSync(LEGACY_CLAUDE_USAGE_LOG_DIR_BLOCK);
+    logPlanUsageBlock('migrated usage log to ai-usage-log');
+  } catch {
+    // Leave the old directory alone if anything about the move fails; the data
+    // is still on disk under its previous name.
+  }
+}
+
+/** Five minutes, matching the status line's cadence. */
+const CODEX_SAMPLE_INTERVAL_MS_BLOCK = 5 * 60 * 1000;
+let lastCodexSampleMsBlock = 0;
+
+/**
+ * Record a Codex rate-limit sample.
+ *
+ * Codex is the mirror image of Claude here: it will report its limits whenever
+ * asked, but nothing anywhere records them, and there is no push mechanism to
+ * hook — no status line firing on every message. So the sample is taken on the
+ * reads the card already performs (mount and window focus), which adds no timer
+ * and no extra process.
+ *
+ * The honest cost is gaps: the curve only has points where Thinking Space was
+ * open. Enough to see a week's shape, not the continuous trace Claude gets.
+ */
+function appendCodexUsageSampleBlock(rateLimits: Record<string, unknown>, nowMs: number): void {
+  if (nowMs - lastCodexSampleMsBlock < CODEX_SAMPLE_INTERVAL_MS_BLOCK) return;
+  try {
+    const primary = rateLimits.primary as Record<string, unknown> | undefined;
+    const secondary = rateLimits.secondary as Record<string, unknown> | undefined;
+    if (!isFiniteNumberBlock(primary?.usedPercent)) return;
+
+    const row = {
+      t: Math.floor(nowMs / 1000),
+      p: 'codex',
+      fh: primary?.usedPercent,
+      fhr: isFiniteNumberBlock(primary?.resetsAt) ? primary.resetsAt : null,
+      sd: isFiniteNumberBlock(secondary?.usedPercent) ? secondary.usedPercent : null,
+      sdr: isFiniteNumberBlock(secondary?.resetsAt) ? secondary.resetsAt : null,
+      plan: typeof rateLimits.planType === 'string' ? rateLimits.planType : null,
+    };
+
+    const month = new Date(nowMs).toISOString().slice(0, 7);
+    fs.mkdirSync(AI_USAGE_LOG_DIR_BLOCK, { recursive: true });
+    fs.appendFileSync(
+      path.join(AI_USAGE_LOG_DIR_BLOCK, `codex-${month}.jsonl`),
+      `${JSON.stringify(row)}\n`,
+    );
+    lastCodexSampleMsBlock = nowMs;
+  } catch (error) {
+    logPlanUsageBlock(
+      `codex usage sample failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
 
 /** A snapshot older than this is from a session nobody is coming back to. */
 const SESSION_SNAPSHOT_RETENTION_MS_BLOCK = 30 * 24 * 60 * 60 * 1000;
@@ -520,7 +608,8 @@ export function pruneClaudeSessionSnapshotsBlock(nowMs: number = Date.now()): vo
     SESSION_SNAPSHOT_RETENTION_MS_BLOCK,
     nowMs,
   );
-  pruneDirectoryBlock(CLAUDE_USAGE_LOG_DIR_BLOCK, '.jsonl', USAGE_LOG_RETENTION_MS_BLOCK, nowMs);
+  migrateLegacyUsageLogBlock();
+  pruneDirectoryBlock(AI_USAGE_LOG_DIR_BLOCK, '.jsonl', USAGE_LOG_RETENTION_MS_BLOCK, nowMs);
 }
 
 // ---------------------------------------------------------------------------
