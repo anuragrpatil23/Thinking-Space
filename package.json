@@ -1,0 +1,28 @@
+{
+  "name": "thinking-space",
+  "version": "2.9.6",
+  "description": "A thinking space for individuals, where humans and AI work together",
+  "author": {
+    "name": "Anurag Patil",
+    "email": "anurag@ltm.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anuragrpatil23/Thinking-Space"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "main": "build/src/index.js",
+  "dependencies": {
+    "@capacitor-community/electron": "^5.0.0",
+    "chokidar": "~3.5.3",
+    "electron-is-dev": "~2.0.0",
+    "electron-serve": "~1.1.0",
+    "electron-unhandled": "~4.0.1",
+    "electron-updater": "^6.8.9",
+    "electron-window-state": "^5.0.3",
+    "node-pty": "^1.1.0"
+  },
+  "thinkingSpace": {
+    "terminalEnabled": false
+  }
+}
