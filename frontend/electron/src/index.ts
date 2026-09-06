@@ -44,6 +44,7 @@ import {
   type WebullStoredAccessTokenBlock,
 } from './lego_blocks/webullCredentialStoreBlock';
 import { readAiPlanUsageBlock, disposeAiPlanUsageBlock } from './lego_blocks/aiPlanUsageBlock';
+import { promoteAiUsageToVaultBlock } from './lego_blocks/aiUsageVaultMirrorBlock';
 import { readPersistedVaultRootBlock } from './lego_blocks/vaultRootPersistenceBlock';
 import {
   authorizeVaultRootBlock,
@@ -1955,6 +1956,23 @@ ipcMain.handle('vault:watch:start', async (_event, vaultRoot: string) => {
   // auto-migrated to on for vaults that already hold harvested raw signals).
   if (resolveWriteAiRawEnabledBlock(vaultRoot)) {
     void harvestAppleScreenTimeBlock(vaultRoot).catch(() => undefined);
+  }
+  // Copy this machine's AI usage capture — per-session snapshots and the
+  // usage-over-time log — out of `~/.thinking-space` and into the vault. Opening
+  // a vault is the right moment: it is the first point at which there is
+  // somewhere to copy *to*, and the local copies are on a clock (30 days for
+  // snapshots, a year for the log) against a curve that cannot be rebuilt after
+  // the fact.
+  //
+  // Deliberately its own statement rather than a passenger on the branch above.
+  // It shares that branch's opt-in but nothing else, and the block re-checks the
+  // flag itself — so whatever happens to the harvest beside it, this keeps
+  // standing on its own.
+  try {
+    const promoted = promoteAiUsageToVaultBlock(vaultRoot);
+    if (promoted > 0) console.log(`[ai-usage] mirrored ${promoted} file(s) into the vault`);
+  } catch {
+    // Never let a mirror failure stop the watcher from starting.
   }
   return startVaultWatcherBlock(vaultRoot, {
     onEvent: (root, event) => {

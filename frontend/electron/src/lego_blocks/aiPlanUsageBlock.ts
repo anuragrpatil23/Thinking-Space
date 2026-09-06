@@ -1,4 +1,6 @@
 import { app } from 'electron';
+
+import { AI_SESSIONS_DIR_BLOCK, AI_USAGE_LOG_DIR_BLOCK } from './aiUsagePathsBlock';
 import { spawn, type ChildProcess } from 'child_process';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
@@ -467,8 +469,9 @@ export function claudeStatusLineModeBlock(): ClaudeStatusLineModeBlock {
  * file they belong to whichever session rendered most recently. Keyed by
  * session id they become readable per session.
  */
-export const AI_SESSIONS_DIR_BLOCK = path.join(os.homedir(), '.thinking-space', 'ai-sessions');
-export const AI_USAGE_LOG_DIR_BLOCK = path.join(os.homedir(), '.thinking-space', 'ai-usage-log');
+// Addresses live in their own unit: the vault mirror copies out of these same
+// directories, and two definitions of one path drift silently.
+export { AI_SESSIONS_DIR_BLOCK, AI_USAGE_LOG_DIR_BLOCK } from './aiUsagePathsBlock';
 
 /** A snapshot older than this is from a session nobody is coming back to. */
 const SESSION_SNAPSHOT_RETENTION_MS_BLOCK = 30 * 24 * 60 * 60 * 1000;
