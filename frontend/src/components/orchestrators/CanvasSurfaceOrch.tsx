@@ -106,9 +106,12 @@ export default function CanvasSurfaceOrch({
     transform,
     containerRef,
     resetZoom,
+    zoomBy,
     centerOnWorld,
     worldWidth,
     worldHeight,
+    minScale,
+    maxScale,
     viewportWidth,
     viewportHeight,
   } = useInfiniteCanvasBlock({
@@ -577,6 +580,10 @@ export default function CanvasSurfaceOrch({
       <ZoomIndicatorBlock
         scale={transform.scale}
         onReset={resetZoom}
+        onZoomIn={() => zoomBy(1.2)}
+        onZoomOut={() => zoomBy(1 / 1.2)}
+        minScale={minScale}
+        maxScale={maxScale}
         edgeInset={hudEdgeInset}
         minimapHeight={minimapHeight}
       />

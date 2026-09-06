@@ -41,6 +41,10 @@ export interface UseInfiniteCanvasResult {
   transform: CanvasTransform
   containerRef: React.RefObject<HTMLDivElement>
   resetZoom: () => void
+  /** Multiply the current scale by `factor`, anchored at the viewport centre
+   * and clamped to [minScale, maxScale]. Backs the +/- buttons — pointer
+   * position is irrelevant there, so the centre is the only sane anchor. */
+  zoomBy: (factor: number) => void
   centerOnWorld: (worldX: number, worldY: number) => void
   worldWidth: number
   worldHeight: number
@@ -404,6 +408,22 @@ export function useInfiniteCanvasBlock(
     }))
   }, [worldWidth, worldHeight, clampTransform])
 
+  const zoomBy = useCallback((factor: number) => {
+    const { width: viewW, height: viewH } = viewportRef.current
+    const cx = viewW / 2
+    const cy = viewH / 2
+    setTransform(prev => {
+      const scale = Math.min(maxScale, Math.max(minScale, prev.scale * factor))
+      const realFactor = scale / prev.scale
+      if (realFactor === 1) return prev
+      return clampTransform({
+        scale,
+        x: cx - (cx - prev.x) * realFactor,
+        y: cy - (cy - prev.y) * realFactor,
+      })
+    })
+  }, [minScale, maxScale, clampTransform])
+
   const centerOnWorld = useCallback((worldX: number, worldY: number) => {
     const { width: viewW, height: viewH } = viewportRef.current
     setTransform(prev => clampTransform({
@@ -417,6 +437,7 @@ export function useInfiniteCanvasBlock(
     transform,
     containerRef: containerRef as React.RefObject<HTMLDivElement>,
     resetZoom,
+    zoomBy,
     centerOnWorld,
     worldWidth,
     worldHeight,
