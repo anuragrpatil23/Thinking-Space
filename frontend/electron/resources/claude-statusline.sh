@@ -16,7 +16,22 @@ set -u
 
 input=$(cat)
 
-out="$HOME/.thinking-space/claude-limits.json"
+# Where our files go.
+#
+# `$HOME` is the obvious answer and the wrong one on Windows. The app reads
+# `os.homedir()`, which there is always the Windows profile (C:\Users\<name>),
+# while the Git Bash / MSYS shell that runs this script can hand it a `HOME`
+# pointing inside the MSYS root instead. The script then writes a perfectly
+# good reading somewhere the app never looks — which presents as the feature
+# silently doing nothing, not as an error, because every write here succeeds.
+#
+# `USERPROFILE` is set only on Windows and is exactly what `os.homedir()`
+# returns there, so prefer it and normalise its backslashes. On macOS and Linux
+# it is unset and this stays `$HOME` untouched.
+ts_home="${USERPROFILE:-$HOME}"
+ts_home="${ts_home//\\//}"
+
+out="$ts_home/.thinking-space/claude-limits.json"
 mkdir -p "$(dirname "$out")"
 # Stored verbatim rather than filtered: no jq needed for the part that matters,
 # and the app picks out what it needs. Write-then-rename because the app reads
@@ -40,7 +55,7 @@ case "$session_id" in
   *)
     # Provider is a directory, so the filename is exactly the session id and a
     # lookup from an AI-activity record is a direct path build.
-    sessions="$HOME/.thinking-space/ai-sessions/claude"
+    sessions="$ts_home/.thinking-space/ai-sessions/claude"
     mkdir -p "$sessions"
     printf '%s' "$input" > "$sessions/$session_id.json.tmp" \
       && mv "$sessions/$session_id.json.tmp" "$sessions/$session_id.json"
@@ -69,7 +84,7 @@ esac
 # Provider-neutral root with a directory per provider — Codex samples land in a
 # sibling folder, written by the app rather than this script. Separate files so
 # each side's five-minute dedupe only ever reads its own last sample.
-log_dir="$HOME/.thinking-space/ai-usage-log/claude"
+log_dir="$ts_home/.thinking-space/ai-usage-log/claude"
 mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y-%m).jsonl"
 now=$(date +%s)
