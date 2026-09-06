@@ -57,7 +57,7 @@
     "  cacheCreation1h cache write, 1-hour TTL (Anthropic: 2.0x input).",
     "                  Equal to the 5m figure where a provider has no TTL split."
   ],
-  "refreshed_at": "2026-09-04",
+  "refreshed_at": "2026-09-06",
   "exact_source": "LiteLLM model_prices_and_context_window.json",
   "overrides": {
     "claude-fable-5-1": {
@@ -616,20 +616,6 @@
       "cacheCreation5m": 5,
       "cacheCreation1h": 5
     },
-    "gpt-image-2": {
-      "input": 5,
-      "output": 10,
-      "cacheRead": 1.25,
-      "cacheCreation5m": 5,
-      "cacheCreation1h": 5
-    },
-    "gpt-image-2-2026-04-21": {
-      "input": 5,
-      "output": 10,
-      "cacheRead": 1.25,
-      "cacheCreation5m": 5,
-      "cacheCreation1h": 5
-    },
     "gpt-5": {
       "input": 1.25,
       "output": 10,
@@ -741,6 +727,20 @@
       "cacheRead": 1.25,
       "cacheCreation5m": 15.625,
       "cacheCreation1h": 12.5
+    },
+    "gpt-daybreak-red-latest": {
+      "input": 12.5,
+      "output": 75,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 15.625,
+      "cacheCreation1h": 12.5
+    },
+    "gpt-daybreak-blue-latest": {
+      "input": 4,
+      "output": 20,
+      "cacheRead": 0.4,
+      "cacheCreation5m": 5,
+      "cacheCreation1h": 4
     },
     "gpt-5.5": {
       "input": 5,
@@ -1152,6 +1152,13 @@
       "input": 10,
       "output": 50,
       "cacheRead": 1,
+      "cacheCreation5m": 12.5,
+      "cacheCreation1h": 20
+    },
+    "claude-mythos-5-1": {
+      "input": 10,
+      "output": 50,
+      "cacheRead": 0.25,
       "cacheCreation5m": 12.5,
       "cacheCreation1h": 20
     },
