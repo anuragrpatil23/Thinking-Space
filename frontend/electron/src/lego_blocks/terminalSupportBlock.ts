@@ -8,7 +8,14 @@ type TerminalSupportMetadataBlock = {
 
 function readPackageTerminalEnabledBlock(): boolean | null {
   try {
-    const packageJsonPath = path.resolve(__dirname, '../../package.json');
+    // Three levels, not two. This file compiles to
+    // `<root>/build/src/lego_blocks/`, so `../..` lands on `build/` — a
+    // directory that has never held a package.json. Every read therefore threw,
+    // returned null, and fell through to the enabled-by-default branch, which
+    // made the whole `terminalEnabled: false` mechanism inert: the Windows lite
+    // build correctly omitted node-pty and then loaded as if it were present,
+    // and crashed on launch with "Cannot find module 'node-pty'".
+    const packageJsonPath = path.resolve(__dirname, '../../../package.json');
     const packageJson = require(packageJsonPath) as TerminalSupportMetadataBlock;
     if (typeof packageJson?.thinkingSpace?.terminalEnabled === 'boolean') {
       return packageJson.thinkingSpace.terminalEnabled;
