@@ -12,6 +12,7 @@ export default defineConfig({
     environment: 'node',
     // .tsx too: @testing-library/react is a dependency but no component
     // test could ever run under a .ts-only include.
-    include: ['tests/**/*.test.{ts,tsx}'],
+    // The private Gaps folder carries its own tests; absent in the public repo.
+    include: ['tests/**/*.test.{ts,tsx}', 'src/personal_extension/gaps/tests/**/*.test.{ts,tsx}'],
   },
 })

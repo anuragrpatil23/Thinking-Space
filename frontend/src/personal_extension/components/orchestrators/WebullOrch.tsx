@@ -28,11 +28,14 @@ import { readWebullCredentialStatusBlock } from '../../services/lego_blocks/unit
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
+import { GAPS_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
 
-type WebullSubtabId = 'overall' | 'study' | 'sim'
+type WebullSubtabId = 'overall' | 'study' | 'sim' | 'gaps'
 
 const Webull_BASE_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
   { id: 'study', label: 'Study' },
+  // Gaps is a private tab: shown only when its folder is present (see privateGapsBlock).
+  ...(GAPS_TAB_AVAILABLE ? [{ id: 'gaps' as const, label: 'Gaps' }] : []),
   { id: 'overall', label: 'Overall Positions' },
 ]
 
@@ -193,7 +196,7 @@ export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
 
   const subtabs = useMemo(() => (
     simTabEnabled
-      ? [Webull_BASE_SUBTABS[0], Webull_SIM_SUBTAB, Webull_BASE_SUBTABS[1]]
+      ? [Webull_BASE_SUBTABS[0], Webull_SIM_SUBTAB, ...Webull_BASE_SUBTABS.slice(1)]
       : Webull_BASE_SUBTABS
   ), [simTabEnabled])
 

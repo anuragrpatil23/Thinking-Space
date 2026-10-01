@@ -50,6 +50,8 @@ export interface CanvasSurfaceOrchProps {
   worldExtras?: ReactNode
   /** Optional hook bridge so callers can run effects against tile state (e.g. auto-spawn post-its). Render-prop component pattern. */
   tilesEffect?: React.ComponentType<CanvasSurfaceTilesApi>
+  /** Draw the dot grid over the world. Default true; a surface that draws its own background turns it off. */
+  showGrid?: boolean
 }
 
 const DEFAULT_WORLD_WIDTH = 4500
@@ -65,6 +67,7 @@ export default function CanvasSurfaceOrch({
   clampMinScaleToFit,
   worldExtras,
   tilesEffect: TilesEffect,
+  showGrid = true,
 }: CanvasSurfaceOrchProps) {
   const navigate = useNavigate()
   const theme = useCanvasThemeBlock()
@@ -458,7 +461,7 @@ export default function CanvasSurfaceOrch({
         )}
       </div>
 
-      <CanvasGridBlock
+      {showGrid && <CanvasGridBlock
         intensified={hoveredId !== null}
         dotColor={theme.bloomDot}
         borderRadius={isIos ? 0 : 16}
@@ -468,7 +471,7 @@ export default function CanvasSurfaceOrch({
           width: worldWidth * transform.scale,
           height: worldHeight * transform.scale,
         }}
-      />
+      />}
 
       <div
         data-canvas-backdrop="true"

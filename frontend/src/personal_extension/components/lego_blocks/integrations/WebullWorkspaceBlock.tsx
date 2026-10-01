@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, Building2, Clock, Eye, EyeOff, History, Layers, Wallet, type LucideIcon } from 'lucide-react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { BookOpen, Building2, Clock, Crosshair, Eye, EyeOff, History, Layers, Wallet, type LucideIcon } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import {
   dispatchWebullSidebarChromeStateBlock,
@@ -17,6 +17,7 @@ import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/T
 import WebullF9CanvasOrch from '@/personal_extension/components/orchestrators/WebullF9CanvasOrch'
 import WebullF9SimCanvasOrch from '@/personal_extension/components/orchestrators/WebullF9SimCanvasOrch'
 import WebullSimBoardBlock from './WebullSimBoardBlock'
+import { PrivateGapsBlock } from '../units/privateGapsBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -59,7 +60,7 @@ import type {
   WebullPositionSummaryBlock,
 } from '@/personal_extension/services/orchestrators/webullExecutionOrch'
 
-type WebullSubtabIdBlock = 'overall' | 'study' | 'sim'
+type WebullSubtabIdBlock = 'overall' | 'study' | 'sim' | 'gaps'
 
 interface WebullSubtabBlock {
   id: WebullSubtabIdBlock
@@ -70,6 +71,7 @@ const WEBULL_SUBTAB_ICONS: Record<WebullSubtabIdBlock, LucideIcon> = {
   overall: Wallet,
   study: BookOpen,
   sim: History,
+  gaps: Crosshair,
 }
 
 interface WebullLinkOptionBlock {
@@ -2222,16 +2224,19 @@ export default function WebullWorkspaceBlock({
   const overallTabActive = !showCompanyView && activeSubtabId === 'overall'
   const studyTabActive = !showCompanyView && activeSubtabId === 'study'
   const simTabActive = !showCompanyView && activeSubtabId === 'sim'
+  const gapsTabActive = !showCompanyView && activeSubtabId === 'gaps'
   const workspaceTitle = showCompanyView && selectedCompany
     ? `${selectedCompany.companyTicker} Positions`
-    : (studyTabActive ? 'Study' : simTabActive ? 'Sim' : 'Overall Positions')
+    : (studyTabActive ? 'Study' : simTabActive ? 'Sim' : gapsTabActive ? 'Gaps' : 'Overall Positions')
   const workspaceDescription = showCompanyView && selectedCompany
     ? 'Company-specific position rows and overlay edits.'
     : (studyTabActive
       ? 'Company study records (watchlist + held) with live prices.'
       : simTabActive
         ? 'F9 practice reps across market history, plotted on a timeline.'
-        : 'Canonical overall positions from Webull sync.')
+        : gapsTabActive
+          ? 'Every gap identified, bet or not, graded when the fog clears.'
+          : 'Canonical overall positions from Webull sync.')
 
   // Sidebar rows are a 220px desktop nav by origin — 32px tall, which is fine
   // for a pointer and below the 44pt floor for a thumb. On the phone the same
@@ -2442,17 +2447,19 @@ export default function WebullWorkspaceBlock({
             <CardDescription>{workspaceDescription}</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
+            {!gapsTabActive && (
             <TagDisclosureButtonBlock
               label="Project Tags"
               expanded={projectTagsOpen}
               onToggle={() => setProjectTagsOpen(prev => !prev)}
               count={availableProjectPresetTags.length}
             />
+            )}
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {projectTagsOpen && (
+          {projectTagsOpen && !gapsTabActive && (
             <div className="rounded-xl border bg-background p-3">
               <TagListEditorBlock
                 heading="Project Tags"
@@ -2478,6 +2485,10 @@ export default function WebullWorkspaceBlock({
             <WebullSimBoardBlock />
           )}
 
+          {gapsTabActive && PrivateGapsBlock && (
+            <Suspense fallback={null}><PrivateGapsBlock /></Suspense>
+          )}
+
           {loading && (
             <div className="overflow-hidden rounded-full">
               <div className="h-1 w-full animate-pulse rounded-full bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
@@ -2496,7 +2507,7 @@ export default function WebullWorkspaceBlock({
             </div>
           )}
 
-          {allWarnings.length > 0 && (
+          {allWarnings.length > 0 && !gapsTabActive && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-800 dark:text-amber-300">
               {allWarnings.map((warning) => (
                 <p key={warning}>{warning}</p>
@@ -3163,7 +3174,7 @@ export default function WebullWorkspaceBlock({
             </div>
           ) : null}
 
-          <details className="rounded-xl border bg-background">
+          <details className={cn('rounded-xl border bg-background', gapsTabActive && 'hidden')}>
             <summary className="cursor-pointer border-b px-3 py-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
               Diagnostics
             </summary>

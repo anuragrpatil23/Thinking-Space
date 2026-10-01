@@ -136,3 +136,49 @@ export async function fetchYahooStockQuotesBlock(symbols: string[]): Promise<Yah
   await Promise.all(workers)
   return { ok: Object.keys(errors).length === 0, quotes, errors }
 }
+
+export interface YahooDailyCloseBlock {
+  /** YYYY-MM-DD (UTC day of the bar). */
+  date: string
+  close: number
+}
+
+export function parseYahooDailyClosesBlock(body: string): YahooDailyCloseBlock[] {
+  let data: unknown
+  try {
+    data = JSON.parse(body)
+  } catch {
+    return []
+  }
+  const result = (data as { chart?: { result?: unknown } } | null)?.chart?.result
+  if (!Array.isArray(result) || result.length === 0) return []
+  const first = result[0] as { timestamp?: unknown; indicators?: { quote?: Array<{ close?: unknown }> } }
+  const timestamps = Array.isArray(first.timestamp) ? first.timestamp : []
+  const closes = first.indicators?.quote?.[0]?.close
+  if (!Array.isArray(closes)) return []
+  const out: YahooDailyCloseBlock[] = []
+  timestamps.forEach((ts, i) => {
+    const close = asNumberOrNullBlock(closes[i])
+    if (typeof ts !== 'number' || close === null) return
+    out.push({ date: new Date(ts * 1000).toISOString().slice(0, 10), close })
+  })
+  return out
+}
+
+/** Daily closes for [fromDay, toDay] (YYYY-MM-DD). Electron-only, like the quote fetch. */
+export async function fetchYahooDailyClosesBlock(
+  symbol: string,
+  fromDay: string,
+  toDay: string,
+): Promise<YahooDailyCloseBlock[]> {
+  const normalized = symbol.trim().toUpperCase()
+  if (!normalized) return []
+  const period1 = Math.floor(Date.parse(`${fromDay}T00:00:00Z`) / 1000)
+  const period2 = Math.floor(Date.parse(`${toDay}T23:59:59Z`) / 1000)
+  const url = `${YAHOO_CHART_BASE_BLOCK}/${encodeURIComponent(normalized)}?interval=1d&period1=${period1}&period2=${period2}`
+  const response = await fetchTextThroughElectronBlock(url)
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`Yahoo chart HTTP ${response.status} for ${normalized}`)
+  }
+  return parseYahooDailyClosesBlock(response.body)
+}

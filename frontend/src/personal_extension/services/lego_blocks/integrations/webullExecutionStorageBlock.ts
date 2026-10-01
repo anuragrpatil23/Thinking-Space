@@ -1,4 +1,9 @@
 import yaml from 'js-yaml'
+import {
+  POSITION_MARKS_FILE_NAME_BLOCK,
+  appendPositionMarksBlock,
+  type PositionMarkBlock,
+} from '../units/positionMarksCsvBlock'
 import { getVaultFS, type VaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { normalizeTagListBlock } from '@/services/lego_blocks/units/tagBlock'
@@ -317,6 +322,8 @@ export async function syncWebullExecutionStorageBlock(
     const activeById = new Map(activeRecords.map((record) => [record.id, record]))
     const archivedById = new Map(archivedRecords.map((record) => [record.id, record]))
     const writtenFilePaths = new Set<string>()
+    const marks: PositionMarkBlock[] = []
+    const markedAt = new Date().toISOString()
 
     for (const row of groupedRows.get(ticker) ?? []) {
       // Revival pre-seed: if this position_id was previously archived, hand
@@ -349,6 +356,27 @@ export async function syncWebullExecutionStorageBlock(
       activeById.set(next.id, next)
       writtenFilePaths.add(next.filePath)
       totalPositions += 1
+      const normalized = normalizePositionRowForStorageBlock(row, ticker)
+      const field = (key: string) => readStringFieldBlock(normalized[key])
+      marks.push({
+        at: markedAt,
+        position: (next.filePath.split('/').pop() ?? '').replace(/\.md$/, ''),
+        quantity: field('quantity'),
+        costPrice: field('cost_price'),
+        lastPrice: field('last_price'),
+        marketValue: field('market_value'),
+        unrealizedProfitLoss: field('unrealized_profit_loss'),
+      })
+    }
+
+    // Price record: one row per position per sync (see positionMarksCsvBlock).
+    // A failure here must never fail the sync itself.
+    try {
+      const marksPath = joinPathBlock(companyDir, POSITION_MARKS_FILE_NAME_BLOCK)
+      const existingMarks = (await fs.exists(marksPath)) ? await fs.read(marksPath) : null
+      await fs.write(marksPath, appendPositionMarksBlock(existingMarks, marks))
+    } catch (err) {
+      console.warn('[webull] failed to append position marks', ticker, err)
     }
 
     // Archive (don't delete): any active position file the sync didn't write

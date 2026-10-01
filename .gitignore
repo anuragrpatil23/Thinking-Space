@@ -53,3 +53,6 @@ frontend/electron/src/cli/bin/
 /ai-activity/
 /ai-raw/
 # END Thinking Space managed exclusions
+
+# Private Gaps tab: its own private repo, cloned into this folder.
+frontend/src/personal_extension/gaps/

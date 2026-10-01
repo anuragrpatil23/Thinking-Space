@@ -67,7 +67,7 @@ export interface WebullSimEraBlock {
 const FM_OPEN_BLOCK = '---'
 const FM_CLOSE_RE_BLOCK = /^---\s*$/m
 
-function parseFrontmatterBlock(content: string): Record<string, unknown> | null {
+export function parseFrontmatterBlock(content: string): Record<string, unknown> | null {
   const trimmed = content.trimStart()
   if (!trimmed.startsWith(FM_OPEN_BLOCK)) return null
   const afterOpen = trimmed.indexOf('\n')
