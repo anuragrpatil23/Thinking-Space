@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import WebullWorkspaceBlock from '../lego_blocks/integrations/WebullWorkspaceBlock'
 import {
   fetchWebullOverallSnapshotOrch,
@@ -193,6 +194,21 @@ export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
   const [hasConfig, setHasConfig] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // `/webull?subtab=<id>` opens that subtab (links from other pages). The
+  // param is removed once read; any other params are left for the subtab.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const subtabFromRoute = searchParams.get('subtab')
+  useEffect(() => {
+    if (!subtabFromRoute) return
+    const known = Webull_BASE_SUBTABS.some((t) => t.id === subtabFromRoute) || subtabFromRoute === 'sim'
+    if (known) setActiveSubtabId(subtabFromRoute as WebullSubtabId)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('subtab')
+      return next
+    }, { replace: true })
+  }, [setSearchParams, subtabFromRoute])
 
   const subtabs = useMemo(() => (
     simTabEnabled
