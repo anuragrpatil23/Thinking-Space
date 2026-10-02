@@ -49,6 +49,7 @@ import { createUrlShortcutOrch } from '@/services/orchestrators/urlShortcutOrch'
 import { getNodeByPath } from '@/services/lego_blocks/integrations/dbBlock'
 import RssFeedPanelBlock from '@/components/lego_blocks/integrations/RssFeedPanelBlock'
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
+import { loadRssItemByIdOrch, readRssFeedPreferencesOrch } from '@/services/orchestrators/rssFeedOrch'
 import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
 import RuledNotebookDocumentBlock from '@/components/lego_blocks/integrations/RuledNotebookDocumentBlock'
 import type {
@@ -75,6 +76,9 @@ function dispatchFileOpRefresh(): void {
 const FILE_QUERY_PARAM = 'file'
 const NOTEBOOK_QUERY_PARAM = 'notebook'
 const RULED_NOTEBOOK_QUERY_PARAM = 'ruledNotebook'
+// `?rss=<itemId>` opens that cached article in the reader. Other pages link
+// to an article this way; the param is cleared once the article is open.
+const RSS_ITEM_QUERY_PARAM = 'rss'
 const MAX_MOUNTED_INLINE_DOCS = 3
 const EXPLORER_DEFAULT_WIDTH_PX = 320
 const EXPLORER_MIN_WIDTH_PX = 220
@@ -220,6 +224,9 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     ? readThinkingSpaceRouteParamBlock(routeOverride, RULED_NOTEBOOK_QUERY_PARAM)
     : (searchParams.get(RULED_NOTEBOOK_QUERY_PARAM)?.trim() || null)
   const [ruledNotebookFilePath, setRuledNotebookFilePath] = useState<string | null>(ruledNotebookPathFromRoute)
+  const rssItemFromRoute = routeOverride !== undefined
+    ? readThinkingSpaceRouteParamBlock(routeOverride, RSS_ITEM_QUERY_PARAM)
+    : (searchParams.get(RSS_ITEM_QUERY_PARAM)?.trim() || null)
   const [linkPromptOpen, setLinkPromptOpen] = useState(false)
   const linkPromptResolveRef = useRef<((url: string | null) => void) | null>(null)
   const [isExplorerResizing, setIsExplorerResizing] = useState(false)
@@ -617,6 +624,28 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
       setMobileExplorerOpen(false)
     })
   }, [isIosSurface, phonePushDetail])
+
+  // Another page asked for an article (`?rss=<itemId>`): open the reader on it.
+  useEffect(() => {
+    if (!rssItemFromRoute) return
+    let cancelled = false
+    void (async () => {
+      const [item, prefs] = await Promise.all([
+        loadRssItemByIdOrch(rssItemFromRoute),
+        readRssFeedPreferencesOrch(),
+      ])
+      if (cancelled) return
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete(RSS_ITEM_QUERY_PARAM)
+        return next
+      }, { replace: true })
+      if (!item) return
+      setRssPanelOpen(true)
+      handleRssOpenArticle(item, () => {}, () => {}, prefs.presetTags, prefs.tagColors)
+    })()
+    return () => { cancelled = true }
+  }, [handleRssOpenArticle, rssItemFromRoute, setSearchParams])
 
   const handleExplorerShowInGraph = useCallback((path: string, kind: 'file' | 'folder') => {
     const normalized = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')

@@ -4,6 +4,10 @@ export interface RssFeedConfigBlock {
   url: string
   title: string
   groupId?: string | null
+  /** The feed's articles are written into the cache by an outside tool (for
+   *  example one that has to log in first). The app shows the cached articles
+   *  and never fetches the URL itself. */
+  fetchedExternally?: boolean
 }
 
 export interface RssFeedGroupBlock {

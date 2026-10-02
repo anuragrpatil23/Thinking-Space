@@ -326,6 +326,14 @@ async function patchRssItemFrontmatterOrch(
   }
 }
 
+/** One cached article by its id, or null when it is not in the cache. */
+export async function loadRssItemByIdOrch(itemId: string): Promise<RssFeedItemBlock | null> {
+  const feedId = itemId.split('::')[0]
+  if (!feedId) return null
+  const items = await loadStoredFeedItemsOrch(feedId, [itemId])
+  return items.get(itemId) ?? null
+}
+
 async function updateRssItemStateOrch(
   itemId: string,
   patch: { viewedAt?: string | null; dismissedAt?: string | null },
@@ -627,6 +635,11 @@ export async function fetchAndParseRssFeedOrch(
   // On iOS, Capacitor can surface raw readdir plugin errors for missing folders
   // even when the rejection is handled. Create the per-feed cache directory first.
   await ensureRssArticleDirOrch(config.id)
+  if (config.fetchedExternally) {
+    // Filled by an outside tool: the cache is the whole feed. Fetching the URL
+    // would only return a login page or a refusal.
+    return buildStoredResultBlock(config, await loadStoredFeedItemsOrch(config.id), null)
+  }
   try {
     const response = await fetchRssFeedTextBlock(config.url)
     if (response.status < 200 || response.status >= 300) {
