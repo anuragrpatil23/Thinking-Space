@@ -54,6 +54,7 @@ import {
   tagLookupKeyBlock,
 } from '@/services/lego_blocks/units/tagBlock'
 import { cn } from '@/lib/utils'
+import RssItemAnnotationMarksBlock from '@/components/lego_blocks/units/RssItemAnnotationMarksBlock'
 
 interface RssFeedPanelBlockProps {
   onOpenArticle: (
@@ -1036,6 +1037,7 @@ function FeedItemRow({
             {item.pubDate && (
               <span className="tabular-nums">{formatAbsoluteDateTime(item.pubDate)}</span>
             )}
+            <RssItemAnnotationMarksBlock itemId={item.id} inverted={isSelected} className="ml-auto" />
           </div>
         )}
         {hasMeta && !isPendingDelete && (

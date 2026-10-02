@@ -10,6 +10,7 @@ import {
 } from '@/services/lego_blocks/units/rssFeedBlock'
 import RssSourceAvatarBlock from '@/components/lego_blocks/units/RssSourceAvatarBlock'
 import { cn } from '@/lib/utils'
+import RssItemAnnotationMarksBlock from '@/components/lego_blocks/units/RssItemAnnotationMarksBlock'
 
 const VIEW_RATIO = 0.6
 const VIEW_DWELL_MS = 900
@@ -705,6 +706,7 @@ function TimelineCard({
               )}>
                 {item.title || '(Untitled)'}
               </h3>
+              <RssItemAnnotationMarksBlock itemId={item.id} className="mt-1" />
               {/* Collapsed, the teaser sits beside the thumbnail. Expanded, it
                   moves below (see the full-width copy) so the long text uses the
                   whole card instead of wrapping in the narrow column the image

@@ -21,6 +21,7 @@ import CascadingFolderPicker, {
 } from './CascadingFolderPickerBlock'
 import UrlDocumentBlock, { type UrlDocumentScrollerBlock } from './UrlDocumentBlock'
 import { cn } from '@/lib/utils'
+import RssItemAnnotationMarksBlock from '@/components/lego_blocks/units/RssItemAnnotationMarksBlock'
 
 const MOVE_RECENTS_KEY = 'ltm-rss-move-to-vault-recents'
 
@@ -275,6 +276,8 @@ export default function RssArticleViewBlock({
             </button>
           </span>
         ))}
+
+        <RssItemAnnotationMarksBlock itemId={item.id} />
 
         {/* Spacer */}
         <div className="flex-1" />
