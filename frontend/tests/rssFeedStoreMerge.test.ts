@@ -15,6 +15,7 @@ function itemBlock(id: string, pubDate: string | null, patch: Partial<RssFeedIte
     link: `https://example.com/${id}`,
     description: '',
     pubDate,
+    imageUrl: null,
     read: false,
     viewedAt: null,
     dismissedAt: null,

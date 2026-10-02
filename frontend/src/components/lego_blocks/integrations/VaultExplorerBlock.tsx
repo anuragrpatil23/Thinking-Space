@@ -80,6 +80,9 @@ import { writeSortOrdersBlock } from '@/services/lego_blocks/units/notebookOrder
 import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebookSidecarBlock'
 import { getAbsolutePathForClipboardOrch } from '@/services/orchestrators/fileSystemOrch'
 
+// The numbering toggle is hidden for now (see its render site).
+const COMPACT_NUMBERING_TOGGLE_ENABLED = false
+
 // Internal drop targets read the explicit application/x-ltm-path types; text/plain
 // and text/uri-list carry the absolute path so dragging out of the app (Terminal,
 // editors, chat inputs) drops the full filesystem path, like dragging from Finder.
@@ -1877,7 +1880,7 @@ function VaultExplorerBlockInner({
                       re-render, not yet root-caused). Re-enable once fixed.
                       The compactNumbering state + per-folder numbering in
                       renderPath are left intact so this is a one-line restore. */}
-                  {false && viewMode === 'compact' && (
+                  {COMPACT_NUMBERING_TOGGLE_ENABLED && viewMode === 'compact' && (
                     <ToolbarBtn
                       icon={ListOrdered}
                       label={compactNumbering ? 'Hide numbers' : 'Number files (per folder)'}

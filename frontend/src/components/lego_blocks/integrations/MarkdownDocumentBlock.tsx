@@ -144,6 +144,9 @@ import {
   type MarkdownTableOfContentsItemBlock,
 } from '@/services/lego_blocks/units/markdownTableOfContentsBlock'
 
+// The Doc/Canvas toggle is switched off in the explorer viewer for now (see its render site).
+const DOC_CANVAS_TOGGLE_ENABLED = false
+
 function formatMemorizedTimeRange(startedIso: string, endedIso: string): string {
   const fmt = (iso: string) =>
     new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
@@ -1909,7 +1912,7 @@ function MarkdownTextDocumentRuntimeBlock({
                 {/* Doc/Canvas toggle temporarily disabled in the explorer
                     viewer until the canvas mode is fully wired here. The
                     NewThought compose page still surfaces it. */}
-                {false && !isEditing && !isExcalidrawDoc && !isHtmlDoc && (
+                {DOC_CANVAS_TOGGLE_ENABLED && !isEditing && !isExcalidrawDoc && !isHtmlDoc && (
                   <SegmentedToggleBlock
                     value={viewSurface}
                     onChange={setViewSurface}

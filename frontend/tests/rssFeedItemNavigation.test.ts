@@ -19,6 +19,7 @@ function item(id: string, feedId: string, overrides: Partial<RssFeedItemBlock> =
     link: `https://example.com/${id}`,
     description: '',
     pubDate: null,
+    imageUrl: null,
     read: false,
     viewedAt: null,
     dismissedAt: null,
