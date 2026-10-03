@@ -39,9 +39,13 @@ export function startVaultLiveRefresh(
   let inFlight = false
   let disposed = false
 
-  const run = async (trigger: Trigger) => {
+  const run = async (trigger: Trigger, detail?: string) => {
     if (disposed || inFlight) return
     inFlight = true
+    // One line per sync, naming what asked for it. A sync is a full vault walk
+    // plus index writes, and "something is syncing every 12s all night" was
+    // undiagnosable without this (2026-10-03).
+    console.info(`[vaultLiveRefresh] sync trigger=${trigger}${detail ? ` ${detail}` : ''}`)
     try {
       await smartSync()
       options.onSynced?.(trigger)
@@ -87,9 +91,10 @@ export function startVaultLiveRefresh(
         // chokidar echo would otherwise re-walk the vault for nothing.
         if (event?.path && wasRecentSelfWriteBlock(event.path)) return
         if (fsTimer !== null) window.clearTimeout(fsTimer)
+        const detail = `${event?.kind ?? '?'} ${event?.path ?? '?'}`
         fsTimer = window.setTimeout(() => {
           fsTimer = null
-          void run('fs')
+          void run('fs', detail)
         }, fsDebounceMs)
       })
     }

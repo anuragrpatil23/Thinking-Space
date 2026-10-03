@@ -512,9 +512,28 @@ export async function smartSync(fs?: VaultFS, options?: VaultSyncOptions): Promi
 
   // Fire-and-forget cross-device Home snapshot refresh. No-ops on
   // non-Electron platforms, where the snapshot is read-only.
-  void regenerateHomeSnapshotAfterSync()
+  //
+  // A sync that found nothing still used to rewrite the ~115 KB snapshot into
+  // the iCloud vault every time — and sync runs on every focus and watcher
+  // event. The snapshot also carries things a vault sync cannot see change
+  // (today's reading time, the date rolling over), so a no-change sync still
+  // refreshes it, just not more often than HOME_SNAPSHOT_IDLE_REFRESH_MS.
+  const syncChangedSomething = result.parsedNodes > 0 || result.deletedNodes > 0
+  const now = Date.now()
+  if (syncChangedSomething || now - lastHomeSnapshotRegenerateAt >= HOME_SNAPSHOT_IDLE_REFRESH_MS) {
+    lastHomeSnapshotRegenerateAt = now
+    void regenerateHomeSnapshotAfterSync()
+  }
 
   return result
+}
+
+const HOME_SNAPSHOT_IDLE_REFRESH_MS = 10 * 60 * 1000
+let lastHomeSnapshotRegenerateAt = 0
+
+/** Test seam: forget when the snapshot was last regenerated. */
+export function resetHomeSnapshotRegenerateThrottleBlock(): void {
+  lastHomeSnapshotRegenerateAt = 0
 }
 
 async function regenerateHomeSnapshotAfterSync(): Promise<void> {

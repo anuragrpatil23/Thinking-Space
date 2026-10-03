@@ -461,15 +461,33 @@ export async function getAllFilePaths(): Promise<Set<string>> {
 // ── Vault file index (complete path list, frontmatter or not) ──
 
 /**
- * Replace the whole vault file index with the current walk result.
- * Called after full/incremental sync, both of which walk the entire vault,
- * so a clear+bulkAdd inside one transaction is both correct and cheap.
+ * Make the vault file index match the current walk result.
+ * Called after full/incremental sync, both of which walk the entire vault.
+ *
+ * Writes only the difference. This used to be clear + bulkAdd of every
+ * record, which is "cheap" in transaction terms and ruinous on disk: on a
+ * 13.5k-file vault each call pushed ~50 MB through LevelDB compaction even
+ * when nothing had changed, and sync runs on every focus and every watcher
+ * event. Measured 2026-10-03: 137 GB written overnight into a 31 MB store.
+ * Reading the table to diff costs no writes at all.
  */
 export async function replaceVaultFileIndex(records: VaultFileRecord[]): Promise<void> {
   const db = getDb()
   await db.transaction('rw', db.files, async () => {
-    await db.files.clear()
-    if (records.length > 0) await db.files.bulkAdd(records)
+    const existing = new Map<string, VaultFileRecord>()
+    for (const rec of await db.files.toArray()) existing.set(rec.path, rec)
+
+    const toPut: VaultFileRecord[] = []
+    for (const rec of records) {
+      const prev = existing.get(rec.path)
+      if (!prev || prev.mtime !== rec.mtime || prev.size !== rec.size) toPut.push(rec)
+      existing.delete(rec.path)
+    }
+    // Whatever is left in `existing` was not in this walk.
+    const toDelete = Array.from(existing.keys())
+
+    if (toDelete.length > 0) await db.files.bulkDelete(toDelete)
+    if (toPut.length > 0) await db.files.bulkPut(toPut)
   })
 }
 
