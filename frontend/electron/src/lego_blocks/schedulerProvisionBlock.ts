@@ -2,7 +2,9 @@
 //   1. Copy runner.mjs from app resources to ~/.thinking-space/scheduler/.
 //   2. For every user schedule (managedBy: thinking-space) write a plist that
 //      invokes Electron-as-Node against runner.mjs. Bootstrap if changed.
-//   3. Provision the built-in heartbeat-check agent.
+//   3. Provision the built-in agents (heartbeat-check, catchup-check,
+//      telegram-poll) — each only when this machine has something for it to
+//      do (see schedulerBuiltinNeedBlock), and removed again when it doesn't.
 //
 // The whole flow is idempotent: identical state in → no writes, no launchctl.
 // Source of truth is single: this code. install.sh and any external manifest
@@ -14,6 +16,7 @@ import * as path from 'path';
 import {
   buildBuiltinPlistBlock,
   buildWindowStopPlistBlock,
+  getPlistPathBlock,
   getStopLabelBlock,
   type PlistBuildContextBlock,
 } from './launchdPlistBlock';
@@ -21,9 +24,16 @@ import {
   bootstrapPlistBlock,
   bootstrapByLabelBlock,
   bootoutPlistBlock,
+  getLaunchctlStatusBlock,
+  removePlistBlock,
   writePlistBlock,
   writeRawPlistBlock,
 } from './launchctlBlock';
+import {
+  needsCatchupAgentBlock,
+  needsHeartbeatAgentBlock,
+  needsTelegramPollAgentBlock,
+} from './schedulerBuiltinNeedBlock';
 import {
   listSchedulesBlock,
   type ScheduleSpecBlock,
@@ -53,6 +63,17 @@ const RUNNER_SIBLING_MODULES = [
 
 function getInstallDirBlock(): string {
   return path.join(app.getPath('home'), '.thinking-space', 'scheduler');
+}
+
+// Same file runner.mjs reads its Telegram credentials from (SECRETS_PATH).
+function readSecretsBlock(): unknown {
+  try {
+    return JSON.parse(
+      fs.readFileSync(path.join(app.getPath('home'), '.thinking-space', 'secrets.json'), 'utf-8'),
+    );
+  } catch {
+    return null;
+  }
 }
 
 function getInstalledRunnerPathBlock(): string {
@@ -177,14 +198,31 @@ async function provisionBuiltinAgent(
   command: string,
   intervalSeconds: number,
   ctx: PlistBuildContextBlock,
+  needed: boolean = true,
 ): Promise<{ changed: boolean; bootstrapped: boolean; error?: string }> {
   try {
+    if (!needed) {
+      // Nothing for this agent to do on this machine: make sure it is neither
+      // loaded nor left on disk for launchd to pick up at next login.
+      const hadPlist = fs.existsSync(getPlistPathBlock(label));
+      if (hadPlist) await removePlistBlock(label);
+      return { changed: hadPlist, bootstrapped: false };
+    }
     const content = buildBuiltinPlistBlock(label, command, intervalSeconds, ctx);
     const { changed } = await writeRawPlistBlock(label, content);
     if (changed) {
       // bootout-then-bootstrap so launchd reloads the new content
       await bootstrapByLabelBlock(label);
       return { changed: true, bootstrapped: true };
+    }
+    // Plist on disk is right, but that says nothing about launchd: a bootstrap
+    // that failed once (e.g. racing the bootout of a still-running job) used
+    // to leave the agent unloaded forever, because "unchanged" skipped the
+    // retry. Seen 2026-10-03: telegram-poll silently dead after a re-provision.
+    const { loaded } = await getLaunchctlStatusBlock(label);
+    if (!loaded) {
+      await bootstrapByLabelBlock(label);
+      return { changed: false, bootstrapped: true };
     }
     return { changed: false, bootstrapped: false };
   } catch (err) {
@@ -200,17 +238,22 @@ export async function provisionSchedulerBlock(): Promise<ProvisionResultBlock> {
   const runner = copyRunnerAndSiblingsIfChanged();
   const ctx = buildContextBlock();
 
+  const secrets = readSecretsBlock();
   const heartbeat = await provisionBuiltinAgent(
     HEARTBEAT_LABEL, 'heartbeat-check', HEARTBEAT_INTERVAL_SECONDS, ctx,
+    needsHeartbeatAgentBlock(secrets),
   );
+  const allSpecs = listSchedulesBlock();
   const catchup = await provisionBuiltinAgent(
     CATCHUP_LABEL, 'catchup-check', CATCHUP_INTERVAL_SECONDS, ctx,
+    needsCatchupAgentBlock(allSpecs),
   );
   const telegramPoll = await provisionBuiltinAgent(
     TELEGRAM_POLL_LABEL, 'telegram-poll', TELEGRAM_POLL_INTERVAL_SECONDS, ctx,
+    needsTelegramPollAgentBlock(secrets),
   );
 
-  const specs = listSchedulesBlock().filter((s) => s.managedBy === 'thinking-space');
+  const specs = allSpecs.filter((s) => s.managedBy === 'thinking-space');
   const scheduleResults: ProvisionResultBlock['scheduleResults'] = [];
   for (const spec of specs) {
     // If runner location changed, force-rewrite by booting out so the next

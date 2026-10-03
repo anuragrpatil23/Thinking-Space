@@ -60,7 +60,20 @@ export async function bootstrapByLabelBlock(label: string): Promise<void> {
   const plistPath = getPlistPathBlock(label);
   // bootout first (ignore errors — may not be loaded yet)
   await execFileAsync('/bin/launchctl', ['bootout', `${getGuiTargetBlock()}/${label}`]).catch(() => undefined);
-  await execFileAsync('/bin/launchctl', ['bootstrap', getGuiTargetBlock(), plistPath]);
+  // bootout returns before a still-running job has actually gone (telegram-poll
+  // sits in a 25s long-poll), and bootstrap fails while the old instance is
+  // still registered — so give it a few short retries before giving up.
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+    try {
+      await execFileAsync('/bin/launchctl', ['bootstrap', getGuiTargetBlock(), plistPath]);
+      return;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
 }
 
 export async function bootoutPlistBlock(label: string): Promise<void> {
