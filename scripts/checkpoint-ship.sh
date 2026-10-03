@@ -71,9 +71,13 @@ if ! git diff --quiet "@{upstream}" HEAD 2>/dev/null; then
   fail "HEAD ($BRANCH@$HEAD_SHA) is not pushed to its upstream — push first"
 fi
 
-# Signing identity: env override > self-signed local cert > Apple Development
-# > ad-hoc (keychain-backed features like safeStorage won't persist across
-# ad-hoc builds; see docs/BUILD-macOS-LOCAL.md).
+# Signing identity: env override > Apple Development > self-signed local cert
+# > ad-hoc. Apple Development comes first because it carries a Team ID: the
+# login keychain lets an app back into its saved keys by Team ID, so one
+# "Always Allow" lasts across rebuilds. A self-signed cert has no Team ID, so
+# the keychain can only remember each build's cdhash and asks again after
+# every rebuild (seen 2026-10-03: ~35 cdhashes on the Safe Storage key).
+# Renewing the Apple Development cert keeps the same Team ID.
 LOCAL_CERT="Thinking Space Local Signing"
 
 has_local_cert() {
@@ -121,7 +125,9 @@ ensure_local_cert() {
 
 SIGN_ID="${TS_SIGN_IDENTITY:-}"
 if [ -z "$SIGN_ID" ]; then
-  if has_local_cert; then
+  if security find-identity -p codesigning -v 2>/dev/null | grep -q "Apple Development"; then
+    SIGN_ID="$(security find-identity -p codesigning -v | grep "Apple Development" | head -1 | sed 's/.*"\(.*\)"/\1/')"
+  elif has_local_cert; then
     SIGN_ID="$LOCAL_CERT"
   elif ensure_local_cert; then
     SIGN_ID="$LOCAL_CERT"
