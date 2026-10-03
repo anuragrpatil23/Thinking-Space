@@ -4,6 +4,7 @@ import {
   buildFeedGroupTreeBlock,
   buildUnreadInboxItemsBlock,
   flattenVisibleRssRowsBlock,
+  rssFeedIdsExcludedFromAllUnreadBlock,
   rssRowIdBlock,
   type RssFeedConfigBlock,
   type RssFeedGroupBlock,
@@ -230,5 +231,22 @@ describe('buildUnreadInboxItemsBlock', () => {
 
     expect(buildUnreadInboxItemsBlock(feeds, new Set()).map(e => e.item.id))
       .toEqual(['dated', 'undated', 'unparseable'])
+  })
+})
+
+describe('rssFeedIdsExcludedFromAllUnreadBlock', () => {
+  it('leaves out feeds in a flagged group and in its subgroups', () => {
+    const groups: RssFeedGroupBlock[] = [
+      { id: 'g1', name: 'Mine', parentGroupId: null },
+      { id: 'g2', name: 'Tool', parentGroupId: null, excludeFromAllUnread: true },
+      { id: 'g3', name: 'Tool child', parentGroupId: 'g2' },
+    ]
+    const feeds: RssFeedConfigBlock[] = [
+      { id: 'a', url: 'u', title: 'A', groupId: 'g1' },
+      { id: 'b', url: 'u', title: 'B', groupId: 'g2' },
+      { id: 'c', url: 'u', title: 'C', groupId: 'g3' },
+      { id: 'd', url: 'u', title: 'D', groupId: null },
+    ]
+    expect([...rssFeedIdsExcludedFromAllUnreadBlock(groups, feeds)].sort()).toEqual(['b', 'c'])
   })
 })

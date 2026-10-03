@@ -324,6 +324,9 @@ export default function RssArticleViewBlock({
       {/* URL content — wrapped so h-full inside UrlDocumentBlock resolves to the
            flex-allocated space, not the full container (fixes iOS WKWebView overlap) */}
       <div className="relative min-h-0 flex-1">
+        {item.textInCache ? (
+          <CachedArticleTextBlock item={item} />
+        ) : (
         <UrlDocumentBlock
           url={item.link}
           onClose={onClose}
@@ -333,6 +336,7 @@ export default function RssArticleViewBlock({
           scrollerRef={articleScrollerRef}
           className="absolute inset-0"
         />
+        )}
       </div>
 
       {/* Move-to-vault overlay */}
@@ -398,6 +402,31 @@ export default function RssArticleViewBlock({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** The article's own text from the cache, for feeds whose links need a login.
+ *  Paragraphs are the blank-line-separated blocks the outside tool wrote. */
+function CachedArticleTextBlock({ item }: { item: RssFeedItemBlock }) {
+  const paragraphs = item.description.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean)
+  const when = item.pubDate ? new Date(item.pubDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : null
+  return (
+    <div className="absolute inset-0 overflow-y-auto">
+      <article className="mx-auto max-w-[680px] px-6 py-8">
+        <h1 className="text-[24px] font-semibold leading-tight text-foreground">{item.title}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground">
+          {when && <span>{when}</span>}
+          {item.link && (
+            <a href={item.link} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-foreground">
+              Open the original
+            </a>
+          )}
+        </div>
+        <div className="mt-6 space-y-4 text-[15px] leading-relaxed text-foreground">
+          {paragraphs.map((p, i) => <p key={i}>{p}</p>)}
+        </div>
+      </article>
     </div>
   )
 }

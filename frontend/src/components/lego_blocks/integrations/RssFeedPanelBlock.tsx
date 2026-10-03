@@ -39,6 +39,7 @@ import {
   RSS_UNREAD_INBOX_ID_BLOCK,
   buildFeedGroupTreeBlock,
   buildUnreadInboxItemsBlock,
+  rssFeedIdsExcludedFromAllUnreadBlock,
   flattenVisibleRssRowsBlock,
   rssRowIdBlock,
   type RssArticleNavStateBlock,
@@ -253,9 +254,17 @@ export default function RssFeedPanelBlock({
     return feeds.filter(f => f.feedId === focusedFeedId)
   }, [feeds, focusedFeedId])
 
+  // Feeds in groups marked excludeFromAllUnread stay in their own group but
+  // are left out of the merged inbox and the header count.
+  const inboxFeeds = useMemo(() => {
+    if (!preferences) return feeds
+    const excluded = rssFeedIdsExcludedFromAllUnreadBlock(preferences.groups, preferences.feeds)
+    return excluded.size === 0 ? feeds : feeds.filter(f => !excluded.has(f.feedId))
+  }, [feeds, preferences])
+
   const totalUnread = useMemo(
-    () => feeds.reduce((acc, f) => acc + f.items.filter(i => !i.read).length, 0),
-    [feeds],
+    () => inboxFeeds.reduce((acc, f) => acc + f.items.filter(i => !i.read).length, 0),
+    [inboxFeeds],
   )
 
   // ---------------------------------------------------------------------
@@ -263,8 +272,8 @@ export default function RssFeedPanelBlock({
   // ---------------------------------------------------------------------
 
   const unreadInboxEntries = useMemo(
-    () => buildUnreadInboxItemsBlock(feeds, sessionReadIds),
-    [feeds, sessionReadIds],
+    () => buildUnreadInboxItemsBlock(inboxFeeds, sessionReadIds),
+    [inboxFeeds, sessionReadIds],
   )
   const unreadInboxExpanded = expandedFeedIds.has(RSS_UNREAD_INBOX_ID_BLOCK)
   // The inbox merges every source, so it only makes sense in the all-feeds view.

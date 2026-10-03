@@ -638,7 +638,9 @@ export async function fetchAndParseRssFeedOrch(
   if (config.fetchedExternally) {
     // Filled by an outside tool: the cache is the whole feed. Fetching the URL
     // would only return a login page or a refusal.
-    return buildStoredResultBlock(config, await loadStoredFeedItemsOrch(config.id), null)
+    const stored = await loadStoredFeedItemsOrch(config.id)
+    const withText = new Map([...stored].map(([id, item]) => [id, { ...item, textInCache: true }]))
+    return buildStoredResultBlock(config, withText, null)
   }
   try {
     const response = await fetchRssFeedTextBlock(config.url)

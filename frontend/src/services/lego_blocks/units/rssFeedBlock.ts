@@ -14,6 +14,10 @@ export interface RssFeedGroupBlock {
   id: string
   name: string
   parentGroupId: string | null
+  /** Leave this group's feeds (and its subgroups' feeds) out of the merged
+   *  "All Unread" inbox and the header's unread count. For feeds that are
+   *  read by a tool rather than by the user. */
+  excludeFromAllUnread?: boolean
 }
 
 export interface RssFeedPreferencesBlock {
@@ -50,6 +54,10 @@ export interface RssFeedItemBlock {
   tags: string[]
   keep: boolean
   important: boolean
+  /** The full article text is already in the cache (feeds filled by an
+   *  outside tool). The reader shows that text instead of opening the link,
+   *  which may need a login. */
+  textInCache?: boolean
 }
 
 export interface RssFeedResultBlock {
@@ -424,6 +432,29 @@ function sortRssEntriesByRecencyBlock(entries: RssUnreadInboxEntryBlock[]): RssU
     if (!bValid) return -1
     return bTime - aTime
   })
+}
+
+/** Feed ids that belong to a group marked `excludeFromAllUnread`, directly or
+ *  through a parent group. */
+export function rssFeedIdsExcludedFromAllUnreadBlock(
+  groups: RssFeedGroupBlock[],
+  feeds: RssFeedConfigBlock[],
+): Set<string> {
+  const byId = new Map(groups.map(g => [g.id, g]))
+  const excludedGroup = (id: string | null | undefined): boolean => {
+    const seen = new Set<string>()
+    while (id && !seen.has(id)) {
+      seen.add(id)
+      const g = byId.get(id)
+      if (!g) return false
+      if (g.excludeFromAllUnread) return true
+      id = g.parentGroupId
+    }
+    return false
+  }
+  const out = new Set<string>()
+  for (const f of feeds) if (excludedGroup(f.groupId)) out.add(f.id)
+  return out
 }
 
 export function buildUnreadInboxItemsBlock(
