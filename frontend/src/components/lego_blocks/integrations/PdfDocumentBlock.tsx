@@ -33,6 +33,8 @@ import {
 import { cn } from '@/lib/utils'
 import { readPdfDocumentOrch } from '@/services/orchestrators/pdfDocumentsOrch'
 import { usePdfPageMetricsBlock } from '@/components/lego_blocks/hooks/shared/usePdfPageMetricsBlock'
+import { usePdfReadingPositionBlock } from '@/components/lego_blocks/hooks/shared/usePdfReadingPositionBlock'
+import { readPdfReadingPositionBlock } from '@/services/lego_blocks/units/pdfReadingPositionBlock'
 import {
   buildPdfRenderedWindowBlock,
   buildPdfRetainedWindowBlock,
@@ -218,7 +220,9 @@ export default function PdfDocumentBlock({
     setFileBytes(null)
     setFileSizeBytes(null)
     setNumPages(0)
-    setPageNumber(1)
+    /* Start the render window on the bookmarked page, so the pages rastered
+       first are the ones the restore is about to scroll to rather than 1-3. */
+    setPageNumber(countsAsReading ? readPdfReadingPositionBlock(path)?.page ?? 1 : 1)
     setRenderNonce(0)
     setDocProxy(null)
     void readPdfDocumentOrch(path)
@@ -237,6 +241,9 @@ export default function PdfDocumentBlock({
     return () => {
       cancelled = true
     }
+    /* `countsAsReading` is fixed for the life of a mount; re-reading the file
+       because it flipped would be the wrong response anyway. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path])
 
   useEffect(() => {
@@ -690,6 +697,17 @@ export default function PdfDocumentBlock({
   }), [isIosSurface, numPages, pageNumber])
 
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+
+  usePdfReadingPositionBlock({
+    path,
+    enabled: countsAsReading,
+    numPages,
+    viewportRef,
+    surfaceRef,
+    pageRefs,
+    metricsByPage,
+    displayedScale,
+  })
 
   const scrollToPage = useCallback((page: number, immediate = false) => {
     const el = pageRefs.current.get(page)

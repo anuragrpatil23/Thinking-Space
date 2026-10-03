@@ -122,6 +122,30 @@ pdf.js directly so the bitmap can be decoupled from the layout box.
   payload, save, read it back) rather than by reasoning — that is what finally
   found (2) and (3).
 
+- `pdfReadingPositionBlock.ts` + `usePdfReadingPositionBlock.ts` +
+  `pdfReadingPositionSyncOrch.ts` — the auto-bookmark (2026-10-03). A position
+  is **page + fraction of that page's height**, never a scroll offset: pixels do
+  not survive a different window width, zoom mode, or page boxes that are still
+  being measured. Keyed by vault path (the same string on every device; a
+  renamed file starts over), with the time the reader was last there.
+  localStorage is the synchronous copy the viewer restores from. It roams
+  through **one file per install**, `.thinking-space/reading-positions/<install>.json`:
+  a device writes only its own and reads everyone's, newest `at` wins — the same
+  no-shared-file rule as the reading day files, and deliberately not a group in
+  `ui.json` (reading state that changes per page turn would race every real
+  preference in a whole-file read-merge-write). Three things to keep:
+  (1) **nothing is recorded until the reader touches the document** — before
+  that every scroll is the restore itself, and stamping it with "now" would
+  make a stale local position outrank the one another device has not finished
+  syncing; (2) the restore is **re-applied on every layout change** (metrics
+  landing, fit scale resolving, a newer roamed position arriving) until that
+  first touch, because the first application lands against estimated page
+  heights; (3) being back at the start is **stored, not deleted** — a missing
+  entry loses to another device's older, deeper one. The page is located from
+  the page boxes by binary search, not from `pageNumber`, which lags the scroll.
+  The vault file is written 5s after scrolling stops and on background/close,
+  only when changed. Only `countsAsReading` mounts take part.
+
 **Method note, since it dominated the session.** Nearly every fix made by
 reasoning about this viewer needed correcting later; every fix made after
 measuring held first time. Two cheap tools did the work: `ffmpeg mpdecimate` over
