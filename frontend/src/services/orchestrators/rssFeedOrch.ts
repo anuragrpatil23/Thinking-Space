@@ -78,6 +78,8 @@ function serializeRssItemFileBlock(
     tags: item.tags ?? [],
     keep: item.keep ?? false,
     important: item.important ?? false,
+    // Only written when set, so ordinary article files keep their usual shape.
+    ...(item.textInCache ? { textInCache: true } : {}),
   }
   const yamlStr = (yaml.dump(fm, {
     lineWidth: -1,
@@ -122,6 +124,8 @@ function parseRssItemFileBlock(content: string): RssFeedItemBlock | null {
     tags: Array.isArray(f.tags) ? (f.tags as unknown[]).filter((t): t is string => typeof t === 'string') : [],
     keep: f.keep === true,
     important: f.important === true,
+    // An outside tool put the full article text in the body.
+    ...(f.textInCache === true ? { textInCache: true } : {}),
   }
 }
 
@@ -721,6 +725,8 @@ export async function fetchAndParseRssFeedOrch(
         tags: stored?.tags ?? [],
         keep: stored?.keep ?? false,
         important: stored?.important ?? false,
+        // Full text an outside tool wrote into the cache beats the feed's summary.
+        ...(stored?.textInCache ? { textInCache: true, description: stored.description } : {}),
       }
     })
 

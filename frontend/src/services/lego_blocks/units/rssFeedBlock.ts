@@ -54,9 +54,10 @@ export interface RssFeedItemBlock {
   tags: string[]
   keep: boolean
   important: boolean
-  /** The full article text is already in the cache (feeds filled by an
-   *  outside tool). The reader shows that text instead of opening the link,
-   *  which may need a login. */
+  /** The full article text is already in the cache (a feed filled by an
+   *  outside tool, or an item whose body a tool replaced with the full text,
+   *  marked `textInCache: true` in its frontmatter). The reader shows that
+   *  text instead of opening the link, which may need a login. */
   textInCache?: boolean
 }
 
@@ -322,6 +323,7 @@ export function mergeStoredRssItemsBlock(
     tags,
     keep: a.keep || b.keep,
     important: a.important || b.important,
+    ...(a.textInCache || b.textInCache ? { textInCache: true } : {}),
   }
 }
 

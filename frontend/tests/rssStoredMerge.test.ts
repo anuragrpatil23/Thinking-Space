@@ -11,6 +11,16 @@ function item(patch: Partial<RssFeedItemBlock> = {}): RssFeedItemBlock {
 }
 
 describe('mergeStoredRssItemsBlock', () => {
+  it('keeps full cached text from either copy', () => {
+    const full = item({ textInCache: true, description: 'Long full text.\n\nSecond paragraph.' })
+    const summary = item({ description: 'Short.' })
+    for (const merged of [mergeStoredRssItemsBlock(full, summary), mergeStoredRssItemsBlock(summary, full)]) {
+      expect(merged.textInCache).toBe(true)
+      expect(merged.description).toContain('Second paragraph.')
+    }
+    expect(mergeStoredRssItemsBlock(summary, item()).textInCache).toBeUndefined()
+  })
+
   it('keeps the article read when only the stale conflict copy says unread', () => {
     const original = item({ read: true, dismissedAt: '2026-08-23T16:23:42.406Z' })
     const conflict = item({ read: false, dismissedAt: null })
