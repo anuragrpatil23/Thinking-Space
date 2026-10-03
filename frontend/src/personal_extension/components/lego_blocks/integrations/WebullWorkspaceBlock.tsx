@@ -2432,7 +2432,7 @@ export default function WebullWorkspaceBlock({
         'min-w-0 overflow-auto px-6 py-5',
         phoneListMode ? 'hidden' : 'flex-1',
       )}>
-      {pageTitle && (
+      {pageTitle && !gapsTabActive && (
         <div className="mb-4">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{pageTitle}</h1>
           <p className="text-sm text-muted-foreground">
