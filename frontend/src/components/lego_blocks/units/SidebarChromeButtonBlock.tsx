@@ -11,6 +11,8 @@ export interface SidebarChromeButtonBlockProps {
   block: SidebarChromeBlock<any>
   collapsed: boolean
   toggleLabels: SidebarChromeButtonLabels
+  /** Keyboard shortcut shown in the toggle's tooltip, e.g. "⌘\". */
+  toggleShortcutHint?: string
   headerVisible?: boolean
   showHeaderToggle?: boolean
   headerToggleLabels?: SidebarChromeButtonLabels
@@ -29,6 +31,7 @@ export default function SidebarChromeButtonBlock({
   block,
   collapsed,
   toggleLabels,
+  toggleShortcutHint,
   headerVisible,
   showHeaderToggle,
   headerToggleLabels,
@@ -50,7 +53,7 @@ export default function SidebarChromeButtonBlock({
         onClick={block.dispatchToggle}
         className={cn(BASE_BUTTON_CLASS, variantClass)}
         aria-label={toggleLabel}
-        title={toggleLabel}
+        title={toggleShortcutHint ? `${toggleLabel} (${toggleShortcutHint})` : toggleLabel}
       >
         {collapsed ? <PanelLeft className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
       </button>

@@ -1092,6 +1092,10 @@ function App() {
       toggleLabels: { show: 'Show settings sidebar', hide: 'Hide settings sidebar' },
     },
   ] as SidebarChromeButtonConfig[]).map(cfg => ({ position: 'inline', ...cfg }))
+  // Cmd/Ctrl + \ toggles whichever sidebar control the current page shows —
+  // the shortcut follows the visible button, so it is a no-op where there is none.
+  const activeSidebarChromeBlock = sidebarChromeButtons.find(cfg => cfg.show)?.block
+  const sidebarToggleShortcutHint = isMacPlatform ? '⌘\\' : 'Ctrl+\\'
   const inlineSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'inline')
   const capacitorMenuSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'capacitor-menu')
   const leftAlignedSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'left-aligned')
@@ -2149,6 +2153,13 @@ function App() {
         handleGlobalRefresh()
         return
       }
+      if (withMeta && !event.shiftKey && !event.altKey && event.code === 'Backslash') {
+        if (activeSidebarChromeBlock) {
+          event.preventDefault()
+          activeSidebarChromeBlock.dispatchToggle()
+        }
+        return
+      }
       // Cmd/Ctrl + <digit> jumps to a side-rail tab: 1..N follow rail order
       // (primary nav + Tools), 0 is Home. Driven by the same nav source as the
       // rail so they stay in sync. Works cleanly in Electron; on web the
@@ -2174,7 +2185,7 @@ function App() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab, handleGlobalRefresh, navigate, primaryNavItems, toolsNavItems])
+  }, [activeSidebarChromeBlock, activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab, handleGlobalRefresh, navigate, primaryNavItems, toolsNavItems])
 
   const {
     running: ambientSyncRunning,
@@ -2643,6 +2654,7 @@ function App() {
                       headerVisible={cfg.headerVisible}
                       showHeaderToggle={cfg.showHeaderToggle}
                       toggleLabels={cfg.toggleLabels}
+                      toggleShortcutHint={sidebarToggleShortcutHint}
                       headerToggleLabels={cfg.headerToggleLabels}
                       variant={cfg.variant}
                       wrap={false}
@@ -2663,6 +2675,7 @@ function App() {
                     headerVisible={cfg.headerVisible}
                     showHeaderToggle={cfg.showHeaderToggle}
                     toggleLabels={cfg.toggleLabels}
+                    toggleShortcutHint={sidebarToggleShortcutHint}
                     headerToggleLabels={cfg.headerToggleLabels}
                     variant={cfg.variant}
                     wrap={false}
@@ -2693,6 +2706,7 @@ function App() {
                     headerVisible={cfg.headerVisible}
                     showHeaderToggle={cfg.showHeaderToggle}
                     toggleLabels={cfg.toggleLabels}
+                    toggleShortcutHint={sidebarToggleShortcutHint}
                     headerToggleLabels={cfg.headerToggleLabels}
                     variant={cfg.variant}
                     wrap={false}
