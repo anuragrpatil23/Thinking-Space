@@ -1827,7 +1827,9 @@ function MarkdownTextDocumentRuntimeBlock({
             // horizontal touch pans at this level entirely; inner scrollers
             // (code blocks, tables, CM6) still pan-x fine — touch-action on
             // an ancestor above the scroller doesn't constrain it.
-            isExcalidrawDoc && !isEditing ? 'flex flex-col overflow-hidden' : (isExcalidrawDoc ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden [touch-action:pan-y]'),
+            // An HTML page is its own scroller (like the Excalidraw canvas):
+            // letting this pane scroll too stacks a second scrollbar on it.
+            (isExcalidrawDoc || isHtmlDoc) && !isEditing ? 'flex flex-col overflow-hidden' : (isExcalidrawDoc ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden [touch-action:pan-y]'),
           )}
         >
           <div
@@ -2220,9 +2222,7 @@ function MarkdownTextDocumentRuntimeBlock({
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && isHtmlDoc && (
-            <div className={cn('h-full min-h-0', isIosPhone ? 'px-5 py-5' : 'px-6 py-5')}>
-              <HtmlDocumentBlock html={displayContent} className="h-full min-h-[60vh]" />
-            </div>
+            <HtmlDocumentBlock html={displayContent} path={path} active={active} className="min-h-0 flex-1" />
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && isCodeDoc && (

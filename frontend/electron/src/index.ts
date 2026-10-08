@@ -47,6 +47,11 @@ import { readAiPlanUsageBlock, readClaudeUsageLogBlock, disposeAiPlanUsageBlock 
 import { promoteAiUsageToVaultBlock } from './lego_blocks/aiUsageVaultMirrorBlock';
 import { readPersistedVaultRootBlock } from './lego_blocks/vaultRootPersistenceBlock';
 import {
+  VAULT_HTML_PAGE_PARTITION_BLOCK,
+  mintVaultHtmlPageUrlBlock,
+  setupVaultHtmlPageSessionBlock,
+} from './lego_blocks/vaultHtmlPageBlock';
+import {
   authorizeVaultRootBlock,
   assertAuthorizedVaultRootBlock,
   resolveInsideVaultBlock,
@@ -415,6 +420,10 @@ if (hasSingleInstanceLock) {
         readPersistedOpensourceAiBaseUrlBlock(),
       );
       setupWebviewSessionPermissions();
+      setupVaultHtmlPageSessionBlock(
+        myCapacitorApp.getCustomURLScheme(),
+        session.fromPartition(VAULT_HTML_PAGE_PARTITION_BLOCK),
+      );
       // Authorize every workspace profile's vault root at boot. profiles.json
       // is main-owned state — the same trust anchor as the persisted root, so
       // this widens nothing: a renderer still can't get an arbitrary path in.
@@ -1946,6 +1955,15 @@ ipcMain.handle('claudeCli:cancel', async (_event, requestId: string) => {
 });
 ipcMain.handle('claudeCli:probe', async () => {
   return probeClaudeCliBlock();
+});
+
+// URL a vault HTML page loads from in its webview. The path guard runs inside
+// the mint; only the page's own folder becomes readable (vaultHtmlPageBlock).
+ipcMain.handle('vault:htmlPage:url', async (_event, vaultRoot: string, pagePath: string) => {
+  if (typeof pagePath !== 'string' || !pagePath.trim()) {
+    throw new Error('vault:htmlPage:url requires a page path.');
+  }
+  return mintVaultHtmlPageUrlBlock(myCapacitorApp.getCustomURLScheme(), vaultRoot, pagePath);
 });
 
 ipcMain.handle('vault:watch:start', async (_event, vaultRoot: string) => {

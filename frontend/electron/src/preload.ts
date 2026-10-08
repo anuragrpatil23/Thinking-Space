@@ -237,6 +237,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   }) => ipcRenderer.invoke('extension-runtime:invoke', payload),
 
   // Vault filesystem watcher
+  vaultHtmlPageUrl: (vaultRoot: string, pagePath: string): Promise<string> =>
+    ipcRenderer.invoke('vault:htmlPage:url', vaultRoot, pagePath),
   vaultWatchStart: (vaultRoot: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('vault:watch:start', vaultRoot),
   vaultWatchStop: (vaultRoot: string): Promise<{ ok: boolean }> =>

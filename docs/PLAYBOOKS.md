@@ -257,6 +257,7 @@ upstream PRs touching them require maintainer review (`.github/CODEOWNERS`).
 | `electron/src/setup.ts` | window sandbox flags, CSP, webview permissions |
 | `electron/src/index.ts` | the IPC surface; all handlers validate untrusted renderer input |
 | `electron/src/lego_blocks/vaultPathGuardBlock.ts` | the vault boundary — full-disk access if weakened |
+| `electron/src/lego_blocks/vaultHtmlPageBlock.ts` | what an untrusted vault HTML page can read — its own folder, nothing above |
 | `electron/src/lego_blocks/cspWhitelistBlock.ts` | outbound origins = exfiltration targets |
 | `electron/src/lego_blocks/aiCredentialBlock.ts` | AI provider credentials |
 | `electron/src/lego_blocks/webullCredentialStoreBlock.ts` | brokerage credentials |

@@ -198,6 +198,8 @@ interface ElectronAPI {
   }): Promise<{ status: number; body: string }>
   vaultRootGetPersisted?(): string | null
   vaultRootSetPersisted?(vaultRoot: string | null): Promise<void>
+  /** URL a vault HTML page loads from; only the page's own folder is served. */
+  vaultHtmlPageUrl?(vaultRoot: string, pagePath: string): Promise<string>
   vaultWatchStart?(vaultRoot: string): Promise<{ ok: boolean; error?: string }>
   vaultWatchStop?(vaultRoot: string): Promise<{ ok: boolean }>
   onVaultWatchEvent?(handler: (event: { kind: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir'; path: string }) => void): () => void
