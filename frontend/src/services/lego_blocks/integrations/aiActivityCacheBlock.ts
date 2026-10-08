@@ -386,7 +386,16 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
     for (const entry of nativeEntries) {
       const key = `native/${entry.source}/${entry.relPath}`
       const cachedWindows = cachedByFileKey.get(key) ?? []
-      const fresh = cachedWindows.length > 0 && cachedWindows.every(s => sameMtimeBlock(s.mtime, entry.mtime))
+      // A Codex row parsed before limit readings existed has no `limitReadings`
+      // at all (the parser now always writes the array, empty when the
+      // transcript reported none), so its absence marks exactly the rows that
+      // need another parse. Deliberately not a CACHE_VERSION bump: that would
+      // re-parse every transcript on every device to refresh a few hundred
+      // Codex files on the one machine that can read them.
+      const fresh =
+        cachedWindows.length > 0 &&
+        cachedWindows.every(s => sameMtimeBlock(s.mtime, entry.mtime)) &&
+        (entry.source !== 'codex' || cachedWindows.every(s => s.limitReadings !== undefined))
       if (fresh) {
         for (const s of cachedWindows) {
           present.add(s.path)

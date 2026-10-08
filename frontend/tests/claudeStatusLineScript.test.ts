@@ -70,8 +70,9 @@ describe.skipIf(process.platform === 'win32')('claude-statusline.sh', () => {
     expect(bridge).toEqual(JSON.parse(PAYLOAD))
 
     const sessions = path.join(home, '.thinking-space', 'ai-sessions', 'claude')
-    expect(fs.readdirSync(sessions)).toEqual([
+    expect(fs.readdirSync(sessions).sort()).toEqual([
       '11111111-2222-3333-4444-555555555555.json',
+      '11111111-2222-3333-4444-555555555555.stamp',
     ])
 
     const logDir = path.join(home, '.thinking-space', 'ai-usage-log', 'claude')
@@ -80,6 +81,51 @@ describe.skipIf(process.platform === 'win32')('claude-statusline.sh', () => {
     expect(sample.p).toBe('claude')
     expect(sample.fh).toBe(34)
     expect(sample.sd).toBe(15)
+  })
+
+  it('samples each session on its own clock, and again the moment a limit moves', () => {
+    // One clock for the whole machine starved every session but the first to
+    // render, which is fine for a curve and fatal for working out which session
+    // moved it.
+    const home = makeDir('persession')
+    const payloadFor = (sessionId: string, fiveHour: number): string =>
+      JSON.stringify({
+        ...(JSON.parse(PAYLOAD) as Record<string, unknown>),
+        session_id: sessionId,
+        rate_limits: {
+          five_hour: { used_percentage: fiveHour, resets_at: 1788693000 },
+          seven_day: { used_percentage: 15, resets_at: 1789239600 },
+        },
+      })
+    const run = (sessionId: string, fiveHour: number): void => {
+      execFileSync('bash', [SCRIPT], {
+        input: payloadFor(sessionId, fiveHour),
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH ?? '', HOME: home },
+      })
+    }
+    const first = 'aaaaaaaa-0000-0000-0000-000000000001'
+    const second = 'bbbbbbbb-0000-0000-0000-000000000002'
+
+    run(first, 34)
+    run(first, 34) // nothing moved, inside five minutes: no new line
+    run(second, 34) // a different session, seconds later: its own line
+    run(first, 35) // the limit moved: logged at once
+    run(second, 35) // and the other session records seeing it too
+
+    const logDir = path.join(home, '.thinking-space', 'ai-usage-log', 'claude')
+    const [logFile] = fs.readdirSync(logDir)
+    const rows = fs
+      .readFileSync(path.join(logDir, logFile), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { sid: string; fh: number })
+    expect(rows.map((row) => [row.sid, row.fh])).toEqual([
+      [first, 34],
+      [second, 34],
+      [first, 35],
+      [second, 35],
+    ])
   })
 
   it('prefers USERPROFILE over HOME, because that is what os.homedir() reads on Windows', () => {

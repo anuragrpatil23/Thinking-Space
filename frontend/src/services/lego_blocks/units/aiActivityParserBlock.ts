@@ -120,6 +120,15 @@ export interface ParsedSession {
   /** The distinct automations behind `automationTurns`, when the transcript
    *  names them (Codex writes `<automation_id>`; Claude Code does not). */
   automationIds?: string[]
+  /** The account's limit meters as Codex reported them during this sitting,
+   *  thinned to the readings where one moved. Codex only — Claude Code never
+   *  writes its limits into a transcript, so those come from the status line's
+   *  usage log instead. Raw readings, not a share: who moved the meter is
+   *  worked out on read, across every session at once. Present-but-empty on a
+   *  Codex sitting that reported none; absent only on rows parsed before the
+   *  field existed, which is how the cache knows to re-parse them. Type-only
+   *  import; erased at runtime, so no cycle. */
+  limitReadings?: import('./aiLimitShareBlock').CodexLimitReadingBlock[]
 }
 
 export interface SessionTokens {

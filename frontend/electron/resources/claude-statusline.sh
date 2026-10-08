@@ -89,18 +89,48 @@ mkdir -p "$log_dir"
 log_file="$log_dir/$(date +%Y-%m).jsonl"
 now=$(date +%s)
 
-# One line every five minutes.
+# One line every five minutes per session, and one whenever a limit moves.
 #
 # Rate-limit windows are 5 hours and 7 days, so five-minute resolution is 60
 # samples across the short window and 2000 across the long one — far more than a
-# curve needs. The interval is the size control: the payload goes in whole
-# (~1.4 KB), so a minute's resolution would cost roughly 13 MB a month against
-# about 2.5 MB here, for detail nothing would ever plot.
+# curve needs. The interval is the size control: a minute's resolution would
+# cost several times the disk for detail nothing would ever plot.
 #
-# `t` is our own field in a known format, so reading it back with sed is safe in
-# a way parsing Claude Code's payload would not be.
-last_t=$(tail -c 4096 "$log_file" 2>/dev/null | tail -1 | sed -n 's/^{"t":\([0-9]*\).*/\1/p')
-if [ -z "$last_t" ] || [ $((now - last_t)) -ge 300 ]; then
+# The clock is per session, not per file. It used to be read off the log's last
+# line, which made it one clock for the whole machine: with two sessions open,
+# whichever rendered first took the slot and the other went unsampled for as
+# long as they overlapped. The curve survived that (limits are account-wide);
+# working out which session moved it did not.
+#
+# A changed percentage is logged at once, whatever the clock says. The
+# percentages are whole numbers, so that is at most a hundred extra lines per
+# window, and it pins each point of movement to the session that was running
+# when it appeared instead of to whoever next crossed the five-minute mark.
+#
+# The stamp sits beside the session snapshot and holds "<epoch> <signature>",
+# both written by us, so reading it back is safe in a way parsing Claude Code's
+# payload would not be. The signature is narrowed to the rate_limits object for
+# the same reason as the no-jq path below.
+sig=$(printf '%s' "$input" | sed -n 's/.*"rate_limits"://p' \
+  | grep -o '"used_percentage":[0-9.]*')
+# One token, so the stamp reads back with a plain `read`.
+sig=${sig//$'\n'/,}
+stamp=''
+last_t=''
+last_sig=''
+case "$session_id" in
+  *[!A-Za-z0-9-]* | '')
+    # No usable session id: fall back to the shared clock on the log itself.
+    last_t=$(tail -c 4096 "$log_file" 2>/dev/null | tail -1 | sed -n 's/^{"t":\([0-9]*\).*/\1/p')
+    last_sig="$sig"
+    ;;
+  *)
+    stamp="$ts_home/.thinking-space/ai-sessions/claude/$session_id.stamp"
+    [ -f "$stamp" ] && read -r last_t last_sig < "$stamp"
+    ;;
+esac
+case "$last_t" in *[!0-9]* | '') last_t='' ;; esac
+if [ -z "$last_t" ] || [ $((now - last_t)) -ge 300 ] || [ "$sig" != "${last_sig:-}" ]; then
   line=''
 
   if command -v jq >/dev/null 2>&1; then
@@ -137,6 +167,7 @@ if [ -z "$last_t" ] || [ $((now - last_t)) -ge 300 ]; then
   [ -n "$line" ] || line=$(printf '{"t":%s,"p":"claude","payload":%s}' "$now" "$input")
 
   printf '%s\n' "$line" >> "$log_file"
+  [ -z "$stamp" ] || printf '%s %s\n' "$now" "$sig" > "$stamp"
 fi
 
 # Display only — jq is optional, and its absence never breaks the card.

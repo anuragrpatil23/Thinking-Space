@@ -634,6 +634,14 @@ export function pruneClaudeSessionSnapshotsBlock(nowMs: number = Date.now()): vo
       SESSION_SNAPSHOT_RETENTION_MS_BLOCK,
       nowMs,
     );
+    // The status line's per-session sampling stamps live beside the snapshots
+    // and age out with them.
+    pruneDirectoryBlock(
+      path.join(AI_SESSIONS_DIR_BLOCK, provider),
+      '.stamp',
+      SESSION_SNAPSHOT_RETENTION_MS_BLOCK,
+      nowMs,
+    );
     pruneDirectoryBlock(
       path.join(AI_USAGE_LOG_DIR_BLOCK, provider),
       '.jsonl',
@@ -641,6 +649,35 @@ export function pruneClaudeSessionSnapshotsBlock(nowMs: number = Date.now()): vo
       nowMs,
     );
   }
+}
+
+/**
+ * The Claude usage log, every month this machine still holds, as one JSONL
+ * text.
+ *
+ * Handed over raw: working out which session moved the meter is derivation,
+ * and that belongs to the app's services where it can be tested without a
+ * home directory. The path is fixed here and nothing the renderer sends can
+ * change it. A year of samples is a few megabytes at most.
+ */
+export function readClaudeUsageLogBlock(): string {
+  const dir = path.join(AI_USAGE_LOG_DIR_BLOCK, 'claude');
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return ''; // The status line has not run on this machine.
+  }
+  const months: string[] = [];
+  for (const name of names.sort()) {
+    if (!/^\d{4}-\d{2}\.jsonl$/.test(name)) continue;
+    try {
+      months.push(fs.readFileSync(path.join(dir, name), 'utf8'));
+    } catch {
+      // One unreadable month must not hide the others.
+    }
+  }
+  return months.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -721,8 +758,7 @@ export interface AiPlanUsageReadingBlock {
 
 export async function readAiPlanUsageBlock(): Promise<AiPlanUsageReadingBlock> {
   // Cheap directory scan, and this is the one path guaranteed to run while the
-  // snapshots are being written. Nothing reads them yet — they are being
-  // collected now so the history exists when something does.
+  // snapshots are being written.
   pruneClaudeSessionSnapshotsBlock();
   const codex = await readCodexPlanUsageBlock();
   return {

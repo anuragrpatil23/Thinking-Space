@@ -19,6 +19,9 @@ import ReadingSessionEditModalBlock, {
   isReadingSessionEditableBlock,
 } from '@/components/lego_blocks/integrations/ReadingSessionEditModalBlock'
 import { useChainDigestBlock } from '@/components/lego_blocks/hooks/units/useChainDigestBlock'
+import { useSessionLimitSharesBlock } from '@/components/lego_blocks/hooks/units/useSessionLimitSharesBlock'
+import { formatLimitShareBlock, sumLimitSharesBlock } from '@/services/lego_blocks/units/aiLimitShareBlock'
+import { sessionIdOf } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
 import { heavyWorkBlockedLabelBlock } from '@/services/lego_blocks/integrations/powerStateBlock'
 import AiActivitySourceChipBlock from '@/components/lego_blocks/units/AiActivitySourceChipBlock'
 import LightMarkdownTextBlock from '@/components/lego_blocks/units/LightMarkdownTextBlock'
@@ -326,6 +329,10 @@ export default function AiActivityDayTableBlock({
   }
   const [copied, setCopied] = useState(false)
 
+  // How much of the plan's limits each sitting used. Keyed on `chains` so a
+  // refresh that brings new activity also brings its share.
+  const limitShares = useSessionLimitSharesBlock(chains)
+
   // Sort by start time, oldest first for chronological reading.
   const sorted = useMemo(
     () => [...chains].sort((a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso)),
@@ -490,6 +497,12 @@ export default function AiActivityDayTableBlock({
                     chainTokens.input + chainTokens.output + chainTokens.cacheRead + chainTokens.cacheCreation > 0
                   const costUsd = hasTokens ? estimateChainCostUsd(c) : 0
                   const modelLabel = modelSummaryLabel(c)
+                  // Null when no session in the chain was measured — a sitting
+                  // from before the capture existed shows nothing, not 0%.
+                  const limitShare = sumLimitSharesBlock(
+                    c.sessions.map(s => limitShares.get(sessionIdOf(s))),
+                  )
+                  const limitShareLabel = limitShare ? formatLimitShareBlock(limitShare) : null
                   const isReconstructed = c.sessions.every(s => s.reconstructed)
                   // Reading/memorization chains (memorized, markdown,
                   // excalidraw) have no transcript and no tokens — they're
@@ -620,6 +633,24 @@ export default function AiActivityDayTableBlock({
                                 </>
                               )}
                             </span>
+                            {limitShare && limitShareLabel && (
+                              <span
+                                title={
+                                  limitShare.approx
+                                    ? 'Share of your plan limits this sitting used. Measured from how far the meters moved while it ran; marked ≈ because another session was spending at the same time (or part of the movement came from outside these logs), so that part was divided by spend.'
+                                    : 'Share of your plan limits this sitting used, measured from how far the meters moved while it ran. Meters are whole percentages, so this is accurate to about a point per limit window.'
+                                }
+                              >
+                                {limitShare.approx ? '≈ ' : ''}
+                                <strong className="tabular-nums text-foreground/80">
+                                  {limitShareLabel.session}
+                                </strong>
+                                {' · '}
+                                <strong className="tabular-nums text-foreground/80">
+                                  {limitShareLabel.weekly}
+                                </strong>
+                              </span>
+                            )}
                             {modelLabel && (
                               <span className="rounded bg-muted/40 px-1.5 py-0.5 text-foreground/70">
                                 {modelLabel}

@@ -463,6 +463,8 @@ interface ElectronAPI {
     configured: boolean
     appKeyHint: string | null
   }>
+  /** This machine's Claude usage log as JSONL text (read-only, fixed path). */
+  aiUsageLogRead?(): Promise<string>
   aiPlanUsageRead?(): Promise<{
     statusLineScriptPath: string
     statusLineMode: 'none' | 'ours' | 'theirs'

@@ -43,7 +43,7 @@ import {
   saveWebullCredentialsBlock,
   type WebullStoredAccessTokenBlock,
 } from './lego_blocks/webullCredentialStoreBlock';
-import { readAiPlanUsageBlock, disposeAiPlanUsageBlock } from './lego_blocks/aiPlanUsageBlock';
+import { readAiPlanUsageBlock, readClaudeUsageLogBlock, disposeAiPlanUsageBlock } from './lego_blocks/aiPlanUsageBlock';
 import { promoteAiUsageToVaultBlock } from './lego_blocks/aiUsageVaultMirrorBlock';
 import { readPersistedVaultRootBlock } from './lego_blocks/vaultRootPersistenceBlock';
 import {
@@ -625,6 +625,16 @@ ipcMain.handle('ai:plan-usage:read', async () => {
     return await readAiPlanUsageBlock();
   } catch {
     return [];
+  }
+});
+
+ipcMain.handle('ai:usage-log:read', async () => {
+  // Read-only, fixed location under ~/.thinking-space; takes no arguments, so
+  // there is no renderer-supplied path to validate.
+  try {
+    return readClaudeUsageLogBlock();
+  } catch {
+    return '';
   }
 });
 

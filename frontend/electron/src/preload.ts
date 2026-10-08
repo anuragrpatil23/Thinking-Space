@@ -409,6 +409,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     weekly: { usedPercent: number; resetsAt: number | null; windowMinutes: number | null } | null
     }>
   }> => ipcRenderer.invoke('ai:plan-usage:read'),
+  aiUsageLogRead: (): Promise<string> => ipcRenderer.invoke('ai:usage-log:read'),
   profilesList: (): Promise<ElectronProfileSummaryBlock[]> =>
     ipcRenderer.invoke('profiles:list'),
   profilesCreate: (input: { name: string; vaultRoot: string; accentColor?: string | null; icon?: string | null }): Promise<ElectronProfileSummaryBlock> =>

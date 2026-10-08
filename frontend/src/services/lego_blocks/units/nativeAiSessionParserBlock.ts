@@ -29,6 +29,11 @@ import {
   type TurnFlags,
 } from '@/services/lego_blocks/units/sessionAuthorshipBlock'
 
+import {
+  readCodexRateLimitsBlock,
+  type CodexLimitReadingBlock,
+} from '@/services/lego_blocks/units/aiLimitShareBlock'
+
 export type NativeSource = 'claude' | 'codex'
 
 /** Bucket for usage whose transcript line carried no model id. Filed under a
@@ -263,6 +268,11 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   // uses to attribute writes.
   const claudeUsage: Array<{ ts: number; model?: string; tokens: SessionTokens }> = []
   const codexSamples: Array<{ ts: number; model?: string; totals: SessionTokens }> = []
+  // Codex writes the account's session and weekly limit percentages onto every
+  // `token_count` event. Kept with the running token total beside them, so the
+  // limit-share ledger can tell which session was spending when a meter moved.
+  const codexLimitReadings: CodexLimitReadingBlock[] = []
+  let codexRunningTokens = 0
 
   const convEvents: ConvEvent[] = []
   const recordConv = (
@@ -405,10 +415,25 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
               cacheRead: cached,
               cacheCreation: 0, // Codex doesn't split out cache creation
             }
+            codexRunningTokens = totalInput + output
             const sampleMs = Date.parse(ts)
             if (Number.isFinite(sampleMs)) {
               codexSamples.push({ ts: sampleMs, model: model, totals: codexTotals })
             }
+          }
+          // Outside the `total` guard on purpose: the limits are reported even
+          // on an event that carries no usage.
+          const limits = readCodexRateLimitsBlock(ep.rate_limits)
+          const limitsMs = Date.parse(ts)
+          if (limits && Number.isFinite(limitsMs)) {
+            codexLimitReadings.push([
+              Math.floor(limitsMs / 1000),
+              limits.session,
+              limits.sessionResetsAt,
+              limits.weekly,
+              limits.weeklyResetsAt,
+              codexRunningTokens,
+            ])
           }
         }
       }
@@ -667,6 +692,46 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
     return delta.input || delta.output || delta.cacheRead ? delta : undefined
   }
 
+  /**
+   * The limit readings that fall in a window, thinned to the ones that say
+   * something new.
+   *
+   * A busy transcript repeats the same two percentages on a thousand events
+   * and every one of them would sit in the parse cache. Only a reading where a
+   * meter moved (or its window rolled over) carries information, plus the last
+   * one, which pins the window's final token total.
+   */
+  function codexLimitReadingsForWindow(
+    winStart: number,
+    boundary: number,
+  ): CodexLimitReadingBlock[] {
+    const kept: CodexLimitReadingBlock[] = []
+    let last: CodexLimitReadingBlock | null = null
+    const moved = (a: number | null, b: number | null, slack: number): boolean =>
+      a == null || b == null ? a !== b : Math.abs(a - b) > slack
+    for (const reading of codexLimitReadings) {
+      const ms = reading[0] * 1000
+      if (ms < winStart || ms >= boundary) continue
+      const prev = kept[kept.length - 1]
+      if (
+        !prev ||
+        moved(prev[1], reading[1], 0) ||
+        moved(prev[3], reading[3], 0) ||
+        // An unused window's reset slides forward by the second; only a jump
+        // the size of a real rollover is news.
+        moved(prev[2], reading[2], 600) ||
+        moved(prev[4], reading[4], 600)
+      ) {
+        kept.push(reading)
+      }
+      last = reading
+    }
+    if (last && kept[kept.length - 1] !== last) kept.push(last)
+    // Always an array, even empty: the parse cache reads a missing field as
+    // "parsed before this existed" and re-parses the file.
+    return kept
+  }
+
   const out: ParsedSession[] = []
   windows.forEach((win, idx) => {
     const scan = emptyScan()
@@ -788,6 +853,8 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       activeDurationMs: activeDurationOfWindow(win),
       automationTurns: winAutomation.length > 0 ? winAutomation.length : undefined,
       automationIds: automationIds.length > 0 ? automationIds : undefined,
+      limitReadings:
+        env.source === 'codex' ? codexLimitReadingsForWindow(winStart, windowBoundary) : undefined,
     } as ParsedSession & { sessionId?: string } as ParsedSession)
   })
 
