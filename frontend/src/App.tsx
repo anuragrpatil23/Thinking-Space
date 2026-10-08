@@ -47,6 +47,7 @@ const MindmapBuilder = lazy(() => import('./pages/MindmapBuilder'))
 const PdfToMarkdown = lazy(() => import('./pages/PdfToMarkdown'))
 const GitInsights = lazy(() => import('./pages/GitInsights'))
 const VaultGraph = lazy(() => import('./pages/VaultGraph'))
+const AiActivity = lazy(() => import('./pages/AiActivity'))
 const TranscriptCleaner = lazy(() => import('./pages/TranscriptCleaner'))
 const CapabilityDiscovery = lazy(() => import('./pages/CapabilityDiscovery'))
 const ExtensionBuilder = lazy(() => import('./pages/ExtensionBuilder'))
@@ -3089,6 +3090,7 @@ function App() {
                   {/* Vault Graph is a top-level rail destination — standalone,
                       outside the Tools shell so it carries no tools subtab bar. */}
                   <Route path="/vault-graph" element={<VaultGraph />} />
+                  <Route path="/ai-activity" element={<AiActivity />} />
                   <Route element={<ToolsShellBlock />}>
                     <Route path="/tools" element={<ToolsLandingBlock />} />
                     <Route path="/excalidraw-plus" element={<ExcalidrawPlus />}>

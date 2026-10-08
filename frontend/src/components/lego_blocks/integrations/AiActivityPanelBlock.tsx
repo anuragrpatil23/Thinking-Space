@@ -102,6 +102,10 @@ export interface AiActivityGraphControls {
    *  blocks. Actual write ability is further gated by any AI-Activity vault-write
    *  opt-in (the button disables + nudges when both are off). */
   enableManualSessions?: boolean
+  /** Where the panel is drawn. 'page' is a full-screen host that supplies its
+   *  own title bar, so the panel drops its heading and the desktop-sized gaps
+   *  under it; 'card' (default) is the panel inside a card on Home. */
+  surface?: 'card' | 'page'
 }
 
 export default function AiActivityPanelBlock({
@@ -112,7 +116,9 @@ export default function AiActivityPanelBlock({
   deselectNonce,
   enableGraphPeek = false,
   enableManualSessions = false,
+  surface = 'card',
 }: AiActivityGraphControls = {}) {
+  const onPage = surface === 'page'
   const activity = useAiActivityBlock('90d')
   // Work-mix classification. Loaded here rather than in the heatmap so that
   // primitive stays prop-driven; cheap enough to keep unconditional, since the
@@ -462,12 +468,15 @@ export default function AiActivityPanelBlock({
           and the surrounding container (canvas tile / page section) grows to
           fit; no internal scroll. */}
       <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-start sm:justify-between">
+        {/* A page host names the panel in its own title bar. */}
+        {!onPage && (
         <div>
           <h3 className="text-base font-semibold text-foreground">AI activity</h3>
           <p className="text-xs text-muted-foreground">
             AI sessions, msgs, projects over time
           </p>
         </div>
+        )}
         {/* Two words in the corner say what is in effect — source, then range
             — and each opens its own short list. */}
         <div className="-ml-2 flex items-center sm:-mr-2 sm:ml-0">
@@ -513,7 +522,7 @@ export default function AiActivityPanelBlock({
           of one block's ink to the top of the next. The three margins differ
           (52 here, 54 on the sections wrapper, 44 on the strip section's body)
           only because each block carries different padding of its own. */}
-      <div className="mt-[52px]">
+      <div className={onPage ? 'mt-5' : 'mt-[52px]'}>
       {/* 5px, not the day view's 12: each chip carries 7px of its own padding
           and border before its dot, so this is what puts the dots on the line
           the date numeral and day row start on, and the durations on the line
@@ -556,7 +565,13 @@ export default function AiActivityPanelBlock({
           section's drill detail docks under it — the detail appears where you
           clicked. Only the heatmap carries the day timeline; trend + totals
           only surface the range summary + table. */}
-      <div className={compact ? 'mt-4' : cn(stripRange ? 'mt-[54px]' : 'mt-10', 'space-y-14')}>
+      <div
+        className={
+          compact
+            ? 'mt-4'
+            : cn(onPage ? 'mt-8' : stripRange ? 'mt-[54px]' : 'mt-10', onPage ? 'space-y-10' : 'space-y-14')
+        }
+      >
         <PanelSection
           title={heatmapSectionTitle}
           // px-3: the day view's body takes the same 12px inset as its date

@@ -3,6 +3,13 @@ import Starfield from '@/components/lego_blocks/units/StarfieldBlock'
 import MoonSceneBlock from '@/components/lego_blocks/units/MoonSceneBlock'
 import HomeWelcomeBlock from '@/components/lego_blocks/integrations/HomeWelcomeBlock'
 import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
+import AiActivityHomeTileBlock from '@/components/lego_blocks/integrations/AiActivityHomeTileBlock'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useNavigate } from 'react-router-dom'
+import {
+  pushNativeNavigationBlock,
+  setNativeNavigationStackBlock,
+} from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
 import AiLimitsStripBlock from '@/components/lego_blocks/integrations/AiLimitsStripBlock'
 import { useAiPlanUsageBlock } from '@/components/lego_blocks/hooks/shared/useAiPlanUsageBlock'
 import ThisWeekDigestBlock from '@/components/lego_blocks/integrations/ThisWeekDigestBlock'
@@ -98,6 +105,29 @@ export default function HomeFlatOrch() {
   const followPhase = isCapacitorNative()
   const theme = useCanvasThemeBlock({ followPhase })
   const planUsage = useAiPlanUsageBlock()
+  const navigate = useNavigate()
+  const { layout } = useUILayoutBlock()
+  const phone = layout.mode === 'phone'
+  // On the iPhone shell the page is a native push: Swift slides it in and
+  // shows a back arrow. The stack is set first so it is [home, page] when the
+  // push lands — that count is what the back gesture and arrow check (same
+  // ordering ThinkingSpaceOrch documents). Anywhere else, or if the bridge
+  // rejects, it is a plain route change.
+  const openAiActivity = () => {
+    if (!(layout.surface === 'capacitor-ios' && phone)) {
+      navigate('/ai-activity')
+      return
+    }
+    void (async () => {
+      try {
+        await setNativeNavigationStackBlock(['/'])
+        await pushNativeNavigationBlock('/ai-activity')
+      } catch (err) {
+        console.warn('[Home] native push to AI activity failed, falling back to navigate', err)
+        navigate('/ai-activity')
+      }
+    })()
+  }
 
   // When the resolved backdrop is dark but the app color mode is still light
   // (only on Capacitor, where the phase forces a night backdrop), scope a
@@ -150,8 +180,15 @@ export default function HomeFlatOrch() {
             onRefresh={planUsage.refresh}
           />
 
+          {/* A phone gets a tile that opens AI activity as its own page; the
+              full card there was several screens of tables inside Home's own
+              scroll. Everything wider keeps the card. */}
           <FlatPanel theme={theme}>
-            <AiActivityPanelBlock enableManualSessions />
+            {phone ? (
+              <AiActivityHomeTileBlock onOpen={openAiActivity} />
+            ) : (
+              <AiActivityPanelBlock enableManualSessions />
+            )}
           </FlatPanel>
 
           <FlatPanel theme={theme}>
