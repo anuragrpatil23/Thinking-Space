@@ -63,3 +63,19 @@ export function parseHtmlPageHeadingsBlock(value: unknown): HtmlPageHeadingBlock
 export function buildHtmlPageOutlineMarkdownBlock(headings: HtmlPageHeadingBlock[]): string {
   return headings.map((heading) => `${'#'.repeat(heading.level)} ${heading.title}`).join('\n')
 }
+
+/**
+ * The app's own scrollbar, for the page: a slim thumb that only shows while
+ * the pointer is over the page. Without it the webview draws the system
+ * scrollbar — a permanent, full-width track down the side when macOS is set
+ * to always show scroll bars — which no other document in the app has.
+ * Mirrors `.ltm-app-shell *::-webkit-scrollbar` in index.css; the thumb is a
+ * mid grey because the page's theme is unknown.
+ */
+export const HTML_PAGE_SCROLLBAR_CSS_BLOCK = `
+::-webkit-scrollbar{width:10px;height:10px;background:transparent}
+::-webkit-scrollbar-track{background:transparent;border:0;box-shadow:none}
+::-webkit-scrollbar-corner{background:transparent}
+::-webkit-scrollbar-thumb{background-color:transparent;border:2px solid transparent;border-radius:999px;background-clip:padding-box}
+:hover::-webkit-scrollbar-thumb{background-color:rgb(150 150 150 / 0.55)}
+`

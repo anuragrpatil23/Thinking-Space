@@ -8,6 +8,7 @@ import MarkdownTableOfContentsBlock from '@/components/lego_blocks/integrations/
 import {
   HTML_PAGE_CHROME_HIDDEN_WAIT_SCRIPT_BLOCK,
   HTML_PAGE_OUTLINE_SCRIPT_BLOCK,
+  HTML_PAGE_SCROLLBAR_CSS_BLOCK,
   buildHtmlPageOutlineMarkdownBlock,
   buildHtmlPageScrollToHeadingScriptBlock,
   parseHtmlPageHeadingsBlock,
@@ -40,6 +41,7 @@ interface HtmlPageWebviewElementBlock extends FindableWebviewElementBlock {
   reload?: () => void
   setZoomFactor?: (factor: number) => void
   executeJavaScript?: (code: string) => Promise<unknown>
+  insertCSS?: (css: string) => Promise<string>
 }
 
 function encodeHtmlAsDataUrl(html: string): string {
@@ -137,6 +139,7 @@ export default function HtmlDocumentBlock({
       generation += 1
       // A fresh load starts at the top, whatever the last one reported.
       onChromeHiddenChangeRef.current?.(false)
+      webview.insertCSS?.(HTML_PAGE_SCROLLBAR_CSS_BLOCK).catch(() => { /* guest went away */ })
       webview.executeJavaScript?.(HTML_PAGE_OUTLINE_SCRIPT_BLOCK)
         .then((value) => setOutlineMarkdown(buildHtmlPageOutlineMarkdownBlock(parseHtmlPageHeadingsBlock(value))))
         .catch(() => setOutlineMarkdown(''))
