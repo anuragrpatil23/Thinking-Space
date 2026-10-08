@@ -21,20 +21,41 @@ interface MarkdownSectionContentsBlockProps {
   onSelectHeading: (heading: MarkdownTableOfContentsItemBlock) => void
 }
 
-function readStackOpenPreference(): boolean {
+type StackScope = 'all' | 'section'
+
+function readPreference(key: string): string | null {
   try {
-    return localStorage.getItem(STORAGE_KEYS.markdownSectionStackOpen) === '1'
+    return localStorage.getItem(key)
   } catch {
-    return false
+    return null
   }
+}
+
+function writePreference(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Preference just won't persist.
+  }
+}
+
+function readStackScopePreference(): StackScope {
+  return readPreference(STORAGE_KEYS.markdownSectionStackScope) === 'section' ? 'section' : 'all'
+}
+
+// Only the narrow, one-section stack reopens by itself on the next note. The
+// whole outline is tall, and dropping it over the top of every note opened
+// would hide the note; that one is opened by hand each time.
+function readStackOpenPreference(): boolean {
+  return readPreference(STORAGE_KEYS.markdownSectionStackOpen) === '1' && readStackScopePreference() === 'section'
 }
 
 /**
  * The reading view's Contents button. It names the section being read and,
- * when clicked, pins that section's headings under the strip as thin rows —
- * the whole section, so what is still ahead is visible too. The same rows
- * widen to the whole note ("All sections") and narrow back once a heading is
- * chosen; there is no separate menu.
+ * when clicked, pins the note's outline under the strip as thin rows, the
+ * heading being read highlighted. The same rows narrow to just the current
+ * section ("This section only") — the whole section, so what is still ahead
+ * stays visible — and that choice is remembered. There is no separate menu.
  *
  * Owns the "which heading is being read" state itself: that changes as the
  * note scrolls, and holding it in the document block would re-render — and
@@ -49,9 +70,10 @@ export default function MarkdownSectionContentsBlock({
   const rows = useMemo(() => buildMarkdownSectionRowsBlock(parseMarkdownTableOfContentsBlock(content)), [content])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [stackOpen, setStackOpen] = useState(readStackOpenPreference)
-  // Widened to the whole note. Never remembered: it is a way to get somewhere,
-  // not a way to read.
-  const [showAll, setShowAll] = useState(false)
+  const [scope, setScope] = useState<StackScope>(readStackScopePreference)
+  // Opened above the first section while narrowed: there is no section to
+  // show yet, so the whole note stands in until the stack is closed.
+  const [widened, setWidened] = useState(false)
 
   useEffect(() => {
     if (!container) return
@@ -85,37 +107,33 @@ export default function MarkdownSectionContentsBlock({
 
   const location = useMemo(() => resolveMarkdownSectionLocationBlock(rows, activeId), [rows, activeId])
   const hasSection = location.section.length > 0
+  const showAll = scope === 'all' || widened
   const stackRows = showAll ? rows : location.section
-  // Above the first section there is no section to pin, so a remembered
-  // "open" shows nothing there instead of dropping the whole outline over
-  // the top of every note.
   const showStack = stackOpen && stackRows.length > 0
 
   const rememberStackOpen = useCallback((next: boolean) => {
     setStackOpen(next)
-    try {
-      localStorage.setItem(STORAGE_KEYS.markdownSectionStackOpen, next ? '1' : '0')
-    } catch {
-      // Preference just won't persist.
-    }
+    writePreference(STORAGE_KEYS.markdownSectionStackOpen, next ? '1' : '0')
   }, [])
 
   const toggleStack = useCallback(() => {
     if (showStack) {
       rememberStackOpen(false)
-      setShowAll(false)
+      setWidened(false)
       return
     }
     rememberStackOpen(true)
-    // With no section to show, the button would otherwise appear to do
-    // nothing: open on the whole note.
-    if (!hasSection) setShowAll(true)
+    // Narrowed, but with no section to show: the button would otherwise
+    // appear to do nothing.
+    if (!hasSection) setWidened(true)
   }, [hasSection, rememberStackOpen, showStack])
 
-  const selectRow = useCallback((item: MarkdownTableOfContentsItemBlock) => {
-    setShowAll(false)
-    onSelectHeading(item)
-  }, [onSelectHeading])
+  const toggleScope = useCallback(() => {
+    const next: StackScope = showAll ? 'section' : 'all'
+    setScope(next)
+    setWidened(false)
+    writePreference(STORAGE_KEYS.markdownSectionStackScope, next)
+  }, [showAll])
 
   const pathText = location.path.map((row) => `${row.label} ${row.title}`.trim()).join(' › ')
   const sectionRows = stackRows.filter((row) => !row.isTitle)
@@ -132,7 +150,7 @@ export default function MarkdownSectionContentsBlock({
           showStack && 'bg-muted text-foreground',
           rows.length === 0 && 'opacity-55',
         )}
-        title={hasSection ? `${pathText} — ${showStack ? 'hide' : 'pin'} this section's headings` : (showStack ? 'Hide contents' : 'Show contents')}
+        title={`${hasSection ? `${pathText} — ` : ''}${showStack ? 'hide' : 'pin'} contents`}
       >
         <ListTree className="h-3.5 w-3.5 shrink-0" />
         <span className="shrink-0">Contents</span>
@@ -165,7 +183,7 @@ export default function MarkdownSectionContentsBlock({
               <button
                 key={row.id}
                 type="button"
-                onClick={() => selectRow(row.item)}
+                onClick={() => onSelectHeading(row.item)}
                 className={cn(
                   'flex h-[22px] w-full items-center gap-1.5 rounded px-1.5 text-left text-[11px] leading-none',
                   active
@@ -184,10 +202,10 @@ export default function MarkdownSectionContentsBlock({
               </button>
             )
           })}
-          {(hasSection || !showAll) && rows.length > location.section.length && (
+          {hasSection && rows.length > location.section.length && (
             <button
               type="button"
-              onClick={() => setShowAll((previous) => !previous)}
+              onClick={toggleScope}
               className="mt-0.5 flex h-[22px] w-full items-center gap-1.5 rounded border-t border-border/40 px-1.5 text-left text-[11px] leading-none text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             >
               <ListTree className="h-3 w-3 shrink-0" />
