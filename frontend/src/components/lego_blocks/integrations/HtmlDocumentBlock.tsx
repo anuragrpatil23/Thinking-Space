@@ -13,7 +13,7 @@ import {
   buildHtmlPageScrollToHeadingScriptBlock,
   parseHtmlPageHeadingsBlock,
 } from '@/services/lego_blocks/units/htmlPageGuestBlock'
-import { startWebviewPinchZoomWatchBlock } from '@/services/lego_blocks/units/webviewPinchZoomBlock'
+import { startWebviewMagnifierBlock } from '@/services/lego_blocks/units/webviewPinchZoomBlock'
 import type { MarkdownTableOfContentsItemBlock } from '@/services/lego_blocks/units/markdownTableOfContentsBlock'
 import {
   useWebviewFindBlock,
@@ -159,19 +159,9 @@ export default function HtmlDocumentBlock({
       }
     }
     webview.addEventListener('dom-ready', onReady)
-    const stopPinchZoom = startWebviewPinchZoomWatchBlock(webview, {
-      get: () => zoomRef.current,
-      apply: (factor) => {
-        setZoom(factor)
-        try {
-          webview.setZoomFactor?.(factor)
-        } catch {
-          // Guest detached.
-        }
-      },
-    })
+    const stopMagnifier = startWebviewMagnifierBlock(webview)
     return () => {
-      stopPinchZoom()
+      stopMagnifier()
       generation = -1
       webview.removeEventListener('dom-ready', onReady)
       onChromeHiddenChangeRef.current?.(false)
