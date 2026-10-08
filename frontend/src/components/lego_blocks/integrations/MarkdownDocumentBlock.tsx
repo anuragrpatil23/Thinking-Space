@@ -1836,13 +1836,17 @@ function MarkdownTextDocumentRuntimeBlock({
           <div
             ref={chromeContainerRef}
             className={cn(
-              'z-40 bg-card duration-200 ease-out',
+              'z-40 bg-card',
               // An HTML page scrolls inside its own webview, so the header is
               // not in the scrolled flow: sliding it away would leave its gap
               // behind. Pull it out of the layout instead and let the page
               // take the room. It must not be sticky here — sticky pins it
-              // back to the top edge, over the page, whatever its margin.
-              htmlHeaderCollapses ? 'relative shrink-0 transition-[margin]' : 'sticky top-0 transition-transform',
+              // back to the top edge, over the page, whatever its margin. And
+              // it must not animate: each frame of a margin transition resizes
+              // the webview and re-lays-out the whole page mid-scroll. The
+              // page keeps its content still across the one resize instead
+              // (htmlPageGuestBlock).
+              htmlHeaderCollapses ? 'relative shrink-0' : 'sticky top-0 transition-transform duration-200 ease-out',
               isHeaderHidden && !htmlHeaderCollapses && '-translate-y-full',
               hideTopBarInView && 'hidden',
             )}
