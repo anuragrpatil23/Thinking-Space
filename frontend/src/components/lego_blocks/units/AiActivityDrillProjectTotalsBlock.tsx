@@ -52,7 +52,9 @@ export default function AiActivityDrillProjectTotalsBlock({
   if (totals.length === 0) return null
 
   return (
-    <div ref={hostRef} className="flex flex-wrap items-center gap-x-4 gap-y-1">
+    // gap-x-2.5, not 4: at the wider gap a typical seven-project day ran a few
+    // pixels over one line and left the last project orphaned on a second.
+    <div ref={hostRef} className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
       {totals.map(({ project, ms, sessions }) => {
         const color = getProjectColor(project, isDark)
         const label = projectLabelBlock(project)

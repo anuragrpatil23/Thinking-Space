@@ -1001,7 +1001,10 @@ export default function AiActivityHeatmapBlock({
               patternUnits="userSpaceOnUse"
               patternTransform="rotate(45)"
             >
-              <rect width={1} height={4} fill="rgba(148,163,184,0.45)" />
+              {/* Faint on purpose: over a filled disc a stronger stripe made
+                  the rest day the heaviest mark in the row, ahead of the
+                  selected one. */}
+              <rect width={1} height={4} fill="rgba(148,163,184,0.26)" />
             </pattern>
           </defs>
         </svg>
