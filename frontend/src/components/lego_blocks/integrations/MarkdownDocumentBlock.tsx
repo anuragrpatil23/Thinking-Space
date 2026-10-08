@@ -766,6 +766,7 @@ function MarkdownTextDocumentRuntimeBlock({
   )
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc && !isHtmlDoc
   const htmlHeaderCollapses = isHtmlDoc && !isEditing
+  const htmlRunsToEdges = htmlHeaderCollapses && !loading && !error && content !== null
   // Exclude only true mobile Capacitor surfaces — NOT Electron. Capacitor's
   // isNativePlatform() returns true on Electron, so `!isCapacitorNative` wrongly
   // hid the rail there; gate on the resolved surface (which is 'electron' first).
@@ -1796,7 +1797,12 @@ function MarkdownTextDocumentRuntimeBlock({
       className={cn(
         // ts-md-viewer-root: a stable hook for surface-level padding
         // overrides from index.css.
-        'ts-md-viewer-root flex h-full min-h-0 flex-col bg-card p-2',
+        'ts-md-viewer-root flex h-full min-h-0 flex-col bg-card',
+        // An HTML page has its own background, so the gutter that is
+        // invisible around a white note frames it in white. The page runs to
+        // the pane's edges instead (the pane clips its rounded corners) and
+        // the header alone keeps the inset.
+        htmlRunsToEdges ? 'p-0' : 'p-2',
         className,
       )}
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
@@ -1847,6 +1853,7 @@ function MarkdownTextDocumentRuntimeBlock({
               // page keeps its content still across the one resize instead
               // (htmlPageGuestBlock).
               htmlHeaderCollapses ? 'relative shrink-0' : 'sticky top-0 transition-transform duration-200 ease-out',
+              htmlRunsToEdges && 'px-2 pt-2',
               isHeaderHidden && !htmlHeaderCollapses && '-translate-y-full',
               hideTopBarInView && 'hidden',
             )}
