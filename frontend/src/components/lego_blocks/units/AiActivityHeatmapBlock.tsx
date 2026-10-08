@@ -334,6 +334,9 @@ export default function AiActivityHeatmapBlock({
   // heatmap, so it wants a switch where the looking happens — the Settings row
   // stays the place that explains what the mode means.
   const [gridMenu, setGridMenu] = useState<{ x: number; y: number } | null>(null)
+  // Measured width of the scroll container (see the effect further down).
+  // Declared up here because the strip's column count depends on it.
+  const [containerWidth, setContainerWidth] = useState(0)
   const [hoverDate, setHoverDate] = useState<string | null>(null)
   const [dragAnchor, setDragAnchor] = useState<string | null>(null)
 
@@ -371,9 +374,23 @@ export default function AiActivityHeatmapBlock({
     const rangeDays = Math.round((rawEnd.getTime() - start.getTime()) / 86_400_000) + 1
     // Days either side of the range's last day when the strip is centred on
     // it; null when the range is too long for that and keeps the trailing pad.
+    // On a narrow container the side count drops until the row fits at the
+    // minimum cell and gap, so a phone gets seven cells with today centred
+    // instead of eleven that scroll today off to one edge. Unmeasured (0)
+    // falls back to the full count.
+    const stripAvail = containerWidth - 2 * STRIP_EDGE_PAD_PX - 2
+    const sideFit =
+      containerWidth > 0
+        ? Math.max(
+            1,
+            Math.floor(
+              ((stripAvail + STRIP_CELL_GAP_MIN) / (STRIP_CELL_MIN_PX + STRIP_CELL_GAP_MIN) - 1) / 2,
+            ),
+          )
+        : STRIP_CENTER_SIDE_DAYS
     const centerSide =
       rangeDays <= STRIP_CENTER_MAX_RANGE_DAYS
-        ? Math.min(rangeDays - 1, STRIP_CENTER_SIDE_DAYS)
+        ? Math.min(rangeDays - 1, STRIP_CENTER_SIDE_DAYS, sideFit)
         : null
     const stripEnd = new Date(rawEnd)
     stripEnd.setDate(stripEnd.getDate() + (centerSide ?? STRIP_TRAIL_PAD_DAYS))
@@ -452,6 +469,7 @@ export default function AiActivityHeatmapBlock({
     startIso,
     endIso,
     stripMode,
+    containerWidth,
     endOfCurrentMonthIso,
     filterProject,
     workMixMode,
@@ -469,7 +487,6 @@ export default function AiActivityHeatmapBlock({
   // canvas underneath. Gated on !loading because the scroll container is only
   // rendered once loaded — the hook must (re)attach when it appears.
   useWheelScrollCaptureBlock(scrollContainerRef, 'x', !loading)
-  const [containerWidth, setContainerWidth] = useState(0)
   // Same `!loading` gate as the wheel hook above, and for the same reason: the
   // scroll container does not exist during the initial load, so an effect with
   // empty deps bails on a null ref and never runs again once the container

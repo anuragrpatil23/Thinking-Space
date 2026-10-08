@@ -58,6 +58,11 @@ interface AiActivityDayTableBlockProps {
    *  that already names the date in its own heading and only needs this line
    *  to add something (the weekday). `title` still heads the copied Markdown. */
   heading?: string
+  /** Narrow host (a phone page): each row restacks into three lines — project
+   *  and duration, the topic, then time and message count — instead of five
+   *  columns that pan sideways with the topic off-screen. Same table and same
+   *  row behaviour underneath; only the layout changes. */
+  stacked?: boolean
   /** Chains to display, in display order. */
   chains: ActivityChain[]
   /** Optional summary line above the table (e.g. "14 sessions · 176 msgs"). */
@@ -280,6 +285,7 @@ function buildDrillDownMarkdown(
 export default function AiActivityDayTableBlock({
   title,
   heading,
+  stacked = false,
   chains,
   summary,
   highlightProject = null,
@@ -480,11 +486,15 @@ export default function AiActivityDayTableBlock({
               `colSpan` cell (the expanded row's full topic text) cannot stretch
               the table past its container — long topics wrap inside the row
               instead of running off the right edge. */}
-          <table className="w-full text-xs" style={{ tableLayout: 'fixed', minWidth: 600 }}>
+          <table
+            className={cn('w-full text-xs', stacked && 'block')}
+            style={stacked ? undefined : { tableLayout: 'fixed', minWidth: 600 }}
+          >
             {/* Explicit column widths so the Topic column takes the remaining
                 space instead of fighting with the natural widths of the other
                 cells. Without this, Time gets too much breathing room and
                 Topic is squashed to ~10 chars. */}
+            {!stacked && (
             <colgroup>
               <col style={{ width: '170px' }} />
               <col style={{ width: '90px' }} />
@@ -492,7 +502,8 @@ export default function AiActivityDayTableBlock({
               <col style={{ width: '54px' }} />
               <col />
             </colgroup>
-            <thead>
+            )}
+            <thead className={stacked ? 'hidden' : undefined}>
               <tr className="border-b border-border/30 text-left text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
                 <th className="px-3 py-1.5 font-medium">Time</th>
                 <th className="px-3 py-1.5 text-right font-medium">Duration</th>
@@ -501,7 +512,7 @@ export default function AiActivityDayTableBlock({
                 <th className="px-3 py-1.5 font-medium">Topic</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className={stacked ? 'block' : undefined}>
               {(() => {
                 // Track the last calendar date emitted so we can drop a divider
                 // when the table crosses midnight. Initialise with anchor (the
@@ -536,8 +547,8 @@ export default function AiActivityDayTableBlock({
                   return (
                     <Fragment key={c.key}>
                       {showDivider && (
-                        <tr className="border-y border-border/30 bg-muted/20">
-                          <td colSpan={5} className="px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                        <tr className={cn('border-y border-border/30 bg-muted/20', stacked && 'block')}>
+                          <td colSpan={5} className={cn('px-3 py-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground', stacked && 'block')}>
                             {fmtDividerDate(rowDate)}
                             {anchorDateIso && rowDate > anchorDateIso && (
                               <span className="ml-1.5 text-muted-foreground/60">· overnight tail</span>
@@ -549,6 +560,9 @@ export default function AiActivityDayTableBlock({
                     className={cn(
                       'cursor-pointer border-b border-border/20 transition-colors last:border-0',
                       'hover:bg-foreground/[0.04]',
+                      // Stacked: the row is a two-column grid and each cell is
+                      // placed by line, whatever its order in the markup.
+                      stacked && 'grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1 px-3 py-2.5',
                       isExpanded && 'bg-foreground/[0.04]',
                     )}
                     style={{
@@ -587,13 +601,31 @@ export default function AiActivityDayTableBlock({
                           : undefined
                     }
                   >
-                    <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-foreground/80">
+                    <td
+                      className={cn(
+                        'whitespace-nowrap tabular-nums',
+                        stacked
+                          ? 'col-start-1 row-start-3 text-[11px] text-muted-foreground'
+                          : 'px-3 py-1.5 text-foreground/80',
+                      )}
+                    >
                       {fmtSpan(c.startedIso, c.endedIso)}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/70">
+                    <td
+                      className={cn(
+                        'whitespace-nowrap text-right tabular-nums',
+                        stacked
+                          ? 'col-start-2 row-start-1 text-[13px] text-foreground/80'
+                          : 'px-3 py-1.5 text-foreground/70',
+                      )}
+                    >
                       {fmtDuration(c.startedIso, c.endedIso, c.activeDurationMs ?? 0)}
                     </td>
-                    <td className="px-3 py-1.5">
+                    <td
+                      className={
+                        stacked ? 'col-start-1 row-start-1 min-w-0 text-[13px] font-medium' : 'px-3 py-1.5'
+                      }
+                    >
                       <span className="flex items-center gap-1.5" style={{ color: color.stroke }}>
                         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color.stroke }} />
                         <span className="truncate" title={projectLabelBlock(c.project)}>
@@ -601,26 +633,41 @@ export default function AiActivityDayTableBlock({
                         </span>
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-foreground/80">
-                      {isManual ? <span className="text-muted-foreground/50">—</span> : c.msgCount}
+                    <td
+                      className={cn(
+                        'whitespace-nowrap text-right tabular-nums',
+                        stacked
+                          ? 'col-start-2 row-start-3 text-[11px] text-muted-foreground'
+                          : 'px-3 py-1.5 text-foreground/80',
+                      )}
+                    >
+                      {isManual ? (
+                        stacked ? null : <span className="text-muted-foreground/50">—</span>
+                      ) : stacked ? (
+                        `${c.msgCount} msgs`
+                      ) : (
+                        c.msgCount
+                      )}
                     </td>
                     <ChainTopicCellBlock
+                      stacked={stacked}
                       chain={c}
                       isReconstructed={isReconstructed}
                       isLive={isLiveBlock(c.endedIso ?? c.startedIso)}
                     />
                   </tr>
                   {isExpanded && (
-                    <tr className="border-b border-border/20 bg-foreground/[0.02]">
+                    <tr className={cn('border-b border-border/20 bg-foreground/[0.02]', stacked && 'block')}>
                       <td
                         colSpan={5}
-                        className="space-y-2 px-3 py-2 text-[11px] text-muted-foreground"
+                        className={cn('space-y-2 px-3 py-2 text-[11px] text-muted-foreground', stacked && 'block')}
                         // table-layout: fixed alone doesn't always stop long
                         // unbroken text from stretching a colSpan cell. The
                         // width:0 / max-width:0 pair forces the cell to compute
                         // its width purely from the column track, so the inner
                         // content has to wrap inside the available space.
-                        style={{ width: 0, maxWidth: 0 }}
+                        // Stacked, the cell is a block and sizes itself.
+                        style={stacked ? undefined : { width: 0, maxWidth: 0 }}
                       >
                         <ChainTopicExpandedBlock chain={c} />
                         {hasTokens ? (
@@ -795,9 +842,9 @@ export default function AiActivityDayTableBlock({
               })()}
             </tbody>
             {logSessionButton && (
-              <tfoot>
-                <tr className="border-t border-border/30">
-                  <td colSpan={5} className="p-0">
+              <tfoot className={stacked ? 'block' : undefined}>
+                <tr className={cn('border-t border-border/30', stacked && 'block')}>
+                  <td colSpan={5} className={cn('p-0', stacked && 'block')}>
                     {logSessionButton}
                   </td>
                 </tr>
@@ -913,7 +960,11 @@ function ChainTopicCellBlock({
   chain,
   isReconstructed,
   isLive,
+  stacked = false,
 }: {
+  /** Row is a stacked grid (phone): the topic takes its own full-width line
+   *  and may run to two lines instead of truncating at one. */
+  stacked?: boolean
   chain: ActivityChain
   isReconstructed: boolean
   /** Session is still being worked in, so no digest can exist for it yet. */
@@ -933,7 +984,14 @@ function ChainTopicCellBlock({
         : `${title}\n\n(original: ${chain.topic})`
       : chain.topic
   return (
-    <td className="max-w-0 px-3 py-1.5 text-foreground/70" title={tooltip}>
+    <td
+      className={
+        stacked
+          ? 'col-span-2 row-start-2 min-w-0 text-[13px] leading-snug text-foreground/70'
+          : 'max-w-0 px-3 py-1.5 text-foreground/70'
+      }
+      title={tooltip}
+    >
       {/* The orb's canvas carries `display: block` as an inline style, which
           the package sets and no class can override — dropped straight into
           the cell it therefore takes a line of its own and pushes the title
@@ -956,7 +1014,7 @@ function ChainTopicCellBlock({
             rebuilt
           </span>
         )}
-        <span className={cn('truncate', isAi && 'text-foreground/85')}>{title}</span>
+        <span className={cn(stacked ? 'line-clamp-2' : 'truncate', isAi && 'text-foreground/85')}>{title}</span>
         {loading && (
           <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-muted-foreground/60">
             …

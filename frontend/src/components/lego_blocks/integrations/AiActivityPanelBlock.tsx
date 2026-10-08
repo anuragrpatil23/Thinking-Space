@@ -15,6 +15,7 @@ import {
   type ReadingCounts,
   type ReadingSourceFilter,
 } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
+import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import AiActivityHeatmapBlock from '@/components/lego_blocks/units/AiActivityHeatmapBlock'
 import {
   fmtDayMonthBlock,
@@ -119,6 +120,10 @@ export default function AiActivityPanelBlock({
   surface = 'card',
 }: AiActivityGraphControls = {}) {
   const onPage = surface === 'page'
+  const { layout } = useUILayoutBlock()
+  // Phone layouts apply only on a page at phone width; the same page opened in
+  // a wide window keeps the desktop table and timeline.
+  const phonePage = onPage && layout.mode === 'phone'
   const activity = useAiActivityBlock('90d')
   // Work-mix classification. Loaded here rather than in the heatmap so that
   // primitive stays prop-driven; cheap enough to keep unconditional, since the
@@ -405,6 +410,7 @@ export default function AiActivityPanelBlock({
               dateIso={selectedDate}
               chains={drillChains}
               highlightProject={activeProject}
+              fitActive={phonePage}
             />
           )}
           {/* Per-project time totals for the drill — the compact, at-a-glance
@@ -430,10 +436,11 @@ export default function AiActivityPanelBlock({
         {/* The table steps back out of the day view's 12px inset to the card's
             own margin: it is a bordered box with its own cell padding, and
             inset twice its rows lost width they need for the topic column. */}
-        <div className={stripRange && withTimeline ? '-mx-3' : undefined}>
+        <div className={stripRange && withTimeline && !onPage ? '-mx-3' : undefined}>
         <DrillTableScroll>
           <AiActivityDayTableBlock
             title={drillTitle}
+            stacked={phonePage}
             // Under the strip the date heading already says "8th Oct", so the
             // table's own line adds the one thing that heading leaves out —
             // the weekday — instead of repeating the date. A range keeps its
@@ -577,7 +584,10 @@ export default function AiActivityPanelBlock({
           // px-3: the day view's body takes the same 12px inset as its date
           // heading, both sides. Only this section — Trend and Totals run to
           // the card's own margin.
-          bodyClassName={stripRange ? 'mt-11 px-3' : undefined}
+          // A page has its own side margin and no room to give a second one:
+          // without the inset, seven day cells fit an iPhone's width.
+          bodyClassName={stripRange ? (onPage ? 'mt-8' : 'mt-11 px-3') : undefined}
+          flush={onPage}
           open={sectionsOpen.heatmap}
           onToggle={() => toggleSection('heatmap')}
         >
@@ -708,8 +718,12 @@ function PanelSection({
   onToggle,
   headerRight,
   bodyClassName,
+  flush = false,
   children,
 }: {
+  /** Drop the heading's 12px inset — for a host whose own margin is the only
+   *  one the section should have. */
+  flush?: boolean
   title: React.ReactNode
   open: boolean
   onToggle: () => void
@@ -728,7 +742,10 @@ function PanelSection({
           // Section headings are set in a little from the card's edge; hard
           // against it, the date numeral looked cramped by the border. All
           // three share the inset so the headings line up with each other.
-          className="flex flex-1 items-center gap-1.5 pl-3 text-foreground/70 hover:text-foreground"
+          className={cn(
+            'flex flex-1 items-center gap-1.5 text-foreground/70 hover:text-foreground',
+            !flush && 'pl-3',
+          )}
           aria-expanded={open}
         >
           {typeof title === 'string' ? (

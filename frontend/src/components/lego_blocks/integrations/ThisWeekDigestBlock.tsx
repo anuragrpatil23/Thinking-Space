@@ -1,3 +1,4 @@
+import HomeTileBlock, { HomeTileFigureBlock } from '@/components/lego_blocks/units/HomeTileBlock'
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useAiActivityBlock } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
@@ -61,7 +62,16 @@ function isoLocalDate(ms: number): string {
 }
 
 
-export default function ThisWeekDigestBlock() {
+interface ThisWeekDigestBlockProps {
+  /** 'card' (default) is the block inside a card on Home. 'tile' is the phone
+   *  Home tile: the totals only, as a button that calls `onOpen`. 'page' is
+   *  the full-screen page that tile opens: no heading of its own (the page's
+   *  title bar says it) and no inner frame or inner scroll — the page scrolls. */
+  surface?: 'card' | 'tile' | 'page'
+  onOpen?: () => void
+}
+
+export default function ThisWeekDigestBlock({ surface = 'card', onOpen }: ThisWeekDigestBlockProps = {}) {
   const { hostRef, isDark } = useDarkModeClassBlock()
   // 30d covers both the current week and the last two 3-day sets (max reach
   // back is ~6 days). The card filters down to its own window itself, so the
@@ -246,16 +256,66 @@ export default function ThisWeekDigestBlock() {
     el.scrollBy({ top: dir * el.clientHeight * 0.8, behavior: 'smooth' })
   }, [])
 
+  if (surface === 'tile') {
+    // Time per project across the tile's windows, biggest first — drawn as one
+    // thin stacked bar, so the tile shows what the hours were made of.
+    const perProject = new Map<string, number>()
+    for (const section of sections) {
+      for (const d of section.digest) {
+        perProject.set(d.project, (perProject.get(d.project) ?? 0) + d.durationMs)
+      }
+    }
+    const shares = Array.from(perProject.entries()).sort((a, b) => b[1] - a[1])
+    const sharesTotal = shares.reduce((n, [, ms]) => n + ms, 0)
+    return (
+      <div ref={hostRef} className="h-full">
+        <HomeTileBlock label="Worked on" onOpen={onOpen ?? (() => {})}>
+          <HomeTileFigureBlock
+            figure={activity.loading ? '…' : totalSummary.chains > 0 ? totalDurLabel : '0h'}
+            line={
+              activity.loading
+                ? 'Loading…'
+                : totalSummary.chains > 0
+                  ? `${totalSummary.chains} chains · ${totalSummary.msgs.toLocaleString()} msgs`
+                  : setMode
+                    ? 'Nothing these two sets'
+                    : 'Nothing yet this week'
+            }
+          />
+          {sharesTotal > 0 && (
+            <span aria-hidden className="mt-4 flex h-[5px] gap-[2px] overflow-hidden rounded-full">
+              {shares.slice(0, 6).map(([project, ms]) => (
+                <span
+                  key={project}
+                  style={{
+                    flexGrow: ms,
+                    flexBasis: 0,
+                    minWidth: 3,
+                    background: getProjectColor(project, isDark).stroke,
+                    opacity: 0.75,
+                  }}
+                />
+              ))}
+            </span>
+          )}
+        </HomeTileBlock>
+      </div>
+    )
+  }
+  const onPage = surface === 'page'
+
   return (
-    <div ref={hostRef} className="flex h-full min-h-0 flex-col">
+    <div ref={hostRef} className={onPage ? undefined : 'flex h-full min-h-0 flex-col'}>
       <div className="flex items-baseline justify-between gap-3">
         <div>
           {/* The individual section headers below already carry the window
               label (THIS SET / PREV SET / date range), so the card's own
               heading just says the intent once, cleanly. */}
+          {!onPage && (
           <h3 className="text-base font-semibold text-foreground">
             What you worked on
           </h3>
+          )}
           {providerBadge && (
             <span
               className={cn('block text-[9px] uppercase tracking-[0.08em]', providerBadge.className)}
@@ -280,11 +340,15 @@ export default function ThisWeekDigestBlock() {
         )}
       </div>
 
-      <div className="relative mt-3 flex-1 min-h-0">
+      <div className={cn('relative mt-3', !onPage && 'flex-1 min-h-0')}>
       <div
         ref={scrollRef}
         onScroll={syncScroll}
-        className="h-full overflow-y-auto rounded-2xl border border-border/40 bg-card/40 p-4 shadow-sm backdrop-blur"
+        className={
+          onPage
+            ? undefined
+            : 'h-full overflow-y-auto rounded-2xl border border-border/40 bg-card/40 p-4 shadow-sm backdrop-blur'
+        }
       >
         {activity.loading ? (
           <div className="space-y-2">

@@ -2521,3 +2521,118 @@ body.ltm-ruled-notebook-active .excalidraw .layer-ui__wrapper {
   transform: scale(0.985);
   opacity: 0.92;
 }
+
+/* Phone Home: one pinned stage, driven by the scroll (2026-10-08).
+   See HomeFlatOrch. The page is two screens tall and snaps between them; the
+   stage is sticky, and scroll progress arrives as `--p` (0 at the welcome, 1
+   at the tiles) together with three measured distances. Everything below is
+   transform and opacity only, so the compositor does the work and the motion
+   tracks the finger. The shell's main element is the scroller, so the snap
+   type is set on it from here — same `:has()` hook `.ltm-page-flush-top`
+   uses. */
+.ltm-app-main:has(.ltm-home-snap) {
+  scroll-snap-type: y mandatory;
+  /* Nothing on this page scrolls into view — the two stops only switch what
+     the pinned stage shows — so a scroll indicator tracks nothing. */
+  scrollbar-width: none;
+}
+.ltm-app-main:has(.ltm-home-snap)::-webkit-scrollbar {
+  display: none;
+}
+.ltm-home-snap-screen {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+/* Distances the stage measures once (not per frame): how far the scene and
+   the greeting travel, and where the tiles park. */
+.ltm-home-stage {
+  --p: 0;
+  --d-scene: 0px;
+  --d-title: 0px;
+  --tiles-top: 60%;
+}
+.ltm-home-tiles {
+  top: var(--tiles-top);
+}
+.ltm-home-scene,
+.ltm-home-title,
+.ltm-home-fade,
+.ltm-home-tiles > * {
+  will-change: transform, opacity;
+}
+.ltm-home-title {
+  transform-origin: center top;
+}
+
+/* Preferred path: the transition is a set of scroll-driven animations, so the
+   compositor plays it straight off the scroll position — no script per frame,
+   no restyle, full frame rate. The timeline is the two-screen track's own
+   passage through the viewport; `contain` runs from its top meeting the top of
+   the screen (the welcome) to its bottom meeting the bottom (the tiles).
+   Each animation occupies the middle of that range and leaves both ends
+   alone: a snap scroll crawls for its last few frames, and anything still
+   animating then looks like lag. */
+@supports (animation-timeline: view()) {
+  .ltm-home-track {
+    view-timeline-name: --ltm-home;
+    view-timeline-axis: block;
+  }
+  .ltm-home-scene,
+  .ltm-home-title,
+  .ltm-home-fade,
+  .ltm-home-tiles > * {
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: --ltm-home;
+    animation-range: contain 10% contain 76%;
+  }
+  .ltm-home-scene { animation-name: ltm-home-scene; }
+  .ltm-home-title { animation-name: ltm-home-title; }
+  .ltm-home-fade { animation-name: ltm-home-fade; }
+  .ltm-home-tiles > * { animation-name: ltm-home-tile; }
+  .ltm-home-tiles > *:nth-child(2) { animation-range: contain 15% contain 82%; }
+  .ltm-home-tiles > *:nth-child(3) { animation-range: contain 20% contain 88%; }
+}
+@keyframes ltm-home-scene {
+  to { transform: translate3d(0, var(--d-scene), 0); }
+}
+@keyframes ltm-home-title {
+  to { transform: translate3d(0, var(--d-title), 0) scale(0.5556); }
+}
+@keyframes ltm-home-fade {
+  from { opacity: var(--fade-base, 1); transform: translate3d(0, 0, 0); }
+  42% { opacity: 0; }
+  to { opacity: 0; transform: translate3d(0, -28px, 0); }
+}
+@keyframes ltm-home-tile {
+  from { opacity: 0; transform: translate3d(0, 48px, 0); }
+  45% { opacity: 0; }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* Fallback for a browser without scroll timelines: the same motion, computed
+   from `--p`, which HomeFlatOrch sets from a scroll listener. */
+@supports not (animation-timeline: view()) {
+  .ltm-home-scene {
+    transform: translate3d(0, calc(var(--p) * var(--d-scene)), 0);
+  }
+  .ltm-home-title {
+    transform: translate3d(0, calc(var(--p) * var(--d-title)), 0) scale(calc(1 - var(--p) * 0.4444));
+  }
+  .ltm-home-fade {
+    opacity: calc(var(--fade-base, 1) * (1 - var(--p) * 2.4));
+    transform: translate3d(0, calc(var(--p) * -28px), 0);
+  }
+  .ltm-home-tiles > * {
+    opacity: calc(var(--p) * 2.2 - 1.2);
+    transform: translate3d(0, calc((1 - var(--p)) * 44px), 0);
+  }
+  .ltm-home-tiles > *:nth-child(2) {
+    opacity: calc(var(--p) * 2.6 - 1.6);
+    transform: translate3d(0, calc((1 - var(--p)) * 64px), 0);
+  }
+  .ltm-home-tiles > *:nth-child(3) {
+    opacity: calc(var(--p) * 3 - 2);
+    transform: translate3d(0, calc((1 - var(--p)) * 84px), 0);
+  }
+}

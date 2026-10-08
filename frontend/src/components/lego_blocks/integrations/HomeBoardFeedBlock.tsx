@@ -1,3 +1,4 @@
+import HomeTileBlock, { HomeTileFigureBlock, HOME_TILE_SHADOW_BLOCK } from '@/components/lego_blocks/units/HomeTileBlock'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { homeCanvasStorage } from '@/services/lego_blocks/integrations/homeCanvasStorageBlock'
@@ -195,7 +196,16 @@ function NoteCard({ tile, theme }: { tile: CanvasNoteTile; theme: CanvasThemeTok
   )
 }
 
-export default function HomeBoardFeedBlock() {
+interface HomeBoardFeedBlockProps {
+  /** 'feed' (default) is the board in Home's column. 'tile' is the phone Home
+   *  tile: a count and the newest note's first line, as a button that calls
+   *  `onOpen`. 'page' is the full-screen page that tile opens — the same feed
+   *  without its own "Board" heading, which the page's title bar carries. */
+  surface?: 'feed' | 'tile' | 'page'
+  onOpen?: () => void
+}
+
+export default function HomeBoardFeedBlock({ surface = 'feed', onOpen }: HomeBoardFeedBlockProps = {}) {
   const theme = useCanvasThemeBlock()
   const columnCount = useBoardColumnCountBlock()
   const [tiles, setTiles] = useState<CanvasTile[] | null>(null)
@@ -241,8 +251,67 @@ export default function HomeBoardFeedBlock() {
 
   if (!tiles || feed.length === 0) return null
 
+  if (surface === 'tile') {
+    const newest = feed[0]
+    const preview =
+      newest.type === 'post-it'
+        ? newest.text.trim().split('\n')[0]
+        : noteTitle((newest as CanvasNoteTile).filePath)
+    return (
+      // The same panel the other Home tiles sit in. Drawn here rather than by
+      // Home because an empty board renders nothing at all, and Home cannot
+      // know that from outside.
+      <div
+        style={{
+          height: '100%',
+          borderRadius: 22,
+          padding: '22px 20px',
+          background: theme.anchorPanelBg,
+          border: `1px solid ${theme.anchorPanelBorder}`,
+          boxShadow: HOME_TILE_SHADOW_BLOCK,
+        }}
+      >
+        <HomeTileBlock
+          label="Board"
+          onOpen={onOpen ?? (() => {})}
+          accessory={
+            // The newest few notes' own colours, as the corner marks the
+            // post-its wear on the board itself.
+            <span aria-hidden className="flex shrink-0 items-center gap-[3px]">
+              {feed.slice(0, 4).map(t => (
+                <span
+                  key={t.id}
+                  className="h-[7px] w-[7px] rounded-[2px]"
+                  style={{
+                    background:
+                      t.type === 'post-it'
+                        ? (POST_IT_PALETTE[(t as CanvasPostItTile).color] ?? POST_IT_PALETTE.yellow).cornerMark
+                        : 'rgba(148,163,184,0.5)',
+                  }}
+                />
+              ))}
+            </span>
+          }
+        >
+          <HomeTileFigureBlock
+            figure={
+              <>
+                {feed.length}
+                <span className="ml-1.5 text-[13px] font-normal tracking-normal text-muted-foreground">
+                  {feed.length === 1 ? 'note' : 'notes'}
+                </span>
+              </>
+            }
+            line={preview}
+          />
+        </HomeTileBlock>
+      </div>
+    )
+  }
+
   return (
     <section>
+      {surface !== 'page' && (
       <h2
         style={{
           fontSize: 12,
@@ -254,6 +323,7 @@ export default function HomeBoardFeedBlock() {
       >
         Board
       </h2>
+      )}
       {/* Masonry: post-its keep their natural height, notes stay compact, and
           the columns pack tightly instead of one wall-wide card per row. Flex
           columns, not CSS `columns-*` — see BOARD_COLUMN_BREAKPOINTS. */}

@@ -14,11 +14,20 @@ interface AiActivityDayTimelineBlockProps {
   chains: ActivityChain[]
   /** When set, non-matching pills dim so the active project's pills pop. */
   highlightProject?: string | null
+  /** Narrow host (a phone page): show only the hours that have sessions, an
+   *  hour of margin either side, and let an hour shrink below the usual floor
+   *  so the day fits the width instead of scrolling. */
+  fitActive?: boolean
 }
 
 /** Floor for an hour's width. The strip stretches its hours to fill the card,
  *  so this only bites on a card too narrow for that — where it scrolls. */
 const MIN_PIXELS_PER_HOUR = 32
+/** The floor when fitting a phone: low enough that a long day still fits a
+ *  ~350px strip without scrolling. Hour labels thin out to stay legible. */
+const MIN_PIXELS_PER_HOUR_FIT = 12
+/** Narrowest slot an hour label can sit in without touching its neighbour. */
+const HOUR_LABEL_MIN_PX = 26
 const ROW_HEIGHT = 16
 const ROW_GAP = 3
 const MIN_PILL_PX = 8
@@ -54,6 +63,7 @@ export default function AiActivityDayTimelineBlock({
   dateIso,
   chains,
   highlightProject = null,
+  fitActive = false,
 }: AiActivityDayTimelineBlockProps) {
   const { hostRef, isDark } = useDarkModeClassBlock()
   const [hoverId, setHoverId] = useState<string | null>(null)
@@ -134,15 +144,34 @@ export default function AiActivityDayTimelineBlock({
       const lastTouched = Math.max(startedH, endedH) + PILL_DEFAULT_DURATION_MIN / 60
       if (lastTouched > latestHourFractional) latestHourFractional = lastTouched
     }
-    return { startHour: 0, endHour: Math.min(30, Math.ceil(latestHourFractional)) }
-  }, [pills, dayStartMs])
+    const end = Math.min(30, Math.ceil(latestHourFractional))
+    if (!fitActive) return { startHour: 0, endHour: end }
+    let first = 24
+    let last = 0
+    for (const p of pills) {
+      const startedH = (Date.parse(p.startedIso) - dayStartMs) / 3_600_000
+      const endedH = (Date.parse(p.endedIso) - dayStartMs) / 3_600_000
+      first = Math.min(first, startedH)
+      last = Math.max(last, startedH + PILL_DEFAULT_DURATION_MIN / 60, endedH)
+    }
+    return {
+      startHour: Math.max(0, Math.floor(first) - 1),
+      endHour: Math.min(end, Math.ceil(last) + 1),
+    }
+  }, [pills, dayStartMs, fitActive])
 
   // An hour is as wide as the card allows: the day spans the full width, so
   // the timeline's right edge lands where the day row's and the legend's do
   // instead of stopping wherever 32px × 24 happened to end. Measured from the
   // scroll wrapper; until that has a width, the floor.
   const [wrapWidth, setWrapWidth] = useState(0)
-  const pxPerHour = Math.max(MIN_PIXELS_PER_HOUR, wrapWidth / (endHour - startHour))
+  const pxPerHour = Math.max(
+    fitActive ? MIN_PIXELS_PER_HOUR_FIT : MIN_PIXELS_PER_HOUR,
+    wrapWidth / (endHour - startHour),
+  )
+  // Label every hour while there is room, then every 2nd, 3rd… so they never
+  // run into each other on a squeezed strip.
+  const labelStep = Math.max(1, Math.ceil(HOUR_LABEL_MIN_PX / pxPerHour))
   const widthPx = (endHour - startHour) * pxPerHour
   const hourTicks = useMemo(() => {
     const out: number[] = []
@@ -332,6 +361,7 @@ export default function AiActivityDayTimelineBlock({
         {/* Hour axis labels — outside the scrollable strip so they're always visible. */}
         <div className="relative mt-1" style={{ height: 12 }}>
           {hourTicks.map((h, i) => {
+            if (i % labelStep !== 0) return null
             const x = (h - startHour) * pxPerHour
             const isMidnight = h % 24 === 0 && h !== 0
             return (
