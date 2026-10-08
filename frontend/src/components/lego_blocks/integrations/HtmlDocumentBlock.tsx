@@ -6,9 +6,9 @@ import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock
 import DocumentFindBarBlock from '@/components/lego_blocks/integrations/DocumentFindBarBlock'
 import MarkdownTableOfContentsBlock from '@/components/lego_blocks/integrations/MarkdownTableOfContentsBlock'
 import {
-  HTML_PAGE_CHROME_HIDDEN_WAIT_SCRIPT_BLOCK,
   HTML_PAGE_OUTLINE_SCRIPT_BLOCK,
   HTML_PAGE_SCROLLBAR_CSS_BLOCK,
+  buildHtmlPageChromeHiddenWaitScriptBlock,
   buildHtmlPageOutlineMarkdownBlock,
   buildHtmlPageScrollToHeadingScriptBlock,
   parseHtmlPageHeadingsBlock,
@@ -128,9 +128,12 @@ export default function HtmlDocumentBlock({
     // previous load can never report into this one.
     let generation = 0
     const watchChromeHidden = async (mine: number) => {
+      // What the app currently shows; a fresh load starts with the header up.
+      let known = false
       while (mine === generation) {
-        const hidden = await webview.executeJavaScript?.(HTML_PAGE_CHROME_HIDDEN_WAIT_SCRIPT_BLOCK)
+        const hidden: unknown = await webview.executeJavaScript?.(buildHtmlPageChromeHiddenWaitScriptBlock(known))
         if (mine !== generation || typeof hidden !== 'boolean') return
+        known = hidden
         onChromeHiddenChangeRef.current?.(hidden)
       }
     }
