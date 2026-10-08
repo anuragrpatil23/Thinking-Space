@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { ChevronLeft, ExternalLink, Globe, Loader2, RotateCw, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { enableWebviewPinchZoomBlock } from '@/services/lego_blocks/units/webviewPinchZoomBlock'
+import { startWebviewPinchZoomWatchBlock } from '@/services/lego_blocks/units/webviewPinchZoomBlock'
 import { useElectronWebviewLoadErrorBlock } from '@/components/lego_blocks/hooks/shared/useElectronWebviewLoadErrorBlock'
 import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
 import { useWindowActivityBlock } from '@/components/lego_blocks/hooks/shared/useWindowActivityBlock'
@@ -62,7 +62,8 @@ interface ElectronWebviewElementBlock extends HTMLElement {
   goForward?: () => void
   reload?: () => void
   executeJavaScript?: (script: string, userGesture?: boolean) => Promise<unknown>
-  setVisualZoomLevelLimits?: (minimumLevel: number, maximumLevel: number) => Promise<void>
+  setZoomFactor?: (factor: number) => void
+  getZoomFactor?: () => number
   getAttribute: (qualifiedName: string) => string | null
   setAttribute: (qualifiedName: string, value: string) => void
 }
@@ -388,17 +389,31 @@ function UrlDocumentBlock({
       setCanGoBack(Boolean(webview.canGoBack?.()))
     }
 
-    // Pinch-to-zoom: opened on every page load, and once now in case the
-    // page was already loaded when this effect ran.
-    const enablePinchZoom = () => enableWebviewPinchZoomBlock(webview)
-    enablePinchZoom()
+    let pinchZoom = 1
+    const stopPinchZoom = startWebviewPinchZoomWatchBlock(webview, {
+      get: () => {
+        try {
+          pinchZoom = webview.getZoomFactor?.() ?? pinchZoom
+        } catch {
+          // Guest not ready; keep the last known factor.
+        }
+        return pinchZoom
+      },
+      apply: (factor) => {
+        pinchZoom = factor
+        try {
+          webview.setZoomFactor?.(factor)
+        } catch {
+          // Guest detached.
+        }
+      },
+    })
 
     webview.addEventListener('did-navigate', updateCanGoBack)
     webview.addEventListener('did-navigate-in-page', updateCanGoBack)
     webview.addEventListener('did-finish-load', updateCanGoBack as EventListener)
-    webview.addEventListener('dom-ready', enablePinchZoom)
     return () => {
-      webview.removeEventListener('dom-ready', enablePinchZoom)
+      stopPinchZoom()
       webview.removeEventListener('did-navigate', updateCanGoBack)
       webview.removeEventListener('did-navigate-in-page', updateCanGoBack)
       webview.removeEventListener('did-finish-load', updateCanGoBack as EventListener)
