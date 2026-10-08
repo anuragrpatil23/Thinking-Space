@@ -6,11 +6,34 @@ export interface MarkdownTableOfContentsItemBlock {
   line: number
 }
 
+/**
+ * A heading as it reads once rendered: inline markdown (code ticks, emphasis,
+ * links, wikilinks) is dropped so an outline shows `GET /health`, not the
+ * backticks around it. Code spans are set aside first so their contents — an
+ * `a_b_c` or a `*` — are never mistaken for emphasis.
+ */
+export function stripInlineMarkdownBlock(value: string): string {
+  const codeSpans: string[] = []
+  const withoutCode = value.replace(/(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g, (_match, _ticks, body: string) => {
+    codeSpans.push(body.trim())
+    return `\uE000${codeSpans.length - 1}\uE000`
+  })
+  const plain = withoutCode
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+    .replace(/\[\[([^\]]+)\]\]/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, '$2')
+    .replace(/~~(?=\S)([\s\S]*?\S)~~/g, '$1')
+    .replace(/(^|[^\w*\\])\*(?=\S)([^*]*?\S)\*(?![\w*])/g, '$1$2')
+    .replace(/(^|[^\w\\])_(?=\S)([^_]*?\S)_(?!\w)/g, '$1$2')
+  return plain.replace(/\uE000(\d+)\uE000/g, (_match, index: string) => codeSpans[Number(index)] ?? '')
+}
+
 function normalizeHeadingTitleBlock(value: string): string {
-  return value
-    .trim()
-    .replace(/\s+#+\s*$/, '')
+  return stripInlineMarkdownBlock(value.trim().replace(/\s+#+\s*$/, ''))
     .replace(/\\([\\`*_{}[\]()#+\-.!>])/g, '$1')
+    .replace(/\s+/g, ' ')
     .trim()
 }
 

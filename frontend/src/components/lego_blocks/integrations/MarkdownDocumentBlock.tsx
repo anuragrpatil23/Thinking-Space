@@ -2292,12 +2292,8 @@ function MarkdownTextDocumentRuntimeBlock({
                 className="sticky z-30 flex items-center gap-1 border-b border-border/50 bg-card p-2"
                 style={{ top: isHeaderHidden ? 0 : headerHeight }}
               >
-                <MarkdownSectionContentsBlock
-                  content={displayContent}
-                  container={contentScrollRef.current}
-                  stripRef={viewerStripRef}
-                  onSelectHeading={scrollViewToHeading}
-                />
+                {/* Mindmap first: the Contents button grows and shrinks with the
+                    section being read, and would push anything after it around. */}
                 {supportsMindmap && (
                   <button
                     type="button"
@@ -2312,6 +2308,12 @@ function MarkdownTextDocumentRuntimeBlock({
                     Mindmap
                   </button>
                 )}
+                <MarkdownSectionContentsBlock
+                  content={displayContent}
+                  container={contentScrollRef.current}
+                  stripRef={viewerStripRef}
+                  onSelectHeading={scrollViewToHeading}
+                />
               </div>
               <MarkdownMindmapPanelBlock
                 inputPath={path}

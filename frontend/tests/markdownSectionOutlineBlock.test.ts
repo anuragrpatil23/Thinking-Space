@@ -73,3 +73,35 @@ describe('markdownSectionOutlineBlock', () => {
     expect(shouldNumberMarkdownHeadingsBlock(rowsOf('# T\n## 2026 plans\n## Run\n## Verify\n## Ship'))).toBe(true)
   })
 })
+
+describe('heading titles in an outline', () => {
+  const titles = (markdown: string) => parseMarkdownTableOfContentsBlock(markdown).map((item) => item.title)
+
+  it('read as rendered text, without inline markdown', () => {
+    expect(titles([
+      '## `GET /scan/v1/health`',
+      '## The **scanner** and the *view*',
+      '## See [the spec](run-tracker-spec.md) and [[notes/plan|the plan]]',
+      '## ~~Old~~ New [[Glossary]]',
+      '## __init__ and _private_ names',
+    ].join('\n'))).toEqual([
+      'GET /scan/v1/health',
+      'The scanner and the view',
+      'See the spec and the plan',
+      'Old New Glossary',
+      'init and private names',
+    ])
+  })
+
+  it('leave plain punctuation and code contents alone', () => {
+    expect(titles([
+      '## snake_case_name and 2 * 3 * 4',
+      '## `a_b_c` uses `*args`',
+      '## C# closing hashes ##',
+    ].join('\n'))).toEqual([
+      'snake_case_name and 2 * 3 * 4',
+      'a_b_c uses *args',
+      'C# closing hashes',
+    ])
+  })
+})
