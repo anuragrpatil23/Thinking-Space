@@ -318,14 +318,22 @@ export default function AiActivityDayTimelineBlock({
 
         {/* Hour axis labels — outside the scrollable strip so they're always visible. */}
         <div className="relative mt-1" style={{ height: 12 }}>
-          {hourTicks.map(h => {
+          {hourTicks.map((h, i) => {
             const x = (h - startHour) * PIXELS_PER_HOUR
             const isMidnight = h % 24 === 0 && h !== 0
             return (
               <div
                 key={h}
                 className={cn(
-                  'absolute -translate-x-1/2 text-[9px] tabular-nums',
+                  'absolute text-[9px] tabular-nums',
+                  // The end labels hang inward. Centred on their ticks, half of
+                  // each sat outside the strip and the scroller cut it off —
+                  // the first one read "2a".
+                  i === 0
+                    ? 'translate-x-0'
+                    : i === hourTicks.length - 1
+                      ? '-translate-x-full'
+                      : '-translate-x-1/2',
                   isMidnight ? 'font-semibold text-foreground/70' : 'text-muted-foreground/70',
                 )}
                 style={{ left: x }}

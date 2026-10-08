@@ -398,6 +398,31 @@ export default function AiActivityDayTableBlock({
     }
   }
 
+  // "+ Log session" sits where the next row would go, at the foot of the table
+  // (or inside the empty-day box), the way a list offers its own "add" line. As
+  // a chip beside the heading it was a control a long way from the rows it
+  // makes, with nothing else on its side of the card.
+  const logSessionButton = manualSessionsEnabled !== undefined && (
+    <button
+      type="button"
+      onClick={() => manualSessionsEnabled && setManualModal({ mode: 'create' })}
+      disabled={!manualSessionsEnabled}
+      className={cn(
+        'inline-flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs transition-colors',
+        'outline-none focus-visible:bg-foreground/[0.04]',
+        manualSessionsEnabled
+          ? 'text-muted-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground'
+          : 'cursor-not-allowed text-muted-foreground/40',
+      )}
+      title={manualSessionsEnabled
+        ? 'Log a session by hand (e.g. "painting 4h") — it shows on the timeline and totals.'
+        : 'Enable vault-backed AI Activity in Settings → AI to log sessions by hand.'}
+    >
+      <Plus className="h-3 w-3" />
+      Log session
+    </button>
+  )
+
   return (
     <div ref={hostRef} className="space-y-2">
       <div className="flex items-baseline justify-between gap-3">
@@ -408,25 +433,6 @@ export default function AiActivityDayTableBlock({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {manualSessionsEnabled !== undefined && (
-            <button
-              type="button"
-              onClick={() => manualSessionsEnabled && setManualModal({ mode: 'create' })}
-              disabled={!manualSessionsEnabled}
-              className={cn(
-                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors',
-                manualSessionsEnabled
-                  ? 'border-border/40 bg-card/40 text-muted-foreground hover:border-border/70 hover:text-foreground'
-                  : 'cursor-not-allowed border-border/30 bg-card/20 text-muted-foreground/50',
-              )}
-              title={manualSessionsEnabled
-                ? 'Log a session by hand (e.g. "painting 4h") — it shows on the timeline and totals.'
-                : 'Enable vault-backed AI Activity in Settings → AI to log sessions by hand.'}
-            >
-              <Plus className="h-2.5 w-2.5" />
-              Log session
-            </button>
-          )}
           {/* Copy lives in the right-click menu now — see `rowMenu`. It is a
               once-in-a-while action, and a permanent chip for it competed with
               the ones that are not. The confirmation stays: a clipboard write
@@ -440,8 +446,9 @@ export default function AiActivityDayTableBlock({
         </div>
       </div>
       {sorted.length === 0 ? (
-        <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-4 text-xs text-muted-foreground/70">
-          No sessions on this day.
+        <div className="overflow-hidden rounded-lg border border-border/40 bg-card/40 text-xs text-muted-foreground/70">
+          <div className="px-3 py-4">No sessions on this day.</div>
+          {logSessionButton && <div className="border-t border-border/30">{logSessionButton}</div>}
         </div>
       ) : (
         <div
@@ -770,6 +777,15 @@ export default function AiActivityDayTableBlock({
                 })
               })()}
             </tbody>
+            {logSessionButton && (
+              <tfoot>
+                <tr className="border-t border-border/30">
+                  <td colSpan={5} className="p-0">
+                    {logSessionButton}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       )}

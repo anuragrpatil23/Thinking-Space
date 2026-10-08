@@ -1,6 +1,10 @@
 # Major Checkpoint Ritual (Ship It)
 
-A "major checkpoint" = a user-visible feature or fix is complete and verified (typecheck/tests pass), not every commit. At a major checkpoint:
+A "major checkpoint" = a user-visible feature or fix is complete and verified (typecheck/tests pass), not every commit.
+
+**The user calls the ship.** Finish and verify the work, then start the dev server (`./build.sh dev`, http://localhost:5173) so the user can test it, and wait for the word — do not ship unprompted. Start the server yourself rather than assuming one is already running and hot-reloading (decided 2026-10-08).
+
+At a major checkpoint, once told to ship:
 
 1. Commit (per `agents/TEMPLATES/COMMIT_MESSAGE_TEMPLATE.md`) and push.
 2. Run `./scripts/checkpoint-ship.sh` (in the background — takes ~2–3 min). It builds the unpacked .app, verifies the startup-perf contract, signs, and swaps `/Applications/Thinking Space.app` in place (detached swap, so it also works from the app's own embedded terminal). Full output goes to `~/.thinking-space/logs/`; stdout is a ~4-line summary — read that, not the log, unless it failed.

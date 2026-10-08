@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
   fmtDayMonthBlock,
@@ -92,21 +92,32 @@ const STRIP_EDGE_PAD_PX = 11
 /** Air between a strip cell's rim and the selection outline drawn around it.
  *  The cell's outermost lap arc sits on that rim, so the gap is what keeps the
  *  two from reading as one thick band. */
-const STRIP_SELECT_RING_GAP_PX = 7
-/** Weight of that outline. Grows *inward* from the inset — the ring's outer
- *  edge is what the eye tracks against the neighbouring cells, so a thicker
- *  stroke reads better tightening toward the cell than swelling away from it. */
-const STRIP_SELECT_RING_PX = 3
+const STRIP_SELECT_RING_GAP_PX = 6
+/** Weight of that outline. A hairline, because the date heading above the
+ *  strip is the loudest mark on the card and the ring only has to say which
+ *  cell that heading is about — at 3px it outweighed the numeral it points
+ *  from. Grows *inward* from the inset, so the outer edge the eye tracks
+ *  against the neighbouring cells stays put whatever the weight. */
+const STRIP_SELECT_RING_PX = 1.5
 /** Matches the `rounded-xl` on strip cells; the selection ring grows it by
  *  the gap so the two curves stay concentric. */
 const STRIP_CELL_RADIUS_PX = 12
 
 /** Days shown past the end of the range in strip mode, dimmed and out of
- *  range. All the padding goes on the trailing side: the range ends on today,
- *  so trailing days are the only ones that move today off the right edge and
- *  toward the middle of the row. Four is what puts it about centre for a 7-day
- *  range, which is the case this view is built around. */
+ *  range, when the strip is too long to centre (see STRIP_CENTER_SIDE_DAYS).
+ *  All the padding goes on the trailing side: the range ends on today, so
+ *  trailing days are the only ones that move today off the right edge. */
 const STRIP_TRAIL_PAD_DAYS = 4
+/** A strip of a week or less puts its last day — today — dead centre: this many
+ *  days before it, the same number of dimmed days after. Five a side is eleven
+ *  cells, which for the 7-day range costs the oldest day its cell: with all
+ *  seven shown and four trailing, today sat one cell right of centre, and a row
+ *  that is nearly symmetric reads as a mistake where a symmetric one reads as
+ *  a calendar open at today. The hidden day still counts in every total; it
+ *  just has no cell. Longer strips are left alone — centring a fortnight would
+ *  hide most of it. */
+const STRIP_CENTER_SIDE_DAYS = 5
+const STRIP_CENTER_MAX_RANGE_DAYS = 7
 const STRIP_CELL_MIN_PX = 36
 const STRIP_CELL_MAX_PX = 44
 const STRIP_CELL_GAP_MIN = 14
@@ -144,6 +155,50 @@ const WORK_MIX_LAP_FADE_STEPS = 10
  *  — never a project color — because it is a statement about missing metadata,
  *  not about work. */
 const WORK_MIX_OTHER_CHANNELS = { light: '16,185,129', dark: '52,211,153' }
+/** Box the readout's kind glyphs are drawn in, and the radius each ring kind
+ *  sits at inside it. Schematic, not to scale: the real rings are flush
+ *  hairlines, which at this size would be one grey smudge. */
+const KIND_GLYPH_PX = 12
+const KIND_GLYPH_RADII: Record<(typeof RING_KIND_ORDER)[number], number> = {
+  building: 5.25,
+  other: 3.5,
+  maintenance: 1.75,
+}
+
+/** Miniature of a work-mix cell with one mark lit: the ring a kind is drawn on,
+ *  or the centre disc for thinking. Sits before each figure in the readout so
+ *  that line doubles as the legend the mode otherwise does not have. The lit
+ *  mark wears the color that kind's mark has on the day being read out, so the
+ *  glyph can be matched to the cell by color as well as by position; the other
+ *  rings stay a neutral ghost. Null for a kind that draws no mark. */
+function KindGlyph({ kind, color }: { kind: string; color: string }) {
+  const isRing = kind in KIND_GLYPH_RADII
+  if (!isRing && kind !== 'thinking') return null
+  const c = KIND_GLYPH_PX / 2
+  return (
+    <svg
+      aria-hidden
+      className="mr-1.5 inline-block shrink-0 self-center text-foreground"
+      width={KIND_GLYPH_PX}
+      height={KIND_GLYPH_PX}
+      viewBox={`0 0 ${KIND_GLYPH_PX} ${KIND_GLYPH_PX}`}
+    >
+      {RING_KIND_ORDER.map(ring => (
+        <circle
+          key={ring}
+          cx={c}
+          cy={c}
+          r={KIND_GLYPH_RADII[ring]}
+          fill="none"
+          stroke={ring === kind ? color : 'currentColor'}
+          strokeWidth={ring === kind ? 1.5 : 1}
+          opacity={ring === kind ? 1 : 0.14}
+        />
+      ))}
+      {kind === 'thinking' && <circle cx={c} cy={c} r={2.75} fill={color} />}
+    </svg>
+  )
+}
 
 /** Keep only the selected project's hours, so a chip click narrows the rings
  *  instead of leaving them unchanged. Null filter = the whole day. */
@@ -202,6 +257,7 @@ export default function AiActivityHeatmapBlock({
   menuEntries,
 }: AiActivityHeatmapBlockProps) {
   const { hostRef, isDark } = useDarkModeClassBlock()
+  const restHatchId = useId()
   const [setMode, setSetMode] = useState<boolean>(() => getAiActivitySetMode())
   const [calendarMode, setCalendarMode] = useState<boolean>(() => getAiActivityCalendarMode())
   const [restDays, setRestDays] = useState<number[]>(() => getAiActivityRestDays())
@@ -312,10 +368,19 @@ export default function AiActivityHeatmapBlock({
     // where you have got to, and the run-on is what lifts today off the right
     // edge into the middle of the row. Same move the grid makes when it runs on
     // to the end of the current month.
+    const rangeDays = Math.round((rawEnd.getTime() - start.getTime()) / 86_400_000) + 1
+    // Days either side of the range's last day when the strip is centred on
+    // it; null when the range is too long for that and keeps the trailing pad.
+    const centerSide =
+      rangeDays <= STRIP_CENTER_MAX_RANGE_DAYS
+        ? Math.min(rangeDays - 1, STRIP_CENTER_SIDE_DAYS)
+        : null
     const stripEnd = new Date(rawEnd)
-    stripEnd.setDate(stripEnd.getDate() + STRIP_TRAIL_PAD_DAYS)
+    stripEnd.setDate(stripEnd.getDate() + (centerSide ?? STRIP_TRAIL_PAD_DAYS))
+    const stripStart = new Date(centerSide == null ? start : rawEnd)
+    if (centerSide != null) stripStart.setDate(stripStart.getDate() - centerSide)
     const end = stripMode ? stripEnd : monthEnd > rawEnd ? monthEnd : rawEnd
-    const firstDate = stripMode ? start : mondayOf(start)
+    const firstDate = stripMode ? stripStart : mondayOf(start)
 
     const cells: CellModel[] = []
     const cursor = new Date(firstDate)
@@ -580,8 +645,12 @@ export default function AiActivityHeatmapBlock({
   function workMixFill(mix: WorkMixCellBlock): string {
     if (mix.fill <= 0) return 'transparent'
     // Floor stays low: the disc now fills most of the cell, and the high floor a
-    // small mark needed would make a thin day read as a heavy one.
-    const alpha = isDark ? 0.28 + mix.fill * 0.6 : 0.2 + mix.fill * 0.65
+    // small mark needed would make a thin day read as a heavy one. The ceiling
+    // stays low too, so the day number keeps one color on every disc: a ramp
+    // that ran to near-solid needed the digit to flip to the background color
+    // past halfway, and two neighbouring days a shade apart then wore opposite
+    // numerals.
+    const alpha = isDark ? 0.24 + mix.fill * 0.34 : 0.18 + mix.fill * 0.44
     // Past one pool the alpha ramp is spent, so extra pools drive the disc more
     // vivid the way extra laps do a ring — otherwise 5h and 12h of thinking are
     // the same wash.
@@ -647,7 +716,7 @@ export default function AiActivityHeatmapBlock({
    * not empty; the grid supplies the baseline that a single stack would need a
    * track for.
    */
-  function renderWorkMixRings(mix: WorkMixCellBlock) {
+  function renderWorkMixRings(mix: WorkMixCellBlock, isRest: boolean) {
     const c = cellPx / 2
     const rings = RING_KIND_ORDER.map((kind, index) => {
       const radius =
@@ -675,6 +744,12 @@ export default function AiActivityHeatmapBlock({
           <circle cx={c} cy={c} r={1.5} fill="rgba(148,163,184,0.35)" />
         ) : (
           <circle cx={c} cy={c} r={Math.max(2, innerRadius)} fill={workMixFill(mix)} />
+        )}
+        {/* Rest-day hatch, held to the disc. As a background on the whole cell
+            it ran out under the rings and past the disc's edge, and read as a
+            ragged halo instead of a texture on the day. */}
+        {isRest && (
+          <circle cx={c} cy={c} r={Math.max(2, innerRadius)} fill={`url(#${restHatchId})`} />
         )}
         {rings.flatMap(({ kind, radius, segment }) => {
           const circumference = 2 * Math.PI * radius
@@ -895,6 +970,11 @@ export default function AiActivityHeatmapBlock({
       rects.push({ col, colSpan: 1, topRow: rows[0], bottomRow: rows[rows.length - 1] })
     }
     rects.sort((a, b) => a.col - b.col)
+    // A strip whose selected day is in the set already has a ring on that day,
+    // and the bracket around it made three nested outlines in one spot — the
+    // bracket, the selection, the day's own lap arcs. The selection wins; the
+    // bracket comes back as soon as you look at a day outside the set.
+    if (stripMode && selectedDate && currentSetDates.dates.includes(selectedDate)) return []
     // In a strip the set runs *across* columns, one day each, so the per-column
     // grouping above yields three boxes in a row where the grid would have
     // drawn one. Merge neighbouring single-row rects back into one bracket —
@@ -907,10 +987,25 @@ export default function AiActivityHeatmapBlock({
       else merged.push({ ...r })
     }
     return merged
-  }, [setMode, stripMode, currentSetDates, cellPositions])
+  }, [setMode, stripMode, selectedDate, currentSetDates, cellPositions])
 
   return (
     <div ref={hostRef} className="space-y-2">
+      {workMixMode && (
+        <svg aria-hidden width={0} height={0} className="absolute">
+          <defs>
+            <pattern
+              id={restHatchId}
+              width={4}
+              height={4}
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <rect width={1} height={4} fill="rgba(148,163,184,0.45)" />
+            </pattern>
+          </defs>
+        </svg>
+      )}
       {loading ? (
         <div className="h-32 w-full animate-pulse rounded-lg bg-muted/20" />
       ) : (
@@ -1041,9 +1136,8 @@ export default function AiActivityHeatmapBlock({
                       // What sits behind the day number: the intensity tint
                       // normally, but in work-mix mode the thinking disc, which
                       // now fills the cell and carries its own alpha ramp.
-                      const strongTint = workMixMode
-                        ? (cell.workMix?.fill ?? 0) > 0.5
-                        : cell.intensity > 0.55
+                      // The disc's ramp is capped so it never needs the flip.
+                      const strongTint = !workMixMode && cell.intensity > 0.55
                       // 3-day set markers are a *forward-looking* pacing aid.
                       // In past months they read as noise, so gate the divider
                       // + day-number tint to the current calendar month only.
@@ -1123,7 +1217,8 @@ export default function AiActivityHeatmapBlock({
                             // Rest-day tell: soft diagonal stripes overlaid on
                             // the intensity color. Reads as "different rhythm"
                             // without changing what the color means.
-                            backgroundImage: isRest
+                            // Work-mix draws its own, clipped to the disc.
+                            backgroundImage: isRest && !workMixMode
                               ? 'repeating-linear-gradient(45deg, transparent 0 3px, rgba(148,163,184,0.35) 3px 4px)'
                               : undefined,
                           }}
@@ -1134,9 +1229,8 @@ export default function AiActivityHeatmapBlock({
                           }
                         >
                           {stripMode && (isSelected || inActiveRange) && (
-                            /* Same value as the active range pill above the
-                               strip — solid foreground, so it is black on the
-                               light card and white in dark mode. Held off the
+                            /* Solid foreground, so it is black on the light
+                               card and white in dark mode. Held off the
                                cell by its own inset so the outermost lap arc
                                keeps a clear gap inside it. */
                             <span
@@ -1157,7 +1251,7 @@ export default function AiActivityHeatmapBlock({
                               }}
                             />
                           )}
-                          {cell.workMix && renderWorkMixRings(cell.workMix)}
+                          {cell.workMix && renderWorkMixRings(cell.workMix, isRest)}
                           {/* Day number rides above the rings — the disc is a
                               flat wash, so a digit on top of it costs the mark
                               nothing and keeps the grid navigable by date. */}
@@ -1255,8 +1349,21 @@ export default function AiActivityHeatmapBlock({
                 .filter(([, hours]) => hours > 0)
                 .sort((a, b) => b[1] - a[1])
                 .map(([kind, hours]) => (
-                  <span key={kind}>
-                    <strong className="tabular-nums text-foreground/80">
+                  <span key={kind} className="inline-flex items-baseline">
+                    <KindGlyph
+                      kind={kind}
+                      color={`rgb(${
+                        kind === 'thinking'
+                          ? projectChannels(hoveredMix.thinkingProject)
+                          : kind === 'building' || kind === 'other' || kind === 'maintenance'
+                            ? ringChannels(
+                                kind,
+                                hoveredMix.segments.find(s => s.kind === kind)?.topProject ?? null,
+                              )
+                            : '148,163,184'
+                      })`}
+                    />
+                    <strong className="mr-1 tabular-nums text-foreground/80">
                       {fmtHoursBlock(hours)}
                     </strong>{' '}
                     {projectKindLabelBlock(kind as ProjectKindBlock).toLowerCase()}

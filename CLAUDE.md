@@ -27,7 +27,7 @@ Mirror durable project knowledge to organizer principles/decision records in `li
 
 The app must be built as all three from the ground up:
 
-1. **Thinking space for individuals** — fast, local, hierarchical thinking (`Programs -> Epics -> Ideas -> Thoughts`). For knowledge workers, researchers, writers, founders who arrive at "I need a better way to organize my thoughts."
+1. **Thinking space for individuals** — fast, local, hierarchical thinking. For knowledge workers, researchers, writers, founders who arrive at "I need a better way to organize my thoughts."
 2. **Place where humans and AI work together** — thinking and AI assistance in one contextual workspace. For AI-savvy users who arrive at "AI tools are useful but disconnected from where I actually think."
 3. **AI agent management space for humans** — agent orchestration/visibility integrated with human thought workflows. For power users and multi-agent operators who arrive at "I'm running AI agents but have nowhere to manage them alongside my own thoughts."
 
@@ -107,7 +107,7 @@ Every task completion should answer: which pillar(s) improved, which guardrails 
 
 ## Shipping
 
-At a major checkpoint (user-visible feature or fix, verified): commit + push, then `./scripts/checkpoint-ship.sh` in the background; add `./scripts/checkpoint-ship-ios.sh` if iOS surfaces changed. Details and caveats: [docs/reference/CHECKPOINT-RITUAL.md](docs/reference/CHECKPOINT-RITUAL.md).
+To let the user test a change, start the dev server (`./build.sh dev`, http://localhost:5173) and say it is up. Ship only when the user says to, not on your own initiative. At a major checkpoint (user-visible feature or fix, verified), once told: commit + push, then `./scripts/checkpoint-ship.sh` in the background; add `./scripts/checkpoint-ship-ios.sh` if iOS surfaces changed. Details and caveats: [docs/reference/CHECKPOINT-RITUAL.md](docs/reference/CHECKPOINT-RITUAL.md).
 
 ## Scope Boundary
 
