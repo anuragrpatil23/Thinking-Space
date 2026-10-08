@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -73,7 +74,7 @@ import ImageDocumentBlock from '@/components/lego_blocks/integrations/ImageDocum
 import HtmlDocumentBlock from '@/components/lego_blocks/integrations/HtmlDocumentBlock'
 import MarkdownMindmapPanelBlock from '@/components/lego_blocks/integrations/MarkdownMindmapPanelBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
-import MarkdownTableOfContentsBlock from '@/components/lego_blocks/integrations/MarkdownTableOfContentsBlock'
+import MarkdownSectionContentsBlock from '@/components/lego_blocks/integrations/MarkdownSectionContentsBlock'
 import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import NoteCanvasBlock from '@/components/lego_blocks/integrations/NoteCanvasBlock'
 import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
@@ -143,6 +144,11 @@ import {
   parseMarkdownTableOfContentsBlock,
   type MarkdownTableOfContentsItemBlock,
 } from '@/services/lego_blocks/units/markdownTableOfContentsBlock'
+import {
+  buildMarkdownSectionRowsBlock,
+  shouldNumberMarkdownHeadingsBlock,
+  tagMarkdownHeadingElementsBlock,
+} from '@/services/lego_blocks/units/markdownSectionOutlineBlock'
 
 // The Doc/Canvas toggle is switched off in the explorer viewer for now (see its render site).
 const DOC_CANVAS_TOGGLE_ENABLED = false
@@ -355,6 +361,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const chromeContainerRef = useRef<HTMLDivElement | null>(null)
   const readingSurfaceRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
+  const viewerStripRef = useRef<HTMLDivElement | null>(null)
   const [findOpen, setFindOpen] = useState(false)
   const lastScrollTopRef = useRef(0)
   const [isHeaderHidden, setIsHeaderHidden] = useState(false)
@@ -802,6 +809,20 @@ function MarkdownTextDocumentRuntimeBlock({
     () => (isHtmlDoc ? [] : parseMarkdownTableOfContentsBlock(displayContent)),
     [displayContent, isHtmlDoc],
   )
+  const viewerSectionRows = useMemo(
+    () => buildMarkdownSectionRowsBlock(viewerTableOfContents),
+    [viewerTableOfContents],
+  )
+  const numberViewerHeadings = useMemo(
+    () => shouldNumberMarkdownHeadingsBlock(viewerSectionRows),
+    [viewerSectionRows],
+  )
+  // After every render, not on a dependency list: the markdown is re-rendered
+  // on each of this block's renders and may hand back fresh heading elements.
+  useLayoutEffect(() => {
+    const root = contentScrollRef.current?.querySelector('[data-markdown-nav-root]')
+    if (root) tagMarkdownHeadingElementsBlock(root, viewerSectionRows, numberViewerHeadings)
+  })
   const frontmatterMetaSource = isEditing ? draft : (content ?? '')
   const frontmatterMeta = useMemo(
     () => buildFrontmatterMetaState(frontmatterMetaSource),
@@ -940,26 +961,9 @@ function MarkdownTextDocumentRuntimeBlock({
   )
 
   type MarkdownAnchorProps = ComponentPropsWithoutRef<'a'> & { node?: unknown }
-  type MarkdownHeadingProps = ComponentPropsWithoutRef<'h1'> & { node?: unknown }
   type MarkdownParagraphProps = ComponentPropsWithoutRef<'p'> & { node?: unknown }
   type MarkdownImageProps = ComponentPropsWithoutRef<'img'> & { node?: unknown }
   const markdownComponents = useMemo(() => {
-    let headingIndex = 0
-    const renderHeading = (tag: 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6') => (
-      { children, ...props }: MarkdownHeadingProps,
-    ) => {
-      const HeadingTag = tag
-      const tocItem = viewerTableOfContents[headingIndex++] ?? null
-      return (
-        <HeadingTag
-          {...props}
-          data-markdown-heading-id={tocItem?.id}
-        >
-          {children}
-        </HeadingTag>
-      )
-    }
-
     return {
       a: ({ href, children, ...props }: MarkdownAnchorProps) => {
         const isWikilink = isThinkingSpaceWikilinkHrefOrch(href)
@@ -1027,12 +1031,6 @@ function MarkdownTextDocumentRuntimeBlock({
           </a>
         )
       },
-      h1: renderHeading('h1'),
-      h2: renderHeading('h2'),
-      h3: renderHeading('h3'),
-      h4: renderHeading('h4'),
-      h5: renderHeading('h5'),
-      h6: renderHeading('h6'),
       p: ({ children, ...props }: MarkdownParagraphProps) => {
         const text = extractTextFromNode(children).replace(/\u00a0/g, ' ').trim()
         if (isBlankLineMarkerText(text)) {
@@ -1056,7 +1054,7 @@ function MarkdownTextDocumentRuntimeBlock({
         return <code className={className} {...props}>{children}</code>
       },
     }
-  }, [openLinkedPath, path, viewerTableOfContents])
+  }, [openLinkedPath, path])
 
   const scrollViewToHeading = useCallback(async (heading: MarkdownTableOfContentsItemBlock) => {
     if (pendingFullRender) {
@@ -2290,13 +2288,14 @@ function MarkdownTextDocumentRuntimeBlock({
                 // document is one sheet from the top edge down, and shell grey
                 // here read as a band cut across it. The rule under it is what
                 // separates it from text scrolling beneath.
-                className="sticky z-30 flex flex-wrap items-center gap-1 border-b border-border/50 bg-card p-2"
+                ref={viewerStripRef}
+                className="sticky z-30 flex items-center gap-1 border-b border-border/50 bg-card p-2"
                 style={{ top: isHeaderHidden ? 0 : headerHeight }}
               >
-                <MarkdownTableOfContentsBlock
+                <MarkdownSectionContentsBlock
                   content={displayContent}
-                  currentLine={0}
-                  compact={isIosPhone}
+                  container={contentScrollRef.current}
+                  stripRef={viewerStripRef}
                   onSelectHeading={scrollViewToHeading}
                 />
                 {supportsMindmap && (
@@ -2304,7 +2303,7 @@ function MarkdownTextDocumentRuntimeBlock({
                     type="button"
                     onClick={() => setViewMindmapPanelOpen(prev => !prev)}
                     className={cn(
-                      'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground',
+                      'inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground',
                       viewMindmapPanelOpen && 'bg-muted text-foreground',
                     )}
                     title={viewMindmapPanelOpen ? 'Hide mindmap preview' : 'Show mindmap preview'}

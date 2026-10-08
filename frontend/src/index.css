@@ -136,6 +136,14 @@
   .prose h4 {
     @apply text-base font-semibold mt-3 mb-1 text-foreground;
   }
+  /* Outline number beside a heading in the reading view. Generated content,
+     so it is never selected or copied with the heading and the markdown on
+     disk stays as written. */
+  .prose :is(h1, h2, h3, h4, h5, h6)[data-outline-label]::before {
+    content: attr(data-outline-label);
+    @apply mr-[0.6em] font-mono font-medium text-muted-foreground/70;
+    font-size: 0.78em;
+  }
   .prose p {
     @apply mb-3;
   }
