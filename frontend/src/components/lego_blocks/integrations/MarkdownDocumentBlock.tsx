@@ -59,6 +59,7 @@ import {
   getOpenInSystemLabelOrch,
   getRelativePathForClipboardOrch,
   openFileInNewTabOrch,
+  openExternalUrlOrch,
   openFileInNewWindowOrch,
   openVaultPathWithDefaultAppOrch,
   openVaultPathInSystemOrch,
@@ -88,6 +89,7 @@ import OverflowMenuButtonBlock from '@/components/lego_blocks/units/ui/OverflowM
 import { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import { resolveFrontmatterDatesBlock } from '@/services/lego_blocks/units/frontmatterDatesBlock'
 import { cn } from '@/lib/utils'
+import { classifyMarkdownLinkTargetBlock } from '@/services/lego_blocks/units/markdownLinkTargetBlock'
 import { thinkingSpaceMarkdownUrlTransformBlock } from '@/services/lego_blocks/integrations/markdownUrlTransformBlock'
 import {
   readMarkdownEditorSettingsOrch,
@@ -971,6 +973,50 @@ function MarkdownTextDocumentRuntimeBlock({
         const onClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
           if (!isWikilink || !href) {
             props.onClick?.(event)
+            if (event.defaultPrevented) return
+            // Plain markdown links are routed here: the browser default would
+            // navigate the app document itself to the href.
+            const linkTarget = classifyMarkdownLinkTargetBlock(href)
+            if (linkTarget.kind === 'other') return
+            event.preventDefault()
+            setNavigationError(null)
+
+            if (linkTarget.kind === 'anchor') {
+              document.getElementById(linkTarget.fragment)?.scrollIntoView({ block: 'start' })
+              return
+            }
+            if (linkTarget.kind === 'external') {
+              void openExternalUrlOrch(linkTarget.url).catch((err) => {
+                setNavigationError(err instanceof Error ? err.message : 'Failed to open link')
+              })
+              return
+            }
+
+            const openInNewWindow = event.metaKey || event.ctrlKey
+            void (async () => {
+              try {
+                const resolvedPath = await resolveWikilinkAssetTargetOrch({
+                  currentPath: path,
+                  target: linkTarget.path,
+                }) ?? (await resolveWikilinkTargetOrch({
+                  currentPath: path,
+                  target: linkTarget.path,
+                })).path
+
+                if (!resolvedPath) {
+                  setNavigationError(`Linked file not found: ${linkTarget.path}`)
+                  return
+                }
+                if (resolvedPath === path) return
+                if (openInNewWindow) {
+                  openFileInNewWindowOrch(resolvedPath)
+                  return
+                }
+                openFileInNewTabOrch(resolvedPath)
+              } catch (err) {
+                setNavigationError(err instanceof Error ? err.message : 'Failed to open linked file')
+              }
+            })()
             return
           }
           event.preventDefault()

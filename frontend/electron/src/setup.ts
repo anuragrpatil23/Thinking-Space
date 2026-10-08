@@ -20,6 +20,8 @@ import windowStateKeeper from 'electron-window-state';
 import { randomUUID } from 'crypto';
 import { existsSync, statSync } from 'fs';
 import { join } from 'path';
+import { isStrayAppNavigationBlock } from './lego_blocks/appNavigationGuardBlock';
+import { resolveExternalFileRouteBlock } from './lego_blocks/externalFileOpenBlock';
 import {
   buildUserAiOriginEntryBlock,
   collectCspSourcesForDirectiveBlock,
@@ -392,6 +394,47 @@ export class ElectronCapacitorApp {
     return matches;
   }
 
+  /** Opens a file handed to the app from outside (macOS `open-file`) as a new
+   *  tab in a window whose profile owns the vault containing it. A file outside
+   *  every open vault is refused. */
+  async openExternalFileBlock(filePath: string): Promise<boolean> {
+    const openWindows = this.windows.filter((win) => !win.isDestroyed());
+    const focused = BrowserWindow.getFocusedWindow();
+    const ordered = focused && openWindows.includes(focused)
+      ? [focused, ...openWindows.filter((win) => win !== focused)]
+      : openWindows;
+
+    for (const win of ordered) {
+      const profile = getProfileBlock(this.windowProfileIdById.get(win.id) ?? DEFAULT_PROFILE_ID_BLOCK);
+      const vaultRoot = profile ? resolveProfileVaultRootBlock(profile) : null;
+      const route = vaultRoot ? resolveExternalFileRouteBlock(filePath, vaultRoot) : null;
+      if (!route) continue;
+
+      if (win.isMinimized()) win.restore();
+      if (!win.isVisible()) win.show();
+      win.focus();
+      if (win.webContents.isLoading()) {
+        // The tab listener is not mounted yet; route the window as it loads.
+        this.routeWindowAfterLoad(win, route);
+      } else {
+        const script = `window.dispatchEvent(new CustomEvent('ltm:workspace-open-route-in-new-tab', { detail: ${JSON.stringify(route)} }));`;
+        void win.webContents.executeJavaScript(script, true).catch(() => {});
+      }
+      return true;
+    }
+
+    if (openWindows.length === 0) {
+      const profile = getProfileBlock(DEFAULT_PROFILE_ID_BLOCK);
+      const vaultRoot = profile ? resolveProfileVaultRootBlock(profile) : null;
+      const route = vaultRoot ? resolveExternalFileRouteBlock(filePath, vaultRoot) : null;
+      if (route) {
+        await this.createWindow(route);
+        return true;
+      }
+    }
+    return false;
+  }
+
   getOpenWindowCountForProfileBlock(profileId: string): number {
     let count = 0;
     for (const win of this.windows) {
@@ -737,9 +780,13 @@ export class ElectronCapacitorApp {
       void shell.openExternal(details.url).catch(() => undefined);
       return { action: 'deny' };
     });
-    newWindow.webContents.on('will-navigate', (event, _newURL) => {
+    newWindow.webContents.on('will-navigate', (event, newURL) => {
       const currentUrl = newWindow.webContents.getURL();
       if (!currentUrl.includes(this.customScheme) && !this.isLiveSourceUrl(currentUrl)) {
+        event.preventDefault();
+        return;
+      }
+      if (isStrayAppNavigationBlock(currentUrl, newURL, this.customScheme)) {
         event.preventDefault();
       }
     });
@@ -875,9 +922,13 @@ export class ElectronCapacitorApp {
       void shell.openExternal(details.url).catch(() => undefined);
       return { action: 'deny' };
     });
-    mainWindow.webContents.on('will-navigate', (event, _newURL) => {
+    mainWindow.webContents.on('will-navigate', (event, newURL) => {
       const currentUrl = mainWindow.webContents.getURL();
       if (!currentUrl.includes(this.customScheme) && !this.isLiveSourceUrl(currentUrl)) {
+        event.preventDefault();
+        return;
+      }
+      if (isStrayAppNavigationBlock(currentUrl, newURL, this.customScheme)) {
         event.preventDefault();
       }
     });

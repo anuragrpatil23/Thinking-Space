@@ -368,6 +368,28 @@ if (!hasSingleInstanceLock) {
   });
 }
 
+// Files handed over by macOS (`open -a "Thinking Space" note.md`, Finder). The
+// event can arrive before the first window exists, so paths queue until init.
+const pendingExternalFiles: string[] = [];
+let externalFileOpenReady = false;
+
+function openExternalFile(filePath: string): void {
+  void myCapacitorApp.openExternalFileBlock(filePath)
+    .then((opened) => {
+      if (!opened) console.warn('[open-file] not inside an open vault:', filePath);
+    })
+    .catch((err) => { console.warn('[open-file] failed:', err); });
+}
+
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  if (!externalFileOpenReady) {
+    pendingExternalFiles.push(filePath);
+    return;
+  }
+  openExternalFile(filePath);
+});
+
 function configureAppIconMenu(): void {
   if (process.platform !== 'darwin') return;
   app.dock?.setMenu(
@@ -508,6 +530,8 @@ if (hasSingleInstanceLock) {
       // Initialize our app, build windows, and load content.
       await myCapacitorApp.init();
       configureAppIconMenu();
+      externalFileOpenReady = true;
+      for (const filePath of pendingExternalFiles.splice(0)) openExternalFile(filePath);
       // Check for updates if we are in a packaged app (skip in dev or if no valid publish config).
       // Local/self-built apps (checkpoint-ship.sh, fork builds) carry a `local-build` marker in
       // Resources — never auto-update those, or the official release would silently overwrite
