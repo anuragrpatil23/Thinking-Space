@@ -16,6 +16,8 @@ export interface SidebarChromeButtonBlockProps {
   headerVisible?: boolean
   showHeaderToggle?: boolean
   headerToggleLabels?: SidebarChromeButtonLabels
+  /** Keyboard shortcut shown in the header toggle's tooltip, e.g. "⇧⌘\\". */
+  headerToggleShortcutHint?: string
   variant?: 'default' | 'soft'
   wrap?: boolean
 }
@@ -35,6 +37,7 @@ export default function SidebarChromeButtonBlock({
   headerVisible,
   showHeaderToggle,
   headerToggleLabels,
+  headerToggleShortcutHint,
   variant = 'default',
   wrap = true,
 }: SidebarChromeButtonBlockProps) {
@@ -63,7 +66,7 @@ export default function SidebarChromeButtonBlock({
           onClick={block.dispatchToggleHeader}
           className={cn(BASE_BUTTON_CLASS, variantClassHeader)}
           aria-label={headerLabel}
-          title={headerLabel}
+          title={headerToggleShortcutHint ? `${headerLabel} (${headerToggleShortcutHint})` : headerLabel}
         >
           {headerVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
         </button>

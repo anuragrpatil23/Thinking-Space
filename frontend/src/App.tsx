@@ -1096,6 +1096,10 @@ function App() {
   // the shortcut follows the visible button, so it is a no-op where there is none.
   const activeSidebarChromeBlock = sidebarChromeButtons.find(cfg => cfg.show)?.block
   const sidebarToggleShortcutHint = isMacPlatform ? '⌘\\' : 'Ctrl+\\'
+  // Cmd/Ctrl + Shift + \ is its sibling: it toggles the header (the eye button)
+  // wherever that button is showing, and is a no-op where it is not.
+  const activeHeaderChromeBlock = sidebarChromeButtons.find(cfg => cfg.show && cfg.showHeaderToggle && cfg.headerToggleLabels)?.block
+  const headerToggleShortcutHint = isMacPlatform ? '⇧⌘\\' : 'Ctrl+Shift+\\'
   const inlineSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'inline')
   const capacitorMenuSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'capacitor-menu')
   const leftAlignedSidebarChromeButtons = sidebarChromeButtons.filter(cfg => cfg.position === 'left-aligned')
@@ -2153,6 +2157,13 @@ function App() {
         handleGlobalRefresh()
         return
       }
+      if (withMeta && event.shiftKey && !event.altKey && event.code === 'Backslash') {
+        if (activeHeaderChromeBlock) {
+          event.preventDefault()
+          activeHeaderChromeBlock.dispatchToggleHeader()
+        }
+        return
+      }
       if (withMeta && !event.shiftKey && !event.altKey && event.code === 'Backslash') {
         if (activeSidebarChromeBlock) {
           event.preventDefault()
@@ -2185,7 +2196,7 @@ function App() {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeSidebarChromeBlock, activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab, handleGlobalRefresh, navigate, primaryNavItems, toolsNavItems])
+  }, [activeHeaderChromeBlock, activeSidebarChromeBlock, activeWorkspaceTab, compactNav, handleCloseWorkspaceTab, handleCreateWorkspaceTab, handleGlobalRefresh, navigate, primaryNavItems, toolsNavItems])
 
   const {
     running: ambientSyncRunning,
@@ -2655,6 +2666,7 @@ function App() {
                       showHeaderToggle={cfg.showHeaderToggle}
                       toggleLabels={cfg.toggleLabels}
                       toggleShortcutHint={sidebarToggleShortcutHint}
+                      headerToggleShortcutHint={headerToggleShortcutHint}
                       headerToggleLabels={cfg.headerToggleLabels}
                       variant={cfg.variant}
                       wrap={false}
@@ -2676,6 +2688,7 @@ function App() {
                     showHeaderToggle={cfg.showHeaderToggle}
                     toggleLabels={cfg.toggleLabels}
                     toggleShortcutHint={sidebarToggleShortcutHint}
+                    headerToggleShortcutHint={headerToggleShortcutHint}
                     headerToggleLabels={cfg.headerToggleLabels}
                     variant={cfg.variant}
                     wrap={false}
@@ -2707,6 +2720,7 @@ function App() {
                     showHeaderToggle={cfg.showHeaderToggle}
                     toggleLabels={cfg.toggleLabels}
                     toggleShortcutHint={sidebarToggleShortcutHint}
+                    headerToggleShortcutHint={headerToggleShortcutHint}
                     headerToggleLabels={cfg.headerToggleLabels}
                     variant={cfg.variant}
                     wrap={false}
