@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Bookmark, CalendarDays, Check, ChevronLeft, ChevronRight, ExternalLink, Loader2, SkipForward, Undo2 } from 'lucide-react'
 import {
   buildRssDeckEntriesBlock,
+  rssAlsoInLabelBlock,
   buildRssTimelineDayGroupsBlock,
   buildRssCalendarWeeksBlock,
   rssDayDateLabelBlock,
@@ -113,9 +114,7 @@ export default function RssReelsBlock({
   )
 
   const allEntries = useMemo(() => {
-    const entries = buildRssDeckEntriesBlock(feeds)
-    if (selectedSources.size === 0) return entries
-    return entries.filter(entry => selectedSources.has(entry.item.feedId))
+    return buildRssDeckEntriesBlock(feeds, selectedSources)
   }, [feeds, selectedSources])
 
   useEffect(() => {
@@ -657,6 +656,7 @@ export default function RssReelsBlock({
                 <ReelCard
                   item={entry.item}
                   feedTitle={entry.feedTitle}
+                  alsoIn={entry.alsoIn}
                   active={index === activeIndex}
                   position={index === activeIndex ? positionInDay : 0}
                   total={activeCounts.total}
@@ -683,11 +683,12 @@ export default function RssReelsBlock({
 
 /** One article, full viewport. */
 function ReelCard({
-  item, feedTitle, active, position, total, onOpen, onToggleSaved, onKeepUnread, keptUnread,
+  item, feedTitle, alsoIn, active, position, total, onOpen, onToggleSaved, onKeepUnread, keptUnread,
   read, presetTags, tagColors, onToggleTag, onSkipToNextUnread, hasNextUnread,
 }: {
   item: RssFeedItemBlock
   feedTitle: string
+  alsoIn?: string[]
   /** Only the centred card decodes its image, so a flick past a card never
    *  pays for a bitmap the reader did not stop on. */
   active: boolean
@@ -715,6 +716,7 @@ function ReelCard({
   // only works with art would look broken for most sources. The fallback is a
   // deliberate typographic treatment on the source's own hue, not a grey box.
   const hue = useMemo(() => rssSourceHueBlock(feedTitle), [feedTitle])
+  const alsoInLabel = rssAlsoInLabelBlock(alsoIn)
   const date = item.pubDate ? new Date(item.pubDate) : null
   const dateLabel = date && !Number.isNaN(date.getTime())
     ? date.toLocaleString(undefined, {
@@ -770,6 +772,9 @@ function ReelCard({
             </>
           )}
         </div>
+        {alsoInLabel && (
+          <div className="mt-1 truncate pl-9 text-[12px] text-white/60">{alsoInLabel}</div>
+        )}
 
         <button type="button" onClick={onOpen} className="mt-3 flex min-h-0 flex-1 flex-col text-left">
           <h2 className={cn(

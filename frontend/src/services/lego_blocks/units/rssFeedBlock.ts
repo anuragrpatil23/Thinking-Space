@@ -14,9 +14,10 @@ export interface RssFeedGroupBlock {
   id: string
   name: string
   parentGroupId: string | null
-  /** Leave this group's feeds (and its subgroups' feeds) out of the merged
-   *  "All Unread" inbox and the header's unread count. For feeds that are
-   *  read by a tool rather than by the user. */
+  /** Leave this group's feeds (and its subgroups' feeds) out of every merged
+   *  view — the "All Unread" inbox, the timeline, the reels deck — and out of
+   *  the header's unread count. They still show under their own group. For
+   *  feeds that are read by a tool rather than by the user. */
   excludeFromAllUnread?: boolean
 }
 
@@ -205,6 +206,9 @@ export interface RssUnreadInboxEntryBlock {
   item: RssFeedItemBlock
   /** Source feed name, shown per-row because the inbox merges across feeds. */
   feedTitle: string
+  /** Other feeds that carry this same article. Set only by the merged views,
+   *  which show one row per article — see `collapseDuplicateRssEntriesBlock`. */
+  alsoIn?: string[]
 }
 
 /**
@@ -397,12 +401,19 @@ export type RssDeckFilterBlock = 'all' | 'unread'
 /** Every article across every feed, newest first — the stable ordering the
  *  deck traverses. Membership is decided by the caller's admission set, not by
  *  a live predicate, so a card never vanishes because it was just read. */
-export function buildRssDeckEntriesBlock(feeds: RssFeedResultBlock[]): RssUnreadInboxEntryBlock[] {
+export function buildRssDeckEntriesBlock(
+  feeds: RssFeedResultBlock[],
+  /** Source filter. Empty or absent means every source. It is applied before
+   *  duplicates collapse, so a filtered deck still holds every article its
+   *  sources carry. */
+  sourceIds?: Set<string>,
+): RssUnreadInboxEntryBlock[] {
   const entries: RssUnreadInboxEntryBlock[] = []
   for (const feed of feeds) {
+    if (sourceIds && sourceIds.size > 0 && !sourceIds.has(feed.feedId)) continue
     for (const item of feed.items) entries.push({ item, feedTitle: feed.feedTitle })
   }
-  return sortRssEntriesByRecencyBlock(entries)
+  return sortRssEntriesByRecencyBlock(collapseDuplicateRssEntriesBlock(entries))
 }
 
 /** Unread and total per day, over whatever the deck currently holds. Both
@@ -436,6 +447,127 @@ function sortRssEntriesByRecencyBlock(entries: RssUnreadInboxEntryBlock[]): RssU
   })
 }
 
+/** Query parameters that say where a click came from, not which article it
+ *  is. Everything else is kept: some sources tell their articles apart by a
+ *  query id alone (a filing id, a library document id). */
+const RSS_TRACKING_PARAMS_BLOCK = new Set([
+  'mod', 'fbclid', 'gclid', 'cmp', 'cmpid', 'smid', 'smtyp', 'ref_src', 'ftag', 'ncid', 'ocid', 'emc', 'partner',
+])
+
+const rssArticleKeyCacheBlock = new Map<string, string>()
+
+/**
+ * What makes two cached articles the same article: the address they open,
+ * without the tracking parameters each feed adds. Item ids cannot answer this
+ * — they are scoped to one feed and hashed from a guid that some publishers
+ * renew every time they re-list an article.
+ *
+ * An article with no usable link is only ever the same as itself.
+ */
+export function rssArticleKeyBlock(item: Pick<RssFeedItemBlock, 'id' | 'link'>): string {
+  const link = item.link?.trim()
+  if (!link) return `id:${item.id}`
+  const cached = rssArticleKeyCacheBlock.get(link)
+  if (cached !== undefined) return cached
+  let key: string
+  try {
+    const url = new URL(link)
+    const params = [...url.searchParams.entries()]
+      .filter(([name]) => !name.toLowerCase().startsWith('utm_') && !RSS_TRACKING_PARAMS_BLOCK.has(name.toLowerCase()))
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([name, value]) => `${name}=${value}`)
+      .join('&')
+    const host = url.hostname.toLowerCase().replace(/^www\./, '')
+    const path = url.pathname.replace(/\/+$/, '')
+    key = `url:${host}${path}${params ? `?${params}` : ''}`
+  } catch {
+    key = `raw:${link}`
+  }
+  rssArticleKeyCacheBlock.set(link, key)
+  return key
+}
+
+/** Which copy of an article stands for all of them. A read copy first, so an
+ *  article read under one feed does not come back unread under another; then
+ *  the copy whose full text is cached; then the earliest, so a publisher
+ *  re-listing an article does not move it back to the top. Ties keep the order
+ *  given, which keeps the choice the same from one render to the next. */
+function rssDuplicateRankBlock(a: RssFeedItemBlock, b: RssFeedItemBlock): number {
+  if (a.read !== b.read) return a.read ? -1 : 1
+  if (Boolean(a.textInCache) !== Boolean(b.textInCache)) return a.textInCache ? -1 : 1
+  const aTime = a.pubDate ? new Date(a.pubDate).getTime() : NaN
+  const bTime = b.pubDate ? new Date(b.pubDate).getTime() : NaN
+  if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0
+  return aTime - bTime
+}
+
+/**
+ * One entry per article for the merged views. The same article reaches the
+ * cache several times — section feeds of one publisher overlap, and some feeds
+ * re-list an article under a new guid — and each copy is its own file. The
+ * files stay as they are; the merged views show one row and name the other
+ * feeds in `alsoIn`.
+ */
+export function collapseDuplicateRssEntriesBlock(
+  entries: RssUnreadInboxEntryBlock[],
+): RssUnreadInboxEntryBlock[] {
+  const groups = new Map<string, RssUnreadInboxEntryBlock[]>()
+  for (const entry of entries) {
+    const key = rssArticleKeyBlock(entry.item)
+    const group = groups.get(key)
+    if (group) group.push(entry)
+    else groups.set(key, [entry])
+  }
+  const collapsed: RssUnreadInboxEntryBlock[] = []
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      collapsed.push(group[0])
+      continue
+    }
+    let chosen = group[0]
+    for (const entry of group) {
+      if (rssDuplicateRankBlock(entry.item, chosen.item) < 0) chosen = entry
+    }
+    const alsoIn = [...new Set(group.map(entry => entry.feedTitle))].filter(title => title !== chosen.feedTitle)
+    collapsed.push(alsoIn.length > 0 ? { ...chosen, alsoIn } : chosen)
+  }
+  return collapsed
+}
+
+/** Short label for the other feeds an article is in. */
+export function rssAlsoInLabelBlock(alsoIn: string[] | undefined): string | null {
+  if (!alsoIn || alsoIn.length === 0) return null
+  return alsoIn.length === 1 ? `also in ${alsoIn[0]}` : `also in ${alsoIn.length} more feeds`
+}
+
+/** Every other copy of the given articles, across the feeds passed in. Read
+ *  state is written to these too, so the copies never disagree. */
+export function rssDuplicateItemsBlock(
+  feeds: RssFeedResultBlock[],
+  items: RssFeedItemBlock[],
+): RssFeedItemBlock[] {
+  if (items.length === 0) return []
+  const keys = new Set(items.map(rssArticleKeyBlock))
+  const given = new Set(items.map(item => item.id))
+  const copies: RssFeedItemBlock[] = []
+  for (const feed of feeds) {
+    for (const item of feed.items) {
+      if (!given.has(item.id) && keys.has(rssArticleKeyBlock(item))) copies.push(item)
+    }
+  }
+  return copies
+}
+
+/** Drop the feeds that are kept out of the merged views. */
+export function rssReaderFeedsBlock(
+  feeds: RssFeedResultBlock[],
+  preferences: Pick<RssFeedPreferencesBlock, 'groups' | 'feeds'> | null,
+): RssFeedResultBlock[] {
+  if (!preferences) return feeds
+  const excluded = rssFeedIdsExcludedFromAllUnreadBlock(preferences.groups, preferences.feeds)
+  return excluded.size === 0 ? feeds : feeds.filter(feed => !excluded.has(feed.feedId))
+}
+
 /** Feed ids that belong to a group marked `excludeFromAllUnread`, directly or
  *  through a parent group. */
 export function rssFeedIdsExcludedFromAllUnreadBlock(
@@ -465,12 +597,14 @@ export function buildUnreadInboxItemsBlock(
 ): RssUnreadInboxEntryBlock[] {
   const entries: RssUnreadInboxEntryBlock[] = []
   for (const feed of feeds) {
-    for (const item of feed.items) {
-      if (item.read && !sessionReadIds.has(item.id)) continue
-      entries.push({ item, feedTitle: feed.feedTitle })
-    }
+    for (const item of feed.items) entries.push({ item, feedTitle: feed.feedTitle })
   }
-  return sortRssEntriesByRecencyBlock(entries)
+  // Collapse before filtering: an article is unread only if no copy of it has
+  // been read.
+  return sortRssEntriesByRecencyBlock(
+    collapseDuplicateRssEntriesBlock(entries)
+      .filter(({ item }) => !item.read || sessionReadIds.has(item.id)),
+  )
 }
 
 /** Next/prev state for the open article, published by the feed panel so the

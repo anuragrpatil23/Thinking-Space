@@ -12,6 +12,8 @@ import {
 import {
   dropRssFeedItemsBlock,
   patchRssFeedItemsBlock,
+  rssDuplicateItemsBlock,
+  rssReaderFeedsBlock,
   rssReadStateNeedsWriteBlock,
   unionRssFeedItemsBlock,
   type RssFeedConfigBlock,
@@ -238,16 +240,34 @@ function subscribeBlock(listener: () => void): () => void {
 // Mutations — vault write plus optimistic update, in one place
 // ---------------------------------------------------------------------------
 
+/**
+ * The given articles plus every other copy of them the reader has — the same
+ * article under another feed, or re-listed in the same one. Read state is
+ * written to all copies at once; the merged views show one row per article and
+ * would otherwise bring it back unread from the next copy.
+ *
+ * Copies in feeds kept out of the merged views are left alone: a tool reads
+ * those, and what the reader has seen says nothing about what it has.
+ */
+function withDuplicatesBlock(items: RssFeedItemBlock[]): RssFeedItemBlock[] {
+  const readerFeeds = rssReaderFeedsBlock(state.feeds, state.preferences)
+  const readerFeedIds = new Set(readerFeeds.map(feed => feed.feedId))
+  const own = items.filter(item => readerFeedIds.has(item.feedId))
+  if (own.length === 0) return items
+  return [...items, ...rssDuplicateItemsBlock(readerFeeds, own)]
+}
+
 /** Automatic, meaningful on-screen exposure — a glance, not a decision. */
 export function markRssItemViewedBlock(item: RssFeedItemBlock): void {
-  if (item.viewedAt || item.dismissedAt) return
-  patchItemsBlock([item.id], { viewedAt: new Date().toISOString(), read: true })
-  void markRssItemViewedOrch(item.id)
+  const pending = withDuplicatesBlock([item]).filter(copy => !copy.viewedAt && !copy.dismissedAt)
+  if (pending.length === 0) return
+  patchItemsBlock(pending.map(copy => copy.id), { viewedAt: new Date().toISOString(), read: true })
+  for (const copy of pending) void markRssItemViewedOrch(copy.id)
 }
 
 /** Explicit, intentional dismissal. */
 export function markRssItemsReadBlock(items: RssFeedItemBlock[]): void {
-  const pending = items.filter(item => !item.dismissedAt)
+  const pending = withDuplicatesBlock(items).filter(item => !item.dismissedAt)
   if (pending.length === 0) return
   const ids = pending.map(item => item.id)
   patchItemsBlock(ids, { dismissedAt: new Date().toISOString(), read: true })
@@ -266,7 +286,7 @@ export function markRssItemsReadBlock(items: RssFeedItemBlock[]): void {
  * article is fixed the next time it is passed).
  */
 export function setRssItemsReadBlock(items: RssFeedItemBlock[], read: boolean): void {
-  const stale = items.filter(item => rssReadStateNeedsWriteBlock(item, read))
+  const stale = withDuplicatesBlock(items).filter(item => rssReadStateNeedsWriteBlock(item, read))
   if (stale.length === 0) return
   const at = read ? new Date().toISOString() : null
   const ids = stale.map(item => item.id)
@@ -283,9 +303,10 @@ export function markAllRssItemsReadBlock(feedId?: string): void {
 
 /** Undo a read mark — whether the reader made it or scrolling did. */
 export function unmarkRssItemReadBlock(item: RssFeedItemBlock): void {
-  if (!item.read && !item.viewedAt && !item.dismissedAt) return
-  patchItemsBlock([item.id], { viewedAt: null, dismissedAt: null, read: false })
-  void unmarkRssItemReadOrch(item.id)
+  const marked = withDuplicatesBlock([item]).filter(copy => copy.read || copy.viewedAt || copy.dismissedAt)
+  if (marked.length === 0) return
+  patchItemsBlock(marked.map(copy => copy.id), { viewedAt: null, dismissedAt: null, read: false })
+  for (const copy of marked) void unmarkRssItemReadOrch(copy.id)
 }
 
 /** Add or remove one tag. Lives here rather than in a surface so every reader
@@ -309,8 +330,11 @@ export function toggleRssItemSavedBlock(item: RssFeedItemBlock): void {
  *  it is open and reports the settled article back. */
 export function replaceRssItemBlock(updated: RssFeedItemBlock): void {
   let changed = false
+  let previous: RssFeedItemBlock | undefined
   const feeds = state.feeds.map(feed => {
-    if (!feed.items.some(item => item.id === updated.id)) return feed
+    const current = feed.items.find(item => item.id === updated.id)
+    if (!current) return feed
+    previous = current
     changed = true
     return { ...feed, items: feed.items.map(item => (item.id === updated.id ? updated : item)) }
   })
@@ -320,6 +344,18 @@ export function replaceRssItemBlock(updated: RssFeedItemBlock): void {
     ? new Set(state.sessionReadIds).add(updated.id)
     : state.sessionReadIds
   if (changed || sessionReadIds !== state.sessionReadIds) setStateBlock({ feeds, sessionReadIds })
+  // The reader wrote this copy itself; carry a change of read state to the
+  // other copies of the article.
+  if (previous && previous.read !== updated.read) {
+    const copies = withDuplicatesBlock([updated])
+      .filter(copy => copy.id !== updated.id && rssReadStateNeedsWriteBlock(copy, updated.read))
+    if (copies.length > 0) {
+      const at = updated.read ? new Date().toISOString() : null
+      const ids = copies.map(copy => copy.id)
+      patchItemsBlock(ids, { read: updated.read, viewedAt: at, dismissedAt: at })
+      void setRssItemsReadStateOrch(ids, at)
+    }
+  }
 }
 
 export function removeRssItemsBlock(itemIds: string[]): void {

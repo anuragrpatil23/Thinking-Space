@@ -2,7 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { AlertCircle, Bookmark, CalendarDays, Check, Circle, ListChecks, Loader2, Rss, X } from 'lucide-react'
 import {
   buildRssTimelineDayGroupsBlock,
+  collapseDuplicateRssEntriesBlock,
   pickRssTimelineAnchorBlock,
+  rssAlsoInLabelBlock,
   rssItemDayKeyBlock,
   type RssFeedItemBlock,
   type RssFeedResultBlock,
@@ -103,12 +105,17 @@ export default function RssTimelineBlock({
   const pendingAnchorRef = useRef<TimelineScrollAnchor | null>(initialAnchor)
   const anchorDeadlineRef = useRef(Date.now() + ANCHOR_RESTORE_WINDOW_MS)
   const anchorFrameRef = useRef<number | null>(null)
-  const entries = useMemo(() => feeds.flatMap(feed => feed.items.map(item => ({ item, feedTitle: feed.feedTitle })))
-    .sort((a, b) => new Date(b.item.pubDate ?? 0).getTime() - new Date(a.item.pubDate ?? 0).getTime()), [feeds])
+  // One card per article. The source is chosen first, so browsing one source
+  // still shows every article it carries.
+  const entries = useMemo(() => collapseDuplicateRssEntriesBlock(
+    feeds
+      .filter(feed => selectedSourceId === '__all__' || feed.feedId === selectedSourceId)
+      .flatMap(feed => feed.items.map(item => ({ item, feedTitle: feed.feedTitle }))),
+  ).sort((a, b) => new Date(b.item.pubDate ?? 0).getTime() - new Date(a.item.pubDate ?? 0).getTime()), [feeds, selectedSourceId])
   const sources = useMemo(() => feeds.map(feed => ({ id: feed.feedId, title: feed.feedTitle })), [feeds])
   const filteredEntries = selectedSourceId === '__all__'
     ? entries.filter(({ item }) => !item.read || sessionHandledIds.has(item.id))
-    : entries.filter(entry => entry.item.feedId === selectedSourceId)
+    : entries
   const visibleEntries = filteredEntries.slice(0, renderedCount)
 
   // The restored source tab can point at a feed that has since been removed.
@@ -447,7 +454,7 @@ export default function RssTimelineBlock({
           </div>
         )}
 
-        {visibleEntries.map(({ item, feedTitle }, index) => {
+        {visibleEntries.map(({ item, feedTitle, alsoIn }, index) => {
           const dayKey = rssItemDayKeyBlock(item.pubDate) ?? '__undated__'
           const previous = index > 0 ? visibleEntries[index - 1].item.pubDate : undefined
           const startsDay = index === 0 || (rssItemDayKeyBlock(previous ?? null) ?? '__undated__') !== dayKey
@@ -465,6 +472,7 @@ export default function RssTimelineBlock({
           <TimelineCard
             item={item}
             feedTitle={feedTitle}
+            alsoInLabel={rssAlsoInLabelBlock(alsoIn)}
             registerNode={registerCardNode}
             selectionMode={selectionMode}
             selected={selectedIds.has(item.id)}
@@ -551,11 +559,12 @@ function TimelineCardSkeleton() {
 }
 
 function TimelineCard({
-  item, feedTitle, registerNode, selectionMode, selected, onSelect, onOpen, onViewed,
+  item, feedTitle, alsoInLabel, registerNode, selectionMode, selected, onSelect, onOpen, onViewed,
   onMarkRead, onUnmarkRead, autoViewSuppressed, onToggleSaved,
 }: {
   item: RssFeedItemBlock
   feedTitle: string
+  alsoInLabel?: string | null
   /** Publishes the card element so the timeline can anchor its scroll to it. */
   registerNode: (itemId: string, node: HTMLElement | null) => void
   selectionMode: boolean
@@ -682,6 +691,12 @@ function TimelineCard({
               <>
                 <span aria-hidden className="text-muted-foreground">·</span>
                 <time className="shrink-0 text-muted-foreground">{dateLabel}</time>
+              </>
+            )}
+            {alsoInLabel && (
+              <>
+                <span aria-hidden className="text-muted-foreground">·</span>
+                <span className="min-w-0 truncate text-muted-foreground">{alsoInLabel}</span>
               </>
             )}
             {/* Fixed-size slot: the old dot/eye swap changed the element and its

@@ -39,7 +39,9 @@ import {
   RSS_UNREAD_INBOX_ID_BLOCK,
   buildFeedGroupTreeBlock,
   buildUnreadInboxItemsBlock,
-  rssFeedIdsExcludedFromAllUnreadBlock,
+  collapseDuplicateRssEntriesBlock,
+  rssAlsoInLabelBlock,
+  rssReaderFeedsBlock,
   flattenVisibleRssRowsBlock,
   rssRowIdBlock,
   type RssArticleNavStateBlock,
@@ -255,15 +257,15 @@ export default function RssFeedPanelBlock({
   }, [feeds, focusedFeedId])
 
   // Feeds in groups marked excludeFromAllUnread stay in their own group but
-  // are left out of the merged inbox and the header count.
-  const inboxFeeds = useMemo(() => {
-    if (!preferences) return feeds
-    const excluded = rssFeedIdsExcludedFromAllUnreadBlock(preferences.groups, preferences.feeds)
-    return excluded.size === 0 ? feeds : feeds.filter(f => !excluded.has(f.feedId))
-  }, [feeds, preferences])
+  // are left out of every merged view (inbox, timeline, reels) and the header
+  // count.
+  const inboxFeeds = useMemo(() => rssReaderFeedsBlock(feeds, preferences), [feeds, preferences])
 
+  // Counted per article, not per copy, so the number agrees with the inbox.
   const totalUnread = useMemo(
-    () => inboxFeeds.reduce((acc, f) => acc + f.items.filter(i => !i.read).length, 0),
+    () => collapseDuplicateRssEntriesBlock(
+      inboxFeeds.flatMap(f => f.items.map(item => ({ item, feedTitle: f.feedTitle }))),
+    ).filter(entry => !entry.item.read).length,
     [inboxFeeds],
   )
 
@@ -437,7 +439,7 @@ export default function RssFeedPanelBlock({
 
       {viewMode === 'reels' ? (
         <RssReelsBlock
-          feeds={feeds}
+          feeds={inboxFeeds}
           loadingFeedIds={loadingFeedIds}
           presetTags={presetTags}
           tagColors={tagColors}
@@ -449,7 +451,7 @@ export default function RssFeedPanelBlock({
         />
       ) : viewMode === 'timeline' ? (
         <RssTimelineBlock
-          feeds={feeds}
+          feeds={inboxFeeds}
           loadingFeedIds={loadingFeedIds}
           refreshing={refreshing}
           onRefresh={refresh}
@@ -485,6 +487,8 @@ export default function RssFeedPanelBlock({
                 rowId={rssRowIdBlock(RSS_UNREAD_INBOX_ID_BLOCK, entry.item.id)}
                 idx={idx}
                 sourceLabel={entry.feedTitle}
+                alsoInLabel={rssAlsoInLabelBlock(entry.alsoIn)}
+                alsoInTitle={entry.alsoIn?.join(', ')}
                 isSelected={selectedItemId === entry.item.id}
                 isPendingDelete={false}
                 deleteMode={false}
@@ -954,6 +958,8 @@ function FeedItemRow({
   rowId,
   idx,
   sourceLabel,
+  alsoInLabel,
+  alsoInTitle,
   isSelected,
   isPendingDelete,
   deleteMode,
@@ -967,6 +973,9 @@ function FeedItemRow({
   idx: number
   /** Source feed name, shown only in the merged unread inbox. */
   sourceLabel?: string
+  /** "also in …" — the other feeds this article is in. Merged inbox only. */
+  alsoInLabel?: string | null
+  alsoInTitle?: string
   isSelected: boolean
   isPendingDelete: boolean
   deleteMode: boolean
@@ -1044,7 +1053,13 @@ function FeedItemRow({
             )}
             {sourceLabel && item.pubDate && <span aria-hidden>·</span>}
             {item.pubDate && (
-              <span className="tabular-nums">{formatAbsoluteDateTime(item.pubDate)}</span>
+              <span className="shrink-0 tabular-nums">{formatAbsoluteDateTime(item.pubDate)}</span>
+            )}
+            {alsoInLabel && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="min-w-0 truncate" title={alsoInTitle}>{alsoInLabel}</span>
+              </>
             )}
             <RssItemAnnotationMarksBlock itemId={item.id} inverted={isSelected} className="ml-auto" />
           </div>
