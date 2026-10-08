@@ -2286,13 +2286,11 @@ function MarkdownTextDocumentRuntimeBlock({
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && !isCodeDoc && viewSurface === 'doc' && (
             <div>
               <div
-                className={cn(
-                  'sticky z-30 flex flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2',
-                  // iPhone: the document is one sheet of paper from the top
-                  // edge down, so this strip is card-white too — shell grey
-                  // between the header and the body reads as a seam.
-                  isIosPhone && 'bg-card',
-                )}
+                // Card-white like the header above and the note below: the
+                // document is one sheet from the top edge down, and shell grey
+                // here read as a band cut across it. The rule under it is what
+                // separates it from text scrolling beneath.
+                className="sticky z-30 flex flex-wrap items-center gap-1 border-b border-border/50 bg-card p-2"
                 style={{ top: isHeaderHidden ? 0 : headerHeight }}
               >
                 <MarkdownTableOfContentsBlock

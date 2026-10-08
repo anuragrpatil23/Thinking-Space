@@ -216,7 +216,7 @@ export default function HtmlDocumentBlock({
       {showWebview && (
         // Same strip a markdown note has under its header: Contents on the
         // left; the page tools take the place of the markdown-only ones.
-        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border/50 bg-card p-2">
           <MarkdownTableOfContentsBlock
             content={outlineMarkdown}
             currentLine={0}
