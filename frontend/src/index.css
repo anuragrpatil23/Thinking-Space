@@ -975,6 +975,17 @@
     border-bottom-left-radius: 0;
   }
 
+  /* Electron: the board this stage sits in is rounded to
+     --ltm-board-corner-radius. The stage's own, larger design radius clipped
+     the document to a tighter curve than the board behind it, leaving a
+     crescent of board colour in the corners — invisible around a white note,
+     plain around a dark HTML page that runs to the edge. Same curve as the
+     board, so nothing shows through. */
+  .ltm-app-shell[data-ltm-surface='electron'] .ltm-thinking-space-shell .ltm-thinking-space-document-stage {
+    border-top-right-radius: var(--ltm-board-corner-radius);
+    border-bottom-right-radius: var(--ltm-board-corner-radius);
+  }
+
   /* iPhone: the document stage IS the whole screen (push-detail view), so
      the Electron corner treatment (rounded right, flat left — shaped to sit
      beside the explorer) reads as a glitch. Full-bleed square.
