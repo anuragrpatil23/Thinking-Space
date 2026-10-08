@@ -16,7 +16,9 @@ interface AiActivityDayTimelineBlockProps {
   highlightProject?: string | null
 }
 
-const PIXELS_PER_HOUR = 32
+/** Floor for an hour's width. The strip stretches its hours to fill the card,
+ *  so this only bites on a card too narrow for that — where it scrolls. */
+const MIN_PIXELS_PER_HOUR = 32
 const ROW_HEIGHT = 16
 const ROW_GAP = 3
 const MIN_PILL_PX = 8
@@ -135,7 +137,13 @@ export default function AiActivityDayTimelineBlock({
     return { startHour: 0, endHour: Math.min(30, Math.ceil(latestHourFractional)) }
   }, [pills, dayStartMs])
 
-  const widthPx = (endHour - startHour) * PIXELS_PER_HOUR
+  // An hour is as wide as the card allows: the day spans the full width, so
+  // the timeline's right edge lands where the day row's and the legend's do
+  // instead of stopping wherever 32px × 24 happened to end. Measured from the
+  // scroll wrapper; until that has a width, the floor.
+  const [wrapWidth, setWrapWidth] = useState(0)
+  const pxPerHour = Math.max(MIN_PIXELS_PER_HOUR, wrapWidth / (endHour - startHour))
+  const widthPx = (endHour - startHour) * pxPerHour
   const hourTicks = useMemo(() => {
     const out: number[] = []
     for (let h = startHour; h <= endHour; h += 1) out.push(h)
@@ -171,8 +179,8 @@ export default function AiActivityDayTimelineBlock({
       const startedH = Math.max(rawStartedH, startHour)
       const endedH = Math.min(rawEndedH, endHour)
       if (endedH <= startedH) continue // entirely outside the visible window
-      const leftPx = (startedH - startHour) * PIXELS_PER_HOUR
-      const widthPx = Math.max(MIN_PILL_PX, (endedH - startedH) * PIXELS_PER_HOUR)
+      const leftPx = (startedH - startHour) * pxPerHour
+      const widthPx = Math.max(MIN_PILL_PX, (endedH - startedH) * pxPerHour)
       let row = rowEnds.findIndex(end => end <= leftPx + ROW_PACK_SLACK_PX)
       if (row === -1) {
         row = rowEnds.length
@@ -182,7 +190,7 @@ export default function AiActivityDayTimelineBlock({
       out.push({ key: c.key, pill: c, leftPx, widthPx, row })
     }
     return { placed: out, rows: rowEnds.length }
-  }, [pills, dayStartMs, startHour, endHour])
+  }, [pills, dayStartMs, startHour, endHour, pxPerHour])
 
   const stripHeight = placed.rows * (ROW_HEIGHT + ROW_GAP) - ROW_GAP
 
@@ -200,6 +208,7 @@ export default function AiActivityDayTimelineBlock({
     const el = scrollWrapRef.current
     if (!el) return
     const update = () => {
+      setWrapWidth(el.clientWidth)
       setCanScrollLeft(el.scrollLeft > 0)
       setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
     }
@@ -257,9 +266,13 @@ export default function AiActivityDayTimelineBlock({
             a view whose only real axis is time. */}
         <div className="relative">
         <div className="relative" style={{ height: stripHeight }}>
-          {hourTicks.slice(0, -1).map(h => {
-            const x = (h - startHour) * PIXELS_PER_HOUR
-            const isMidnight = h % 24 === 0 && h !== 0
+          {hourTicks.map((h, i) => {
+            const isLast = i === hourTicks.length - 1
+            // The closing line sits just inside the strip's right edge — at
+            // the edge itself it would be clipped — and stays as faint as the
+            // opening one, so the day reads as bracketed, not underlined.
+            const x = (h - startHour) * pxPerHour - (isLast ? 1 : 0)
+            const isMidnight = h % 24 === 0 && h !== 0 && !isLast
             return (
               <div
                 key={h}
@@ -319,7 +332,7 @@ export default function AiActivityDayTimelineBlock({
         {/* Hour axis labels — outside the scrollable strip so they're always visible. */}
         <div className="relative mt-1" style={{ height: 12 }}>
           {hourTicks.map((h, i) => {
-            const x = (h - startHour) * PIXELS_PER_HOUR
+            const x = (h - startHour) * pxPerHour
             const isMidnight = h % 24 === 0 && h !== 0
             return (
               <div

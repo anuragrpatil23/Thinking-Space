@@ -54,6 +54,10 @@ function warmVaultGraph() {
 interface AiActivityDayTableBlockProps {
   /** Title shown above the table (e.g. day or range label). */
   title: string
+  /** Shown in place of `title` above the table, at regular weight — for a host
+   *  that already names the date in its own heading and only needs this line
+   *  to add something (the weekday). `title` still heads the copied Markdown. */
+  heading?: string
   /** Chains to display, in display order. */
   chains: ActivityChain[]
   /** Optional summary line above the table (e.g. "14 sessions · 176 msgs"). */
@@ -275,6 +279,7 @@ function buildDrillDownMarkdown(
 
 export default function AiActivityDayTableBlock({
   title,
+  heading,
   chains,
   summary,
   highlightProject = null,
@@ -425,9 +430,21 @@ export default function AiActivityDayTableBlock({
 
   return (
     <div ref={hostRef} className="space-y-2">
-      <div className="flex items-baseline justify-between gap-3">
+      {/* px-3 matches the cells' own padding, so the heading starts on the
+          same line as the first column's text instead of out at the box's
+          border. */}
+      <div className="flex items-baseline justify-between gap-3 px-3">
         <div>
-          <h4 className="text-sm font-semibold text-foreground">{title}</h4>
+          <h4
+            className={cn(
+              'text-sm text-foreground',
+              // A host-supplied heading is a caption under the host's own
+              // title, so it does not get a title's weight.
+              heading ? 'font-normal' : 'font-semibold',
+            )}
+          >
+            {heading ?? title}
+          </h4>
           {summary && (
             <p className="text-[11px] text-muted-foreground/80">{summary}</p>
           )}

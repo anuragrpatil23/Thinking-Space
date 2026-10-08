@@ -141,6 +141,21 @@ function readStoredDisplay(): AggregateDisplay | null {
   return null
 }
 
+// View toggles (set/month/year, table/graph, graph metric), as iOS-style
+// segmented controls: a recessed grey track with equal-width segments, and the
+// selected one a raised, lighter thumb. Equal widths matter — the thumb keeps
+// one size as it moves. Before this they were bordered capsules holding solid
+// black pills in spaced capitals (the heaviest marks on the card), then bare
+// text with a wash (too little to read as a control at all).
+const TOGGLE_ROW_CLASS =
+  'inline-grid w-fit auto-cols-fr grid-flow-col rounded-lg bg-foreground/[0.06] p-0.5'
+const TOGGLE_CLASS =
+  'rounded-md px-3 py-1 text-center text-[11px] font-medium capitalize leading-none transition-colors ' +
+  'outline-none focus-visible:ring-1 focus-visible:ring-foreground/40'
+const TOGGLE_ACTIVE_CLASS =
+  'bg-card text-foreground shadow-sm ring-1 ring-black/[0.04] dark:bg-foreground/15 dark:ring-0'
+const TOGGLE_IDLE_CLASS = 'text-muted-foreground hover:text-foreground'
+
 export default function AiActivityAggregateBlock({
   chains,
   filterProject = null,
@@ -375,7 +390,7 @@ export default function AiActivityAggregateBlock({
   return (
     <div ref={hostRef} className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 p-0.5 w-fit">
+        <div className={TOGGLE_ROW_CLASS}>
           {GRANULARITIES.map(g => {
             const active = effectiveGranularity === g.id
             return (
@@ -384,10 +399,8 @@ export default function AiActivityAggregateBlock({
                 type="button"
                 onClick={() => setGranularity(g.id)}
                 className={cn(
-                  'rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] transition-all',
-                  active
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+                  TOGGLE_CLASS,
+                  active ? TOGGLE_ACTIVE_CLASS : TOGGLE_IDLE_CLASS,
                 )}
               >
                 {g.label}
@@ -403,7 +416,7 @@ export default function AiActivityAggregateBlock({
             Copied
           </span>
         )}
-        <div className="flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 p-0.5 w-fit">
+        <div className={TOGGLE_ROW_CLASS}>
           {(['table', 'graph'] as const).map(d => {
             const active = display === d
             return (
@@ -412,10 +425,8 @@ export default function AiActivityAggregateBlock({
                 type="button"
                 onClick={() => setDisplay(d)}
                 className={cn(
-                  'rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] transition-all',
-                  active
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+                  TOGGLE_CLASS,
+                  active ? TOGGLE_ACTIVE_CLASS : TOGGLE_IDLE_CLASS,
                 )}
               >
                 {d}
@@ -431,7 +442,7 @@ export default function AiActivityAggregateBlock({
       ) : display === 'graph' && graph ? (
         <div className="rounded-lg border border-border/40 bg-card/40 px-2 pb-1 pt-2">
           <div className="flex items-center justify-end pb-1.5 pr-1">
-            <div className="flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 p-0.5 w-fit">
+            <div className={TOGGLE_ROW_CLASS}>
               {GRAPH_METRICS.filter(m => m.id !== 'cost' || anyTokens).map(m => {
                 const active = metric === m.id
                 return (
@@ -440,10 +451,8 @@ export default function AiActivityAggregateBlock({
                     type="button"
                     onClick={() => setMetric(m.id)}
                     className={cn(
-                      'rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] transition-all',
-                      active
-                        ? 'bg-foreground text-background'
-                        : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+                      TOGGLE_CLASS,
+                      active ? TOGGLE_ACTIVE_CLASS : TOGGLE_IDLE_CLASS,
                     )}
                   >
                     {m.label}

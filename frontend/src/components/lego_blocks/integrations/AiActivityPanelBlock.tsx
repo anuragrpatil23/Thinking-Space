@@ -405,20 +405,40 @@ export default function AiActivityPanelBlock({
               replacement for the AI range summary. The table below is the
               granular session breakdown; clicking a project filters to it. */}
           {drillChains.length > 0 && (
-            <AiActivityDrillProjectTotalsBlock
-              chains={drillChains}
-              activeProject={activeProject}
-              onSelectProject={setActiveProject}
-            />
+            // Pulled out by the 4px each legend entry pads itself with, so its
+            // first dot sits under the timeline's first gridline and the total
+            // ends under its last.
+            <div className="-mx-1">
+              <AiActivityDrillProjectTotalsBlock
+                chains={drillChains}
+                activeProject={activeProject}
+                onSelectProject={setActiveProject}
+              />
+            </div>
           )}
         </div>
         {/* Table is the only scrolling region — keeps the section header/chart
             pinned so context stays visible while you scan a multi-day drill.
             Wheel-capture stops the canvas from panning underneath while the
             cursor is over an overflowing table. */}
+        {/* The table steps back out of the day view's 12px inset to the card's
+            own margin: it is a bordered box with its own cell padding, and
+            inset twice its rows lost width they need for the topic column. */}
+        <div className={stripRange && withTimeline ? '-mx-3' : undefined}>
         <DrillTableScroll>
           <AiActivityDayTableBlock
             title={drillTitle}
+            // Under the strip the date heading already says "8th Oct", so the
+            // table's own line adds the one thing that heading leaves out —
+            // the weekday — instead of repeating the date. A range keeps its
+            // full title; nothing above spells a range out.
+            heading={
+              withTimeline && stripRange && selectedDate
+                ? new Date(selectedDate + 'T00:00:00').toLocaleDateString(undefined, {
+                    weekday: 'long',
+                  })
+                : undefined
+            }
             chains={drillChains}
             summary={drillSummary}
             highlightProject={activeProject}
@@ -431,6 +451,7 @@ export default function AiActivityPanelBlock({
             onManualChanged={activity.refresh}
           />
         </DrillTableScroll>
+        </div>
       </div>
     )
   }
@@ -487,11 +508,17 @@ export default function AiActivityPanelBlock({
         </div>
       </div>
 
-      {/* More air than the 12px this had under two open rows of filter pills:
-          with those collapsed to one line the header is short, and the project
-          list sat hard up against the card title. */}
-      <div className="mt-7">
-      <div>
+      {/* One vertical step down the top of the card: title → project list →
+          date heading → day row are each ~52px apart, measured from the bottom
+          of one block's ink to the top of the next. The three margins differ
+          (52 here, 54 on the sections wrapper, 44 on the strip section's body)
+          only because each block carries different padding of its own. */}
+      <div className="mt-[52px]">
+      {/* 5px, not the day view's 12: each chip carries 7px of its own padding
+          and border before its dot, so this is what puts the dots on the line
+          the date numeral and day row start on, and the durations on the line
+          the timeline ends on. */}
+      <div className="px-[5px]">
         <AiActivityProjectChipsBlock
           projects={activity.projects}
           activeProject={activeProject}
@@ -529,10 +556,13 @@ export default function AiActivityPanelBlock({
           section's drill detail docks under it — the detail appears where you
           clicked. Only the heatmap carries the day timeline; trend + totals
           only surface the range summary + table. */}
-      <div className={compact ? 'mt-4' : 'mt-10 space-y-14'}>
+      <div className={compact ? 'mt-4' : cn(stripRange ? 'mt-[54px]' : 'mt-10', 'space-y-14')}>
         <PanelSection
           title={heatmapSectionTitle}
-          bodyClassName={stripRange ? 'mt-11' : undefined}
+          // px-3: the day view's body takes the same 12px inset as its date
+          // heading, both sides. Only this section — Trend and Totals run to
+          // the card's own margin.
+          bodyClassName={stripRange ? 'mt-11 px-3' : undefined}
           open={sectionsOpen.heatmap}
           onToggle={() => toggleSection('heatmap')}
         >
@@ -680,15 +710,29 @@ function PanelSection({
         <button
           type="button"
           onClick={onToggle}
-          className="flex flex-1 items-center gap-1.5 text-foreground/70 hover:text-foreground"
+          // Section headings are set in a little from the card's edge; hard
+          // against it, the date numeral looked cramped by the border. All
+          // three share the inset so the headings line up with each other.
+          className="flex flex-1 items-center gap-1.5 pl-3 text-foreground/70 hover:text-foreground"
           aria-expanded={open}
         >
-          <ChevronDown className={cn('h-4 w-4 transition-transform', !open && '-rotate-90')} />
           {typeof title === 'string' ? (
             <span className="text-sm font-semibold tracking-tight">{title}</span>
           ) : (
             title
           )}
+          {/* After the title, not before it: leading, the chevron took the
+              card's left edge and pushed the heading a chevron's width in from
+              the line every block below it starts on. */}
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 shrink-0 opacity-60 transition-transform',
+              // A display-size title needs the chevron held further off than a
+              // 14px one does, or it reads as the last glyph of the date.
+              typeof title !== 'string' && 'ml-3.5',
+              !open && '-rotate-90',
+            )}
+          />
         </button>
         {headerRight}
       </div>
