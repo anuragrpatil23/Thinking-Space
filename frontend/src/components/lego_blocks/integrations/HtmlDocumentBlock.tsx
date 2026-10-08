@@ -13,6 +13,7 @@ import {
   buildHtmlPageScrollToHeadingScriptBlock,
   parseHtmlPageHeadingsBlock,
 } from '@/services/lego_blocks/units/htmlPageGuestBlock'
+import { enableWebviewPinchZoomBlock } from '@/services/lego_blocks/units/webviewPinchZoomBlock'
 import type { MarkdownTableOfContentsItemBlock } from '@/services/lego_blocks/units/markdownTableOfContentsBlock'
 import {
   useWebviewFindBlock,
@@ -42,6 +43,7 @@ interface HtmlPageWebviewElementBlock extends FindableWebviewElementBlock {
   setZoomFactor?: (factor: number) => void
   executeJavaScript?: (code: string) => Promise<unknown>
   insertCSS?: (css: string) => Promise<string>
+  setVisualZoomLevelLimits?: (minimumLevel: number, maximumLevel: number) => Promise<void>
 }
 
 function encodeHtmlAsDataUrl(html: string): string {
@@ -142,6 +144,7 @@ export default function HtmlDocumentBlock({
       generation += 1
       // A fresh load starts at the top, whatever the last one reported.
       onChromeHiddenChangeRef.current?.(false)
+      enableWebviewPinchZoomBlock(webview)
       webview.insertCSS?.(HTML_PAGE_SCROLLBAR_CSS_BLOCK).catch(() => { /* guest went away */ })
       webview.executeJavaScript?.(HTML_PAGE_OUTLINE_SCRIPT_BLOCK)
         .then((value) => setOutlineMarkdown(buildHtmlPageOutlineMarkdownBlock(parseHtmlPageHeadingsBlock(value))))
