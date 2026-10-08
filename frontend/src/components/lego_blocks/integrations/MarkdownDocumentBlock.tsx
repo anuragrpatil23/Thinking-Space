@@ -765,6 +765,7 @@ function MarkdownTextDocumentRuntimeBlock({
       : 'bg-transparent',
   )
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc && !isHtmlDoc
+  const htmlHeaderCollapses = isHtmlDoc && !isEditing
   // Exclude only true mobile Capacitor surfaces — NOT Electron. Capacitor's
   // isNativePlatform() returns true on Electron, so `!isCapacitorNative` wrongly
   // hid the rail there; gate on the resolved surface (which is 'electron' first).
@@ -1835,10 +1836,16 @@ function MarkdownTextDocumentRuntimeBlock({
           <div
             ref={chromeContainerRef}
             className={cn(
-              'sticky top-0 z-40 bg-card transition-transform duration-200 ease-out',
-              isHeaderHidden && '-translate-y-full',
+              'sticky top-0 z-40 bg-card duration-200 ease-out',
+              // An HTML page scrolls inside its own webview, so the header is
+              // not in the scrolled flow: sliding it away would leave its gap
+              // behind. Pull it out of the layout instead and let the page
+              // take the room.
+              htmlHeaderCollapses ? 'shrink-0 transition-[margin]' : 'transition-transform',
+              isHeaderHidden && !htmlHeaderCollapses && '-translate-y-full',
               hideTopBarInView && 'hidden',
             )}
+            style={htmlHeaderCollapses && isHeaderHidden ? { marginTop: -headerHeight } : undefined}
           >
             <div
               className={cn(
@@ -2222,7 +2229,7 @@ function MarkdownTextDocumentRuntimeBlock({
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && isHtmlDoc && (
-            <HtmlDocumentBlock html={displayContent} path={path} active={active} className="min-h-0 flex-1" />
+            <HtmlDocumentBlock html={displayContent} path={path} active={active} onChromeHiddenChange={setIsHeaderHidden} className="min-h-0 flex-1" />
           )}
 
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && isCodeDoc && (

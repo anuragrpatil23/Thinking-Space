@@ -4,6 +4,15 @@ import { cn } from '@/lib/utils'
 import { isElectron } from '@/services/lego_blocks/integrations/fsBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import DocumentFindBarBlock from '@/components/lego_blocks/integrations/DocumentFindBarBlock'
+import MarkdownTableOfContentsBlock from '@/components/lego_blocks/integrations/MarkdownTableOfContentsBlock'
+import {
+  HTML_PAGE_CHROME_HIDDEN_WAIT_SCRIPT_BLOCK,
+  HTML_PAGE_OUTLINE_SCRIPT_BLOCK,
+  buildHtmlPageOutlineMarkdownBlock,
+  buildHtmlPageScrollToHeadingScriptBlock,
+  parseHtmlPageHeadingsBlock,
+} from '@/services/lego_blocks/units/htmlPageGuestBlock'
+import type { MarkdownTableOfContentsItemBlock } from '@/services/lego_blocks/units/markdownTableOfContentsBlock'
 import {
   useWebviewFindBlock,
   type FindableWebviewElementBlock,
@@ -17,6 +26,9 @@ interface HtmlDocumentBlockProps {
   path?: string
   /** Whether this document owns keyboard shortcuts (Cmd/Ctrl+F). */
   active?: boolean
+  /** Reader scrolled down (true) or back up / to the top (false) — lets the
+   *  host hide its header the way it does for a scrolled markdown note. */
+  onChromeHiddenChange?: (hidden: boolean) => void
   className?: string
 }
 
@@ -27,6 +39,7 @@ const ZOOM_STEPS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
 interface HtmlPageWebviewElementBlock extends FindableWebviewElementBlock {
   reload?: () => void
   setZoomFactor?: (factor: number) => void
+  executeJavaScript?: (code: string) => Promise<unknown>
 }
 
 function encodeHtmlAsDataUrl(html: string): string {
@@ -39,12 +52,13 @@ function encodeHtmlAsDataUrl(html: string): string {
 }
 
 const toolButtonClassName =
-  'rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40'
+  'rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40'
 
 export default function HtmlDocumentBlock({
   html,
   path,
   active = true,
+  onChromeHiddenChange,
   className,
 }: HtmlDocumentBlockProps) {
   const electron = isElectron()
@@ -56,6 +70,9 @@ export default function HtmlDocumentBlock({
   const [zoom, setZoom] = useState(1)
   const [findOpen, setFindOpen] = useState(false)
   const find = useWebviewFindBlock(webviewRef, { active: findOpen })
+  const [outlineMarkdown, setOutlineMarkdown] = useState('')
+  const onChromeHiddenChangeRef = useRef(onChromeHiddenChange)
+  onChromeHiddenChangeRef.current = onChromeHiddenChange
 
   useEffect(() => {
     if (!electron) return
@@ -105,8 +122,27 @@ export default function HtmlDocumentBlock({
     const webview = webviewRef.current
     if (!webview || !webviewSrc) return
     guestReadyRef.current = false
+    // Each page load gets its own generation, so a watch left over from the
+    // previous load can never report into this one.
+    let generation = 0
+    const watchChromeHidden = async (mine: number) => {
+      while (mine === generation) {
+        const hidden = await webview.executeJavaScript?.(HTML_PAGE_CHROME_HIDDEN_WAIT_SCRIPT_BLOCK)
+        if (mine !== generation || typeof hidden !== 'boolean') return
+        onChromeHiddenChangeRef.current?.(hidden)
+      }
+    }
     const onReady = () => {
       guestReadyRef.current = true
+      generation += 1
+      // A fresh load starts at the top, whatever the last one reported.
+      onChromeHiddenChangeRef.current?.(false)
+      webview.executeJavaScript?.(HTML_PAGE_OUTLINE_SCRIPT_BLOCK)
+        .then((value) => setOutlineMarkdown(buildHtmlPageOutlineMarkdownBlock(parseHtmlPageHeadingsBlock(value))))
+        .catch(() => setOutlineMarkdown(''))
+      watchChromeHidden(generation).catch(() => {
+        // The page navigated or the guest went away; the next load re-arms.
+      })
       // Chromium keeps zoom per origin; re-assert ours so the control and the
       // page never disagree after a reload or a remount.
       try {
@@ -116,8 +152,19 @@ export default function HtmlDocumentBlock({
       }
     }
     webview.addEventListener('dom-ready', onReady)
-    return () => webview.removeEventListener('dom-ready', onReady)
+    return () => {
+      generation = -1
+      webview.removeEventListener('dom-ready', onReady)
+      onChromeHiddenChangeRef.current?.(false)
+    }
   }, [webviewSrc])
+
+  const scrollToHeading = useCallback((heading: MarkdownTableOfContentsItemBlock) => {
+    if (!guestReadyRef.current) return
+    // The outline is one heading per line (1-based), so the line locates it.
+    webviewRef.current?.executeJavaScript?.(buildHtmlPageScrollToHeadingScriptBlock(heading.line - 1))
+      .catch(() => { /* guest went away */ })
+  }, [])
 
   // The page URL is stable while the file changes underneath it, so a saved
   // edit (ours or an agent's) needs an explicit reload to show up.
@@ -161,22 +208,31 @@ export default function HtmlDocumentBlock({
   return (
     <div className={cn('flex h-full min-h-0 flex-col', className)}>
       {showWebview && (
-        <div className="flex shrink-0 items-center justify-end gap-0.5 border-b border-border/50 px-3 py-1">
-          <button type="button" className={toolButtonClassName} onClick={() => setFindOpen(true)} aria-label="Find in page" title="Find in page">
-            <Search className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" className={toolButtonClassName} onClick={() => stepZoom(-1)} disabled={zoom <= ZOOM_STEPS[0]} aria-label="Zoom out" title="Zoom out">
-            <Minus className="h-3.5 w-3.5" />
-          </button>
-          <span className="min-w-[2.75rem] text-center text-[11px] tabular-nums text-muted-foreground">
-            {Math.round(zoom * 100)}%
-          </span>
-          <button type="button" className={toolButtonClassName} onClick={() => stepZoom(1)} disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]} aria-label="Zoom in" title="Zoom in">
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" className={toolButtonClassName} onClick={reload} aria-label="Reload page" title="Reload page">
-            <RotateCw className="h-3.5 w-3.5" />
-          </button>
+        // Same strip a markdown note has under its header: Contents on the
+        // left; the page tools take the place of the markdown-only ones.
+        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border/20 bg-background p-2">
+          <MarkdownTableOfContentsBlock
+            content={outlineMarkdown}
+            currentLine={0}
+            onSelectHeading={scrollToHeading}
+          />
+          <div className="ml-auto flex items-center gap-0.5">
+            <button type="button" className={toolButtonClassName} onClick={() => setFindOpen(true)} aria-label="Find in page" title="Find in page">
+              <Search className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" className={toolButtonClassName} onClick={() => stepZoom(-1)} disabled={zoom <= ZOOM_STEPS[0]} aria-label="Zoom out" title="Zoom out">
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <span className="min-w-[2.75rem] text-center text-xs font-semibold tabular-nums text-muted-foreground">
+              {Math.round(zoom * 100)}%
+            </span>
+            <button type="button" className={toolButtonClassName} onClick={() => stepZoom(1)} disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]} aria-label="Zoom in" title="Zoom in">
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" className={toolButtonClassName} onClick={reload} aria-label="Reload page" title="Reload page">
+              <RotateCw className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       )}
       {/* Edge to edge: every pixel of inset narrows the page's own viewport
