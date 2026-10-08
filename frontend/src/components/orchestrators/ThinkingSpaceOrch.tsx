@@ -1106,6 +1106,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
           showCloseButton
           className="h-full min-h-0"
           topBarHidden={inlineDocHeaderHidden}
+          besideSidebar={showInlineSidebar && !explorerCollapsed}
         />
       </section>
     ))
@@ -1118,6 +1119,8 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     inlineInitialModeByPath,
     inlinePath,
     mountedInlinePaths,
+    showInlineSidebar,
+    explorerCollapsed,
   ])
 
   return (

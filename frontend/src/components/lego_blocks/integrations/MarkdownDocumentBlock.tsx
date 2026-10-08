@@ -171,6 +171,10 @@ interface MarkdownDocumentBlockProps {
   onOpenAsNotebook?: (path: string) => void
   onClose?: () => void
   showCloseButton?: boolean
+  /** An open sidebar sits directly to the left. An HTML page, which otherwise
+   *  runs to the pane's edges, then keeps its left gutter so the two surfaces
+   *  don't touch. */
+  besideSidebar?: boolean
   className?: string
   topBarHidden?: boolean
 }
@@ -303,6 +307,7 @@ function MarkdownTextDocumentRuntimeBlock({
   onOpenAsNotebook,
   onClose,
   showCloseButton = false,
+  besideSidebar = false,
   className,
   topBarHidden: topBarHiddenProp,
 }: MarkdownDocumentBlockProps) {
@@ -1802,7 +1807,7 @@ function MarkdownTextDocumentRuntimeBlock({
         // invisible around a white note frames it in white. The page runs to
         // the pane's edges instead (the pane clips its rounded corners) and
         // the header alone keeps the inset.
-        htmlRunsToEdges ? 'p-0' : 'p-2',
+        htmlRunsToEdges ? (besideSidebar ? 'py-0 pl-2 pr-0' : 'p-0') : 'p-2',
         className,
       )}
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
@@ -1853,7 +1858,9 @@ function MarkdownTextDocumentRuntimeBlock({
               // page keeps its content still across the one resize instead
               // (htmlPageGuestBlock).
               htmlHeaderCollapses ? 'relative shrink-0' : 'sticky top-0 transition-transform duration-200 ease-out',
-              htmlRunsToEdges && 'px-2 pt-2',
+              // Top inset only: the header's rule must span the pane like the
+              // strip under it, so the side inset moves inside the header.
+              htmlRunsToEdges && 'pt-2',
               isHeaderHidden && !htmlHeaderCollapses && '-translate-y-full',
               hideTopBarInView && 'hidden',
             )}
@@ -1863,6 +1870,8 @@ function MarkdownTextDocumentRuntimeBlock({
               className={cn(
                 'ts-md-header ts-doc-header flex items-start justify-between gap-3 border-b border-border/50',
                 isIosPhone ? 'flex-col items-stretch px-4 py-3.5' : 'px-6 py-5',
+                htmlRunsToEdges && (isIosPhone ? 'pr-6' : 'pr-8'),
+                htmlRunsToEdges && !besideSidebar && (isIosPhone ? 'pl-6' : 'pl-8'),
               )}
             >
               <div className={cn('min-w-0 flex-1', isIosPhone && 'w-full')}>
