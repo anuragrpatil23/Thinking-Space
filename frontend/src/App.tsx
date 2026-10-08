@@ -2157,6 +2157,12 @@ function App() {
         handleGlobalRefresh()
         return
       }
+      // A held key repeats, and each repeat would flip these toggles again —
+      // an even number of repeats looks like the shortcut did nothing.
+      if (withMeta && event.code === 'Backslash' && event.repeat) {
+        event.preventDefault()
+        return
+      }
       if (withMeta && event.shiftKey && !event.altKey && event.code === 'Backslash') {
         if (activeHeaderChromeBlock) {
           event.preventDefault()

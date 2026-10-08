@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { ChevronLeft, ExternalLink, Globe, Loader2, RotateCw, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { startWebviewShortcutRelayBlock } from '@/services/lego_blocks/units/webviewShortcutRelayBlock'
 import { startWebviewMagnifierBlock } from '@/services/lego_blocks/units/webviewPinchZoomBlock'
 import { useElectronWebviewLoadErrorBlock } from '@/components/lego_blocks/hooks/shared/useElectronWebviewLoadErrorBlock'
 import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
@@ -388,12 +389,14 @@ function UrlDocumentBlock({
     }
 
     const stopMagnifier = startWebviewMagnifierBlock(webview)
+    const stopShortcutRelay = startWebviewShortcutRelayBlock(webview, ['sidebar', 'header'])
 
     webview.addEventListener('did-navigate', updateCanGoBack)
     webview.addEventListener('did-navigate-in-page', updateCanGoBack)
     webview.addEventListener('did-finish-load', updateCanGoBack as EventListener)
     return () => {
       stopMagnifier()
+      stopShortcutRelay()
       webview.removeEventListener('did-navigate', updateCanGoBack)
       webview.removeEventListener('did-navigate-in-page', updateCanGoBack)
       webview.removeEventListener('did-finish-load', updateCanGoBack as EventListener)

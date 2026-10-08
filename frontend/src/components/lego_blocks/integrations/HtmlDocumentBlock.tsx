@@ -13,6 +13,7 @@ import {
   buildHtmlPageScrollToHeadingScriptBlock,
   parseHtmlPageHeadingsBlock,
 } from '@/services/lego_blocks/units/htmlPageGuestBlock'
+import { startWebviewShortcutRelayBlock } from '@/services/lego_blocks/units/webviewShortcutRelayBlock'
 import { startWebviewMagnifierBlock } from '@/services/lego_blocks/units/webviewPinchZoomBlock'
 import type { MarkdownTableOfContentsItemBlock } from '@/services/lego_blocks/units/markdownTableOfContentsBlock'
 import {
@@ -160,8 +161,10 @@ export default function HtmlDocumentBlock({
     }
     webview.addEventListener('dom-ready', onReady)
     const stopMagnifier = startWebviewMagnifierBlock(webview)
+    const stopShortcutRelay = startWebviewShortcutRelayBlock(webview, ['sidebar', 'header', 'find'])
     return () => {
       stopMagnifier()
+      stopShortcutRelay()
       generation = -1
       webview.removeEventListener('dom-ready', onReady)
       onChromeHiddenChangeRef.current?.(false)
@@ -202,8 +205,8 @@ export default function HtmlDocumentBlock({
   const showWebview = electron && Boolean(webviewSrc)
   useEffect(() => {
     if (!showWebview || !active) return
-    // Only reaches us while focus is in the app chrome: keystrokes typed
-    // inside the page stay in the guest. The toolbar button covers that case.
+    // Pressed inside the page, the shortcut is relayed out and replayed on
+    // this window (webviewShortcutRelayBlock), so it lands here either way.
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && !event.altKey && (event.key === 'f' || event.key === 'F')) {
         event.preventDefault()
