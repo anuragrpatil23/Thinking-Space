@@ -1,15 +1,11 @@
 import { useState } from 'react'
 import AiLimitsMeterBlock from '@/components/lego_blocks/units/AiLimitsMeterBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
-import {
-  accentForBlock,
-  formatUpdatedAgoBlock,
-  visibleProvidersBlock,
-  type AiLimitsProviderBlock,
-} from '@/services/lego_blocks/units/aiLimitsModelBlock'
+import type { AiLimitsProviderBlock } from '@/services/lego_blocks/units/aiLimitsModelBlock'
 
 interface AiLimitsStripBlockProps {
-  providers: AiLimitsProviderBlock[]
+  /** The one provider to show. The section's toggle picks it and names it. */
+  provider: AiLimitsProviderBlock
   /**
    * Frozen clock for the whole strip. Supplied by the caller rather than read
    * here so the strip holds no timer of its own — countdowns refresh when new
@@ -20,10 +16,6 @@ interface AiLimitsStripBlockProps {
   statusLineScriptPath: string
   /** Whether Claude Code already has a status line, and whose. */
   statusLineMode: 'none' | 'ours' | 'theirs'
-  /** When the reading was taken, for the freshness line. */
-  readAtMs: number
-  /** Take a new reading now. */
-  onRefresh: () => void
 }
 
 // The host card's own text colours, so the strip follows whatever surface it
@@ -32,111 +24,60 @@ const HEADING_COLOR_BLOCK = 'hsl(var(--foreground))'
 const MUTED_COLOR_BLOCK = 'hsl(var(--muted-foreground))'
 
 /**
- * Where the plan's limits stand right now, for every AI provider the person
- * actually uses: a dot, a name, and two hairline meters each — session first,
- * weekly second.
+ * Where one provider's plan limits stand right now: the session window and the
+ * weekly window, side by side on one line.
  *
- * Has no card or heading of its own. It was a separate card above AI activity
- * first, and read as a second thing to look at for what is one subject: the
- * limit is the budget, the activity is the spend. It now sits inside the
- * activity card's "Plan usage" section, which supplies the title and puts the
- * history graph under it.
+ * It has been three things. A separate card above AI activity read as a second
+ * subject for what is one — the limit is the budget, the activity is the
+ * spend. Moved inside the card's "Plan usage" section with both providers in
+ * two columns, it was eight figures, four bars and two reset dates above a
+ * chart that then named the providers again. Now the section's toggle picks one
+ * provider for the meters and the chart together, so nothing is said twice and
+ * the strip needs no name, no heading and no card of its own.
  */
 export default function AiLimitsStripBlock({
-  providers,
+  provider,
   nowMs,
   statusLineScriptPath,
   statusLineMode,
-  readAtMs,
-  onRefresh,
 }: AiLimitsStripBlockProps) {
   const { hostRef, isDark } = useDarkModeClassBlock()
-  const visible = visibleProvidersBlock(providers)
-  if (visible.length === 0) return null
-
   const heading = HEADING_COLOR_BLOCK
   const muted = MUTED_COLOR_BLOCK
 
   return (
-    <div ref={hostRef} aria-label="AI usage limits" role="group">
-      <div
-        // One provider gets the full width rather than a half-empty two-column
-        // grid, so someone who only uses one tool sees a deliberate row instead
-        // of a gap where the other tool would have been.
-        className={`grid gap-x-10 gap-y-5 ${visible.length > 1 ? 'sm:grid-cols-2' : ''}`}
-      >
-        {visible.map((provider) => (
-        <div key={provider.id} className="min-w-0">
-          <div className="mb-2 flex items-baseline gap-2">
-            <span
-              aria-hidden
-              className="h-1.5 w-1.5 shrink-0 rounded-full"
-              style={{ background: accentForBlock(provider.id, isDark) }}
-            />
-            <span className="text-[12px] font-medium tracking-tight" style={{ color: heading }}>
-              {provider.label}
-            </span>
-            {provider.plan && (
-              <span className="truncate text-[11px]" style={{ color: muted }}>
-                {provider.plan}
-              </span>
-            )}
-          </div>
-
-          {provider.state === 'unconfigured' ? (
-            <ConnectInviteBlock
-              providerId={provider.id}
-              muted={muted}
-              heading={heading}
-              isDark={isDark}
-              statusLineScriptPath={statusLineScriptPath}
-              statusLineMode={statusLineMode}
-            />
-          ) : (
-            <div className="space-y-1.5">
-              <AiLimitsMeterBlock
-                providerId={provider.id}
-                kind="session"
-                window={provider.session}
-                isDark={isDark}
-                mutedColor={muted}
-                textColor={heading}
-                nowMs={nowMs}
-              />
-              <AiLimitsMeterBlock
-                providerId={provider.id}
-                kind="weekly"
-                window={provider.weekly}
-                isDark={isDark}
-                mutedColor={muted}
-                textColor={heading}
-                nowMs={nowMs}
-              />
-            </div>
-          )}
-          </div>
-        ))}
-      </div>
-
-      {/* The strip reads on open and on window focus, never on a poll, so a
-          figure can be minutes old with nothing else on screen admitting it.
-          Doubles as the manual refresh — the thing you reach for the moment you
-          notice the number is stale. */}
-      <button
-        type="button"
-        onClick={onRefresh}
-        title="Take a new reading"
-        className="mt-4 rounded text-[10.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
-        style={{ color: muted }}
-        onMouseEnter={(event) => {
-          event.currentTarget.style.color = heading
-        }}
-        onMouseLeave={(event) => {
-          event.currentTarget.style.color = muted
-        }}
-      >
-        Updated {formatUpdatedAgoBlock(readAtMs, nowMs)} · refresh
-      </button>
+    <div ref={hostRef} role="group" aria-label={`${provider.label} usage limits`}>
+      {provider.state === 'unconfigured' ? (
+        <ConnectInviteBlock
+          providerId={provider.id}
+          muted={muted}
+          heading={heading}
+          isDark={isDark}
+          statusLineScriptPath={statusLineScriptPath}
+          statusLineMode={statusLineMode}
+        />
+      ) : (
+        <div className="grid gap-x-12 gap-y-2 sm:grid-cols-2">
+          <AiLimitsMeterBlock
+            providerId={provider.id}
+            kind="session"
+            window={provider.session}
+            isDark={isDark}
+            mutedColor={muted}
+            textColor={heading}
+            nowMs={nowMs}
+          />
+          <AiLimitsMeterBlock
+            providerId={provider.id}
+            kind="weekly"
+            window={provider.weekly}
+            isDark={isDark}
+            mutedColor={muted}
+            textColor={heading}
+            nowMs={nowMs}
+          />
+        </div>
+      )}
     </div>
   )
 }

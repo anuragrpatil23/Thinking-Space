@@ -27,11 +27,14 @@ import { useProjectsBlock } from '@/components/lego_blocks/hooks/shared/useProje
 import { buildProjectKindMapBlock } from '@/services/lego_blocks/units/projectKindBlock'
 import AiActivityDrillProjectTotalsBlock from '@/components/lego_blocks/units/AiActivityDrillProjectTotalsBlock'
 import AiActivityProjectChipsBlock from '@/components/lego_blocks/units/AiActivityProjectChipsBlock'
-import AiPlanUsageSectionBlock from '@/components/lego_blocks/integrations/AiPlanUsageSectionBlock'
+import AiPlanUsageSectionBlock, {
+  AiPlanUsageProviderToggleBlock,
+} from '@/components/lego_blocks/integrations/AiPlanUsageSectionBlock'
+import { planUsageProviderIdsBlock } from '@/services/lego_blocks/units/aiPlanUsageHistoryBlock'
 import { useAiPlanUsageBlock } from '@/components/lego_blocks/hooks/shared/useAiPlanUsageBlock'
 import { usePlanUsageMovesBlock } from '@/components/lego_blocks/hooks/units/usePlanUsageMovesBlock'
 import { baseSessionIdBlock } from '@/services/orchestrators/aiLimitShareOrch'
-import { visibleProvidersBlock } from '@/services/lego_blocks/units/aiLimitsModelBlock'
+import type { AiLimitsProviderIdBlock } from '@/services/lego_blocks/units/aiLimitsModelBlock'
 // Code-split boundaries: these two pull recharts; keep it out of the startup bundle.
 const AiActivityTrendChartBlock = lazy(() => import('@/components/lego_blocks/units/AiActivityTrendChartBlock'))
 import AiActivityDayTableBlock from '@/components/lego_blocks/units/AiActivityDayTableBlock'
@@ -175,10 +178,18 @@ export default function AiActivityPanelBlock({
     return map
   }, [activity.allSessions])
   const planUsageDates = useMemo(() => activity.days.map(d => d.date), [activity.days])
-  // The section hides outright when there is neither a meter nor a history to
-  // show — someone who uses neither tool, or a device with no capture.
-  const showPlanUsage =
-    visibleProvidersBlock(planUsage.providers).length > 0 || planUsageMoves.length > 0
+  // The section hides outright when no provider has a meter or a history to
+  // show — someone who uses neither tool, or a device with no capture. One
+  // provider is on screen at a time, for the meters and the graph together.
+  const planUsageProviderIds = useMemo(
+    () => planUsageProviderIdsBlock(planUsage.providers, planUsageMoves),
+    [planUsage.providers, planUsageMoves],
+  )
+  const [chosenPlanProvider, setChosenPlanProvider] = useState<AiLimitsProviderIdBlock | null>(null)
+  const planUsageProvider =
+    chosenPlanProvider && planUsageProviderIds.includes(chosenPlanProvider)
+      ? chosenPlanProvider
+      : (planUsageProviderIds[0] ?? null)
   const toggleSection = (key: SectionKey) => {
     setSectionsOpen(prev => {
       const next = { ...prev, [key]: !prev[key] }
@@ -690,13 +701,23 @@ export default function AiActivityPanelBlock({
           {drillSource === 'trend' && drillActive && renderDrillDetail(false)}
         </PanelSection>
 
-        {showPlanUsage && (
+        {planUsageProvider && (
           <PanelSection
             title="Plan usage"
             open={sectionsOpen.planUsage}
             onToggle={() => toggleSection('planUsage')}
+            headerRight={
+              sectionsOpen.planUsage ? (
+                <AiPlanUsageProviderToggleBlock
+                  ids={planUsageProviderIds}
+                  value={planUsageProvider}
+                  onChange={setChosenPlanProvider}
+                />
+              ) : undefined
+            }
           >
             <AiPlanUsageSectionBlock
+              provider={planUsageProvider}
               planUsage={planUsage}
               moves={planUsageMoves}
               projectByBaseSid={projectByBaseSid}

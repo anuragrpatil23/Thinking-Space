@@ -11,7 +11,11 @@
  * way the trend chart and heatmap decide it.
  */
 
-import type { AiLimitsProviderIdBlock } from '@/services/lego_blocks/units/aiLimitsModelBlock'
+import {
+  visibleProvidersBlock,
+  type AiLimitsProviderBlock,
+  type AiLimitsProviderIdBlock,
+} from '@/services/lego_blocks/units/aiLimitsModelBlock'
 
 /** One movement of a provider's weekly meter. */
 export interface PlanUsageMoveBlock {
@@ -80,6 +84,19 @@ export function providersWithPlanUsageHistoryBlock(
   const seen = new Set<AiLimitsProviderIdBlock>()
   for (const move of moves) if (move.pct > 0) seen.add(move.provider)
   return (['claude', 'codex'] as const).filter((id) => seen.has(id))
+}
+
+/**
+ * Which providers the plan-usage section has anything to say about: a live
+ * meter, a recorded history, or both. Empty means the section does not render.
+ */
+export function planUsageProviderIdsBlock(
+  providers: AiLimitsProviderBlock[],
+  moves: readonly PlanUsageMoveBlock[],
+): AiLimitsProviderIdBlock[] {
+  const ids = new Set<AiLimitsProviderIdBlock>(providersWithPlanUsageHistoryBlock(moves))
+  for (const provider of visibleProvidersBlock(providers)) ids.add(provider.id)
+  return (['claude', 'codex'] as const).filter((id) => ids.has(id))
 }
 
 /** Points for a chart axis or tooltip: "<1%" for a sliver, whole points otherwise. */

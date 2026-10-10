@@ -1,8 +1,12 @@
-import { Suspense, lazy, useMemo, useState } from 'react'
+import { Suspense, lazy, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import AiLimitsStripBlock from '@/components/lego_blocks/integrations/AiLimitsStripBlock'
 import type { useAiPlanUsageBlock } from '@/components/lego_blocks/hooks/shared/useAiPlanUsageBlock'
-import type { AiLimitsProviderIdBlock } from '@/services/lego_blocks/units/aiLimitsModelBlock'
+import {
+  formatUpdatedAgoBlock,
+  visibleProvidersBlock,
+  type AiLimitsProviderIdBlock,
+} from '@/services/lego_blocks/units/aiLimitsModelBlock'
 import {
   buildPlanUsageDaysBlock,
   formatPlanUsagePctBlock,
@@ -14,19 +18,6 @@ import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryB
 // Lazy for the same reason as the Trend chart: recharts must not be statically
 // reachable from the entry (STARTUP-PERFORMANCE.md).
 const AiPlanUsageChartBlock = lazy(() => import('@/components/lego_blocks/units/AiPlanUsageChartBlock'))
-
-interface AiPlanUsageSectionBlockProps {
-  /** Where the limits stand now — the meters. */
-  planUsage: ReturnType<typeof useAiPlanUsageBlock>
-  /** Every weekly-limit movement on record — the graph. */
-  moves: readonly PlanUsageMoveBlock[]
-  /** Base session id → project, across every session, not just the visible ones. */
-  projectByBaseSid: ReadonlyMap<string, string>
-  /** The card's visible range, one entry per day, oldest first. */
-  dates: readonly string[]
-  /** The card's project filter; narrows the graph to that project's share. */
-  filterProject?: string | null
-}
 
 const PROVIDER_LABEL_BLOCK: Record<AiLimitsProviderIdBlock, string> = {
   claude: 'Claude',
@@ -46,27 +37,80 @@ const TOGGLE_ACTIVE_CLASS =
 const TOGGLE_IDLE_CLASS = 'text-muted-foreground hover:text-foreground'
 
 /**
- * The body of the AI activity card's "Plan usage" section: where the limits
- * stand now, then how the weekly one was used across the visible days.
+ * The section's one control, for the heading row: which provider the meters
+ * and the graph are about. Renders nothing when there is only one to choose.
+ */
+export function AiPlanUsageProviderToggleBlock({
+  ids,
+  value,
+  onChange,
+}: {
+  ids: readonly AiLimitsProviderIdBlock[]
+  value: AiLimitsProviderIdBlock
+  onChange: (next: AiLimitsProviderIdBlock) => void
+}) {
+  if (ids.length < 2) return null
+  return (
+    <div className={TOGGLE_ROW_CLASS}>
+      {ids.map(id => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => onChange(id)}
+          aria-pressed={id === value}
+          className={cn(TOGGLE_CLASS, id === value ? TOGGLE_ACTIVE_CLASS : TOGGLE_IDLE_CLASS)}
+        >
+          {PROVIDER_LABEL_BLOCK[id]}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+interface AiPlanUsageSectionBlockProps {
+  /** The provider the whole section is about, picked by the heading's toggle. */
+  provider: AiLimitsProviderIdBlock
+  /** Where the limits stand now — the meters. */
+  planUsage: ReturnType<typeof useAiPlanUsageBlock>
+  /** Every weekly-limit movement on record — the graph. */
+  moves: readonly PlanUsageMoveBlock[]
+  /** Base session id → project, across every session, not just the visible ones. */
+  projectByBaseSid: ReadonlyMap<string, string>
+  /** The card's visible range, one entry per day, oldest first. */
+  dates: readonly string[]
+  /** The card's project filter; narrows the graph to that project's share. */
+  filterProject?: string | null
+}
+
+/**
+ * The body of the AI activity card's "Plan usage" section: where one
+ * provider's limits stand now, then how its weekly one was used across the
+ * visible days.
  *
- * The graph is one provider at a time. Each provider meters its own account,
- * so their percentages do not add, and two half-width charts side by side would
- * stop lining up with the Trend chart's dates directly above.
+ * One provider at a time, for both halves. Each provider meters its own
+ * account, so their percentages do not add and their bars cannot share a
+ * chart; and showing both providers' meters above a one-provider chart named
+ * every provider twice.
  */
 export default function AiPlanUsageSectionBlock({
+  provider,
   planUsage,
   moves,
   projectByBaseSid,
   dates,
   filterProject = null,
 }: AiPlanUsageSectionBlockProps) {
-  const historyProviders = useMemo(() => providersWithPlanUsageHistoryBlock(moves), [moves])
-  const [chosen, setChosen] = useState<AiLimitsProviderIdBlock | null>(null)
-  const provider =
-    chosen && historyProviders.includes(chosen) ? chosen : (historyProviders[0] ?? null)
+  const live = useMemo(
+    () => visibleProvidersBlock(planUsage.providers).find(p => p.id === provider) ?? null,
+    [planUsage.providers, provider],
+  )
+  const hasHistory = useMemo(
+    () => providersWithPlanUsageHistoryBlock(moves).includes(provider),
+    [moves, provider],
+  )
 
   const days = useMemo(
-    () => (provider ? buildPlanUsageDaysBlock(moves, projectByBaseSid, dates, provider) : []),
+    () => buildPlanUsageDaysBlock(moves, projectByBaseSid, dates, provider),
     [moves, projectByBaseSid, dates, provider],
   )
   const hasBars = useMemo(
@@ -88,26 +132,44 @@ export default function AiPlanUsageSectionBlock({
     [days, filterProject],
   )
 
-  return (
-    <div className="flex flex-col gap-6">
-      {/* px-3 / pl-3: the section heading is set 12px in from the card's edge,
-          and text directly under it has to start on that same line. The chart
-          and the toggle run to the card's own margin, as Trend and Totals do. */}
-      <div className="px-3 empty:hidden">
-      <AiLimitsStripBlock
-        providers={planUsage.providers}
-        nowMs={planUsage.nowMs}
-        statusLineScriptPath={planUsage.statusLineScriptPath}
-        statusLineMode={planUsage.statusLineMode}
-        readAtMs={planUsage.readAtMs}
-        onRefresh={planUsage.refresh}
-      />
-      </div>
+  // The meters read on open and on window focus, never on a poll, so a figure
+  // can be minutes old with nothing else admitting it. Doubles as the manual
+  // refresh — the thing you reach for the moment you notice the number is stale.
+  const refreshLine = live && (
+    <button
+      type="button"
+      onClick={planUsage.refresh}
+      title="Take a new reading"
+      className="shrink-0 rounded text-[10.5px] text-muted-foreground/80 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/40"
+    >
+      Updated {formatUpdatedAgoBlock(planUsage.readAtMs, planUsage.nowMs)} · refresh
+    </button>
+  )
 
-      {provider && (
+  return (
+    <div className="flex flex-col gap-5">
+      {/* px-3: the section heading is set 12px in from the card's edge, and
+          text directly under it has to start on that same line. The chart runs
+          to the card's own margin, as Trend's does. */}
+      {live && (
+        <div className="px-3">
+          <AiLimitsStripBlock
+            provider={live}
+            nowMs={planUsage.nowMs}
+            statusLineScriptPath={planUsage.statusLineScriptPath}
+            statusLineMode={planUsage.statusLineMode}
+          />
+        </div>
+      )}
+
+      {/* No history yet (the day a provider is first connected): the line still
+          needs somewhere to live. */}
+      {!hasHistory && refreshLine && <div className="px-3">{refreshLine}</div>}
+
+      {hasHistory && (
         <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <p className="pl-3 text-xs text-muted-foreground">
+          <div className="flex items-baseline justify-between gap-3 px-3">
+            <p className="text-xs text-muted-foreground">
               Weekly limit used each day
               {filterProject ? ` · ${projectLabelBlock(filterProject)}` : ''}
               {filterProject && hasBars && (
@@ -116,23 +178,7 @@ export default function AiPlanUsageSectionBlock({
                 </span>
               )}
             </p>
-            {historyProviders.length > 1 && (
-              <div className={TOGGLE_ROW_CLASS}>
-                {historyProviders.map(id => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setChosen(id)}
-                    className={cn(
-                      TOGGLE_CLASS,
-                      id === provider ? TOGGLE_ACTIVE_CLASS : TOGGLE_IDLE_CLASS,
-                    )}
-                  >
-                    {PROVIDER_LABEL_BLOCK[id]}
-                  </button>
-                ))}
-              </div>
-            )}
+            {refreshLine}
           </div>
           {hasBars ? (
             <Suspense fallback={<div className="h-44" />}>

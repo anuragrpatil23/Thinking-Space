@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildPlanUsageDaysBlock,
   formatPlanUsagePctBlock,
+  planUsageProviderIdsBlock,
   providersWithPlanUsageHistoryBlock,
   type PlanUsageMoveBlock,
 } from '@/services/lego_blocks/units/aiPlanUsageHistoryBlock'
@@ -87,6 +88,31 @@ describe('providersWithPlanUsageHistoryBlock', () => {
         move('2026-10-06', 'sid-a', 2),
       ]),
     ).toEqual(['claude', 'codex'])
+  })
+})
+
+describe('planUsageProviderIdsBlock', () => {
+  const live = (id: 'claude' | 'codex', detected: boolean) => ({
+    id,
+    label: id,
+    plan: null,
+    state: 'ready' as const,
+    detected,
+    hasPlan: true,
+    session: null,
+    weekly: null,
+  })
+
+  it('offers a provider with a live meter, a history, or both, Claude first', () => {
+    expect(planUsageProviderIdsBlock([], [])).toEqual([])
+    // History only — a browser or a phone, where nothing can be read live.
+    expect(planUsageProviderIdsBlock([], [move('2026-10-06', 'sid-b', 1, 'codex')])).toEqual(['codex'])
+    // A live meter only — the day the status line is first connected.
+    expect(
+      planUsageProviderIdsBlock([live('claude', true)], [move('2026-10-06', 'sid-b', 1, 'codex')]),
+    ).toEqual(['claude', 'codex'])
+    // A provider that is not used on this machine never earns a slot.
+    expect(planUsageProviderIdsBlock([live('codex', false)], [])).toEqual([])
   })
 })
 

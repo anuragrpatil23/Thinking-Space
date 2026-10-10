@@ -26,15 +26,13 @@ const TONE_COLOR_BLOCK = {
 } as const
 
 /**
- * One template for every row, in every provider column.
- *
- * All four tracks share it so the bars are the same length and the figures line
- * up down the card. The reset column is a fixed width rather than `auto` for
- * exactly that reason: sized to content, "Sep 6, 6:27 AM" and "Sep 12, 11:15 AM"
+ * One template for every meter, so the two sit on one line with equal bars and
+ * figures that line up. The countdown column is a fixed width rather than
+ * `auto` for exactly that reason: sized to content, "3h 41m left" and "3d left"
  * measure differently, and the `1fr` bar silently absorbs the difference —
- * which is what left the two bars visibly unequal.
+ * which is what once left the bars visibly unequal.
  */
-const ROW_GRID_BLOCK = 'grid grid-cols-[3.25rem_1fr_2.25rem_6.75rem]'
+const ROW_GRID_BLOCK = 'grid grid-cols-[3.25rem_1fr_2.25rem_4.75rem]'
 
 const KIND_LABEL_BLOCK: Record<AiLimitWindowKindBlock, string> = {
   session: 'Session',
@@ -42,14 +40,13 @@ const KIND_LABEL_BLOCK: Record<AiLimitWindowKindBlock, string> = {
 }
 
 /**
- * One usage window as a row: time left, spend, the figure, and the moment it
- * comes back.
+ * One usage window as a row: which window, spend, the figure, and how long is
+ * left.
  *
- * The two figures either side of the bar answer different questions — the left
- * is how long you have, the right is when to come back — so they're separated
- * rather than run together. The two rows in a provider column are told apart by
- * the scale of those figures (hours against days, a clock time against a date),
- * which is why neither needs a label.
+ * The row used to carry two times — how long you have, and the date it comes
+ * back — and no name, leaving the two windows to be told apart by hours against
+ * days. Both times answer the same question, so the date moved to the hover
+ * title and the freed column names the window instead.
  */
 export default function AiLimitsMeterBlock({
   providerId,
@@ -61,15 +58,18 @@ export default function AiLimitsMeterBlock({
   nowMs,
 }: AiLimitsMeterBlockProps) {
   const trackColor = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(28,25,23,0.08)'
+  const label = (
+    <span className="text-[11px]" style={{ color: mutedColor }}>
+      {KIND_LABEL_BLOCK[kind]}
+    </span>
+  )
 
   // No data yet: hold the row's shape with an empty track so the strip doesn't
   // reflow when the first reading lands.
   if (!window) {
     return (
       <div className={`${ROW_GRID_BLOCK} items-center gap-x-2.5`}>
-        <span className="text-[11px] tabular-nums" style={{ color: mutedColor }}>
-          —
-        </span>
+        {label}
         <span className="h-[3px] rounded-full" style={{ background: trackColor }} />
         <span className="text-right text-[11px] tabular-nums" style={{ color: mutedColor }}>
           —
@@ -89,10 +89,11 @@ export default function AiLimitsMeterBlock({
       : TONE_COLOR_BLOCK[isDark ? 'dark' : 'light'][tone]
 
   return (
-    <div className={`${ROW_GRID_BLOCK} items-center gap-x-2.5`}>
-      <span className="text-[11px] tabular-nums" style={{ color: mutedColor }}>
-        {remaining ?? ''}
-      </span>
+    <div
+      className={`${ROW_GRID_BLOCK} items-center gap-x-2.5`}
+      title={resetAt ? `Resets ${resetAt}` : undefined}
+    >
+      {label}
 
       <span
         className="relative h-[3px] overflow-hidden rounded-full"
@@ -122,7 +123,7 @@ export default function AiLimitsMeterBlock({
         className="text-right text-[11px] tabular-nums whitespace-nowrap"
         style={{ color: mutedColor }}
       >
-        {resetAt ?? ''}
+        {remaining ? `${remaining} left` : ''}
       </span>
     </div>
   )
