@@ -66,7 +66,7 @@ export default function AiLimitsMeterBlock({
 }: AiLimitsMeterBlockProps) {
   const trackColor = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(28,25,23,0.08)'
   const name = (
-    <p className="mb-2 text-[10.5px] leading-none" style={{ color: mutedColor }}>
+    <p className="mb-3 text-[10.5px] leading-none" style={{ color: mutedColor }}>
       {KIND_LABEL_BLOCK[kind]}
     </p>
   )

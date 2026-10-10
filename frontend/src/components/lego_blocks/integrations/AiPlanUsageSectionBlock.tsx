@@ -132,7 +132,7 @@ export default function AiPlanUsageSectionBlock({
   )
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-10">
       {/* px-3: the section heading is set 12px in from the card's edge, and
           text directly under it has to start on that same line. The chart runs
           to the card's own margin, as Trend's does. */}
