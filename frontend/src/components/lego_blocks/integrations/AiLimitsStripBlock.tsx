@@ -1,10 +1,7 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import AiLimitsMeterBlock from '@/components/lego_blocks/units/AiLimitsMeterBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
-import {
-  formatRemainingBlock,
-  type AiLimitsProviderBlock,
-} from '@/services/lego_blocks/units/aiLimitsModelBlock'
+import type { AiLimitsProviderBlock } from '@/services/lego_blocks/units/aiLimitsModelBlock'
 
 interface AiLimitsStripBlockProps {
   /** The one provider to show. The section's toggle picks it and names it. */
@@ -19,6 +16,8 @@ interface AiLimitsStripBlockProps {
   statusLineScriptPath: string
   /** Whether Claude Code already has a status line, and whose. */
   statusLineMode: 'none' | 'ours' | 'theirs'
+  /** Set at the right end of the strip's first line — the freshness / refresh. */
+  trailing?: ReactNode
 }
 
 // The host card's own text colours, so the strip follows whatever surface it
@@ -26,16 +25,11 @@ interface AiLimitsStripBlockProps {
 const HEADING_COLOR_BLOCK = 'hsl(var(--foreground))'
 const MUTED_COLOR_BLOCK = 'hsl(var(--muted-foreground))'
 
-const WINDOW_CAPTION_BLOCK = {
-  session: 'Current session',
-  weekly: 'Current week',
-} as const
-
 /**
  * Where one provider's plan limits stand right now: the session window and the
  * weekly window, side by side on one line — session on the left, weekly on the
- * right, each under its name and time left, as the bar, the figure, and the
- * moment it resets.
+ * right, each a name over one short row — and, at the far end of the same line,
+ * when the reading was taken.
  *
  * It has been three things. A separate card above AI activity read as a second
  * subject for what is one — the limit is the budget, the activity is the
@@ -50,13 +44,19 @@ export default function AiLimitsStripBlock({
   nowMs,
   statusLineScriptPath,
   statusLineMode,
+  trailing,
 }: AiLimitsStripBlockProps) {
   const { hostRef, isDark } = useDarkModeClassBlock()
   const heading = HEADING_COLOR_BLOCK
   const muted = MUTED_COLOR_BLOCK
 
   return (
-    <div ref={hostRef} role="group" aria-label={`${provider.label} usage limits`}>
+    <div
+      ref={hostRef}
+      role="group"
+      aria-label={`${provider.label} usage limits`}
+      className="flex flex-wrap items-start justify-between gap-x-10 gap-y-4"
+    >
       {provider.state === 'unconfigured' ? (
         <ConnectInviteBlock
           providerId={provider.id}
@@ -67,39 +67,22 @@ export default function AiLimitsStripBlock({
           statusLineMode={statusLineMode}
         />
       ) : (
-        <div className="grid gap-x-12 gap-y-4 sm:grid-cols-2">
-          {(['session', 'weekly'] as const).map(kind => {
-            const remaining = formatRemainingBlock(provider[kind]?.resetsAt ?? null, kind, nowMs)
-            return (
-            <div key={kind}>
-              {/* A caption over each meter rather than columns inside it: the
-                  name and the time left share one small line, and the bar
-                  below starts on that line's left edge. "Current" is the word
-                  doing the work — it is what sets these two apart from the
-                  chart underneath, which is the same weekly limit as history. */}
-              <p className="mb-2 text-[10.5px] leading-none" style={{ color: muted }}>
-                {WINDOW_CAPTION_BLOCK[kind]}
-                {remaining && (
-                  <span className="tabular-nums">
-                    {' · '}
-                    {remaining === 'now' ? 'resets now' : `${remaining} left`}
-                  </span>
-                )}
-              </p>
-              <AiLimitsMeterBlock
-                providerId={provider.id}
-                kind={kind}
-                window={provider[kind]}
-                isDark={isDark}
-                mutedColor={muted}
-                textColor={heading}
-                nowMs={nowMs}
-              />
-            </div>
-            )
-          })}
+        <div className="flex flex-wrap gap-x-12 gap-y-5">
+          {(['session', 'weekly'] as const).map(kind => (
+            <AiLimitsMeterBlock
+              key={kind}
+              providerId={provider.id}
+              kind={kind}
+              window={provider[kind]}
+              isDark={isDark}
+              mutedColor={muted}
+              textColor={heading}
+              nowMs={nowMs}
+            />
+          ))}
         </div>
       )}
+      {trailing}
     </div>
   )
 }

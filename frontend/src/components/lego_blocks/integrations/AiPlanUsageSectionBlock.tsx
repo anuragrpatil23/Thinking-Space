@@ -135,19 +135,20 @@ export default function AiPlanUsageSectionBlock({
   // The meters read on open and on window focus, never on a poll, so a figure
   // can be minutes old with nothing else admitting it. Doubles as the manual
   // refresh — the thing you reach for the moment you notice the number is stale.
+  // It rides the meters' own line: it is about them, not about the chart.
   const refreshLine = live && (
     <button
       type="button"
       onClick={planUsage.refresh}
       title="Take a new reading"
-      className="shrink-0 rounded text-[10.5px] text-muted-foreground/80 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/40"
+      className="shrink-0 rounded text-[10.5px] leading-none text-muted-foreground/80 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/40"
     >
       Updated {formatUpdatedAgoBlock(planUsage.readAtMs, planUsage.nowMs)} · refresh
     </button>
   )
 
   return (
-    <div className="flex flex-col gap-9">
+    <div className="flex flex-col gap-8">
       {/* px-3: the section heading is set 12px in from the card's edge, and
           text directly under it has to start on that same line. The chart runs
           to the card's own margin, as Trend's does. */}
@@ -158,17 +159,14 @@ export default function AiPlanUsageSectionBlock({
             nowMs={planUsage.nowMs}
             statusLineScriptPath={planUsage.statusLineScriptPath}
             statusLineMode={planUsage.statusLineMode}
+            trailing={refreshLine}
           />
         </div>
       )}
 
-      {/* No history yet (the day a provider is first connected): the line still
-          needs somewhere to live. */}
-      {!hasHistory && refreshLine && <div className="px-3">{refreshLine}</div>}
-
       {hasHistory && (
-        <div className="space-y-4">
-          <div className="flex items-baseline justify-between gap-3 px-3">
+        <div className="space-y-3">
+          <div className="px-3">
             <p className="text-xs text-muted-foreground">
               Weekly limit used each day
               {filterProject ? ` · ${projectLabelBlock(filterProject)}` : ''}
@@ -178,7 +176,6 @@ export default function AiPlanUsageSectionBlock({
                 </span>
               )}
             </p>
-            {refreshLine}
           </div>
           {hasBars ? (
             <Suspense fallback={<div className="h-44" />}>

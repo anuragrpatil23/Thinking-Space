@@ -707,7 +707,7 @@ export default function AiActivityPanelBlock({
             // More air under the heading than Trend takes: the first thing
             // here is a line of hairline meters, and at Trend's 12px they read
             // as part of the heading row rather than as the section's content.
-            bodyClassName="mt-7"
+            bodyClassName="mt-6"
             open={sectionsOpen.planUsage}
             onToggle={() => toggleSection('planUsage')}
             headerRight={
