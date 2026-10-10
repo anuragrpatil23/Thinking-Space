@@ -25,7 +25,8 @@ const MUTED_COLOR_BLOCK = 'hsl(var(--muted-foreground))'
 
 /**
  * Where one provider's plan limits stand right now: the session window and the
- * weekly window, side by side on one line.
+ * weekly window, side by side on one line — session on the left, weekly on the
+ * right, each as time left, the bar, the figure, and the moment it resets.
  *
  * It has been three things. A separate card above AI activity read as a second
  * subject for what is one — the limit is the budget, the activity is the

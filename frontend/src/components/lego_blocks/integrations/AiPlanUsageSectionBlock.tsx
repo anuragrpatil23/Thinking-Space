@@ -147,7 +147,7 @@ export default function AiPlanUsageSectionBlock({
   )
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-9">
       {/* px-3: the section heading is set 12px in from the card's edge, and
           text directly under it has to start on that same line. The chart runs
           to the card's own margin, as Trend's does. */}
@@ -167,7 +167,7 @@ export default function AiPlanUsageSectionBlock({
       {!hasHistory && refreshLine && <div className="px-3">{refreshLine}</div>}
 
       {hasHistory && (
-        <div className="space-y-2">
+        <div className="space-y-4">
           <div className="flex items-baseline justify-between gap-3 px-3">
             <p className="text-xs text-muted-foreground">
               Weekly limit used each day
