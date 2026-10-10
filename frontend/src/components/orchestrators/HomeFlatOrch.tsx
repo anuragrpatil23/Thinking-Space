@@ -15,8 +15,6 @@ import {
   pushNativeNavigationBlock,
   setNativeNavigationStackBlock,
 } from '@/services/lego_blocks/units/topChromeNativeBridgeBlock'
-import AiLimitsStripBlock from '@/components/lego_blocks/integrations/AiLimitsStripBlock'
-import { useAiPlanUsageBlock } from '@/components/lego_blocks/hooks/shared/useAiPlanUsageBlock'
 import ThisWeekDigestBlock from '@/components/lego_blocks/integrations/ThisWeekDigestBlock'
 import WakeListBlock from '@/components/lego_blocks/integrations/WakeListBlock'
 import HomeBoardFeedBlock from '@/components/lego_blocks/integrations/HomeBoardFeedBlock'
@@ -119,7 +117,6 @@ export default function HomeFlatOrch() {
   // sat under light-mode text, so no cream fallback is needed.
   const followPhase = isCapacitorNative()
   const theme = useCanvasThemeBlock({ followPhase })
-  const planUsage = useAiPlanUsageBlock()
   const navigate = useNavigate()
   const { layout } = useUILayoutBlock()
   const phone = layout.mode === 'phone'
@@ -369,15 +366,6 @@ export default function HomeFlatOrch() {
               Both of these can render nothing; `empty:hidden` keeps an empty
               wrapper from adding a blank screen to snap to. */}
           <div className="ltm-home-snap-screen space-y-4 pb-[calc(var(--ltm-safe-bottom,0px)+6rem)] pt-6 empty:hidden">
-            <AiLimitsStripBlock
-              providers={planUsage.providers}
-              theme={theme}
-              nowMs={planUsage.nowMs}
-              statusLineScriptPath={planUsage.statusLineScriptPath}
-              statusLineMode={planUsage.statusLineMode}
-              readAtMs={planUsage.readAtMs}
-              onRefresh={planUsage.refresh}
-            />
             <WakeListBlock theme={theme} />
           </div>
         </div>
@@ -391,15 +379,6 @@ export default function HomeFlatOrch() {
         </header>
 
         <div className="mt-14 space-y-6 sm:mt-16">
-          <AiLimitsStripBlock
-            providers={planUsage.providers}
-            theme={theme}
-            nowMs={planUsage.nowMs}
-            statusLineScriptPath={planUsage.statusLineScriptPath}
-            statusLineMode={planUsage.statusLineMode}
-            readAtMs={planUsage.readAtMs}
-            onRefresh={planUsage.refresh}
-          />
 
           <FlatPanel theme={theme}>
             <AiActivityPanelBlock enableManualSessions />

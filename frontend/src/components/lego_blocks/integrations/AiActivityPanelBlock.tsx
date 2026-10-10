@@ -27,6 +27,11 @@ import { useProjectsBlock } from '@/components/lego_blocks/hooks/shared/useProje
 import { buildProjectKindMapBlock } from '@/services/lego_blocks/units/projectKindBlock'
 import AiActivityDrillProjectTotalsBlock from '@/components/lego_blocks/units/AiActivityDrillProjectTotalsBlock'
 import AiActivityProjectChipsBlock from '@/components/lego_blocks/units/AiActivityProjectChipsBlock'
+import AiPlanUsageSectionBlock from '@/components/lego_blocks/integrations/AiPlanUsageSectionBlock'
+import { useAiPlanUsageBlock } from '@/components/lego_blocks/hooks/shared/useAiPlanUsageBlock'
+import { usePlanUsageMovesBlock } from '@/components/lego_blocks/hooks/units/usePlanUsageMovesBlock'
+import { baseSessionIdBlock } from '@/services/orchestrators/aiLimitShareOrch'
+import { visibleProvidersBlock } from '@/services/lego_blocks/units/aiLimitsModelBlock'
 // Code-split boundaries: these two pull recharts; keep it out of the startup bundle.
 const AiActivityTrendChartBlock = lazy(() => import('@/components/lego_blocks/units/AiActivityTrendChartBlock'))
 import AiActivityDayTableBlock from '@/components/lego_blocks/units/AiActivityDayTableBlock'
@@ -47,11 +52,12 @@ import { getVaultWriteAiActivityAnyEnabled } from '@/services/lego_blocks/units/
  *  is open at a time. */
 type DrillSource = 'heatmap' | 'trend' | 'totals'
 
-type SectionKey = 'heatmap' | 'trend' | 'totals'
+type SectionKey = 'heatmap' | 'trend' | 'planUsage' | 'totals'
 
 const DEFAULT_SECTIONS_OPEN: Record<SectionKey, boolean> = {
   heatmap: true,
   trend: true,
+  planUsage: true,
   totals: true,
 }
 
@@ -149,9 +155,30 @@ export default function AiActivityPanelBlock({
   // Default drill source is the heatmap (which defaults to today, below), so the
   // panel opens already showing today's timeline + table under the calendar.
   const [drillSource, setDrillSource] = useState<DrillSource>('heatmap')
-  const [sectionsOpen, setSectionsOpen] = useState<Record<SectionKey, boolean>>(() =>
-    getJsonStorageItem(STORAGE_KEYS.aiActivitySectionsOpen, DEFAULT_SECTIONS_OPEN),
-  )
+  // Spread over the defaults: a stored value from before a section existed has
+  // no key for it, and a missing key would open the card with it collapsed.
+  const [sectionsOpen, setSectionsOpen] = useState<Record<SectionKey, boolean>>(() => ({
+    ...DEFAULT_SECTIONS_OPEN,
+    ...getJsonStorageItem(STORAGE_KEYS.aiActivitySectionsOpen, DEFAULT_SECTIONS_OPEN),
+  }))
+  // Plan usage: where the limits stand now, and how the weekly one was spent.
+  // Project comes from every session rather than the filtered ones on screen,
+  // so narrowing the card to Codex cannot strip the projects off Claude's bars.
+  const planUsage = useAiPlanUsageBlock()
+  const planUsageMoves = usePlanUsageMovesBlock(activity.chains)
+  const projectByBaseSid = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const s of activity.allSessions) {
+      if (s.source !== 'claude-code' && s.source !== 'codex') continue
+      if (s.project) map.set(baseSessionIdBlock(s), s.project)
+    }
+    return map
+  }, [activity.allSessions])
+  const planUsageDates = useMemo(() => activity.days.map(d => d.date), [activity.days])
+  // The section hides outright when there is neither a meter nor a history to
+  // show — someone who uses neither tool, or a device with no capture.
+  const showPlanUsage =
+    visibleProvidersBlock(planUsage.providers).length > 0 || planUsageMoves.length > 0
   const toggleSection = (key: SectionKey) => {
     setSectionsOpen(prev => {
       const next = { ...prev, [key]: !prev[key] }
@@ -662,6 +689,22 @@ export default function AiActivityPanelBlock({
           </Suspense>
           {drillSource === 'trend' && drillActive && renderDrillDetail(false)}
         </PanelSection>
+
+        {showPlanUsage && (
+          <PanelSection
+            title="Plan usage"
+            open={sectionsOpen.planUsage}
+            onToggle={() => toggleSection('planUsage')}
+          >
+            <AiPlanUsageSectionBlock
+              planUsage={planUsage}
+              moves={planUsageMoves}
+              projectByBaseSid={projectByBaseSid}
+              dates={planUsageDates}
+              filterProject={activeProject}
+            />
+          </PanelSection>
+        )}
 
         <PanelSection
           title="Totals"

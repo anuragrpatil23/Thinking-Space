@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import AiLimitsMeterBlock from '@/components/lego_blocks/units/AiLimitsMeterBlock'
-import type { CanvasThemeTokens } from '@/components/lego_blocks/hooks/shared/useCanvasThemeBlock'
+import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import {
   accentForBlock,
   formatUpdatedAgoBlock,
@@ -10,7 +10,6 @@ import {
 
 interface AiLimitsStripBlockProps {
   providers: AiLimitsProviderBlock[]
-  theme: CanvasThemeTokens
   /**
    * Frozen clock for the whole strip. Supplied by the caller rather than read
    * here so the strip holds no timer of its own — countdowns refresh when new
@@ -27,57 +26,39 @@ interface AiLimitsStripBlockProps {
   onRefresh: () => void
 }
 
+// The host card's own text colours, so the strip follows whatever surface it
+// sits on (day, night phase, dark mode) without being handed a theme.
+const HEADING_COLOR_BLOCK = 'hsl(var(--foreground))'
+const MUTED_COLOR_BLOCK = 'hsl(var(--muted-foreground))'
+
 /**
- * Usage limits for every AI provider the person actually uses, as a card above
- * the activity panel.
+ * Where the plan's limits stand right now, for every AI provider the person
+ * actually uses: a dot, a name, and two hairline meters each — session first,
+ * weekly second.
  *
- * Carries the same card treatment as the panels below so the home page reads as
- * one stack. Inside it stays quiet — a dot, a name, and two hairline meters —
- * because this is ambient status: legible at a glance, forgettable the rest of
- * the time.
+ * Has no card or heading of its own. It was a separate card above AI activity
+ * first, and read as a second thing to look at for what is one subject: the
+ * limit is the budget, the activity is the spend. It now sits inside the
+ * activity card's "Plan usage" section, which supplies the title and puts the
+ * history graph under it.
  */
 export default function AiLimitsStripBlock({
   providers,
-  theme,
   nowMs,
   statusLineScriptPath,
   statusLineMode,
   readAtMs,
   onRefresh,
 }: AiLimitsStripBlockProps) {
+  const { hostRef, isDark } = useDarkModeClassBlock()
   const visible = visibleProvidersBlock(providers)
-  // Renders its own card rather than being wrapped by the caller, so a strip
-  // with nothing to show leaves no empty panel behind on the page.
   if (visible.length === 0) return null
 
-  const heading = theme.anchorHeading
-  const muted = theme.anchorEyebrow
+  const heading = HEADING_COLOR_BLOCK
+  const muted = MUTED_COLOR_BLOCK
 
   return (
-    <section
-      aria-label="AI usage limits"
-      // Matches the activity cards below (radius 14, padding 20, same surface)
-      // so the home page reads as one stack of panels rather than a panel with
-      // a loose row floating above it.
-      style={{
-        borderRadius: 14,
-        padding: 20,
-        background: theme.anchorPanelBg,
-        border: `1px solid ${theme.anchorPanelBorder}`,
-        boxShadow: theme.anchorPanelShadow,
-      }}
-    >
-      {/* Same heading treatment as the activity card below, so the two read as
-          siblings. The subtitle carries real weight here: "AI Plan usage" and "AI
-          activity" are near neighbours in a stack, and "Session and weekly" is
-          what marks this card as plan windows rather than history. It also names
-          the two rows in the order they appear, which is how they're told apart
-          now that the windows carry no inline labels. */}
-      <div className="mb-4">
-        <h3 className="text-base font-semibold text-foreground">AI Plan usage</h3>
-        <p className="text-xs text-muted-foreground">Session and weekly</p>
-      </div>
-
+    <div ref={hostRef} aria-label="AI usage limits" role="group">
       <div
         // One provider gets the full width rather than a half-empty two-column
         // grid, so someone who only uses one tool sees a deliberate row instead
@@ -90,7 +71,7 @@ export default function AiLimitsStripBlock({
             <span
               aria-hidden
               className="h-1.5 w-1.5 shrink-0 rounded-full"
-              style={{ background: accentForBlock(provider.id, theme.isDark) }}
+              style={{ background: accentForBlock(provider.id, isDark) }}
             />
             <span className="text-[12px] font-medium tracking-tight" style={{ color: heading }}>
               {provider.label}
@@ -107,7 +88,7 @@ export default function AiLimitsStripBlock({
               providerId={provider.id}
               muted={muted}
               heading={heading}
-              isDark={theme.isDark}
+              isDark={isDark}
               statusLineScriptPath={statusLineScriptPath}
               statusLineMode={statusLineMode}
             />
@@ -117,7 +98,7 @@ export default function AiLimitsStripBlock({
                 providerId={provider.id}
                 kind="session"
                 window={provider.session}
-                isDark={theme.isDark}
+                isDark={isDark}
                 mutedColor={muted}
                 textColor={heading}
                 nowMs={nowMs}
@@ -126,7 +107,7 @@ export default function AiLimitsStripBlock({
                 providerId={provider.id}
                 kind="weekly"
                 window={provider.weekly}
-                isDark={theme.isDark}
+                isDark={isDark}
                 mutedColor={muted}
                 textColor={heading}
                 nowMs={nowMs}
@@ -137,7 +118,7 @@ export default function AiLimitsStripBlock({
         ))}
       </div>
 
-      {/* The card reads on open and on window focus, never on a poll, so a
+      {/* The strip reads on open and on window focus, never on a poll, so a
           figure can be minutes old with nothing else on screen admitting it.
           Doubles as the manual refresh — the thing you reach for the moment you
           notice the number is stale. */}
@@ -156,7 +137,7 @@ export default function AiLimitsStripBlock({
       >
         Updated {formatUpdatedAgoBlock(readAtMs, nowMs)} · refresh
       </button>
-    </section>
+    </div>
   )
 }
 

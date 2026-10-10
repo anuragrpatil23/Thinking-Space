@@ -111,6 +111,9 @@ export interface UseAiActivityResult {
   projects: ActivityProject[]
   /** Raw parsed sessions (post-filter), for callers that want their own view. */
   sessions: ParsedSession[]
+  /** Every session with its canonical project, ignoring the source and range
+   *  filters — for derivations that must not change with what is on screen. */
+  allSessions: ParsedSession[]
   loading: boolean
   error: string | null
   preset: AiActivityPreset
@@ -597,6 +600,7 @@ export function useAiActivityBlock(
     days,
     projects,
     sessions,
+    allSessions: mappedSessions,
     loading,
     error,
     preset,
