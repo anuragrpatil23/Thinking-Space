@@ -1,7 +1,6 @@
 import {
   accentForBlock,
   fillFractionBlock,
-  formatRemainingBlock,
   formatResetAtBlock,
   toneForWindowBlock,
   type AiLimitsProviderIdBlock,
@@ -34,7 +33,7 @@ const TONE_COLOR_BLOCK = {
  * measure differently, and the `1fr` bar silently absorbs the difference —
  * which is what left the two bars visibly unequal.
  */
-const ROW_GRID_BLOCK = 'grid grid-cols-[3.25rem_1fr_2.25rem_6.75rem]'
+const ROW_GRID_BLOCK = 'grid grid-cols-[1fr_2.25rem_6.75rem]'
 
 const KIND_LABEL_BLOCK: Record<AiLimitWindowKindBlock, string> = {
   session: 'Session',
@@ -42,14 +41,13 @@ const KIND_LABEL_BLOCK: Record<AiLimitWindowKindBlock, string> = {
 }
 
 /**
- * One usage window as a row: time left, spend, the figure, and the moment it
- * comes back.
+ * One usage window as a row: spend, the figure, and the moment it comes back.
  *
- * The two figures either side of the bar answer different questions — the left
- * is how long you have, the right is when to come back — so they're separated
- * rather than run together. The two rows in a provider column are told apart by
- * the scale of those figures (hours against days, a clock time against a date),
- * which is why neither needs a label.
+ * The time left used to lead the row in a fixed-width column. Fixed so the
+ * bars stayed equal — but a short figure ("1h") then sat far from its bar with
+ * dead space between, and no width suits both "3h 33m" and "1h". It moved up
+ * into the caption the strip sets over each meter, so the bar starts on the
+ * caption's own left edge and both bars are the same length by construction.
  */
 export default function AiLimitsMeterBlock({
   providerId,
@@ -67,9 +65,6 @@ export default function AiLimitsMeterBlock({
   if (!window) {
     return (
       <div className={`${ROW_GRID_BLOCK} items-center gap-x-2.5`}>
-        <span className="text-[11px] tabular-nums" style={{ color: mutedColor }}>
-          —
-        </span>
         <span className="h-[3px] rounded-full" style={{ background: trackColor }} />
         <span className="text-right text-[11px] tabular-nums" style={{ color: mutedColor }}>
           —
@@ -81,7 +76,6 @@ export default function AiLimitsMeterBlock({
 
   const tone = toneForWindowBlock(window)
   const fill = fillFractionBlock(window.usedPercent)
-  const remaining = formatRemainingBlock(window.resetsAt, kind, nowMs)
   const resetAt = formatResetAtBlock(window.resetsAt, kind, nowMs)
   const fillColor =
     tone === 'calm'
@@ -90,10 +84,6 @@ export default function AiLimitsMeterBlock({
 
   return (
     <div className={`${ROW_GRID_BLOCK} items-center gap-x-2.5`}>
-      <span className="text-[11px] tabular-nums" style={{ color: mutedColor }}>
-        {remaining ?? ''}
-      </span>
-
       <span
         className="relative h-[3px] overflow-hidden rounded-full"
         style={{ background: trackColor }}
