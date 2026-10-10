@@ -3,7 +3,6 @@ import { cn } from '@/lib/utils'
 import AiLimitsStripBlock from '@/components/lego_blocks/integrations/AiLimitsStripBlock'
 import type { useAiPlanUsageBlock } from '@/components/lego_blocks/hooks/shared/useAiPlanUsageBlock'
 import {
-  formatUpdatedAgoBlock,
   visibleProvidersBlock,
   type AiLimitsProviderIdBlock,
 } from '@/services/lego_blocks/units/aiLimitsModelBlock'
@@ -132,21 +131,6 @@ export default function AiPlanUsageSectionBlock({
     [days, filterProject],
   )
 
-  // The meters read on open and on window focus, never on a poll, so a figure
-  // can be minutes old with nothing else admitting it. Doubles as the manual
-  // refresh — the thing you reach for the moment you notice the number is stale.
-  // It rides the meters' own line: it is about them, not about the chart.
-  const refreshLine = live && (
-    <button
-      type="button"
-      onClick={planUsage.refresh}
-      title="Take a new reading"
-      className="shrink-0 rounded text-[10.5px] leading-none text-muted-foreground/80 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/40"
-    >
-      Updated {formatUpdatedAgoBlock(planUsage.readAtMs, planUsage.nowMs)} · refresh
-    </button>
-  )
-
   return (
     <div className="flex flex-col gap-8">
       {/* px-3: the section heading is set 12px in from the card's edge, and
@@ -159,7 +143,6 @@ export default function AiPlanUsageSectionBlock({
             nowMs={planUsage.nowMs}
             statusLineScriptPath={planUsage.statusLineScriptPath}
             statusLineMode={planUsage.statusLineMode}
-            trailing={refreshLine}
           />
         </div>
       )}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AiLimitsProviderBlock } from '@/services/lego_blocks/units/aiLimitsModelBlock'
+import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 
 /**
  * What Claude Code's status line currently is. Decides which setup instruction
@@ -13,13 +14,10 @@ interface AiPlanUsageStateBlock {
   statusLineMode: ClaudeStatusLineModeBlock
   /**
    * Live clock, ticked once a minute while the window is visible. Countdowns
-   * and the freshness label both read from it, so neither sits frozen at the
-   * value it had when the data last arrived.
+   * read from it, so they do not sit frozen at the value they had when the
+   * data last arrived.
    */
   nowMs: number
-  /** When the reading itself was taken — the basis for "updated 2m ago". */
-  readAtMs: number
-  refresh: () => void
 }
 
 /**
@@ -30,15 +28,17 @@ interface AiPlanUsageStateBlock {
  * itself rather than showing an error for a platform where the feature can't
  * exist.
  *
- * No polling timer. A reading is taken on mount and whenever the window regains
+ * No polling timer. A reading is taken on mount, whenever the window regains
  * focus — coming back to the app is exactly when a stale figure matters, and it
- * keeps this off a periodic wake (ENERGY.md).
+ * keeps this off a periodic wake (ENERGY.md) — and when the top chrome's
+ * Refresh is pressed. That button is the manual refresh for everything on the
+ * page; the meters had an "Updated 2m ago · refresh" line of their own first,
+ * a second refresh control for one section.
  */
 export function useAiPlanUsageBlock(): AiPlanUsageStateBlock {
   const [providers, setProviders] = useState<AiLimitsProviderBlock[]>([])
   const [statusLineScriptPath, setStatusLineScriptPath] = useState('')
   const [statusLineMode, setStatusLineMode] = useState<ClaudeStatusLineModeBlock>('none')
-  const [readAtMs, setReadAtMs] = useState(() => Date.now())
   const [nowMs, setNowMs] = useState(() => Date.now())
 
   const refresh = useCallback(() => {
@@ -49,9 +49,7 @@ export function useAiPlanUsageBlock(): AiPlanUsageStateBlock {
         setProviders(next.providers)
         setStatusLineScriptPath(next.statusLineScriptPath)
         setStatusLineMode(next.statusLineMode)
-        const at = Date.now()
-        setReadAtMs(at)
-        setNowMs(at)
+        setNowMs(Date.now())
       })
       .catch(() => {
         // Main-process read failed. Keep the last good reading rather than
@@ -63,7 +61,11 @@ export function useAiPlanUsageBlock(): AiPlanUsageStateBlock {
     refresh()
     const onFocus = (): void => refresh()
     window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
+    const removeGlobalRefresh = addGlobalSyncRefreshListenerBlock(refresh)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      removeGlobalRefresh()
+    }
   }, [refresh])
 
   // Minute clock for the displayed times only — it re-renders text, it never
@@ -98,5 +100,5 @@ export function useAiPlanUsageBlock(): AiPlanUsageStateBlock {
     }
   }, [])
 
-  return { providers, statusLineScriptPath, statusLineMode, nowMs, readAtMs, refresh }
+  return { providers, statusLineScriptPath, statusLineMode, nowMs }
 }

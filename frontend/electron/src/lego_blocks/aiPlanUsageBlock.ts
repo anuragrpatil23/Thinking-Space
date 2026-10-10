@@ -66,6 +66,14 @@ export interface AiPlanUsageProviderBlock {
   hasPlan: boolean;
   session: AiPlanUsageWindowBlock | null;
   weekly: AiPlanUsageWindowBlock | null;
+  /**
+   * When the provider itself last reported these figures, epoch ms — not when
+   * we read them. For Claude that is when the status line last wrote the
+   * bridge file, which can be hours before this read: Claude Code only
+   * rewrites it while a session is sending messages. Null when there is no
+   * reading to date.
+   */
+  asOfMs: number | null;
 }
 
 function isFiniteNumberBlock(value: unknown): value is number {
@@ -354,6 +362,7 @@ async function readCodexPlanUsageBlock(): Promise<AiPlanUsageProviderBlock> {
     hasPlan: false,
     session: null,
     weekly: null,
+    asOfMs: null,
   };
 
   // "Detected" means the person actually uses Codex here — the binary alone
@@ -390,6 +399,8 @@ async function readCodexPlanUsageBlock(): Promise<AiPlanUsageProviderBlock> {
       plan: codexPlanLabelBlock(rateLimits.planType),
       session: liveWindowBlock(codexWindowBlock(rateLimits.primary)),
       weekly: liveWindowBlock(codexWindowBlock(rateLimits.secondary)),
+      // Codex is asked live, so its answer is as of now.
+      asOfMs: Date.now(),
     };
   } catch (error) {
     logPlanUsageBlock(
@@ -705,13 +716,18 @@ function readClaudePlanUsageBlock(): AiPlanUsageProviderBlock {
     hasPlan: false,
     session: null,
     weekly: null,
+    asOfMs: null,
   };
 
   if (!base.detected) return base;
 
   let parsed: Record<string, unknown>;
+  let asOfMs: number | null = null;
   try {
     parsed = JSON.parse(fs.readFileSync(CLAUDE_LIMITS_BRIDGE_PATH_BLOCK, 'utf8')) as Record<string, unknown>;
+    // The status line rewrites the file each time Claude Code hands it a
+    // payload, so its mtime is when these figures were last reported.
+    asOfMs = fs.statSync(CLAUDE_LIMITS_BRIDGE_PATH_BLOCK).mtimeMs;
   } catch {
     // No bridge file: Claude Code is installed but the status line hasn't been
     // wired up. That's the day-one state and the UI invites the user to fix it.
@@ -728,7 +744,7 @@ function readClaudePlanUsageBlock(): AiPlanUsageProviderBlock {
 
   // A bridge file with both windows rolled over means the status line ran but
   // Claude Code had nothing to publish yet — connected, not yet reporting.
-  if (!session && !weekly) return { ...base, state: 'waiting', hasPlan: true };
+  if (!session && !weekly) return { ...base, state: 'waiting', hasPlan: true, asOfMs };
 
   return {
     ...base,
@@ -737,6 +753,7 @@ function readClaudePlanUsageBlock(): AiPlanUsageProviderBlock {
     plan: typeof parsed.plan === 'string' ? parsed.plan : null,
     session,
     weekly,
+    asOfMs,
   };
 }
 

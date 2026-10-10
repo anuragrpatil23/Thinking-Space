@@ -1,7 +1,10 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import AiLimitsMeterBlock from '@/components/lego_blocks/units/AiLimitsMeterBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
-import type { AiLimitsProviderBlock } from '@/services/lego_blocks/units/aiLimitsModelBlock'
+import {
+  formatUpdatedAgoBlock,
+  type AiLimitsProviderBlock,
+} from '@/services/lego_blocks/units/aiLimitsModelBlock'
 
 interface AiLimitsStripBlockProps {
   /** The one provider to show. The section's toggle picks it and names it. */
@@ -16,8 +19,6 @@ interface AiLimitsStripBlockProps {
   statusLineScriptPath: string
   /** Whether Claude Code already has a status line, and whose. */
   statusLineMode: 'none' | 'ours' | 'theirs'
-  /** Set at the right end of the strip's first line — the freshness / refresh. */
-  trailing?: ReactNode
 }
 
 // The host card's own text colours, so the strip follows whatever surface it
@@ -28,8 +29,7 @@ const MUTED_COLOR_BLOCK = 'hsl(var(--muted-foreground))'
 /**
  * Where one provider's plan limits stand right now: the session window and the
  * weekly window, side by side on one line — session on the left, weekly on the
- * right, each a name over one short row — and, at the far end of the same line,
- * when the reading was taken.
+ * right in two equal halves, each a name over one short row.
  *
  * It has been three things. A separate card above AI activity read as a second
  * subject for what is one — the limit is the budget, the activity is the
@@ -44,19 +44,19 @@ export default function AiLimitsStripBlock({
   nowMs,
   statusLineScriptPath,
   statusLineMode,
-  trailing,
 }: AiLimitsStripBlockProps) {
   const { hostRef, isDark } = useDarkModeClassBlock()
   const heading = HEADING_COLOR_BLOCK
   const muted = MUTED_COLOR_BLOCK
+  // How old the figures are, always shown — even at a minute. It is the age
+  // of the provider's own report, not of our read: the line this replaced said
+  // "Updated just now" whenever the app had just re-read a file that could be
+  // hours old.
+  const asOf =
+    provider.asOfMs != null ? `as of ${formatUpdatedAgoBlock(provider.asOfMs, nowMs)}` : null
 
   return (
-    <div
-      ref={hostRef}
-      role="group"
-      aria-label={`${provider.label} usage limits`}
-      className="flex flex-wrap items-start justify-between gap-x-10 gap-y-4"
-    >
+    <div ref={hostRef} role="group" aria-label={`${provider.label} usage limits`}>
       {provider.state === 'unconfigured' ? (
         <ConnectInviteBlock
           providerId={provider.id}
@@ -67,7 +67,10 @@ export default function AiLimitsStripBlock({
           statusLineMode={statusLineMode}
         />
       ) : (
-        <div className="flex flex-wrap gap-x-12 gap-y-5">
+        // Two equal halves, so the week starts at the card's midline whatever
+        // the session's figures measure — packed to the left, the pair left
+        // the right half of the section empty.
+        <div className="grid gap-x-12 gap-y-5 sm:grid-cols-2">
           {(['session', 'weekly'] as const).map(kind => (
             <AiLimitsMeterBlock
               key={kind}
@@ -78,11 +81,13 @@ export default function AiLimitsStripBlock({
               mutedColor={muted}
               textColor={heading}
               nowMs={nowMs}
+              // On the week's row: the last row of the pair, so the note lands
+              // in the section's right-hand corner.
+              trailing={kind === 'weekly' ? asOf : null}
             />
           ))}
         </div>
       )}
-      {trailing}
     </div>
   )
 }

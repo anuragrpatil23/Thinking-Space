@@ -56,6 +56,13 @@ export interface AiLimitsProviderBlock {
   session: AiLimitWindowBlock | null
   /** Long window — 7 days on both providers today. */
   weekly: AiLimitWindowBlock | null
+  /**
+   * When the provider itself last reported these figures, epoch ms — the age
+   * of the data, not of our read. Claude's can be hours old (its status line
+   * only writes while a session is sending messages); Codex is asked live.
+   * Null or absent when there is no reading to date.
+   */
+  asOfMs?: number | null
 }
 
 /**

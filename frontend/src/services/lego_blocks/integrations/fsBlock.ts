@@ -479,6 +479,7 @@ interface ElectronAPI {
     hasPlan: boolean
     session: { usedPercent: number; resetsAt: number | null; windowMinutes: number | null } | null
     weekly: { usedPercent: number; resetsAt: number | null; windowMinutes: number | null } | null
+    asOfMs: number | null
     }>
   }>
   webullTokenGet?(): Promise<{

@@ -18,6 +18,8 @@ interface AiLimitsMeterBlockProps {
   textColor: string
   /** Frozen clock so every meter in a render agrees on "now". */
   nowMs: number
+  /** Quiet text for the far end of the figures row (the strip's "as of"). */
+  trailing?: string | null
 }
 
 const TONE_COLOR_BLOCK = {
@@ -30,8 +32,11 @@ const KIND_LABEL_BLOCK: Record<AiLimitWindowKindBlock, string> = {
   weekly: 'Current week',
 }
 
-/** The bar: a fixed short length, the same for every meter. */
-const BAR_CLASS_BLOCK = 'h-[3px] w-28 shrink-0'
+/**
+ * The bar: one length for every meter, 12rem, giving way only when the row is
+ * narrower than that (a phone).
+ */
+const BAR_CLASS_BLOCK = 'h-[3px] min-w-12 max-w-[12rem] flex-1'
 
 /**
  * One usage window, compact: its name, then one short row under it — time
@@ -42,8 +47,8 @@ const BAR_CLASS_BLOCK = 'h-[3px] w-28 shrink-0'
  * figure ("1h") adrift from its bar; moving the time into the caption kept the
  * other columns and their gaps; and text over a full-width bar made two
  * hairlines span the whole card for two numbers — the heaviest thing in the
- * section. Here every figure is as wide as its own text and the bar is a fixed
- * short length, so the figures sit against the bar and the two bars are equal
+ * section. Here every figure is as wide as its own text and the bar is one
+ * moderate length, so the figures sit against the bar and the two bars are equal
  * by construction.
  *
  * "Current" is the word doing the work in the name — it is what sets these
@@ -57,12 +62,23 @@ export default function AiLimitsMeterBlock({
   mutedColor,
   textColor,
   nowMs,
+  trailing = null,
 }: AiLimitsMeterBlockProps) {
   const trackColor = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(28,25,23,0.08)'
   const name = (
     <p className="mb-2 text-[10.5px] leading-none" style={{ color: mutedColor }}>
       {KIND_LABEL_BLOCK[kind]}
     </p>
+  )
+  // Pushed to the row's far end, so it sits in the section's corner rather
+  // than reading as a fifth figure of this meter.
+  const tail = trailing && (
+    <span
+      className="ml-auto pl-3 text-[10.5px] tabular-nums whitespace-nowrap opacity-80"
+      style={{ color: mutedColor }}
+    >
+      {trailing}
+    </span>
   )
 
   // No data yet: hold the meter's shape with an empty track so the strip
@@ -76,6 +92,7 @@ export default function AiLimitsMeterBlock({
           <span className="text-[11px] tabular-nums" style={{ color: mutedColor }}>
             —
           </span>
+          {tail}
         </div>
       </div>
     )
@@ -132,6 +149,7 @@ export default function AiLimitsMeterBlock({
             {resetAt}
           </span>
         )}
+        {tail}
       </div>
     </div>
   )

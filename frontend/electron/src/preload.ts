@@ -409,6 +409,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hasPlan: boolean
     session: { usedPercent: number; resetsAt: number | null; windowMinutes: number | null } | null
     weekly: { usedPercent: number; resetsAt: number | null; windowMinutes: number | null } | null
+    asOfMs: number | null
     }>
   }> => ipcRenderer.invoke('ai:plan-usage:read'),
   aiUsageLogRead: (): Promise<string> => ipcRenderer.invoke('ai:usage-log:read'),
