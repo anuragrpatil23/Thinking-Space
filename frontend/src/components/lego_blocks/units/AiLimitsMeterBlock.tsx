@@ -18,7 +18,7 @@ interface AiLimitsMeterBlockProps {
   textColor: string
   /** Frozen clock so every meter in a render agrees on "now". */
   nowMs: number
-  /** Quiet text for the far end of the figures row (the strip's "as of"). */
+  /** Quiet text for the far end of the name's line (the strip's "as of"). */
   trailing?: string | null
 }
 
@@ -33,10 +33,13 @@ const KIND_LABEL_BLOCK: Record<AiLimitWindowKindBlock, string> = {
 }
 
 /**
- * The bar: one length for every meter, 12rem, giving way only when the row is
- * narrower than that (a phone).
+ * The bar takes whatever the figures leave, so the row runs the full width of
+ * its half: the reset date ends on the half's right edge, under the note on the
+ * caption line. The two bars can differ by the width of a figure ("1h 13m"
+ * against "6d"); a capped bar kept them equal and left each row ending short
+ * of its own caption line.
  */
-const BAR_CLASS_BLOCK = 'h-[3px] min-w-12 max-w-[12rem] flex-1'
+const BAR_CLASS_BLOCK = 'h-[3px] min-w-12 flex-1'
 
 /**
  * One usage window, compact: its name, then one short row under it — time
@@ -47,9 +50,8 @@ const BAR_CLASS_BLOCK = 'h-[3px] min-w-12 max-w-[12rem] flex-1'
  * figure ("1h") adrift from its bar; moving the time into the caption kept the
  * other columns and their gaps; and text over a full-width bar made two
  * hairlines span the whole card for two numbers — the heaviest thing in the
- * section. Here every figure is as wide as its own text and the bar is one
- * moderate length, so the figures sit against the bar and the two bars are equal
- * by construction.
+ * section. Here every figure is as wide as its own text and the bar fills the
+ * rest of a half-width row, so the figures sit against the bar.
  *
  * "Current" is the word doing the work in the name — it is what sets these
  * apart from the chart shown under them, the same weekly limit as history.
@@ -65,20 +67,19 @@ export default function AiLimitsMeterBlock({
   trailing = null,
 }: AiLimitsMeterBlockProps) {
   const trackColor = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(28,25,23,0.08)'
+  // The name, and on the same quiet line the strip's note ("as of 2m ago"),
+  // pushed to the far end. It was on the figures row first, where it read as a
+  // fifth figure of this one meter beside the reset date; up here it sits with
+  // the captions, as small and as muted as they are, and reads as a note on
+  // the whole strip.
   const name = (
-    <p className="mb-3 text-[10.5px] leading-none" style={{ color: mutedColor }}>
-      {KIND_LABEL_BLOCK[kind]}
-    </p>
-  )
-  // Pushed to the row's far end, so it sits in the section's corner rather
-  // than reading as a fifth figure of this meter.
-  const tail = trailing && (
-    <span
-      className="ml-auto pl-3 text-[10.5px] tabular-nums whitespace-nowrap opacity-80"
+    <p
+      className="mb-3 flex items-baseline justify-between gap-3 text-[10.5px] leading-none"
       style={{ color: mutedColor }}
     >
-      {trailing}
-    </span>
+      <span>{KIND_LABEL_BLOCK[kind]}</span>
+      {trailing && <span className="tabular-nums whitespace-nowrap opacity-80">{trailing}</span>}
+    </p>
   )
 
   // No data yet: hold the meter's shape with an empty track so the strip
@@ -92,7 +93,6 @@ export default function AiLimitsMeterBlock({
           <span className="text-[11px] tabular-nums" style={{ color: mutedColor }}>
             —
           </span>
-          {tail}
         </div>
       </div>
     )
@@ -149,7 +149,6 @@ export default function AiLimitsMeterBlock({
             {resetAt}
           </span>
         )}
-        {tail}
       </div>
     </div>
   )

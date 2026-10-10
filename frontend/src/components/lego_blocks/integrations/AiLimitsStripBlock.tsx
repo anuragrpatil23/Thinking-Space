@@ -89,8 +89,8 @@ export default function AiLimitsStripBlock({
               mutedColor={muted}
               textColor={heading}
               nowMs={nowMs}
-              // On the week's row: the last row of the pair, so the note lands
-              // in the section's right-hand corner.
+              // On the week's caption line: the right-hand half, so the note
+              // lands in the section's top-right corner.
               trailing={kind === 'weekly' ? asOf : null}
             />
           ))}
