@@ -413,6 +413,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }>
   }> => ipcRenderer.invoke('ai:plan-usage:read'),
   aiUsageLogRead: (): Promise<string> => ipcRenderer.invoke('ai:usage-log:read'),
+  aiPlanUsageClaudeConnect: (): Promise<{ ok: boolean; mode?: string; reason?: string }> =>
+    ipcRenderer.invoke('ai:plan-usage:claude-connect'),
+  aiPlanUsageClaudeDisconnect: (): Promise<{ ok: boolean; restored?: string; reason?: string }> =>
+    ipcRenderer.invoke('ai:plan-usage:claude-disconnect'),
   profilesList: (): Promise<ElectronProfileSummaryBlock[]> =>
     ipcRenderer.invoke('profiles:list'),
   profilesCreate: (input: { name: string; vaultRoot: string; accentColor?: string | null; icon?: string | null }): Promise<ElectronProfileSummaryBlock> =>

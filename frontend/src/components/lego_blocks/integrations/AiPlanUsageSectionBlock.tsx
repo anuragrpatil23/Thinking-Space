@@ -143,6 +143,8 @@ export default function AiPlanUsageSectionBlock({
             nowMs={planUsage.nowMs}
             statusLineScriptPath={planUsage.statusLineScriptPath}
             statusLineMode={planUsage.statusLineMode}
+            onConnectClaude={planUsage.connectClaude}
+            onDisconnectClaude={planUsage.disconnectClaude}
           />
         </div>
       )}

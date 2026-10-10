@@ -1,6 +1,15 @@
 import { app } from 'electron';
 
 import { AI_SESSIONS_DIR_BLOCK, AI_USAGE_LOG_DIR_BLOCK } from './aiUsagePathsBlock';
+import {
+  CLAUDE_STATUSLINE_SCRIPT_NAME_BLOCK,
+  connectClaudeStatusLineBlock,
+  disconnectClaudeStatusLineBlock,
+  isOurStatusLineCommandBlock,
+  type ClaudeStatusLineConnectResultBlock,
+  type ClaudeStatusLineDisconnectResultBlock,
+  type ClaudeStatusLinePathsBlock,
+} from './claudeStatusLineConnectBlock';
 import { spawn, type ChildProcess } from 'child_process';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
@@ -414,7 +423,7 @@ async function readCodexPlanUsageBlock(): Promise<AiPlanUsageProviderBlock> {
 // Claude — the status-line script we ship
 // ---------------------------------------------------------------------------
 
-const STATUSLINE_SCRIPT_RELATIVE_PATH_BLOCK = 'claude-statusline.sh';
+const STATUSLINE_SCRIPT_RELATIVE_PATH_BLOCK = CLAUDE_STATUSLINE_SCRIPT_NAME_BLOCK;
 
 /**
  * Where the bundled status-line script lives.
@@ -446,10 +455,10 @@ export function claudeStatusLineScriptPathBlock(): string {
 }
 
 /**
- * Read-only look at Claude Code's status-line setting.
- *
- * Never writes: `~/.claude` is the user's, and the app's job here is to know
- * which instruction is safe to show, not to change anything.
+ * Read-only look at Claude Code's status-line setting, on every plan-usage
+ * read. Decides what the section offers: nothing to lose, something to wrap,
+ * or already connected. The only code that writes that file is behind the
+ * Connect button — `claudeStatusLineConnectBlock`.
  */
 export function claudeStatusLineModeBlock(): ClaudeStatusLineModeBlock {
   try {
@@ -461,13 +470,36 @@ export function claudeStatusLineModeBlock(): ClaudeStatusLineModeBlock {
     if (!command) return 'none';
     // Match on the filename rather than the full path: the app can be installed
     // anywhere, and a settings file written against an older install location
-    // still points at our script.
-    return command.includes(STATUSLINE_SCRIPT_RELATIVE_PATH_BLOCK) ? 'ours' : 'theirs';
+    // still points at our script. Our wrapper around someone's own status line
+    // counts as ours too.
+    return isOurStatusLineCommandBlock(command) ? 'ours' : 'theirs';
   } catch {
     // No settings file, or unreadable — treat as unconfigured, which shows the
     // gentler of the two instructions.
     return 'none';
   }
+}
+
+function claudeStatusLinePathsBlock(): ClaudeStatusLinePathsBlock {
+  return {
+    settingsPath: path.join(CLAUDE_HOME_BLOCK, 'settings.json'),
+    stateDir: path.dirname(CLAUDE_LIMITS_BRIDGE_PATH_BLOCK),
+    scriptPath: claudeStatusLineScriptPathBlock(),
+  };
+}
+
+/** The Connect button. Fixed paths, no arguments — see the connect block. */
+export function connectClaudeStatusLineForAppBlock(): ClaudeStatusLineConnectResultBlock {
+  const result = connectClaudeStatusLineBlock(claudeStatusLinePathsBlock());
+  logPlanUsageBlock(`claude connect: ${JSON.stringify(result)}`);
+  return result;
+}
+
+/** Undo for the Connect button. */
+export function disconnectClaudeStatusLineForAppBlock(): ClaudeStatusLineDisconnectResultBlock {
+  const result = disconnectClaudeStatusLineBlock(claudeStatusLinePathsBlock());
+  logPlanUsageBlock(`claude disconnect: ${JSON.stringify(result)}`);
+  return result;
 }
 
 /**

@@ -19,6 +19,10 @@ interface AiLimitsStripBlockProps {
   statusLineScriptPath: string
   /** Whether Claude Code already has a status line, and whose. */
   statusLineMode: 'none' | 'ours' | 'theirs'
+  /** The Connect button; resolves false when the settings could not be changed. */
+  onConnectClaude: () => Promise<boolean>
+  /** Undo for the Connect button. */
+  onDisconnectClaude: () => Promise<boolean>
 }
 
 // The host card's own text colours, so the strip follows whatever surface it
@@ -44,6 +48,8 @@ export default function AiLimitsStripBlock({
   nowMs,
   statusLineScriptPath,
   statusLineMode,
+  onConnectClaude,
+  onDisconnectClaude,
 }: AiLimitsStripBlockProps) {
   const { hostRef, isDark } = useDarkModeClassBlock()
   const heading = HEADING_COLOR_BLOCK
@@ -65,6 +71,8 @@ export default function AiLimitsStripBlock({
           isDark={isDark}
           statusLineScriptPath={statusLineScriptPath}
           statusLineMode={statusLineMode}
+          onConnect={onConnectClaude}
+          onDisconnect={onDisconnectClaude}
         />
       ) : (
         // Two equal halves, so the week starts at the card's midline whatever
@@ -93,8 +101,9 @@ export default function AiLimitsStripBlock({
 }
 
 /**
- * The one-time setup for Claude, as a command to run verbatim — which one
- * depends on whether the person already has a status line.
+ * The one-time setup for Claude as a command to run verbatim — the fallback
+ * when the Connect button could not change the settings. Which one depends on
+ * whether the person already has a status line.
  *
  * Only one status line can be configured, so telling someone with an existing
  * one to point Claude Code at ours would silently destroy their branch, context
@@ -121,12 +130,18 @@ function claudeSetupCommandBlock(
 }
 
 /**
- * The state most people are in on day one.
+ * The state most people are in on day one: Claude Code is installed and has
+ * not been asked to share its numbers yet.
  *
- * Reads as an invitation rather than a warning — nothing is broken here, the
- * provider simply hasn't been asked to share its numbers yet. For Claude that
- * means a real one-time step, so the card hands over the exact command instead
- * of describing the outcome and leaving the user to work out how.
+ * One button. The first version handed over a `/statusline` command to paste
+ * into Claude Code — a setup step in another program, for a feature Codex gives
+ * for free — so the app now makes that change itself, and only when asked: the
+ * line above the button says what will change before it does. Someone with a
+ * status line of their own is told theirs stays, because only one can run and
+ * the button wraps it rather than replacing it.
+ *
+ * The pasted command survives as the fallback for the one case the button
+ * cannot handle — a settings file the app could not safely rewrite.
  */
 function ConnectInviteBlock({
   providerId,
@@ -135,6 +150,8 @@ function ConnectInviteBlock({
   isDark,
   statusLineScriptPath,
   statusLineMode,
+  onConnect,
+  onDisconnect,
 }: {
   providerId: AiLimitsProviderBlock['id']
   muted: string
@@ -142,52 +159,110 @@ function ConnectInviteBlock({
   isDark: boolean
   statusLineScriptPath: string
   statusLineMode: 'none' | 'ours' | 'theirs'
+  onConnect: () => Promise<boolean>
+  onDisconnect: () => Promise<boolean>
 }) {
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
   const [copied, setCopied] = useState(false)
-  const command = claudeSetupCommandBlock(statusLineMode, statusLineScriptPath)
 
   if (providerId !== 'claude') {
     return (
-      <p className="flex h-[27px] items-center text-[11px]" style={{ color: muted }}>
+      <p className="text-[11px]" style={{ color: muted }}>
         Start Codex once to show limits
       </p>
     )
   }
 
-  const copyCommand = (): void => {
-    void navigator.clipboard
-      ?.writeText(command)
-      .then(() => {
-        setCopied(true)
-        window.setTimeout(() => setCopied(false), 1600)
-      })
-      .catch(() => {
-        // Clipboard can be refused; the command is on screen either way.
-      })
+  const run = (action: () => Promise<boolean>): void => {
+    if (busy) return
+    setBusy(true)
+    setFailed(false)
+    void action()
+      .then(ok => setFailed(!ok))
+      .catch(() => setFailed(true))
+      .finally(() => setBusy(false))
+  }
+
+  const quietButton =
+    'rounded underline decoration-dotted underline-offset-2 transition-opacity hover:opacity-70 ' +
+    'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-current disabled:opacity-50'
+
+  // Connected, and Claude Code has not rendered a status line since — it only
+  // publishes its limits with the first reply of a session.
+  if (statusLineMode === 'ours' && !failed) {
+    return (
+      <p className="text-[11px] leading-snug" style={{ color: muted }}>
+        Connected. Send a message in Claude Code and your limits appear here.{' '}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => run(onDisconnect)}
+          className={quietButton}
+        >
+          Undo
+        </button>
+      </p>
+    )
+  }
+
+  if (failed) {
+    const command = claudeSetupCommandBlock(statusLineMode, statusLineScriptPath)
+    const copyCommand = (): void => {
+      void navigator.clipboard
+        ?.writeText(command)
+        .then(() => {
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1600)
+        })
+        .catch(() => {
+          // Clipboard can be refused; the command is on screen either way.
+        })
+    }
+    return (
+      <div className="max-w-xl space-y-1.5">
+        <p className="text-[11px] leading-snug" style={{ color: muted }}>
+          Thinking Space could not change Claude Code's settings file, so nothing was changed. Run
+          this in Claude Code instead:
+        </p>
+        <button
+          type="button"
+          onClick={copyCommand}
+          title="Copy this command"
+          className="w-full rounded break-all px-2 py-1 text-left font-mono text-[10.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
+          style={{
+            color: heading,
+            background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(28,25,23,0.05)',
+          }}
+        >
+          {command}
+        </button>
+        <p className="text-[10.5px]" style={{ color: muted }}>
+          {copied ? 'Copied' : 'Click to copy · then send one message'}
+        </p>
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-1.5">
-      <p className="text-[11px] leading-snug" style={{ color: muted }}>
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <p className="max-w-md text-[11px] leading-snug" style={{ color: muted }}>
         {statusLineMode === 'theirs'
-          ? 'You already have a status line. Run this in Claude Code to add usage sharing to it — your own output stays exactly as it is:'
-          : 'Claude Code shares its limits through a status line. The script is ready — run this in Claude Code once:'}
+          ? 'See your Claude session and weekly limits here. Connecting adds usage sharing to the status line you already have in Claude Code; what it shows stays exactly as it is.'
+          : "See your Claude session and weekly limits here. Connecting adds a status line to Claude Code's settings."}
       </p>
       <button
         type="button"
-        onClick={copyCommand}
-        title="Copy this command"
-        className="w-full rounded break-all px-2 py-1 text-left font-mono text-[10.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
+        disabled={busy}
+        onClick={() => run(onConnect)}
+        className="shrink-0 rounded-md px-3 py-1.5 text-[11px] font-medium leading-none transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current disabled:opacity-50"
         style={{
           color: heading,
-          background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(28,25,23,0.05)',
+          background: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(28,25,23,0.07)',
         }}
       >
-        {command}
+        {busy ? 'Connecting…' : 'Connect Claude'}
       </button>
-      <p className="text-[10.5px]" style={{ color: muted }}>
-        {copied ? 'Copied' : 'Click to copy · then send one message'}
-      </p>
     </div>
   )
 }

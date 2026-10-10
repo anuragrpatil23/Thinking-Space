@@ -467,6 +467,10 @@ interface ElectronAPI {
   }>
   /** This machine's Claude usage log as JSONL text (read-only, fixed path). */
   aiUsageLogRead?(): Promise<string>
+  /** Point Claude Code's status line at Thinking Space (wrapping an existing one). */
+  aiPlanUsageClaudeConnect?(): Promise<{ ok: boolean; mode?: string; reason?: string }>
+  /** Put Claude Code's status line back to what it was before connecting. */
+  aiPlanUsageClaudeDisconnect?(): Promise<{ ok: boolean; restored?: string; reason?: string }>
   aiPlanUsageRead?(): Promise<{
     statusLineScriptPath: string
     statusLineMode: 'none' | 'ours' | 'theirs'

@@ -18,6 +18,14 @@ interface AiPlanUsageStateBlock {
    * data last arrived.
    */
   nowMs: number
+  /**
+   * The Connect button: point Claude Code's status line at Thinking Space.
+   * Resolves false when the settings could not be changed, so the caller can
+   * fall back to the command the person can run themselves.
+   */
+  connectClaude: () => Promise<boolean>
+  /** Undo for the Connect button: put the status line back as it was. */
+  disconnectClaude: () => Promise<boolean>
 }
 
 /**
@@ -100,5 +108,23 @@ export function useAiPlanUsageBlock(): AiPlanUsageStateBlock {
     }
   }, [])
 
-  return { providers, statusLineScriptPath, statusLineMode, nowMs }
+  // Both re-read afterwards whatever the outcome, so the section shows what the
+  // settings file actually says rather than what the click hoped for.
+  const connectClaude = useCallback(async (): Promise<boolean> => {
+    const connect = window.electronAPI?.aiPlanUsageClaudeConnect
+    if (!connect) return false
+    const result = await connect().catch(() => ({ ok: false }))
+    refresh()
+    return result.ok
+  }, [refresh])
+
+  const disconnectClaude = useCallback(async (): Promise<boolean> => {
+    const disconnect = window.electronAPI?.aiPlanUsageClaudeDisconnect
+    if (!disconnect) return false
+    const result = await disconnect().catch(() => ({ ok: false }))
+    refresh()
+    return result.ok
+  }, [refresh])
+
+  return { providers, statusLineScriptPath, statusLineMode, nowMs, connectClaude, disconnectClaude }
 }

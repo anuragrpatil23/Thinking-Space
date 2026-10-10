@@ -43,7 +43,13 @@ import {
   saveWebullCredentialsBlock,
   type WebullStoredAccessTokenBlock,
 } from './lego_blocks/webullCredentialStoreBlock';
-import { readAiPlanUsageBlock, readClaudeUsageLogBlock, disposeAiPlanUsageBlock } from './lego_blocks/aiPlanUsageBlock';
+import {
+  readAiPlanUsageBlock,
+  readClaudeUsageLogBlock,
+  disposeAiPlanUsageBlock,
+  connectClaudeStatusLineForAppBlock,
+  disconnectClaudeStatusLineForAppBlock,
+} from './lego_blocks/aiPlanUsageBlock';
 import { promoteAiUsageToVaultBlock } from './lego_blocks/aiUsageVaultMirrorBlock';
 import { readPersistedVaultRootBlock } from './lego_blocks/vaultRootPersistenceBlock';
 import {
@@ -658,6 +664,26 @@ ipcMain.handle('ai:plan-usage:read', async () => {
     return await readAiPlanUsageBlock();
   } catch {
     return [];
+  }
+});
+
+// The one place the app writes to Claude Code's settings, and only on the
+// Connect button. Takes no arguments: the settings file, the wrapper and the
+// bundled script are all fixed paths resolved in main, so the renderer cannot
+// name a file to write or a command to install (SECURITY.md).
+ipcMain.handle('ai:plan-usage:claude-connect', async () => {
+  try {
+    return connectClaudeStatusLineForAppBlock();
+  } catch {
+    return { ok: false, reason: 'write-failed' };
+  }
+});
+
+ipcMain.handle('ai:plan-usage:claude-disconnect', async () => {
+  try {
+    return disconnectClaudeStatusLineForAppBlock();
+  } catch {
+    return { ok: false, reason: 'write-failed' };
   }
 });
 
