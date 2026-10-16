@@ -265,3 +265,4 @@ export const LEGEND_TOP_PROJECTS = 4
  *  and empty right margin take the same width, so the plots — and their
  *  legends — start and end on the same lines down the card. */
 export const CHART_GUTTER_PX = 60
+

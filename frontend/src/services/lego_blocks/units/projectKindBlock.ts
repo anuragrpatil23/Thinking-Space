@@ -1,5 +1,12 @@
 // What kind of work a project is, and the colors that kind wears.
 //
+// One fixed colour per kind, used everywhere a kind is drawn — the work-mix
+// rings and disc in the day strip, their legend, and Trend's kind view
+// (decided 2026-10-16; before, the strip wore *project* colours by position,
+// so "building" was amber one day and pink the next and never matched Trend).
+// Picked to keep the look users already knew from the strip: thinking blue,
+// building amber, other green.
+//
 // The work-mix heatmap needs to know whether a day's hours were thinking,
 // building, or the job. Deriving that per session is not possible — the
 // signal isn't in a transcript — and asking per session is a standing tax the
@@ -54,15 +61,16 @@ export const PROJECT_KIND_META_BLOCK: Record<
     kind: 'thinking',
     label: 'Thinking',
     hint: 'Work where the point is to arrive somewhere you were not.',
-    stroke: 'rgb(217,119,6)',
-    strokeDark: 'rgb(251,191,36)',
+    stroke: 'rgb(59,130,246)',
+    strokeDark: 'rgb(96,165,250)',
   },
   building: {
     kind: 'building',
     label: 'Building',
     hint: 'Making the tools and systems that the thinking runs on.',
-    stroke: 'rgb(37,99,235)',
-    strokeDark: 'rgb(96,165,250)',
+    // The project palette's amber — the yellow the strip showed building in.
+    stroke: 'rgb(251,191,36)',
+    strokeDark: 'rgb(251,191,36)',
   },
   maintenance: {
     kind: 'maintenance',
@@ -75,16 +83,22 @@ export const PROJECT_KIND_META_BLOCK: Record<
     kind: 'conditioning',
     label: 'Conditioning',
     hint: 'Reading and input that keeps judgement sharp. Rarely visible here.',
-    stroke: 'rgb(5,150,105)',
-    strokeDark: 'rgb(52,211,153)',
+    stroke: 'rgb(139,92,246)',
+    strokeDark: 'rgb(167,139,250)',
   },
   other: {
     kind: 'other',
     label: 'Other',
     hint: 'Everything that does not belong to the four above.',
-    stroke: 'rgb(120,113,108)',
-    strokeDark: 'rgb(168,162,158)',
+    stroke: 'rgb(16,185,129)',
+    strokeDark: 'rgb(52,211,153)',
   },
+}
+
+/** The same kind colour as `r,g,b` channels, for callers that splice in alpha
+ *  (the work-mix rings and disc). */
+export function projectKindChannelsBlock(kind: ProjectKindBlock, isDark: boolean): string {
+  return projectKindStrokeBlock(kind, isDark).replace(/^rgb\((.*)\)$/, '$1')
 }
 
 export function projectKindStrokeBlock(kind: ProjectKindBlock, isDark: boolean): string {

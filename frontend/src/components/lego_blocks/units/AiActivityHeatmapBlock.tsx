@@ -32,8 +32,7 @@ import {
 } from '@/services/lego_blocks/units/aiActivityWorkMixBlock'
 import {
   projectKindLabelBlock,
-  type ProjectKindBlock,
-} from '@/services/lego_blocks/units/projectKindBlock'
+  type ProjectKindBlock, projectKindChannelsBlock } from '@/services/lego_blocks/units/projectKindBlock'
 
 interface AiActivityHeatmapBlockProps {
   days: ActivityDay[]
@@ -154,7 +153,6 @@ const WORK_MIX_LAP_FADE_STEPS = 10
 /** The unclassified track's tone, worn by the middle ring. Fixed and neutral
  *  — never a project color — because it is a statement about missing metadata,
  *  not about work. */
-const WORK_MIX_OTHER_CHANNELS = { light: '16,185,129', dark: '52,211,153' }
 /** Box the readout's kind glyphs are drawn in, and the radius each ring kind
  *  sits at inside it. Schematic, not to scale: the real rings are flush
  *  hairlines, which at this size would be one grey smudge. */
@@ -632,14 +630,6 @@ export default function AiActivityHeatmapBlock({
     [workMixMode, hovered, kindByProject, poolHours],
   )
 
-  /** Project color as `r,g,b` channels, so callers can splice their own alpha.
-   *  Falls back to the neutral slate the empty cell already uses. */
-  function projectChannels(project: string | null): string {
-    const { stroke } = getProjectColor(project ?? 'LTM', isDark)
-    const m = stroke.match(/rgb\((\d+),(\d+),(\d+)\)/)
-    return m ? `${m[1]},${m[2]},${m[3]}` : '148,163,184'
-  }
-
   /** Warning hue for laps past a closed ring. Orange because it is the one thing
    *  on this grid that no project palette entry lands on, so a trace of it reads
    *  as a *state* rather than as a different project. */
@@ -672,19 +662,17 @@ export default function AiActivityHeatmapBlock({
     // vivid the way extra laps do a ring — otherwise 5h and 12h of thinking are
     // the same wash.
     const extra = Math.min(WORK_MIX_MAX_LAPS_BLOCK - 1, Math.max(0, mix.fillRawRatio - 1))
-    const channels = projectChannels(mix.thinkingProject).split(',').map(Number)
+    const channels = projectKindChannelsBlock('thinking', isDark).split(',').map(Number)
     const warmed = warmBy(channels, (extra / (WORK_MIX_MAX_LAPS_BLOCK - 1)) * 0.28)
     return `rgba(${warmed.join(',')},${alpha.toFixed(3)})`
   }
 
   function ringChannels(
     kind: (typeof RING_KIND_ORDER)[number],
-    project: string | null,
+    _project: string | null,
   ): string {
-    // The unclassified track opts out of project identity by design; see
-    // WORK_MIX_OTHER_CHANNELS.
-    if (kind !== 'other') return projectChannels(project)
-    return isDark ? WORK_MIX_OTHER_CHANNELS.dark : WORK_MIX_OTHER_CHANNELS.light
+    // One fixed colour per kind (projectKindBlock); the project no longer picks the hue.
+    return projectKindChannelsBlock(kind, isDark)
   }
 
   /** Tone for one lap of a ring. The first pool is the project's own color; once
@@ -1372,16 +1360,7 @@ export default function AiActivityHeatmapBlock({
                   <span key={kind} className="inline-flex items-baseline">
                     <KindGlyph
                       kind={kind}
-                      color={`rgb(${
-                        kind === 'thinking'
-                          ? projectChannels(hoveredMix.thinkingProject)
-                          : kind === 'building' || kind === 'other' || kind === 'maintenance'
-                            ? ringChannels(
-                                kind,
-                                hoveredMix.segments.find(s => s.kind === kind)?.topProject ?? null,
-                              )
-                            : '148,163,184'
-                      })`}
+                      color={`rgb(${projectKindChannelsBlock(kind as ProjectKindBlock, isDark)})`}
                     />
                     <strong className="mr-1 tabular-nums text-foreground/80">
                       {fmtHoursBlock(hours)}

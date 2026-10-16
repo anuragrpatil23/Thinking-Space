@@ -7,7 +7,11 @@ import {
   timeOfDayTotalsBlock,
 } from '@/services/lego_blocks/units/aiActivityTimeOfDayBlock'
 import { fmtDurationMsBlock } from '@/services/lego_blocks/units/aiActivityStatsBlock'
-import { CHART_GUTTER_PX, LEGEND_TOP_PROJECTS, getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import {
+  CHART_GUTTER_PX,
+  LEGEND_TOP_PROJECTS,
+  getProjectColor,
+} from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import {
   projectKindLabelBlock,
@@ -106,15 +110,18 @@ export default function AiActivityTimeOfDayChartBlock({
   const crossesMonth =
     sortedDays.length > 0 && sortedDays[0].slice(0, 7) !== sortedDays[sortedDays.length - 1].slice(0, 7)
 
+  // Fixed kind colours, the same ones the day strip's rings wear.
+  const kindStroke = (kind: ProjectKindBlock) => projectKindStrokeBlock(kind || 'other', isDark)
   const keyOf = (project: string) => (colorBy === 'kind' ? kindByProject[project] || 'other' : project)
   const colorForKey = (key: string) =>
-    colorBy === 'kind' ? projectKindStrokeBlock(key as ProjectKindBlock, isDark) : getProjectColor(key, isDark).stroke
+    colorBy === 'kind' ? kindStroke(key as ProjectKindBlock) : getProjectColor(key, isDark).stroke
   // Blocks use the pastel fill Plan usage and the day strip use; the saturated
   // stroke stays for legend dots and hover text, where it has to read as type.
   const fillFor = (project: string) => {
     if (colorBy === 'kind') {
-      const stroke = projectKindStrokeBlock(kindByProject[project] || 'other', isDark)
-      return stroke.replace(/^rgb\((.*)\)$/, 'rgba($1,0.4)')
+      // Same pastel weight as the project fills in Plan usage and the day strip.
+      const stroke = kindStroke(kindByProject[project] || 'other')
+      return stroke.replace(/^rgb\((.*)\)$/, 'rgba($1,0.35)')
     }
     return getProjectColor(project, isDark).fill
   }

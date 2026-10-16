@@ -23,16 +23,13 @@
 // slot's worth" is only a statement about cost if a slot means the same thing
 // everywhere on the cell.
 //
-// Color is project identity, not kind: the panel already shows a project legend
-// above the grid, and a second color language on the same screen would need a
-// second legend to read. Kind is carried by *position* instead — the centre is
-// always thinking, the outer ring always building, the innermost ring always
-// maintenance — which is what keeps cells comparable down a column.
-//
-// `other` is the one exception to color-is-identity: its ring is a fixed neutral
-// green, drawn between the two. It has to be readable as a different *kind* of
-// statement — "there is time here nobody has classified" — and a project color
-// would file it as measured work.
+// Kind is carried by *position* — the centre is always thinking, the outer ring
+// always building, the innermost ring always maintenance — which keeps cells
+// comparable down a column. Since 2026-10-16 it is also carried by *colour*: one
+// fixed colour per kind (projectKindBlock), shared with Trend's kind view. The
+// earlier rule (colour = the kind's top project, `other` alone a fixed green)
+// meant a kind changed colour day to day and never matched the chart below it,
+// which is what the user saw as "these don't match".
 //
 // Conditioning gets no mark. It has no derivable input yet (a book in a chair
 // leaves no session), and rendering an always-empty band for it would read as a
