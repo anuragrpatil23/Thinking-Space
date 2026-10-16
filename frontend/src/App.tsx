@@ -114,6 +114,7 @@ import { startVaultLiveRefresh } from './services/orchestrators/vaultLiveRefresh
 import { listRecentVaultFilesOrch } from './services/orchestrators/vaultSearchOrch'
 import { rankVaultSearchBlock, type VaultSearchDoc, type VaultSearchHit } from './services/lego_blocks/units/vaultSearchRankBlock'
 import { useVaultSearchBlock } from './components/lego_blocks/hooks/units/useVaultSearchBlock'
+import { setSearchHighlightQueryBlock } from './services/lego_blocks/units/searchHighlightTermsBlock'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import {
   gitCommitAllOrch,
@@ -1829,10 +1830,12 @@ function App() {
   }, [runGitAction])
 
   const runCommandItem = useCallback((item: CommandItem) => {
+    // A file opened from a search shows where the words are inside it.
+    if (item.group === 'Files' && commandQuery.trim()) setSearchHighlightQueryBlock(commandQuery)
     setCommandPaletteOpen(false)
     setCommandQuery('')
     navigate(resolveWorkspaceNavigationRoute(item.to))
-  }, [navigate, resolveWorkspaceNavigationRoute])
+  }, [commandQuery, navigate, resolveWorkspaceNavigationRoute])
 
   const openNativeCreateSurface = useCallback(() => {
     handleCreateWorkspaceTab()

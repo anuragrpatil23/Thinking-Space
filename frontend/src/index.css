@@ -191,6 +191,11 @@
     --ltm-editor-selection: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 15%, transparent);
     --ltm-editor-selection-idle: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 7%, transparent);
     --ltm-editor-match: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 8%, transparent);
+    /* Vault-search hits inside a note: amber, the colour of "found", kept
+       apart from the accent so a hit never reads as a selection. The hit
+       being looked at is the same hue, stronger. */
+    --ltm-editor-search-match: rgb(245 158 11 / 0.22);
+    --ltm-editor-search-match-current: rgb(245 158 11 / 0.5);
   }
   /* Dark needs more of the accent to read at all: the same percentage over a
      near-black ground lands far closer to the background than over white. */
@@ -198,6 +203,17 @@
     --ltm-editor-selection: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 30%, transparent);
     --ltm-editor-selection-idle: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 15%, transparent);
     --ltm-editor-match: color-mix(in srgb, var(--ltm-explorer-selected-color, #c73773) 17%, transparent);
+    --ltm-editor-search-match: rgb(245 158 11 / 0.2);
+    --ltm-editor-search-match-current: rgb(245 158 11 / 0.45);
+  }
+
+  /* Vault-search hits in a rendered note (CSS Custom Highlight API — see
+     useSearchHitsInViewBlock). Same tokens as the editor's search layer. */
+  ::highlight(ltm-search-hit) {
+    background-color: var(--ltm-editor-search-match);
+  }
+  ::highlight(ltm-search-hit-current) {
+    background-color: var(--ltm-editor-search-match-current);
   }
 
   /* Syntax highlighting for fenced code blocks in view mode (rehype-highlight

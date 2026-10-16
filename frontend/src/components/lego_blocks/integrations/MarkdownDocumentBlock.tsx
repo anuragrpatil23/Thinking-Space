@@ -123,6 +123,8 @@ import { readMemorizedSessions } from '@/services/lego_blocks/units/memorizedSes
 import DocumentFindBarBlock from '@/components/lego_blocks/integrations/DocumentFindBarBlock'
 import { useInDocumentFindBlock } from '@/components/lego_blocks/hooks/units/useInDocumentFindBlock'
 import { useSessionTelemetryBlock } from '@/components/lego_blocks/hooks/units/useSessionTelemetryBlock'
+import { useSearchHitsInViewBlock } from '@/components/lego_blocks/hooks/units/useSearchHitsInViewBlock'
+import SearchHitCounterBlock from '@/components/lego_blocks/units/SearchHitCounterBlock'
 import { isTableDocumentPathBlock } from '@/services/lego_blocks/units/tableDocumentPathBlock'
 import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocumentPathBlock'
 import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
@@ -960,6 +962,10 @@ function MarkdownTextDocumentRuntimeBlock({
     ),
     [editorSettings.preserveNewlinesInViewMode, viewMarkdown],
   )
+  // Vault-search words lit up in the rendered note (edit mode: the editor's
+  // own layer, via `showSearchHits`).
+  const viewProseRef = useRef<HTMLDivElement | null>(null)
+  const viewSearchHits = useSearchHitsInViewBlock(viewProseRef, !isEditing, renderedViewMarkdown)
   const shouldRelaxWhitespacePreservation = useMemo(
     () => /```tikz\b|(^|[^\\])\$\$|(^|[^\\])\$[^$\n]+\$/m.test(renderedViewMarkdown),
     [renderedViewMarkdown],
@@ -2378,12 +2384,22 @@ function MarkdownTextDocumentRuntimeBlock({
                 onPointerCancel={clearLongPressTimer}
                 onPointerLeave={clearLongPressTimer}
               >
+                {viewSearchHits && (
+                  <SearchHitCounterBlock
+                    words={viewSearchHits.words}
+                    count={viewSearchHits.count}
+                    current={viewSearchHits.current}
+                    onStep={viewSearchHits.step}
+                    onClear={viewSearchHits.clear}
+                  />
+                )}
                 {pendingFullRender && (
                   <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                     Rendering full document...
                   </div>
                 )}
                 <div
+                  ref={viewProseRef}
                   className={cn(
                     'prose',
                     editorSettings.preserveSpacesInViewMode && !shouldRelaxWhitespacePreservation && 'ltm-markdown-preserve-spaces',
@@ -2550,6 +2566,7 @@ function MarkdownTextDocumentRuntimeBlock({
           <div className={cn('space-y-4', isIosPhone && 'px-3 pb-[calc(var(--ltm-safe-bottom,0px)+0.4rem)]')}>
             <div data-ltm-edge-swipe-ignore="true">
               <MarkdownRichEditorBlock
+                showSearchHits
                 initialCursorHint={pendingEditCaretHintRef.current}
                 onOpenWikilink={(target, openInNewTab) => {
                   void (async () => {

@@ -1,4 +1,18 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import {
+  applySearchWordsBlock,
+  createSearchMatchLayerBlock,
+  focusSearchMatchBlock,
+  searchMatchField,
+  stepSearchMatchBlock,
+  type SearchMatchState,
+} from '@/components/lego_blocks/units/searchMatchLayerBlock'
+import SearchHitCounterBlock from '@/components/lego_blocks/units/SearchHitCounterBlock'
+import {
+  getSearchHighlightWordsBlock,
+  onSearchHighlightWordsBlock,
+  setSearchHighlightQueryBlock,
+} from '@/services/lego_blocks/units/searchHighlightTermsBlock'
 import { createPortal } from 'react-dom'
 import CodeMirror from '@uiw/react-codemirror'
 import { redo, undo } from '@codemirror/commands'
@@ -83,6 +97,9 @@ import { cn } from '@/lib/utils'
 interface MarkdownRichEditorBlockProps {
   value: string
   onChange: (next: string) => void
+  /** Light up the active vault-search words and show the hit counter. Only
+   *  for notes opened from the vault — not scratch editors or side panels. */
+  showSearchHits?: boolean
   /** Cmd+S / Ctrl+S while the editor has focus. Bound inside CM6's keymap
    *  rather than on `window`, because the editor owns key handling when it is
    *  focused and a window listener is unreliable against it. See
@@ -478,6 +495,7 @@ class InlineDiffWidgetBlock extends WidgetType {
 const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, MarkdownRichEditorBlockProps>(function MarkdownRichEditorBlock({
   value,
   onChange,
+  showSearchHits = false,
   onSaveRequest,
   currentPath = '',
   className,
@@ -521,6 +539,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
     return /iPhone/i.test(navigator.userAgent)
   }, [layout.mode, layout.surface])
   const editorViewRef = useRef<EditorView | null>(null)
+  const [searchHits, setSearchHits] = useState<SearchMatchState | null>(null)
   const currentPathRef = useRef(currentPath)
   useEffect(() => { currentPathRef.current = currentPath }, [currentPath])
   // Read through a ref so the keymap extension never has to be rebuilt (which
@@ -1304,6 +1323,23 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
           ]
         : []),
       ...focusTheme,
+      ...(showSearchHits ? [
+        createSearchMatchLayerBlock(),
+        EditorView.updateListener.of((update) => {
+          const before = update.startState.field(searchMatchField, false)
+          const after = update.state.field(searchMatchField, false)
+          if (!after || before === after) return
+          setSearchHits(after.words.length > 0 ? after : null)
+          // The note's text arrived after the words did: bring the first hit in.
+          if (before && before.matches.length === 0 && after.matches.length > 0) {
+            requestAnimationFrame(() => focusSearchMatchBlock(update.view, 0))
+          }
+        }),
+        keymap.of([
+          { key: 'Mod-g', run: (view) => stepSearchMatchBlock(view, 1) },
+          { key: 'Shift-Mod-g', run: (view) => stepSearchMatchBlock(view, -1) },
+        ]),
+      ] : []),
     ]
     return nextExtensions
     // `focusKeyboardInsetPx` is deliberately NOT a dependency: every identity
@@ -1313,7 +1349,24 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
     // keyboard inset moves several times per keyboard animation, so wiring it
     // in here stalled the first tap and leaked stylesheets for the rest of the
     // session. It rides `FOCUS_KEYBOARD_INSET_VAR_BLOCK` on the root instead.
-  }, [compactMobile, editorLanguage, isIphoneRuntime, proseEditing, focusProfile, inlineDiffDecorations, inlineDiffRender, placeholder])
+  }, [compactMobile, editorLanguage, isIphoneRuntime, proseEditing, focusProfile, inlineDiffDecorations, inlineDiffRender, placeholder, showSearchHits])
+
+  // Follow the app-wide search words (explorer filter, ⌘K) into this note.
+  useEffect(() => {
+    if (!showSearchHits) return undefined
+    const apply = (words: readonly string[]) => {
+      const view = editorViewRef.current
+      if (view) applySearchWordsBlock(view, words)
+    }
+    apply(getSearchHighlightWordsBlock())
+    // The view may mount a frame after this effect; apply is idempotent.
+    const frame = requestAnimationFrame(() => apply(getSearchHighlightWordsBlock()))
+    const unsubscribe = onSearchHighlightWordsBlock(apply)
+    return () => {
+      cancelAnimationFrame(frame)
+      unsubscribe()
+    }
+  }, [showSearchHits])
 
   const applyPatch = useCallback((patchFactory: EditorPatchFactoryBlock) => {
     const view = editorViewRef.current
@@ -1572,6 +1625,19 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
         headerControlsContainer
           ? createPortal(headerControlsBlock, headerControlsContainer)
           : headerControlsBlock
+      )}
+
+      {searchHits && (
+        <SearchHitCounterBlock
+          words={searchHits.words}
+          count={searchHits.matches.length}
+          current={searchHits.current}
+          onStep={(direction) => {
+            const view = editorViewRef.current
+            if (view) stepSearchMatchBlock(view, direction)
+          }}
+          onClear={() => setSearchHighlightQueryBlock(null)}
+        />
       )}
 
       {/* Formatting toolbar */}

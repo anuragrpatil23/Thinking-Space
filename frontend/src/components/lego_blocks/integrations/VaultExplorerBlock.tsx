@@ -39,8 +39,12 @@ import UniversalSearchBlock from '@/components/lego_blocks/integrations/Universa
 import NotebookTocBlock from '@/components/lego_blocks/integrations/NotebookTocBlock'
 import { UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
 import { useVaultSearchBlock } from '@/components/lego_blocks/hooks/units/useVaultSearchBlock'
+import HighlightedNameBlock from '@/components/lego_blocks/units/HighlightedNameBlock'
+import SearchResultSummaryBlock from '@/components/lego_blocks/units/SearchResultSummaryBlock'
+import { setSearchHighlightQueryBlock } from '@/services/lego_blocks/units/searchHighlightTermsBlock'
 import {
   buildVaultSearchTreeBlock,
+  vaultSearchTokensBlock,
   type VaultSearchTreeNode,
 } from '@/services/lego_blocks/units/vaultSearchRankBlock'
 import {
@@ -733,6 +737,16 @@ function VaultExplorerBlockInner({
     () => (searchRanking ? buildVaultSearchTreeBlock(searchRanking.hits) : null),
     [searchRanking],
   )
+  const searchTokens = useMemo(() => vaultSearchTokensBlock(query), [query])
+  // Notes opened while filtering light up these words. The explorer that
+  // owns app-wide refresh speaks for the app; skip the first, empty render
+  // so mounting doesn't wipe words ⌘K just set.
+  const lastPublishedQueryRef = useRef(normalizedQuery)
+  useEffect(() => {
+    if (!listenToGlobalSyncRefresh || lastPublishedQueryRef.current === normalizedQuery) return
+    lastPublishedQueryRef.current = normalizedQuery
+    setSearchHighlightQueryBlock(normalizedQuery || null)
+  }, [listenToGlobalSyncRefresh, normalizedQuery])
   const searchHitPaths = useMemo(
     () => new Set(searchRanking?.hits.map(hit => hit.path) ?? []),
     [searchRanking],
@@ -1402,7 +1416,7 @@ function VaultExplorerBlockInner({
                 <Folder className={cn('ltm-explorer-glyph ltm-explorer-folder-icon h-3.5 w-3.5 text-blue-500', inSelectionTrail && 'text-foreground/85')} />
               )}
               {renderGuides(depth, folderPath)}
-              <span className="truncate">{folderName}</span>
+              <HighlightedNameBlock className="truncate" text={folderName} tokens={filterActive ? searchTokens : []} />
               {activeTelemetry?.folders.has(folderPath) && (
                 <span
                   aria-hidden="true"
@@ -1652,7 +1666,7 @@ function VaultExplorerBlockInner({
                   row.pinned && !isSelected ? 'text-amber-500' : getFileIconColor(fileName, isSelected),
                 )} />
               )}
-              <span className="truncate">{fileName}</span>
+              <HighlightedNameBlock className="truncate" text={fileName} tokens={filterActive ? searchTokens : []} />
               {(() => {
                 const touch = activeTelemetry?.files.get(filePath)
                 if (!touch) return null
@@ -1700,6 +1714,7 @@ function VaultExplorerBlockInner({
       isInMatchedFolder,
       searchCollapsed,
       searchListing,
+      searchTokens,
       pendingRename,
       resolveFileMeta,
       selectedFilePath,
@@ -1742,13 +1757,6 @@ function VaultExplorerBlockInner({
       )
     }
 
-    if (searchRanking && searchRanking.total > searchRanking.hits.length) {
-      rows.push(
-        <div key="search-capped" className="px-3 py-2 text-xs text-muted-foreground">
-          Showing the best {searchRanking.hits.length} of {searchRanking.total} matches. Type more to narrow.
-        </div>,
-      )
-    }
     return rows
   }, [filterActive, renderPath, rootNode.loaded, rootNode.loading, searchRanking])
 
@@ -1841,6 +1849,7 @@ function VaultExplorerBlockInner({
             />
           </div>
         )}
+        {filterActive && <SearchResultSummaryBlock ranking={searchRanking} />}
 
         <div className={cn(
           'flex items-center gap-1 px-1',
