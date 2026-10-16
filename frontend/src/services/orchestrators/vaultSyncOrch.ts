@@ -30,6 +30,7 @@ import {
   bulkUpsertLinks,
   replaceLinksForFile,
   replaceVaultFileIndex,
+  replaceVaultAssetIndex,
   upsertVaultFileIndexEntry,
   getVaultFileRecordsByPaths,
   type NodeRecord,
@@ -44,6 +45,7 @@ import {
   isPathSyncExcluded,
 } from '@/services/lego_blocks/units/vaultSyncExclusionsBlock'
 import { logError } from '@/services/lego_blocks/units/debugLogBlock'
+import { notifyVaultIndexChangedBlock } from '@/services/lego_blocks/units/vaultIndexChangedBlock'
 import {
   mergeWikiLinksIntoFrontmatterBlock,
   resolveGeneratedWikiLinksForFrontmatterBlock,
@@ -155,6 +157,32 @@ function normalizeEpochSeconds(value: number): number {
   return value > MAX_REASONABLE_EPOCH_SECONDS ? (value / 1000) : value
 }
 
+/** Non-markdown types worth finding by name. Sync never reads them; it only
+ *  records that they exist, in the same walk it already makes for markdown. */
+const SEARCHABLE_ASSET_EXTENSIONS = [
+  '.pdf', '.csv', '.tsv', '.txt', '.html', '.htm', '.excalidraw', '.canvas',
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.heic',
+  '.mp4', '.mov', '.m4a', '.mp3', '.wav',
+  '.docx', '.xlsx', '.pptx', '.epub',
+]
+
+/**
+ * One walk feeds both indexes: markdown is returned for sync to work on, every
+ * other searchable file goes straight into the asset index (names only).
+ */
+async function walkVaultForSyncBlock(vaultFs: VaultFS, excludedPrefixes: string[]): Promise<VaultEntry[]> {
+  const walked = await vaultFs.walkVault(['.md', ...SEARCHABLE_ASSET_EXTENSIONS])
+  const markdown: VaultEntry[] = []
+  const assets: VaultEntry[] = []
+  for (const entry of walked) {
+    if (excludedPrefixes.length > 0 && isPathSyncExcluded(entry.path, excludedPrefixes)) continue
+    if (entry.path.toLowerCase().endsWith('.md')) markdown.push(entry)
+    else assets.push(entry)
+  }
+  void replaceVaultAssetIndex(toVaultFileRecords(assets)).catch(() => undefined)
+  return markdown
+}
+
 function toVaultFileRecords(entries: VaultEntry[]): VaultFileRecord[] {
   return entries.map(e => ({
     path: e.path,
@@ -194,11 +222,7 @@ export async function fullSync(fs?: VaultFS, options?: VaultSyncOptions): Promis
       await clearNodesAndLinksUnderPath(rootPath)
     }
 
-    const walked = await vaultFs.walkVault(['.md'])
-    const excludedPrefixes = getSyncExcludedPathPrefixes()
-    const allEntries = excludedPrefixes.length === 0
-      ? walked
-      : walked.filter(e => !isPathSyncExcluded(e.path, excludedPrefixes))
+    const allEntries = await walkVaultForSyncBlock(vaultFs, getSyncExcludedPathPrefixes())
     const entries = rootPath
       ? allEntries.filter(e => e.path === rootPath || e.path.startsWith(`${rootPath}/`))
       : allEntries
@@ -261,11 +285,8 @@ export async function incrementalSync(
   })
   try {
   const indexTrusted = consumeVaultIndexTrustMarker()
-  const walked = await vaultFs.walkVault(['.md'])
   const excludedPrefixes = getSyncExcludedPathPrefixes()
-  const allEntries = excludedPrefixes.length === 0
-    ? walked
-    : walked.filter(e => !isPathSyncExcluded(e.path, excludedPrefixes))
+  const allEntries = await walkVaultForSyncBlock(vaultFs, excludedPrefixes)
 
   // Find files modified since last sync
   const sinceSeconds = normalizeEpochSeconds(sinceTimestamp)
@@ -454,6 +475,8 @@ export async function syncSingleFile(
     return true
   } catch {
     return false
+  } finally {
+    notifyVaultIndexChangedBlock()
   }
 }
 
@@ -498,6 +521,8 @@ export async function smartSync(fs?: VaultFS, options?: VaultSyncOptions): Promi
   } else {
     result = await incrementalSync(lastSync, fs, options)
   }
+  // Both paths rewrite the index cache, even a partial run.
+  notifyVaultIndexChangedBlock()
 
   // Keep retry surface intact on partial failures.
   // For failed full-sync runs, force next run to full sync again.

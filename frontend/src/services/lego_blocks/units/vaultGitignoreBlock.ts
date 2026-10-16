@@ -36,6 +36,18 @@ const APP_MANAGED_GITIGNORE_EXCEPTIONS: Record<string, string[]> = {
   'ai-activity': ['thinking-organizer'],
 }
 
+/** Machine-written by the app (activity dumps, AI digests) — the same set kept
+ *  out of git, minus its hand-written exceptions. Search ranks these below
+ *  the user's own notes. */
+export function isAppGeneratedVaultPathBlock(path: string): boolean {
+  for (const prefix of APP_MANAGED_GITIGNORE_BASELINE) {
+    if (path !== prefix && !path.startsWith(`${prefix}/`)) continue
+    const rest = path.slice(prefix.length + 1)
+    return !(APP_MANAGED_GITIGNORE_EXCEPTIONS[prefix] ?? []).some(sub => rest === sub || rest.startsWith(`${sub}/`))
+  }
+  return false
+}
+
 function normalizePrefix(value: string): string | null {
   const trimmed = value
     .replace(/\\/g, '/')

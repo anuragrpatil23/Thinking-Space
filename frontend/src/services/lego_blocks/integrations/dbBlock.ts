@@ -106,6 +106,9 @@ class ThinkingSpaceDB extends Dexie {
   nodes!: Table<NodeRecord>
   links!: Table<LinkRecord>
   files!: Table<VaultFileRecord>
+  /** Non-markdown files (PDFs, images, CSVs…) — names only, for search. Kept
+   *  apart from `files`, which sync reads as "markdown it may need to parse". */
+  assets!: Table<VaultFileRecord>
 
   constructor() {
     super('ThinkingSpaceDB')
@@ -129,6 +132,9 @@ class ThinkingSpaceDB extends Dexie {
       nodes: '++id, &uuid, &key, type, parent, parentUuid, filePath, updatedAt, status, taskStatus, owner, runId, sessionId, recordKind, *tags, *dependsOn, *blockedBy, *relatedNodes, *metadataKeys',
       links: '++id, sourceFilePath, targetFilePath, linkType',
       files: '&path, mtime',
+    })
+    this.version(5).stores({
+      assets: '&path',
     })
   }
 }
@@ -472,10 +478,45 @@ export async function getAllFilePaths(): Promise<Set<string>> {
  * Reading the table to diff costs no writes at all.
  */
 export async function replaceVaultFileIndex(records: VaultFileRecord[]): Promise<void> {
+  await replaceFileRecordTable(getDb().files, records)
+}
+
+/** Same diff-then-write replace as the markdown index, for non-markdown files. */
+export async function replaceVaultAssetIndex(records: VaultFileRecord[]): Promise<void> {
+  await replaceFileRecordTable(getDb().assets, records)
+}
+
+export async function getVaultAssetIndexRecords(): Promise<VaultFileRecord[]> {
+  return getDb().assets.toArray()
+}
+
+/** The fields search needs from each note, without holding whole records. */
+export interface NodeSearchSummary {
+  filePath: string
+  title: string
+  tags: string[]
+  searchText: string
+}
+
+export async function getNodeSearchSummaries(): Promise<NodeSearchSummary[]> {
+  const out: NodeSearchSummary[] = []
+  await getDb().nodes.each(node => {
+    if (!node.filePath) return
+    out.push({
+      filePath: node.filePath,
+      title: node.title ?? '',
+      tags: node.tags ?? [],
+      searchText: node.searchText ?? '',
+    })
+  })
+  return out
+}
+
+async function replaceFileRecordTable(table: Table<VaultFileRecord>, records: VaultFileRecord[]): Promise<void> {
   const db = getDb()
-  await db.transaction('rw', db.files, async () => {
+  await db.transaction('rw', table, async () => {
     const existing = new Map<string, VaultFileRecord>()
-    for (const rec of await db.files.toArray()) existing.set(rec.path, rec)
+    for (const rec of await table.toArray()) existing.set(rec.path, rec)
 
     const toPut: VaultFileRecord[] = []
     for (const rec of records) {
@@ -486,8 +527,8 @@ export async function replaceVaultFileIndex(records: VaultFileRecord[]): Promise
     // Whatever is left in `existing` was not in this walk.
     const toDelete = Array.from(existing.keys())
 
-    if (toDelete.length > 0) await db.files.bulkDelete(toDelete)
-    if (toPut.length > 0) await db.files.bulkPut(toPut)
+    if (toDelete.length > 0) await table.bulkDelete(toDelete)
+    if (toPut.length > 0) await table.bulkPut(toPut)
   })
 }
 

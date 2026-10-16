@@ -37,10 +37,12 @@ import {
 } from 'lucide-react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
 import NotebookTocBlock from '@/components/lego_blocks/integrations/NotebookTocBlock'
+import { UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK } from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
+import { useVaultSearchBlock } from '@/components/lego_blocks/hooks/units/useVaultSearchBlock'
 import {
-  buildPathSearchCandidatesBlock,
-  UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK,
-} from '@/components/lego_blocks/integrations/universalSearchPresetBlock'
+  buildVaultSearchTreeBlock,
+  type VaultSearchTreeNode,
+} from '@/services/lego_blocks/units/vaultSearchRankBlock'
 import {
   countNotebookPages,
   type NotebookEntry,
@@ -61,8 +63,6 @@ import {
   readDroppedNodeId,
   readPersistedExplorerState,
 } from '@/components/lego_blocks/units/VaultExplorerUtilsBlock'
-import { rankFuzzyItemsBlock } from '@/services/lego_blocks/units/fuzzySearchBlock'
-import { searchNodeFilePathsByText } from '@/services/lego_blocks/integrations/dbBlock'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import { subscribeExternalVaultChangesBlock } from '@/services/lego_blocks/integrations/vaultExternalChangeBlock'
 import { cn } from '@/lib/utils'
@@ -83,6 +83,10 @@ import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebook
 import { getAbsolutePathForClipboardOrch } from '@/services/orchestrators/fileSystemOrch'
 
 // The numbering toggle is hidden for now (see its render site).
+/** Filter hits drawn in the tree; past this, ranking decides what shows. */
+const SEARCH_TREE_LIMIT = 400
+const EMPTY_SEARCH_LISTING: VaultSearchTreeNode = { folders: [], files: [] }
+
 const COMPACT_NUMBERING_TOGGLE_ENABLED = false
 
 // Internal drop targets read the explicit application/x-ltm-path types; text/plain
@@ -521,7 +525,6 @@ function VaultExplorerBlockInner({
   // Tracks the latest inlineRename state as a ref so commitInlineRename always
   // reads the current value even when called from onBlur after unmount (stale closure).
   const inlineRenameRef = useRef<InlineRenameState | null>(null)
-  const queryMatchCacheRef = useRef<Map<string, boolean>>(new Map())
   const nodesRef = useRef<Record<string, NodeState>>({})
   nodesRef.current = nodes
   inlineRenameRef.current = inlineRename
@@ -720,85 +723,58 @@ function VaultExplorerBlockInner({
   const hasLargeTitle = largeTitle.length > 0
   const inlineRenameSession = inlineRename ? `${inlineRename.kind}:${inlineRename.path}` : null
 
-  // Dexie content matches (title/tags/excerpt/metadata via precomputed
-  // searchText) so the filter finds notes by what's in them, not just the
-  // path. Null while empty-query or before the async lookup lands.
-  const [contentMatchPaths, setContentMatchPaths] = useState<Set<string> | null>(null)
+  // Filtering asks the shared vault search engine, which knows the whole vault
+  // (not just folders opened so far) and ranks name > title > tags > folder >
+  // content. Hits are laid out as a tree whose branches open on their own, so
+  // every match is seen inside the folder it lives in.
+  const filterActive = normalizedQuery.length > 0
+  const searchRanking = useVaultSearchBlock(query, { limit: SEARCH_TREE_LIMIT })
+  const searchTree = useMemo(
+    () => (searchRanking ? buildVaultSearchTreeBlock(searchRanking.hits) : null),
+    [searchRanking],
+  )
+  const searchHitPaths = useMemo(
+    () => new Set(searchRanking?.hits.map(hit => hit.path) ?? []),
+    [searchRanking],
+  )
+  // Branches the user folded while filtering; a new query unfolds everything.
+  const [searchCollapsed, setSearchCollapsed] = useState<ReadonlySet<string>>(() => new Set())
+  useEffect(() => { setSearchCollapsed(new Set()) }, [normalizedQuery])
 
-  useEffect(() => {
-    if (!normalizedQuery) {
-      setContentMatchPaths(null)
-      return
+  /** At or under a folder that matched by name — shown whole, unfiltered. */
+  const isInMatchedFolder = useCallback((path: string): boolean => {
+    if (!searchTree || searchTree.matchedFolders.size === 0) return false
+    let p = path
+    while (p) {
+      if (searchTree.matchedFolders.has(p)) return true
+      const cut = p.lastIndexOf('/')
+      p = cut > 0 ? p.slice(0, cut) : ''
     }
-    let cancelled = false
-    const timer = window.setTimeout(() => {
-      searchNodeFilePathsByText(normalizedQuery)
-        .then(paths => {
-          if (cancelled) return
-          setContentMatchPaths(new Set(
-            paths.map(p => p.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').toLowerCase()),
-          ))
-        })
-        .catch(() => {
-          if (!cancelled) setContentMatchPaths(null)
-        })
-    }, 120)
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [normalizedQuery])
+    return false
+  }, [searchTree])
 
-  useEffect(() => {
-    queryMatchCacheRef.current = new Map()
-  }, [normalizedQuery, contentMatchPaths])
+  /** The filtered listing for a folder, or null when it shows its real contents. */
+  const searchListing = useCallback((path: string): VaultSearchTreeNode | null => {
+    if (!filterActive || isInMatchedFolder(path)) return null
+    return searchTree?.nodes.get(path) ?? EMPTY_SEARCH_LISTING
+  }, [filterActive, isInMatchedFolder, searchTree])
 
-  const pathMatchesSearch = useCallback((path: string): boolean => {
-    if (!normalizedQuery) return true
-    const normalizedPath = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-    if (!normalizedPath) return false
-
-    const cached = queryMatchCacheRef.current.get(normalizedPath)
-    if (typeof cached === 'boolean') return cached
-
-    const matched = rankFuzzyItemsBlock({
-      items: [normalizedPath],
-      query: normalizedQuery,
-      limit: 1,
-      getCandidates: item => buildPathSearchCandidatesBlock(item),
-    }).length > 0 || (contentMatchPaths?.has(normalizedPath.toLowerCase()) ?? false)
-
-    queryMatchCacheRef.current.set(normalizedPath, matched)
-    return matched
-  }, [contentMatchPaths, normalizedQuery])
-
-  const pathMatchesQuery = useCallback(
-    (path: string, visited: Set<string>): boolean => {
-      if (!normalizedQuery) return true
-      if (visited.has(path)) return false
-      visited.add(path)
-
-      if (pathMatchesSearch(path)) return true
-
-      const node = getNode(path)
-
-      for (const folderName of node.folders) {
-        const full = joinPath(path, folderName)
-        if (pathMatchesSearch(full)) return true
-        if (pathMatchesQuery(full, visited)) return true
-      }
-
-      for (const fileName of node.files) {
-        if (pathMatchesSearch(joinPath(path, fileName))) return true
-      }
-
-      return false
-    },
-    [getNode, normalizedQuery, pathMatchesSearch],
+  const pathMatchesSearch = useCallback(
+    (path: string): boolean => !filterActive || searchHitPaths.has(path) || isInMatchedFolder(path),
+    [filterActive, isInMatchedFolder, searchHitPaths],
   )
 
   const toggleFolder = useCallback(
     (path: string) => {
+      // A search branch folds without touching the tree's real expand state.
+      if (filterActive && !isInMatchedFolder(path)) {
+        setSearchCollapsed(prev => {
+          const next = new Set(prev)
+          if (!next.delete(path)) next.add(path)
+          return next
+        })
+        return
+      }
       setExpandedPaths(prev => {
         if (prev.includes(path)) return prev.filter(p => p !== path)
         return [...prev, path]
@@ -807,7 +783,7 @@ function VaultExplorerBlockInner({
         void loadPath(path)
       }
     },
-    [getNode, loadPath],
+    [filterActive, getNode, isInMatchedFolder, loadPath],
   )
 
   const refreshRoot = useCallback(() => {
@@ -1300,24 +1276,21 @@ function VaultExplorerBlockInner({
 
       const telemetryFilterActive = telemetryFilterOn && activeTelemetry !== null
 
-      const visibleFolders = node.folders.filter(folderName => {
-        const full = joinPath(path, folderName)
-        if (telemetryFilterActive && !activeTelemetry.folders.has(full)) return false
-        if (!normalizedQuery) return true
-        if (pathMatchesSearch(full)) return true
-        return pathMatchesQuery(full, new Set())
-      })
+      const listing = searchListing(path) ?? node
 
-      const visibleFiles = node.files.filter(fileName => {
-        const full = joinPath(path, fileName)
-        if (telemetryFilterActive && !activeTelemetry.files.has(full)) return false
-        if (!normalizedQuery) return true
-        return pathMatchesSearch(full)
-      })
+      const visibleFolders = telemetryFilterActive
+        ? listing.folders.filter(name => activeTelemetry.folders.has(joinPath(path, name)))
+        : listing.folders
+
+      const visibleFiles = telemetryFilterActive
+        ? listing.files.filter(name => activeTelemetry.files.has(joinPath(path, name)))
+        : listing.files
 
       visibleFolders.forEach(folderName => {
         const folderPath = joinPath(path, folderName)
-        const expanded = isExpanded(folderPath)
+        // A search branch is drawn from the hits, so it needs no disk listing.
+        const searchBranch = filterActive && !isInMatchedFolder(folderPath)
+        const expanded = searchBranch ? !searchCollapsed.has(folderPath) : isExpanded(folderPath)
         const folderNode = getNode(folderPath)
         const isInlineEditing = inlineRename?.kind === 'folder' && inlineRename.path === folderPath
         const inSelectionTrail = selectedFolderPath === folderPath
@@ -1442,7 +1415,9 @@ function VaultExplorerBlockInner({
           )
         }
 
-        if (expanded) {
+        if (expanded && searchBranch) {
+          rows.push(...renderPath(folderPath, depth + 1))
+        } else if (expanded) {
           if (folderNode.error) {
             rows.push(
               <div
@@ -1721,8 +1696,10 @@ function VaultExplorerBlockInner({
       onOpenInNewTab,
       onSelectFile,
       openContextMenu,
-      pathMatchesSearch,
-      pathMatchesQuery,
+      filterActive,
+      isInMatchedFolder,
+      searchCollapsed,
+      searchListing,
       pendingRename,
       resolveFileMeta,
       selectedFilePath,
@@ -1747,17 +1724,33 @@ function VaultExplorerBlockInner({
       )
     }
 
-    const rows = renderPath('', 0)
-    if (rows.length === 0) {
+    if (filterActive && !searchRanking) {
       return (
-        <div className="px-3 py-4 text-sm text-muted-foreground">
-          {normalizedQuery ? 'No matching files or folders.' : 'Vault appears to be empty.'}
+        <div className="flex items-center gap-2 px-3 py-4 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Searching…
         </div>
       )
     }
 
+    const rows = renderPath('', 0)
+    if (rows.length === 0) {
+      return (
+        <div className="px-3 py-4 text-sm text-muted-foreground">
+          {filterActive ? 'No matching files or folders.' : 'Vault appears to be empty.'}
+        </div>
+      )
+    }
+
+    if (searchRanking && searchRanking.total > searchRanking.hits.length) {
+      rows.push(
+        <div key="search-capped" className="px-3 py-2 text-xs text-muted-foreground">
+          Showing the best {searchRanking.hits.length} of {searchRanking.total} matches. Type more to narrow.
+        </div>,
+      )
+    }
     return rows
-  }, [normalizedQuery, renderPath, rootNode.loaded, rootNode.loading])
+  }, [filterActive, renderPath, rootNode.loaded, rootNode.loading, searchRanking])
 
   const notebookContent = useMemo(() => {
     if (viewMode !== 'grid') return null
