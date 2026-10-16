@@ -239,6 +239,7 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   let cwd = ''
   let sessionId = ''
   let model: string | undefined
+  let aiTitle: string | null = null
   // Claude usage is per-turn — we sum. Codex emits running totals — we take last.
   //
   // One API response can be written as SEVERAL assistant lines (a `thinking`
@@ -304,6 +305,10 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
     if (env.source === 'claude') {
       if (!cwd && typeof evt.cwd === 'string') cwd = evt.cwd
       if (!sessionId && typeof evt.sessionId === 'string') sessionId = evt.sessionId
+      // Untimestamped and session-wide: every window of the file shares it.
+      if (type === 'ai-title' && typeof evt.aiTitle === 'string' && evt.aiTitle.trim()) {
+        aiTitle = evt.aiTitle.trim()
+      }
 
       if (type === 'user') {
         const message = evt.message as Record<string, unknown> | undefined
@@ -753,7 +758,7 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
 
     const startedIso = new Date(win[0].ts).toISOString()
     const endedIso = new Date(win[win.length - 1].ts).toISOString()
-    const topic = scan.substantiveTopic || scan.fallbackTopic || '(no user message)'
+    const topic = aiTitle || scan.substantiveTopic || scan.fallbackTopic || '(no user message)'
     const isFirst = idx === 0
     // `path` keeps the ordinal `#wN` — it is a display handle and a way back to
     // the file, never an address.
@@ -829,6 +834,7 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       cwd: cwd || undefined,
       userMsgCount: scan.count,
       topic,
+      ...(env.source === 'claude' ? { aiTitle } : {}),
       hadClear: winHadClear,
       mtime: env.mtime,
       // A usage sample belongs to the window it FOLLOWS, so the upper bound is

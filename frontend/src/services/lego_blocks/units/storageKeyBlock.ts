@@ -46,7 +46,6 @@ export const STORAGE_KEYS = {
   aiActivityVaultSourcePrefixes: 'ltm-ai-activity-vault-source-prefixes',
   readingKeepScreenAwake: 'ltm-reading-keep-screen-awake',
   readingInstallId: 'ltm-reading-install-id',
-  aiActivityHomePostItEnabled: 'ltm-ai-activity-home-post-it-enabled',
   aiActivitySetMode: 'ltm-ai-activity-set-mode-enabled',
   aiActivityCalendarMode: 'ltm-ai-activity-calendar-mode-enabled',
   aiInputBudgetTokens: 'ltm-ai-input-budget-tokens',
@@ -211,19 +210,6 @@ export function setReadingKeepScreenAwake(enabled: boolean): void {
 /** Fired on the window when the keep-awake preference changes, so an open
  *  reader picks it up without a remount (`storage` doesn't fire same-tab). */
 export const READING_KEEP_SCREEN_AWAKE_EVENT = 'thinkspc:reading-keep-screen-awake-changed'
-
-/**
- * Whether the home canvas auto-drafts a daily "what I did with AI today" post-it.
- * Off by default — the This Week digest card now covers the same ground, so the
- * auto post-it is opt-in for users who still want it pinned on the canvas.
- */
-export function getAiActivityHomePostItEnabled(): boolean {
-  return getLocalStorageItemBlock(STORAGE_KEYS.aiActivityHomePostItEnabled) === 'true'
-}
-
-export function setAiActivityHomePostItEnabled(enabled: boolean): void {
-  setStorageItem(STORAGE_KEYS.aiActivityHomePostItEnabled, enabled ? 'true' : 'false')
-}
 
 /**
  * When on, AI-Activity surfaces group time by fixed 3-day "sets" anchored to

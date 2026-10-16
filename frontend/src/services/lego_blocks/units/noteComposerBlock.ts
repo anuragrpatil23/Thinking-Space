@@ -383,6 +383,15 @@ export function readDestinationUsageCountsBlock(): Record<string, number> {
   return normalized
 }
 
+/** Save-recents off storage as flat paths, newest first. Stored as segment
+ *  arrays by `addRecent`, which is the shape the old cascading picker wanted. */
+export function readRecentDestinationsBlock(): string[] {
+  return readJsonStorageBlock<string[][]>(DESTINATION_RECENTS_KEY_BLOCK, [])
+    .map(segments => (Array.isArray(segments) ? segments.filter(Boolean).join('/') : ''))
+    .filter(Boolean)
+    .slice(0, 5)
+}
+
 export function writeDestinationUsageCountsBlock(counts: Record<string, number>): void {
   writeJsonStorageBlock(DESTINATION_USAGE_COUNTS_KEY_BLOCK, counts)
 }

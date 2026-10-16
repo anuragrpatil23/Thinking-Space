@@ -1,10 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
-import CanvasSurfaceOrch, {
-  type CanvasSurfaceTilesApi,
-} from '@/components/orchestrators/CanvasSurfaceOrch'
+import CanvasSurfaceOrch from '@/components/orchestrators/CanvasSurfaceOrch'
 import type { CanvasTile } from '@/components/lego_blocks/hooks/shared/useCanvasTilesBlock'
-import { useAiActivityBlock } from '@/components/lego_blocks/hooks/shared/useAiActivityBlock'
-import { useAiActivityPostItBlock } from '@/components/lego_blocks/hooks/shared/useAiActivityPostItBlock'
 import HomeAnchorTileBlock from '@/components/lego_blocks/integrations/HomeAnchorTileBlock'
 import MoonSceneBlock from '@/components/lego_blocks/units/MoonSceneBlock'
 import { homeCanvasStorage } from '@/services/lego_blocks/integrations/homeCanvasStorageBlock'
@@ -52,22 +48,6 @@ const SEED_TILES: CanvasTile[] = [
   },
 ]
 
-// Drives the auto "what I did today" post-it. Reads AI session activity
-// (Claude + Codex, from vault and native stores) and appends new chains into
-// the daily post-it on the canvas. Shares the cache with AiActivityPanelBlock
-// inside the anchor, so a single load feeds both surfaces.
-function HomeTilesEffect({ tiles, setAllTiles, loaded }: CanvasSurfaceTilesApi) {
-  const aiActivity = useAiActivityBlock('90d')
-  useAiActivityPostItBlock({
-    tiles,
-    todayChains: aiActivity.todayChains,
-    ready: !aiActivity.loading && !aiActivity.error,
-    canvasLoaded: loaded,
-    setAllTiles,
-  })
-  return null
-}
-
 export default function HomeCanvasOrch() {
   // The AI-Activity tile grows when its drill-down opens; the panels below
   // cascade off it and the world height stretches to fit. Reported bottom
@@ -102,7 +82,6 @@ export default function HomeCanvasOrch() {
           />
         </>
       }
-      tilesEffect={HomeTilesEffect}
     />
   )
 }

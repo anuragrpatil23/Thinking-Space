@@ -29,6 +29,7 @@ import { useNoteDraftJournalBlock } from '@/components/lego_blocks/hooks/shared/
 import { useNoteDraftRecoveryBlock } from '@/components/lego_blocks/hooks/shared/useNoteDraftRecoveryBlock'
 import type { NoteDraftEntryBlock } from '@/services/lego_blocks/units/noteDraftJournalBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { findFreeNoteFilenameBlock } from '@/services/lego_blocks/integrations/freeNoteFilenameBlock'
 import { isReapableNoteHuskBlock } from '@/services/lego_blocks/units/noteHuskBlock'
 import { createNoteFenceCanvasStorage } from '@/services/lego_blocks/integrations/noteFenceCanvasStorageBlock'
 import { applyNoteCanvasToContent, parseNoteCanvasBlock } from '@/services/lego_blocks/units/noteCanvasBlock'
@@ -59,14 +60,13 @@ import {
   ensureMarkdownFilenameBlock,
   filenameFromTitleBlock,
   mergeDraftBlock,
-  NEW_NOTE_NAME_ATTEMPTS_BLOCK,
   noteKindShortcutIdBlock,
   normalizeSegmentsBlock,
-  numberedFilenameBlock,
   projectDestinationsBlock,
   projectForSegmentsBlock,
   readCustomShortcutsBlock,
   readDestinationUsageCountsBlock,
+  readRecentDestinationsBlock,
   readJsonStorageBlock,
   readLegacyQuickDestinationsBlock,
   resolveNoteTitleBlock,
@@ -99,15 +99,6 @@ import type { CascadingFolderPickerChange } from '@/components/lego_blocks/integ
 /** Long enough that a normal typing pause doesn't write, short enough that
  *  stepping away for a moment leaves the note on disk. */
 const AUTO_SAVE_DEBOUNCE_MS = 1200
-
-/** Recents off storage as flat paths, newest first. Stored as segment arrays by
- *  `addRecent`, which is the shape the old cascading picker wanted. */
-function readRecentDestinationsBlock(): string[] {
-  return readJsonStorageBlock<string[][]>(DESTINATION_RECENTS_KEY_BLOCK, [])
-    .map(segments => (Array.isArray(segments) ? segments.filter(Boolean).join('/') : ''))
-    .filter(Boolean)
-    .slice(0, 5)
-}
 
 /** Folders picked by hand in Explorer, newest first. Same storage shape as the
  *  save-recents above, different question: this one is "where did I go looking",
@@ -599,18 +590,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
    *  `base-2`, `base-3`. Extracted from `startNewNote` because the move needs
    *  exactly the same search — and because "no append, ever" means a move into
    *  a folder that already holds today's note must land beside it, not inside it. */
-  const findFreeFilename = useCallback(async (folderPath: string, base: string): Promise<string | null> => {
-    const fs = getVaultFS()
-    for (let attempt = 1; attempt <= NEW_NOTE_NAME_ATTEMPTS_BLOCK; attempt += 1) {
-      const candidate = numberedFilenameBlock(base, attempt)
-      const candidatePath = buildTargetPathBlock(folderPath, candidate)
-      if (!candidatePath) break
-      // Serial on purpose: each answer decides whether the next name is even
-      // worth asking about, and the loop almost always ends on the first.
-      if (!(await fs.exists(candidatePath))) return candidate
-    }
-    return null
-  }, [])
+  const findFreeFilename = findFreeNoteFilenameBlock
 
   const startNewNote = useCallback(async () => {
     if (!destinationPath.trim()) {

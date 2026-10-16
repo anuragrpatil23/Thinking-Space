@@ -28,8 +28,11 @@ interface AnchorElementProps {
 // aiActivity → thisWeek → charts → today. Both intrinsic panels sit near the
 // top of the stack so their expansion pushes everything below in one shot.
 const ANCHOR_ELEMENTS = {
-  welcome: { w: 640, h: 200, offsetY: -540 },
-  aiActivity: { w: 880, initialH: 620, offsetY: -380 },
+  // Welcome ends at -300, exactly where the card starts, and centres the mission
+  // in the space under the greeting (`fillHeight`). The card used to start at
+  // -380, inside the welcome box, so it sat on the mission (2026-10-16).
+  welcome: { w: 640, h: 240, offsetY: -540 },
+  aiActivity: { w: 880, initialH: 620, offsetY: -300 },
   thisWeek: { w: 880, initialH: 700, gap: 40 },
   wakeList: { w: 880, gap: 40 },
   charts: { w: 880, h: 360, gap: 40 },
@@ -284,7 +287,7 @@ function HomeAnchorTileBlockImpl({ centerX, centerY, onContentBottomChange }: An
   return (
     <div className={theme.isDark ? 'dark' : ''}>
       <FloatingPanel {...welcome} variant="text" theme={theme}>
-        <HomeWelcomeBlock />
+        <HomeWelcomeBlock fillHeight />
       </FloatingPanel>
 
       {SHOW_SECONDARY_PANELS && (

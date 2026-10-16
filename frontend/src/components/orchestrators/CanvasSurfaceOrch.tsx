@@ -17,17 +17,13 @@ import CanvasTileToolbarBlock from '@/components/lego_blocks/units/CanvasTileToo
 import CanvasSearchBarBlock from '@/components/lego_blocks/units/CanvasSearchBarBlock'
 import CanvasContextMenuBlock from '@/components/lego_blocks/units/CanvasContextMenuBlock'
 import CanvasWebWidgetPickerBlock from '@/components/lego_blocks/units/CanvasWebWidgetPickerBlock'
+import CanvasSaveToVaultDialogBlock from '@/components/lego_blocks/integrations/CanvasSaveToVaultDialogBlock'
 import CanvasMinimapBlock from '@/components/lego_blocks/units/CanvasMinimapBlock'
 import ZoomIndicatorBlock from '@/components/lego_blocks/units/ZoomIndicatorBlock'
 import type { CanvasStorageAdapter } from '@/services/lego_blocks/integrations/canvasStorageBlock'
+import { savePostItToVaultOrch } from '@/services/orchestrators/postItVaultSaveOrch'
 
 const WRITE_DEBOUNCE_MS = 500
-
-export interface CanvasSurfaceTilesApi {
-  tiles: CanvasTile[]
-  setAllTiles: (tiles: CanvasTile[]) => void
-  loaded: boolean
-}
 
 export interface CanvasSurfaceOrchProps {
   /** Stable identifier for the surface (used as React key — keeps state isolated when multiple surfaces mount). */
@@ -48,8 +44,6 @@ export interface CanvasSurfaceOrchProps {
   clampMinScaleToFit?: boolean
   /** Rendered inside the transformed world *before* the tile layer (anchors, scenes, etc). */
   worldExtras?: ReactNode
-  /** Optional hook bridge so callers can run effects against tile state (e.g. auto-spawn post-its). Render-prop component pattern. */
-  tilesEffect?: React.ComponentType<CanvasSurfaceTilesApi>
   /** Draw the dot grid over the world. Default true; a surface that draws its own background turns it off. */
   showGrid?: boolean
 }
@@ -66,7 +60,6 @@ export default function CanvasSurfaceOrch({
   initialFocus,
   clampMinScaleToFit,
   worldExtras,
-  tilesEffect: TilesEffect,
   showGrid = true,
 }: CanvasSurfaceOrchProps) {
   const navigate = useNavigate()
@@ -140,6 +133,7 @@ export default function CanvasSurfaceOrch({
     moveTile,
     resizeTile,
     duplicateTile,
+    convertPostItToNote,
     focusTile,
     removeTile,
   } = useCanvasTilesBlock(seedTiles)
@@ -158,6 +152,7 @@ export default function CanvasSurfaceOrch({
     | { kind: 'menu'; screenX: number; screenY: number; worldX: number; worldY: number }
     | { kind: 'search'; screenX: number; screenY: number; worldX: number; worldY: number }
     | { kind: 'widget-picker'; worldX: number; worldY: number }
+    | { kind: 'save-to-vault'; tileId: string }
     | null
   const [popover, setPopover] = useState<CanvasPopover>(null)
   const [widgetReloadKeys, setWidgetReloadKeys] = useState<Record<string, number>>({})
@@ -287,6 +282,15 @@ export default function CanvasSurfaceOrch({
   const handlePickNote = (filePath: string) => {
     if (popover?.kind !== 'search') return
     spawnNote(filePath, popover.worldX, popover.worldY)
+    setPopover(null)
+  }
+
+  const saveTile = popover?.kind === 'save-to-vault' ? tiles.find(t => t.id === popover.tileId) : undefined
+  const handleSaveToVault = async (folderPath: string, filename: string) => {
+    if (!saveTile || saveTile.type !== 'post-it') return
+    // Throws on failure; the dialog shows the error and the post-it is untouched.
+    const { filePath } = await savePostItToVaultOrch({ text: saveTile.text, folderPath, filename })
+    convertPostItToNote(saveTile.id, filePath)
     setPopover(null)
   }
 
@@ -524,6 +528,7 @@ export default function CanvasSurfaceOrch({
           onDuplicate={duplicateTile}
           onRemove={removeTile}
           onOpenInPage={handleOpenInPage}
+          onSaveToVault={id => setPopover({ kind: 'save-to-vault', tileId: id })}
           onRefreshWidget={refreshWidget}
           onSetWidgetRefreshSec={setWidgetRefreshSec}
         />
@@ -558,6 +563,13 @@ export default function CanvasSurfaceOrch({
           screenY={popover.screenY}
           onClose={() => setPopover(null)}
           onPick={handlePickNote}
+        />
+      )}
+      {saveTile?.type === 'post-it' && (
+        <CanvasSaveToVaultDialogBlock
+          text={saveTile.text}
+          onSave={handleSaveToVault}
+          onClose={() => setPopover(null)}
         />
       )}
       {popover?.kind === 'widget-picker' && (
@@ -596,7 +608,6 @@ export default function CanvasSurfaceOrch({
       <div ref={edgeBottomRef} data-canvas-edge="bottom" data-active="false" aria-hidden />
       <div ref={edgeLeftRef} data-canvas-edge="left" data-active="false" aria-hidden />
 
-      {TilesEffect && <TilesEffect tiles={tiles} setAllTiles={setAllTiles} loaded={loaded} />}
     </div>
   )
 }

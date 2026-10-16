@@ -1,4 +1,4 @@
-import { Move, Copy, Trash2, Droplet, ArrowUpRight, RefreshCw, Timer, Info } from 'lucide-react'
+import { Move, Copy, Trash2, Droplet, ArrowUpRight, RefreshCw, Timer, Info, FolderInput } from 'lucide-react'
 import { HOME_CANVAS_PATH } from '@/services/lego_blocks/integrations/homeCanvasStorageBlock'
 import { useEffect, useState } from 'react'
 import type {
@@ -25,6 +25,8 @@ interface Props {
   onDuplicate: (id: string) => void
   onRemove: (id: string) => void
   onOpenInPage?: (filePath: string) => void
+  /** Post-its only: open the save-to-vault dialog for this tile. */
+  onSaveToVault?: (id: string) => void
   onRefreshWidget?: (id: string) => void
   onSetWidgetRefreshSec?: (id: string, refreshSec: number | undefined) => void
 }
@@ -84,6 +86,7 @@ export default function CanvasTileToolbarBlock({
   onDuplicate,
   onRemove,
   onOpenInPage,
+  onSaveToVault,
   onRefreshWidget,
   onSetWidgetRefreshSec,
 }: Props) {
@@ -410,6 +413,15 @@ export default function CanvasTileToolbarBlock({
       )}
 
       <div style={dividerStyle} />
+      {isPostIt && onSaveToVault && tile.text.trim() && (
+        <button
+          style={buttonStyle}
+          onClick={() => onSaveToVault(tile.id)}
+          title="Save to vault"
+        >
+          <FolderInput size={ICON_SIZE} />
+        </button>
+      )}
       {isNote && onOpenInPage && (
         <button
           style={buttonStyle}

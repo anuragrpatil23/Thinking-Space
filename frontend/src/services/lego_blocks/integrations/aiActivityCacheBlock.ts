@@ -318,7 +318,11 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
       const fresh =
         cachedWindows.length > 0 &&
         cachedWindows.every(s => sameMtimeBlock(s.mtime, entry.mtime)) &&
-        (entry.source !== 'codex' || cachedWindows.every(s => s.limitReadings !== undefined))
+        (entry.source !== 'codex' || cachedWindows.every(s => s.limitReadings !== undefined)) &&
+        // Same trick for Claude titles: rows parsed before `aiTitle` was read
+        // lack the field entirely (the parser now always writes it, `null`
+        // when absent), so exactly those re-parse once.
+        (entry.source !== 'claude' || cachedWindows.every(s => s.aiTitle !== undefined))
       if (fresh) {
         for (const s of cachedWindows) {
           present.add(s.path)

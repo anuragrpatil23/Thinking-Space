@@ -17,6 +17,11 @@ interface HomeWelcomeBlockProps {
    *  renders the quote inside MoonSceneBlock, so it leaves this off; the flat
    *  (iOS/web) frame has no moon scene and turns it on to keep the warmth. */
   showQuote?: boolean
+  /** Stretch to the host's height and centre the mission in whatever space is
+   *  left under the greeting. The canvas sizes the welcome box to end where the
+   *  AI Activity card starts, so this keeps the mission equidistant from the
+   *  greeting and the card however many lines it wraps to. */
+  fillHeight?: boolean
   /** Override the theme tokens. The flat frame resolves its own theme (which
    *  may follow app color mode instead of time-of-day) and passes it so the
    *  heading/eyebrow colors match the backdrop the flat frame actually paints.
@@ -30,7 +35,7 @@ interface HomeWelcomeBlockProps {
  * spatial canvas anchor and the flat iOS/web frame render this exact block so
  * the two homes can never drift on copy again.
  */
-export default function HomeWelcomeBlock({ showQuote = false, airy = false, stage = false, theme: themeOverride }: HomeWelcomeBlockProps) {
+export default function HomeWelcomeBlock({ showQuote = false, airy = false, stage = false, fillHeight = false, theme: themeOverride }: HomeWelcomeBlockProps) {
   const hookTheme = useCanvasThemeBlock()
   const theme = themeOverride ?? hookTheme
   const { profile } = useUserProfileBlock()
@@ -44,7 +49,13 @@ export default function HomeWelcomeBlock({ showQuote = false, airy = false, stag
   const fadeClass = stage ? 'ltm-home-fade' : undefined
 
   return (
-    <div style={{ textAlign: 'center', userSelect: 'none' }}>
+    <div
+      style={{
+        textAlign: 'center',
+        userSelect: 'none',
+        ...(fillHeight ? { height: '100%', display: 'flex', flexDirection: 'column' } : {}),
+      }}
+    >
       <p
         className={fadeClass}
         style={{
@@ -82,7 +93,12 @@ export default function HomeWelcomeBlock({ showQuote = false, airy = false, stag
             maxWidth: airy ? 320 : undefined,
             fontStyle: 'italic',
             lineHeight: 1.5,
-            margin: airy ? '68px auto 0' : '12px 0 0',
+            // fillHeight: auto top/bottom margins split the free space evenly
+            // between the boxes. The greeting's box carries ~12px of descender
+            // room under its letters that reads as extra gap, so lift the
+            // mission half of that to centre it between the visible text.
+            margin: fillHeight ? 'auto 0' : airy ? '68px auto 0' : '12px 0 0',
+            ...(fillHeight ? { position: 'relative' as const, top: -6 } : {}),
           }}
         >
           {project.mission}

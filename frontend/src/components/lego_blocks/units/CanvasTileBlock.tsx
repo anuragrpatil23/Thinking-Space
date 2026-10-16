@@ -83,7 +83,9 @@ function CanvasTileBlockImpl({
 
   const theme = useCanvasThemeBlock()
   const isPostIt = tile.type === 'post-it'
-  const palette = isPostIt ? POST_IT_PALETTE[tile.color] : null
+  // Notes saved from a post-it keep its colour as the corner mark.
+  const markColor = tile.type === 'post-it' || tile.type === 'note' ? tile.color : undefined
+  const palette = markColor ? POST_IT_PALETTE[markColor] : null
   const postItFontSizePx = (() => {
     if (!isPostIt) return 13
     if (typeof tile.fontSize === 'number') return tile.fontSize
@@ -121,7 +123,7 @@ function CanvasTileBlockImpl({
       onMouseLeave={() => onHoverChange(null)}
       style={{ ...baseStyle, ...skinStyle }}
     >
-      {isPostIt && palette && (
+      {palette && (
         <div
           aria-hidden
           style={{

@@ -49,7 +49,6 @@ export const MOON_SCENE_MESSAGES_UPDATED_EVENT_BLOCK = 'thinking-space:moon-scen
  * deliberately does NOT roam: the Claude-CLI option only exists on Electron.
  */
 export interface AiActivityRoamingPrefsBlock {
-  homePostItEnabled: boolean | null
   setMode: boolean | null
   calendarMode: boolean | null
   aiTitlesEnabled: boolean | null
@@ -127,7 +126,6 @@ export const DEFAULT_VAULT_UI_PREFERENCES_BLOCK: VaultUiPreferencesBlock = {
   moonSceneIdleAnimationsEnabled: true,
   showDailyHighlights: false,
   aiActivityPrefs: {
-    homePostItEnabled: null,
     setMode: null,
     calendarMode: null,
     aiTitlesEnabled: null,
@@ -156,7 +154,6 @@ export function createDefaultVaultUiPreferencesBlock(): VaultUiPreferencesBlock 
 
 export function createDefaultAiActivityRoamingPrefsBlock(): AiActivityRoamingPrefsBlock {
   return {
-    homePostItEnabled: null,
     setMode: null,
     calendarMode: null,
     aiTitlesEnabled: null,
@@ -172,7 +169,6 @@ export function normalizeAiActivityRoamingPrefsBlock(value: unknown): AiActivity
   if (!value || typeof value !== 'object') return createDefaultAiActivityRoamingPrefsBlock()
   const record = value as Partial<AiActivityRoamingPrefsBlock>
   return {
-    homePostItEnabled: normalizeNullableBooleanBlock(record.homePostItEnabled),
     setMode: normalizeNullableBooleanBlock(record.setMode),
     calendarMode: normalizeNullableBooleanBlock(record.calendarMode),
     aiTitlesEnabled: normalizeNullableBooleanBlock(record.aiTitlesEnabled),

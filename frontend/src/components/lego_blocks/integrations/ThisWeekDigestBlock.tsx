@@ -10,7 +10,7 @@ import {
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
-import AiActivityRangeSummaryBlock from '@/components/lego_blocks/integrations/AiActivityRangeSummaryBlock'
+import ProjectWorkRowBlock from '@/components/lego_blocks/integrations/ProjectWorkRowBlock'
 import { cn } from '@/lib/utils'
 import {
   AI_ACTIVITY_RANGE_SUMMARY_PROVIDER_EVENT,
@@ -61,6 +61,18 @@ function isoLocalDate(ms: number): string {
   return `${y}-${m}-${day}`
 }
 
+/** Every local date from `startMs` to `endMs`, oldest first. Capped so a long
+ *  window cannot turn the day strip into a barcode. */
+function localDaysBetween(startMs: number, endMs: number, cap = 14): string[] {
+  const out: string[] = []
+  const d = new Date(startMs)
+  d.setHours(12, 0, 0, 0)
+  while (d.getTime() <= endMs && out.length < cap) {
+    out.push(isoLocalDate(d.getTime()))
+    d.setDate(d.getDate() + 1)
+  }
+  return out
+}
 
 interface ThisWeekDigestBlockProps {
   /** 'card' (default) is the block inside a card on Home. 'tile' is the phone
@@ -202,6 +214,8 @@ export default function ThisWeekDigestBlock({ surface = 'card', onOpen }: ThisWe
         rawChains: chains,
         rangeStartDate: isoLocalDate(w.startMs),
         rangeEndDate: isoLocalDate(w.endMs),
+        totalMs: mergedDurationMsBlock(chains),
+        days: localDaysBetween(w.startMs, w.endMs),
       }
     })
   }, [windows, activity.chains])
@@ -347,7 +361,7 @@ export default function ThisWeekDigestBlock({ surface = 'card', onOpen }: ThisWe
         className={
           onPage
             ? undefined
-            : 'h-full overflow-y-auto rounded-2xl border border-border/40 bg-card/40 p-4 shadow-sm backdrop-blur'
+            : 'h-full overflow-y-auto'
         }
       >
         {activity.loading ? (
@@ -381,58 +395,32 @@ export default function ThisWeekDigestBlock({ surface = 'card', onOpen }: ThisWe
                     <span className="text-[10px] text-muted-foreground/70">{section.label}</span>
                   </div>
                   {section.summary.chains > 0 && (
-                    <div className="flex items-baseline gap-2 text-[10px] text-muted-foreground">
-                      <span className="tabular-nums text-foreground/70">{section.summary.durLabel}</span>
-                      <span className="tabular-nums">
-                        {section.summary.chains} · {section.summary.msgs.toLocaleString()}
-                      </span>
-                    </div>
+                    <span
+                      className="text-[11px] tabular-nums text-foreground/70"
+                      title={`${section.summary.chains} chains · ${section.summary.msgs.toLocaleString()} msgs`}
+                    >
+                      {section.summary.durLabel}
+                    </span>
                   )}
                 </div>
                 {section.digest.length === 0 ? (
                   <p className="text-[11px] text-muted-foreground/60">Nothing this window.</p>
                 ) : (
-                  <div className="space-y-3">
-                    {section.digest.map(d => {
-                      const color = getProjectColor(d.project, isDark)
-                      // Chains in this window that belong to this project —
-                      // the range-summary orchestrator consumes them directly.
-                      const projectChains = section.rawChains.filter(c => c.project === d.project)
-                      return (
-                        <div key={d.project} className="space-y-1">
-                          <div className="flex items-baseline gap-2 text-[11px]">
-                            <span
-                              className="inline-flex items-center gap-1.5 font-medium"
-                              style={{ color: color.stroke }}
-                            >
-                              <span
-                                className="h-1.5 w-1.5 rounded-full"
-                                style={{ background: color.stroke }}
-                              />
-                              {projectLabelBlock(d.project)}
-                            </span>
-                            <span className="tabular-nums text-foreground/70">
-                              {fmtDurationMsBlock(d.durationMs)}
-                            </span>
-                            <span className="tabular-nums text-muted-foreground/60">
-                              {d.chains} chain{d.chains === 1 ? '' : 's'} · {d.msgs.toLocaleString()} msgs
-                            </span>
-                          </div>
-                          {projectChains.length > 0 && (
-                            <div className="pl-3.5">
-                              <AiActivityRangeSummaryBlock
-                                projectId={d.project}
-                                projectLabel={projectLabelBlock(d.project)}
-                                rangeStartDate={section.rangeStartDate}
-                                rangeEndDate={section.rangeEndDate}
-                                chains={projectChains}
-                                compact
-                              />
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
+                  <div className="space-y-1">
+                    {section.digest.map(d => (
+                      <ProjectWorkRowBlock
+                        key={d.project}
+                        projectId={d.project}
+                        label={projectLabelBlock(d.project)}
+                        color={getProjectColor(d.project, isDark).stroke}
+                        durationMs={d.durationMs}
+                        sectionMs={section.totalMs}
+                        days={section.days}
+                        chains={section.rawChains.filter(c => c.project === d.project)}
+                        rangeStartDate={section.rangeStartDate}
+                        rangeEndDate={section.rangeEndDate}
+                      />
+                    ))}
                   </div>
                 )}
               </div>

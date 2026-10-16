@@ -22,14 +22,12 @@ import {
   STORAGE_KEYS,
   getAiActivityAiTitlesEnabled,
   getAiActivityCalendarMode,
-  getAiActivityHomePostItEnabled,
   getAiActivityRestDays,
   getAiActivitySetMode,
   getStoredVaultRoot,
   registerStorageWriteListenerBlock,
   setAiActivityAiTitlesEnabled,
   setAiActivityCalendarMode,
-  setAiActivityHomePostItEnabled,
   setAiActivityRestDays,
   setAiActivitySetMode,
 } from '@/services/lego_blocks/units/storageKeyBlock'
@@ -245,7 +243,6 @@ export type { VaultSchedulerTaskPreferenceBlock }
 //   listener) schedule a debounced snapshot push into ui.json.
 
 const AI_ACTIVITY_ROAMING_STORAGE_KEYS_ORCH = new Set<string>([
-  STORAGE_KEYS.aiActivityHomePostItEnabled,
   STORAGE_KEYS.aiActivitySetMode,
   STORAGE_KEYS.aiActivityCalendarMode,
   STORAGE_KEYS.aiActivityAiTitlesEnabled,
@@ -254,7 +251,6 @@ const AI_ACTIVITY_ROAMING_STORAGE_KEYS_ORCH = new Set<string>([
 
 function snapshotLocalAiActivityPrefsOrch(): AiActivityRoamingPrefsBlock {
   return {
-    homePostItEnabled: getAiActivityHomePostItEnabled(),
     setMode: getAiActivitySetMode(),
     calendarMode: getAiActivityCalendarMode(),
     aiTitlesEnabled: getAiActivityAiTitlesEnabled(),
@@ -280,9 +276,6 @@ function scheduleAiActivityPrefsPushOrch(): void {
 function applyRoamedAiActivityPrefsOrch(prefs: AiActivityRoamingPrefsBlock): void {
   applyingRoamingPullOrch = true
   try {
-    if (prefs.homePostItEnabled !== null && prefs.homePostItEnabled !== getAiActivityHomePostItEnabled()) {
-      setAiActivityHomePostItEnabled(prefs.homePostItEnabled)
-    }
     if (prefs.setMode !== null && prefs.setMode !== getAiActivitySetMode()) {
       setAiActivitySetMode(prefs.setMode)
     }

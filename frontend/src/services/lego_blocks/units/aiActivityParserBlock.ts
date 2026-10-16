@@ -54,8 +54,15 @@ export interface ParsedSession {
   cwd?: string
   /** Count of real user-message blocks (slash commands count, tool_results don't). */
   userMsgCount: number
-  /** First substantive user prompt (preferred for topic labels); falls back to slash-command label. */
+  /** Display label: the transcript's own title when it carries one (`aiTitle`),
+   *  else the first substantive user prompt, else a slash-command label. */
   topic: string
+  /** Claude Code's session title (`{"type":"ai-title"}` records — written for
+   *  ~90% of transcripts, and `/rename` lands there too; last one wins).
+   *  Native Claude rows always carry the field, `null` when the transcript has
+   *  none, so `undefined` marks a row cached before titles were read — the
+   *  cache re-parses exactly those instead of bumping CACHE_VERSION. */
+  aiTitle?: string | null
   /** Whether the session contains a /clear command (forces a chain break). */
   hadClear: boolean
   /** File mtime in unix seconds — used for incremental cache invalidation. */
