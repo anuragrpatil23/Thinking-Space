@@ -69,6 +69,14 @@ function fmtWeekday(day: string): string {
   return new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+/** `11:34a` — compact enough to sit on a block's edge. */
+function fmtClockShort(iso: string): string {
+  const d = new Date(iso)
+  const h = d.getHours()
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${String(d.getMinutes()).padStart(2, '0')}${h < 12 ? 'a' : 'p'}`
+}
+
 function fmtClock(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
@@ -215,6 +223,11 @@ export default function AiActivityTimeOfDayChartBlock({
                 ))}
                 {drawn.map((seg, j) => {
                   const tick = seg.endMin - seg.startMin < 1
+                  // Hovering a block lifts it and spotlights its project on
+                  // every day, so the project's pattern across the range shows.
+                  const focus = hover?.seg ?? null
+                  const isFocused = focus != null && hover?.day === day && focus.startIso === seg.startIso
+                  const sameProject = focus != null && focus.project === seg.project
                   return (
                     <span
                       key={`${seg.startIso}-${j}`}
@@ -223,16 +236,49 @@ export default function AiActivityTimeOfDayChartBlock({
                         const at = hoverAt(e)
                         if (at) setHover({ ...at, day, seg })
                       }}
-                      className="absolute inset-y-0 rounded-[2px]"
+                      className="absolute inset-y-0 rounded-[2px] transition-[transform,opacity,box-shadow] duration-150 motion-reduce:transition-none"
                       style={{
                         left: `${(seg.startMin / DAY_MIN) * 100}%`,
                         width: tick ? 2 : `max(3px, ${((seg.endMin - seg.startMin) / DAY_MIN) * 100}%)`,
                         background: fillFor(seg.project),
-                        opacity: tick ? 0.7 : 1,
+                        opacity: focus && !sameProject ? 0.3 : tick ? 0.7 : 1,
+                        transform: isFocused ? 'translateY(-3px)' : undefined,
+                        boxShadow: isFocused ? '0 3px 8px rgba(15,23,42,0.18)' : undefined,
+                        zIndex: isFocused ? 2 : sameProject ? 1 : undefined,
                       }}
                     />
                   )
                 })}
+                {hover?.seg && hover.day === day && (() => {
+                  // Start and end just outside the block's edges, centred on the row —
+                  // inside, a narrow block had no room and the two collided.
+                  const seg = hover.seg
+                  const hasSpan = seg.endMin - seg.startMin >= 1
+                  const label = (min: number, iso: string, edge: 'start' | 'end') => (
+                    <span
+                      className="pointer-events-none absolute z-10 whitespace-nowrap rounded-sm bg-background/90 px-1 text-[9px] tabular-nums leading-[12px]"
+                      style={{
+                        top: '50%',
+                        left: `${(min / DAY_MIN) * 100}%`,
+                        transform:
+                          edge === 'start'
+                            ? 'translate(calc(-100% - 4px), calc(-50% - 3px))'
+                            : 'translate(4px, calc(-50% - 3px))',
+                        // Same colour as the block (project or kind), so a green
+                        // kind block never wears a pink project label.
+                        color: colorForKey(keyOf(seg.project)),
+                      }}
+                    >
+                      {fmtClockShort(iso)}
+                    </span>
+                  )
+                  return (
+                    <>
+                      {label(seg.startMin, seg.startIso, 'start')}
+                      {hasSpan && label(seg.endMin, seg.endIso, 'end')}
+                    </>
+                  )
+                })()}
               </span>
               {/* Left-aligned: the total reads as the end of its row, next to the plot,
                   not as a column pinned to the card edge. */}
