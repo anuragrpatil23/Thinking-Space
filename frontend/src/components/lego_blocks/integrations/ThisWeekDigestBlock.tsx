@@ -15,6 +15,8 @@ import { cn } from '@/lib/utils'
 import {
   AI_ACTIVITY_RANGE_SUMMARY_PROVIDER_EVENT,
   AI_ACTIVITY_SET_MODE_EVENT,
+  AI_ACTIVITY_USABLE_HOURS_EVENT,
+  getAiActivityUsableHours,
   getAiActivityRangeSummaryProvider,
   getAiActivitySetMode,
   type AiActivityRangeSummaryProvider,
@@ -97,6 +99,17 @@ export default function ThisWeekDigestBlock({ surface = 'card', onOpen }: ThisWe
     window.addEventListener('storage', onChange)
     return () => {
       window.removeEventListener(AI_ACTIVITY_SET_MODE_EVENT, onChange)
+      window.removeEventListener('storage', onChange)
+    }
+  }, [])
+
+  const [usableHours, setUsableHours] = useState<number>(() => getAiActivityUsableHours())
+  useEffect(() => {
+    const onChange = () => setUsableHours(getAiActivityUsableHours())
+    window.addEventListener(AI_ACTIVITY_USABLE_HOURS_EVENT, onChange)
+    window.addEventListener('storage', onChange)
+    return () => {
+      window.removeEventListener(AI_ACTIVITY_USABLE_HOURS_EVENT, onChange)
       window.removeEventListener('storage', onChange)
     }
   }, [])
@@ -395,11 +408,36 @@ export default function ThisWeekDigestBlock({ surface = 'card', onOpen }: ThisWe
                     <span className="text-[10px] text-muted-foreground/70">{section.label}</span>
                   </div>
                   {section.summary.chains > 0 && (
-                    <span
-                      className="text-[11px] tabular-nums text-foreground/70"
-                      title={`${section.summary.chains} chains · ${section.summary.msgs.toLocaleString()} msgs`}
-                    >
-                      {section.summary.durLabel}
+                    // Same columns as the project rows (time · % · chevron), so
+                    // the set total sits right above the project times.
+                    <span className="flex items-baseline gap-3">
+                      <span
+                        className="w-14 text-right text-[12px] tabular-nums text-foreground/70"
+                        title={`${section.summary.chains} chains · ${section.summary.msgs.toLocaleString()} msgs`}
+                      >
+                        {section.summary.durLabel}
+                      </span>
+                      {(() => {
+                        // Share of the usable time the set has had so far: days
+                        // that have started (a week in progress counts Mon→today,
+                        // not the days still ahead), each worth the user's
+                        // usable hours. Today counts as a whole day, so it fills
+                        // up honestly as the day goes.
+                        const today = isoLocalDate(Date.now())
+                        const daysSoFar = section.days.filter(d => d <= today).length
+                        const usableMs = daysSoFar * usableHours * 3_600_000
+                        if (usableMs <= 0) return <span className="w-10" aria-hidden />
+                        const pct = Math.round((section.totalMs / usableMs) * 100)
+                        return (
+                          <span
+                            className="w-10 text-right text-[11px] tabular-nums text-muted-foreground/70"
+                            title={`${section.summary.durLabel} of ${fmtDurationMsBlock(usableMs)} usable (${daysSoFar} day${daysSoFar === 1 ? '' : 's'} × ${usableHours}h · Settings ▸ AI Activity)`}
+                          >
+                            {pct}%
+                          </span>
+                        )
+                      })()}
+                      <span className="w-3.5" aria-hidden />
                     </span>
                   )}
                 </div>

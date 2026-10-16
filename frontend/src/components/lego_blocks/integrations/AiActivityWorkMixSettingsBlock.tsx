@@ -15,6 +15,10 @@ import {
   getAiActivityWorkMixMode,
   setAiActivityThinkingPoolHours,
   setAiActivityWorkMixMode,
+  AI_ACTIVITY_USABLE_HOURS_MAX,
+  AI_ACTIVITY_USABLE_HOURS_MIN,
+  getAiActivityUsableHours,
+  setAiActivityUsableHours,
 } from '@/services/lego_blocks/units/storageKeyBlock'
 
 export default function AiActivityWorkMixSettingsBlock() {
@@ -24,6 +28,14 @@ export default function AiActivityWorkMixSettingsBlock() {
   // to the minimum and fight the user's next keystroke.
   const [draft, setDraft] = useState<string>(() => String(getAiActivityThinkingPoolHours()))
   useEffect(() => setDraft(String(hours)), [hours])
+  const [usable, setUsable] = useState<number>(() => getAiActivityUsableHours())
+  const [usableDraft, setUsableDraft] = useState<string>(() => String(getAiActivityUsableHours()))
+  useEffect(() => setUsableDraft(String(usable)), [usable])
+  const commitUsable = () => {
+    const parsed = Number.parseFloat(usableDraft)
+    setAiActivityUsableHours(Number.isFinite(parsed) ? parsed : usable)
+    setUsable(getAiActivityUsableHours())
+  }
 
   const toggle = (checked: boolean) => {
     setAiActivityWorkMixMode(checked)
@@ -46,10 +58,10 @@ export default function AiActivityWorkMixSettingsBlock() {
           <>
             The heatmap becomes activity rings and answers a different question: did
             thinking happen, and if not, what took the day. The centre is thinking, the
-            outer ring building, the innermost ring maintenance — each in its project's
-            own color. Set each project's kind under <em>Settings ▸ Projects</em>; time on
-            projects you haven't classified draws a green track between the two, so it is
-            visible without being counted as measured work.
+            outer ring building, the innermost ring maintenance — each in its kind's
+            colour, the same ones Trend uses. Set each project's kind under <em>Settings ▸
+            Projects</em>; time on projects you haven't classified draws a green track
+            between the two, so it is visible without being counted as measured work.
           </>
         }
         control={
@@ -84,6 +96,34 @@ export default function AiActivityWorkMixSettingsBlock() {
               if (e.key === 'Enter') e.currentTarget.blur()
             }}
             aria-label="Hours of focused work in a day"
+            className="h-8 w-20 rounded-md border border-border/60 bg-background px-2 text-right text-sm tabular-nums"
+          />
+        }
+      />
+      <SettingsRowBlock
+        as="label"
+        label="Usable hours in a day"
+        description={
+          <>
+            A day minus sleep, meals and breaks. <em>What you worked on</em> shows each
+            set&rsquo;s total as a share of it (days × this), so you can see how much of the
+            time you actually had went to AI work.
+          </>
+        }
+        control={
+          <input
+            type="number"
+            inputMode="decimal"
+            step={0.25}
+            min={AI_ACTIVITY_USABLE_HOURS_MIN}
+            max={AI_ACTIVITY_USABLE_HOURS_MAX}
+            value={usableDraft}
+            onChange={e => setUsableDraft(e.target.value)}
+            onBlur={commitUsable}
+            onKeyDown={e => {
+              if (e.key === 'Enter') e.currentTarget.blur()
+            }}
+            aria-label="Usable hours in a day"
             className="h-8 w-20 rounded-md border border-border/60 bg-background px-2 text-right text-sm tabular-nums"
           />
         }

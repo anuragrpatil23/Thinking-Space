@@ -56,6 +56,7 @@ export const STORAGE_KEYS = {
   aiActivityTrendView: 'ltm-ai-activity-trend-view',
   aiActivityTrendColorBy: 'ltm-ai-activity-trend-color-by',
   aiActivityThinkingPoolHours: 'ltm-ai-activity-thinking-pool-hours',
+  aiActivityUsableHours: 'ltm-ai-activity-usable-hours',
   aiActivitySectionsOpen: 'ltm-ai-activity-sections-open',
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
   intelligenceDefaultProvider: 'ltm-intelligence-default-provider',
@@ -418,6 +419,35 @@ export function setAiActivityThinkingPoolHours(hours: number): void {
   setStorageItem(STORAGE_KEYS.aiActivityThinkingPoolHours, String(clean))
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(AI_ACTIVITY_POOL_HOURS_EVENT, { detail: clean }))
+  }
+}
+
+/**
+ * Usable hours in a day — 24h minus sleep, meals and breaks. The "What you
+ * worked on" set lines show their total as a share of it (days × this), so the
+ * card answers "how much of the time I actually had went here". Per device,
+ * like the thinking pool. Default 9.5h (24 − 7.5 sleep − 3 food − 3 evening − 1
+ * morning), the figure the user worked out on 2026-10-16.
+ */
+export const AI_ACTIVITY_USABLE_HOURS_DEFAULT = 9.5
+export const AI_ACTIVITY_USABLE_HOURS_MIN = 1
+export const AI_ACTIVITY_USABLE_HOURS_MAX = 24
+export const AI_ACTIVITY_USABLE_HOURS_EVENT = 'thinkspc:ai-activity-usable-hours-changed'
+
+export function getAiActivityUsableHours(): number {
+  const raw = getLocalStorageItemBlock(STORAGE_KEYS.aiActivityUsableHours)
+  const parsed = raw == null ? NaN : Number.parseFloat(raw)
+  if (!Number.isFinite(parsed)) return AI_ACTIVITY_USABLE_HOURS_DEFAULT
+  return Math.min(AI_ACTIVITY_USABLE_HOURS_MAX, Math.max(AI_ACTIVITY_USABLE_HOURS_MIN, parsed))
+}
+
+export function setAiActivityUsableHours(hours: number): void {
+  const clean = Number.isFinite(hours)
+    ? Math.min(AI_ACTIVITY_USABLE_HOURS_MAX, Math.max(AI_ACTIVITY_USABLE_HOURS_MIN, Math.round(hours * 4) / 4))
+    : AI_ACTIVITY_USABLE_HOURS_DEFAULT
+  setStorageItem(STORAGE_KEYS.aiActivityUsableHours, String(clean))
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AI_ACTIVITY_USABLE_HOURS_EVENT, { detail: clean }))
   }
 }
 

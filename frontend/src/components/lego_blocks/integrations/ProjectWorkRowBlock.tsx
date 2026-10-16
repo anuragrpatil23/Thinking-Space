@@ -170,7 +170,11 @@ export default function ProjectWorkRowBlock({
               style={{ width: `${Math.max(share * 100, 1.5)}%`, background: color, opacity: 0.8 }}
             />
           </span>
-          <span className="flex shrink-0 items-center gap-[3px]" aria-hidden>
+          <span className="flex-1" />
+          {/* Fixed slot (room for a week), right-aligned against the time: the cell
+              count changes per set, and a variable width pushed the time column
+              around. Topic rows reserve the same slot. */}
+          <span className="flex w-[60px] shrink-0 items-center justify-end gap-[3px]" aria-hidden>
             {days.map(day => {
               const ms = dayMs.get(day) ?? 0
               return (
@@ -183,7 +187,6 @@ export default function ProjectWorkRowBlock({
               )
             })}
           </span>
-          <span className="flex-1" />
           <span className="w-14 shrink-0 text-right text-[12px] tabular-nums text-foreground/80">
             {fmtDurationMsBlock(durationMs)}
           </span>
@@ -219,6 +222,7 @@ export default function ProjectWorkRowBlock({
                   )}
                   {/* Same fixed columns as the project line above (time, %, chevron),
                       so every number in the card sits in one of two columns. */}
+                  <span className="w-[60px] shrink-0" aria-hidden />
                   <span className="w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/70">
                     {row.dur}
                   </span>
