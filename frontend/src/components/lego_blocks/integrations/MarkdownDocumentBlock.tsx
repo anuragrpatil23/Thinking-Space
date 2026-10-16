@@ -759,6 +759,22 @@ function MarkdownTextDocumentRuntimeBlock({
     if (searchWords.length > 0) setSearchHighlightQueryBlock(null)
   }, [searchWords])
   const bodyEditorRef = useRef<MarkdownRichEditorBlockHandle | null>(null)
+  // The bar floats just under the sticky chrome (header + the reading view's
+  // Contents strip), so it never sits on the toolbar or across the strip's rule.
+  const [viewerStripHeight, setViewerStripHeight] = useState(0)
+  useEffect(() => {
+    const el = viewerStripRef.current
+    if (!el || isEditing) {
+      setViewerStripHeight(0)
+      return
+    }
+    const measure = () => setViewerStripHeight(el.offsetHeight)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [isEditing, loading, findBarOpen])
+  const findBarTop = (isHeaderHidden ? 0 : headerHeight) + viewerStripHeight + 10
   const [editFindMatches, setEditFindMatches] = useState<{ count: number; current: number } | null>(null)
   // The editor reports on every edit while find is on; only re-render the
   // note when the count or position actually moved.
@@ -1913,7 +1929,7 @@ function MarkdownTextDocumentRuntimeBlock({
     >
       <div className="relative min-h-0 flex-1">
         {findBarOpen && (
-          <div className="absolute right-3 top-3 z-50">
+          <div className="absolute right-4 z-50" style={{ top: findBarTop }}>
             <NoteFindBarBlock
               value={findText ?? searchWords.join(' ')}
               onChange={setFindText}
