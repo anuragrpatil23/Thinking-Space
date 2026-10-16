@@ -40,15 +40,36 @@ export interface TranscriptToolBlock {
   verb: 'read' | 'edit' | 'create' | 'run' | 'search' | 'web' | 'agent' | 'other'
   /** Vault/repo-relative when the session cwd is a prefix; absolute otherwise. */
   file?: string
+  /** The absolute path, when known — for opening the file in the app. */
+  abs?: string
   added?: number
   removed?: number
+  /** Unified-diff lines (`+`/`-`/` `, `@@` between hunks), capped at
+   *  DIFF_LINES — enough to see the change, never the whole file. */
+  diff?: string[]
+  /** Lines of diff past the cap. */
+  diffMore?: number
+  /** Claude subagent id — its own transcript is `<sid>/subagents/agent-<id>.jsonl`. */
+  agentId?: string
   /** One-line `⎿` result, e.g. "Added 12 lines, removed 3" or the first output line. */
   result?: string
   isError?: boolean
 }
 
+/** Token counts in the shape `aiPriceTableBlock` prices. */
+export interface TranscriptTokensBlock {
+  input: number
+  output: number
+  cacheRead: number
+  cacheCreation: number
+  cacheCreation1h?: number
+}
+
+/** What one prompt cost: every response it caused, until the next prompt, by model. */
+export type TranscriptUsageBlock = Record<string, TranscriptTokensBlock>
+
 export type TranscriptItemBlock =
-  | { kind: 'user'; ts: number | null; segments: TranscriptSegmentBlock[] }
+  | { kind: 'user'; ts: number | null; segments: TranscriptSegmentBlock[]; usage?: TranscriptUsageBlock }
   | { kind: 'assistant'; ts: number | null; text: string }
   | { kind: 'tool'; ts: number | null; tool: TranscriptToolBlock }
   | { kind: 'command'; ts: number | null; name: string; args: string }
@@ -56,6 +77,7 @@ export type TranscriptItemBlock =
 
 export interface TranscriptFileTouchBlock {
   path: string
+  abs?: string
   change: TranscriptFileChangeBlock
   added: number
   removed: number
@@ -67,6 +89,8 @@ export interface TranscriptFileTouchBlock {
 
 export interface TranscriptSummaryBlock {
   files: TranscriptFileTouchBlock[]
+  /** Whole-session tokens by model — the sum of every prompt's `usage`. */
+  usage: TranscriptUsageBlock
   prompts: number
   toolCalls: number
   commands: number
@@ -83,8 +107,15 @@ export interface TranscriptWindowBlock {
   endMs: number
 }
 
+export interface ParseTranscriptOptionsBlock {
+  /** A subagent's own file is all sidechain events; read them instead of skipping. */
+  sidechain?: boolean
+}
+
 const RESULT_PREVIEW_CHARS = 240
 const COMMAND_CHARS = 1200
+const DIFF_LINES = 40
+const UNKNOWN_MODEL = 'unknown'
 
 /** Harness-injected wrappers that are never the user's own words. */
 const NOISE_TAGS = [
@@ -122,14 +153,44 @@ function firstLine(s: string): string {
 }
 
 /** Relative to the session cwd when inside it; otherwise the scratchpad and the
- *  home directory are abbreviated, because a 120-char iCloud path truncates to
+ *  home directory are abbreviated, because a 120-char temp path truncates to
  *  nothing in a narrow drawer. */
 function relPath(p: string, cwd: string | null): string {
   if (cwd && p.startsWith(cwd + '/')) return p.slice(cwd.length + 1)
   return p
     .replace(/^\/(private\/)?tmp\/claude-[^/]+\/.*?\/scratchpad\//, 'scratchpad/')
-    .replace(/^\/Users\/[^/]+\/Library\/Mobile Documents\/iCloud~md~obsidian\/Documents\/[^/]+\//, 'vault/')
     .replace(/^\/Users\/[^/]+\//, '~/')
+}
+
+function capDiff(lines: string[]): { diff: string[]; diffMore?: number } {
+  if (lines.length <= DIFF_LINES) return { diff: lines }
+  return { diff: lines.slice(0, DIFF_LINES), diffMore: lines.length - DIFF_LINES }
+}
+
+function num(o: Record<string, unknown> | undefined, k: string): number {
+  const v = o?.[k]
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0
+}
+
+/** Anthropic `usage` → priced shape, splitting out 1h cache writes (2× input). */
+function claudeTokens(usage: Record<string, unknown>): TranscriptTokensBlock {
+  const detail = usage.cache_creation as Record<string, unknown> | undefined
+  return {
+    input: num(usage, 'input_tokens'),
+    output: num(usage, 'output_tokens'),
+    cacheRead: num(usage, 'cache_read_input_tokens'),
+    cacheCreation: num(usage, 'cache_creation_input_tokens'),
+    cacheCreation1h: detail ? num(detail, 'ephemeral_1h_input_tokens') : 0,
+  }
+}
+
+export function addUsageBlock(into: TranscriptUsageBlock, model: string, t: TranscriptTokensBlock): void {
+  const cur = into[model] ?? (into[model] = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, cacheCreation1h: 0 })
+  cur.input += t.input
+  cur.output += t.output
+  cur.cacheRead += t.cacheRead
+  cur.cacheCreation += t.cacheCreation
+  cur.cacheCreation1h = (cur.cacheCreation1h ?? 0) + (t.cacheCreation1h ?? 0)
 }
 
 /** User text → ordered text/paste segments, with harness noise removed. */
@@ -178,7 +239,8 @@ function describeClaudeTool(
   cwd: string | null,
 ): TranscriptToolBlock {
   const str = (k: string) => (typeof input[k] === 'string' ? (input[k] as string) : '')
-  const base = { id, name: displayName(name) }
+  const fp = str('file_path') || str('notebook_path')
+  const base = { id, name: displayName(name), ...(fp.startsWith('/') ? { abs: fp } : {}) }
   switch (name) {
     case 'Read':
       return { ...base, verb: 'read', target: relPath(str('file_path'), cwd), file: relPath(str('file_path'), cwd) }
@@ -205,7 +267,8 @@ function describeClaudeTool(
       return { ...base, verb: 'web', target: str('query') }
     case 'Task':
     case 'Agent':
-      return { ...base, verb: 'agent', target: str('description') || str('subagent_type') }
+      // Claude Code titles a subagent row by its type: `Explore(description)`.
+      return { ...base, name: str('subagent_type') || name, verb: 'agent', target: str('description') }
     case 'Skill':
       return { ...base, verb: 'other', target: str('skill') }
     case 'TodoWrite':
@@ -230,23 +293,43 @@ function applyClaudeResult(
   if (r && Array.isArray(r.structuredPatch)) {
     let added = 0
     let removed = 0
+    const lines: string[] = []
     for (const hunk of r.structuredPatch as Array<{ lines?: unknown }>) {
       if (!Array.isArray(hunk?.lines)) continue
+      if (lines.length) lines.push('@@')
       for (const l of hunk.lines) {
         if (typeof l !== 'string') continue
+        lines.push(l)
         if (l.startsWith('+')) added++
         else if (l.startsWith('-')) removed++
       }
     }
     if (r.type === 'create') {
       tool.verb = 'create'
-      added = typeof r.content === 'string' ? r.content.split('\n').length : added
+      const body = typeof r.content === 'string' ? r.content.split('\n') : []
+      added = body.length || added
+      Object.assign(tool, capDiff(body.map(l => `+${l}`)))
+    } else {
+      Object.assign(tool, capDiff(lines))
     }
     tool.added = added
     tool.removed = removed
     tool.result = r.type === 'create'
       ? `Wrote ${added} line${added === 1 ? '' : 's'}`
       : `Added ${added} line${added === 1 ? '' : 's'}, removed ${removed}`
+    return
+  }
+
+  if (tool.verb === 'agent' && r && typeof r.agentId === 'string') tool.agentId = r.agentId
+  if (tool.verb === 'agent' && r?.status === 'async_launched') {
+    tool.result = 'Running in the background'
+    return
+  }
+  if (tool.verb === 'agent' && r && typeof r.totalToolUseCount === 'number') {
+    const uses = r.totalToolUseCount
+    const ms = typeof r.totalDurationMs === 'number' ? r.totalDurationMs : 0
+    const dur = ms >= 60_000 ? `${Math.round(ms / 60_000)}m` : ms ? `${Math.round(ms / 1000)}s` : ''
+    tool.result = `Done (${uses} tool use${uses === 1 ? '' : 's'}${dur ? ` · ${dur}` : ''})`
     return
   }
 
@@ -263,17 +346,23 @@ function applyClaudeResult(
 }
 
 /** Codex `apply_patch` carries its own file list in the patch header lines. */
-function codexPatchFiles(patch: string, cwd: string | null): Array<{ path: string; created: boolean; added: number; removed: number }> {
-  const out: Array<{ path: string; created: boolean; added: number; removed: number }> = []
-  let cur: (typeof out)[number] | null = null
+interface CodexPatchFile { path: string; abs: string; created: boolean; added: number; removed: number; lines: string[] }
+
+function codexPatchFiles(patch: string, cwd: string | null): CodexPatchFile[] {
+  const out: CodexPatchFile[] = []
+  let cur: CodexPatchFile | null = null
   for (const line of patch.split('\n')) {
     const m = /^\*\*\* (Add|Update|Delete) File: (.+)$/.exec(line)
     if (m) {
-      cur = { path: relPath(m[2].trim(), cwd), created: m[1] === 'Add', added: 0, removed: 0 }
+      const raw = m[2].trim()
+      const abs = raw.startsWith('/') || !cwd ? raw : `${cwd}/${raw}`
+      cur = { path: relPath(abs, cwd), abs, created: m[1] === 'Add', added: 0, removed: 0, lines: [] }
       out.push(cur)
       continue
     }
-    if (!cur) continue
+    if (!cur || line.startsWith('*** ')) continue
+    if (line.startsWith('@@')) { if (cur.lines.length) cur.lines.push('@@'); continue }
+    cur.lines.push(line)
     if (line.startsWith('+')) cur.added++
     else if (line.startsWith('-')) cur.removed++
   }
@@ -295,6 +384,8 @@ function describeCodexCall(
         verb: f.created ? 'create' : 'edit',
         target: f.path,
         file: f.path,
+        abs: f.abs,
+        ...capDiff(f.lines),
         added: f.added,
         removed: f.removed,
         result: f.created
@@ -323,8 +414,20 @@ function describeCodexCall(
 export function parseTranscriptEventsBlock(
   jsonl: string,
   window: TranscriptWindowBlock | null,
+  options: ParseTranscriptOptionsBlock = {},
 ): ParsedTranscriptBlock {
   const items: TranscriptItemBlock[] = []
+  /** Usage lands on the most recent prompt; before the first one it is held
+   *  here so a window that opens mid-turn still counts what it saw. */
+  const leadingUsage: TranscriptUsageBlock = {}
+  let usageTarget: TranscriptUsageBlock = leadingUsage
+  const seenUsage = new Set<string>()
+  let codexModel = UNKNOWN_MODEL
+  const pushUser = (ts: number | null, segments: TranscriptSegmentBlock[]) => {
+    const usage: TranscriptUsageBlock = {}
+    items.push({ kind: 'user', ts, segments, usage })
+    usageTarget = usage
+  }
   /** tool_use id → the rows its result should update. */
   const pending = new Map<string, TranscriptToolBlock[]>()
   let cwd: string | null = null
@@ -338,6 +441,7 @@ export function parseTranscriptEventsBlock(
     if (typeof ev.cwd === 'string' && !cwd) cwd = ev.cwd
     const payload = ev.payload as Record<string, unknown> | undefined
     if (ev.type === 'turn_context' && payload && typeof payload.cwd === 'string') cwd = payload.cwd
+    if (ev.type === 'turn_context' && payload && typeof payload.model === 'string') codexModel = payload.model
     if (ev.type === 'session_meta' && payload && typeof payload.cwd === 'string' && !cwd) cwd = payload.cwd
 
     const ts = tsOf(ev)
@@ -348,7 +452,7 @@ export function parseTranscriptEventsBlock(
     // ── Claude ────────────────────────────────────────────────────────────
     if (type === 'user' || type === 'assistant') {
       // Subagent traffic and harness meta-turns are not the conversation.
-      if (ev.isSidechain === true || ev.isMeta === true) continue
+      if ((ev.isSidechain === true && !options.sidechain) || ev.isMeta === true) continue
       if (ev.isCompactSummary === true) {
         items.push({ kind: 'compacted', ts })
         continue
@@ -363,6 +467,12 @@ export function parseTranscriptEventsBlock(
             if (p?.type !== 'tool_result') continue
             const rows = pending.get(String(p.tool_use_id))
             if (rows) for (const row of rows) applyClaudeResult(row, p, ev.toolUseResult)
+            // A subagent's spend is reported on its result, not in this file.
+            const rich = ev.toolUseResult as Record<string, unknown> | undefined
+            if (rows?.[0]?.verb === 'agent' && rich?.usage && typeof rich.usage === 'object') {
+              const model = typeof rich.resolvedModel === 'string' ? rich.resolvedModel : UNKNOWN_MODEL
+              addUsageBlock(usageTarget, model, claudeTokens(rich.usage as Record<string, unknown>))
+            }
           }
         }
         const raw = textParts(content, ['text'])
@@ -373,11 +483,17 @@ export function parseTranscriptEventsBlock(
           continue
         }
         const segments = splitUserTextBlock(raw)
-        if (segments.length) items.push({ kind: 'user', ts, segments })
+        if (segments.length) pushUser(ts, segments)
         continue
       }
 
-      // assistant
+      // assistant — one response spans several lines that repeat its usage.
+      const usage = msg?.usage as Record<string, unknown> | undefined
+      const usageKey = typeof ev.requestId === 'string' ? ev.requestId : typeof msg?.id === 'string' ? msg.id : null
+      if (usage && !(usageKey && seenUsage.has(usageKey))) {
+        if (usageKey) seenUsage.add(usageKey)
+        addUsageBlock(usageTarget, typeof msg?.model === 'string' ? msg.model : UNKNOWN_MODEL, claudeTokens(usage))
+      }
       if (typeof content === 'string') {
         if (content.trim()) items.push({ kind: 'assistant', ts, text: content.trim() })
         continue
@@ -406,6 +522,20 @@ export function parseTranscriptEventsBlock(
       items.push({ kind: 'compacted', ts })
       continue
     }
+    if (type === 'event_msg' && payload?.type === 'token_count') {
+      // `cached_input_tokens` is a subset of `input_tokens`.
+      const last = (payload.info as Record<string, unknown> | undefined)?.last_token_usage as Record<string, unknown> | undefined
+      if (last) {
+        const cached = num(last, 'cached_input_tokens')
+        addUsageBlock(usageTarget, codexModel, {
+          input: Math.max(0, num(last, 'input_tokens') - cached),
+          output: num(last, 'output_tokens'),
+          cacheRead: cached,
+          cacheCreation: 0,
+        })
+      }
+      continue
+    }
     if (type !== 'response_item' || !payload) continue
     if (payload.type === 'message') {
       if (payload.role === 'assistant') {
@@ -413,7 +543,7 @@ export function parseTranscriptEventsBlock(
         if (text) items.push({ kind: 'assistant', ts, text })
       } else if (payload.role === 'user') {
         const segments = splitUserTextBlock(textParts(payload.content, ['input_text', 'text']))
-        if (segments.length) items.push({ kind: 'user', ts, segments })
+        if (segments.length) pushUser(ts, segments)
       }
       continue
     }
@@ -439,7 +569,9 @@ export function parseTranscriptEventsBlock(
     }
   }
 
-  return { items, summary: summarizeTranscriptBlock(items) }
+  const summary = summarizeTranscriptBlock(items)
+  for (const [model, t] of Object.entries(leadingUsage)) addUsageBlock(summary.usage, model, t)
+  return { items, summary }
 }
 
 export function summarizeTranscriptBlock(items: TranscriptItemBlock[]): TranscriptSummaryBlock {
@@ -464,6 +596,7 @@ export function summarizeTranscriptBlock(items: TranscriptItemBlock[]): Transcri
     if (!prev) {
       files.set(t.file, {
         path: t.file,
+        abs: t.abs,
         change,
         added: t.added ?? 0,
         removed: t.removed ?? 0,
@@ -489,8 +622,15 @@ export function summarizeTranscriptBlock(items: TranscriptItemBlock[]): Transcri
     prev.removed += t.removed ?? 0
   })
 
+  const usage: TranscriptUsageBlock = {}
+  for (const item of items) {
+    if (item.kind !== 'user' || !item.usage) continue
+    for (const [model, t] of Object.entries(item.usage)) addUsageBlock(usage, model, t)
+  }
+
   const order = { created: 0, edited: 1, read: 2 } as const
   return {
+    usage,
     files: [...files.values()].sort((a, b) =>
       order[a.change] - order[b.change] || a.path.localeCompare(b.path)),
     prompts,

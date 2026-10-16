@@ -94,6 +94,21 @@ describe('tool calls', () => {
   })
 })
 
+describe('subagents', () => {
+  it('titles the row by agent type and reports how much it did', () => {
+    const { items } = parseTranscriptEventsBlock(
+      [
+        assistant(0, [toolUse('a1', 'Agent', { subagent_type: 'Explore', description: 'find the drawer', prompt: 'LONG PROMPT' })]),
+        result(1, 'a1', 'found it', { totalToolUseCount: 14, totalDurationMs: 63_000 }),
+      ].join('\n'),
+      null,
+    )
+    const tool = items[0].kind === 'tool' ? items[0].tool : null
+    expect(tool).toMatchObject({ name: 'Explore', target: 'find the drawer', verb: 'agent', result: 'Done (14 tool uses · 1m)' })
+    expect(JSON.stringify(items)).not.toContain('LONG PROMPT')
+  })
+})
+
 describe('codex', () => {
   it('reads apply_patch as per-file creates and edits', () => {
     const patch = '*** Begin Patch\n*** Add File: /repo/n.py\n+a\n+b\n*** Update File: /repo/o.py\n-x\n+y\n*** End Patch'
@@ -114,5 +129,76 @@ describe('window', () => {
     )
     expect(items).toHaveLength(1)
     expect(JSON.stringify(items)).toContain('LATE')
+  })
+})
+
+describe('diffs', () => {
+  it('keeps the hunk lines of an edit, capped, with a separator between hunks', () => {
+    const lines = Array.from({ length: 50 }, (_, i) => `+line ${i}`)
+    const { items } = parseTranscriptEventsBlock(
+      [
+        assistant(0, [toolUse('e1', 'Edit', { file_path: '/repo/a.ts' })]),
+        result(1, 'e1', 'ok', { structuredPatch: [{ lines: ['-old', '+new'] }, { lines }] }),
+      ].join('\n'),
+      null,
+    )
+    const tool = items[0].kind === 'tool' ? items[0].tool : null
+    expect(tool?.diff?.slice(0, 3)).toEqual(['-old', '+new', '@@'])
+    expect(tool?.diff).toHaveLength(40)
+    expect(tool?.diffMore).toBe(13)
+    expect(tool?.abs).toBe('/repo/a.ts')
+  })
+})
+
+describe('usage', () => {
+  const usage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 100, cache_creation_input_tokens: 20, cache_creation: { ephemeral_1h_input_tokens: 20 } }
+  const reply = (s: number, text: string) => JSON.stringify({
+    type: 'assistant', timestamp: at(s), requestId: 'req1',
+    message: { id: 'm1', model: 'claude-opus-5-5', usage, content: [{ type: 'text', text }] },
+  })
+
+  it('lands on the prompt that caused it, counted once per response', () => {
+    const { items, summary } = parseTranscriptEventsBlock(
+      [user(0, 'go'), reply(1, 'part one'), reply(2, 'part two')].join('\n'),
+      null,
+    )
+    const prompt = items[0].kind === 'user' ? items[0] : null
+    expect(prompt?.usage?.['claude-opus-5-5']).toEqual({
+      input: 10, output: 5, cacheRead: 100, cacheCreation: 20, cacheCreation1h: 20,
+    })
+    expect(summary.usage['claude-opus-5-5'].output).toBe(5)
+  })
+
+  it('reads codex token_count with cached input as a subset of input', () => {
+    const { items } = parseTranscriptEventsBlock(
+      [
+        JSON.stringify({ type: 'turn_context', payload: { cwd: CWD, model: 'gpt-5' } }),
+        JSON.stringify({ type: 'response_item', timestamp: at(0), payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hi' }] } }),
+        JSON.stringify({ type: 'event_msg', timestamp: at(1), payload: { type: 'token_count', info: { last_token_usage: { input_tokens: 100, cached_input_tokens: 80, output_tokens: 7 } } } }),
+      ].join('\n'),
+      null,
+    )
+    const prompt = items[0].kind === 'user' ? items[0] : null
+    expect(prompt?.usage?.['gpt-5']).toMatchObject({ input: 20, cacheRead: 80, output: 7 })
+  })
+})
+
+describe('subagent files', () => {
+  it('reads sidechain events only when asked', () => {
+    const line = user(0, 'explore the repo', { isSidechain: true })
+    expect(parseTranscriptEventsBlock(line, null).items).toHaveLength(0)
+    expect(parseTranscriptEventsBlock(line, null, { sidechain: true }).items).toHaveLength(1)
+  })
+
+  it('links the agent row to its file and marks background agents', () => {
+    const { items } = parseTranscriptEventsBlock(
+      [
+        assistant(0, [toolUse('a1', 'Agent', { subagent_type: 'Explore', description: 'look' })]),
+        result(1, 'a1', 'launched', { status: 'async_launched', agentId: 'abc123' }),
+      ].join('\n'),
+      null,
+    )
+    const tool = items[0].kind === 'tool' ? items[0].tool : null
+    expect(tool).toMatchObject({ agentId: 'abc123', result: 'Running in the background' })
   })
 })

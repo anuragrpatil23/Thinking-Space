@@ -1,17 +1,22 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { X, Loader2, AlertTriangle, History, FileText } from 'lucide-react'
+import { X, Loader2, AlertTriangle, History, FileText, Search } from 'lucide-react'
 import type { ActivityChain, ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import {
   countReadableSessionsBlock,
   getChainSessionTranscriptsBlock,
+  getSubagentTranscriptBlock,
   type ChainSessionStatusBlock,
   type ChainSessionTranscriptBlock,
 } from '@/services/lego_blocks/units/getChainTranscriptBlock'
 import { cn } from '@/lib/utils'
-import TranscriptViewBlock from '@/components/lego_blocks/units/TranscriptViewBlock'
+import TranscriptViewBlock, { type TranscriptFileOpenerBlock } from '@/components/lego_blocks/units/TranscriptViewBlock'
+import ChainFilesSummaryBlock from '@/components/lego_blocks/units/ChainFilesSummaryBlock'
+import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
+import TranscriptRailBlock from '@/components/lego_blocks/units/TranscriptRailBlock'
 
 /**
  * A chain's transcript, session by session.
@@ -30,6 +35,11 @@ interface ChainTranscriptSlideOverBlockProps {
   chain: ActivityChain | null
   onClose: () => void
 }
+
+const SEARCH_HIGHLIGHT = 'tx-search'
+/** Enough to light a screenful many times over; a one-letter query in a long
+ *  chain would otherwise build tens of thousands of ranges. */
+const MAX_HIGHLIGHTS = 2000
 
 function fmtClock(iso: string): string {
   const d = new Date(iso)
@@ -105,13 +115,22 @@ function StatusPill({ status }: { status: ChainSessionStatusBlock }) {
 /** One session's body: its transcript, or an account of why there isn't one.
  *  The unreadable case is deliberately a full card with the path on it — that
  *  is the difference between "this is missing" and a line you scroll past. */
-function SessionBody({ part }: { part: ChainSessionTranscriptBlock }) {
+function SessionBody({
+  part, query, opener,
+}: { part: ChainSessionTranscriptBlock; query: string; opener: TranscriptFileOpenerBlock }) {
+  const loadSubagent = useCallback(
+    (agentId: string) => getSubagentTranscriptBlock(part.session, agentId),
+    [part.session],
+  )
   if (part.status === 'ok' && part.items && part.summary) {
     return (
       <TranscriptViewBlock
         items={part.items}
         summary={part.summary}
         idPrefix={`tx-${part.index}`}
+        query={query}
+        opener={opener}
+        loadSubagent={part.session.path.startsWith('native/claude/') ? loadSubagent : undefined}
       />
     )
   }
@@ -144,6 +163,31 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
   const [loading, setLoading] = useState(false)
   /** `'all'` or a 1-based session index. Resets with the chain. */
   const [selected, setSelected] = useState<'all' | number>('all')
+  const [query, setQuery] = useState('')
+  /** Typing re-renders every markdown turn; let keystrokes win. */
+  const deferredQuery = useDeferredValue(query.trim().toLowerCase())
+  const [hitCount, setHitCount] = useState(0)
+  const [hitCursor, setHitCursor] = useState(0)
+  const paneRef = useRef<HTMLDivElement | null>(null)
+  const { openFile } = useMarkdownViewer()
+
+  /** Vault notes open in the app's note sheet. The sheet sits under this
+   *  drawer, so opening one hands the screen over to it. */
+  const opener = useMemo<TranscriptFileOpenerBlock>(() => {
+    const root = getStoredVaultRoot()?.replace(/\/+$/, '') ?? null
+    return {
+      resolve: abs => {
+        if (!root || !abs || !abs.startsWith(root + '/')) return null
+        if (!/\.(md|excalidraw)$/i.test(abs)) return null
+        return abs.slice(root.length + 1)
+      },
+      open: rel => {
+        onClose()
+        openFile(rel)
+      },
+    }
+  }, [onClose, openFile])
+  const searchRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!chain) {
@@ -157,6 +201,7 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
     setError(null)
     setParts(null)
     setSelected('all')
+    setQuery('')
     getChainSessionTranscriptsBlock(chain)
       .then(next => { if (!cancelled) setParts(next) })
       .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)) })
@@ -164,20 +209,107 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
     return () => { cancelled = true }
   }, [chain])
 
+  /** Rows carrying `attr`, in document order, inside the pane. */
+  const marked = useCallback(
+    (attr: string) => Array.from(paneRef.current?.querySelectorAll<HTMLElement>(`[${attr}]`) ?? []),
+    [],
+  )
+
+  /** j/k: the next prompt below (or above) the top of the pane. */
+  const stepPrompt = useCallback((dir: 1 | -1) => {
+    const pane = paneRef.current
+    if (!pane) return
+    const top = pane.getBoundingClientRect().top
+    const prompts = marked('data-tx-prompt')
+    const target = dir === 1
+      ? prompts.find(el => el.getBoundingClientRect().top - top > 24)
+      : [...prompts].reverse().find(el => el.getBoundingClientRect().top - top < -8)
+    target?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [marked])
+
+  const stepHit = useCallback((dir: 1 | -1) => {
+    const hits = marked('data-tx-hit')
+    if (!hits.length) return
+    const next = ((hitCursor - 1 + dir) % hits.length + hits.length) % hits.length
+    setHitCursor(next + 1)
+    hits[next].scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [marked, hitCursor])
+
+  // Hits are marked by the views as they render; count them after layout,
+  // then paint the matched words. The CSS Custom Highlight API paints ranges
+  // without touching the DOM, so it works inside rendered markdown and never
+  // fights React over text nodes.
+  useEffect(() => {
+    setHitCursor(0)
+    const registry = (globalThis.CSS as { highlights?: Map<string, unknown> } | undefined)?.highlights
+    const HighlightCtor = (globalThis as { Highlight?: new (...r: Range[]) => unknown }).Highlight
+    const raf = requestAnimationFrame(() => {
+      const hits = deferredQuery ? marked('data-tx-hit') : []
+      setHitCount(hits.length)
+      if (!registry || !HighlightCtor) return
+      registry.delete(SEARCH_HIGHLIGHT)
+      if (!hits.length) return
+      const ranges: Range[] = []
+      for (const el of hits) {
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+        for (let node = walker.nextNode(); node && ranges.length < MAX_HIGHLIGHTS; node = walker.nextNode()) {
+          const text = node.textContent?.toLowerCase() ?? ''
+          for (let at = text.indexOf(deferredQuery); at >= 0 && ranges.length < MAX_HIGHLIGHTS; at = text.indexOf(deferredQuery, at + deferredQuery.length)) {
+            const r = document.createRange()
+            r.setStart(node, at)
+            r.setEnd(node, at + deferredQuery.length)
+            ranges.push(r)
+          }
+        }
+      }
+      registry.set(SEARCH_HIGHLIGHT, new HighlightCtor(...ranges))
+    })
+    return () => {
+      cancelAnimationFrame(raf)
+      registry?.delete(SEARCH_HIGHLIGHT)
+    }
+  }, [deferredQuery, parts, selected, marked])
+
   useEffect(() => {
     if (!chain) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      const typing = e.target instanceof HTMLElement
+        && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)
+      if (e.key === 'Escape') {
+        // First Escape leaves the search; the next one closes the drawer.
+        if (e.target === searchRef.current) {
+          setQuery('')
+          searchRef.current?.blur()
+          return
+        }
+        onClose()
+        return
+      }
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key === 'j') stepPrompt(1)
+      else if (e.key === 'k') stepPrompt(-1)
+      else if (e.key === 'n') stepHit(1)
+      else if (e.key === 'N') stepHit(-1)
+      else if (e.key === '/') {
+        e.preventDefault()
+        searchRef.current?.focus()
+        searchRef.current?.select()
+      } else return
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [chain, onClose])
+  }, [chain, onClose, stepPrompt, stepHit])
 
   const readable = parts ? countReadableSessionsBlock(parts) : 0
   const missing = parts ? parts.length - readable : 0
   const shown = useMemo(
     () => (!parts ? [] : selected === 'all' ? parts : parts.filter(p => p.index === selected)),
     [parts, selected],
+  )
+
+  const chainSummaryParts = useMemo(
+    () => (parts ?? []).flatMap(p => (p.summary ? [{ index: p.index, summary: p.summary }] : [])),
+    [parts],
   )
 
   if (!chain) return null
@@ -188,6 +320,7 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
   return createPortal(
     <div className="fixed inset-0 z-[100]">
       <style>{`
+        ::highlight(${SEARCH_HIGHLIGHT}) { background-color: rgb(251 191 36 / 0.4); color: inherit; }
         @keyframes ltm-transcript-slideover-in {
           from { transform: translateX(100%); }
           to   { transform: translateX(0); }
@@ -313,40 +446,75 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          {loading && (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading transcript…
+        {/* Search + key hints. Keys work anywhere in the drawer; the hints
+            are the only place they are discoverable. */}
+        {parts && !loading && (
+          <div className="flex shrink-0 items-center gap-2 border-b border-border/40 px-5 py-1.5 font-mono text-[11px] text-muted-foreground">
+            <Search className="h-3.5 w-3.5 shrink-0 opacity-60" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); stepHit(e.shiftKey ? -1 : 1) }
+              }}
+              placeholder="search transcript"
+              className="min-w-0 flex-1 bg-transparent text-foreground/90 outline-none placeholder:text-muted-foreground/50"
+            />
+            {deferredQuery && (
+              <span className="shrink-0 tabular-nums">
+                {hitCount ? `${hitCursor || '–'}/${hitCount}` : 'no matches'}
+              </span>
+            )}
+            <span className="hidden shrink-0 text-muted-foreground/50 sm:inline">
+              / search · n/N next · j/k prompts
+            </span>
+          </div>
+        )}
+
+        <div className="relative min-h-0 flex-1">
+          <div ref={paneRef} className="h-full overflow-y-auto py-5 pl-6 pr-7">
+            <div>
+              {loading && (
+                <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Loading transcript…
+                </div>
+              )}
+              {error && !loading && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
+              {/* Only in the all-sessions view: a single session has its own card. */}
+              {parts && !loading && selected === 'all' && chainSummaryParts.length > 1 && (
+                <ChainFilesSummaryBlock parts={chainSummaryParts} opener={opener} />
+              )}
+              {parts && !loading && shown.map(part => (
+                <section key={part.session.path} className="mb-8 last:mb-0">
+                  <header className="mb-3 border-b border-border/40 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] tabular-nums text-muted-foreground">
+                        Session {part.index}
+                      </span>
+                      <StatusPill status={part.status} />
+                    </div>
+                    <div className="mt-0.5 text-sm font-medium text-foreground">
+                      {part.session.topic || '(no topic)'}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      {fmtSessionWhen(part.session)}
+                      {' · '}
+                      {part.session.userMsgCount} msg{part.session.userMsgCount === 1 ? '' : 's'}
+                      {part.session.model ? ` · ${part.session.model}` : ''}
+                    </div>
+                  </header>
+                  <SessionBody part={part} query={deferredQuery} opener={opener} />
+                </section>
+              ))}
             </div>
-          )}
-          {error && !loading && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          {parts && !loading && shown.map(part => (
-            <section key={part.session.path} className="mb-8 last:mb-0">
-              <header className="mb-3 border-b border-border/40 pb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] tabular-nums text-muted-foreground">
-                    Session {part.index}
-                  </span>
-                  <StatusPill status={part.status} />
-                </div>
-                <div className="mt-0.5 text-sm font-medium text-foreground">
-                  {part.session.topic || '(no topic)'}
-                </div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  {fmtSessionWhen(part.session)}
-                  {' · '}
-                  {part.session.userMsgCount} msg{part.session.userMsgCount === 1 ? '' : 's'}
-                  {part.session.model ? ` · ${part.session.model}` : ''}
-                </div>
-              </header>
-              <SessionBody part={part} />
-            </section>
-          ))}
+          </div>
+          <TranscriptRailBlock scrollRef={paneRef} version={`${parts?.length}-${selected}-${deferredQuery}`} />
         </div>
       </div>
     </div>,

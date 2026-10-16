@@ -185,6 +185,28 @@ export function countReadableSessionsBlock(parts: ChainSessionTranscriptBlock[])
 }
 
 /**
+ * One subagent's own transcript, read on demand when its row is opened.
+ *
+ * Claude Code keeps a subagent's turns beside the session, not in it:
+ * `<encoded-cwd>/<sid>.jsonl` → `<encoded-cwd>/<sid>/subagents/agent-<id>.jsonl`.
+ * Every event there is a sidechain event, which the session parse skips.
+ * Not windowed — the agent ran inside its parent call, whatever the sitting.
+ */
+export async function getSubagentTranscriptBlock(
+  session: ParsedSession,
+  agentId: string,
+): Promise<ParsedTranscriptBlock> {
+  const cleanPath = session.path.replace(/#w\d+$/, '')
+  if (!cleanPath.startsWith('native/claude/') || !cleanPath.endsWith('.jsonl')) {
+    throw new Error('Subagent transcripts exist only for native Claude sessions')
+  }
+  if (!/^[\w-]+$/.test(agentId)) throw new Error(`Malformed agent id: ${agentId}`)
+  const base = cleanPath.slice('native/claude/'.length, -'.jsonl'.length)
+  const jsonl = await readNativeAiSession('claude', `${base}/subagents/agent-${agentId}.jsonl`)
+  return parseTranscriptEventsBlock(jsonl, null, { sidechain: true })
+}
+
+/**
  * The whole chain as one markdown document, for reading straight through or
  * copying out. Built on the per-session results so the two views can never
  * disagree about what loaded.
