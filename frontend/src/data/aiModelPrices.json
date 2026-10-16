@@ -57,7 +57,7 @@
     "  cacheCreation1h cache write, 1-hour TTL (Anthropic: 2.0x input).",
     "                  Equal to the 5m figure where a provider has no TTL split."
   ],
-  "refreshed_at": "2026-10-10",
+  "refreshed_at": "2026-10-15",
   "exact_source": "LiteLLM model_prices_and_context_window.json",
   "overrides": {
     "claude-fable-5-1": {
@@ -399,6 +399,13 @@
       "cacheCreation5m": 0.6,
       "cacheCreation1h": 0.6
     },
+    "gpt-audio-mini-2025-10-06": {
+      "input": 0.6,
+      "output": 2.4,
+      "cacheRead": 0.06,
+      "cacheCreation5m": 0.6,
+      "cacheCreation1h": 0.6
+    },
     "gpt-audio-mini-2025-12-15": {
       "input": 0.6,
       "output": 2.4,
@@ -441,6 +448,13 @@
       "cacheCreation5m": 0.15,
       "cacheCreation1h": 0.15
     },
+    "gpt-4o-mini-search-preview-2025-03-11": {
+      "input": 0.15,
+      "output": 0.6,
+      "cacheRead": 0.075,
+      "cacheCreation5m": 0.15,
+      "cacheCreation1h": 0.15
+    },
     "gpt-4o-mini-transcribe": {
       "input": 1.25,
       "output": 5,
@@ -463,6 +477,13 @@
       "cacheCreation1h": 0.6
     },
     "gpt-4o-search-preview": {
+      "input": 2.5,
+      "output": 10,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2.5
+    },
+    "gpt-4o-search-preview-2025-03-11": {
       "input": 2.5,
       "output": 10,
       "cacheRead": 1.25,
@@ -910,6 +931,13 @@
       "cacheCreation5m": 10,
       "cacheCreation1h": 10
     },
+    "o3-deep-research-2025-06-26": {
+      "input": 10,
+      "output": 40,
+      "cacheRead": 2.5,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 10
+    },
     "o3-2025-04-16": {
       "input": 2,
       "output": 8,
@@ -953,6 +981,13 @@
       "cacheCreation1h": 1.1
     },
     "o4-mini-deep-research": {
+      "input": 2,
+      "output": 8,
+      "cacheRead": 0.5,
+      "cacheCreation5m": 2,
+      "cacheCreation1h": 2
+    },
+    "o4-mini-deep-research-2025-06-26": {
       "input": 2,
       "output": 8,
       "cacheRead": 0.5,
@@ -1030,6 +1065,13 @@
       "cacheCreation1h": 20
     },
     "gpt-5.5-cyber": {
+      "input": 12.5,
+      "output": 75,
+      "cacheRead": 1.25,
+      "cacheCreation5m": 12.5,
+      "cacheCreation1h": 12.5
+    },
+    "gpt-5.5-cyber-preview": {
       "input": 12.5,
       "output": 75,
       "cacheRead": 1.25,

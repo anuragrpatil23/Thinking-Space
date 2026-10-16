@@ -11,6 +11,7 @@ import {
   type ChainSessionTranscriptBlock,
 } from '@/services/lego_blocks/units/getChainTranscriptBlock'
 import { cn } from '@/lib/utils'
+import TranscriptViewBlock from '@/components/lego_blocks/units/TranscriptViewBlock'
 
 /**
  * A chain's transcript, session by session.
@@ -105,6 +106,15 @@ function StatusPill({ status }: { status: ChainSessionStatusBlock }) {
  *  The unreadable case is deliberately a full card with the path on it — that
  *  is the difference between "this is missing" and a line you scroll past. */
 function SessionBody({ part }: { part: ChainSessionTranscriptBlock }) {
+  if (part.status === 'ok' && part.items && part.summary) {
+    return (
+      <TranscriptViewBlock
+        items={part.items}
+        summary={part.summary}
+        idPrefix={`tx-${part.index}`}
+      />
+    )
+  }
   if (part.status === 'ok') {
     return (
       <article className="prose prose-sm dark:prose-invert max-w-none" style={{ overflowWrap: 'anywhere' }}>

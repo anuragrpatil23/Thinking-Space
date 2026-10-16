@@ -790,8 +790,11 @@ function MarkdownTextDocumentRuntimeBlock({
   const miniNavAiTouch = useMemo(() => {
     if (!sessionTelemetry) return null
     const rel = path.replace(/^\.?\//, '')
-    const kind = sessionTelemetry.files.get(rel) ?? sessionTelemetry.files.get(path)
-    return kind ? { kind, topic: sessionTelemetry.topic } : null
+    const kind = sessionTelemetry.all.files.get(rel) ?? sessionTelemetry.all.files.get(path)
+    if (!kind) return null
+    // Name the most recently active session that touched this note.
+    const session = sessionTelemetry.sessions.find(s => s.files.has(rel) || s.files.has(path))
+    return { kind, topic: session?.topic ?? '' }
   }, [path, sessionTelemetry])
   const displayContent = useMemo(
     () => {

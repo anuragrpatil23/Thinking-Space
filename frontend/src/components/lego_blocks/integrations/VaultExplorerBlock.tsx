@@ -76,6 +76,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/lego_blocks/units/ui/tooltip'
 import CursorTooltipBlock from '@/components/lego_blocks/units/CursorTooltipBlock'
 import type { SessionTelemetry } from '@/services/orchestrators/sessionTelemetryOrch'
+import SessionTelemetryStripBlock from '@/components/lego_blocks/units/SessionTelemetryStripBlock'
 import { writeSortOrdersBlock } from '@/services/lego_blocks/units/notebookOrderBlock'
 import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebookSidecarBlock'
 import { getAbsolutePathForClipboardOrch } from '@/services/orchestrators/fileSystemOrch'
@@ -507,6 +508,9 @@ function VaultExplorerBlockInner({
   const [infoPanelLoading, setInfoPanelLoading] = useState(false)
   // Count-strip toggle: restrict the tree to the latest session's touched files.
   const [telemetryFilterOn, setTelemetryFilterOn] = useState(false)
+  // Which recent AI session the dots/filter describe; null = all of them.
+  const [telemetrySessionKey, setTelemetrySessionKey] = useState<string | null>(null)
+  const [telemetryListOpen, setTelemetryListOpen] = useState(false)
 
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
   const renameInputRef = useRef<HTMLInputElement | null>(null)
@@ -650,27 +654,64 @@ function VaultExplorerBlockInner({
     return () => { cancelled = true }
   }, [showInfoPanel, activeFilePath, loadFileTags])
 
-  // Telemetry is session-scoped: when the session ages out (or a vault without
-  // activity loads), the filter must not keep hiding the whole tree.
+  // The chosen session, if it is still recent; otherwise fall back to all.
+  const telemetrySession = useMemo(
+    () => (telemetrySessionKey
+      ? sessionTelemetry?.sessions.find(s => s.sessionKey === telemetrySessionKey) ?? null
+      : null),
+    [sessionTelemetry, telemetrySessionKey],
+  )
+  // What the dots, folder dots and filter paint: one session, or the union.
+  const activeTelemetry = sessionTelemetry ? telemetrySession ?? sessionTelemetry.all : null
+
+  // Telemetry is session-scoped: when the sessions age out (or a vault without
+  // activity loads), the filter must not keep hiding the whole tree; a chosen
+  // session that aged out drops back to "all".
   useEffect(() => {
-    if (!sessionTelemetry) setTelemetryFilterOn(false)
-  }, [sessionTelemetry])
+    if (!sessionTelemetry) {
+      setTelemetryFilterOn(false)
+      setTelemetryListOpen(false)
+    }
+    if (telemetrySessionKey && !sessionTelemetry?.sessions.some(s => s.sessionKey === telemetrySessionKey)) {
+      setTelemetrySessionKey(null)
+    }
+  }, [sessionTelemetry, telemetrySessionKey])
+
+  // Expand every folder on the touched paths so the filtered tree shows the
+  // files immediately instead of a wall of collapsed folders.
+  const expandTelemetryFolders = useCallback((folders: ReadonlySet<string>) => {
+    setExpandedPaths(prevPaths => {
+      const set = new Set(prevPaths)
+      for (const folder of folders) set.add(folder)
+      return set.size === prevPaths.length ? prevPaths : [...set]
+    })
+  }, [])
 
   const toggleTelemetryFilter = useCallback(() => {
     setTelemetryFilterOn(prev => {
       const next = !prev
-      if (next && sessionTelemetry) {
-        // Expand every folder on the touched paths so the filtered tree shows
-        // the files immediately instead of a wall of collapsed folders.
-        setExpandedPaths(prevPaths => {
-          const set = new Set(prevPaths)
-          for (const folder of sessionTelemetry.folders) set.add(folder)
-          return set.size === prevPaths.length ? prevPaths : [...set]
-        })
-      }
+      if (next && activeTelemetry) expandTelemetryFolders(activeTelemetry.folders)
       return next
     })
-  }, [sessionTelemetry])
+  }, [activeTelemetry, expandTelemetryFolders])
+
+  // Picking one session is a request to see its files, so it filters too.
+  const selectTelemetrySession = useCallback((sessionKey: string | null) => {
+    setTelemetrySessionKey(sessionKey)
+    setTelemetryListOpen(false)
+    const scope = sessionKey
+      ? sessionTelemetry?.sessions.find(s => s.sessionKey === sessionKey)
+      : sessionTelemetry?.all
+    if (sessionKey) setTelemetryFilterOn(true)
+    if (scope && (sessionKey || telemetryFilterOn)) expandTelemetryFolders(scope.folders)
+  }, [expandTelemetryFolders, sessionTelemetry, telemetryFilterOn])
+
+  // Dot tooltip: name the most recently active session that touched the file.
+  const describeTelemetryTouch = useCallback((filePath: string, touch: 'created' | 'edited') => {
+    const verb = touch === 'created' ? 'Created' : 'Edited'
+    const session = telemetrySession ?? sessionTelemetry?.sessions.find(s => s.files.has(filePath))
+    return session?.topic ? `${verb} by AI session: ${session.topic}` : `${verb} by a recent AI session`
+  }, [sessionTelemetry, telemetrySession])
 
   const normalizedQuery = query.trim().toLowerCase()
   const hasTitle = title.trim().length > 0
@@ -1227,11 +1268,11 @@ function VaultExplorerBlockInner({
         )
       }
 
-      const telemetryFilterActive = telemetryFilterOn && sessionTelemetry !== null
+      const telemetryFilterActive = telemetryFilterOn && activeTelemetry !== null
 
       const visibleFolders = node.folders.filter(folderName => {
         const full = joinPath(path, folderName)
-        if (telemetryFilterActive && !sessionTelemetry.folders.has(full)) return false
+        if (telemetryFilterActive && !activeTelemetry.folders.has(full)) return false
         if (!normalizedQuery) return true
         if (pathMatchesSearch(full)) return true
         return pathMatchesQuery(full, new Set())
@@ -1239,7 +1280,7 @@ function VaultExplorerBlockInner({
 
       const visibleFiles = node.files.filter(fileName => {
         const full = joinPath(path, fileName)
-        if (telemetryFilterActive && !sessionTelemetry.files.has(full)) return false
+        if (telemetryFilterActive && !activeTelemetry.files.has(full)) return false
         if (!normalizedQuery) return true
         return pathMatchesSearch(full)
       })
@@ -1359,10 +1400,10 @@ function VaultExplorerBlockInner({
               )}
               {renderGuides(depth, folderPath)}
               <span className="truncate">{folderName}</span>
-              {sessionTelemetry?.folders.has(folderPath) && (
+              {activeTelemetry?.folders.has(folderPath) && (
                 <span
                   aria-hidden="true"
-                  title="Contains files touched by the latest AI session"
+                  title="Contains files touched by a recent AI session"
                   className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500/70"
                 />
               )}
@@ -1608,12 +1649,12 @@ function VaultExplorerBlockInner({
               )}
               <span className="truncate">{fileName}</span>
               {(() => {
-                const touch = sessionTelemetry?.files.get(filePath)
+                const touch = activeTelemetry?.files.get(filePath)
                 if (!touch) return null
                 return (
                   <span
                     aria-hidden="true"
-                    title={touch === 'created' ? 'Created by the latest AI session' : 'Edited by the latest AI session'}
+                    title={describeTelemetryTouch(filePath, touch)}
                     className={cn(
                       'ml-auto h-1.5 w-1.5 shrink-0 rounded-full',
                       touch === 'created' ? 'bg-emerald-500' : 'bg-amber-500',
@@ -1656,7 +1697,8 @@ function VaultExplorerBlockInner({
       resolveFileMeta,
       selectedFilePath,
       selectedFolderPath,
-      sessionTelemetry,
+      activeTelemetry,
+      describeTelemetryTouch,
       telemetryFilterOn,
       toggleFolder,
       viewMode,
@@ -1908,26 +1950,16 @@ function VaultExplorerBlockInner({
           })()}
         </div>
 
-        {sessionTelemetry && sessionTelemetry.files.size > 0 && (
-          <button
-            type="button"
-            onClick={toggleTelemetryFilter}
-            title={`Latest AI session: ${sessionTelemetry.topic}\nClick to ${telemetryFilterOn ? 'show all files again' : 'show only the files it touched'}`}
-            className={cn(
-              'ltm-explorer-session-strip mt-2 flex w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors',
-              telemetryFilterOn
-                ? 'border-emerald-500/50 bg-emerald-500/10 text-foreground'
-                : 'border-border/50 bg-muted/30 text-muted-foreground hover:bg-muted/60',
-            )}
-          >
-            <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-            <span className="truncate tabular-nums">
-              This session: {sessionTelemetry.createdCount} created · {sessionTelemetry.editedCount} edited
-            </span>
-            {telemetryFilterOn && (
-              <span className="ml-auto shrink-0 text-emerald-600 dark:text-emerald-400">filtered</span>
-            )}
-          </button>
+        {sessionTelemetry && sessionTelemetry.all.files.size > 0 && (
+          <SessionTelemetryStripBlock
+            telemetry={sessionTelemetry}
+            selected={telemetrySession}
+            filterOn={telemetryFilterOn}
+            listOpen={telemetryListOpen}
+            onToggleFilter={toggleTelemetryFilter}
+            onToggleList={() => setTelemetryListOpen(prev => !prev)}
+            onSelectSession={selectTelemetrySession}
+          />
         )}
 
         {showInfoPanel && loadFileTags && activeFilePath && (

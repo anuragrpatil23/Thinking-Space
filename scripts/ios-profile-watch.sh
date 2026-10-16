@@ -12,6 +12,7 @@ set -euo pipefail
 #   ./scripts/ios-profile-watch.sh --path-for  <bundle-id>   # cached profile path
 #   ./scripts/ios-profile-watch.sh --prepare-mint <bundle-id> [udid,udid]
 #   ./scripts/ios-profile-watch.sh --install-agent            # daily launchd job
+#   ./scripts/ios-profile-watch.sh --notify "<text>"          # send one Telegram message
 #
 # TS_IOS_DRY_NOTIFY=1 prints the Telegram body instead of sending it.
 #
@@ -64,8 +65,9 @@ case "${1:-}" in
   --path-for)  MODE=path-for; QUERY_BUNDLE="${2:-}" ;;
   --prepare-mint) MODE=prepare-mint; QUERY_BUNDLE="${2:-}"; WANT_UDIDS="${3:-}" ;;
   --install-agent) MODE=install-agent ;;
+  --notify)    MODE=notify; QUERY_BUNDLE="${2:-}" ;;
   "")          MODE=status ;;
-  *) echo "unknown flag: $1 (use --check, --days-left <id>, --path-for <id>, --prepare-mint <id>, --install-agent)" >&2; exit 2 ;;
+  *) echo "unknown flag: $1 (use --check, --days-left <id>, --path-for <id>, --prepare-mint <id>, --install-agent, --notify <text>)" >&2; exit 2 ;;
 esac
 
 # ─── Telegram ────────────────────────────────────────────────────────────────
@@ -177,6 +179,14 @@ days_left_from_epoch() {
   # Integer floor: 0 means "expires sometime today", negative means already gone.
   echo $(( (exp - now) / 86400 ))
 }
+
+# The one Telegram sender, shared with ios-auto-renew.sh so retries and the
+# delivery log live in a single place.
+if [ "$MODE" = notify ]; then
+  [ -n "$QUERY_BUNDLE" ] || { echo "--notify needs a message" >&2; exit 2; }
+  telegram_send "$QUERY_BUNDLE"
+  exit 0
+fi
 
 if [ "$MODE" = install-agent ]; then
   # Generated locally rather than committed: a launchd plist needs absolute

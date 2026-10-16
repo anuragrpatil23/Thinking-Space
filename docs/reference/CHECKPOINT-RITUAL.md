@@ -58,7 +58,21 @@ allows. (Apple's documented free-tier quota is 10 App IDs per 7 days and covers
   `MIN_MINT_INTERVAL_DAYS` floor makes a runaway loop unable to burn mints.
 - `TS_IOS_DRY_NOTIFY=1` prints the Telegram body instead of sending it.
 
-**Monitoring is team-wide; renewal is this app only.** Other apps on the same
+**Unattended renewal — `./scripts/ios-auto-renew.sh`.** Daily launchd job
+(`com.thinkingspace.ios-auto-renew`, 03:30, installed with `--install-agent`;
+`--status` previews). For each app in the local, uncommitted
+`~/.thinking-space/ios-auto-renew.json` (bundle, build cmd, built `.app` path,
+device UDIDs) it rebuilds + installs only when the profile is inside the
+renewal window, or when a cached profile is newer than the one last
+installed on every device. Success is judged from the built app's
+`embedded.mobileprovision`, not the cache: on 2026-10-15 Xcode signed the app
+with a profile covering only Ichigo, then minted one covering Ikigai 16s later,
+so the cache looked healthy while the iPad rejected the install. Telegram
+reports every renewal and every failure. Thinking Space builds with `--dirty`;
+other apps (Reps) build from their own repo's script, with this job running
+`--prepare-mint` for them, so the mint floor still applies.
+
+**Monitoring is team-wide; renewal is this app only** (except via the auto-renew job above). Other apps on the same
 team appear in the table and trigger the same expiry ping — they share one
 certificate, so they share failures — but nothing here can re-mint them: renewal
 happens inside this repo's ship script, which builds this bundle id alone. The

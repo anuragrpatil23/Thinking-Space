@@ -1,5 +1,7 @@
-// Latest-session selection for explorer telemetry — which vault files the most
-// recent AI session actually wrote. File-edit provenance only (`touchedPaths`
+// Recent-session selection for explorer telemetry — which vault files each
+// recent AI session actually wrote. Several agents often run at once, so every
+// session inside the age window is kept (newest first) instead of only the
+// last one to finish — picking one made the strip flip between agents. File-edit provenance only (`touchedPaths`
 // from Edit/Write tool calls): a wrong dot costs trust faster than a missing
 // one, so chat sessions and GC'd transcripts (time-window guesses) contribute
 // nothing here. Pure selection over already-parsed sessions; the orchestrator
@@ -7,7 +9,7 @@
 
 import type { ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
 
-export interface LatestVaultSession {
+export interface RecentVaultSession {
   /** Base transcript key (window suffixes stripped) — identity of "the session". */
   sessionKey: string
   /** First substantive topic of the session's earliest window. */
@@ -30,17 +32,17 @@ function toRelPath(absPath: string, vaultRoot: string): string | null {
 }
 
 /**
- * Pick the most recently ended session that wrote at least one file inside the
- * vault. A transcript's idle-gap windows (`path`, `path#w1`, …) are regrouped
+ * Every session inside the age window that wrote at least one file inside the
+ * vault, most recently active first. A transcript's idle-gap windows (`path`, `path#w1`, …) are regrouped
  * into one session — their touchedPaths are disjoint by timestamp, so the
  * union is exactly the transcript's edits.
  */
-export function selectLatestVaultSessionBlock(
+export function selectRecentVaultSessionsBlock(
   sessions: ParsedSession[],
   vaultRoot: string,
   nowMs: number,
-): LatestVaultSession | null {
-  if (!vaultRoot) return null
+): RecentVaultSession[] {
+  if (!vaultRoot) return []
 
   interface Group {
     startedMs: number
@@ -84,23 +86,17 @@ export function selectLatestVaultSessionBlock(
     for (const rel of relPaths) group.relPaths.add(rel)
   }
 
-  let bestKey: string | null = null
-  let best: Group | null = null
+  const recent: RecentVaultSession[] = []
   for (const [key, group] of groups) {
     if (nowMs - group.endedMs > SESSION_TELEMETRY_MAX_AGE_MS) continue
-    if (!best || group.endedMs > best.endedMs) {
-      bestKey = key
-      best = group
-    }
+    recent.push({
+      sessionKey: key,
+      topic: group.topic,
+      source: group.source,
+      startedMs: group.startedMs,
+      endedMs: group.endedMs,
+      relPaths: [...group.relPaths],
+    })
   }
-  if (!best || bestKey === null) return null
-
-  return {
-    sessionKey: bestKey,
-    topic: best.topic,
-    source: best.source,
-    startedMs: best.startedMs,
-    endedMs: best.endedMs,
-    relPaths: [...best.relPaths],
-  }
+  return recent.sort((a, b) => b.endedMs - a.endedMs)
 }
