@@ -6,6 +6,7 @@ import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColors
 import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { useWheelScrollCaptureBlock } from '@/components/lego_blocks/hooks/shared/useWheelScrollCaptureBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
+import { useVisibleIntervalBlock } from '@/components/lego_blocks/hooks/shared/useVisibleIntervalBlock'
 
 interface AiActivityDayTimelineBlockProps {
   /** ISO day this timeline represents (anchor for the 00:00 baseline). */
@@ -72,6 +73,13 @@ export default function AiActivityDayTimelineBlock({
     () => Date.parse(dateIso + 'T00:00:00'),
     [dateIso],
   )
+
+  // Now marker, today only. Ticks once a minute and only while the strip is
+  // visible and showing today (ENERGY: no unconditional timers); any other day
+  // holds no interval at all.
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  const isToday = nowMs >= dayStartMs && nowMs < dayStartMs + 86_400_000
+  useVisibleIntervalBlock(() => setNowMs(Date.now()), isToday ? 60_000 : null)
 
   // Collapse overlapping same-project chains into a single visual pill so two
   // parallel sessions (different terminals, same cwd) read as one block of
@@ -316,6 +324,24 @@ export default function AiActivityDayTimelineBlock({
               />
             )
           })}
+
+          {isToday && (() => {
+            const nowH = (nowMs - dayStartMs) / 3_600_000
+            if (nowH < startHour || nowH > endHour) return null
+            return (
+              <div
+                aria-label="Now"
+                className="pointer-events-none absolute top-0 bottom-0 z-10 opacity-75"
+                style={{ left: (nowH - startHour) * pxPerHour - 0.75, width: 1.5 }}
+              >
+                {/* The Explorer's selection colour, so "now" and "selected"
+                    speak the same accent across the app; softened to sit with
+                    the pastel pills, dot on the time axis like a pin. */}
+                <div className="h-full w-full bg-[var(--ltm-explorer-selected-color,#c73773)]" />
+                <div className="absolute bottom-0 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-[var(--ltm-explorer-selected-color,#c73773)]" />
+              </div>
+            )
+          })()}
 
           {placed.placed.map(({ key, pill, leftPx, widthPx, row }) => {
             const color = getProjectColor(pill.project, isDark)

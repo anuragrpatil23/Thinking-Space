@@ -33,7 +33,7 @@ const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 const HOUR_TICKS = [0, 3, 6, 9, 12, 15, 18, 21, 24]
 /** Faint guides at the user's day markers (hours, fractional for :15 etc.).
  *  Fixed for now; the natural home is the thinking-window setting. */
-const GUIDE_HOURS = [9, 12, 14.25, 18, 21, 23]
+const GUIDE_HOURS = [8.5, 12, 14.25, 18, 21, 23]
 
 function ordinal(n: number): string {
   const tens = n % 100
