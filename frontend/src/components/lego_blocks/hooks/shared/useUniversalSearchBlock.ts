@@ -8,6 +8,9 @@ export interface UseUniversalSearchBlockOptions<T> {
   /** Optional additive rank boost (e.g. recency) — see rankFuzzyItemsBlock. */
   getBoost?: (item: T) => number
   limit?: number
+  /** False when `items` arrive already ranked (e.g. from the vault search
+   *  engine) — keep their order instead of re-ranking. */
+  rank?: boolean
   onSelect: (item: T) => void
   allowCustomValue?: boolean
   onSelectCustomValue?: (value: string) => void
@@ -34,6 +37,7 @@ export function useUniversalSearchBlock<T>({
   getCandidates,
   getBoost,
   limit = 50,
+  rank = true,
   onSelect,
   allowCustomValue,
   onSelectCustomValue,
@@ -42,7 +46,7 @@ export function useUniversalSearchBlock<T>({
 
   const filteredItems = useMemo<T[]>(() => {
     const trimmed = query.trim()
-    if (!trimmed) return items.slice(0, limit)
+    if (!trimmed || !rank) return items.slice(0, limit)
     const ranked = rankFuzzyItemsBlock<T>({
       items,
       query: trimmed,
@@ -51,7 +55,7 @@ export function useUniversalSearchBlock<T>({
       getBoost,
     })
     return ranked.map(r => r.item)
-  }, [items, query, limit, getCandidates, getBoost])
+  }, [items, query, limit, rank, getCandidates, getBoost])
 
   useEffect(() => {
     if (filteredItems.length === 0) {

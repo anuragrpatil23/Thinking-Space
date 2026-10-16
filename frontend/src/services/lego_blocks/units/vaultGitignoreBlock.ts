@@ -18,7 +18,9 @@ const END_MARKER = '# END Thinking Space managed exclusions'
 // written, and often containing sensitive signal (screen-time streams,
 // per-doc reading windows). Baked in so the ignore lands even for users
 // who never touch settings that today explicitly call the sync (e.g. Webull).
-const APP_MANAGED_GITIGNORE_BASELINE = ['ai-raw', 'ai-activity']
+// `.thinking-space/search-index` is the shared full-text index: derived,
+// rebuilt weekly, tens of MB — git history would only accumulate copies.
+const APP_MANAGED_GITIGNORE_BASELINE = ['ai-raw', 'ai-activity', '.thinking-space/search-index']
 
 // Subpaths that must stay *tracked* even though their parent prefix is ignored.
 //

@@ -90,7 +90,20 @@ function tokenFieldScore(token: string, field: string, allowScatter: boolean): n
   return 0
 }
 
-function scoreDoc(doc: VaultSearchDoc, tokens: string[], phrase: string): { score: number; reason: VaultSearchReason } | null {
+/** Per query token, the notes whose full text contains it (from the index). */
+export type VaultSearchContentHits = ReadonlyMap<string, ReadonlySet<string>>
+
+/** How a query splits into tokens — shared so callers can look tokens up. */
+export function vaultSearchTokensBlock(query: string): string[] {
+  return query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+}
+
+function scoreDoc(
+  doc: VaultSearchDoc,
+  tokens: string[],
+  phrase: string,
+  contentHits: VaultSearchContentHits | undefined,
+): { score: number; reason: VaultSearchReason } | null {
   const byField: Record<VaultSearchReason, number> = { name: 0, title: 0, tags: 0, folder: 0, content: 0 }
   let score = 0
   for (const token of tokens) {
@@ -104,8 +117,15 @@ function scoreDoc(doc: VaultSearchDoc, tokens: string[], phrase: string): { scor
     consider('title', doc.title, false)
     consider('tags', doc.tags, false)
     consider('folder', doc.folder, false)
-    // Content only matters when nothing better matched this token.
-    if (best < 20) consider('content', doc.content, false)
+    // Content only matters when nothing better matched this token. The full
+    // text index counts as a mid-word-strength hit; the cached excerpt as-is.
+    if (best < 20) {
+      if (contentHits?.get(token)?.has(doc.path)) {
+        const s = 50 * FIELD_WEIGHT.content
+        if (s > best) { best = s; bestField = 'content' }
+      }
+      consider('content', doc.content, false)
+    }
     if (best === 0) return null
     score += best
     byField[bestField] += best
@@ -132,17 +152,18 @@ function scoreDoc(doc: VaultSearchDoc, tokens: string[], phrase: string): { scor
 export function rankVaultSearchBlock(
   docs: readonly VaultSearchDoc[],
   query: string,
-  options: { limit?: number; scope?: string } = {},
+  options: { limit?: number; scope?: string; kind?: 'file' | 'folder'; contentHits?: VaultSearchContentHits } = {},
 ): VaultSearchRanking {
-  const phrase = query.trim().toLowerCase().replace(/\s+/g, ' ')
-  const tokens = phrase.split(' ').filter(Boolean)
+  const tokens = vaultSearchTokensBlock(query)
+  const phrase = tokens.join(' ')
   if (tokens.length === 0) return { hits: [], total: 0 }
   const scope = options.scope ? `${options.scope.replace(/\/+$/, '')}/` : ''
 
   const hits: VaultSearchHit[] = []
   for (const doc of docs) {
     if (scope && !doc.path.startsWith(scope)) continue
-    const scored = scoreDoc(doc, tokens, phrase)
+    if (options.kind && doc.kind !== options.kind) continue
+    const scored = scoreDoc(doc, tokens, phrase, options.contentHits)
     if (scored) hits.push({ path: doc.path, kind: doc.kind, ...scored })
   }
   hits.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path))

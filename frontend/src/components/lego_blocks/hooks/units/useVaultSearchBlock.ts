@@ -13,7 +13,7 @@ import type { VaultSearchRanking } from '@/services/lego_blocks/units/vaultSearc
 const DEBOUNCE_MS = 60
 
 export function useVaultSearchBlock(query: string, options: VaultSearchOptions = {}): VaultSearchRanking | null {
-  const { scope, limit } = options
+  const { scope, kind, limit } = options
   const trimmed = query.trim()
   const [ranking, setRanking] = useState<VaultSearchRanking | null>(null)
   const [staleTick, setStaleTick] = useState(0)
@@ -30,7 +30,7 @@ export function useVaultSearchBlock(query: string, options: VaultSearchOptions =
     }
     let cancelled = false
     const timer = setTimeout(() => {
-      searchVaultOrch(trimmed, { scope, limit })
+      searchVaultOrch(trimmed, { scope, kind, limit })
         .then(next => { if (!cancelled) setRanking(next) })
         .catch(() => { if (!cancelled) setRanking({ hits: [], total: 0 }) })
     }, DEBOUNCE_MS)
@@ -38,7 +38,7 @@ export function useVaultSearchBlock(query: string, options: VaultSearchOptions =
       cancelled = true
       clearTimeout(timer)
     }
-  }, [trimmed, scope, limit, staleTick])
+  }, [trimmed, scope, kind, limit, staleTick])
 
   return trimmed ? ranking : null
 }

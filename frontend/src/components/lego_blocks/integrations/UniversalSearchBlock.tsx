@@ -21,6 +21,8 @@ export interface UniversalSearchBlockProps<T> {
   getItemSearchCandidates?: (item: T) => string[]
   /** Optional additive rank boost (e.g. recency) — see rankFuzzyItemsBlock. */
   getItemRankBoost?: (item: T) => number
+  /** `items` are already ranked for `query`; show them in order. */
+  preRanked?: boolean
   placeholder?: string
   limit?: number
   selectedItemKey?: string | null
@@ -62,6 +64,7 @@ export default function UniversalSearchBlock<T>({
   getItemDescription,
   getItemSearchCandidates,
   getItemRankBoost,
+  preRanked = false,
   placeholder = 'Search...',
   limit = 50,
   selectedItemKey = null,
@@ -98,6 +101,7 @@ export default function UniversalSearchBlock<T>({
     items,
     query,
     limit,
+    rank: !preRanked,
     onSelect: (item) => {
       if (disabled) return
       onSelect(item)

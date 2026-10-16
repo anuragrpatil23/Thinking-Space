@@ -6,8 +6,8 @@
 // until a sync rewrites the cache (vaultIndexChangedBlock). Works the same on
 // desktop, iPhone and web, since all three keep that cache.
 //
-// Full-text search over note bodies is a later layer; it will slot in as
-// another field on the same docs without changing callers.
+// Full text over note bodies comes from fullTextIndexOrch (the shared index
+// the Mac writes into the vault) and feeds the ranker's content field.
 
 import {
   getNodeSearchSummaries,
@@ -18,9 +18,17 @@ import { onVaultIndexChangedBlock } from '@/services/lego_blocks/units/vaultInde
 import { isAppGeneratedVaultPathBlock } from '@/services/lego_blocks/units/vaultGitignoreBlock'
 import {
   rankVaultSearchBlock,
+  vaultSearchTokensBlock,
   type VaultSearchDoc,
   type VaultSearchRanking,
 } from '@/services/lego_blocks/units/vaultSearchRankBlock'
+
+// The full-text reader (and its writer) load with the first search, not at
+// startup (Startup Performance contract).
+type FullTextModule = typeof import('@/services/orchestrators/fullTextIndexOrch')
+let _fullText: Promise<FullTextModule> | null = null
+const fullText = () => (_fullText ??= import('@/services/orchestrators/fullTextIndexOrch'))
+const resetFullText = () => { void _fullText?.then(m => m.resetFullTextReaderOrch()) }
 
 export type { VaultSearchHit, VaultSearchReason } from '@/services/lego_blocks/units/vaultSearchRankBlock'
 
@@ -31,6 +39,7 @@ const _staleListeners = new Set<() => void>()
 onVaultIndexChangedBlock(() => {
   if (!_corpus) return
   _corpus = null
+  resetFullText()
   _generation++
   for (const listener of _staleListeners) listener()
 })
@@ -112,6 +121,8 @@ function corpus(): Promise<VaultSearchDoc[]> {
 export interface VaultSearchOptions {
   /** Only paths under this folder. */
   scope?: string
+  /** Only files, or only folders. */
+  kind?: 'file' | 'folder'
   limit?: number
 }
 
@@ -126,13 +137,33 @@ function scheduleRelease(): void {
     _releaseTimer = null
     _corpus = null
     _generation++
+    resetFullText()
   }, IDLE_RELEASE_MS)
 }
 
 export async function searchVaultOrch(query: string, options: VaultSearchOptions = {}): Promise<VaultSearchRanking> {
   if (!query.trim()) return { hits: [], total: 0 }
   scheduleRelease()
-  return rankVaultSearchBlock(await corpus(), query, options)
+  // Full text comes from the shared on-disk index; when there is none yet,
+  // content falls back to each note's cached excerpt.
+  const [docs, contentHits] = await Promise.all([
+    corpus(),
+    options.kind === 'folder'
+      ? Promise.resolve(undefined)
+      : fullText().then(m => m.lookupFullTextOrch(vaultSearchTokensBlock(query))).catch(() => undefined),
+  ])
+  return rankVaultSearchBlock(docs, query, { ...options, contentHits })
+}
+
+/** The user's most recently modified files (app-generated data left out) —
+ *  what a search surface shows before anything is typed. */
+export async function listRecentVaultFilesOrch(limit: number): Promise<{ path: string; mtime: number }[]> {
+  scheduleRelease()
+  return (await corpus())
+    .filter(doc => doc.kind === 'file' && !doc.generated)
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, limit)
+    .map(({ path, mtime }) => ({ path, mtime }))
 }
 
 /** Called when a sync makes earlier results stale, so open searches re-run. */

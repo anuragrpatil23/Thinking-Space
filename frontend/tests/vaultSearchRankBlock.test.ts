@@ -61,6 +61,12 @@ describe('rankVaultSearchBlock', () => {
     expect(scoped.hits.map(h => h.path)).toEqual(['reading/idea-factory.md'])
   })
 
+  it('can return files only', () => {
+    const { hits } = rankVaultSearchBlock(docs, 'sfbooks', { kind: 'file' })
+    expect(hits.every(h => h.kind === 'file')).toBe(true)
+    expect(hits.length).toBeGreaterThan(0)
+  })
+
   it('reports the total before the limit', () => {
     const ranking = rankVaultSearchBlock(docs, 'sfbooks', { limit: 1 })
     expect(ranking.hits).toHaveLength(1)

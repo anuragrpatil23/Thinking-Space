@@ -111,8 +111,9 @@ import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigat
 import { isElectron, isEmbeddedTerminalSupported, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
 import { startVaultLiveRefresh } from './services/orchestrators/vaultLiveRefreshOrch'
-import { listMarkdownFileIndexEntries } from './services/orchestrators/fileSystemOrch'
-import { recencyRankBoostBlock } from './services/lego_blocks/units/fuzzySearchBlock'
+import { listRecentVaultFilesOrch } from './services/orchestrators/vaultSearchOrch'
+import { rankVaultSearchBlock, type VaultSearchDoc, type VaultSearchHit } from './services/lego_blocks/units/vaultSearchRankBlock'
+import { useVaultSearchBlock } from './components/lego_blocks/hooks/units/useVaultSearchBlock'
 import { dispatchGlobalSyncRefreshBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import {
   gitCommitAllOrch,
@@ -275,8 +276,6 @@ interface CommandItem {
   activePaths?: string[]
   keywords?: string
   description?: string
-  /** File mtime (epoch seconds) — recency boost for ranking file items. */
-  mtime?: number
 }
 
 interface SyncRunSummary {
@@ -459,6 +458,36 @@ function buildThinkingSpaceFileRoute(path: string): string {
   return `/thinking-space?file=${encodeURIComponent(path)}`
 }
 
+const COMMAND_PALETTE_FILE_LIMIT = 40
+const COMMAND_PALETTE_RECENT_FILES = 30
+
+/** A palette command as a search doc: label is its name, keywords its tags. */
+function commandItemSearchDocBlock(item: CommandItem): VaultSearchDoc {
+  return {
+    path: item.to,
+    kind: 'file',
+    name: item.label.toLowerCase(),
+    title: '',
+    tags: (item.keywords ?? '').toLowerCase(),
+    folder: '',
+    content: `${item.description ?? ''} ${item.group}`.toLowerCase(),
+    mtime: 0,
+  }
+}
+
+/** A vault file as a palette row: its name, and the folder it lives in. */
+function fileCommandItemBlock(hit: Pick<VaultSearchHit, 'path'> & Partial<VaultSearchHit>): CommandItem {
+  const cut = hit.path.lastIndexOf('/')
+  const folder = cut > 0 ? hit.path.slice(0, cut) : ''
+  const where = folder || 'Vault root'
+  return {
+    to: buildThinkingSpaceFileRoute(hit.path),
+    label: hit.path.slice(cut + 1).replace(/\.md$/i, ''),
+    description: hit.reason === 'content' ? `${where} · matched inside the note` : where,
+    group: 'Files',
+  }
+}
+
 function escapeCssAttrValueBlock(value: string): string {
   return value
     .replace(/\\/g, '\\\\')
@@ -586,8 +615,7 @@ function App() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [commandQuery, setCommandQuery] = useState('')
-  const [commandFileItems, setCommandFileItems] = useState<CommandItem[]>([])
-  const [commandFilesLastLoadedAt, setCommandFilesLastLoadedAt] = useState(0)
+  const [recentCommandFileItems, setRecentCommandFileItems] = useState<CommandItem[]>([])
   const [explorerIconStyle, setExplorerIconStyle] = useState<ExplorerIconStyleBlock>('outline')
   const [explorerFolderColorRules, setExplorerFolderColorRules] = useState<ExplorerFolderColorPreferenceBlock[]>([])
   const [explorerSelectedColor, setExplorerSelectedColor] = useState<string>(DEFAULT_EXPLORER_SELECTED_COLOR_BLOCK)
@@ -864,10 +892,25 @@ function App() {
     ...(extensionBuilderEnabled ? [{ to: '/extension-builder', label: 'Extension Builder', group: 'Tools' as const }] : []),
   ]), [extensionBuilderEnabled, primaryNavItems, terminalSupported, utilityNavItems])
 
-  const allCommandItems = useMemo<CommandItem[]>(
-    () => [...baseCommandItems, ...commandFileItems],
-    [baseCommandItems, commandFileItems],
-  )
+  // ⌘K asks the shared vault search engine for files, and ranks its own
+  // commands with the same scorer, so pages and files sort on one scale.
+  const commandFileRanking = useVaultSearchBlock(commandPaletteOpen ? commandQuery : '', {
+    kind: 'file',
+    limit: COMMAND_PALETTE_FILE_LIMIT,
+  })
+  const commandDocs = useMemo(() => baseCommandItems.map(commandItemSearchDocBlock), [baseCommandItems])
+  const paletteItems = useMemo<CommandItem[]>(() => {
+    const query = commandQuery.trim()
+    if (!query) return [...baseCommandItems, ...recentCommandFileItems]
+    const commandByKey = new Map(baseCommandItems.map(item => [item.to, item]))
+    const scored = [
+      ...rankVaultSearchBlock(commandDocs, query).hits
+        .map(hit => ({ score: hit.score, item: commandByKey.get(hit.path)! })),
+      ...(commandFileRanking?.hits ?? [])
+        .map(hit => ({ score: hit.score, item: fileCommandItemBlock(hit) })),
+    ]
+    return scored.sort((a, b) => b.score - a.score).map(entry => entry.item)
+  }, [baseCommandItems, commandDocs, commandFileRanking, commandQuery, recentCommandFileItems])
 
   const routeLabelByPath = useMemo(() => {
     const entries = new Map<string, string>()
@@ -1487,32 +1530,11 @@ function App() {
     setCommandPaletteOpen(false)
   }, [])
 
-  const ensureCommandFilesLoaded = useCallback(async () => {
+  const loadRecentCommandFiles = useCallback(async () => {
     if (needsVaultSetup) return
-    if (Date.now() - commandFilesLastLoadedAt < 20_000) return
-    const entries = await listMarkdownFileIndexEntries()
-    // Recent-first so the empty-query palette surfaces what you touched last.
-    entries.sort((a, b) => (b.mtime || 0) - (a.mtime || 0))
-    const seen = new Set<string>()
-    const fileItems: CommandItem[] = []
-    for (const entry of entries) {
-      const path = entry.path.trim()
-      if (!path || seen.has(path)) continue
-      seen.add(path)
-      const fileName = path.split('/').pop() || path
-      const label = fileName.replace(/\.md$/i, '')
-      fileItems.push({
-        to: buildThinkingSpaceFileRoute(path),
-        label,
-        description: path,
-        group: 'Files',
-        keywords: `file note markdown ${path}`,
-        mtime: entry.mtime || undefined,
-      })
-    }
-    setCommandFileItems(fileItems)
-    setCommandFilesLastLoadedAt(Date.now())
-  }, [commandFilesLastLoadedAt, needsVaultSetup])
+    const recent = await listRecentVaultFilesOrch(COMMAND_PALETTE_RECENT_FILES)
+    setRecentCommandFileItems(recent.map(file => fileCommandItemBlock({ path: file.path })))
+  }, [needsVaultSetup])
 
   const handleExplorerIconStyleChange = useCallback((nextStyle: ExplorerIconStyleBlock) => {
     setExplorerIconStyle(nextStyle)
@@ -2121,7 +2143,7 @@ function App() {
     if (!commandPaletteOpen) return
     if (needsVaultSetup) return
     let cancelled = false
-    void ensureCommandFilesLoaded()
+    void loadRecentCommandFiles()
       .catch((error) => {
         if (!cancelled) {
           console.warn('[App] Failed to load command palette files:', error)
@@ -2130,7 +2152,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [commandPaletteOpen, ensureCommandFilesLoaded, needsVaultSetup])
+  }, [commandPaletteOpen, loadRecentCommandFiles, needsVaultSetup])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -2277,6 +2299,22 @@ function App() {
       navigate(path)
     },
   })
+
+  // Keeps the vault-shared full-text index current (desktop only, one window).
+  // Loaded on demand: its first pass waits a minute anyway, so it has no
+  // business in the startup bundle.
+  useEffect(() => {
+    if (needsVaultSetup || !windowContext.isBackgroundAuthority) return
+    let stop: (() => void) | null = null
+    let cancelled = false
+    void import('./services/orchestrators/fullTextIndexOrch').then(({ startFullTextIndexerOrch }) => {
+      if (!cancelled) stop = startFullTextIndexerOrch()
+    })
+    return () => {
+      cancelled = true
+      stop?.()
+    }
+  }, [needsVaultSetup, windowContext.isBackgroundAuthority])
 
   useEffect(() => {
     if (needsVaultSetup || !windowContext.isBackgroundAuthority) return
@@ -3563,21 +3601,14 @@ function App() {
               <div className="p-3">
                 <UniversalSearchBlock
                   {...UNIVERSAL_SEARCH_COMMAND_MODAL_PRESET_BLOCK}
-                  items={iPhoneMode && !commandQuery.trim() ? [] : allCommandItems}
+                  items={iPhoneMode && !commandQuery.trim() ? [] : paletteItems}
+                  preRanked
                   query={commandQuery}
                   onQueryChange={setCommandQuery}
                   onSelect={runCommandItem}
                   getItemKey={item => `${item.group}:${item.to}`}
                   getItemLabel={item => item.label}
                   getItemDescription={item => item.description}
-                  getItemSearchCandidates={(item) => [
-                    item.label,
-                    item.description ?? '',
-                    item.to,
-                    item.group,
-                    item.keywords ?? '',
-                  ]}
-                  getItemRankBoost={(item) => recencyRankBoostBlock(item.mtime)}
                   placeholder="Jump to a page or file..."
                   open
                   onEscapeKeyDown={closeCommandPalette}
