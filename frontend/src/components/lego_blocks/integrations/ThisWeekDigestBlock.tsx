@@ -352,18 +352,16 @@ export default function ThisWeekDigestBlock({ surface = 'card', onOpen }: ThisWe
             </span>
           )}
         </div>
+        {/* Just the combined time; chains and msgs were dropped as noise next
+            to the per-set totals below. */}
         {totalSummary.chains > 0 && (
-          <div className="flex items-baseline gap-3 text-xs text-muted-foreground">
-            <span>
-              <strong className="tabular-nums text-foreground/85">{totalDurLabel}</strong>
-            </span>
-            <span>
-              <strong className="tabular-nums text-foreground/85">{totalSummary.chains}</strong> chains
-            </span>
-            <span>
-              <strong className="tabular-nums text-foreground/85">{totalSummary.msgs.toLocaleString()}</strong> msgs
-            </span>
-          </div>
+          // In the time column the set lines and project rows use, so all the
+          // hours on the card sit right-aligned on one line.
+          <span className="flex items-baseline gap-3">
+            <strong className="w-14 text-right text-xs tabular-nums text-foreground/85">{totalDurLabel}</strong>
+            <span className="w-10" aria-hidden />
+            <span className="w-3.5" aria-hidden />
+          </span>
         )}
       </div>
 

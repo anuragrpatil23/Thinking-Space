@@ -217,15 +217,21 @@ export default function ProjectWorkRowBlock({
                   >
                     {row.title}
                   </span>
-                  {row.meta && (
-                    <span className="shrink-0 text-[11px] text-muted-foreground/60">{row.meta}</span>
-                  )}
                   {/* Same fixed columns as the project line above (time, %, chevron),
-                      so every number in the card sits in one of two columns. */}
-                  <span className="w-[60px] shrink-0" aria-hidden />
-                  <span className="w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/70">
-                    {row.dur}
-                  </span>
+                      so every number in the card sits in one of two columns. A
+                      theme's meta line ends where the times end. */}
+                  {row.meta ? (
+                    <span className="shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/60">
+                      {row.meta}
+                    </span>
+                  ) : (
+                    <>
+                      <span className="w-[60px] shrink-0" aria-hidden />
+                      <span className="w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/70">
+                        {row.dur}
+                      </span>
+                    </>
+                  )}
                   <span className="w-10 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/50">
                     {row.pct}
                   </span>
