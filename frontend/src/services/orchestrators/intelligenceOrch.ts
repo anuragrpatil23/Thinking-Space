@@ -253,7 +253,9 @@ function extractJsonFromContent(content: string): unknown {
 function describeSubjectBlock(input: unknown): { project?: string; dateIso?: string } {
   if (!input || typeof input !== 'object') return {}
   const o = input as Record<string, unknown>
-  const project = typeof o.project === 'string' ? o.project : undefined
+  // Range-summary inputs name it `projectId`; session digests name it `project`.
+  const project =
+    typeof o.project === 'string' ? o.project : typeof o.projectId === 'string' ? o.projectId : undefined
   const dateIso =
     typeof o.startedIso === 'string'
       ? o.startedIso

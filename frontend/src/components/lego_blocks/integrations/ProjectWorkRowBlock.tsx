@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { ChevronRight, Loader2 } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import type { ActivityChain } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { fmtDurationMsBlock } from '@/services/lego_blocks/units/aiActivityStatsBlock'
 import { parseRangeSummaryArcsBlock } from '@/services/lego_blocks/units/rangeSummaryArcsBlock'
 import { useProjectRangeSummaryBlock } from '@/components/lego_blocks/hooks/shared/useProjectRangeSummaryBlock'
+import { useProjectJobRunningBlock } from '@/components/lego_blocks/hooks/shared/useProjectJobRunningBlock'
 import LightMarkdownTextBlock from '@/components/lego_blocks/units/LightMarkdownTextBlock'
 import { cn } from '@/lib/utils'
 
@@ -29,6 +30,20 @@ function isoDayLocal(iso: string): string {
 function fmtIsoDay(day: string): string {
   const [, m, d] = day.split('-').map(Number)
   return `${MONTH_SHORT[m - 1]} ${d}`
+}
+
+/** A fallback topic that names nothing: a slash-command label (`[/resume]`) or
+ *  captured command output (`<local-command-stdout>…`). Kept off the "what"
+ *  line; the session still counts and still appears in the expanded list. */
+function isPlaceholderTitle(title: string): boolean {
+  const t = title.trim()
+  return (t.startsWith('[') && t.endsWith(']')) || t.startsWith('<') || t.startsWith('(')
+}
+
+function fmtPct(fraction: number): string {
+  const pct = fraction * 100
+  if (pct > 0 && pct < 1) return '<1%'
+  return `${Math.round(pct)}%`
 }
 
 function chainMs(c: ActivityChain): number {
@@ -71,6 +86,8 @@ export default function ProjectWorkRowBlock({
   })
   const parsed = useMemo(() => parseRangeSummaryArcsBlock(summary?.summary ?? ''), [summary])
   const hasArcs = parsed.arcs.length > 0
+  // Only the row whose job the model is on right now; waiting rows stay still.
+  const working = useProjectJobRunningBlock(projectId, rangeStartDate, rangeEndDate, loading)
 
   // Longest first; a title shared by several windows of one session shows once.
   const sessions = useMemo(() => {
@@ -94,8 +111,21 @@ export default function ProjectWorkRowBlock({
   }, [chains])
   const maxDayMs = Math.max(1, ...dayMs.values())
 
-  const whatTitles = hasArcs ? parsed.arcs.map(a => a.title) : sessions.map(s => s.title)
-  const whatMore = whatTitles.length - WHAT_TITLE_LIMIT
+  // Session shares are of the sessions' own sum, not the project's merged
+  // duration: parallel sessions overlap on the clock, so wall-clock times can
+  // add up to more than the project and percentages of it would pass 100.
+  const sessionMsSum = sessions.reduce((n, s) => n + s.ms, 0)
+  const whatRows: Array<{ title: string; meta?: string; dur?: string; pct?: string; body?: string }> = hasArcs
+    ? parsed.arcs.map(a => ({ title: a.title, meta: a.meta, body: a.body }))
+    : sessions
+        .filter(s => !isPlaceholderTitle(s.title))
+        .map(s => ({
+          title: s.title,
+          dur: fmtDurationMsBlock(s.ms),
+          pct: sessionMsSum > 0 ? fmtPct(s.ms / sessionMsSum) : undefined,
+        }))
+  const shownRows = open ? whatRows : whatRows.slice(0, WHAT_TITLE_LIMIT)
+  const whatMore = whatRows.length - shownRows.length
   const share = sectionMs > 0 ? Math.min(1, durationMs / sectionMs) : 0
 
   return (
@@ -108,17 +138,37 @@ export default function ProjectWorkRowBlock({
       >
         <div className="flex items-center gap-3">
           <span className="flex w-36 shrink-0 items-center gap-2 truncate text-[12px] font-medium" style={{ color }}>
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} />
+            {working ? (
+              <span
+                aria-label="Summarizing"
+                title="Summarizing now"
+                className="h-2 w-2 shrink-0 rounded-full border-[1.5px] border-t-transparent motion-safe:animate-spin"
+                style={{ borderColor: color, borderTopColor: 'transparent' }}
+              />
+            ) : hasArcs ? (
+              <span
+                title="Summary available"
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ background: color }}
+              />
+            ) : (
+              // Hollow = no summary yet (or only the rules-based fallback):
+              // the lines below are session titles, not themes.
+              <span
+                title={loading ? 'Waiting to be summarized' : 'No summary — showing session titles'}
+                className="h-2 w-2 shrink-0 rounded-full border-[1.5px]"
+                style={{ borderColor: color }}
+              />
+            )}
             <span className="truncate">{label}</span>
           </span>
-          <span className="relative h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-foreground/[0.06]">
+          {/* Fixed short track: the bar shows share, and a share reads at a glance
+              in 10rem. Stretched across the row it was mostly empty grey. */}
+          <span className="relative h-1.5 w-40 shrink-0">
             <span
               className="absolute inset-y-0 left-0 rounded-full"
               style={{ width: `${Math.max(share * 100, 1.5)}%`, background: color, opacity: 0.8 }}
             />
-          </span>
-          <span className="w-14 shrink-0 text-right text-[12px] tabular-nums text-foreground/80">
-            {fmtDurationMsBlock(durationMs)}
           </span>
           <span className="flex shrink-0 items-center gap-[3px]" aria-hidden>
             {days.map(day => {
@@ -133,20 +183,13 @@ export default function ProjectWorkRowBlock({
               )
             })}
           </span>
-        </div>
-        <div className="mt-1 flex items-center gap-2 pl-3.5">
-          <span
-            className={cn(
-              'min-w-0 flex-1 truncate text-[11px]',
-              hasArcs ? 'text-foreground/70' : 'text-muted-foreground/70',
-            )}
-          >
-            {whatTitles.slice(0, WHAT_TITLE_LIMIT).join(' · ')}
-            {whatMore > 0 && <span className="text-muted-foreground/50"> · +{whatMore}</span>}
+          <span className="flex-1" />
+          <span className="w-14 shrink-0 text-right text-[12px] tabular-nums text-foreground/80">
+            {fmtDurationMsBlock(durationMs)}
           </span>
-          {loading && !summary && (
-            <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground/50" aria-label="Summarizing" />
-          )}
+          <span className="w-10 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/70">
+            {fmtPct(share)}
+          </span>
           <ChevronRight
             className={cn(
               'h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-transform group-hover:text-muted-foreground',
@@ -154,55 +197,66 @@ export default function ProjectWorkRowBlock({
             )}
           />
         </div>
+        {whatRows.length > 0 && (
+          <div className="mt-2 space-y-1 pl-3.5">
+            {/* One topic per line, with room to read it. Settled themes carry the
+                summary's own meta; session titles still waiting on the summary
+                are dimmed and carry their measured duration. */}
+            {shownRows.map(row => (
+              <div key={row.title}>
+                <div className="flex items-baseline gap-3">
+                  <span className="mt-[7px] h-1 w-1 shrink-0 self-start rounded-full bg-foreground/25" />
+                  <span
+                    className={cn(
+                      'min-w-0 flex-1 truncate text-[13px] leading-6',
+                      hasArcs ? 'text-foreground/85' : 'text-muted-foreground',
+                    )}
+                  >
+                    {row.title}
+                  </span>
+                  {row.meta && (
+                    <span className="shrink-0 text-[11px] text-muted-foreground/60">{row.meta}</span>
+                  )}
+                  {/* Same fixed columns as the project line above (time, %, chevron),
+                      so every number in the card sits in one of two columns. */}
+                  <span className="w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/70">
+                    {row.dur}
+                  </span>
+                  <span className="w-10 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground/50">
+                    {row.pct}
+                  </span>
+                  <span className="w-3.5 shrink-0" aria-hidden />
+                </div>
+                {open && row.body && (
+                  <LightMarkdownTextBlock
+                    text={row.body}
+                    className="mb-2 pl-4 text-[12px] leading-relaxed text-muted-foreground"
+                  />
+                )}
+              </div>
+            ))}
+            {whatMore > 0 && (
+              <div className="pl-4 text-[11px] text-muted-foreground/60">+{whatMore} more</div>
+            )}
+          </div>
+        )}
       </button>
 
-      {open && (
-        <div className="mb-2 mt-1 space-y-3 pl-3.5">
+      {open && (error || parsed.extras.length > 0 || (loading && !hasArcs)) && (
+        <div className="mb-2 mt-1 space-y-1 pl-3.5">
           {error && <p className="text-[11px] text-destructive">Summary failed: {error}</p>}
-          {hasArcs ? (
-            <>
-              {parsed.arcs.map(arc => (
-                <div key={arc.title}>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-[12px] font-medium text-foreground/85">{arc.title}</span>
-                    {arc.meta && (
-                      <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">{arc.meta}</span>
-                    )}
-                  </div>
-                  {arc.body && (
-                    <LightMarkdownTextBlock
-                      text={arc.body}
-                      className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground"
-                    />
-                  )}
-                </div>
+          {parsed.extras.length > 0 && (
+            <div className="space-y-0.5 border-t border-border/30 pt-2">
+              {parsed.extras.map(extra => (
+                <LightMarkdownTextBlock
+                  key={extra}
+                  text={extra}
+                  className="text-[12px] leading-relaxed text-muted-foreground/80"
+                />
               ))}
-              {parsed.extras.length > 0 && (
-                <div className="space-y-0.5 border-t border-border/30 pt-2">
-                  {parsed.extras.map(extra => (
-                    <LightMarkdownTextBlock
-                      key={extra}
-                      text={extra}
-                      className="text-[11px] leading-relaxed text-muted-foreground/80"
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="space-y-1">
-              {sessions.map(s => (
-                <div key={s.title} className="flex items-baseline gap-3 text-[11px]">
-                  <span className="min-w-0 flex-1 truncate text-foreground/75">{s.title}</span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground/60">{fmtIsoDay(s.day)}</span>
-                  <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground/80">
-                    {fmtDurationMsBlock(s.ms)}
-                  </span>
-                </div>
-              ))}
-              {loading && <p className="pt-1 text-[10px] text-muted-foreground/60">Summarizing…</p>}
             </div>
           )}
+          {loading && !hasArcs && <p className="pl-4 text-[11px] text-muted-foreground/60">Summarizing…</p>}
         </div>
       )}
     </div>

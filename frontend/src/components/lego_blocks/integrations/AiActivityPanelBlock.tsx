@@ -36,7 +36,7 @@ import { usePlanUsageMovesBlock } from '@/components/lego_blocks/hooks/units/use
 import { baseSessionIdBlock } from '@/services/orchestrators/aiLimitShareOrch'
 import type { AiLimitsProviderIdBlock } from '@/services/lego_blocks/units/aiLimitsModelBlock'
 // Code-split boundaries: these two pull recharts; keep it out of the startup bundle.
-const AiActivityTrendChartBlock = lazy(() => import('@/components/lego_blocks/units/AiActivityTrendChartBlock'))
+const AiActivityTrendSectionBlock = lazy(() => import('@/components/lego_blocks/integrations/AiActivityTrendSectionBlock'))
 import AiActivityDayTableBlock from '@/components/lego_blocks/units/AiActivityDayTableBlock'
 import AiActivityDayTimelineBlock from '@/components/lego_blocks/units/AiActivityDayTimelineBlock'
 const AiActivityAggregateBlock = lazy(() => import('@/components/lego_blocks/units/AiActivityAggregateBlock'))
@@ -689,11 +689,12 @@ export default function AiActivityPanelBlock({
           onToggle={() => toggleSection('trend')}
         >
           <Suspense fallback={null}>
-            <AiActivityTrendChartBlock
+            <AiActivityTrendSectionBlock
               days={activity.days}
               chains={activity.chains}
               projects={activity.projects}
               filterProject={activeProject}
+              kindByProject={kindByProject}
               selectedDate={drillSource === 'trend' ? selectedDate : null}
               onSelectDate={d => drillToDate(d, 'trend')}
             />

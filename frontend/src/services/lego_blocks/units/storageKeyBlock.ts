@@ -53,6 +53,8 @@ export const STORAGE_KEYS = {
   aiActivityRangeSummaryProvider: 'ltm-ai-activity-range-summary-provider',
   aiActivityRestDays: 'ltm-ai-activity-rest-days',
   aiActivityWorkMixMode: 'ltm-ai-activity-work-mix-mode-enabled',
+  aiActivityTrendView: 'ltm-ai-activity-trend-view',
+  aiActivityTrendColorBy: 'ltm-ai-activity-trend-color-by',
   aiActivityThinkingPoolHours: 'ltm-ai-activity-thinking-pool-hours',
   aiActivitySectionsOpen: 'ltm-ai-activity-sections-open',
   vaultSyncExcludedPrefixes: 'ltm-vault-sync-excluded-prefixes',
@@ -349,6 +351,30 @@ export const AI_ACTIVITY_REST_DAYS_EVENT = 'thinkspc:ai-activity-rest-days-chang
  * questions — "where did my time go across projects" is still the right view
  * when you are looking for a session, and this one is useless for that.
  */
+/** Trend section: `time-of-day` (one row per day, sessions placed on the clock —
+ *  the default) or `hours` (the stacked hours-per-day bars). Per device: a
+ *  viewing preference, not a setting worth roaming. */
+export type AiActivityTrendView = 'time-of-day' | 'hours'
+
+export function getAiActivityTrendView(): AiActivityTrendView {
+  return getLocalStorageItemBlock(STORAGE_KEYS.aiActivityTrendView) === 'hours' ? 'hours' : 'time-of-day'
+}
+
+export function setAiActivityTrendView(view: AiActivityTrendView): void {
+  setStorageItem(STORAGE_KEYS.aiActivityTrendView, view)
+}
+
+/** Time-of-day rows coloured by project (default) or by the project's kind of work. */
+export type AiActivityTrendColorBy = 'project' | 'kind'
+
+export function getAiActivityTrendColorBy(): AiActivityTrendColorBy {
+  return getLocalStorageItemBlock(STORAGE_KEYS.aiActivityTrendColorBy) === 'kind' ? 'kind' : 'project'
+}
+
+export function setAiActivityTrendColorBy(colorBy: AiActivityTrendColorBy): void {
+  setStorageItem(STORAGE_KEYS.aiActivityTrendColorBy, colorBy)
+}
+
 export function getAiActivityWorkMixMode(): boolean {
   return getLocalStorageItemBlock(STORAGE_KEYS.aiActivityWorkMixMode) === 'true'
 }
