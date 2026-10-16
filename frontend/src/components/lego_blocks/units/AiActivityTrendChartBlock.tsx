@@ -18,7 +18,7 @@ import {
   fmtDurationMsBlock,
   mergedDurationMsBlock,
 } from '@/services/lego_blocks/units/aiActivityStatsBlock'
-import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { CHART_GUTTER_PX, getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import {
@@ -209,7 +209,7 @@ export default function AiActivityTrendChartBlock({
         >
           <ComposedChart
             data={dataWithAnchor}
-            margin={{ top: 8, right: 4, bottom: 0, left: 0 }}
+            margin={{ top: 8, right: CHART_GUTTER_PX, bottom: 0, left: 0 }}
             onClick={evt => {
               if (!onSelectDate) return
               // Recharts passes the active payload's row in `activeLabel`. Toggle:
@@ -236,7 +236,7 @@ export default function AiActivityTrendChartBlock({
               tick={{ fontSize: 10, fill: 'rgba(148,163,184,0.7)' }}
               tickLine={false}
               axisLine={false}
-              width={32}
+              width={CHART_GUTTER_PX}
               tickFormatter={(v: number) => `${v}h`}
             />
             <Tooltip

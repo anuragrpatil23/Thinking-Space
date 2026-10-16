@@ -255,3 +255,13 @@ export function getProjectColor(name: string, isDark = false): ProjectColorEntry
   if (assigned != null) return palette[assigned]
   return palette[hashSlot(name)]
 }
+
+/** The charts keep every project's colour; the legend under each lists only
+ *  the range's biggest few, then "+N more". Hover cards show everything. */
+export const LEGEND_TOP_PROJECTS = 4
+
+/** Left and right gutter of every AI Activity chart, in px. Trend's date labels
+ *  and day totals live in it (48px column + 12px gap), and Plan usage's % axis
+ *  and empty right margin take the same width, so the plots — and their
+ *  legends — start and end on the same lines down the card. */
+export const CHART_GUTTER_PX = 60

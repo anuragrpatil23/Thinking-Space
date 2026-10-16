@@ -12,7 +12,7 @@ import {
   formatPlanUsagePctBlock,
   type PlanUsageDayBlock,
 } from '@/services/lego_blocks/units/aiPlanUsageHistoryBlock'
-import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
+import { CHART_GUTTER_PX, LEGEND_TOP_PROJECTS, getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 
@@ -50,18 +50,24 @@ export default function AiPlanUsageChartBlock({
 }: AiPlanUsageChartBlockProps) {
   // Largest total first, so the stack order is stable across days and the
   // project that used the most sits on the baseline.
-  const projects = useMemo(() => {
+  const projectTotals = useMemo(() => {
     const totals = new Map<string, number>()
     for (const day of days) {
       for (const [name, pct] of Object.entries(day.byProject)) {
         totals.set(name, (totals.get(name) ?? 0) + pct)
       }
     }
-    const names = Array.from(totals.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([name]) => name)
+    return Array.from(totals.entries()).sort((a, b) => b[1] - a[1])
+  }, [days])
+  const projects = useMemo(() => {
+    const names = projectTotals.map(([name]) => name)
     return filterProject ? names.filter(name => name === filterProject) : names
-  }, [days, filterProject])
+  }, [projectTotals, filterProject])
+  // Legend: the biggest few, then "+N more". The chart keeps every colour and
+  // the hover card lists every project; the legend is the at-a-glance summary.
+  const legendRows = projectTotals.filter(([name, pct]) => pct > 0 && projects.includes(name))
+  const legend = legendRows.slice(0, LEGEND_TOP_PROJECTS)
+  const legendMore = legendRows.length - legend.length
 
   // A project filter asks "what did this project use" — usage nobody can be
   // tied to is not an answer to that, so it leaves the chart with the others.
@@ -103,6 +109,7 @@ export default function AiPlanUsageChartBlock({
   }, [hostRef])
 
   return (
+    <div className="min-w-0">
     <div ref={hostRef} className="h-44 min-w-0">
       {ready && (
         <ResponsiveContainer
@@ -112,7 +119,7 @@ export default function AiPlanUsageChartBlock({
           minHeight={1}
           initialDimension={{ width: 1, height: 1 }}
         >
-          <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
+          <ComposedChart data={data} margin={{ top: 8, right: CHART_GUTTER_PX, bottom: 0, left: 0 }}>
             <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
             <XAxis
               dataKey="date"
@@ -130,7 +137,7 @@ export default function AiPlanUsageChartBlock({
               axisLine={false}
               // Same width as the Trend chart's axis, so the two plots' bars
               // sit on the same dates down the card.
-              width={32}
+              width={CHART_GUTTER_PX}
               allowDecimals={false}
               tickFormatter={(v: number) => `${v}%`}
             />
@@ -203,6 +210,23 @@ export default function AiPlanUsageChartBlock({
           </ComposedChart>
         </ResponsiveContainer>
       )}
+    </div>
+    {legend.length > 0 && (
+      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5 text-[11px]"
+        style={{ paddingLeft: CHART_GUTTER_PX }}>
+        {legend.map(([name, pct]) => (
+          <span key={name} className="inline-flex items-baseline gap-1.5">
+            <span
+              className="h-1.5 w-1.5 shrink-0 self-center rounded-full"
+              style={{ background: getProjectColor(name, isDark).stroke }}
+            />
+            <span className="text-muted-foreground">{projectLabelBlock(name)}</span>
+            <span className="tabular-nums text-foreground/80">{formatPlanUsagePctBlock(pct)}</span>
+          </span>
+        ))}
+        {legendMore > 0 && <span className="text-muted-foreground/60">+{legendMore} more</span>}
+      </div>
+    )}
     </div>
   )
 }

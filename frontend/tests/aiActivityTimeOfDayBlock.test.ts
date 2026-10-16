@@ -38,3 +38,48 @@ describe('timeOfDaySegmentsBlock', () => {
     expect(out.get('2026-10-13')).toEqual([])
   })
 })
+
+import { packTimeOfDayRowBlock } from '@/services/lego_blocks/units/aiActivityTimeOfDayBlock'
+
+const seg = (startMin: number, endMin: number, project = 'F9') => ({
+  startMin, endMin, project, topic: 't', startIso: String(startMin), endIso: String(endMin),
+})
+
+describe('packTimeOfDayRowBlock', () => {
+  it('fuses same-project segments separated by a short gap', () => {
+    const { items, lanes } = packTimeOfDayRowBlock([seg(60, 120), seg(125, 180)])
+    expect(lanes).toBe(1)
+    expect(items).toMatchObject([{ startMin: 60, endMin: 180, lane: 0 }])
+  })
+
+  it('keeps a real break as two blocks', () => {
+    expect(packTimeOfDayRowBlock([seg(60, 120), seg(150, 180)]).items).toHaveLength(2)
+  })
+
+  it('moves an overlapping project to a second lane instead of drawing over it', () => {
+    const { items, lanes } = packTimeOfDayRowBlock([seg(60, 200, 'a'), seg(100, 150, 'b'), seg(210, 260, 'c')])
+    expect(lanes).toBe(2)
+    expect(items.map(i => [i.project, i.lane])).toEqual([['a', 0], ['b', 1], ['c', 0]])
+  })
+})
+
+import { timeOfDayTotalsBlock } from '@/services/lego_blocks/units/aiActivityTimeOfDayBlock'
+
+describe('timeOfDayTotalsBlock', () => {
+  it('counts overlapping time once per key and once per day', () => {
+    const byDay = new Map([
+      ['d1', [seg(0, 60, 'a'), seg(30, 90, 'b'), seg(120, 150, 'a')]],
+      ['d2', [seg(0, 30, 'a')]],
+    ])
+    const kind = (p: string) => (p === 'a' ? 'building' : 'thinking')
+    const totals = timeOfDayTotalsBlock(byDay, kind)
+    expect(totals.byDay.get('d1')).toBe(120) // 0–90 ∪ 120–150
+    expect(totals.byKey.get('building')).toBe(60 + 30 + 30)
+    expect(totals.byKey.get('thinking')).toBe(60)
+  })
+
+  it('merges two parallel sessions of the same key', () => {
+    const totals = timeOfDayTotalsBlock(new Map([['d', [seg(0, 60, 'a'), seg(0, 60, 'c')]]]), () => 'building')
+    expect(totals.byKey.get('building')).toBe(60)
+  })
+})
