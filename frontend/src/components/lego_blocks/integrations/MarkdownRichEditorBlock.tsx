@@ -1,18 +1,12 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
-  applySearchWordsBlock,
-  createSearchMatchLayerBlock,
-  focusSearchMatchBlock,
-  searchMatchField,
-  stepSearchMatchBlock,
-  type SearchMatchState,
-} from '@/components/lego_blocks/units/searchMatchLayerBlock'
-import SearchHitCounterBlock from '@/components/lego_blocks/units/SearchHitCounterBlock'
-import {
-  getSearchHighlightWordsBlock,
-  onSearchHighlightWordsBlock,
-  setSearchHighlightQueryBlock,
-} from '@/services/lego_blocks/units/searchHighlightTermsBlock'
+  applyFindQueryBlock,
+  createFindMatchLayerBlock,
+  findMatchField,
+  focusFindMatchBlock,
+  stepFindMatchBlock,
+} from '@/components/lego_blocks/units/findMatchLayerBlock'
+import type { NoteFindQuery } from '@/services/lego_blocks/units/searchHighlightTermsBlock'
 import { createPortal } from 'react-dom'
 import CodeMirror from '@uiw/react-codemirror'
 import { redo, undo } from '@codemirror/commands'
@@ -97,9 +91,13 @@ import { cn } from '@/lib/utils'
 interface MarkdownRichEditorBlockProps {
   value: string
   onChange: (next: string) => void
-  /** Light up the active vault-search words and show the hit counter. Only
-   *  for notes opened from the vault — not scratch editors or side panels. */
-  showSearchHits?: boolean
+  /** Find-in-note: what to light up (undefined = this editor has no find —
+   *  scratch editors and side panels keep CodeMirror's own). The note that
+   *  owns the find bar passes the query, hears the matches back through
+   *  `onFindMatches`, and takes ⌘F through `onFindRequest`. */
+  findQuery?: NoteFindQuery | null
+  onFindMatches?: (matches: { count: number; current: number }) => void
+  onFindRequest?: () => void
   /** Cmd+S / Ctrl+S while the editor has focus. Bound inside CM6's keymap
    *  rather than on `window`, because the editor owns key handling when it is
    *  focused and a window listener is unreliable against it. See
@@ -179,6 +177,8 @@ interface MarkdownRichEditorBlockProps {
 }
 
 export interface MarkdownRichEditorBlockHandle {
+  /** Step through find-in-note matches (+1 next, -1 previous). */
+  stepFind: (direction: 1 | -1) => void
   undo: () => void
   redo: () => void
   focus: () => void
@@ -495,7 +495,9 @@ class InlineDiffWidgetBlock extends WidgetType {
 const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, MarkdownRichEditorBlockProps>(function MarkdownRichEditorBlock({
   value,
   onChange,
-  showSearchHits = false,
+  findQuery,
+  onFindMatches,
+  onFindRequest,
   onSaveRequest,
   currentPath = '',
   className,
@@ -539,7 +541,11 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
     return /iPhone/i.test(navigator.userAgent)
   }, [layout.mode, layout.surface])
   const editorViewRef = useRef<EditorView | null>(null)
-  const [searchHits, setSearchHits] = useState<SearchMatchState | null>(null)
+  const findEnabled = findQuery !== undefined
+  const onFindMatchesRef = useRef(onFindMatches)
+  onFindMatchesRef.current = onFindMatches
+  const onFindRequestRef = useRef(onFindRequest)
+  onFindRequestRef.current = onFindRequest
   const currentPathRef = useRef(currentPath)
   useEffect(() => { currentPathRef.current = currentPath }, [currentPath])
   // Read through a ref so the keymap extension never has to be rebuilt (which
@@ -807,6 +813,10 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   }
 
   useImperativeHandle(ref, () => ({
+    stepFind: (direction: 1 | -1) => {
+      const view = editorViewRef.current
+      if (view) stepFindMatchBlock(view, direction)
+    },
     undo: undoEditor,
     redo: redoEditor,
     focus: () => {
@@ -1323,22 +1333,24 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
           ]
         : []),
       ...focusTheme,
-      ...(showSearchHits ? [
-        createSearchMatchLayerBlock(),
+      ...(findEnabled ? [
+        createFindMatchLayerBlock(),
         EditorView.updateListener.of((update) => {
-          const before = update.startState.field(searchMatchField, false)
-          const after = update.state.field(searchMatchField, false)
+          const before = update.startState.field(findMatchField, false)
+          const after = update.state.field(findMatchField, false)
           if (!after || before === after) return
-          setSearchHits(after.words.length > 0 ? after : null)
-          // The note's text arrived after the words did: bring the first hit in.
+          onFindMatchesRef.current?.({ count: after.matches.length, current: after.current })
+          // The note's text arrived after the query did: bring the first match in.
           if (before && before.matches.length === 0 && after.matches.length > 0) {
-            requestAnimationFrame(() => focusSearchMatchBlock(update.view, 0))
+            requestAnimationFrame(() => focusFindMatchBlock(update.view, 0))
           }
         }),
-        keymap.of([
-          { key: 'Mod-g', run: (view) => stepSearchMatchBlock(view, 1) },
-          { key: 'Shift-Mod-g', run: (view) => stepSearchMatchBlock(view, -1) },
-        ]),
+        // Above CodeMirror's own search keymap: ⌘F opens the note's find bar.
+        Prec.high(keymap.of([
+          { key: 'Mod-f', run: () => { onFindRequestRef.current?.(); return Boolean(onFindRequestRef.current) } },
+          { key: 'Mod-g', run: (view) => stepFindMatchBlock(view, 1) },
+          { key: 'Shift-Mod-g', run: (view) => stepFindMatchBlock(view, -1) },
+        ])),
       ] : []),
     ]
     return nextExtensions
@@ -1349,24 +1361,20 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
     // keyboard inset moves several times per keyboard animation, so wiring it
     // in here stalled the first tap and leaked stylesheets for the rest of the
     // session. It rides `FOCUS_KEYBOARD_INSET_VAR_BLOCK` on the root instead.
-  }, [compactMobile, editorLanguage, isIphoneRuntime, proseEditing, focusProfile, inlineDiffDecorations, inlineDiffRender, placeholder, showSearchHits])
+  }, [compactMobile, editorLanguage, isIphoneRuntime, proseEditing, focusProfile, inlineDiffDecorations, inlineDiffRender, placeholder, findEnabled])
 
-  // Follow the app-wide search words (explorer filter, ⌘K) into this note.
+  // Light up the note's find query. The view may mount a frame after this
+  // effect; applying is idempotent, so try again then.
   useEffect(() => {
-    if (!showSearchHits) return undefined
-    const apply = (words: readonly string[]) => {
+    if (!findEnabled) return undefined
+    const apply = () => {
       const view = editorViewRef.current
-      if (view) applySearchWordsBlock(view, words)
+      if (view) applyFindQueryBlock(view, findQuery ?? null)
     }
-    apply(getSearchHighlightWordsBlock())
-    // The view may mount a frame after this effect; apply is idempotent.
-    const frame = requestAnimationFrame(() => apply(getSearchHighlightWordsBlock()))
-    const unsubscribe = onSearchHighlightWordsBlock(apply)
-    return () => {
-      cancelAnimationFrame(frame)
-      unsubscribe()
-    }
-  }, [showSearchHits])
+    apply()
+    const frame = requestAnimationFrame(apply)
+    return () => cancelAnimationFrame(frame)
+  }, [findEnabled, findQuery])
 
   const applyPatch = useCallback((patchFactory: EditorPatchFactoryBlock) => {
     const view = editorViewRef.current
@@ -1627,18 +1635,6 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
           : headerControlsBlock
       )}
 
-      {searchHits && (
-        <SearchHitCounterBlock
-          words={searchHits.words}
-          count={searchHits.matches.length}
-          current={searchHits.current}
-          onStep={(direction) => {
-            const view = editorViewRef.current
-            if (view) stepSearchMatchBlock(view, direction)
-          }}
-          onClear={() => setSearchHighlightQueryBlock(null)}
-        />
-      )}
 
       {/* Formatting toolbar */}
       {showToolbar && (

@@ -50,6 +50,15 @@ describe('rankVaultSearchBlock', () => {
     expect(rankVaultSearchBlock(docs, 'ideafac').hits[0]?.path).toBe('reading/idea-factory.md')
   })
 
+  it('keeps abbreviations to prefixes of consecutive words, and content to word starts', () => {
+    const extra = [
+      file('worldly/tuition-and-the-missing-concept.md'),
+      file('worldly/rules.md', { content: 'needs permission before transmission' }),
+      file('worldly/purpose.md', { content: 'cares about the mission' }),
+    ]
+    expect(rankVaultSearchBlock(extra, 'mission').hits.map(h => h.path)).toEqual(['worldly/purpose.md'])
+  })
+
   it('combines a folder token with a name token', () => {
     const { hits } = rankVaultSearchBlock(docs, 'sfbooks read')
     expect(hits[0].path).toBe('lifeblood_systems/sfbooks/to-read.md')

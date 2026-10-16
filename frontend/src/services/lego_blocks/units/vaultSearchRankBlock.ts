@@ -3,10 +3,13 @@
 // Every query token must land somewhere (AND), and where it lands sets its
 // worth: a file's own name beats its title, which beats its tags, its folder
 // path, and finally its indexed content. Within a field, an exact or prefix
-// hit beats a word-start hit beats a plain substring. Loose letter-scatter
-// matching is allowed only on names, and only when the letters sit close
-// together (within 1.5× the token's length) — across 20k paths, unrestricted subsequence matching turns
-// "idea" into hundreds of junk hits.
+// hit beats a word-start hit beats a plain substring. Two deliberate limits,
+// both learned from junk hits on the real vault:
+//   - Content only matches at a word start, like the full-text index —
+//     "mission" must not match "permission" or "transmission".
+//   - Abbreviations ("ideafac" → idea-factory) count only on names, and only
+//     as 2+-letter prefixes of consecutive words. Letter-scatter of any looser kind
+//     matched "mission" to m-i-s-s-i-ng-c-o-n-cept (2026-10-16).
 //
 // Pure and synchronous: docs are pre-lowercased once by the caller, so a
 // keystroke over ~25k docs is a few string scans each.
@@ -59,33 +62,40 @@ const FIELD_WEIGHT: Record<VaultSearchReason, number> = {
 const BOUNDARY = /[\s/_.\-()[\]]/
 
 /** How well one token sits in one field: 0 = absent. */
-function tokenFieldScore(token: string, field: string, allowScatter: boolean): number {
+type FieldMode = 'name' | 'text' | 'content'
+
+/** Can `token` be spelled by prefixes (2+ letters each) of consecutive words,
+ *  from word `wi`? Single letters would let initials spell anything:
+ *  "idea" from i-did-eat-a-lot. */
+function spellsByWordPrefixes(token: string, ti: number, words: string[], wi: number): boolean {
+  if (ti === token.length) return true
+  if (wi >= words.length) return false
+  const word = words[wi]
+  let common = 0
+  while (common < word.length && ti + common < token.length && word[common] === token[ti + common]) common++
+  for (let take = common; take >= 2; take--) {
+    if (spellsByWordPrefixes(token, ti + take, words, wi + 1)) return true
+  }
+  return false
+}
+
+/** How well one token sits in one field: 0 = absent. */
+function tokenFieldScore(token: string, field: string, mode: FieldMode): number {
   if (!field) return 0
   if (field === token) return 100
   const at = field.indexOf(token)
   if (at === 0) return 80
   if (at > 0) {
     // Prefer a hit that starts a word over one buried mid-word.
-    let i = at
-    while (i !== -1) {
+    for (let i = at; i !== -1; i = field.indexOf(token, i + 1)) {
       if (BOUNDARY.test(field[i - 1])) return 70
-      i = field.indexOf(token, i + 1)
     }
-    return 50
+    return mode === 'content' ? 0 : 50
   }
-  if (!allowScatter || token.length < 4) return 0
-  // Compact subsequence: "ideafac" → "idea-factory" (skipping the dash), but
-  // the matched span must stay within 1.5× the token, so "idea" does not
-  // match "i-did-eat-a-lot".
-  let ti = 0
-  let start = -1
-  for (let i = 0; i < field.length && ti < token.length; i++) {
-    if (field[i] !== token[ti]) continue
-    if (start === -1) start = i
-    ti++
-    if (ti === token.length) {
-      return i - start + 1 <= Math.ceil(token.length * 1.5) ? 20 : 0
-    }
+  if (mode !== 'name' || token.length < 3) return 0
+  const words = field.split(BOUNDARY).filter(Boolean)
+  for (let start = 0; start < words.length - 1; start++) {
+    if (spellsByWordPrefixes(token, 0, words, start)) return 20
   }
   return 0
 }
@@ -109,14 +119,14 @@ function scoreDoc(
   for (const token of tokens) {
     let best = 0
     let bestField: VaultSearchReason = 'content'
-    const consider = (field: VaultSearchReason, text: string, scatter: boolean) => {
-      const s = tokenFieldScore(token, text, scatter) * FIELD_WEIGHT[field]
+    const consider = (field: VaultSearchReason, text: string, mode: FieldMode) => {
+      const s = tokenFieldScore(token, text, mode) * FIELD_WEIGHT[field]
       if (s > best) { best = s; bestField = field }
     }
-    consider('name', doc.name, true)
-    consider('title', doc.title, false)
-    consider('tags', doc.tags, false)
-    consider('folder', doc.folder, false)
+    consider('name', doc.name, 'name')
+    consider('title', doc.title, 'text')
+    consider('tags', doc.tags, 'text')
+    consider('folder', doc.folder, 'text')
     // Content only matters when nothing better matched this token. The full
     // text index counts as a mid-word-strength hit; the cached excerpt as-is.
     if (best < 20) {
@@ -124,7 +134,7 @@ function scoreDoc(
         const s = 50 * FIELD_WEIGHT.content
         if (s > best) { best = s; bestField = 'content' }
       }
-      consider('content', doc.content, false)
+      consider('content', doc.content, 'content')
     }
     if (best === 0) return null
     score += best

@@ -3,7 +3,7 @@ import { Loader2, Minus, Plus, RotateCw, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isElectron } from '@/services/lego_blocks/integrations/fsBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
-import DocumentFindBarBlock from '@/components/lego_blocks/integrations/DocumentFindBarBlock'
+import NoteFindBarBlock from '@/components/lego_blocks/units/NoteFindBarBlock'
 import MarkdownTableOfContentsBlock from '@/components/lego_blocks/integrations/MarkdownTableOfContentsBlock'
 import {
   HTML_PAGE_OUTLINE_SCRIPT_BLOCK,
@@ -252,7 +252,16 @@ export default function HtmlDocumentBlock({
       <div className="relative min-h-0 flex-1 overflow-hidden bg-background">
         {findOpen && showWebview && (
           <div className="absolute right-3 top-3 z-10">
-            <DocumentFindBarBlock find={find} onClose={() => setFindOpen(false)} />
+            <NoteFindBarBlock
+              value={find.query}
+              onChange={find.setQuery}
+              count={find.matchCount}
+              current={find.activePosition - 1}
+              onStep={direction => (direction > 0 ? find.next() : find.prev())}
+              onClose={() => setFindOpen(false)}
+              focusKey={1}
+              placeholder="Find in page"
+            />
           </div>
         )}
         {electron && webviewSrc ? (

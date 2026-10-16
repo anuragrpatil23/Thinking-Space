@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentPropsWithoutRef,
   type MouseEvent as ReactMouseEvent,
 } from 'react'
@@ -76,7 +77,7 @@ import HtmlDocumentBlock from '@/components/lego_blocks/integrations/HtmlDocumen
 import MarkdownMindmapPanelBlock from '@/components/lego_blocks/integrations/MarkdownMindmapPanelBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
 import MarkdownSectionContentsBlock from '@/components/lego_blocks/integrations/MarkdownSectionContentsBlock'
-import MarkdownRichEditorBlock from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
+import MarkdownRichEditorBlock, { type MarkdownRichEditorBlockHandle } from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
 import NoteCanvasBlock from '@/components/lego_blocks/integrations/NoteCanvasBlock'
 import SegmentedToggleBlock from '@/components/lego_blocks/units/ui/SegmentedToggleBlock'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/lego_blocks/units/ui/tooltip'
@@ -120,11 +121,16 @@ import {
   yieldToNextFrame,
 } from '@/components/lego_blocks/units/MarkdownDocumentContentBlock'
 import { readMemorizedSessions } from '@/services/lego_blocks/units/memorizedSessionsBlock'
-import DocumentFindBarBlock from '@/components/lego_blocks/integrations/DocumentFindBarBlock'
-import { useInDocumentFindBlock } from '@/components/lego_blocks/hooks/units/useInDocumentFindBlock'
+import NoteFindBarBlock from '@/components/lego_blocks/units/NoteFindBarBlock'
+import { useNoteFindInViewBlock } from '@/components/lego_blocks/hooks/units/useNoteFindInViewBlock'
+import {
+  getSearchHighlightWordsBlock,
+  literalFindQueryBlock,
+  onSearchHighlightWordsBlock,
+  setSearchHighlightQueryBlock,
+  wordsFindQueryBlock,
+} from '@/services/lego_blocks/units/searchHighlightTermsBlock'
 import { useSessionTelemetryBlock } from '@/components/lego_blocks/hooks/units/useSessionTelemetryBlock'
-import { useSearchHitsInViewBlock } from '@/components/lego_blocks/hooks/units/useSearchHitsInViewBlock'
-import SearchHitCounterBlock from '@/components/lego_blocks/units/SearchHitCounterBlock'
 import { isTableDocumentPathBlock } from '@/services/lego_blocks/units/tableDocumentPathBlock'
 import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocumentPathBlock'
 import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
@@ -366,7 +372,11 @@ function MarkdownTextDocumentRuntimeBlock({
   const readingSurfaceRef = useRef<HTMLDivElement | null>(null)
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
   const viewerStripRef = useRef<HTMLDivElement | null>(null)
-  const [findOpen, setFindOpen] = useState(false)
+  // Find-in-note: null = follow the vault search words; a string = typed into
+  // the bar after ⌘F (this note only).
+  const [findText, setFindText] = useState<string | null>(null)
+  const [findFocusKey, setFindFocusKey] = useState(0)
+  const searchWords = useSyncExternalStore(onSearchHighlightWordsBlock, getSearchHighlightWordsBlock)
   const lastScrollTopRef = useRef(0)
   const [isHeaderHidden, setIsHeaderHidden] = useState(false)
   const [headerHeight, setHeaderHeight] = useState(0)
@@ -724,21 +734,62 @@ function MarkdownTextDocumentRuntimeBlock({
   const effectiveTopBarHidden = topBarHiddenProp !== undefined ? topBarHiddenProp : topBarHiddenInViewMode
   const hideTopBarInView = !isEditing && effectiveTopBarHidden
 
-  // In-document find (Cmd/Ctrl+F) for the rendered reading view. Edit mode has
-  // CodeMirror's own find, so we only intercept the shortcut in view mode.
-  const findEligible = active && !isEditing && !isExcalidrawDoc && !isHtmlDoc && !isCodeDoc
-  const find = useInDocumentFindBlock(contentScrollRef, { active: findOpen && findEligible })
+  // Find-in-note — one bar, both modes, two sources. The vault search words
+  // (explorer filter, ⌘K) light up on their own; ⌘F opens the bar to type,
+  // which overrides them for this note. Reading mode paints with
+  // useNoteFindInViewBlock, edit mode with the editor's findMatchLayerBlock;
+  // both use the same matcher, so they light the same text.
+  // Highlights belong to the note, not to focus: a background tab keeps its
+  // matches (and your place among them) so switching back doesn't re-scan and
+  // jump. Only the bar and the keys follow the active note.
+  const findCapable = !isExcalidrawDoc && !isHtmlDoc && !isCodeDoc
+  const findEligible = active && findCapable
+  useEffect(() => { setFindText(null) }, [searchWords])
+  const findQuery = useMemo(
+    () => (findText !== null ? literalFindQueryBlock(findText) : wordsFindQueryBlock(searchWords)),
+    [findText, searchWords],
+  )
+  const findBarOpen = findEligible && (findText !== null || searchWords.length > 0)
+  const openFind = useCallback(() => {
+    setFindText(prev => prev ?? searchWords.join(' '))
+    setFindFocusKey(key => key + 1)
+  }, [searchWords])
+  const closeFind = useCallback(() => {
+    setFindText(null)
+    if (searchWords.length > 0) setSearchHighlightQueryBlock(null)
+  }, [searchWords])
+  const bodyEditorRef = useRef<MarkdownRichEditorBlockHandle | null>(null)
+  const [editFindMatches, setEditFindMatches] = useState<{ count: number; current: number } | null>(null)
+  // The editor reports on every edit while find is on; only re-render the
+  // note when the count or position actually moved.
+  const reportEditFindMatches = useCallback((next: { count: number; current: number }) => {
+    setEditFindMatches(prev => (prev && prev.count === next.count && prev.current === next.current ? prev : next))
+  }, [])
+  useEffect(() => { if (!findQuery) setEditFindMatches(null) }, [findQuery])
+  const viewFind = useNoteFindInViewBlock(findCapable && !isEditing, findQuery)
+  const findMatches = isEditing ? editFindMatches : viewFind.matches
+  const stepViewFind = viewFind.step
+  const stepFind = useCallback((direction: 1 | -1) => {
+    if (isEditing) bodyEditorRef.current?.stepFind(direction)
+    else stepViewFind(direction)
+  }, [isEditing, stepViewFind])
+  // Reading mode: ⌘F / ⌘G / ⇧⌘G here (edit mode: the editor's own keymap).
   useEffect(() => {
-    if (!findEligible) return
+    if (!findEligible || isEditing) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && !event.altKey && (event.key === 'f' || event.key === 'F')) {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return
+      const key = event.key.toLowerCase()
+      if (key === 'f') {
         event.preventDefault()
-        setFindOpen(true)
+        openFind()
+      } else if (key === 'g' && findBarOpen) {
+        event.preventDefault()
+        stepFind(event.shiftKey ? -1 : 1)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [findEligible])
+  }, [findBarOpen, findEligible, isEditing, openFind, stepFind])
 
   useEffect(() => {
     const el = chromeContainerRef.current
@@ -962,10 +1013,6 @@ function MarkdownTextDocumentRuntimeBlock({
     ),
     [editorSettings.preserveNewlinesInViewMode, viewMarkdown],
   )
-  // Vault-search words lit up in the rendered note (edit mode: the editor's
-  // own layer, via `showSearchHits`).
-  const viewProseRef = useRef<HTMLDivElement | null>(null)
-  const viewSearchHits = useSearchHitsInViewBlock(viewProseRef, !isEditing, renderedViewMarkdown)
   const shouldRelaxWhitespacePreservation = useMemo(
     () => /```tikz\b|(^|[^\\])\$\$|(^|[^\\])\$[^$\n]+\$/m.test(renderedViewMarkdown),
     [renderedViewMarkdown],
@@ -1432,7 +1479,6 @@ function MarkdownTextDocumentRuntimeBlock({
 
   const startEditing = () => {
     if (loading || error) return
-    setFindOpen(false)
     if (isExcalidrawDoc) {
       preserveExcalidrawCrashMarkerOnUnmountRef.current = true
       markExcalidrawCrashStageBlock(path, 'edit_requested')
@@ -1866,9 +1912,18 @@ function MarkdownTextDocumentRuntimeBlock({
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
       <div className="relative min-h-0 flex-1">
-        {findOpen && findEligible && (
+        {findBarOpen && (
           <div className="absolute right-3 top-3 z-50">
-            <DocumentFindBarBlock find={find} onClose={() => setFindOpen(false)} />
+            <NoteFindBarBlock
+              value={findText ?? searchWords.join(' ')}
+              onChange={setFindText}
+              count={findQuery ? (findMatches?.count ?? null) : 0}
+              current={findMatches?.current ?? -1}
+              emptyLabel={findText === null ? 'not in the text' : 'no matches'}
+              onStep={stepFind}
+              onClose={closeFind}
+              focusKey={findFocusKey}
+            />
           </div>
         )}
         <div
@@ -2384,22 +2439,13 @@ function MarkdownTextDocumentRuntimeBlock({
                 onPointerCancel={clearLongPressTimer}
                 onPointerLeave={clearLongPressTimer}
               >
-                {viewSearchHits && (
-                  <SearchHitCounterBlock
-                    words={viewSearchHits.words}
-                    count={viewSearchHits.count}
-                    current={viewSearchHits.current}
-                    onStep={viewSearchHits.step}
-                    onClear={viewSearchHits.clear}
-                  />
-                )}
                 {pendingFullRender && (
                   <div className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                     Rendering full document...
                   </div>
                 )}
                 <div
-                  ref={viewProseRef}
+                  ref={viewFind.ref}
                   className={cn(
                     'prose',
                     editorSettings.preserveSpacesInViewMode && !shouldRelaxWhitespacePreservation && 'ltm-markdown-preserve-spaces',
@@ -2566,7 +2612,10 @@ function MarkdownTextDocumentRuntimeBlock({
           <div className={cn('space-y-4', isIosPhone && 'px-3 pb-[calc(var(--ltm-safe-bottom,0px)+0.4rem)]')}>
             <div data-ltm-edge-swipe-ignore="true">
               <MarkdownRichEditorBlock
-                showSearchHits
+                ref={bodyEditorRef}
+                findQuery={findCapable ? findQuery : undefined}
+                onFindMatches={reportEditFindMatches}
+                onFindRequest={openFind}
                 initialCursorHint={pendingEditCaretHintRef.current}
                 onOpenWikilink={(target, openInNewTab) => {
                   void (async () => {

@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-import type { InDocumentFindState } from '@/components/lego_blocks/hooks/units/useInDocumentFindBlock'
+
+export interface WebviewFindState {
+  query: string
+  setQuery: (query: string) => void
+  matchCount: number
+  /** 1-based position of the current match, or 0 when there are none. */
+  activePosition: number
+  next: () => void
+  prev: () => void
+}
 
 export interface FindableWebviewElementBlock extends HTMLElement {
   findInPage?: (text: string, options?: { forward?: boolean; findNext?: boolean }) => number
@@ -12,14 +21,14 @@ interface FoundInPageEventBlock {
 
 /**
  * Find-in-page for an Electron `<webview>`, in the same shape as
- * useInDocumentFindBlock so DocumentFindBarBlock drives either. The guest is a
+ * a note's find so NoteFindBarBlock drives either. The guest is a
  * separate WebContents — the host's CSS Highlight find cannot see into it, so
  * this delegates to Chromium's own find.
  */
 export function useWebviewFindBlock(
   webviewRef: RefObject<FindableWebviewElementBlock | null>,
   options: { active?: boolean } = {},
-): InDocumentFindState {
+): WebviewFindState {
   const active = options.active ?? true
   const [query, setQueryState] = useState('')
   const [matchCount, setMatchCount] = useState(0)
@@ -74,7 +83,5 @@ export function useWebviewFindBlock(
     activePosition,
     next: () => run(queryRef.current, true, true),
     prev: () => run(queryRef.current, false, true),
-    refresh: () => run(queryRef.current, true, false),
-    supported: true,
   }
 }
