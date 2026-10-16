@@ -7,9 +7,11 @@
 //      Cold launches (iOS kills the WKWebView on background) paint from it
 //      immediately while the full load runs behind; subscribers are notified
 //      when the fresh result lands.
-//   3. On-disk JSON cache in the vault (survives app restarts; shared with the
-//      Python script that uses the same parser). Fingerprinted by stat so an
-//      unchanged file skips the multi-MB read + JSON.parse.
+//   3. On-disk JSON cache in the vault (survives app restarts, and iCloud
+//      carries the Mac's parses to the phone). Split into one file per month
+//      of session start, so a busy agent day rewrites only the current
+//      month's file instead of the whole multi-MB cache. Each month file is
+//      fingerprinted by stat, so unchanged months skip the read + JSON.parse.
 //   4. Parse from the raw session markdown (only for files whose mtime changed
 //      since the on-disk cache was written).
 //
@@ -36,14 +38,16 @@ import { loadManualSessions } from '@/services/lego_blocks/integrations/manualSe
 import {
   clearPersistedAiActivitySnapshotBlock,
   readPersistedAiActivitySnapshotBlock,
-  readPersistedDiskCacheMirrorBlock,
   writePersistedAiActivitySnapshotBlock,
-  writePersistedDiskCacheMirrorBlock,
 } from '@/services/lego_blocks/integrations/aiActivitySnapshotStoreBlock'
+import {
+  readAiActivityCacheStoreBlock,
+  resetAiActivityCacheStoreBlock,
+  writeAiActivityCacheStoreBlock,
+  type AiActivityCacheFile,
+} from '@/services/lego_blocks/integrations/aiActivityCacheStoreBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 
-const CACHE_PATH = '.thinking-space/ai-activity-cache.json'
-const CACHE_DIR = '.thinking-space'
 // v12: project detection switched to the generic "cwd folder name" scheme and
 // sessions now carry an explicit `cwd` — bump so every transcript re-classifies.
 // v13: cwd detection now validates the captured value is a real path (rejects
@@ -117,13 +121,7 @@ function sameMtimeBlock(a: number, b: number): boolean {
   return Math.floor(a) === Math.floor(b)
 }
 
-interface CacheFile {
-  version: number
-  /** Map of path -> parsed session, keyed by vault-relative path. */
-  sessions: Record<string, ParsedSession>
-  /** Unix-seconds timestamp when the cache was last written. */
-  updatedAt: number
-}
+type CacheFile = AiActivityCacheFile
 
 function emptyCache(): CacheFile {
   return { version: CACHE_VERSION, sessions: {}, updatedAt: 0 }
@@ -133,88 +131,13 @@ function vaultRootKey(): string {
   return getStoredVaultRoot() ?? ''
 }
 
-// The vault cache file is multi-MB; on iOS reading it is a WKWebView bridge
-// round-trip (plus a possible iCloud re-download) and JSON.parse runs on the
-// main thread. Fingerprint the file first (mtime+size) and reuse the parsed
-// content — in-memory within a process, IndexedDB-mirrored across launches —
-// whenever the file hasn't changed.
-let _diskCacheMemo: { fingerprint: string; cache: CacheFile } | null = null
-
-async function statCacheFingerprint(fs: VaultFS): Promise<string | null> {
-  try {
-    const st = await fs.stat(CACHE_PATH)
-    if (st.isDirectory) return null
-    return `${st.mtime}:${st.size}`
-  } catch {
-    // Missing file, or an undownloaded iCloud placeholder — fall back to the
-    // exists()+read path, which knows how to handle both.
-    return null
-  }
-}
-
 async function readCache(fs: VaultFS): Promise<CacheFile> {
-  const fingerprint = await statCacheFingerprint(fs)
-  if (fingerprint) {
-    if (_diskCacheMemo?.fingerprint === fingerprint) return _diskCacheMemo.cache
-    const mirrored = await readPersistedDiskCacheMirrorBlock(
-      CACHE_VERSION,
-      vaultRootKey(),
-      fingerprint,
-    )
-    if (mirrored) {
-      const cache: CacheFile = {
-        version: CACHE_VERSION,
-        sessions: mirrored.sessions,
-        updatedAt: mirrored.updatedAt,
-      }
-      _diskCacheMemo = { fingerprint, cache }
-      return cache
-    }
-  }
-  try {
-    if (!fingerprint && !(await fs.exists(CACHE_PATH))) return emptyCache()
-    const raw = await fs.read(CACHE_PATH)
-    const parsed = JSON.parse(raw) as CacheFile
-    if (parsed.version !== CACHE_VERSION) return emptyCache()
-    if (!parsed.sessions || typeof parsed.sessions !== 'object') return emptyCache()
-    if (fingerprint) {
-      _diskCacheMemo = { fingerprint, cache: parsed }
-      void writePersistedDiskCacheMirrorBlock(
-        CACHE_VERSION,
-        vaultRootKey(),
-        fingerprint,
-        parsed.sessions,
-        parsed.updatedAt,
-      )
-    }
-    return parsed
-  } catch {
-    return emptyCache()
-  }
+  const cache = await readAiActivityCacheStoreBlock(fs, CACHE_VERSION, vaultRootKey(), nativeAiSourcesAvailable())
+  return cache ?? emptyCache()
 }
 
 async function writeCache(fs: VaultFS, cache: CacheFile): Promise<void> {
-  try {
-    if (!(await fs.exists(CACHE_DIR))) {
-      await fs.mkdir(CACHE_DIR)
-    }
-    await fs.write(CACHE_PATH, JSON.stringify(cache))
-    // Refresh the fingerprint memo/mirror so the next load doesn't re-read
-    // the file we just wrote.
-    const fingerprint = await statCacheFingerprint(fs)
-    if (fingerprint) {
-      _diskCacheMemo = { fingerprint, cache }
-      void writePersistedDiskCacheMirrorBlock(
-        CACHE_VERSION,
-        vaultRootKey(),
-        fingerprint,
-        cache.sessions,
-        cache.updatedAt,
-      )
-    }
-  } catch {
-    // Cache write failures are silent — next launch just re-parses.
-  }
+  await writeAiActivityCacheStoreBlock(fs, cache, vaultRootKey())
 }
 
 export interface LoadResult {
@@ -239,7 +162,7 @@ export function getCachedSnapshot(): LoadResult | null {
 export function clearAiActivitySnapshot(): void {
   _snapshot = null
   _inflight = null
-  _diskCacheMemo = null
+  resetAiActivityCacheStoreBlock()
   // Drop the device-persisted snapshot too — callers clear when the session
   // sources change, and a stale seed would resurrect excluded sessions for a
   // moment on the next cold launch.

@@ -5,11 +5,12 @@
 //     A cold app launch (iOS kills the WKWebView whenever the app backgrounds;
 //     an Electron relaunch loses the module-level snapshot) paints from this
 //     instantly while the real vault load runs in the background.
-//   - disk-cache mirror: the parsed contents of the vault's shared
-//     `.thinking-space/ai-activity-cache.json`, tagged with the file's
-//     stat fingerprint. When the file hasn't changed, the loader skips the
-//     multi-MB bridge read + JSON.parse entirely (on iOS that read also risks
-//     an iCloud re-download stall).
+//   - disk-cache mirror: the parsed contents of the vault's shared month
+//     files (`.thinking-space/ai-activity-cache/`, see
+//     aiActivityCacheStoreBlock), tagged with their combined stat
+//     fingerprint. When no month changed, the loader skips the multi-MB
+//     bridge reads + JSON.parse entirely (on iOS those reads also risk an
+//     iCloud re-download stall).
 //
 // This is derived data only — the vault stays the source of truth (locked
 // decision #3), and a version or vaultRoot mismatch simply falls back to the
