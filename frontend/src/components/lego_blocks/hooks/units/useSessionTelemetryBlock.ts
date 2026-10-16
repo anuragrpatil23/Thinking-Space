@@ -1,11 +1,13 @@
-// Live latest-session telemetry for the explorer — polls the telemetry
-// orchestrator so dots and the count strip track the agent as it works.
+// Live recent-session telemetry for the explorer. Vault writes from outside
+// the app (an agent saving a note) push fresh telemetry within seconds; the
+// slow poll and window focus are only the safety net.
 // The orchestrator preserves object identity when nothing changed, so the
 // poll doesn't cause re-renders on quiet minutes.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   loadSessionTelemetry,
+  subscribeSessionTelemetry,
   type SessionTelemetry,
 } from '@/services/orchestrators/sessionTelemetryOrch'
 import { useVisibleIntervalBlock } from '../shared/useVisibleIntervalBlock'
@@ -41,7 +43,13 @@ export function useSessionTelemetryBlock(enabled = true): SessionTelemetry | nul
     // a blurred-but-visible window never fires `visibilitychange`, so this is
     // the event that catches "user came back to the window".
     window.addEventListener('focus', tick)
-    return () => window.removeEventListener('focus', tick)
+    const unsubscribe = subscribeSessionTelemetry(value => {
+      if (!disposedRef.current) setTelemetry(value)
+    })
+    return () => {
+      window.removeEventListener('focus', tick)
+      unsubscribe()
+    }
   }, [enabled, tick])
 
   useVisibleIntervalBlock(tick, enabled ? POLL_MS : null)

@@ -64,6 +64,7 @@ import {
 import { rankFuzzyItemsBlock } from '@/services/lego_blocks/units/fuzzySearchBlock'
 import { searchNodeFilePathsByText } from '@/services/lego_blocks/integrations/dbBlock'
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
+import { subscribeExternalVaultChangesBlock } from '@/services/lego_blocks/integrations/vaultExternalChangeBlock'
 import { cn } from '@/lib/utils'
 import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import {
@@ -844,6 +845,35 @@ function VaultExplorerBlockInner({
         }
       }
     })
+  }, [listenToGlobalSyncRefresh, loadPath])
+
+  // Files created or removed outside the app (an agent, Obsidian, iCloud) show
+  // up without a manual refresh: re-list just the parent folder, and only if
+  // it is already loaded — an unopened folder lists fresh when it is opened.
+  // Content edits ('change') don't alter the tree, so they are ignored.
+  useEffect(() => {
+    if (!listenToGlobalSyncRefresh) return undefined
+    const pending = new Set<string>()
+    let timer: number | null = null
+    const unsubscribe = subscribeExternalVaultChangesBlock(change => {
+      if (change.kind === 'change' || change.relPath === null || change.relPath === '') return
+      const cut = change.relPath.lastIndexOf('/')
+      pending.add(cut > 0 ? change.relPath.slice(0, cut) : '')
+      if (timer !== null) window.clearTimeout(timer)
+      // Agents often write several files in a burst; list each folder once.
+      timer = window.setTimeout(() => {
+        timer = null
+        const loaded = nodesRef.current
+        for (const folder of pending) {
+          if (loaded[folder]?.loaded) void loadPath(folder, true)
+        }
+        pending.clear()
+      }, 250)
+    })
+    return () => {
+      unsubscribe()
+      if (timer !== null) window.clearTimeout(timer)
+    }
   }, [listenToGlobalSyncRefresh, loadPath])
 
   const canDropNodes = !!onDropNode
