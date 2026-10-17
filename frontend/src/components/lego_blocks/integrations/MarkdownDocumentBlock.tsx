@@ -139,6 +139,7 @@ import { isImageDocumentPathBlock } from '@/services/lego_blocks/units/imageDocu
 import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPathBlock'
 import { dispatchPageTopInsetBlock } from '@/services/lego_blocks/units/pageTopInsetBlock'
 import { isHtmlDocumentPathBlock } from '@/services/lego_blocks/units/htmlDocumentPathBlock'
+import { isExternalDocumentPathBlock } from '@/services/lego_blocks/units/externalDocumentPathBlock'
 import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
 import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
 import { useScreenWakeLockBlock } from '@/components/lego_blocks/hooks/useScreenWakeLockBlock'
@@ -644,8 +645,13 @@ function MarkdownTextDocumentRuntimeBlock({
   }, [])
 
   const filename = path.split('/').pop() || path
-  const breadcrumb = path.split('/').slice(0, -1).join(' / ')
-  const canRenameInHeader = !!(onOpenPathForEdit || onOpenPath)
+  // A file from outside the vault shows its real folder, not vault crumbs, and
+  // cannot be renamed (main serves only the exact path it granted).
+  const isExternalDocument = isExternalDocumentPathBlock(path)
+  const breadcrumb = isExternalDocument
+    ? path.slice(0, path.lastIndexOf('/')) || '/'
+    : path.split('/').slice(0, -1).join(' / ')
+  const canRenameInHeader = !isExternalDocument && !!(onOpenPathForEdit || onOpenPath)
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
   const openInSystemLabel = getOpenInSystemLabelOrch()
   const canOpenInSystem = openInSystemLabel !== null
@@ -2101,9 +2107,17 @@ function MarkdownTextDocumentRuntimeBlock({
                   ) : (
                     <span className="truncate font-medium">{filename}</span>
                   )}
+                  {isExternalDocument && (
+                    <span
+                      className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+                      title="Opened from outside your vault. Edits save to this file; it is not part of your hierarchy or search."
+                    >
+                      Outside vault
+                    </span>
+                  )}
                 </div>
                 {breadcrumb && (
-                  <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>
+                  <div className="mt-0.5 truncate text-xs text-muted-foreground" title={isExternalDocument ? breadcrumb : undefined}>{breadcrumb}</div>
                 )}
                 {renameError && (
                   <div className="mt-1 truncate text-xs text-destructive">{renameError}</div>

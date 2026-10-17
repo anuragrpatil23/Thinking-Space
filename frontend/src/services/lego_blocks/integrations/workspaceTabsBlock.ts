@@ -1,3 +1,4 @@
+import { isExternalDocumentPathBlock } from '@/services/lego_blocks/units/externalDocumentPathBlock'
 import {
   STORAGE_KEYS,
   getJsonStorageItem,
@@ -162,8 +163,9 @@ export function getTabLabel(route: string, labelByPath: Map<string, string>, cha
   if (pathname === '/thinking-space') {
     const filePath = search.get('file')?.trim()
     if (filePath) {
-      const name = safeDecodeURIComponent(filePath).split('/').filter(Boolean).pop() || 'File'
-      return `Space · ${name}`
+      const decoded = safeDecodeURIComponent(filePath)
+      const name = decoded.split('/').filter(Boolean).pop() || 'File'
+      return isExternalDocumentPathBlock(decoded) ? `External · ${name}` : `Space · ${name}`
     }
   }
 
