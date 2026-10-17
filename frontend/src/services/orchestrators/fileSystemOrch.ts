@@ -1,3 +1,4 @@
+import { isExternalDocumentPathBlock } from '@/services/lego_blocks/units/externalDocumentPathBlock'
 import type { FileStat } from '@/services/lego_blocks/units/typesBlock'
 import {
   applyFolderMapBlock,
@@ -972,6 +973,7 @@ export function getRelativePathForClipboardOrch(path: string): string {
 }
 
 export function getAbsolutePathForClipboardOrch(path: string): string | null {
+  if (isExternalDocumentPathBlock(path)) return path
   const root = resolveAbsoluteVaultRoot(getStoredVaultRoot())
   if (!root) return null
   const normalizedRoot = root.replace(/[\\/]+$/g, '')

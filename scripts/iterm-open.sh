@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# iTerm2 Semantic History command: cmd+click on a path opens vault files in
-# Thinking Space and everything else in its default app.
+# iTerm2 Semantic History command: cmd+click on a path opens vault files and
+# any markdown file in Thinking Space, and everything else in its default app.
 #
 # iTerm2 → Settings → Profiles → Advanced → Semantic History → "Run command…":
 #   /path/to/Thinking-Space/scripts/iterm-open.sh \1
@@ -22,5 +22,10 @@ if [ -n "$vault_root" ] && [ -d "$vault_root" ] && [ -f "$file" ]; then
     exec open -b com.anurag.thinking-space "$real_file"
   fi
 fi
+
+# Markdown outside the vault opens in the app as a single granted file.
+case "$file" in
+  *.md|*.MD|*.markdown) [ -f "$file" ] && exec open -b com.anurag.thinking-space "$file" ;;
+esac
 
 exec open "$file"

@@ -15,6 +15,14 @@
   "asarUnpack": [
     "**/node_modules/node-pty/**"
   ],
+  "fileAssociations": [
+    {
+      "ext": ["md", "markdown"],
+      "name": "Markdown Document",
+      "role": "Editor",
+      "rank": "Alternate"
+    }
+  ],
   "extraResources": [
     {
       "from": "src/cli",

@@ -21,7 +21,7 @@ import { randomUUID } from 'crypto';
 import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { isStrayAppNavigationBlock } from './lego_blocks/appNavigationGuardBlock';
-import { resolveExternalFileRouteBlock } from './lego_blocks/externalFileOpenBlock';
+import { createExternalFileGrantsBlock, resolveExternalFileRouteBlock } from './lego_blocks/externalFileOpenBlock';
 import {
   buildUserAiOriginEntryBlock,
   collectCspSourcesForDirectiveBlock,
@@ -300,6 +300,8 @@ export function setupReloadWatcher(electronCapacitorApp: ElectronCapacitorApp): 
 // Define our class to manage our app.
 export class ElectronCapacitorApp {
   private windows: BrowserWindow[] = [];
+  /** Markdown files outside every vault that macOS handed over this session. */
+  readonly externalFileGrants = createExternalFileGrantsBlock();
   private windowSessionIdById = new Map<number, string>();
   private windowProfileIdById = new Map<number, string>();
   private mainWindowId: number | null = null;
@@ -395,8 +397,9 @@ export class ElectronCapacitorApp {
   }
 
   /** Opens a file handed to the app from outside (macOS `open-file`) as a new
-   *  tab in a window whose profile owns the vault containing it. A file outside
-   *  every open vault is refused. */
+   *  tab in a window whose profile owns the vault containing it. A markdown
+   *  file outside every open vault is granted on its own and opens by its
+   *  absolute path in the focused window; anything else is refused. */
   async openExternalFileBlock(filePath: string): Promise<boolean> {
     const openWindows = this.windows.filter((win) => !win.isDestroyed());
     const focused = BrowserWindow.getFocusedWindow();
@@ -410,16 +413,7 @@ export class ElectronCapacitorApp {
       const route = vaultRoot ? resolveExternalFileRouteBlock(filePath, vaultRoot) : null;
       if (!route) continue;
 
-      if (win.isMinimized()) win.restore();
-      if (!win.isVisible()) win.show();
-      win.focus();
-      if (win.webContents.isLoading()) {
-        // The tab listener is not mounted yet; route the window as it loads.
-        this.routeWindowAfterLoad(win, route);
-      } else {
-        const script = `window.dispatchEvent(new CustomEvent('ltm:workspace-open-route-in-new-tab', { detail: ${JSON.stringify(route)} }));`;
-        void win.webContents.executeJavaScript(script, true).catch(() => {});
-      }
+      this.openRouteInWindowTabBlock(win, route);
       return true;
     }
 
@@ -432,7 +426,28 @@ export class ElectronCapacitorApp {
         return true;
       }
     }
-    return false;
+
+    const externalRoute = this.externalFileGrants.grant(filePath);
+    if (!externalRoute) return false;
+    if (ordered.length > 0) {
+      this.openRouteInWindowTabBlock(ordered[0], externalRoute);
+    } else {
+      await this.createWindow(externalRoute);
+    }
+    return true;
+  }
+
+  private openRouteInWindowTabBlock(win: BrowserWindow, route: string): void {
+    if (win.isMinimized()) win.restore();
+    if (!win.isVisible()) win.show();
+    win.focus();
+    if (win.webContents.isLoading()) {
+      // The tab listener is not mounted yet; route the window as it loads.
+      this.routeWindowAfterLoad(win, route);
+    } else {
+      const script = `window.dispatchEvent(new CustomEvent('ltm:workspace-open-route-in-new-tab', { detail: ${JSON.stringify(route)} }));`;
+      void win.webContents.executeJavaScript(script, true).catch(() => {});
+    }
   }
 
   getOpenWindowCountForProfileBlock(profileId: string): number {

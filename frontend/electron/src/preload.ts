@@ -593,6 +593,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('vault:stat', vaultRoot, relPath),
   exists: (vaultRoot: string, relPath: string) =>
     ipcRenderer.invoke('vault:exists', vaultRoot, relPath),
+  // Markdown files outside the vault that macOS handed to the app (absolute
+  // paths; main serves only the ones it granted).
+  externalFileRead: (filePath: string) =>
+    ipcRenderer.invoke('externalFile:read', filePath),
+  externalFileWrite: (filePath: string, data: string) =>
+    ipcRenderer.invoke('externalFile:write', filePath, data),
+  externalFileStat: (filePath: string) =>
+    ipcRenderer.invoke('externalFile:stat', filePath),
   mkdir: (vaultRoot: string, relPath: string) =>
     ipcRenderer.invoke('vault:mkdir', vaultRoot, relPath),
   rename: (vaultRoot: string, fromRelPath: string, toRelPath: string) =>

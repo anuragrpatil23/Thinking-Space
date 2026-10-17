@@ -382,7 +382,7 @@ let externalFileOpenReady = false;
 function openExternalFile(filePath: string): void {
   void myCapacitorApp.openExternalFileBlock(filePath)
     .then((opened) => {
-      if (!opened) console.warn('[open-file] not inside an open vault:', filePath);
+      if (!opened) console.warn('[open-file] not a vault file or a markdown file:', filePath);
     })
     .catch((err) => { console.warn('[open-file] failed:', err); });
 }
@@ -2452,6 +2452,31 @@ ipcMain.handle('vault:stat', async (_event, vaultRoot: string, relPath: string) 
     mtime: st.mtimeMs / 1000,
     ctime: st.birthtimeMs / 1000,
     isDirectory: st.isDirectory(),
+  };
+});
+
+// -- External markdown files (macOS `open-file` outside every vault) --
+// Serve only the exact files main granted when macOS handed them over; the
+// renderer can never name a new one. See docs/contracts/SECURITY.md.
+ipcMain.handle('externalFile:read', async (_event, filePath: unknown) => {
+  const full = myCapacitorApp.externalFileGrants.assertGranted(filePath);
+  return fsPromises.readFile(full, 'utf-8');
+});
+
+ipcMain.handle('externalFile:write', async (_event, filePath: unknown, data: string) => {
+  const full = myCapacitorApp.externalFileGrants.assertGranted(filePath);
+  if (typeof data !== 'string') throw new Error('External file content must be text');
+  await atomicWriteFileBlock(full, data);
+});
+
+ipcMain.handle('externalFile:stat', async (_event, filePath: unknown) => {
+  const full = myCapacitorApp.externalFileGrants.assertGranted(filePath);
+  const st = await fsPromises.stat(full);
+  return {
+    size: st.size,
+    mtime: st.mtimeMs / 1000,
+    ctime: st.birthtimeMs / 1000,
+    isDirectory: false,
   };
 });
 

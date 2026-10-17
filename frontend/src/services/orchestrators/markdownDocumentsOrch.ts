@@ -1,6 +1,7 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { pruneRevisionHistoryBlock } from '@/services/lego_blocks/integrations/revisionRetentionBlock'
 import { splitFrontmatterDocumentBlock } from '@/services/lego_blocks/units/linkIndexBlock'
+import { isExternalDocumentPathBlock } from '@/services/lego_blocks/units/externalDocumentPathBlock'
 
 /**
  * Stamp `updated_at` into a note's YAML frontmatter so tooltips and downstream
@@ -232,8 +233,9 @@ export async function saveMarkdownDocument(params: {
   }
 
   // Auto-stamp updated_at, but only on a real content change (not open-and-close
-  // no-op saves) so the timestamp tracks edits, not opens.
-  const finalContent = currentContent !== params.content
+  // no-op saves) so the timestamp tracks edits, not opens. A file outside the
+  // vault is someone else's document: it is written exactly as typed.
+  const finalContent = currentContent !== params.content && !isExternalDocumentPathBlock(params.path)
     ? stampUpdatedAtBlock(params.content, new Date().toISOString())
     : params.content
 

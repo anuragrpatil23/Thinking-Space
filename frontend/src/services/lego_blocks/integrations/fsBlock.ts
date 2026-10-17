@@ -12,6 +12,7 @@ import {
 import { getStoredVaultRoot, setStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { notifyFileChanged } from '@/services/lego_blocks/units/crossWindowSyncBlock'
 import { atomicTempPathBlock } from '@/services/lego_blocks/units/atomicWriteNamingBlock'
+import { isExternalDocumentPathBlock } from '@/services/lego_blocks/units/externalDocumentPathBlock'
 import { logDebug, logWarn } from '@/services/lego_blocks/units/debugLogBlock'
 import {
   base64ToBytesBlock,
@@ -356,6 +357,9 @@ interface ElectronAPI {
   walkVault(vaultRoot: string, extensions: string[]): Promise<VaultEntry[]>
   stat(vaultRoot: string, relPath: string): Promise<VaultStat>
   exists(vaultRoot: string, relPath: string): Promise<boolean>
+  externalFileRead?(filePath: string): Promise<string>
+  externalFileWrite?(filePath: string, data: string): Promise<void>
+  externalFileStat?(filePath: string): Promise<VaultStat>
   mkdir(vaultRoot: string, relPath: string): Promise<void>
   rename?(vaultRoot: string, fromRelPath: string, toRelPath: string): Promise<void>
   deletePath?(vaultRoot: string, relPath: string, recursive?: boolean): Promise<void>
@@ -682,11 +686,16 @@ class ElectronVaultFS implements VaultFS {
   }
 
   async read(path: string): Promise<string> {
+    if (isExternalDocumentPathBlock(path) && this.api.externalFileRead) return this.api.externalFileRead(path)
     const safePath = assertValidVaultPathBlock('read', path)
     return this.api.read(this.vaultRoot, safePath)
   }
 
   async write(path: string, data: string): Promise<void> {
+    if (isExternalDocumentPathBlock(path) && this.api.externalFileWrite) {
+      await this.api.externalFileWrite(path, data)
+      return
+    }
     const safePath = assertValidVaultPathBlock('write', path)
     await this.api.write(this.vaultRoot, safePath, data)
     notifyFileChanged(safePath)
@@ -727,11 +736,15 @@ class ElectronVaultFS implements VaultFS {
   }
 
   async stat(path: string): Promise<VaultStat> {
+    if (isExternalDocumentPathBlock(path) && this.api.externalFileStat) return this.api.externalFileStat(path)
     const safePath = assertValidVaultPathBlock('stat', path)
     return this.api.stat(this.vaultRoot, safePath)
   }
 
   async exists(path: string): Promise<boolean> {
+    if (isExternalDocumentPathBlock(path) && this.api.externalFileStat) {
+      return this.api.externalFileStat(path).then(() => true, () => false)
+    }
     const safePath = vaultPathOrNullBlock('exists', path)
     if (safePath === null) return false
     return this.api.exists(this.vaultRoot, safePath)
