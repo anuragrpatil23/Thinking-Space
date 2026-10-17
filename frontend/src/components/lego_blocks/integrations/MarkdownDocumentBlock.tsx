@@ -102,6 +102,7 @@ import {
   addGlobalSyncRefreshListenerBlock,
   dispatchGlobalSyncRefreshBlock,
 } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
+import { subscribeExternalVaultChangesBlock } from '@/services/lego_blocks/integrations/vaultExternalChangeBlock'
 import { type StewardMetadataSuggestion } from '@/services/orchestrators/stewardMetadataOrch'
 import {
   DEFERRED_RENDER_CHARS,
@@ -536,6 +537,66 @@ function MarkdownTextDocumentRuntimeBlock({
       })()
     })
   }, [loadDocument, path])
+
+  // An edit made outside the app (an agent, Obsidian, iCloud) shows up without
+  // a manual refresh. Unlike the refresh button this swaps content in place —
+  // no loading state, so the reader keeps their scroll position. Unsaved work
+  // is never overwritten: a dirty editor gets the conflict banner instead, and
+  // an Excalidraw canvas being edited is left alone (the save path's
+  // mtime/hash check still catches the change).
+  useEffect(() => {
+    let timer: number | null = null
+    const samePath = (candidate: string) => candidate.replace(/\\/g, '/').replace(/^\.?\//, '')
+    const target = samePath(path)
+    const reloadInPlace = async () => {
+      const snap = externalReloadStateRef.current
+      if (snap.loading || snap.saving || snap.autoSaving || snap.hasConflict) return
+      if (snap.isEditing && snap.isExcalidrawDoc) return
+      try {
+        const current = await readMarkdownDocument(path)
+        if (current.mtime === snap.baseMtime && current.content === snap.content) return
+        const now = externalReloadStateRef.current
+        if (now.saving || now.autoSaving) return
+        if (now.isEditing && now.hasChanges) {
+          setConflict(new MarkdownDocumentConflictError(
+            'This file changed on disk while you were editing.',
+            {
+              currentMtime: current.mtime,
+              currentHash: current.hash,
+              currentContent: current.content,
+            },
+          ))
+          setSaveError('This file changed on disk while you were editing.')
+          return
+        }
+        const previous = now.content
+        setContent(current.content)
+        // Only follow the disk if the editor still holds what we last loaded —
+        // a keystroke that landed during the read wins.
+        if (now.isEditing) setDraft(draft => (draft === previous ? current.content : draft))
+        setBaseMtime(current.mtime)
+        setBaseCtime(current.ctime)
+        setBaseHash(current.hash)
+        setSizeBytes(current.size)
+      } catch {
+        // Gone or unreadable mid-write — the next event (or refresh) retries.
+      }
+    }
+    const unsubscribe = subscribeExternalVaultChangesBlock(change => {
+      if (change.kind !== 'change' && change.kind !== 'add') return
+      if (change.relPath === null || samePath(change.relPath) !== target) return
+      // Writers often save in a couple of steps; read once they settle.
+      if (timer !== null) window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        timer = null
+        void reloadInPlace()
+      }, 300)
+    })
+    return () => {
+      unsubscribe()
+      if (timer !== null) window.clearTimeout(timer)
+    }
+  }, [path])
 
   useEffect(() => {
     if (!excalidrawImmersive) return
