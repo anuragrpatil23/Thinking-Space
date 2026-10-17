@@ -235,7 +235,7 @@ export default function VaultSetup({ onComplete }: Props) {
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
-              This will be used for comments and profile displays. Saved in your Thinking Space folder under `.thinking-space/profile.json`.
+              This will be used for comments and profile displays. Saved in your Thinking Space folder under `.thinking-space/profile.json`; a folder that already has one keeps it.
             </p>
           </div>
         </div>

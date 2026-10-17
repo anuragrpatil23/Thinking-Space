@@ -60,25 +60,46 @@ export async function readUserProfileOrch(): Promise<UserProfileBlock> {
   }
 }
 
+/**
+ * Seed the profile when a vault is chosen. A vault that already has one keeps
+ * it: the setup form's name is for a new vault, and choosing an existing vault
+ * (another device, the web build) must not overwrite the profile it carries.
+ * An unreadable profile is left alone too, since writing would replace it.
+ */
 export async function ensureUserProfileOrch(seed?: UserProfilePatchBlock): Promise<UserProfileBlock> {
   const cached = readCachedUserProfileBlock()
-  const base = hasActiveVaultRootBlock()
-    ? await readUserProfileOrch()
-    : cached
-  const merged = applyUserProfilePatchBlock(base, seed ?? {})
   if (!hasActiveVaultRootBlock()) {
-    return writeCachedUserProfileBlock(merged)
+    return writeCachedUserProfileBlock(applyUserProfilePatchBlock(cached, seed ?? {}))
   }
+  let existing: UserProfileBlock | null
+  try {
+    existing = await readVaultUserProfileBlock()
+  } catch (error) {
+    console.warn('[userProfileOrch] Vault profile unreadable, leaving it untouched:', error)
+    return cached
+  }
+  if (existing) return writeCachedUserProfileBlock(existing)
+  const merged = applyUserProfilePatchBlock(cached, seed ?? {})
   await writeVaultUserProfileBlock(merged)
   return writeCachedUserProfileBlock(merged)
 }
 
 export async function updateUserProfileOrch(patch: UserProfilePatchBlock): Promise<UserProfileBlock> {
-  const current = await readUserProfileOrch()
-  const next = applyUserProfilePatchBlock(current, patch)
-  if (hasActiveVaultRootBlock()) {
-    await writeVaultUserProfileBlock(next)
+  if (!hasActiveVaultRootBlock()) {
+    return writeCachedUserProfileBlock(applyUserProfilePatchBlock(readCachedUserProfileBlock(), patch))
   }
+  // Patch the vault's profile, never the cache: `readUserProfileOrch` falls
+  // back to the cache when the file cannot be read (an iCloud file not yet
+  // downloaded on a new device), and writing a patched cache would replace the
+  // real profile, memories included, with this device's defaults.
+  let current: UserProfileBlock | null
+  try {
+    current = await readVaultUserProfileBlock()
+  } catch {
+    throw new Error('Your profile is still syncing to this device. Try again in a moment.')
+  }
+  const next = applyUserProfilePatchBlock(current ?? readCachedUserProfileBlock(), patch)
+  await writeVaultUserProfileBlock(next)
   return writeCachedUserProfileBlock(next)
 }
 
