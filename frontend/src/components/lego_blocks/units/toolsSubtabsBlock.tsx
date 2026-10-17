@@ -1,3 +1,4 @@
+import { isHiddenInStaticWebBuildBlock } from '@/services/lego_blocks/units/staticWebBuildBlock'
 import { type ComponentType } from 'react'
 import { BadgeCheck, Bot, Boxes, GitBranch, Globe, Handshake, KeyRound, Terminal as TerminalIcon, Wrench } from 'lucide-react'
 import excalidrawLogo from '@/assets/excalidraw-logo.svg'
@@ -109,6 +110,7 @@ export const TOOLS_SUBTABS: readonly ToolsSubtab[] = [
     to: '/password-manager',
     icon: KeyRound,
     isActive: (pathname) => pathname === '/password-manager',
+    visible: () => !isHiddenInStaticWebBuildBlock('/password-manager'),
     routed: true,
   },
   {
@@ -117,6 +119,7 @@ export const TOOLS_SUBTABS: readonly ToolsSubtab[] = [
     to: '/personal-tools',
     icon: Wrench,
     isActive: (pathname) => pathname === '/personal-tools' || pathname === '/personal-extension',
+    visible: () => !isHiddenInStaticWebBuildBlock('/personal-tools'),
     routed: true,
   },
 ]

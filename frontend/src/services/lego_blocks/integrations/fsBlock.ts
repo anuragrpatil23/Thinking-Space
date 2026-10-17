@@ -1346,33 +1346,57 @@ export class BrowserVaultFS implements VaultFS {
   }
 }
 
+/** Stored vault root meaning "the folder this browser opened". */
+export const BROWSER_VAULT_ROOT_BLOCK = 'browser-fs'
+
 export function isBrowserFSAvailable(): boolean {
   return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function'
 }
 
-export async function initBrowserVaultFS(): Promise<BrowserVaultFS | null> {
+/**
+ * Reconnect the folder this browser opened before.
+ *
+ * Chrome keeps the handle but usually drops the permission between visits, and
+ * only lets a page ask again from a click. So `prompt: false` (on load)
+ * succeeds only while permission is still granted, and `prompt: true` is for a
+ * button handler.
+ */
+export async function initBrowserVaultFS(options: { prompt?: boolean } = {}): Promise<BrowserVaultFS | null> {
   if (!isBrowserFSAvailable()) return null
 
-  // Try to restore a persisted handle
   const handle = await getPersistedDirectoryHandle()
   if (!handle) return null
 
-  // Request permission — if denied, the user will need to re-pick
-  const perm = await (handle as any).requestPermission({ mode: 'readwrite' })
+  let perm = await handle.queryPermission({ mode: 'readwrite' })
+  if (perm !== 'granted' && options.prompt) {
+    perm = await handle.requestPermission({ mode: 'readwrite' })
+  }
   if (perm !== 'granted') return null
 
-  return new BrowserVaultFS(handle)
+  _browserInstance = new BrowserVaultFS(handle)
+  return _browserInstance
+}
+
+/** Whether this page has a browser-opened folder connected right now. */
+export function hasBrowserVaultFSBlock(): boolean {
+  return _browserInstance !== null
 }
 
 export async function pickAndInitBrowserVaultFS(): Promise<BrowserVaultFS> {
   const handle = await window.showDirectoryPicker({ mode: 'readwrite' })
   await persistDirectoryHandle(handle)
-  return new BrowserVaultFS(handle)
+  _browserInstance = new BrowserVaultFS(handle)
+  return _browserInstance
 }
 
 // ── Platform detection + singleton ──
 
 let _instance: VaultFS | null = null
+// The folder a browser opened. Held apart from `_instance` because that one is
+// dropped on every vault-root change, and a directory handle cannot be rebuilt
+// from the stored root the way a native path can: it needs the picker or a
+// permission grant.
+let _browserInstance: BrowserVaultFS | null = null
 const DEFAULT_CAPACITOR_VAULT_ROOT = 'LTM-Vault'
 
 export function getVaultFS(): VaultFS {
@@ -1394,6 +1418,9 @@ function createVaultFS(): VaultFS {
       setStoredVaultRoot(normalizedStoredRoot)
     }
     return new CapacitorVaultFS(vaultRoot)
+  }
+  if (_browserInstance && getStoredVaultRoot() === BROWSER_VAULT_ROOT_BLOCK) {
+    return _browserInstance
   }
   // Web fallback
   return new WebVaultFS()

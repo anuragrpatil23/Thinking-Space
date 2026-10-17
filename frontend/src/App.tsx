@@ -112,6 +112,7 @@ import { isElectron, isEmbeddedTerminalSupported, setVaultRoot } from './service
 import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
 import { startVaultLiveRefresh } from './services/orchestrators/vaultLiveRefreshOrch'
 import { startProjectsMirrorOrch } from './services/orchestrators/projectsMirrorOrch'
+import { isHiddenInStaticWebBuildBlock } from '@/services/lego_blocks/units/staticWebBuildBlock'
 import { listRecentVaultFilesOrch } from './services/orchestrators/vaultSearchOrch'
 import { rankVaultSearchBlock, type VaultSearchDoc, type VaultSearchHit } from './services/lego_blocks/units/vaultSearchRankBlock'
 import { useVaultSearchBlock } from './components/lego_blocks/hooks/units/useVaultSearchBlock'
@@ -149,7 +150,11 @@ import {
 } from './services/orchestrators/schedulerSettingsOrch'
 import { getCapabilityFeatureFlags } from './services/orchestrators/capabilityFeatureFlagsOrch'
 import { writeFileActivityIgnoredPaths } from './services/orchestrators/fileActivityOrch'
-import { isCapacitorNative, initBrowserVaultFS, setVaultFSInstance } from '@/services/lego_blocks/integrations/fsBlock'
+import {
+  BROWSER_VAULT_ROOT_BLOCK,
+  hasBrowserVaultFSBlock,
+  isCapacitorNative,
+} from '@/services/lego_blocks/integrations/fsBlock'
 import { readUserProfileOrch } from './services/orchestrators/userProfileOrch'
 import {
   setExplorerFolderColorPreferencesOrch,
@@ -367,7 +372,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
     icon: OrganizerNavIcon,
     activePaths: ['/file-organizer'],
   },
-]
+].filter(item => !isHiddenInStaticWebBuildBlock(item.to))
 
 const TOOLS_NAV_ITEM: NavItem = {
   to: '/tools',
@@ -532,6 +537,13 @@ function AppBrandGlyph({ className = 'h-[14px] w-[14px]' }: { className?: string
 function App() {
   const location = useLocation()
   const navigate = useNavigate()
+
+  // A link into a personal tool left out of the static web build goes home.
+  // Webull renders on a persistent surface outside <Routes>, so a route-level
+  // redirect would not catch it.
+  useEffect(() => {
+    if (isHiddenInStaticWebBuildBlock(location.pathname)) navigate('/', { replace: true })
+  }, [location.pathname, navigate])
   const { layout } = useUILayoutBlock()
   const currentRoute = `${location.pathname}${location.search}${location.hash}`
   const terminalSupported = isEmbeddedTerminalSupported()
@@ -757,6 +769,10 @@ function App() {
     if (!stored) return true
     // On Capacitor, reject stale absolute paths from older versions
     if (isCapacitorNative() && stored.startsWith('/')) return true
+    // A browser-opened folder has to be reconnected on every load before
+    // anything may touch the vault; the setup screen does that (silently when
+    // permission survived, from a click when it did not).
+    if (stored === BROWSER_VAULT_ROOT_BLOCK && !hasBrowserVaultFSBlock()) return true
     return false
   })
   const showGoogleWorkspaceChromeControls = location.pathname === '/thinking-space'
@@ -892,7 +908,7 @@ function App() {
     { to: '/password-manager', label: 'Passwords', group: 'Tools' as const },
     { to: '/personal-tools', label: 'Heading Assignments', group: 'Tools' as const },
     ...(extensionBuilderEnabled ? [{ to: '/extension-builder', label: 'Extension Builder', group: 'Tools' as const }] : []),
-  ]), [extensionBuilderEnabled, primaryNavItems, terminalSupported, utilityNavItems])
+  ] satisfies CommandItem[]).filter(item => !isHiddenInStaticWebBuildBlock(item.to)), [extensionBuilderEnabled, primaryNavItems, terminalSupported, utilityNavItems])
 
   // ⌘K asks the shared vault search engine for files, and ranks its own
   // commands with the same scorer, so pages and files sort on one scale.
@@ -2000,26 +2016,6 @@ function App() {
       console.warn('[App] Failed to restore bookmark, re-prompting vault setup:', err)
       setNeedsVaultSetup(true)
     })
-  }, [needsVaultSetup])
-
-  // On mount, try to restore a persisted BrowserVaultFS handle
-  useEffect(() => {
-    if (needsVaultSetup || isElectron() || isCapacitorNative()) return
-    const storedRoot = getStoredVaultRoot()
-    if (storedRoot !== 'browser-fs') return
-
-    initBrowserVaultFS()
-      .then((fs) => {
-        if (fs) {
-          setVaultFSInstance(fs)
-        } else {
-          // Permission denied or handle lost — re-prompt
-          setNeedsVaultSetup(true)
-        }
-      })
-      .catch(() => {
-        setNeedsVaultSetup(true)
-      })
   }, [needsVaultSetup])
 
   // Roaming AI-activity prefs: pull the vault-synced values (ui.json) once

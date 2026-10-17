@@ -4,11 +4,18 @@ import path from 'path'
 
 // Electron and Capacitor builds use relative paths so assets load from the app dir.
 // For web, use the /thinking-space/ prefix.
-const buildTarget = process.env.BUILD_TARGET // 'electron' | 'capacitor' | undefined
+// `pages` is the static GitHub Pages build: relative paths and hash routes, so
+// it works under any URL prefix and a refresh never asks the host for a route
+// it cannot serve.
+const buildTarget = process.env.BUILD_TARGET // 'electron' | 'capacitor' | 'pages' | undefined
 const isLocalBuild = buildTarget === 'electron' || buildTarget === 'capacitor'
+const isPagesBuild = buildTarget === 'pages'
 
 export default defineConfig({
-  base: isLocalBuild ? './' : '/thinking-space/',
+  base: isLocalBuild || isPagesBuild ? './' : '/thinking-space/',
+  define: {
+    'import.meta.env.VITE_HASH_ROUTER': JSON.stringify(isPagesBuild ? 'true' : ''),
+  },
   plugins: [react()],
   resolve: {
     alias: {

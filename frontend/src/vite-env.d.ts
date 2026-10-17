@@ -9,6 +9,8 @@ interface ImportMetaEnv {
   readonly VITE_WEBULL_MARKET_SNAPSHOT_PATH?: string
   readonly VITE_WEBULL_MARKET_QUOTES_PATH?: string
   readonly VITE_WEBULL_QUOTE_SYMBOLS?: string
+  /** 'true' in the static GitHub Pages build (vite.config.ts). */
+  readonly VITE_HASH_ROUTER?: string
 }
 
 // File System Access API types (Chromium-only, not in lib.dom yet)
@@ -18,6 +20,7 @@ interface FileSystemDirectoryHandle {
   getFileHandle(name: string, options?: { create?: boolean }): Promise<FileSystemFileHandle>
   getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<FileSystemDirectoryHandle>
   entries(): AsyncIterableIterator<[string, FileSystemDirectoryHandle | FileSystemFileHandle]>
+  queryPermission(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>
   requestPermission(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>
 }
 

@@ -242,6 +242,17 @@ official change) rather than silently choosing.
 
 ---
 
+## 13. The static web build (GitHub Pages)
+
+`BUILD_TARGET=pages npx vite build` (in `frontend/`) produces a fully static app: relative asset paths and hash routes (`vite.config.ts` sets `VITE_HASH_ROUTER`; `main.tsx` picks `HashRouter`), so it runs under any URL prefix and a refresh never needs a server route. `.github/workflows/pages.yml` builds and deploys it on a `v*` tag or a manual run.
+
+- The vault is a folder the visitor opens with the File System Access API (`BrowserVaultFS`), so it works only in Chromium on desktop. iOS browsers are all WebKit and have no folder picker; the native app covers iPhone/iPad.
+- A browser folder must be reconnected on every load before anything touches the vault. `App.tsx` keeps a `browser-fs` vault in setup until `hasBrowserVaultFSBlock()`; `VaultSetupOrch` reconnects silently while Chrome kept the permission, otherwise shows "Reopen <folder>" (Chrome lets a page ask only from a click).
+- The opened folder lives in its own slot in `fsBlock.ts`, not only in the `getVaultFS()` singleton: `setVaultRoot()` drops the singleton, and a directory handle cannot be rebuilt from the stored root.
+- There is no backend on Pages; the setup screen hides "Connect to Backend" in this build.
+- The owner's personal tools (Webull, Passwords, Heading Assignments) are left out of this build: `staticWebBuildBlock.ts` lists their routes, nav lists filter on `isHiddenInStaticWebBuildBlock`, and `App.tsx` sends those routes home (Webull renders outside `<Routes>`, so a route redirect alone would miss it). A new personal tool goes on that list.
+- Test locally without the native folder dialog: serve the build under a subpath (`python3 -m http.server`), then in the page override `window.showDirectoryPicker` to return a folder from `navigator.storage.getDirectory()`.
+
 ## Security-critical files
 
 These files are trust boundaries. A fork user may change anything in their copy — **but never

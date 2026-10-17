@@ -1,3 +1,4 @@
+import { isHiddenInStaticWebBuildBlock } from '@/services/lego_blocks/units/staticWebBuildBlock'
 import { getJsonStorageItem, getStorageItem, setJsonStorageItem, STORAGE_KEYS } from './storageKeyBlock'
 
 // Per-profile nav rail customization: which icons show and in what order.
@@ -113,14 +114,14 @@ export function seedNavRailDefaultsBlock(): void {
  *  App.tsx (the Webull label is user-customizable; pass the live label where
  *  a UI needs it). Home, Settings, and the profile avatar are not manageable
  *  on purpose — they're the app's fixed anchors. */
-export const NAV_RAIL_MANAGEABLE_ITEMS_BLOCK: Array<{ id: string; label: string; group: 'primary' | 'tools' }> = [
+export const NAV_RAIL_MANAGEABLE_ITEMS_BLOCK: Array<{ id: string; label: string; group: 'primary' | 'tools' }> = ([
   { id: '/thinking-space', label: 'Thinking Space', group: 'primary' },
   { id: '/new-thought', label: 'New Note', group: 'primary' },
   { id: '/webull', label: 'Webull', group: 'primary' },
   { id: '/thinking-organizer', label: 'Thinking Organizer', group: 'primary' },
   { id: '/tools', label: 'Tools', group: 'tools' },
   { id: '/vault-graph', label: 'Thinking Space Graph', group: 'tools' },
-]
+] satisfies Array<{ id: string; label: string; group: 'primary' | 'tools' }>).filter(item => !isHiddenInStaticWebBuildBlock(item.id))
 
 function sanitizePrefsBlock(value: unknown): NavRailPrefsBlock {
   if (!value || typeof value !== 'object') return EMPTY_PREFS_BLOCK

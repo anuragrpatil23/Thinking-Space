@@ -28,12 +28,13 @@ import { UIThemeProviderBlock } from './components/lego_blocks/units/UIThemeBloc
 import { isElectron, isCapacitorNative } from './services/orchestrators/runtimeOrch'
 import './index.css'
 
-// Electron and Capacitor use HashRouter (no server to handle routes).
-// Web uses BrowserRouter with /thinking-space.
+// Electron, Capacitor and the static Pages build use HashRouter (no server to
+// handle routes). Web uses BrowserRouter with /thinking-space.
 const isLocalApp = isElectron() || isCapacitorNative()
-const Router = isLocalApp ? HashRouter : BrowserRouter
+const useHashRouter = isLocalApp || import.meta.env.VITE_HASH_ROUTER === 'true'
+const Router = useHashRouter ? HashRouter : BrowserRouter
 const webBasename = '/thinking-space'
-const routerProps = isLocalApp ? {} : { basename: webBasename }
+const routerProps = useHashRouter ? {} : { basename: webBasename }
 const disableStrictModeForCapacitorDebug = import.meta.env.DEV && isCapacitorNative()
 
 const appTree = (

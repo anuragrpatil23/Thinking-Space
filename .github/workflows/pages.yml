@@ -1,0 +1,54 @@
+# Static web build of Thinking Space on GitHub Pages.
+#
+# The site is only the app: a vault is a folder the visitor opens from their
+# own disk (File System Access API, Chromium on desktop), and nothing is sent
+# anywhere. `BUILD_TARGET=pages` gives relative asset paths and hash routes, so
+# it works under /<repo>/ and a refresh never asks Pages for a route.
+name: Deploy web app to GitHub Pages
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run sync:excalidraw-fonts
+      - run: npx tsc --noEmit
+      - run: npx vite build
+        env:
+          BUILD_TARGET: pages
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

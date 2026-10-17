@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FolderOpen, Check, Server } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { selectAndSetVaultRoot } from '@/services/orchestrators/runtimeOrch'
 import {
   isElectron,
   isCapacitorNative,
+  BROWSER_VAULT_ROOT_BLOCK,
+  getPersistedDirectoryHandle,
+  initBrowserVaultFS,
   isBrowserFSAvailable,
   pickAndInitBrowserVaultFS,
   setVaultFSInstance,
@@ -34,8 +37,35 @@ export default function VaultSetup({ onComplete }: Props) {
   const isCapacitor = isCapacitorNative()
   const isNativeApp = isElectronApp || isCapacitor
   const hasBrowserFS = !isNativeApp && isBrowserFSAvailable()
-  const hasBackendOption = !isNativeApp
+  // The static Pages build has no backend to connect to.
+  const isStaticWebBuild = import.meta.env.VITE_HASH_ROUTER === 'true'
+  const hasBackendOption = !isNativeApp && !isStaticWebBuild
   const isBackendReconnect = getStoredVaultRoot() === 'web-backend'
+  // Name of the folder this browser opened before, when it needs a click to
+  // get permission back. Null until checked, or when there is none.
+  const [reopenFolderName, setReopenFolderName] = useState<string | null>(null)
+
+  // A returning browser: reconnect the folder silently if Chrome kept the
+  // permission, otherwise offer it by name (asking needs a click).
+  useEffect(() => {
+    if (!hasBrowserFS || getStoredVaultRoot() !== BROWSER_VAULT_ROOT_BLOCK) return
+    let cancelled = false
+    void (async () => {
+      try {
+        if (await initBrowserVaultFS()) {
+          if (!cancelled) onComplete(BROWSER_VAULT_ROOT_BLOCK)
+          return
+        }
+        const handle = await getPersistedDirectoryHandle()
+        if (!cancelled && handle) setReopenFolderName(handle.name)
+      } catch {
+        /* fall back to picking a folder */
+      }
+    })()
+    return () => { cancelled = true }
+    // Once per mount; onComplete is a fresh closure on every App render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasBrowserFS])
 
   const profilePreviewSymbol = profileSymbolInput.trim() || deriveUserProfileSymbolBlock(profileNameInput)
 
@@ -101,15 +131,33 @@ export default function VaultSetup({ onComplete }: Props) {
     try {
       const browserFS = await pickAndInitBrowserVaultFS()
       setVaultFSInstance(browserFS)
-      setVaultRoot('browser-fs')
+      setVaultRoot(BROWSER_VAULT_ROOT_BLOCK)
       await seedVaultProfile()
-      onComplete('browser-fs')
+      onComplete(BROWSER_VAULT_ROOT_BLOCK)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         // User cancelled
       } else {
         setError(err instanceof Error ? err.message : 'Failed to open folder')
       }
+    } finally {
+      setSelecting(false)
+    }
+  }
+
+  // Browser, returning: ask for the earlier folder's permission from this click.
+  const handleBrowserFolderReopen = async () => {
+    setSelecting(true)
+    setError(null)
+    try {
+      const browserFS = await initBrowserVaultFS({ prompt: true })
+      if (!browserFS) {
+        setError('Permission was not granted. Allow access, or select the folder again.')
+        return
+      }
+      onComplete(BROWSER_VAULT_ROOT_BLOCK)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reopen folder')
     } finally {
       setSelecting(false)
     }
@@ -204,8 +252,24 @@ export default function VaultSetup({ onComplete }: Props) {
             </Button>
           )}
 
+          {hasBrowserFS && reopenFolderName && (
+            <Button size="lg" onClick={() => { void handleBrowserFolderReopen() }} disabled={selecting}>
+              {selecting ? 'Opening...' : (
+                <>
+                  <FolderOpen className="mr-2 h-4 w-4" />
+                  Reopen “{reopenFolderName}”
+                </>
+              )}
+            </Button>
+          )}
+
           {hasBrowserFS && (
-            <Button size="lg" onClick={handleBrowserFolderPick} disabled={selecting}>
+            <Button
+              size="lg"
+              variant={reopenFolderName ? 'outline' : 'default'}
+              onClick={handleBrowserFolderPick}
+              disabled={selecting}
+            >
               {selecting ? 'Opening...' : (
                 <>
                   <FolderOpen className="mr-2 h-4 w-4" />
@@ -213,6 +277,13 @@ export default function VaultSetup({ onComplete }: Props) {
                 </>
               )}
             </Button>
+          )}
+
+          {isStaticWebBuild && !hasBrowserFS && (
+            <p className="text-sm text-muted-foreground">
+              Opening a folder from the web needs Chrome, Edge or Arc on a computer. On iPhone or iPad, use the
+              Thinking Space app.
+            </p>
           )}
 
           {hasBackendOption && (

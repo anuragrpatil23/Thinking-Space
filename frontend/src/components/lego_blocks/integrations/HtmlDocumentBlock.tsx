@@ -284,7 +284,11 @@ export default function HtmlDocumentBlock({
             title="HTML preview"
             src={previewUrl}
             className="h-full w-full bg-white"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            // No allow-same-origin: a blob URL inherits the app's origin, so
+            // with it the page's scripts could read the app's IndexedDB,
+            // including a browser vault's folder handle. Page scripts are
+            // untrusted (SECURITY.md); they get an opaque origin instead.
+            sandbox="allow-scripts allow-forms allow-popups"
           />
         ) : (
           <div className="flex h-full min-h-[40vh] items-center justify-center gap-2 text-sm text-muted-foreground">
