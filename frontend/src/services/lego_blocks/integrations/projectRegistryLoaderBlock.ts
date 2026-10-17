@@ -1,5 +1,8 @@
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
-import { readProjectsBlock } from '@/services/lego_blocks/integrations/projectsStorageBlock'
+import {
+  PROJECTS_MIRROR_PATH_BLOCK,
+  readProjectsBlock,
+} from '@/services/lego_blocks/integrations/projectsStorageBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   parseProjectRegistryMarkdownBlock,
@@ -18,34 +21,24 @@ import {
 // Warms the project-registry cache — the map from a session's working directory
 // to a canonical project — before AI-activity attribution resolves.
 //
-// The projects the user defined in Settings are the source. `projects.md` is a
-// fallback for one case only: a vault that was using the old hand-maintained
-// file and has not been imported yet. It is a hardcoded path under
-// `kai-workspace/`, which is why it cannot be the source — for anyone whose
-// vault has no such folder the registry was silently empty, and their projects
-// fragmented by cwd basename with nothing on screen to say why.
+// The projects the user defined in Settings are the source. Their generated
+// mirror, `.thinking-space/projects.md`, is the only fallback.
 //
 // Best-effort throughout: nothing readable leaves the cache empty and
 // attribution falls back to the basename, which is the pre-registry behaviour.
 
-// Tried in order. The first is the generated mirror of `projects.json` — it
-// only matters if the JSON is lost or unreadable, in which case the mirror is
-// the freshest surviving copy. The second is the old hand-maintained file, kept
-// for vaults that never imported.
-const FALLBACK_PROJECTS_MD_PATHS = ['.thinking-space/projects.md', 'kai-workspace/projects.md']
-
+// Only matters if `projects.json` is lost or unreadable, in which case the
+// mirror is the freshest surviving copy. The old hand-maintained
+// `kai-workspace/projects.md` fallback was retired once every vault had
+// imported (2026-10-16).
 async function fallbackRegistryBlock(vaultRoot: string) {
-  const fs = getVaultFS()
-  for (const path of FALLBACK_PROJECTS_MD_PATHS) {
-    try {
-      if (!(await fs.exists(path))) continue
-      const entries = parseProjectRegistryMarkdownBlock(await fs.read(path), vaultRoot)
-      if (entries.length) return entries
-    } catch {
-      /* try the next one */
-    }
+  try {
+    const fs = getVaultFS()
+    if (!(await fs.exists(PROJECTS_MIRROR_PATH_BLOCK))) return []
+    return parseProjectRegistryMarkdownBlock(await fs.read(PROJECTS_MIRROR_PATH_BLOCK), vaultRoot)
+  } catch {
+    return []
   }
-  return []
 }
 
 export async function loadProjectRegistryBlock(): Promise<void> {

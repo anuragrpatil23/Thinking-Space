@@ -1,9 +1,7 @@
 import 'fake-indexeddb/auto'
 
-import { spawn } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as fsPromises from 'node:fs/promises'
-import * as os from 'node:os'
 import * as path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -1579,43 +1577,6 @@ function writeOutput(
   writeText(verbosity === 'brief' ? renderInvokeOutputBrief(payload) : renderInvokeOutput(payload))
 }
 
-// `thinkspc insight ...` — launch an incognito Claude session in a temp dir
-// that triggers the log-daily-insight skill in quick-capture mode. The temp
-// working dir + the corresponding ~/.claude/projects/<encoded> session folder
-// are deleted on exit, so nothing accumulates.
-async function runInsightCommand(rawArgs: string[]): Promise<number> {
-  const tempDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'insight.'))
-  const encodedProject = '-' + tempDir.replaceAll('/', '-')
-  const claudeProjectDir = path.join(os.homedir(), '.claude', 'projects', encodedProject)
-
-  const cleanup = async () => {
-    try { await fsPromises.rm(tempDir, { recursive: true, force: true }) } catch {}
-    try { await fsPromises.rm(claudeProjectDir, { recursive: true, force: true }) } catch {}
-  }
-
-  const inlineText = rawArgs.join(' ').trim()
-  const claudeArgs = inlineText ? ['-p', `insight: ${inlineText}`] : []
-  const claudeBin = process.env.CLAUDE_BIN ?? 'claude'
-
-  let exitCode = 0
-  try {
-    exitCode = await new Promise<number>((resolve, reject) => {
-      const child = spawn(claudeBin, claudeArgs, {
-        cwd: tempDir,
-        stdio: 'inherit',
-        env: process.env,
-      })
-      child.on('error', err => {
-        reject(new Error(`Failed to launch \`${claudeBin}\`: ${err instanceof Error ? err.message : String(err)}. Is Claude Code installed and on PATH? Override with the CLAUDE_BIN env var.`))
-      })
-      child.on('exit', code => resolve(code ?? 0))
-    })
-  } finally {
-    await cleanup()
-  }
-  return exitCode
-}
-
 async function main(): Promise<void> {
   const { format: outputFormat, verbosity: outputVerbosity, args } = resolveOutputFormat(process.argv.slice(2))
   const command = args[0]
@@ -1623,11 +1584,6 @@ async function main(): Promise<void> {
   if (!command || command === 'help' || command === '--help' || command === '-h') {
     writeText(renderRunnerHelp())
     return
-  }
-
-  if (command === 'insight') {
-    const code = await runInsightCommand(args.slice(1))
-    process.exit(code)
   }
 
   if (command === 'list') {
