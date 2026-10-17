@@ -31,37 +31,84 @@ interface ExcalidrawScene {
  * Handles both pure .excalidraw (JSON) and .excalidraw.md (Obsidian plugin format).
  */
 function parseExcalidrawScene(content: string): ExcalidrawScene | null {
+  const json = extractExcalidrawJson(content)
+  if (json === null) return null
+  try {
+    return normalizeExcalidrawScene(JSON.parse(json))
+  } catch {
+    return null
+  }
+}
+
+function extractExcalidrawJson(content: string): string | null {
   // Pure JSON format
   const trimmed = content.trimStart()
-  if (trimmed.startsWith('{')) {
-    try {
-      return JSON.parse(trimmed)
-    } catch {
-      return null
-    }
-  }
+  if (trimmed.startsWith('{')) return trimmed
 
   // Obsidian Excalidraw plugin format — JSON block is in a code fence
   const jsonBlockMatch = content.match(/```json\s*\n([\s\S]*?)\n```/)
-  if (jsonBlockMatch) {
-    try {
-      return JSON.parse(jsonBlockMatch[1])
-    } catch {
-      return null
-    }
-  }
+  if (jsonBlockMatch) return jsonBlockMatch[1]
 
   // Also try looking for the drawing section
   const drawingMatch = content.match(/## Drawing\s*\n```json\s*\n([\s\S]*?)\n```/)
-  if (drawingMatch) {
-    try {
-      return JSON.parse(drawingMatch[1])
-    } catch {
-      return null
-    }
-  }
+  if (drawingMatch) return drawingMatch[1]
 
   return null
+}
+
+function finiteNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+/**
+ * Rebuild the scene from checked values. The SVG is assembled as a string and
+ * inserted with innerHTML, so a drawing file is untrusted input: a string where
+ * a number belongs (`"strokeWidth": "1\"/><image onerror=…>"`) would otherwise
+ * break out of its attribute and run script in the app. Numbers must be finite
+ * numbers, text fields must be strings; anything else falls back or is dropped.
+ */
+function normalizeExcalidrawScene(raw: unknown): ExcalidrawScene | null {
+  if (!raw || typeof raw !== 'object') return null
+  const scene = raw as { elements?: unknown; appState?: { viewBackgroundColor?: unknown } }
+  const elements: ExcalidrawElement[] = []
+  for (const item of Array.isArray(scene.elements) ? scene.elements : []) {
+    if (!item || typeof item !== 'object') continue
+    const el = item as Record<string, unknown>
+    const points = Array.isArray(el.points)
+      ? el.points
+        .filter((p): p is unknown[] => Array.isArray(p))
+        .map((p): [number, number] => [finiteNumber(p[0], 0), finiteNumber(p[1], 0)])
+      : undefined
+    elements.push({
+      type: optionalString(el.type) ?? '',
+      x: finiteNumber(el.x, 0),
+      y: finiteNumber(el.y, 0),
+      width: finiteNumber(el.width, 0),
+      height: finiteNumber(el.height, 0),
+      strokeColor: optionalString(el.strokeColor),
+      backgroundColor: optionalString(el.backgroundColor),
+      fillStyle: optionalString(el.fillStyle),
+      strokeWidth: optionalNumber(el.strokeWidth),
+      roughness: optionalNumber(el.roughness),
+      opacity: optionalNumber(el.opacity),
+      text: optionalString(el.text),
+      fontSize: optionalNumber(el.fontSize),
+      points,
+      isDeleted: el.isDeleted === true,
+    })
+  }
+  return {
+    elements,
+    appState: { viewBackgroundColor: optionalString(scene.appState?.viewBackgroundColor) },
+  }
 }
 
 function escapeXml(s: string): string {
@@ -70,6 +117,7 @@ function escapeXml(s: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 /**

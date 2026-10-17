@@ -26,10 +26,13 @@ import { MarkdownViewerProvider } from './components/orchestrators/MarkdownViewe
 import { UILayoutProviderBlock } from './components/lego_blocks/integrations/UILayoutBlock'
 import { UIThemeProviderBlock } from './components/lego_blocks/units/UIThemeBlock'
 import { isElectron, isCapacitorNative } from './services/orchestrators/runtimeOrch'
+import { purgeStaticWebSecretsBlock } from './services/lego_blocks/units/storageKeyBlock'
 import './index.css'
 
 // Electron, Capacitor and the static Pages build use HashRouter (no server to
 // handle routes). Web uses BrowserRouter with /thinking-space.
+purgeStaticWebSecretsBlock()
+
 const isLocalApp = isElectron() || isCapacitorNative()
 const useHashRouter = isLocalApp || import.meta.env.VITE_HASH_ROUTER === 'true'
 const Router = useHashRouter ? HashRouter : BrowserRouter

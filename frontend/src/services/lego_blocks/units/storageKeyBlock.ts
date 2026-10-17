@@ -1,3 +1,5 @@
+import { IS_STATIC_WEB_BUILD_BLOCK } from './staticWebBuildBlock'
+
 export const STORAGE_KEYS = {
   vaultRoot: 'ltm-vault-root',
   thinkingOrganizerTemplates: 'ltm-thinking-organizer-level-templates',
@@ -67,7 +69,33 @@ export const STORAGE_KEYS = {
 
 export type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS]
 
+// Secrets the static web build never keeps. Its localStorage is readable by any
+// script on the page's origin (shared by every Pages site on the account), so
+// API keys and OAuth tokens are neither written nor read there; the AI and
+// Google integrations are desktop/iOS features.
+const STATIC_WEB_SECRET_KEYS_BLOCK: ReadonlySet<StorageKey> = new Set<StorageKey>([
+  STORAGE_KEYS.aiManualCredentials,
+  STORAGE_KEYS.aiOauthCredentials,
+  STORAGE_KEYS.googleDriveAuth,
+])
+
+function isStaticWebSecretKeyBlock(key: StorageKey): boolean {
+  return IS_STATIC_WEB_BUILD_BLOCK && STATIC_WEB_SECRET_KEYS_BLOCK.has(key)
+}
+
+/** Delete any secret an earlier web build may have left in this browser. */
+export function purgeStaticWebSecretsBlock(): void {
+  if (!IS_STATIC_WEB_BUILD_BLOCK) return
+  try {
+    if (typeof localStorage === 'undefined') return
+    for (const key of STATIC_WEB_SECRET_KEYS_BLOCK) localStorage.removeItem(key)
+  } catch {
+    // Restricted runtime: nothing was stored either.
+  }
+}
+
 function getLocalStorageItemBlock(key: StorageKey): string | null {
+  if (isStaticWebSecretKeyBlock(key)) return null
   try {
     if (typeof localStorage === 'undefined') return null
     return localStorage.getItem(key)
@@ -77,6 +105,7 @@ function getLocalStorageItemBlock(key: StorageKey): string | null {
 }
 
 function setLocalStorageItemBlock(key: StorageKey, value: string): void {
+  if (isStaticWebSecretKeyBlock(key)) return
   try {
     if (typeof localStorage === 'undefined') return
     localStorage.setItem(key, value)

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { isSettingsTabHiddenInStaticWebBuildBlock } from '@/services/lego_blocks/units/staticWebBuildBlock'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
@@ -263,6 +264,17 @@ const TAB_GROUPS: Array<{ heading: string; items: Array<{ id: SettingsTabWithPro
   },
 ]
 
+// The static web build leaves out tabs for features it cannot run (see
+// staticWebBuildBlock); a heading with nothing left goes too.
+const VISIBLE_TAB_GROUPS = TAB_GROUPS
+  .map(group => ({ ...group, items: group.items.filter(item => !isSettingsTabHiddenInStaticWebBuildBlock(item.id)) }))
+  .filter(group => group.items.length > 0)
+
+/** A tab the static web build leaves out falls back to the default one. */
+function visibleSettingsTab(tabId: SettingsTabWithProfileId): SettingsTabWithProfileId {
+  return isSettingsTabHiddenInStaticWebBuildBlock(tabId) ? 'theme' : tabId
+}
+
 function sanitizeTimeInputBlock(value: string): string | null {
   const trimmed = value.trim()
   if (!/^\d{2}:\d{2}$/.test(trimmed)) return null
@@ -288,7 +300,7 @@ export default function SettingsOrch({
 }: SettingsOrchProps) {
   const { profile, loading: profileLoading, saveProfile, reloadProfile } = useUserProfileBlock()
   const { colorModeId, setColorModeId, themeId, setThemeId } = useUIThemeBlock()
-  const [activeTab, setActiveTab] = useState<SettingsTabWithProfileId>(initialTab)
+  const [activeTab, setActiveTab] = useState<SettingsTabWithProfileId>(() => visibleSettingsTab(initialTab))
   const [markdownEditorSettings, setMarkdownEditorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
   )
@@ -489,7 +501,7 @@ export default function SettingsOrch({
   ), [schedulerSettingsDraft])
 
   useEffect(() => {
-    setActiveTab(initialTab)
+    setActiveTab(visibleSettingsTab(initialTab))
   }, [initialTab])
 
   useEffect(() => {
@@ -1081,7 +1093,7 @@ export default function SettingsOrch({
           // could never be scrolled clear.
           phoneListMode && 'pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
         )}>
-          {TAB_GROUPS.map((group, groupIdx) => (
+          {VISIBLE_TAB_GROUPS.map((group, groupIdx) => (
             <div key={group.heading}>
               {phoneListMode ? (
                 <PhoneListSectionHeaderBlock className={groupIdx === 0 ? 'pt-1' : undefined}>

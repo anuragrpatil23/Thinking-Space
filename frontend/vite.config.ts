@@ -11,12 +11,43 @@ const buildTarget = process.env.BUILD_TARGET // 'electron' | 'capacitor' | 'page
 const isLocalBuild = buildTarget === 'electron' || buildTarget === 'capacitor'
 const isPagesBuild = buildTarget === 'pages'
 
+// The static Pages build's Content-Security-Policy. Pages cannot set headers,
+// so it ships as a <meta> tag. The page may talk only to its own origin: no
+// outside fetches, images or frames, so even a script that got in could not
+// send the vault anywhere. That is why RSS, the Web tab, AI and Google are left
+// out of this build (staticWebBuildBlock.ts). Mirrors the Electron production
+// policy (electron/src/setup.ts), minus its outbound allowances.
+const PAGES_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  // React inline style props; see the Electron policy for why this stays.
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "media-src 'self' data: blob:",
+  "connect-src 'self' data: blob:",
+  "worker-src 'self' blob:",
+  // Vault HTML pages render in a sandboxed blob: iframe (HtmlDocumentBlock).
+  "frame-src blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'none'",
+].join('; ')
+
 export default defineConfig({
   base: isLocalBuild || isPagesBuild ? './' : '/thinking-space/',
   define: {
     'import.meta.env.VITE_HASH_ROUTER': JSON.stringify(isPagesBuild ? 'true' : ''),
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    isPagesBuild && {
+      name: 'thinking-space-pages-csp',
+      transformIndexHtml: () => [
+        { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: PAGES_CSP }, injectTo: 'head-prepend' as const },
+      ],
+    },
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

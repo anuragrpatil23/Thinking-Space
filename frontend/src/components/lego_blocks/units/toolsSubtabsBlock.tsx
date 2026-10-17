@@ -110,7 +110,6 @@ export const TOOLS_SUBTABS: readonly ToolsSubtab[] = [
     to: '/password-manager',
     icon: KeyRound,
     isActive: (pathname) => pathname === '/password-manager',
-    visible: () => !isHiddenInStaticWebBuildBlock('/password-manager'),
     routed: true,
   },
   {
@@ -119,13 +118,13 @@ export const TOOLS_SUBTABS: readonly ToolsSubtab[] = [
     to: '/personal-tools',
     icon: Wrench,
     isActive: (pathname) => pathname === '/personal-tools' || pathname === '/personal-extension',
-    visible: () => !isHiddenInStaticWebBuildBlock('/personal-tools'),
     routed: true,
   },
 ]
 
 export function getVisibleToolsSubtabs(): ToolsSubtab[] {
-  return TOOLS_SUBTABS.filter(tab => (tab.visible ? tab.visible() : true))
+  return TOOLS_SUBTABS.filter(tab =>
+    !isHiddenInStaticWebBuildBlock(tab.to) && (tab.visible ? tab.visible() : true))
 }
 
 // Only routed subtabs render through ToolsShellBlock's <Outlet/>; the persistent

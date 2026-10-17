@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { IS_STATIC_WEB_BUILD_BLOCK } from '@/services/lego_blocks/units/staticWebBuildBlock'
 import { useSearchParams } from 'react-router-dom'
 import { PanelLeftClose, FileText, Rss as RssIcon } from 'lucide-react'
 import VaultExplorerBlock, { type VaultExplorerHandle } from '@/components/lego_blocks/integrations/VaultExplorerBlock'
@@ -999,7 +1000,8 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   // Icon-only RSS toggle in the explorer top toolbar (all surfaces — the
   // iPhone full-width "RSS Feeds" row was folded into this on 2026-07-19 to
   // give the tree back its vertical room).
-  const rssExplorerToolbarButton = (
+  // Left out of the static web build, which cannot fetch feeds (staticWebBuildBlock).
+  const rssExplorerToolbarButton = IS_STATIC_WEB_BUILD_BLOCK ? null : (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
