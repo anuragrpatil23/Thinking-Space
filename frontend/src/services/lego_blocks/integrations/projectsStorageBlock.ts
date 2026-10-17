@@ -169,6 +169,20 @@ async function writeProjectsMirrorBlock(projects: ProjectBlock[]): Promise<void>
   }
 }
 
+/**
+ * Bring the mirror and every open surface in line with `projects.json` as it
+ * is on disk now. For edits made outside the app (an agent, a text editor,
+ * another device) and for anything changed while the app was closed. Only the
+ * mirror is written; the JSON is read, never rewritten. An unreadable or
+ * missing file leaves the existing mirror alone.
+ */
+export async function reconcileProjectsFromDiskBlock(): Promise<void> {
+  const state = await readProjectsStateBlock()
+  if (state.status !== 'ok') return
+  await writeProjectsMirrorBlock(state.projects)
+  dispatchProjectsChangeBlock()
+}
+
 export async function addProjectBlock(input: CreateProjectInputBlock): Promise<ProjectBlock | null> {
   const projects = await readProjectsForWriteBlock()
   if (!projects) return null

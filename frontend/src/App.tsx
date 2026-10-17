@@ -111,6 +111,7 @@ import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigat
 import { isElectron, isEmbeddedTerminalSupported, setVaultRoot } from './services/orchestrators/runtimeOrch'
 import { fullSync, getLastSyncTimestamp, setLastSyncTimestamp, smartSync, type SyncResult } from './services/orchestrators/vaultSyncOrch'
 import { startVaultLiveRefresh } from './services/orchestrators/vaultLiveRefreshOrch'
+import { startProjectsMirrorOrch } from './services/orchestrators/projectsMirrorOrch'
 import { listRecentVaultFilesOrch } from './services/orchestrators/vaultSearchOrch'
 import { rankVaultSearchBlock, type VaultSearchDoc, type VaultSearchHit } from './services/lego_blocks/units/vaultSearchRankBlock'
 import { useVaultSearchBlock } from './components/lego_blocks/hooks/units/useVaultSearchBlock'
@@ -2317,6 +2318,11 @@ function App() {
       cancelled = true
       stop?.()
     }
+  }, [needsVaultSetup, windowContext.isBackgroundAuthority])
+
+  useEffect(() => {
+    if (needsVaultSetup || !windowContext.isBackgroundAuthority) return
+    return startProjectsMirrorOrch()
   }, [needsVaultSetup, windowContext.isBackgroundAuthority])
 
   useEffect(() => {

@@ -37,7 +37,12 @@ const IGNORED_GLOBS: RegExp[] = [
   // and polled events arrived at 2.3s+, so it missed intermittently and the
   // loop sustained itself. Measured 2026-08-11: this file was being rewritten
   // every ~2s (37KB, into an iCloud-synced folder) with the app fully idle.
-  /(^|[\\/])\.thinking-space([\\/]|$)/,
+  //
+  // One exception: `projects.json` is the project registry, which people and
+  // agents edit by hand, and the renderer must regenerate `projects.md` from it.
+  // The folder itself stays watched so chokidar can reach that file. The app
+  // never rewrites the registry in response to its own change, so no loop.
+  /(^|[\\/])\.thinking-space[\\/](?!projects\.json$)/,
   // Scratch files from `atomicWriteBlock`. They exist for milliseconds between
   // write and rename, but reporting them would emit a spurious add/unlink pair
   // for every single save — and the rename onto the real target already emits
