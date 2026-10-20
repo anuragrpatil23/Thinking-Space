@@ -123,6 +123,22 @@ pdf.js directly so the bitmap can be decoupled from the layout box.
   without hyperlinks (dotted underline). Link text is sliced out of the run
   by even glyph width with one character of slack, and classified from
   `before + text` because many templates link only the number of "Figure 2".
+- Zoom feel (`PdfDocumentBlock`, 2026-10): **a magnifying glass on a spring**,
+  tuned by hand against Preview. The pinch preview is a pure scale about the
+  fingers with nothing clamped; at commit the real layout lands inside
+  `flushSync` (no painted gap between preview and layout — that gap was the
+  end-of-pinch "snap"), the pinch point is restored by **page + fraction**
+  (`pendingPageAnchorRef`, exact; ratio math drifted because preview scales
+  page gaps and padding), and whatever the layout cannot honour (centring,
+  scroll ends) is played out as a spring from the painted position. A
+  sideways pull on a narrow page, or past a wide page's edge, rubber-bands
+  (56px reach) and lets go when **momentum is detected** (three shrinking
+  deltas), not when the wheel goes quiet — macOS trails a swipe with a second
+  of momentum. Movement is `transform` + `will-change` only while moving, so
+  the GPU moves the column instead of repainting every page canvas. Scroll
+  the viewer causes itself is hidden from title auto-hide
+  (`ownScrollUntilRef`). After a zoom, a page that already has pixels skips
+  the low-res raster pass (it read as a blurry "refresh").
 - PDF header chrome (`PdfDocumentRuntimeBlock` in `MarkdownDocumentBlock.tsx`)
   is an **overlay** over the page viewport, not a row above it, so the title
   can slide away on scroll as a transform. Taking it out of flow instead

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
 import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
@@ -76,8 +77,65 @@ let activePdfWorkerVersionBlock: string | null = null
 const LARGE_PDF_BYTES_THRESHOLD_BLOCK = 24 * 1024 * 1024
 const MIN_SCALE_BLOCK = 0.4
 const MAX_SCALE_BLOCK = 5
-const TRACKPAD_ZOOM_SENSITIVITY_BLOCK = 0.0015
-const TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK = 120
+/* Chromium's own pinch-zoom curve: scale *= exp(-deltaY / 100). At 0.0015 a
+   comfortable pinch moved the zoom by a few percent and had to be repeated. */
+const TRACKPAD_ZOOM_SENSITIVITY_BLOCK = 0.01
+/* The settle after a zoom or a pull: a short overshoot, so the page lands
+   like an object rather than being corrected. */
+const SPRING_EASING_BLOCK = 'cubic-bezier(0.25, 1.15, 0.5, 1)'
+const SPRING_DURATION_MS_BLOCK = 300
+/* A rubber band lets go without overshoot: on a stretch of a few dozen px
+   the bounce that reads as physics after a zoom reads as a twitch. */
+const RUBBER_BAND_EASING_BLOCK = 'cubic-bezier(0.22, 1, 0.36, 1)'
+/* How far a rubber-band pull can ever stretch, in px. Scaled to the window it
+   let a hard swipe drag the page a third of the way across, and even 140px
+   read as the page coming loose; small pulls were the ones that felt right. */
+const RUBBER_BAND_REACH_PX_BLOCK = 56
+/* Releasing a pull. Waiting for the wheel to go quiet does not work: macOS
+   trails a swipe with a second or more of tiny momentum events, and vertical
+   scrolling carries sideways noise, so the page sat stretched for seconds.
+   Instead a pull lets go when the fingers lift (deltas collapse into the
+   momentum tail) or when nothing arrives for a beat, and the rest of the
+   tail is ignored. */
+const RUBBER_BAND_RELEASE_MS_BLOCK = 60
+const RUBBER_BAND_TAIL_DELTA_PX_BLOCK = 3
+const RUBBER_BAND_TAIL_IGNORE_MS_BLOCK = 1500
+
+/* iOS's rubber band: the further you pull, the less the page follows, and
+   it never passes `dimension`. */
+function rubberBandBlock(offset: number, dimension: number): number {
+  if (dimension <= 0) return 0
+  return Math.sign(offset) * (1 - 1 / ((Math.abs(offset) * 0.55) / dimension + 1)) * dimension
+}
+
+/* Plays the page from a displaced position back to where layout put it.
+
+   `transform` and `will-change` both matter. The column holds every rendered
+   page canvas; without a layer of its own, each frame of movement repainted
+   all of them, which is what made pulls feel like the app was working. With
+   `will-change: transform` the GPU moves the existing layer and nothing is
+   repainted. The hint is dropped when the spring ends, so a parked reader
+   does not keep a document-sized layer alive (docs/contracts/IOS-MEMORY.md). */
+function springBackBlock(element: HTMLElement, fromX: number, fromY: number, easing = SPRING_EASING_BLOCK): void {
+  for (const animation of element.getAnimations()) animation.cancel()
+  element.style.transform = ''
+  if (Math.abs(fromX) < 0.5 && Math.abs(fromY) < 0.5) {
+    element.style.willChange = ''
+    return
+  }
+  element.style.willChange = 'transform'
+  const animation = element.animate(
+    [{ transform: `translate3d(${fromX}px, ${fromY}px, 0)` }, { transform: 'translate3d(0, 0, 0)' }],
+    { duration: SPRING_DURATION_MS_BLOCK, easing },
+  )
+  animation.onfinish = () => { element.style.willChange = '' }
+}
+
+/* How long a trackpad pinch may pause before it counts as finished. Chromium
+   has no gesture-end event for trackpad pinch, so this is a guess either way;
+   at 120ms a slow pinch committed mid-gesture, and the commit's relayout and
+   re-raster landed under the fingers as a stall. */
+const TRACKPAD_COMMIT_DEBOUNCE_MS_BLOCK = 200
 /* Two fingers on a page is a scroll far more often than it is a pinch. Until
    the distance between them has changed by this much, the gesture is left
    alone and the browser scrolls it — which is what Preview does, and why a
@@ -200,8 +258,26 @@ export default function PdfDocumentBlock({
     viewportHeight: number
     contentWidth: number
     contentHeight: number
+    /* The page column's box in scroll-content coordinates, and the
+       scroller's padding, at gesture start — what the preview needs to land
+       exactly where the real layout will. */
+    columnLeft: number
+    columnTop: number
+    columnWidth: number
+    columnHeight: number
+    padLeft: number
+    padRight: number
+    padTop: number
+    padBottom: number
   } | null>(null)
   const pendingScrollAnchorRef = useRef<{ scrollTop: number; scrollLeft: number } | null>(null)
+  /* The point on a page that was under the focal point when a zoom committed,
+     as a fraction of that page's box. Restoring this is exact; predicting the
+     new scroll offset from the scale ratio is not, because the pinch preview
+     scales the gaps between pages and the padding while the real layout keeps
+     them fixed — the residue showed up as a small jump at the end of every
+     pinch, larger the further down the document. */
+  const pendingPageAnchorRef = useRef<{ page: number; fx: number; fy: number; focalX: number; focalY: number } | null>(null)
   const [fileBytes, setFileBytes] = useState<Uint8Array | null>(null)
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
@@ -214,6 +290,31 @@ export default function PdfDocumentBlock({
   const [viewportHeight, setViewportHeight] = useState(0)
   const [renderNonce, setRenderNonce] = useState(0)
   const [gestureActive, setGestureActive] = useState(false)
+  /* Zoom behaves like a magnifying glass on a spring, as in Preview: during a
+     pinch the page goes exactly where the fingers take it, and on release it
+     springs to where the layout keeps it (centred when narrower than the
+     window, never scrolled past an end). A sideways pull on a narrow page
+     follows with rubber-band resistance and springs back the same way. */
+  const elasticRef = useRef<{
+    offset: number
+    timer: number | null
+    quietUntil: number
+    /** Pending frame that writes the offset; events are coalesced into it. */
+    frame: number | null
+    /** Measured once per swipe, not per event. */
+    metrics: { innerWidth: number; narrow: boolean; at: number } | null
+    /** Size of the previous delta, and how many in a row have shrunk. */
+    lastDelta: number
+    shrinking: number
+    /** The offset actually on screen, which can trail `offset` by a frame. */
+    shown: number
+  }>({ offset: 0, timer: null, quietUntil: 0, frame: null, metrics: null, lastDelta: 0, shrinking: 0, shown: 0 })
+  /* Scroll that the viewer itself causes — the correction that keeps the
+     pinch point under the fingers when a zoom commits — is not the reader
+     scrolling. Until this time passes, scroll-direction chrome ignores it;
+     otherwise zooming in read as a long scroll down and slid the title away
+     as the gesture ended. */
+  const ownScrollUntilRef = useRef(0)
   const [docProxy, setDocProxy] = useState<PDFDocumentProxy | null>(null)
   const [markStyle, setMarkStyle] = useState<PdfMarkStyleBlock>(readPdfMarkStyleBlock)
 
@@ -300,8 +401,11 @@ export default function PdfDocumentBlock({
     pageMetrics: documentMetrics,
   }), [documentMetrics, scale, viewportHeight, viewportWidth, zoomMode])
 
+  /* Synced before paint, not after: the next gesture measures its preview
+     against this, and a pinch begun in the gap between a commit's render and a
+     passive effect read the old scale and jumped. */
   const displayedScaleRef = useRef(displayedScale)
-  useEffect(() => {
+  useLayoutEffect(() => {
     displayedScaleRef.current = displayedScale
   }, [displayedScale])
 
@@ -309,11 +413,22 @@ export default function PdfDocumentBlock({
      never visibly drifts. Page containers carry explicit per-page heights, so
      the geometry here is already final even though pdf.js re-rasters async. */
   useLayoutEffect(() => {
+    const pageAnchor = pendingPageAnchorRef.current
     const anchor = pendingScrollAnchorRef.current
-    if (!anchor) return
+    if (pageAnchor || anchor) ownScrollUntilRef.current = performance.now() + 250
+    pendingPageAnchorRef.current = null
     pendingScrollAnchorRef.current = null
     const viewport = viewportRef.current
     if (!viewport) return
+    const element = pageAnchor ? pageRefs.current.get(pageAnchor.page) : undefined
+    if (pageAnchor && element) {
+      const pageRect = element.getBoundingClientRect()
+      const viewportRect = viewport.getBoundingClientRect()
+      viewport.scrollLeft += pageRect.left + pageAnchor.fx * pageRect.width - (viewportRect.left + pageAnchor.focalX)
+      viewport.scrollTop += pageRect.top + pageAnchor.fy * pageRect.height - (viewportRect.top + pageAnchor.focalY)
+      return
+    }
+    if (!anchor) return
     viewport.scrollTop = anchor.scrollTop
     viewport.scrollLeft = anchor.scrollLeft
   }, [displayedScale])
@@ -330,6 +445,32 @@ export default function PdfDocumentBlock({
 
      Back on the column, where the geometry is correct. The surround now lives
      on the root rather than on the scroller, so nothing but the pages moves. */
+  /* Reads the page under a viewport-local point from the geometry on screen
+     right now — including any preview transform, which is what the reader is
+     actually looking at when the zoom commits. */
+  const capturePageAnchorBlock = (focalX: number, focalY: number) => {
+    const viewport = viewportRef.current
+    if (!viewport) return null
+    const viewportRect = viewport.getBoundingClientRect()
+    const x = viewportRect.left + focalX
+    const y = viewportRect.top + focalY
+    let best: { page: number; rect: DOMRect; distance: number } | null = null
+    for (const [page, element] of pageRefs.current) {
+      const rect = element.getBoundingClientRect()
+      const distance = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0
+      if (!best || distance < best.distance) best = { page, rect, distance }
+      if (distance === 0) break
+    }
+    if (!best || best.rect.width <= 0 || best.rect.height <= 0) return null
+    return {
+      page: best.page,
+      fx: (x - best.rect.left) / best.rect.width,
+      fy: (y - best.rect.top) / best.rect.height,
+      focalX,
+      focalY,
+    }
+  }
+
   const clearPreviewTransformBlock = () => {
     const previewTarget = previewContainerRef.current
     if (!previewTarget) return
@@ -352,15 +493,14 @@ export default function PdfDocumentBlock({
       return
     }
 
-    /* The focal point is in viewport coordinates; the column's origin needs it
-       in the column's own box. Scroll offset converts viewport to content
-       space, and offsetLeft/offsetTop accounts for the column being centred
-       inside the scroller. */
+    /* Pure scale about the fingers, with nothing clamped: the reader sees
+       the page exactly where the gesture puts it. Where the layout cannot
+       hold that position, the commit springs it home instead of the preview
+       fighting the fingers. */
     const anchor = zoomAnchorRef.current
     const origin = anchor
-      ? `${anchor.scrollLeft + anchor.focalX - previewTarget.offsetLeft}px ${anchor.scrollTop + anchor.focalY - previewTarget.offsetTop}px`
+      ? `${anchor.focalX - (anchor.columnLeft - anchor.scrollLeft)}px ${anchor.focalY - (anchor.columnTop - anchor.scrollTop)}px`
       : 'top center'
-
     previewTarget.style.transform = `scale(${transformScale})`
     previewTarget.style.transformOrigin = origin
     previewTarget.style.willChange = 'transform'
@@ -375,12 +515,29 @@ export default function PdfDocumentBlock({
   const beginZoomGestureBlock = (focalClientX: number, focalClientY: number) => {
     const viewport = viewportRef.current
     if (!viewport) return
+    /* A settling spring and the pinch preview both drive the column's
+       transform; the pinch takes over from wherever the spring had got to. */
+    const settling = previewContainerRef.current
+    if (settling) for (const animation of settling.getAnimations()) animation.cancel()
     const rect = viewport.getBoundingClientRect()
     /* Content dimensions are read now, before any preview transform is applied
        — a transformed child perturbs scrollWidth/scrollHeight. */
+    const column = previewContainerRef.current
+    const columnRect = column?.getBoundingClientRect()
+    const style = window.getComputedStyle(viewport)
+    const contentLeft = rect.left + viewport.clientLeft
+    const contentTop = rect.top + viewport.clientTop
     zoomAnchorRef.current = {
-      focalX: focalClientX - rect.left,
-      focalY: focalClientY - rect.top,
+      columnLeft: columnRect ? columnRect.left - contentLeft + viewport.scrollLeft : 0,
+      columnTop: columnRect ? columnRect.top - contentTop + viewport.scrollTop : 0,
+      columnWidth: column?.offsetWidth ?? 0,
+      columnHeight: column?.offsetHeight ?? 0,
+      padLeft: Number.parseFloat(style.paddingLeft) || 0,
+      padRight: Number.parseFloat(style.paddingRight) || 0,
+      padTop: Number.parseFloat(style.paddingTop) || 0,
+      padBottom: Number.parseFloat(style.paddingBottom) || 0,
+      focalX: focalClientX - contentLeft,
+      focalY: focalClientY - contentTop,
       scrollTop: viewport.scrollTop,
       scrollLeft: viewport.scrollLeft,
       prevScale: displayedScaleRef.current,
@@ -404,6 +561,7 @@ export default function PdfDocumentBlock({
   useEffect(() => {
     const target = viewportRef.current
     if (!target) return
+    const elastic = elasticRef.current
 
     const clearPendingRenderHandlesBlock = () => {
       if (previewRafRef.current !== null) {
@@ -422,10 +580,12 @@ export default function PdfDocumentBlock({
       clearPendingRenderHandlesBlock()
       pendingScaleRef.current = null
       zoomAnchorRef.current = null
-      clearPreviewTransformBlock()
       gestureActiveRef.current = false
-      setGestureActive(false)
-      if (nextScale === null || Math.abs(scaleRef.current - nextScale) < 0.01) return
+      if (nextScale === null || Math.abs(scaleRef.current - nextScale) < 0.01) {
+        clearPreviewTransformBlock()
+        setGestureActive(false)
+        return
+      }
 
       /* Queue the scroll correction for the layout effect that fires after the
          relayout; assigning it here would be against the pre-zoom geometry. */
@@ -445,7 +605,30 @@ export default function PdfDocumentBlock({
       }
 
       scaleRef.current = nextScale
-      setScale(nextScale)
+      /* The handoff from preview to real layout has to happen in one task.
+         Dropping the transform here and letting React relayout on its own
+         schedule left a frame in between — the pages snapped back to the old
+         size for one paint, then jumped to the new one: the "snap" at the end
+         of every pinch. flushSync runs the render and the scroll-anchor
+         layout effect synchronously, so the browser never paints the gap.
+         The transform comes off first, because a transformed column changes
+         the scroll extents the anchor is clamped against. */
+      if (anchor) pendingPageAnchorRef.current = capturePageAnchorBlock(anchor.focalX, anchor.focalY)
+      const column = previewContainerRef.current
+      const before = column?.getBoundingClientRect()
+      clearPreviewTransformBlock()
+      flushSync(() => {
+        setScale(nextScale)
+      })
+      /* Whatever the layout could not honour — centring, the ends of the
+         scroll — is the gap between where the fingers left the page and where
+         it now sits. Same task as the layout, so it is never painted as a
+         jump; the spring plays it out instead. */
+      if (column && before) {
+        const after = column.getBoundingClientRect()
+        springBackBlock(column, before.left - after.left, before.top - after.top)
+      }
+      setGestureActive(false)
     }
 
     const schedulePreviewScaleBlock = (nextScale: number) => {
@@ -560,8 +743,121 @@ export default function PdfDocumentBlock({
       scheduleCommitScaleBlock(0)
     }
 
+    /* Sideways rubber band. On a page narrower than the window there is
+       nothing to scroll, so any sideways pull stretches; on a wider page,
+       pushing past its left or right edge stretches instead of stopping dead.
+       Either way it springs back once the pull and its momentum end. While
+       stretched, swiping back unwinds the stretch first and only then
+       scrolls. Vertical travel is applied by hand in the same event so a
+       diagonal pull stays diagonal. */
+    const handlePanWheelBlock = (event: WheelEvent) => {
+      const column = previewContainerRef.current
+      if (!column || gestureActiveRef.current || event.deltaX === 0) return
+      /* Only a mostly-sideways swipe is a pull; a vertical scroll's sideways
+         noise is not. */
+      if (Math.abs(event.deltaX) < Math.abs(event.deltaY)) return
+
+      const now = performance.now()
+      if (!elastic.metrics || now - elastic.metrics.at > 250) {
+        const style = window.getComputedStyle(target)
+        const innerWidth = target.clientWidth
+          - (Number.parseFloat(style.paddingLeft) || 0)
+          - (Number.parseFloat(style.paddingRight) || 0)
+        elastic.metrics = { innerWidth, narrow: column.offsetWidth < innerWidth, at: now }
+      } else {
+        elastic.metrics.at = now
+      }
+      const { narrow } = elastic.metrics
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? target.clientHeight : 1
+      const dx = event.deltaX * unit
+
+      const releaseBlock = () => {
+        if (elastic.timer !== null) window.clearTimeout(elastic.timer)
+        if (elastic.frame !== null) window.cancelAnimationFrame(elastic.frame)
+        elastic.timer = null
+        elastic.frame = null
+        /* From what is painted, not from the latest input: a frame not yet
+           drawn would otherwise make the page hop as the spring starts. */
+        const from = elastic.shown
+        elastic.shown = 0
+        elastic.offset = 0
+        elastic.shrinking = 0
+        elastic.quietUntil = performance.now() + RUBBER_BAND_TAIL_IGNORE_MS_BLOCK
+        springBackBlock(column, from, 0, RUBBER_BAND_EASING_BLOCK)
+      }
+
+      /* The momentum tail after a release. Recognised by shape, not size: a
+         fast swipe's tail is large, and filtering by size let it start fresh
+         pulls, so the page sprang back two or three times. While deltas keep
+         shrinking it is the same momentum and is swallowed (on a wide page it
+         is left to native scrolling); a delta that grows again is a new
+         swipe. */
+      if (now < elastic.quietUntil) {
+        const size = Math.abs(dx)
+        if (size <= elastic.lastDelta * 1.05) {
+          elastic.lastDelta = size
+          if (narrow) event.preventDefault()
+          return
+        }
+        elastic.quietUntil = 0
+        elastic.lastDelta = 0
+      }
+      /* Fingers lifted. macOS momentum is a steadily decaying run of deltas
+         (30, 27, 24…), which a hand dragging the page rarely produces; three
+         shrinking in a row means the fingers are off the trackpad. Waiting for
+         the tail to reach zero instead is what left a pause between the end
+         of the swipe and the spring. */
+      const size = Math.abs(dx)
+      elastic.shrinking = elastic.offset !== 0 && size < elastic.lastDelta * 0.97 ? elastic.shrinking + 1 : 0
+      elastic.lastDelta = size
+      if (elastic.offset !== 0 && (size <= RUBBER_BAND_TAIL_DELTA_PX_BLOCK || elastic.shrinking >= 3)) {
+        event.preventDefault()
+        releaseBlock()
+        return
+      }
+
+      if (!narrow && elastic.offset === 0) {
+        const maxScrollLeft = target.scrollWidth - target.clientWidth
+        const pushingPastStart = target.scrollLeft <= 0 && dx < 0
+        const pushingPastEnd = target.scrollLeft >= maxScrollLeft - 1 && dx > 0
+        if (!pushingPastStart && !pushingPastEnd) return
+      }
+
+      event.preventDefault()
+      if (event.deltaY !== 0) target.scrollTop += event.deltaY * unit
+
+      if (elastic.offset === 0) {
+        for (const animation of column.getAnimations()) animation.cancel()
+        column.style.willChange = 'transform'
+      }
+      let next = elastic.offset - dx
+      /* Unwinding past rest on a wide page: the remainder is real scrolling. */
+      if (!narrow && elastic.offset !== 0 && Math.sign(next) !== Math.sign(elastic.offset)) {
+        target.scrollLeft -= next
+        next = 0
+      }
+      elastic.offset = next
+
+      /* Trackpads deliver wheel events faster than the display refreshes;
+         one write per frame is all that can be seen. */
+      if (elastic.frame === null) {
+        elastic.frame = window.requestAnimationFrame(() => {
+          elastic.frame = null
+          elastic.shown = rubberBandBlock(elastic.offset, RUBBER_BAND_REACH_PX_BLOCK)
+          column.style.transform = `translate3d(${elastic.shown}px, 0, 0)`
+        })
+      }
+
+      if (elastic.timer !== null) window.clearTimeout(elastic.timer)
+      elastic.timer = window.setTimeout(releaseBlock, RUBBER_BAND_RELEASE_MS_BLOCK)
+    }
+
     const handleWheelBlock = (event: WheelEvent) => {
-      if (!event.ctrlKey || !Number.isFinite(event.deltaY) || event.deltaY === 0) return
+      if (!event.ctrlKey) {
+        handlePanWheelBlock(event)
+        return
+      }
+      if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return
       event.preventDefault()
 
       const currentInteractiveScale = pendingScaleRef.current ?? displayedScaleRef.current
@@ -609,6 +905,21 @@ export default function PdfDocumentBlock({
       target.removeEventListener('touchend', handleTouchEndBlock)
       target.removeEventListener('touchcancel', handleTouchEndBlock)
       target.removeEventListener('wheel', handleWheelBlock)
+      /* Leave the page at rest: a cleared release timer would otherwise
+         strand a stretched page with its offset still applied. */
+      if (elastic.timer !== null) window.clearTimeout(elastic.timer)
+      if (elastic.frame !== null) window.cancelAnimationFrame(elastic.frame)
+      elastic.timer = null
+      elastic.frame = null
+      elastic.offset = 0
+      elastic.shown = 0
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- the live node is the one left stretched
+      const column = previewContainerRef.current
+      if (column) {
+        for (const animation of column.getAnimations()) animation.cancel()
+        column.style.transform = ''
+        column.style.willChange = ''
+      }
     }
     /* Handlers read live state through refs, so the listeners are attached
        once for the life of the viewport rather than on every zoom. */
@@ -768,6 +1079,7 @@ export default function PdfDocumentBlock({
     const normalized = normalizeScaleBlock(nextScale)
     const viewport = viewportRef.current
     if (viewport) {
+      pendingPageAnchorRef.current = capturePageAnchorBlock(viewport.clientWidth / 2, viewport.clientHeight / 2)
       pendingScrollAnchorRef.current = computeZoomScrollAnchorBlock({
         scrollTop: viewport.scrollTop,
         scrollLeft: viewport.scrollLeft,
@@ -1269,7 +1581,7 @@ export default function PdfDocumentBlock({
       const top = viewport.scrollTop
       const delta = top - last
       last = top
-      if (gestureActiveRef.current || delta === 0) return
+      if (gestureActiveRef.current || delta === 0 || performance.now() < ownScrollUntilRef.current) return
       if (top <= 4) {
         run = 0
         setHiddenBlock(false)
@@ -1390,6 +1702,15 @@ export default function PdfDocumentBlock({
         )}
 
         {!loading && !error && documentFile && (
+          /* Clips sideways only. A page displaced by a pull or a settling
+             spring otherwise counts as scrollable width, and a horizontal
+             scrollbar flashed in for the length of every spring. As wide as
+             the page or the window, whichever is larger, so a zoomed-in page
+             still scrolls sideways normally. The side padding is room for the
+             pages' shadows: a sheet's edge is drawn by its shadow alone, and
+             a zoomed-in page fills this box, so without it the edges were
+             clipped away. */
+          <div className="w-max min-w-full overflow-x-clip px-2">
           <div ref={previewContainerRef} className="mx-auto w-fit origin-top">
             <Document
               key={`${path}:${renderNonce}`}
@@ -1470,6 +1791,7 @@ export default function PdfDocumentBlock({
                 </div>
               ))}
             </Document>
+          </div>
           </div>
         )}
         {!loading && !error && electronRuntime && fileSizeBytes !== null && fileSizeBytes >= LARGE_PDF_BYTES_THRESHOLD_BLOCK && (

@@ -231,7 +231,11 @@ export default function PdfPageCanvasBlock({
            lands almost immediately, upscaled by CSS into the same box; the
            sharp pass then replaces it in place. Yielding between them lets the
            frame with the cheap bitmap actually get painted. */
-        const previewPlan = derivePdfPreviewPlanBlock(plan)
+        /* Only for a blank page. After a zoom the page already holds a bitmap,
+           stretched into the new box — sharper than the quarter-resolution
+           pass would be, so drawing that pass first read as a blurry flash
+           ("refresh") at the end of every pinch. */
+        const previewPlan = host.firstChild ? null : derivePdfPreviewPlanBlock(plan)
         if (previewPlan) {
           await drawPassBlock(page, previewPlan)
           if (cancelled) return
