@@ -98,6 +98,10 @@ const RUBBER_BAND_REACH_PX_BLOCK = 56
    momentum tail) or when nothing arrives for a beat, and the rest of the
    tail is ignored. */
 const RUBBER_BAND_RELEASE_MS_BLOCK = 60
+/* Sideways travel that is absorbed before a pull starts. Small sideways
+   nudges at an edge are mostly accidental (a vertical scroll that drifts);
+   only a deliberate push should move the page. */
+const RUBBER_BAND_DEAD_ZONE_PX_BLOCK = 24
 const RUBBER_BAND_TAIL_DELTA_PX_BLOCK = 3
 const RUBBER_BAND_TAIL_IGNORE_MS_BLOCK = 1500
 
@@ -108,27 +112,47 @@ function rubberBandBlock(offset: number, dimension: number): number {
   return Math.sign(offset) * (1 - 1 / ((Math.abs(offset) * 0.55) / dimension + 1)) * dimension
 }
 
+/* Inverse of rubberBandBlock: the pull that would show `shown`. Lets a pull
+   that starts while a spring is still settling pick up from where the page
+   is, instead of jumping it home first. */
+function unrubberBandBlock(shown: number, dimension: number): number {
+  if (dimension <= 0) return 0
+  const ratio = Math.min(Math.abs(shown) / dimension, 0.95)
+  return Math.sign(shown) * ((1 / (1 - ratio) - 1) * dimension) / 0.55
+}
+
+/* Where a settling spring has the page right now, in px. */
+function currentTranslateXBlock(element: HTMLElement): number {
+  const value = window.getComputedStyle(element).translate
+  if (!value || value === 'none') return 0
+  return Number.parseFloat(value) || 0
+}
+
 /* Plays the page from a displaced position back to where layout put it.
 
-   `transform` and `will-change` both matter. The column holds every rendered
-   page canvas; without a layer of its own, each frame of movement repainted
-   all of them, which is what made pulls feel like the app was working. With
-   `will-change: transform` the GPU moves the existing layer and nothing is
-   repainted. The hint is dropped when the spring ends, so a parked reader
-   does not keep a document-sized layer alive (docs/contracts/IOS-MEMORY.md). */
+   On the individual CSS `translate` property, not `transform`. The pinch
+   preview owns `transform` (a scale about the fingers); `translate` composes
+   outside it unscaled, so a spring keeps playing underneath a new pinch
+   instead of being cancelled — a pinch begun mid-settle used to jump the page
+   home first.
+
+   `will-change` matters as much: the column holds every rendered page canvas,
+   and without a layer of its own each frame of movement repainted all of
+   them. The hint is dropped when the spring ends, so a parked reader does not
+   keep a document-sized layer alive (docs/contracts/IOS-MEMORY.md). */
 function springBackBlock(element: HTMLElement, fromX: number, fromY: number, easing = SPRING_EASING_BLOCK): void {
   for (const animation of element.getAnimations()) animation.cancel()
-  element.style.transform = ''
+  element.style.translate = ''
   if (Math.abs(fromX) < 0.5 && Math.abs(fromY) < 0.5) {
-    element.style.willChange = ''
+    if (!element.style.transform) element.style.willChange = ''
     return
   }
-  element.style.willChange = 'transform'
+  element.style.willChange = 'transform, translate'
   const animation = element.animate(
-    [{ transform: `translate3d(${fromX}px, ${fromY}px, 0)` }, { transform: 'translate3d(0, 0, 0)' }],
+    [{ translate: `${fromX}px ${fromY}px` }, { translate: '0px 0px' }],
     { duration: SPRING_DURATION_MS_BLOCK, easing },
   )
-  animation.onfinish = () => { element.style.willChange = '' }
+  animation.onfinish = () => { if (!element.style.transform) element.style.willChange = '' }
 }
 
 /* How long a trackpad pinch may pause before it counts as finished. Chromium
@@ -308,7 +332,9 @@ export default function PdfDocumentBlock({
     shrinking: number
     /** The offset actually on screen, which can trail `offset` by a frame. */
     shown: number
-  }>({ offset: 0, timer: null, quietUntil: 0, frame: null, metrics: null, lastDelta: 0, shrinking: 0, shown: 0 })
+    /** Sideways travel absorbed by the dead zone in this swipe. */
+    pending: number
+  }>({ offset: 0, timer: null, quietUntil: 0, frame: null, metrics: null, lastDelta: 0, shrinking: 0, shown: 0, pending: 0 })
   /* Scroll that the viewer itself causes — the correction that keeps the
      pinch point under the fingers when a zoom commits — is not the reader
      scrolling. Until this time passes, scroll-direction chrome ignores it;
@@ -503,7 +529,7 @@ export default function PdfDocumentBlock({
       : 'top center'
     previewTarget.style.transform = `scale(${transformScale})`
     previewTarget.style.transformOrigin = origin
-    previewTarget.style.willChange = 'transform'
+    previewTarget.style.willChange = 'transform, translate'
 
     /* Stop the scroller competing with the pinch for the same touches. */
     const viewport = viewportRef.current
@@ -515,10 +541,6 @@ export default function PdfDocumentBlock({
   const beginZoomGestureBlock = (focalClientX: number, focalClientY: number) => {
     const viewport = viewportRef.current
     if (!viewport) return
-    /* A settling spring and the pinch preview both drive the column's
-       transform; the pinch takes over from wherever the spring had got to. */
-    const settling = previewContainerRef.current
-    if (settling) for (const animation of settling.getAnimations()) animation.cancel()
     const rect = viewport.getBoundingClientRect()
     /* Content dimensions are read now, before any preview transform is applied
        — a transformed child perturbs scrollWidth/scrollHeight. */
@@ -615,7 +637,14 @@ export default function PdfDocumentBlock({
          the scroll extents the anchor is clamped against. */
       if (anchor) pendingPageAnchorRef.current = capturePageAnchorBlock(anchor.focalX, anchor.focalY)
       const column = previewContainerRef.current
-      const before = column?.getBoundingClientRect()
+      /* Displacement is measured on the page under the fingers, not on the
+         column. The preview scales the gaps between pages while the layout
+         keeps them fixed, so the column's top lands a few px off even when
+         the focal page is exactly placed — and springing that phantom offset
+         made a zoomed-in page bob up and back down. */
+      const focalPage = pendingPageAnchorRef.current?.page
+      const measured = (focalPage !== undefined ? pageRefs.current.get(focalPage) : undefined) ?? column
+      const before = measured?.getBoundingClientRect()
       clearPreviewTransformBlock()
       flushSync(() => {
         setScale(nextScale)
@@ -625,7 +654,12 @@ export default function PdfDocumentBlock({
          it now sits. Same task as the layout, so it is never painted as a
          jump; the spring plays it out instead. */
       if (column && before) {
-        const after = column.getBoundingClientRect()
+        /* `before` includes any spring still settling from the last gesture;
+           stop it before measuring `after`, so the new spring starts from
+           everything the eye can see. */
+        for (const animation of column.getAnimations()) animation.cancel()
+        column.style.translate = ''
+        const after = (measured ?? column).getBoundingClientRect()
         springBackBlock(column, before.left - after.left, before.top - after.top)
       }
       setGestureActive(false)
@@ -764,6 +798,7 @@ export default function PdfDocumentBlock({
           - (Number.parseFloat(style.paddingLeft) || 0)
           - (Number.parseFloat(style.paddingRight) || 0)
         elastic.metrics = { innerWidth, narrow: column.offsetWidth < innerWidth, at: now }
+        elastic.pending = 0
       } else {
         elastic.metrics.at = now
       }
@@ -826,9 +861,38 @@ export default function PdfDocumentBlock({
       event.preventDefault()
       if (event.deltaY !== 0) target.scrollTop += event.deltaY * unit
 
+      /* Dead zone: absorb the first stretch of travel, and start the pull
+         from zero once it is crossed so nothing jumps. A spring still
+         settling skips it — that page is already moving. */
+      if (elastic.offset === 0 && currentTranslateXBlock(column) === 0) {
+        if (Math.sign(elastic.pending) !== Math.sign(-dx)) elastic.pending = 0
+        elastic.pending -= dx
+        if (Math.abs(elastic.pending) < RUBBER_BAND_DEAD_ZONE_PX_BLOCK) return
+        const beyond = elastic.pending - Math.sign(elastic.pending) * RUBBER_BAND_DEAD_ZONE_PX_BLOCK
+        elastic.pending = 0
+        column.style.willChange = 'transform, translate'
+        elastic.offset = beyond
+        elastic.lastDelta = Math.abs(dx)
+        if (elastic.frame === null) {
+          elastic.frame = window.requestAnimationFrame(() => {
+            elastic.frame = null
+            elastic.shown = rubberBandBlock(elastic.offset, RUBBER_BAND_REACH_PX_BLOCK)
+            column.style.translate = `${elastic.shown}px 0px`
+          })
+        }
+        if (elastic.timer !== null) window.clearTimeout(elastic.timer)
+        elastic.timer = window.setTimeout(releaseBlock, RUBBER_BAND_RELEASE_MS_BLOCK)
+        return
+      }
+
       if (elastic.offset === 0) {
+        /* Pick up a settling spring where it is rather than jumping it home. */
+        const settlingX = currentTranslateXBlock(column)
         for (const animation of column.getAnimations()) animation.cancel()
-        column.style.willChange = 'transform'
+        elastic.shown = settlingX
+        elastic.offset = unrubberBandBlock(settlingX, RUBBER_BAND_REACH_PX_BLOCK)
+        column.style.translate = `${settlingX}px 0px`
+        column.style.willChange = 'transform, translate'
       }
       let next = elastic.offset - dx
       /* Unwinding past rest on a wide page: the remainder is real scrolling. */
@@ -844,7 +908,7 @@ export default function PdfDocumentBlock({
         elastic.frame = window.requestAnimationFrame(() => {
           elastic.frame = null
           elastic.shown = rubberBandBlock(elastic.offset, RUBBER_BAND_REACH_PX_BLOCK)
-          column.style.transform = `translate3d(${elastic.shown}px, 0, 0)`
+          column.style.translate = `${elastic.shown}px 0px`
         })
       }
 
@@ -854,6 +918,14 @@ export default function PdfDocumentBlock({
 
     const handleWheelBlock = (event: WheelEvent) => {
       if (!event.ctrlKey) {
+        /* A scroll right after a pinch ends the pinch now. Otherwise it
+           scrolls the temporary preview, and the commit landing up to 200ms
+           later jumped the page mid-scroll. */
+        if (commitTimerRef.current !== null) {
+          window.clearTimeout(commitTimerRef.current)
+          commitTimerRef.current = null
+          commitPreviewScaleBlock()
+        }
         handlePanWheelBlock(event)
         return
       }
@@ -867,7 +939,7 @@ export default function PdfDocumentBlock({
       if (!zoomAnchorRef.current) {
         beginZoomGestureBlock(event.clientX, event.clientY)
         gestureActiveRef.current = true
-        setGestureActive(true)
+          setGestureActive(true)
       }
 
       if (zoomModeRef.current !== 'manual') {
@@ -917,7 +989,7 @@ export default function PdfDocumentBlock({
       const column = previewContainerRef.current
       if (column) {
         for (const animation of column.getAnimations()) animation.cancel()
-        column.style.transform = ''
+        column.style.translate = ''
         column.style.willChange = ''
       }
     }
