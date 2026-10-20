@@ -3,7 +3,8 @@ import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/use
 import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNativeChromeImmersionBlock } from '@/components/lego_blocks/hooks/shared/useNativeChromeImmersionBlock'
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, RefreshCw, Undo2 } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Maximize2, Minimize2, Minus, Plus, RefreshCw, Undo2, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { Document, pdfjs } from 'react-pdf'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import PdfJsWorkerBlock from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
@@ -12,8 +13,14 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import PdfPageCanvasBlock from '@/components/lego_blocks/units/PdfPageCanvasBlock'
 import PdfPageScrubberBlock from '@/components/lego_blocks/units/PdfPageScrubberBlock'
 import PdfToolbarMenuBlock from '@/components/lego_blocks/units/PdfToolbarMenuBlock'
+import PdfPageJumpBlock from '@/components/lego_blocks/units/PdfPageJumpBlock'
 import PdfMarkSettingsBlock from '@/components/lego_blocks/units/PdfMarkSettingsBlock'
 import PdfSelectionHighlightBarBlock from '@/components/lego_blocks/units/PdfSelectionHighlightBarBlock'
+import PdfLinkPeekBlock from '@/components/lego_blocks/units/PdfLinkPeekBlock'
+import type { PdfPageLinkHandlersBlock } from '@/components/lego_blocks/units/PdfPageCanvasBlock'
+import { resolvePdfLinkPeekTargetBlock } from '@/components/lego_blocks/units/pdfPageLinksBlock'
+import { usePdfLinkPeekBlock } from '@/components/lego_blocks/hooks/shared/usePdfLinkPeekBlock'
+import { openExternalUrlOrch } from '@/services/orchestrators/fileSystemOrch'
 import { useTextSelectionBlock } from '@/components/lego_blocks/hooks/units/useTextSelectionBlock'
 import {
   PDF_PEN_OPACITY_BLOCK,
@@ -43,6 +50,7 @@ import {
   computeDisplayedPdfScaleBlock,
   computePdfPageBoxBlock,
   computeZoomScrollAnchorBlock,
+  stepPdfZoomScaleBlock,
   DEFAULT_PDF_NATURAL_PAGE_METRICS_BLOCK,
   resolvePdfPageMetricsBlock,
   type PdfZoomModeBlock,
@@ -54,6 +62,7 @@ import {
 import { useReaderChromeVisibilityBlock } from '@/components/lego_blocks/hooks/shared/useReaderChromeVisibilityBlock'
 import { EMPTY_PDF_CROP_BOX_BLOCK } from '@/services/lego_blocks/units/pdfMarginCropBlock'
 import {
+  PDF_PAPER_THEME_BACKGROUNDS_BLOCK,
   PDF_PAPER_THEME_LABELS_BLOCK,
   PDF_PAPER_THEMES_BLOCK,
   readPdfPaperThemeBlock,
@@ -128,6 +137,14 @@ interface PdfDocumentBlockProps {
    *  `countsAsReading` — previews and tiles must not accrue attention). */
   countsAsReading?: boolean
   active?: boolean
+  /** Where the document header wants the toolbar docked; null floats it. */
+  toolbarHost?: HTMLElement | null
+  /** Height of header chrome laid over the top of this viewport, in px. The
+   *  first page starts below it; later pages scroll under it. */
+  topInset?: number
+  /** Scroll direction as a reader chrome signal: true once the reader scrolls
+   *  down, false on scroll-up or back at the top — the markdown header rule. */
+  onChromeHiddenChange?: (hidden: boolean) => void
 }
 
 function clampPageBlock(value: number, numPages: number): number {
@@ -148,6 +165,9 @@ export default function PdfDocumentBlock({
   className,
   countsAsReading = false,
   active = true,
+  toolbarHost = null,
+  topInset = 0,
+  onChromeHiddenChange,
 }: PdfDocumentBlockProps) {
   const electronRuntime = isElectronRuntimeBlock()
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -770,8 +790,8 @@ export default function PdfDocumentBlock({
     setScale(normalized)
   }, [])
 
-  const adjustManualScaleBlock = useCallback((delta: number) => {
-    commitManualScaleBlock(displayedScaleRef.current + delta)
+  const stepZoomBlock = useCallback((direction: 1 | -1) => {
+    commitManualScaleBlock(stepPdfZoomScaleBlock(displayedScaleRef.current, direction))
   }, [commitManualScaleBlock])
 
   const applyZoomModeBlock = useCallback((mode: PdfZoomModeBlock) => {
@@ -797,12 +817,12 @@ export default function PdfDocumentBlock({
 
       if (zoomModifier && (event.key === '=' || event.key === '+')) {
         event.preventDefault()
-        adjustManualScaleBlock(0.1)
+        stepZoomBlock(1)
         return
       }
       if (zoomModifier && event.key === '-') {
         event.preventDefault()
-        adjustManualScaleBlock(-0.1)
+        stepZoomBlock(-1)
         return
       }
       if (zoomModifier && event.key === '0') {
@@ -830,7 +850,7 @@ export default function PdfDocumentBlock({
 
     window.addEventListener('keydown', handleKeyDownBlock)
     return () => window.removeEventListener('keydown', handleKeyDownBlock)
-  }, [adjustManualScaleBlock, applyZoomModeBlock, numPages, scrollToPage])
+  }, [applyZoomModeBlock, numPages, scrollToPage, stepZoomBlock])
 
   const {
     annotations,
@@ -981,9 +1001,13 @@ export default function PdfDocumentBlock({
      the space and getting nothing. An overlay over a full-bleed page is the
      only version where hiding the bar actually returns the pixels. */
   const [focusMode, setFocusMode] = useState(false)
+  /* Only focus mode auto-hides the pill. With the header merely hidden the
+     pill stays put: it is the only chrome left, and reaching for it should
+     never first require a scroll-up. */
+  const autoHideChrome = focusMode
   const { chromeVisible, toggleChrome } = useReaderChromeVisibilityBlock({
     scrollRef: viewportRef,
-    enabled: focusMode && !loading && error === null,
+    enabled: autoHideChrome && !loading && error === null,
   })
 
   useNativeChromeImmersionBlock(focusMode)
@@ -1001,6 +1025,267 @@ export default function PdfDocumentBlock({
     setPaperTheme(next)
     writePdfPaperThemeBlock(next)
   }, [])
+
+  /* The controls, rendered in one of two places: docked into the document
+     header when there is one on screen, floating as a pill when there is not.
+     Floating under a visible header read as a second bar of chrome stacked on
+     the first, belonging to neither the header nor the page. */
+  const toolbarControls = (
+    <>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-8 border border-transparent px-0"
+          disabled={!canGoPrev}
+          onClick={() => { const p = Math.max(1, pageNumber - 1); setPageNumber(p); scrollToPage(p) }}
+          title="Previous page"
+        >
+          <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />
+        </Button>
+        <PdfPageJumpBlock
+          pageNumber={pageNumber}
+          numPages={numPages}
+          onJump={(p) => { setPageNumber(p); scrollToPage(p) }}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-8 border border-transparent px-0"
+          disabled={!canGoNext}
+          onClick={() => { const p = numPages > 0 ? Math.min(numPages, pageNumber + 1) : pageNumber; setPageNumber(p); scrollToPage(p) }}
+          title="Next page"
+        >
+          <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
+        </Button>
+
+        <div className="mx-1.5 h-4 w-px shrink-0 bg-border/60" />
+
+        {/* Buttons first, menu second: pinch and ⌘-scroll are imprecise on a
+            trackpad, and a click that lands on a round number every time is
+            what people actually reach for. */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-8 border border-transparent px-0"
+          onClick={() => stepZoomBlock(-1)}
+          title="Zoom out (⌘−)"
+        >
+          <Minus className="h-4 w-4" strokeWidth={1.75} />
+        </Button>
+        <PdfToolbarMenuBlock
+          title="Zoom"
+          className="min-w-[4.5rem] px-2 text-[13px] font-medium tabular-nums"
+          label={`${(displayedScale * 100).toFixed(0)}%`}
+          entries={[
+            {
+              key: 'fit-width',
+              label: 'Fit width',
+              checked: zoomMode === 'fit-width',
+              onClick: () => applyZoomModeBlock('fit-width'),
+            },
+            {
+              key: 'fit-page',
+              label: 'Fit page  ⌘9',
+              checked: zoomMode === 'fit-page',
+              onClick: () => applyZoomModeBlock('fit-page'),
+            },
+            {
+              key: 'actual',
+              label: 'Actual size  ⌘0',
+              checked: zoomMode === 'actual',
+              onClick: () => applyZoomModeBlock('actual'),
+            },
+          ]}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-8 border border-transparent px-0"
+          onClick={() => stepZoomBlock(1)}
+          title="Zoom in (⌘+)"
+        >
+          <Plus className="h-4 w-4" strokeWidth={1.75} />
+        </Button>
+
+        <div className="mx-1.5 h-4 w-px shrink-0 bg-border/60" />
+
+        <PdfToolbarMenuBlock
+          title="Paper tone"
+          className="px-2.5 text-[13px] font-medium"
+          label={(
+            <span className="flex items-center gap-2">
+              {/* A tiny sheet in the current tone, so the control shows the
+                  paper rather than only naming it. */}
+              <span
+                aria-hidden="true"
+                className="h-[14px] w-[11px] rounded-[2px] ring-1 ring-inset ring-black/15 dark:ring-white/20"
+                style={{ background: PDF_PAPER_THEME_BACKGROUNDS_BLOCK[paperTheme] }}
+              />
+              {PDF_PAPER_THEME_LABELS_BLOCK[paperTheme]}
+            </span>
+          )}
+          entries={PDF_PAPER_THEMES_BLOCK.map((theme) => ({
+            key: theme,
+            label: PDF_PAPER_THEME_LABELS_BLOCK[theme],
+            checked: paperTheme === theme,
+            onClick: () => applyPaperThemeBlock(theme),
+          }))}
+        />
+        <PdfMarkSettingsBlock style={markStyle} onChange={applyMarkStyleBlock} className="px-2.5" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-8 border border-transparent px-0"
+          onClick={undoLastAnnotation}
+          title="Undo the last unsaved mark"
+        >
+          <Undo2 className="h-4 w-4" strokeWidth={1.75} />
+        </Button>
+
+        {/* Marks are written into the PDF itself, so save state is not a
+            detail to hide — an unwritable file is the one case where a
+            reader's marks would otherwise vanish without a word. */}
+        {annotationSaveState === 'pending' && (
+          <span className="shrink-0 px-1 text-[11px] text-muted-foreground">Saving…</span>
+        )}
+        {annotationSaveState === 'saved' && (
+          <span className="shrink-0 px-1 text-[11px] text-muted-foreground">Saved</span>
+        )}
+        {annotationSaveState === 'unwritable' && (
+          <span className="shrink-0 px-1 text-[11px] text-destructive" title={annotationSaveError ?? undefined}>
+            Can't write PDF
+          </span>
+        )}
+
+        <div className="mx-1.5 h-4 w-px shrink-0 bg-border/60" />
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-8 border border-transparent px-0"
+          onClick={() => setFocusMode((prev) => !prev)}
+          title={focusMode ? 'Leave focus mode (Esc)' : 'Focus mode — full screen reading'}
+        >
+          {focusMode ? <Minimize2 className="h-4 w-4" strokeWidth={1.75} /> : <Maximize2 className="h-4 w-4" strokeWidth={1.75} />}
+        </Button>
+    </>
+  )
+
+  const docked = toolbarHost !== null && !autoHideChrome
+
+  /* Link peeks and jumps. Hovering a citation or figure reference shows a crop
+     of where it points (PdfLinkPeekBlock); clicking jumps there and leaves a
+     "Back" chip, because the reader almost always wants to return to the
+     sentence they were reading. A tap on touch opens the peek instead, since
+     there is no hover to preview with. */
+  const { peek, openPeek, leavePeek, holdPeek, closePeek } = usePdfLinkPeekBlock(docProxy)
+  const [backTarget, setBackTarget] = useState<{ scrollTop: number; page: number } | null>(null)
+
+  const jumpToDestBlock = useCallback((page: number, destTop: number | null) => {
+    const viewport = viewportRef.current
+    const element = pageRefs.current.get(page)
+    if (!viewport || !element) return
+    setBackTarget({ scrollTop: viewport.scrollTop, page: pageNumber })
+    const pageTop = element.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop
+    const within = destTop === null ? 0 : Math.max(0, destTop - crop.top) * pageBoxForBlock(page).scale
+    const clearance = (docked ? topInset + 12 : 56) + 12
+    viewport.scrollTo({ top: Math.max(0, pageTop + within - clearance), behavior: 'smooth' })
+  }, [crop.top, docked, pageBoxForBlock, pageNumber, topInset])
+
+  /* Pages hold these across renders; the ref keeps the object stable so a
+     page does not re-render just because the viewer did. */
+  const linkActionsRef = useRef<PdfPageLinkHandlersBlock | null>(null)
+  linkActionsRef.current = {
+    onEnter: ({ link, anchor }) => {
+      if (link.kind === 'internal') openPeek(link, anchor)
+    },
+    onLeave: leavePeek,
+    onActivate: ({ link, anchor, pointerType }) => {
+      if (link.kind === 'external') {
+        void openExternalUrlOrch(link.url).catch(() => undefined)
+        return
+      }
+      if (pointerType === 'touch') {
+        openPeek(link, anchor, { immediate: true, touch: true })
+        return
+      }
+      closePeek()
+      if (!docProxy) return
+      void resolvePdfLinkPeekTargetBlock(docProxy, link)
+        .then((target) => { if (target) jumpToDestBlock(target.pageNumber, target.destTop) })
+        .catch(() => undefined)
+    },
+  }
+  const linkHandlers = useMemo<PdfPageLinkHandlersBlock>(() => ({
+    onEnter: (event) => linkActionsRef.current?.onEnter(event),
+    onLeave: () => linkActionsRef.current?.onLeave(),
+    onActivate: (event) => linkActionsRef.current?.onActivate(event),
+  }), [])
+
+  /* The card is anchored to where the link was; once the page moves it points
+     at nothing, so any scroll closes it. A tap-opened card also closes on a
+     tap anywhere else. */
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!peek || !viewport) return
+    const onScrollBlock = () => closePeek()
+    const onPointerDownBlock = (event: PointerEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest('[data-pdf-link-peek]')) closePeek()
+    }
+    viewport.addEventListener('scroll', onScrollBlock, { passive: true })
+    if (peek.touch) window.addEventListener('pointerdown', onPointerDownBlock)
+    return () => {
+      viewport.removeEventListener('scroll', onScrollBlock)
+      window.removeEventListener('pointerdown', onPointerDownBlock)
+    }
+  }, [closePeek, peek])
+
+  /* Scroll direction with hysteresis: the title hides after a deliberate
+     run of downward scroll and returns after a shorter run upward. A per-event
+     threshold flipped on trackpad jitter and on the reversal at the tail of a
+     momentum scroll. Revealing is the cheaper mistake, so it needs less
+     travel. A pinch moves scrollTop as part of re-anchoring the zoom; that is
+     not the reader scrolling. */
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport || !onChromeHiddenChange) return
+    const HIDE_AFTER_PX = 24
+    const REVEAL_AFTER_PX = 12
+    let last = viewport.scrollTop
+    let run = 0
+    let hidden = false
+    const setHiddenBlock = (next: boolean) => {
+      if (next === hidden) return
+      hidden = next
+      onChromeHiddenChange(next)
+    }
+    const onScrollBlock = () => {
+      const top = viewport.scrollTop
+      const delta = top - last
+      last = top
+      if (gestureActiveRef.current || delta === 0) return
+      if (top <= 4) {
+        run = 0
+        setHiddenBlock(false)
+        return
+      }
+      /* A change of direction starts a new run. */
+      run = Math.sign(delta) === Math.sign(run) ? run + delta : delta
+      if (run >= HIDE_AFTER_PX) setHiddenBlock(true)
+      else if (run <= -REVEAL_AFTER_PX) setHiddenBlock(false)
+    }
+    viewport.addEventListener('scroll', onScrollBlock, { passive: true })
+    return () => {
+      viewport.removeEventListener('scroll', onScrollBlock)
+      if (hidden) onChromeHiddenChange(false)
+    }
+  }, [onChromeHiddenChange])
 
   return (
     <div
@@ -1024,164 +1309,68 @@ export default function PdfDocumentBlock({
         className,
       )}
     >
+      {/* The window still needs a handle while the reader owns the whole
+          window, and the pill is too small to be one. A transparent strip
+          along the top edge takes that job — the same 2.25rem the traffic
+          lights sit in. */}
+      {focusMode && electronRuntime && (
+        <div aria-hidden="true" className="absolute inset-x-0 top-0 z-10 h-9 [-webkit-app-region:drag]" />
+      )}
+
+      {/* A floating pill rather than a ruled bar: the page is the subject and
+          the controls sit over the desk, not in a strip above it. The page
+          column is padded to clear it at the top and scrolls under it after.
+
+          In focus mode it auto-hides on scroll-down and comes back on
+          scroll-up — the same state machine the iOS reader uses. Otherwise
+          it stays visible. */}
+      {docked ? createPortal(
+        <div className="flex items-center gap-0.5 [&_button]:h-8 [&_button]:rounded-full">
+          {toolbarControls}
+        </div>,
+        toolbarHost,
+      ) : (
       <div
         className={cn(
-          'z-20 flex flex-wrap items-center gap-1 border-b border-border/60 bg-card/95 px-3 py-2 backdrop-blur',
-          /* Absolute only while immersive, so the desktop layout keeps the
-             toolbar in flow and the page column never sits under it. */
-          focusMode && 'absolute inset-x-0 top-0 transition-transform duration-200 ease-out',
-          focusMode && !chromeVisible && '-translate-y-full',
-          /* Same contract as `.ltm-shell-top-chrome` (index.css) and the
-             Excalidraw focus header: in focus mode this bar IS the title bar,
-             so it drags the window — and every interactive child must opt back
-             out, or the drag region swallows the click. */
-          focusMode && electronRuntime
-            && '[-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag] [&_select]:[-webkit-app-region:no-drag]',
+          'absolute left-1/2 z-20 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-full border border-border/60 bg-background/85 px-1.5 py-1 shadow-[0_6px_24px_-8px_rgba(0,0,0,0.18)] backdrop-blur-xl [scrollbar-width:none]',
+          'transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+          'dark:bg-[#2a2a2d]/85 dark:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.6)]',
+          electronRuntime && '[-webkit-app-region:no-drag]',
+          autoHideChrome && !chromeVisible && 'pointer-events-none -translate-y-[calc(100%+1rem)] opacity-0',
+          '[&_button]:h-8 [&_button]:rounded-full',
         )}
-        /* Electron draws the window controls over the top-left of the content,
-           so focus mode has to leave them a strip — the same 2.25rem the
-           Excalidraw focus header reserves. Without it the page-back chevron
-           sits underneath the traffic lights and cannot be clicked. */
-        style={focusMode
-          ? {
-            paddingTop: electronRuntime
-              ? '2.25rem'
-              : 'calc(var(--ltm-safe-top, 0px) + 0.5rem)',
-          }
-          : undefined}
+        style={{
+          top: focusMode && !electronRuntime
+            ? 'calc(var(--ltm-safe-top, 0px) + 0.5rem)'
+            : '0.5rem',
+        }}
       >
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="w-9 border border-transparent px-0"
-          disabled={!canGoPrev}
-          onClick={() => { const p = Math.max(1, pageNumber - 1); setPageNumber(p); scrollToPage(p) }}
-          title="Previous page"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <span className="min-w-[6.5rem] text-center text-xs text-muted-foreground">
-          Page {pageNumber}{numPages > 0 ? ` / ${numPages}` : ''}
-        </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="w-9 border border-transparent px-0"
-          disabled={!canGoNext}
-          onClick={() => { const p = numPages > 0 ? Math.min(numPages, pageNumber + 1) : pageNumber; setPageNumber(p); scrollToPage(p) }}
-          title="Next page"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-
-        <div className="mx-1 h-5 w-px bg-border/70" />
-
-
-        <PdfToolbarMenuBlock
-          title="Paper tone"
-          label={PDF_PAPER_THEME_LABELS_BLOCK[paperTheme]}
-          entries={PDF_PAPER_THEMES_BLOCK.map((theme) => ({
-            key: theme,
-            label: PDF_PAPER_THEME_LABELS_BLOCK[theme],
-            checked: paperTheme === theme,
-            onClick: () => applyPaperThemeBlock(theme),
-          }))}
-        />
-
-        <div className="mx-1 h-5 w-px bg-border/70" />
-
-        <PdfMarkSettingsBlock style={markStyle} onChange={applyMarkStyleBlock} />
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="w-9 border border-transparent px-0"
-          onClick={undoLastAnnotation}
-          title="Undo the last unsaved mark"
-        >
-          <Undo2 className="h-4 w-4" />
-        </Button>
-
-        {/* Marks are written into the PDF itself, so save state is not a
-            detail to hide — an unwritable file is the one case where a
-            reader's marks would otherwise vanish without a word. */}
-        {annotationSaveState === 'pending' && (
-          <span className="text-[11px] text-muted-foreground">Saving…</span>
-        )}
-        {annotationSaveState === 'saved' && (
-          <span className="text-[11px] text-muted-foreground">Saved to PDF</span>
-        )}
-        {annotationSaveState === 'unwritable' && (
-          <span className="text-[11px] text-destructive" title={annotationSaveError ?? undefined}>
-            This PDF can't be written
-          </span>
-        )}
-
-        {/* Pinch is the zoom on touch; on a pointer surface everything lives
-            behind one button that reads the current zoom. */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="w-9 border border-transparent px-0"
-          onClick={() => setFocusMode((prev) => !prev)}
-          title={focusMode ? 'Leave focus mode (Esc)' : 'Focus mode — full screen reading'}
-        >
-          {focusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-        </Button>
-
-        {!focusMode && (
-          <>
-            <div className="mx-1 h-5 w-px bg-border/70" />
-            <PdfToolbarMenuBlock
-              title="Zoom"
-              label={`${(displayedScale * 100).toFixed(0)}%`}
-              entries={[
-                {
-                  key: 'fit-width',
-                  label: 'Fit width',
-                  checked: zoomMode === 'fit-width',
-                  onClick: () => applyZoomModeBlock('fit-width'),
-                },
-                {
-                  key: 'fit-page',
-                  label: 'Fit page  ⌘9',
-                  checked: zoomMode === 'fit-page',
-                  onClick: () => applyZoomModeBlock('fit-page'),
-                },
-                {
-                  key: 'actual',
-                  label: 'Actual size  ⌘0',
-                  checked: zoomMode === 'actual',
-                  onClick: () => applyZoomModeBlock('actual'),
-                },
-                { key: 'sep', kind: 'separator' },
-                { key: 'in', label: 'Zoom in  ⌘+', checked: false, onClick: () => adjustManualScaleBlock(0.1) },
-                { key: 'out', label: 'Zoom out  ⌘−', checked: false, onClick: () => adjustManualScaleBlock(-0.1) },
-              ]}
-            />
-          </>
-        )}
+        {toolbarControls}
       </div>
+      )}
 
       <div
         ref={viewportRef}
         className={cn(
+          /* Top padding clears the floating pill (0.5rem + 2.5rem + gap);
+             scroll padding does the same for page jumps, which use
+             scrollIntoView and would otherwise park the page under it. */
           'min-h-0 flex-1 overflow-auto p-3',
+          !docked && 'pt-14 scroll-pt-14',
           /* Deliberately transparent. The pinch preview scales THIS element,
              so any background painted here scales and slides with the gesture —
              the surround visibly moving during a zoom, which Preview never
              does because it only ever scales the pages. The surround is painted
              by the parent instead, where the transform cannot reach it. */
           'bg-transparent',
-          /* Deliberately no top padding in focus mode: the page runs full
-             bleed and scrolls under the overlay bar. Reserving the bar's
-             height here is what made hiding it pointless. */
+          /* The padding is only the top of the scroll: after the first
+             screen the pages run under the pill, which is what lets hiding
+             it give the pixels back. */
         )}
-        style={{ touchAction: 'pan-x pan-y' }}
+        style={{
+          touchAction: 'pan-x pan-y',
+          ...(docked ? { paddingTop: topInset + 12, scrollPaddingTop: topInset + 12 } : null),
+        }}
         /* A tap on the page brings the chrome back, the way every native
            reader behaves. Only while immersive — on desktop a click in the
            page is a selection gesture, not a chrome gesture. */
@@ -1264,6 +1453,7 @@ export default function PdfDocumentBlock({
                       inkColor={inkColor}
                       inkThickness={inkThickness}
                       onCommitInk={commitInkBlock}
+                      linkHandlers={linkHandlers}
                     />
                   ) : (
                     <div
@@ -1298,6 +1488,49 @@ export default function PdfDocumentBlock({
             highlightSelectionBlock(colorKey)
           }}
         />
+      )}
+
+      {peek && docProxy && (
+        <PdfLinkPeekBlock
+          doc={docProxy}
+          target={peek.target}
+          anchor={peek.anchor}
+          paperTheme={paperTheme}
+          touch={peek.touch}
+          onGo={() => { closePeek(); jumpToDestBlock(peek.target.pageNumber, peek.target.destTop) }}
+          onPointerEnter={holdPeek}
+          onPointerLeave={() => { if (!peek.touch) leavePeek() }}
+        />
+      )}
+
+      {backTarget && (
+        <div
+          className={cn(
+            'absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border/60 bg-background/90 p-1 text-xs shadow-[0_6px_24px_-8px_rgba(0,0,0,0.18)] backdrop-blur-xl',
+            'dark:bg-[#2a2a2d]/90',
+            focusMode ? 'bottom-20' : 'bottom-5',
+          )}
+        >
+          <button
+            type="button"
+            className="flex items-center gap-1.5 rounded-full px-3 py-1.5 font-medium text-foreground transition-colors hover:bg-muted"
+            onClick={() => {
+              viewportRef.current?.scrollTo({ top: backTarget.scrollTop, behavior: 'smooth' })
+              setBackTarget(null)
+            }}
+          >
+            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Back to page {backTarget.page}
+          </button>
+          <button
+            type="button"
+            title="Dismiss"
+            className="rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            onClick={() => setBackTarget(null)}
+          >
+            <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </button>
+        </div>
       )}
 
       {focusMode && !loading && !error && (

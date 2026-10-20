@@ -828,6 +828,17 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     setStorageItem(STORAGE_KEYS.thinkingSpaceExplorerCollapsed, explorerCollapsed ? '1' : '0')
   }, [explorerCollapsed])
 
+  /* Collapsing the nav is a reading posture: the document header goes with it,
+     and comes back with the nav. The eye toggle still overrides either way, but
+     only until the nav is toggled again — the nav sets the default afresh rather
+     than the app remembering a pin the user has long forgotten about. A hidden
+     header can be peeked by hovering the top edge (useHeaderPeekBlock). iOS keeps
+     its own chrome rules and is left out. */
+  useEffect(() => {
+    if (isIosSurface) return
+    setInlineDocHeaderHidden(explorerCollapsed)
+  }, [explorerCollapsed, isIosSurface])
+
   useEffect(() => {
     setStorageItem(STORAGE_KEYS.thinkingSpaceExplorerWidthPx, String(explorerWidthPx))
   }, [explorerWidthPx])

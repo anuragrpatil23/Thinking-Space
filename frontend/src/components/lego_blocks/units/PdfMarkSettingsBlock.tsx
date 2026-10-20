@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, PenLine } from 'lucide-react'
+import { Highlighter, PenLine } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
   PDF_MARK_PALETTE_BLOCK,
@@ -25,9 +25,11 @@ import { cn } from '@/lib/utils'
 export default function PdfMarkSettingsBlock({
   style,
   onChange,
+  className,
 }: {
   style: PdfMarkStyleBlock
   onChange: (next: PdfMarkStyleBlock) => void
+  className?: string
 }) {
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
@@ -51,7 +53,9 @@ export default function PdfMarkSettingsBlock({
     }
   }, [position])
 
-  const penColor = resolvePdfMarkColorBlock(style.penColorKey)
+  const activeColor = resolvePdfMarkColorBlock(
+    style.penTool === 'highlighter' ? style.highlightColorKey : style.penColorKey,
+  )
 
   return (
     <>
@@ -63,9 +67,10 @@ export default function PdfMarkSettingsBlock({
         variant="ghost"
         size="sm"
         className={cn(
-          'border border-transparent',
+          'w-8 border border-transparent px-0',
           '[&[aria-expanded=true]]:ring-0 [&[aria-expanded=true]]:ring-offset-0 [&[aria-expanded=true]]:outline-none',
           position && 'bg-muted text-foreground',
+          className,
         )}
         title="Pen and highlighter"
         aria-haspopup="dialog"
@@ -81,14 +86,20 @@ export default function PdfMarkSettingsBlock({
           setPosition({ x: Math.max(8, rect.left), y: rect.bottom + 6 })
         }}
       >
-        <PenLine className="mr-1.5 h-3.5 w-3.5" />
-        {/* The current pen colour, so the toolbar answers "what will this draw"
-            without opening anything. */}
-        <span
-          className="h-3 w-3 rounded-full ring-1 ring-black/20"
-          style={{ background: `rgb(${penColor.rgb.join(' ')})` }}
-        />
-        <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
+        {/* The active tool's own glyph over a bar of its colour — the
+            font-colour pattern from every word processor. It answers "what
+            will this draw" in one shape; an icon with a loose dot beside it
+            read as two unrelated things. */}
+        <span className="relative flex h-5 w-5 items-start justify-center">
+          {style.penTool === 'highlighter'
+            ? <Highlighter className="h-4 w-4" strokeWidth={1.75} />
+            : <PenLine className="h-4 w-4" strokeWidth={1.75} />}
+          <span
+            aria-hidden="true"
+            className="absolute inset-x-0.5 bottom-0 h-[3px] rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/15"
+            style={{ background: `rgb(${activeColor.rgb.join(' ')})` }}
+          />
+        </span>
       </Button>
 
       {position && createPortal(

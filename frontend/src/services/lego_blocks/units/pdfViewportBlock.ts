@@ -152,6 +152,29 @@ export function computeDisplayedPdfScaleBlock(params: {
   }
 }
 
+/* The stops the +/− buttons and ⌘+/⌘− walk through. A fixed ladder rather
+   than "current ± 10%" because a fit mode lands on arbitrary scales (1.37…),
+   and stepping from there by a constant never returns to a round number —
+   Preview and every browser behave this way for the same reason. */
+export const PDF_ZOOM_STOPS_BLOCK: readonly number[] = [
+  0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5,
+]
+
+/** Next stop strictly above (direction 1) or below (-1) the current scale.
+    Holds at the end of the ladder rather than wrapping. */
+export function stepPdfZoomScaleBlock(current: number, direction: 1 | -1): number {
+  const epsilon = 0.005
+  if (direction > 0) {
+    return PDF_ZOOM_STOPS_BLOCK.find((stop) => stop > current + epsilon)
+      ?? Math.max(current, PDF_ZOOM_STOPS_BLOCK[PDF_ZOOM_STOPS_BLOCK.length - 1])
+  }
+  for (let i = PDF_ZOOM_STOPS_BLOCK.length - 1; i >= 0; i -= 1) {
+    if (PDF_ZOOM_STOPS_BLOCK[i] < current - epsilon) return PDF_ZOOM_STOPS_BLOCK[i]
+  }
+  /* Below the ladder already: never let "zoom out" zoom in. */
+  return Math.min(current, PDF_ZOOM_STOPS_BLOCK[0])
+}
+
 export interface PdfPageBoxBlock {
   width: number
   height: number

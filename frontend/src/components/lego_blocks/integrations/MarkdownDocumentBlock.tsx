@@ -71,6 +71,7 @@ import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentB
 import { isUrlShortcutPathBlock } from '@/services/lego_blocks/units/urlShortcutBlock'
 import TableDocumentBlock from '@/components/lego_blocks/integrations/TableDocumentBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
+import { useHeaderPeekBlock } from '@/components/lego_blocks/hooks/shared/useHeaderPeekBlock'
 import GoogleDocDocumentBlock from '@/components/lego_blocks/integrations/GoogleDocDocumentBlock'
 import ImageDocumentBlock from '@/components/lego_blocks/integrations/ImageDocumentBlock'
 import HtmlDocumentBlock from '@/components/lego_blocks/integrations/HtmlDocumentBlock'
@@ -800,6 +801,7 @@ function MarkdownTextDocumentRuntimeBlock({
     && !/\.excalidraw\.md$/i.test(path)
   const effectiveTopBarHidden = topBarHiddenProp !== undefined ? topBarHiddenProp : topBarHiddenInViewMode
   const hideTopBarInView = !isEditing && effectiveTopBarHidden
+  const headerPeek = useHeaderPeekBlock(hideTopBarInView)
 
   // Find-in-note — one bar, both modes, two sources. The vault search words
   // (explorer filter, ⌘K) light up on their own; ⌘F opens the bar to type,
@@ -1995,6 +1997,9 @@ function MarkdownTextDocumentRuntimeBlock({
       data-prevent-sheet-escape={isEditing ? 'true' : undefined}
     >
       <div className="relative min-h-0 flex-1">
+        {hideTopBarInView && !headerPeek.peeking && (
+          <div aria-hidden="true" className="absolute inset-x-0 top-0 z-50 h-2" {...headerPeek.zoneProps} />
+        )}
         {findBarOpen && (
           <div className="absolute right-4 z-50" style={{ top: findBarTop }}>
             <NoteFindBarBlock
@@ -2053,10 +2058,20 @@ function MarkdownTextDocumentRuntimeBlock({
               // strip under it, so the side inset moves inside the header.
               htmlRunsToEdges && 'pt-2',
               isHeaderHidden && !htmlHeaderCollapses && '-translate-y-full',
-              hideTopBarInView && 'hidden',
+              // Hidden header: out of the layout (zero height), but still
+              // mounted so a hover at the top edge can slide it back in over
+              // the content — see useHeaderPeekBlock.
+              hideTopBarInView && 'h-0 overflow-visible',
             )}
             style={htmlHeaderCollapses && isHeaderHidden ? { marginTop: -headerHeight } : undefined}
+            {...(hideTopBarInView ? headerPeek.regionProps : {})}
           >
+            <div
+              className={cn(
+                hideTopBarInView && 'bg-card shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)] transition-[transform,opacity] duration-200 ease-out',
+                hideTopBarInView && !headerPeek.peeking && 'pointer-events-none -translate-y-full opacity-0',
+              )}
+            >
             <div
               className={cn(
                 'ts-md-header ts-doc-header flex items-start justify-between gap-3 border-b border-border/50',
@@ -2422,6 +2437,7 @@ function MarkdownTextDocumentRuntimeBlock({
                 )}
               </div>
             )}
+            </div>
           </div>
 
           {loading && (
@@ -2796,6 +2812,7 @@ function PdfDocumentRuntimeBlock({
   path,
   active = true,
   countsAsReading = false,
+  topBarHidden = false,
   onOpenPath,
   onClose,
   showCloseButton = false,
@@ -2856,46 +2873,133 @@ function PdfDocumentRuntimeBlock({
     },
   ], [canOpenInSystem, handleOpenInSystem, onOpenPath, openInSystemButtonLabel, path])
 
+  /* A hidden header leaves the layout entirely, so the page gets the pixels;
+     hovering the top edge slides it back in over the page. */
+  const { peeking, zoneProps, regionProps } = useHeaderPeekBlock(topBarHidden)
+  /* The header hosts the PDF toolbar as its second row while it is on
+     screen. Hidden header: the toolbar floats as a pill instead. */
+  const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null)
+
+  /* Title and controls sit over the page rather than above it, like the
+     markdown header sitting sticky inside its scroller: scrolling down slides
+     the title away and leaves the controls row at the top edge; scrolling up
+     brings it back. Being an overlay is what lets this be a transform — taking
+     the title out of the flow instead would resize the page viewport on every
+     toggle and jump the text under the reader's eyes. */
+  const [scrolledAway, setScrolledAway] = useState(false)
+  const chromeRef = useRef<HTMLDivElement | null>(null)
+  const titleRef = useRef<HTMLDivElement | null>(null)
+  const [chromeHeight, setChromeHeight] = useState(0)
+  const [titleHeight, setTitleHeight] = useState(0)
+
+  useLayoutEffect(() => {
+    const chrome = chromeRef.current
+    const title = titleRef.current
+    if (!chrome || !title) return
+    const measure = () => {
+      setChromeHeight(chrome.offsetHeight)
+      setTitleHeight(title.offsetHeight)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(chrome)
+    ro.observe(title)
+    return () => ro.disconnect()
+  }, [topBarHidden])
+
+  /* The extra 0.5rem is the pane's own inset, so no sliver of the title
+     shows above the controls row once it has slid away. */
+  const titleAway = !topBarHidden && scrolledAway
+
   return (
-    <div className={cn('flex h-full min-h-0 flex-col bg-card p-2', className)}>
-      <div className="ts-doc-header border-b border-border/50 px-6 py-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="truncate font-medium">{filename}</span>
-            </div>
-            {breadcrumb && <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>}
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {/* One overflow menu, exactly as the markdown header does it. A row
-                of individually surfaced file actions is a different vocabulary
-                from every other document surface in the app, and none of these
-                is used often enough to earn a permanent button. */}
-            <OverflowMenuButtonBlock entries={pdfHeaderMenuEntries} title="File actions" />
-            {showCloseButton && onClose && (
-              <button
-                onClick={onClose}
-                className="rounded-lg p-1.5 transition-colors hover:bg-muted"
-                title="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-      {openInSystemError && (
-        <div className="mx-6 mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {openInSystemError}
-        </div>
+    <div className={cn('relative flex h-full min-h-0 flex-col overflow-hidden bg-card p-2', className)}>
+      {topBarHidden && !peeking && (
+        <div aria-hidden="true" className="absolute inset-x-0 top-0 z-40 h-2" {...zoneProps} />
       )}
+      <div
+        ref={chromeRef}
+        /* iOS's sheet curve: quick off the mark, soft landing. The stock
+           ease-out over 200ms read as a block being shoved. */
+        className="pointer-events-none absolute inset-x-2 top-2 z-30 transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+        style={titleAway ? { transform: `translateY(-${titleHeight + 8}px)` } : undefined}
+      >
+        <div
+          ref={titleRef}
+          {...(topBarHidden ? regionProps : {})}
+          className={cn(
+            'ts-doc-header border-b border-border/50 bg-card px-6 py-5',
+            !(topBarHidden && !peeking) && !titleAway && 'pointer-events-auto',
+            !topBarHidden && 'transition-opacity duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+            titleAway && 'opacity-0',
+            topBarHidden && 'rounded-t-lg shadow-[0_8px_24px_-12px_rgba(0,0,0,0.25)] transition-[transform,opacity] duration-200 ease-out',
+            topBarHidden && !peeking && 'pointer-events-none -translate-y-[calc(100%+0.5rem)] opacity-0',
+          )}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="truncate font-medium">{filename}</span>
+              </div>
+              {breadcrumb && <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>}
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {/* One overflow menu, exactly as the markdown header does it. A row
+                  of individually surfaced file actions is a different vocabulary
+                  from every other document surface in the app, and none of these
+                  is used often enough to earn a permanent button. */}
+              <OverflowMenuButtonBlock entries={pdfHeaderMenuEntries} title="File actions" />
+              {showCloseButton && onClose && (
+                <button
+                  onClick={onClose}
+                  className="rounded-lg p-1.5 transition-colors hover:bg-muted"
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        {/* The reader's controls get a row of their own under the header, with
+            its own rule, centred over the page. */}
+        {!topBarHidden && (
+          /* Once the title has slid away the row becomes the floating pill in
+             place: the full-width strip and its rule fade out, and the
+             controls take on the pill surface. Their box never changes, so
+             nothing moves sideways — only the surface around them does. The
+             empty strip stops catching clicks meant for the page, and stops
+             clipping: an overflow box would cut the pill's shadow into a
+             visible rectangle. */
+          <div
+            ref={setToolbarHost}
+            data-pill={titleAway ? 'true' : 'false'}
+            className={cn(
+              'flex justify-center border-b px-6 py-2 [scrollbar-width:none]',
+              'transition-[background-color,border-color] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+              '[&>div]:pointer-events-auto [&>div]:rounded-full [&>div]:border [&>div]:px-1.5 [&>div]:py-1',
+              '[&>div]:transition-[background-color,border-color,box-shadow] [&>div]:duration-300 [&>div]:ease-[cubic-bezier(0.32,0.72,0,1)]',
+              titleAway
+                ? 'pointer-events-none overflow-visible border-transparent bg-transparent [&>div]:border-border/60 [&>div]:bg-background/85 [&>div]:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.18)] [&>div]:backdrop-blur-xl dark:[&>div]:bg-[#2a2a2d]/85'
+                : 'pointer-events-auto overflow-x-auto border-border/50 bg-card [&>div]:border-transparent [&>div]:bg-transparent [&>div]:shadow-none',
+            )}
+          />
+        )}
+        {openInSystemError && (
+          <div className="pointer-events-auto mx-6 mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {openInSystemError}
+          </div>
+        )}
+      </div>
 
       <div className="min-h-0 flex-1">
         <PdfDocumentBlock
           path={path}
           active={active}
           countsAsReading={countsAsReading}
+          toolbarHost={topBarHidden ? null : toolbarHost}
+          topInset={topBarHidden ? 0 : chromeHeight}
+          onChromeHiddenChange={setScrolledAway}
           className="h-full"
         />
       </div>
@@ -3125,6 +3229,7 @@ function MarkdownDocumentBlock(props: MarkdownDocumentBlockProps) {
         path={props.path}
         active={props.active}
         countsAsReading={props.countsAsReading}
+        topBarHidden={props.topBarHidden}
         initialMode={props.initialMode}
         onSaved={props.onSaved}
         onOpenPath={props.onOpenPath}

@@ -17,6 +17,7 @@ import {
 } from '@/services/lego_blocks/units/pdfPaperThemeBlock'
 import { cn } from '@/lib/utils'
 import PdfAnnotationOverlayBlock from '@/components/lego_blocks/units/PdfAnnotationOverlayBlock'
+import PdfPageLinkLayerBlock, { type PdfLinkPointerBlock } from '@/components/lego_blocks/units/PdfPageLinkLayerBlock'
 import { usePenInkCaptureBlock } from '@/components/lego_blocks/hooks/units/usePenInkCaptureBlock'
 import {
   strokeToSvgPathBlock,
@@ -74,6 +75,14 @@ interface PdfPageCanvasBlockProps {
   inkColor?: [number, number, number]
   inkThickness?: number
   onCommitInk?: (pageNumber: number, strokePdfPoints: PointBlock[]) => void
+  /** Link hit targets; omitted, the page has no link layer. */
+  linkHandlers?: PdfPageLinkHandlersBlock
+}
+
+export interface PdfPageLinkHandlersBlock {
+  onEnter: (event: PdfLinkPointerBlock) => void
+  onLeave: () => void
+  onActivate: (event: PdfLinkPointerBlock) => void
 }
 
 /* Page rasters run one at a time, process-wide.
@@ -117,6 +126,7 @@ export default function PdfPageCanvasBlock({
   inkColor = [250, 204, 21],
   inkThickness = 2,
   onCommitInk,
+  linkHandlers,
 }: PdfPageCanvasBlockProps) {
   const livePathRef = useRef<SVGPathElement | null>(null)
 
@@ -339,6 +349,18 @@ export default function PdfPageCanvasBlock({
             width: `${displayedWidth + (crop.left + crop.right) * displayedScale}px`,
             height: `${displayedHeight + (crop.top + crop.bottom) * displayedScale}px`,
           }}
+        />
+      )}
+
+      {linkHandlers && (
+        <PdfPageLinkLayerBlock
+          doc={doc}
+          pageNumber={pageNumber}
+          displayedScale={displayedScale}
+          crop={crop}
+          onEnter={linkHandlers.onEnter}
+          onLeave={linkHandlers.onLeave}
+          onActivate={linkHandlers.onActivate}
         />
       )}
 

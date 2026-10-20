@@ -21,11 +21,13 @@ export default function PdfToolbarMenuBlock({
   entries,
   title,
   active = false,
+  className,
 }: {
   label: ReactNode
   entries: ContextMenuEntryBlock[]
   title: string
   active?: boolean
+  className?: string
 }) {
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   /* ContextMenuBlock closes on any outside pointerdown, including one on this
@@ -53,6 +55,7 @@ export default function PdfToolbarMenuBlock({
           '[&[aria-expanded=true]]:ring-0 [&[aria-expanded=true]]:ring-offset-0 [&[aria-expanded=true]]:outline-none',
           'border border-transparent',
           (active || menuPosition !== null) && 'bg-muted text-foreground',
+          className,
         )}
         title={title}
         aria-haspopup="menu"
@@ -69,7 +72,7 @@ export default function PdfToolbarMenuBlock({
         }}
       >
         {label}
-        <ChevronDown className="ml-1 h-3.5 w-3.5 opacity-60" />
+        <ChevronDown className="ml-1 h-3 w-3 opacity-50" strokeWidth={2} />
       </Button>
 
       {menuPosition && (

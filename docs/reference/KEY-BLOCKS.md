@@ -104,6 +104,31 @@ pdf.js directly so the bitmap can be decoupled from the layout box.
 - `pdfPaperThemeBlock.ts` — paper tones as a **per-raster ImageData pass**.
   Never a CSS filter on a live canvas: that is exactly the Excalidraw failure in
   IOS-MEMORY.md, and its cost is per composite frame rather than per raster.
+- `pdfLinkTargetBlock.ts` + `pdfPageLinksBlock.ts` + `PdfLinkPeekBlock.tsx` —
+  citation/figure peek (2026-10). A link annotation gives a destination
+  *point*, not a region; the peek derives the region from the link's own text.
+  A reference crops to **one column**, recovered from the destination page's
+  text runs, so the neighbouring column's entries never sit beside it. A
+  figure/table shows a tall full-width band on **both** sides of the anchor,
+  because LaTeX anchors floats inconsistently (top with `hypcap`, caption
+  without it, and APA puts the caption above the image). The card rasters
+  **only the crop** via `getViewport({ offsetX, offsetY })`, never a full page,
+  and applies paper tone as the same ImageData pass. A click jumps and leaves
+  a "Back to page N" chip; a tap on touch opens the peek with a Go button.
+  **Figures and tables are located by their caption, not the link
+  destination** (`getPdfCaptionIndexBlock`, built once per document). Caption
+  typography gives the side: "Figure 3: text…" (LaTeX) sits under the image,
+  a lone "Figure 4" label (APA) sits above it, tables are above in both. The
+  same index turns plain-text "Fig. 3bc" mentions into links for PDFs built
+  without hyperlinks (dotted underline). Link text is sliced out of the run
+  by even glyph width with one character of slack, and classified from
+  `before + text` because many templates link only the number of "Figure 2".
+- PDF header chrome (`PdfDocumentRuntimeBlock` in `MarkdownDocumentBlock.tsx`)
+  is an **overlay** over the page viewport, not a row above it, so the title
+  can slide away on scroll as a transform. Taking it out of flow instead
+  resizes the viewport on every toggle and jumps the text. The toolbar docks
+  into the header via portal (`toolbarHost`) and morphs into the floating
+  pill once the title is away; with the header hidden it floats from the start.
 - `usePenInkCaptureBlock.ts` — Apple Pencil. **Neither `touch-action` nor
   `preventDefault` on the pointer event stops WebKit scrolling**; it decides a
   touch is a scroll inside its own touch pipeline before either is consulted, so

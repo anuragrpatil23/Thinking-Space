@@ -8,6 +8,7 @@ import {
   computeZoomScrollAnchorBlock,
   resolvePdfPageMetricsBlock,
   rotatePdfPageMetricsBlock,
+  stepPdfZoomScaleBlock,
   type PdfNaturalPageMetricsBlock,
 } from '@/services/lego_blocks/units/pdfViewportBlock'
 
@@ -180,5 +181,23 @@ describe('pdfViewportBlock', () => {
       centerPage: 10,
       numPages: 10,
     })).toEqual({ start: 8, end: 10 })
+  })
+})
+
+describe('stepPdfZoomScaleBlock', () => {
+  it('steps from an arbitrary fit scale to the next round stop', () => {
+    expect(stepPdfZoomScaleBlock(1.37, 1)).toBe(1.5)
+    expect(stepPdfZoomScaleBlock(1.37, -1)).toBe(1.25)
+  })
+
+  it('moves off a stop it is already on', () => {
+    expect(stepPdfZoomScaleBlock(1, 1)).toBe(1.1)
+    expect(stepPdfZoomScaleBlock(1.001, -1)).toBe(0.9)
+  })
+
+  it('holds at both ends of the ladder', () => {
+    expect(stepPdfZoomScaleBlock(5, 1)).toBe(5)
+    expect(stepPdfZoomScaleBlock(0.4, -1)).toBe(0.4)
+    expect(stepPdfZoomScaleBlock(0.5, -1)).toBe(0.5)
   })
 })
