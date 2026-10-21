@@ -2371,6 +2371,7 @@ function VaultExplorerBlockInner({
       <div
         className={cn(
           'min-h-0 flex-1 overflow-auto px-1.5 py-2',
+          calmHeader && 'ltm-quiet-scrollbar',
           viewMode === 'grid' && 'px-0 py-0',
           // In large-title mode the outer box scrolls, so this must not be a
           // nested scroller — and it pads itself past the floating native dock.

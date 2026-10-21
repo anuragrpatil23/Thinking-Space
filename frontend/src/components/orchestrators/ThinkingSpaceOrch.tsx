@@ -1182,9 +1182,12 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
             onPointerDown={handleExplorerResizeStart}
             onDoubleClick={() => setExplorerWidthPx(resolveExplorerDefaultWidthPx(layout))}
             onKeyDown={handleExplorerResizeKeyDown}
-            className="ltm-thinking-space-explorer-resizer group relative hidden w-2 shrink-0 cursor-col-resize items-stretch md:flex"
+            /* Takes no width: an 8px strip here left a dead gutter between the
+               explorer's scrollbar and the panel edge. The grab area straddles
+               the boundary instead, above both. */
+            className="ltm-thinking-space-explorer-resizer group relative z-10 hidden w-0 shrink-0 items-stretch md:flex"
           >
-            <span className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent" />
+            <span className="absolute inset-y-0 -left-1 w-2 cursor-col-resize" />
           </div>
         )}
 

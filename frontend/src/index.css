@@ -577,6 +577,28 @@
     background-color: rgb(212 212 212 / 0.78);
   }
 
+  /* Opt-in quiet scrollbar (the explorer tree): thin, faint while the
+     pointer is over the list, clearer while it is actually scrolling. The shell rule above lights every scroller
+     whenever the pointer is anywhere over the app (`*:hover` matches all
+     ancestors), which left a bright bar standing beside a calm list. With
+     `scrollbar-color` set, Chromium ignores the ::-webkit-scrollbar rules,
+     so width is `scrollbar-width`. */
+  .ltm-app-shell .ltm-quiet-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  /* Pointer over the list itself (not merely the app): a faint hint that it
+     scrolls — hidden entirely at rest read as no scrollbar at all. */
+  .ltm-app-shell .ltm-quiet-scrollbar:hover {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.28) transparent;
+  }
+
+  .ltm-app-shell.ltm-scrollbar-scrolling .ltm-quiet-scrollbar,
+  .ltm-app-shell.ltm-scrollbar-scrolling .ltm-quiet-scrollbar:hover {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.5) transparent;
+  }
+
   .ltm-app-shell[data-ltm-surface='electron'][data-ltm-mode='desktop'] {
     --ltm-shell-surface-radius: calc(var(--radius) + 0.72rem);
     --ltm-shell-main-panel-radius: calc(var(--radius) + 0.72rem);
