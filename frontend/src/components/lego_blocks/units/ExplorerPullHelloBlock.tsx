@@ -160,8 +160,11 @@ const ExplorerPullHelloBlock = forwardRef<ExplorerPullHelloHandle, ExplorerPullH
         const rise = Math.min(1, offset / (EXPLORER_CLAWD_HEIGHT_BLOCK + 14))
         peek.style.transition = glide ? `transform ${GLIDE_MS_BLOCK}ms ${GLIDE_BLOCK}, opacity ${GLIDE_MS_BLOCK}ms ${GLIDE_BLOCK}` : 'none'
         peek.style.transform = `translateY(${Math.round((1 - rise) * (EXPLORER_CLAWD_HEIGHT_BLOCK + 6))}px)`
-        /* Brightens over the last stretch, so the pull visibly still counts. */
-        const near = Math.max(0, (lead - PULL_EASE_FROM_PX_BLOCK) / Math.max(1, threshold - PULL_EASE_FROM_PX_BLOCK))
+        /* Brightens from the moment he is fully up to the line, so the
+           rest of the pull visibly still counts. (Starting at the ease
+           point left only the last 10px once the line moved to 160.) */
+        const risen = EXPLORER_CLAWD_HEIGHT_BLOCK + 14
+        const near = Math.max(0, (lead - risen) / Math.max(1, threshold - risen))
         peek.style.opacity = String(Math.min(1, rise * (0.6 + 0.4 * near)))
       },
       release() {
