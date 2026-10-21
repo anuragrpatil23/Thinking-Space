@@ -46,6 +46,8 @@ function publishBlock(): void {
   const modes = new Set(claims.values())
   const mode: PageTopInsetModeBlock = modes.has('flush') ? 'flush' : modes.has('paper') ? 'paper' : 'default'
   if (mode === lastState.mode) return
+  // TEMP: pairs with the [reels] full-screen line.
+  console.info(`[topInset] ${lastState.mode} -> ${mode} (${claims.size} claims)`)
   lastState = { mode }
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent(PAGE_TOP_INSET_EVENT_BLOCK, { detail: lastState }))

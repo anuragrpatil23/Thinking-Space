@@ -382,6 +382,10 @@ export default function RssFeedPanelBlock({
   const reelsFullBleed = viewMode === 'reels' && reelsAvailable && layout.mode === 'phone'
   const reelsOnScreen = reelsFullBleed && routeActive && !articleOpen
   useEffect(() => {
+    // TEMP: why the deck drops out of full-screen ("half white frames").
+    console.info(`[reels] full-screen ${reelsOnScreen ? 'on' : 'off'} · view=${viewMode} mode=${layout.mode} route=${routeActive} article=${Boolean(articleOpen)}`)
+  }, [reelsOnScreen, viewMode, layout.mode, routeActive, articleOpen])
+  useEffect(() => {
     if (!reelsOnScreen) return
     const releaseInset = claimPageTopInsetBlock('flush')
     dispatchTopChromeAppearanceBlock({ dark: true })
