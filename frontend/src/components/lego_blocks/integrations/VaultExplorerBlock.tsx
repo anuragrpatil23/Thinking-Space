@@ -802,16 +802,6 @@ function VaultExplorerBlockInner({
     state.pull = 0
     pullHelloRef.current?.release()
   }, [])
-  /* What one event adds to the pull. Slow movement counts 1:1 (the pull
-     tracks the fingers); macOS's accelerated bursts are softened, and
-     decaying deltas add nothing — they are fingers slowing or the lift's
-     momentum, which used to carry the explorer far down on a small scroll
-     before the momentum was recognised. */
-  function pullStepBlock(amount: number, wheel: boolean, shrinking: number): number {
-    if (!wheel || amount <= 0) return amount
-    if (shrinking >= 2) return 0
-    return amount <= 12 ? amount : 12 + (amount - 12) * 0.35
-  }
   const pullForHelloBlock = useCallback((atTop: boolean, amount: number, threshold: number, wheel: boolean) => {
     const state = overscrollRef.current
     const now = performance.now()
@@ -880,7 +870,7 @@ function VaultExplorerBlockInner({
     /* Starting (or resuming mid spring-back): pick up from where the
        explorer is, so there is never a jump. */
     if (!state.active) state.pull = pullHelloRef.current?.currentPull() ?? 0
-    state.pull = Math.max(0, state.pull + pullStepBlock(amount, wheel, state.shrinking))
+    state.pull = Math.max(0, state.pull + amount)
     /* Only slow movement crosses the line. A wrist flick opens with a burst
        of big deltas that would reach it before the momentum tail shows; held
        just short, the flick's own tail then releases it. */
