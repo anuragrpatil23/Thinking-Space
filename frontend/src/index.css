@@ -1432,6 +1432,13 @@
       padding-top: 0;
     }
 
+    /* …and the stage around it keeps the shell's hairline inset (~1.4px on a
+       phone). Invisible over New Note's paper; over the reels deck's photos it
+       read as a white line along the top edge (2026-10-21). */
+    .ltm-app-shell[data-ltm-surface='capacitor-ios'][data-ltm-mode='phone'][data-ltm-page-top-inset='flush'] .ltm-shell-stage {
+      padding-top: 0;
+    }
+
     /* Card-white pages (the document viewer) keep the inset — their sticky
        header and Contents bar need something to park against, and dropping it
        left the Contents bar stuck under the clock once the header auto-hid
