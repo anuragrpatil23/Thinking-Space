@@ -6,6 +6,7 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import PdfToolbarMenuBlock from '@/components/lego_blocks/units/PdfToolbarMenuBlock'
 import type { ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import { cn } from '@/lib/utils'
+import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import {
   finishActiveEpubFlipBlock,
   flipEpubPageBlock,
@@ -18,6 +19,7 @@ import {
   EPUB_LINE_HEIGHTS_BLOCK,
   buildEpubReaderCssBlock,
   readEpubReaderPrefsBlock,
+  formatEpubChapterLabelBlock,
   readEpubReadingPositionBlock,
   stepEpubFontScaleBlock,
   writeEpubReaderPrefsBlock,
@@ -73,6 +75,13 @@ const DESK_PADDING_PX_BLOCK = 20
 const SPREAD_MIN_WIDTH_PX_BLOCK = 900
 const SPREAD_MAX_WIDTH_PX_BLOCK = 1280
 const SINGLE_MAX_WIDTH_PX_BLOCK = 720
+/* The book's shape follows the window's. A spread only when the space is
+   clearly landscape, so each of its pages stays page-shaped; otherwise one
+   page. Either way the book is sized from the height too, so it never turns
+   into tall slivers or a letterbox in between aspect ratios. */
+const SPREAD_MIN_ASPECT_BLOCK = 1.15
+const SPREAD_MAX_ASPECT_BLOCK = 1.5
+const SINGLE_MAX_ASPECT_BLOCK = 0.8
 
 /* Stacked page edges: alternating paper and edge strokes off both sides. */
 function pageEdgesShadowBlock(paper: string, edge: string, night: boolean): string {
@@ -131,7 +140,8 @@ export default function EpubDocumentBlock({
   /* Every page turn goes through here; assigned once the look is known. */
   const turnPageRef = useRef<(direction: 1 | -1) => void>(() => undefined)
   const viewRef = useRef<View | null>(null)
-  const [deskWidth, setDeskWidth] = useState(0)
+  /* The desk's content box (inside its padding), where the book sits. */
+  const [deskSize, setDeskSize] = useState({ width: 0, height: 0 })
   const turnRef = useRef({ travel: 0, locked: false, lastAt: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -143,6 +153,12 @@ export default function EpubDocumentBlock({
   })
   const [prefs, setPrefs] = useState<EpubReaderPrefsBlock>(readEpubReaderPrefsBlock)
   const [paperTheme, setPaperTheme] = useState<PdfPaperThemeBlock>(readPdfPaperThemeBlock)
+  /* Original paper follows the app: in dark mode the book reads as Night, and
+     returns to white with the app. A tone picked on purpose (Warm, Sepia,
+     Night) is left as chosen. `paperTheme` is the stored choice; `look` is
+     what is drawn. */
+  const { hostRef: themeScopeRef, isDark } = useDarkModeClassBlock<HTMLDivElement>()
+  const look: PdfPaperThemeBlock = isDark && paperTheme === 'original' ? 'night' : paperTheme
 
   const flowRef = useRef(prefs.flow)
   flowRef.current = prefs.flow
@@ -168,7 +184,10 @@ export default function EpubDocumentBlock({
   useEffect(() => {
     const desk = deskRef.current
     if (!desk) return
-    const observer = new ResizeObserver(() => setDeskWidth(desk.clientWidth))
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      setDeskSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }))
+    })
     observer.observe(desk)
     desk.addEventListener('wheel', handleTurnWheelBlock, { passive: false })
     return () => {
@@ -178,11 +197,17 @@ export default function EpubDocumentBlock({
   }, [handleTurnWheelBlock])
 
   /* The latest look, read by the open effect without re-opening the book. */
-  const available = Math.max(0, deskWidth - DESK_PADDING_PX_BLOCK * 2)
-  const spread = prefs.flow === 'paginated' && available >= SPREAD_MIN_WIDTH_PX_BLOCK
-  const bookWidth = Math.min(available, spread ? SPREAD_MAX_WIDTH_PX_BLOCK : SINGLE_MAX_WIDTH_PX_BLOCK)
-  const lookRef = useRef({ prefs, paperTheme, spread })
-  lookRef.current = { prefs, paperTheme, spread }
+  const available = Math.max(0, deskSize.width - DESK_PADDING_PX_BLOCK * 2)
+  const availableHeight = Math.max(1, deskSize.height)
+  const paged = prefs.flow === 'paginated'
+  const spread = paged
+    && available >= SPREAD_MIN_WIDTH_PX_BLOCK
+    && available / availableHeight >= SPREAD_MIN_ASPECT_BLOCK
+  const bookWidth = spread
+    ? Math.min(available, SPREAD_MAX_WIDTH_PX_BLOCK, availableHeight * SPREAD_MAX_ASPECT_BLOCK)
+    : Math.min(available, SINGLE_MAX_WIDTH_PX_BLOCK, paged ? availableHeight * SINGLE_MAX_ASPECT_BLOCK : Infinity)
+  const lookRef = useRef({ prefs, paperTheme: look, spread })
+  lookRef.current = { prefs, paperTheme: look, spread }
 
   /* Paged reading turns with the 3D leaf (epubPageFlipBlock). Left to
      foliate's own slide: continuous scroll, right-to-left books (the leaf is
@@ -204,8 +229,8 @@ export default function EpubDocumentBlock({
       stage,
       direction,
       spread,
-      paper: PDF_PAPER_THEME_BACKGROUNDS_BLOCK[paperTheme],
-      night: paperTheme === 'night',
+      paper: PDF_PAPER_THEME_BACKGROUNDS_BLOCK[look],
+      night: look === 'night',
       turn: async () => {
         /* The leaf is the animation; the live view underneath jumps. */
         view.renderer.removeAttribute('animated')
@@ -320,8 +345,8 @@ export default function EpubDocumentBlock({
     if (!view?.renderer) return
     view.renderer.setAttribute('flow', prefs.flow)
     view.renderer.setAttribute('max-column-count', spread ? '2' : '1')
-    view.renderer.setStyles?.(buildEpubReaderCssBlock(prefs, paperTheme))
-  }, [prefs, paperTheme, spread])
+    view.renderer.setStyles?.(buildEpubReaderCssBlock(prefs, look))
+  }, [prefs, look, spread])
 
   const applyPrefsBlock = useCallback((next: EpubReaderPrefsBlock) => {
     setPrefs(next)
@@ -392,10 +417,14 @@ export default function EpubDocumentBlock({
           and how far through it. Opens the table of contents. */}
       <PdfToolbarMenuBlock
         title="Contents"
-        className="max-w-[18rem] px-2.5 text-[13px] font-medium"
+        className="px-2.5 text-[13px] font-medium"
         label={(
           <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate">{location.chapter || 'Contents'}</span>
+            {/* Never cut short: "Chapter 3", or a section's own short name;
+                the full title is on hover and in the contents. */}
+            <span className="whitespace-nowrap" title={location.chapter || undefined}>
+              {location.chapter ? formatEpubChapterLabelBlock(location.chapter) : 'Contents'}
+            </span>
             <span className="shrink-0 tabular-nums text-muted-foreground">{percent}%</span>
           </span>
         )}
@@ -428,9 +457,9 @@ export default function EpubDocumentBlock({
             <span
               aria-hidden="true"
               className="h-[14px] w-[11px] rounded-[2px] ring-1 ring-inset ring-black/15 dark:ring-white/20"
-              style={{ background: PDF_PAPER_THEME_BACKGROUNDS_BLOCK[paperTheme] }}
+              style={{ background: PDF_PAPER_THEME_BACKGROUNDS_BLOCK[look] }}
             />
-            {PDF_PAPER_THEME_LABELS_BLOCK[paperTheme]}
+            {PDF_PAPER_THEME_LABELS_BLOCK[look]}
           </span>
         )}
         entries={PDF_PAPER_THEMES_BLOCK.map((theme) => ({
@@ -447,8 +476,9 @@ export default function EpubDocumentBlock({
 
   return (
     <div
+      ref={themeScopeRef}
       className={cn('relative flex h-full min-h-0 flex-col overflow-hidden', className)}
-      style={{ background: DESK_BLOCK[paperTheme] }}
+      style={{ background: DESK_BLOCK[look] }}
     >
       {docked ? createPortal(
         <div className="flex items-center gap-0.5 [&_button]:h-8 [&_button]:rounded-full">{toolbarControls}</div>,
@@ -477,8 +507,8 @@ export default function EpubDocumentBlock({
           className="relative h-full overflow-hidden rounded-[3px]"
           style={{
             width: bookWidth || '100%',
-            background: PDF_PAPER_THEME_BACKGROUNDS_BLOCK[paperTheme],
-            boxShadow: pageEdgesShadowBlock(PDF_PAPER_THEME_BACKGROUNDS_BLOCK[paperTheme], PAGE_EDGE_BLOCK[paperTheme], paperTheme === 'night'),
+            background: PDF_PAPER_THEME_BACKGROUNDS_BLOCK[look],
+            boxShadow: pageEdgesShadowBlock(PDF_PAPER_THEME_BACKGROUNDS_BLOCK[look], PAGE_EDGE_BLOCK[look], look === 'night'),
           }}
         >
           <div ref={hostRef} className="h-full w-full" />
@@ -492,7 +522,7 @@ export default function EpubDocumentBlock({
               aria-hidden="true"
               className="pointer-events-none absolute inset-y-0 left-1/2 z-[4] w-32 -translate-x-1/2"
               style={{
-                background: paperTheme === 'night'
+                background: look === 'night'
                   ? 'linear-gradient(to right, transparent, rgba(0,0,0,0.25) 42%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.25) 58%, transparent)'
                   : 'linear-gradient(to right, transparent, rgba(60,45,20,0.03) 30%, rgba(60,45,20,0.08) 42%, rgba(60,45,20,0.16) 49%, rgba(60,45,20,0.16) 51%, rgba(60,45,20,0.08) 58%, rgba(60,45,20,0.03) 70%, transparent)',
               }}

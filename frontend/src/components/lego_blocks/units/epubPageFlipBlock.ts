@@ -53,8 +53,13 @@ interface GhostSpecBlock {
   /** Where the clipped page sits, relative to the stage. */
   left: number
   width: number
-  /** Which part of the section document it shows, in document px. */
+  /** The document x showing at the sheet's left edge. */
   offset: number
+  /** The page's text column within the sheet. Only this shows text; the
+      rest of the sheet is paper, as on the live page, which crops to its
+      column — uncropped, a full-width sheet showed strips of the
+      neighbouring pages in its margins. */
+  window: { left: number; width: number }
 }
 
 export async function flipEpubPageBlock(params: {
@@ -96,7 +101,6 @@ export async function flipEpubPageBlock(params: {
      top and bottom edges and the turning leaf looked like floating type. */
   const sheetHeight = stageRect.height
   const docWidth = frameRect.width
-  const half = size / 2
   /* Where the visible spread starts in the section document. foliate keeps a
      blank page ahead of each section's content, so the document sits one
      page-width behind its scroll offset. Using `start` itself put every copy
@@ -131,6 +135,16 @@ export async function flipEpubPageBlock(params: {
          is a blank sheet laid over the page for a few frames. */
       visibility: 'hidden',
     })
+    const win = document.createElement('div')
+    Object.assign(win.style, {
+      position: 'absolute',
+      left: `${spec.window.left}px`,
+      top: '0',
+      width: `${spec.window.width}px`,
+      height: `${sheetHeight}px`,
+      overflow: 'hidden',
+    })
+    clip.append(win)
     const iframe = document.createElement('iframe')
     /* No allow-scripts: nothing in a copy can run, whatever the book holds.
        Same origin only so the copy can load the section's blob: resources. */
@@ -139,7 +153,7 @@ export async function flipEpubPageBlock(params: {
     iframe.tabIndex = -1
     Object.assign(iframe.style, {
       position: 'absolute',
-      left: `${-spec.offset}px`,
+      left: `${-(spec.offset + spec.window.left)}px`,
       top: `${top}px`,
       width: `${docWidth}px`,
       height: `${height}px`,
@@ -148,7 +162,7 @@ export async function flipEpubPageBlock(params: {
     })
     loads.push(new Promise((resolve) => { iframe.addEventListener('load', () => resolve(), { once: true }) }))
     iframe.src = url
-    clip.append(iframe)
+    win.append(iframe)
     parent.append(clip)
     created.push(clip)
     return clip
@@ -157,8 +171,22 @@ export async function flipEpubPageBlock(params: {
   /* The leaf: turns around the spine (its left edge going forward, its right
      edge going back), with the outgoing page on the front and the incoming
      page on the back. */
-  const leafWidth = spread ? half : size
-  const leafLeft = spread && direction < 0 ? viewLeft : spread ? viewLeft + half : viewLeft
+  /* Sheets run from the spine to the book's edge, not just across the text
+     column: a leaf the width of the column landed with its outer edge inside
+     the page's real edge. The spine is the book's centre. */
+  const sheetWidth = spread ? stageRect.width / 2 : stageRect.width
+  const spine = spread ? sheetWidth : 0
+  const leafWidth = sheetWidth
+  const leafLeft = spread && direction > 0 ? spine : 0
+  /** The document x showing at a stage x, shifted by whole spreads. */
+  const docAtBlock = (stageX: number, shift: number) => docStart + (stageX - viewLeft) + shift
+  /** The text column of the page on the sheet whose left edge is at stage x
+      `sheetLeft`, in that sheet's coordinates. */
+  const windowForBlock = (sheetLeft: number) => {
+    if (!spread) return { left: viewLeft - sheetLeft, width: size }
+    const pageStart = sheetLeft < spine ? viewLeft : viewLeft + size / 2
+    return { left: pageStart - sheetLeft, width: size / 2 }
+  }
   const leaf = document.createElement('div')
   Object.assign(leaf.style, {
     position: 'absolute',
@@ -174,7 +202,9 @@ export async function flipEpubPageBlock(params: {
   })
   stage.append(leaf)
   created.push(leaf)
-  stage.style.perspective = `${Math.round(size * 2.2)}px`
+  /* From the book's larger side: scaled to width alone, a tall narrow book
+     put the eye so close that a turning page ballooned toward it. */
+  stage.style.perspective = `${Math.round(Math.max(stageRect.width, stageRect.height) * (spread ? 2.4 : 3))}px`
 
   const faceBlock = (spec: GhostSpecBlock | null, back: boolean): HTMLElement => {
     const face = spec
@@ -210,22 +240,22 @@ export async function flipEpubPageBlock(params: {
   if (direction > 0) {
     if (spread) {
       /* The current left page stays; the live view behind it has moved on. */
-      makeGhostBlock({ left: viewLeft, width: half, offset: docStart })
-      frontShade = faceBlock({ left: 0, width: half, offset: docStart + half }, false)
-      backShade = faceBlock({ left: 0, width: half, offset: docStart + size }, true)
+      makeGhostBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, 0), window: windowForBlock(0) })
+      frontShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(spine, 0), window: windowForBlock(spine) }, false)
+      backShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, size), window: windowForBlock(0) }, true)
     } else {
-      frontShade = faceBlock({ left: 0, width: size, offset: docStart }, false)
+      frontShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, 0), window: windowForBlock(0) }, false)
       backShade = faceBlock(null, true)
     }
   } else if (spread) {
-    makeGhostBlock({ left: viewLeft + half, width: half, offset: docStart + half })
-    frontShade = faceBlock({ left: 0, width: half, offset: docStart }, false)
-    backShade = faceBlock({ left: 0, width: half, offset: docStart - half }, true)
+    makeGhostBlock({ left: spine, width: sheetWidth, offset: docAtBlock(spine, 0), window: windowForBlock(spine) })
+    frontShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, 0), window: windowForBlock(0) }, false)
+    backShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(spine, -size), window: windowForBlock(spine) }, true)
   } else {
     /* Going back a single page: the previous page comes back over the
        current one, from edge-on to flat. */
-    makeGhostBlock({ left: viewLeft, width: size, offset: docStart })
-    frontShade = faceBlock({ left: 0, width: size, offset: docStart - size }, false)
+    makeGhostBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, 0), window: windowForBlock(0) })
+    frontShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, -size), window: windowForBlock(0) }, false)
     backShade = faceBlock(null, true)
     leaf.style.transformOrigin = 'left center'
   }
@@ -263,12 +293,20 @@ export async function flipEpubPageBlock(params: {
     return
   }
 
+  /* A single page lifts away to edge-on and stops there (and comes back
+     from edge-on): it has no facing page to land on. Swung the full 180° a
+     page-wide leaf came at the viewer and sprawled across the next page. */
   const singleBack = direction < 0 && !spread
-  const from = singleBack ? 'rotateY(-180deg)' : 'rotateY(0deg)'
-  const to = singleBack ? 'rotateY(0deg)' : `rotateY(${direction > 0 ? -180 : 180}deg)`
+  const single = !spread
+  const from = singleBack ? 'rotateY(-90deg)' : 'rotateY(0deg)'
+  const to = single
+    ? (singleBack ? 'rotateY(0deg)' : 'rotateY(-90deg)')
+    : `rotateY(${direction > 0 ? -180 : 180}deg)`
   const timing = { duration: FLIP_DURATION_MS_BLOCK, easing: FLIP_EASING_BLOCK }
   const motion = leaf.animate([{ transform: from }, { transform: to }], timing)
-  frontShade.animate([{ opacity: singleBack ? 1 : 0 }, { opacity: 1, offset: 0.5 }, { opacity: singleBack ? 0 : 1 }], timing)
+  frontShade.animate(single
+    ? [{ opacity: singleBack ? 1 : 0 }, { opacity: singleBack ? 0 : 1 }]
+    : [{ opacity: 0 }, { opacity: 1, offset: 0.5 }, { opacity: 1 }], timing)
   backShade.animate([{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0 }], timing)
 
   await motion.finished.catch(() => undefined)

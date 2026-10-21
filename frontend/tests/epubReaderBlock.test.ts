@@ -3,6 +3,7 @@ import {
   DEFAULT_EPUB_READER_PREFS_BLOCK,
   MAX_EPUB_READING_POSITIONS_BLOCK,
   buildEpubReaderCssBlock,
+  formatEpubChapterLabelBlock,
   isEpubDocumentPathBlock,
   stepEpubFontScaleBlock,
   withEpubReadingPositionBlock,
@@ -32,6 +33,14 @@ describe('epubReaderBlock', () => {
     expect(stepEpubFontScaleBlock(100, -1)).toBe(90)
     expect(stepEpubFontScaleBlock(200, 1)).toBe(200)
     expect(stepEpubFontScaleBlock(80, -1)).toBe(80)
+  })
+
+  it('shortens numbered chapters and leaves named sections', () => {
+    expect(formatEpubChapterLabelBlock('3. All Happy Companies Are Different')).toBe('Chapter 3')
+    expect(formatEpubChapterLabelBlock('IV. Thrones')).toBe('Chapter IV')
+    expect(formatEpubChapterLabelBlock('Chapter 12: The Ending')).toBe('Chapter 12')
+    expect(formatEpubChapterLabelBlock('Preface: Zero to One')).toBe('Preface: Zero to One')
+    expect(formatEpubChapterLabelBlock('I Am a Strange Loop')).toBe('I Am a Strange Loop')
   })
 
   it('evicts the oldest reading positions over the cap', () => {

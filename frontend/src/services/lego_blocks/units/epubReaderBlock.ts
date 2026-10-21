@@ -172,3 +172,14 @@ export function writeEpubReadingPositionBlock(path: string, cfi: string, fractio
     /* Losing a position costs a reader their place, not their data. */
   }
 }
+
+/** "3. All Happy Companies Are Different" -> "Chapter 3". The toolbar says
+    where the reader is at a glance and keeps one size from chapter to
+    chapter; the full title is on hover and in the contents. "Chapter 3: …"
+    titles shorten the same way; unnumbered sections (Preface) keep their
+    name. */
+export function formatEpubChapterLabelBlock(label: string): string {
+  const value = label.trim().replace(/\s+/g, ' ')
+  const numbered = /^(?:chapter\s+)?(\d{1,3}|[IVXLC]{1,7})[.:)]\s+\S/i.exec(value)
+  return numbered ? `Chapter ${numbered[1].toUpperCase()}` : value
+}
