@@ -30,6 +30,9 @@ const MIN_PIXELS_PER_HOUR_FIT = 12
 /** Narrowest slot an hour label can sit in without touching its neighbour. */
 const HOUR_LABEL_MIN_PX = 26
 const ROW_HEIGHT = 16
+/* Gap between the strip and the hour labels on the strip that shows "now":
+   room for the now dot to sit below the pills instead of on them. */
+const NOW_GAP_PX = 14
 const ROW_GAP = 3
 const MIN_PILL_PX = 8
 const PILL_DEFAULT_DURATION_MIN = 15
@@ -74,12 +77,15 @@ export default function AiActivityDayTimelineBlock({
     [dateIso],
   )
 
-  // Now marker, today only. Ticks once a minute and only while the strip is
-  // visible and showing today (ENERGY: no unconditional timers); any other day
-  // holds no interval at all.
+  // Now marker, whenever "now" falls on this strip — today, and also
+  // yesterday's strip after midnight, which runs on to 06:00 (it used to be
+  // today-only, so at 1:40am yesterday's strip showed no marker). Ticks once
+  // a minute only while visible and in range (ENERGY: no unconditional
+  // timers); any other day holds no interval at all.
   const [nowMs, setNowMs] = useState(() => Date.now())
-  const isToday = nowMs >= dayStartMs && nowMs < dayStartMs + 86_400_000
-  useVisibleIntervalBlock(() => setNowMs(Date.now()), isToday ? 60_000 : null)
+  const nowHour = (nowMs - dayStartMs) / 3_600_000
+  const nowOnStrip = nowHour >= 0 && nowHour < 30
+  useVisibleIntervalBlock(() => setNowMs(Date.now()), nowOnStrip ? 60_000 : null)
 
   // Collapse overlapping same-project chains into a single visual pill so two
   // parallel sessions (different terminals, same cwd) read as one block of
@@ -152,7 +158,8 @@ export default function AiActivityDayTimelineBlock({
       const lastTouched = Math.max(startedH, endedH) + PILL_DEFAULT_DURATION_MIN / 60
       if (lastTouched > latestHourFractional) latestHourFractional = lastTouched
     }
-    const end = Math.min(30, Math.ceil(latestHourFractional))
+    // Reaches "now" too, so the marker always has a place on the strip.
+    const end = Math.min(30, Math.ceil(Math.max(latestHourFractional, nowOnStrip ? nowHour + 0.25 : 0)))
     if (!fitActive) return { startHour: 0, endHour: end }
     let first = 24
     let last = 0
@@ -166,7 +173,7 @@ export default function AiActivityDayTimelineBlock({
       startHour: Math.max(0, Math.floor(first) - 1),
       endHour: Math.min(end, Math.ceil(last) + 1),
     }
-  }, [pills, dayStartMs, fitActive])
+  }, [pills, dayStartMs, fitActive, nowOnStrip, nowHour])
 
   // An hour is as wide as the card allows: the day spans the full width, so
   // the timeline's right edge lands where the day row's and the legend's do
@@ -230,6 +237,7 @@ export default function AiActivityDayTimelineBlock({
   }, [pills, dayStartMs, startHour, endHour, pxPerHour])
 
   const stripHeight = placed.rows * (ROW_HEIGHT + ROW_GAP) - ROW_GAP
+  const showNow = nowOnStrip && nowHour >= startHour && nowHour <= endHour
 
   // Horizontal-overflow affordances: chevrons + edge fades appear when there's
   // offscreen content. macOS overlay scrollbars hide the default affordance,
@@ -325,23 +333,26 @@ export default function AiActivityDayTimelineBlock({
             )
           })}
 
-          {isToday && (() => {
-            const nowH = (nowMs - dayStartMs) / 3_600_000
-            if (nowH < startHour || nowH > endHour) return null
-            return (
+          {showNow && (
+            <div
+              aria-label="Now"
+              // Above the pills (they lift to z-10 on hover): under them the
+              // line vanished into a running session. It runs on into the gap
+              // below the strip and the dot sits in the middle of that gap,
+              // clear of the pills above and the hour labels below.
+              className="pointer-events-none absolute top-0 z-20"
+              style={{ left: (nowHour - startHour) * pxPerHour - 0.75, width: 1.5, bottom: -NOW_GAP_PX / 2 }}
+            >
+              {/* The Explorer's selection colour, so "now" and "selected"
+                  speak the same accent across the app; a hairline of the
+                  background around it keeps it legible on top of a pill. */}
               <div
-                aria-label="Now"
-                className="pointer-events-none absolute top-0 bottom-0 z-10 opacity-75"
-                style={{ left: (nowH - startHour) * pxPerHour - 0.75, width: 1.5 }}
-              >
-                {/* The Explorer's selection colour, so "now" and "selected"
-                    speak the same accent across the app; softened to sit with
-                    the pastel pills, dot on the time axis like a pin. */}
-                <div className="h-full w-full bg-[var(--ltm-explorer-selected-color,#c73773)]" />
-                <div className="absolute bottom-0 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-[var(--ltm-explorer-selected-color,#c73773)]" />
-              </div>
-            )
-          })()}
+                className="h-full w-full bg-[var(--ltm-explorer-selected-color,#c73773)]"
+                style={{ boxShadow: '0 0 0 1px hsl(var(--background) / 0.55)' }}
+              />
+              <div className="absolute bottom-0 left-1/2 h-2 w-2 -translate-x-1/2 translate-y-1/2 rounded-full bg-[var(--ltm-explorer-selected-color,#c73773)]" />
+            </div>
+          )}
 
           {placed.placed.map(({ key, pill, leftPx, widthPx, row }) => {
             const color = getProjectColor(pill.project, isDark)
@@ -385,7 +396,7 @@ export default function AiActivityDayTimelineBlock({
         </div>
 
         {/* Hour axis labels — outside the scrollable strip so they're always visible. */}
-        <div className="relative mt-1" style={{ height: 12 }}>
+        <div className="relative" style={{ height: 12, marginTop: showNow ? NOW_GAP_PX : 4 }}>
           {hourTicks.map((h, i) => {
             if (i % labelStep !== 0) return null
             const x = (h - startHour) * pxPerHour
