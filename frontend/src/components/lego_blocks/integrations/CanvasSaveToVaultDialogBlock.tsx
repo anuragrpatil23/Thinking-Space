@@ -67,7 +67,7 @@ export default function CanvasSaveToVaultDialogBlock({ text, onSave, onClose }: 
         role="dialog"
         aria-label="Save to vault"
         onMouseDown={e => e.stopPropagation()}
-        onWheel={e => e.stopPropagation()}
+        data-canvas-own-scroll
         className="flex flex-col gap-3"
         style={{
           width: 420,

@@ -199,6 +199,15 @@ export function useInfiniteCanvasBlock(
 
   const handleWheel = useCallback(
     (e: WheelEvent) => {
+      // An overlay that scrolls on its own (a dialog's folder list) opts out
+      // with `data-canvas-own-scroll`. A React onWheel stopPropagation cannot
+      // do it: this native listener runs first and has already cancelled the
+      // scroll by the time React sees the event.
+      if (e.target instanceof Element && e.target.closest('[data-canvas-own-scroll]')) {
+        // A pinch over it zooms nothing, not the whole page.
+        if (e.ctrlKey || e.metaKey) e.preventDefault()
+        return
+      }
       e.preventDefault()
       const v = viewportRef.current
       if (v.width === 0) return
