@@ -15,6 +15,9 @@ export interface RecentVaultSession {
   /** First substantive topic of the session's earliest window. */
   topic: string
   source: string
+  /** The project the AI activity parser filed the session under — the same
+   *  name the AI Activity panel shows (e.g. "sfresearch"). */
+  project: string
   startedMs: number
   endedMs: number
   /** Vault-relative paths the session wrote, unioned across its windows. */
@@ -49,6 +52,7 @@ export function selectRecentVaultSessionsBlock(
     endedMs: number
     topic: string
     source: string
+    project: string
     relPaths: Set<string>
   }
   const groups = new Map<string, Group>()
@@ -74,6 +78,7 @@ export function selectRecentVaultSessionsBlock(
         endedMs,
         topic: session.topic,
         source: session.source,
+        project: session.project,
         relPaths: new Set(relPaths),
       })
       continue
@@ -81,6 +86,7 @@ export function selectRecentVaultSessionsBlock(
     if (startedMs < group.startedMs) {
       group.startedMs = startedMs
       group.topic = session.topic
+      group.project = session.project
     }
     group.endedMs = Math.max(group.endedMs, endedMs)
     for (const rel of relPaths) group.relPaths.add(rel)
@@ -93,6 +99,7 @@ export function selectRecentVaultSessionsBlock(
       sessionKey: key,
       topic: group.topic,
       source: group.source,
+      project: group.project,
       startedMs: group.startedMs,
       endedMs: group.endedMs,
       relPaths: [...group.relPaths],

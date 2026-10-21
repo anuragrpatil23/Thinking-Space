@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 /* "Good evening, Anurag" — and, once per session, Clawd from the Home moon
    scene slides in from the right into the space at the end of the row,
    waves (Home's own wave), and slides back out, so the greeting itself never
-   moves. Pulling past the top of the tree brings him back the same way. A hello, not a resident: the explorer sits
+   moves. (Pulling past the top of the tree is ExplorerPullHelloBlock.) A hello, not a resident: the explorer sits
    beside everything you work on, so nothing here stays or loops
    (docs/contracts/ENERGY.md). With reduced motion on he does not appear.
    The pull-past-the-top hello is ExplorerPullHelloBlock. */
@@ -29,15 +29,12 @@ function shouldGreetBlock(): boolean {
 export default function ExplorerGreetingBlock({
   name,
   large = false,
-  greetNonce = 0,
   dismissNonce = 0,
   className,
 }: {
   name?: string | null
   /** iOS large-title size (at rest at the top of the explorer). */
   large?: boolean
-  /** Changing this brings him in again (the first stage of a pull). */
-  greetNonce?: number
   /** Changing this sends him off at once: only one Clawd on screen, so the
       drop-in from the top dismisses this one. */
   dismissNonce?: number
@@ -45,15 +42,6 @@ export default function ExplorerGreetingBlock({
 }) {
   const [greeting, setGreeting] = useState(shouldGreetBlock)
 
-  useEffect(() => {
-    if (greetNonce <= 0) return
-    try {
-      if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-    } catch {
-      /* no matchMedia: allow */
-    }
-    setGreeting(true)
-  }, [greetNonce])
 
   useEffect(() => {
     if (dismissNonce > 0) setGreeting(false)

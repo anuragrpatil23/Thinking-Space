@@ -44,6 +44,8 @@ export interface SessionTelemetrySession extends SessionTelemetryView {
   sessionKey: string
   topic: string
   source: string
+  /** The session's project as AI Activity files it (e.g. "sfresearch"). */
+  project: string
   startedMs: number
   endedMs: number
 }
@@ -182,6 +184,7 @@ async function performLoad(): Promise<SessionTelemetry | null> {
         sessionKey: session.sessionKey,
         topic: session.topic,
         source: session.source,
+        project: session.project,
         startedMs: session.startedMs,
         endedMs: session.endedMs,
         ...buildView(files),

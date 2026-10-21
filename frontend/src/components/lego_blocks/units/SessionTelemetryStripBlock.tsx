@@ -26,6 +26,8 @@ export interface SessionTelemetryStripBlockProps {
   projectLabel?: string | null
   /** Full breakdown for the tooltip, e.g. "sfresearch (8), sfai (1)". */
   projectDetail?: string | null
+  /** The project's AI Activity colour, for the dot and its name. */
+  projectColor?: string | null
 }
 
 function formatAgo(ms: number, nowMs: number): string {
@@ -71,6 +73,7 @@ export default function SessionTelemetryStripBlock({
   onSelectSession,
   projectLabel = null,
   projectDetail = null,
+  projectColor = null,
 }: SessionTelemetryStripBlockProps) {
   const { sessions } = telemetry
   const multiple = sessions.length > 1
@@ -113,8 +116,19 @@ export default function SessionTelemetryStripBlock({
         >
           {filterOn
             ? <Check aria-hidden="true" className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
-            : <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />}
-          <span className="min-w-0 truncate">{label}:</span>
+            : (
+              <span
+                aria-hidden="true"
+                className={cn('h-1.5 w-1.5 shrink-0 rounded-full', !(projectColor && label === projectLabel) && 'bg-emerald-500')}
+                style={projectColor && label === projectLabel ? { background: projectColor } : undefined}
+              />
+            )}
+          <span
+            className="min-w-0 truncate"
+            style={projectColor && label === projectLabel ? { color: projectColor } : undefined}
+          >
+            {label}:
+          </span>
           <Counts view={view} />
           {filterOn && (
             <span className="ml-auto shrink-0 pl-2 font-medium text-emerald-700 dark:text-emerald-400">Show all</span>

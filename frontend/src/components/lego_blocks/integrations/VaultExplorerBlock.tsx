@@ -84,12 +84,12 @@ import CursorTooltipBlock from '@/components/lego_blocks/units/CursorTooltipBloc
 import type { SessionTelemetry } from '@/services/orchestrators/sessionTelemetryOrch'
 import SessionTelemetryStripBlock from '@/components/lego_blocks/units/SessionTelemetryStripBlock'
 import ExplorerGreetingBlock from '@/components/lego_blocks/units/ExplorerGreetingBlock'
-import ExplorerPullHelloBlock from '@/components/lego_blocks/units/ExplorerPullHelloBlock'
+import ExplorerPullHelloBlock, { type ExplorerPullHelloHandle } from '@/components/lego_blocks/units/ExplorerPullHelloBlock'
 import OverflowMenuButtonBlock from '@/components/lego_blocks/units/ui/OverflowMenuButtonBlock'
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
 import { useTimeOfDayBlock } from '@/components/lego_blocks/hooks/shared/useTimeOfDayBlock'
-import { useProjectsBlock } from '@/components/lego_blocks/hooks/shared/useProjectsBlock'
 import { sessionProjectsBlock, sessionProjectsLabelBlock } from '@/services/lego_blocks/units/sessionProjectsBlock'
+import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { writeSortOrdersBlock } from '@/services/lego_blocks/units/notebookOrderBlock'
 import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebookSidecarBlock'
 import { getAbsolutePathForClipboardOrch } from '@/services/orchestrators/fileSystemOrch'
@@ -742,58 +742,92 @@ function VaultExplorerBlockInner({
      one ⋯ instead of a row of five look-alike icons. The iPhone keeps its own
      large-title header. */
   const { profile } = useUserProfileBlock()
-  const { projects } = useProjectsBlock()
   /* Re-renders the greeting as the day moves on (visibility-aware, 60s). */
   useTimeOfDayBlock()
-  /* Pull past the top of the tree to have Clawd say hi — the pull-to-refresh
-     gesture, with a hello instead of a refresh. Only a gesture that *starts*
-     with the tree already at the top counts: the momentum of a scroll that
-     merely arrives at the top kept going and set it off the instant the top
-     was reached. A gesture is a run of wheel events with no gap over 300ms. */
-  const [greetNonce, setGreetNonce] = useState(0)
-  const [inlineGreetNonce, setInlineGreetNonce] = useState(0)
+  /* Pull past the top of the tree to have Clawd say hello — pull-to-refresh,
+     with a hello instead of a refresh (ExplorerPullHelloBlock draws it).
+     One gesture, visible as it happens, committed on release:
+     - Only a gesture that *starts* with the tree already at the top counts;
+       the momentum of a scroll that merely arrives at the top is ignored.
+     - The pull grows the greeting at once and feeds the visible pull.
+     - Release is the fingers lifting: on the trackpad, the moment the deltas
+       turn into macOS's decaying momentum tail (three shrinking in a row, as
+       in the PDF rubber band), or a short silence; on touch, touchend. Past
+       the line he says hello, short of it the space springs shut.
+     A gesture is a run of wheel events with no gap over 300ms. */
+  const pullHelloRef = useRef<ExplorerPullHelloHandle | null>(null)
+  const [helloNonce, setHelloNonce] = useState(0)
   /* iOS-style large title: big at rest at the top, small once the tree
      scrolls. Coming back up to the top leaves it small — arriving is not
-     asking; only pulling on past the top grows it again (the first stage of
-     the same pull that, carried further, brings Clawd). */
+     asking; pulling on past the top grows it again. */
   const [largeGreeting, setLargeGreeting] = useState(true)
   const largeGreetingRef = useRef(true)
   largeGreetingRef.current = largeGreeting
-  const overscrollRef = useRef({ pull: 0, lastAt: 0, startedAtTop: false, fired: false, touchY: null as number | null })
-  const pullForHelloBlock = useCallback((atTop: boolean, amount: number, threshold: number) => {
+  const overscrollRef = useRef({
+    pull: 0,
+    lastAt: 0,
+    startedAtTop: false,
+    active: false,
+    lastDelta: 0,
+    shrinking: 0,
+    releaseTimer: null as number | null,
+    touchY: null as number | null,
+  })
+  const releasePullBlock = useCallback(() => {
+    const state = overscrollRef.current
+    if (state.releaseTimer !== null) window.clearTimeout(state.releaseTimer)
+    state.releaseTimer = null
+    if (!state.active) return
+    state.active = false
+    state.pull = 0
+    pullHelloRef.current?.release()
+  }, [])
+  const pullForHelloBlock = useCallback((atTop: boolean, amount: number, threshold: number, wheel: boolean) => {
     const state = overscrollRef.current
     const now = performance.now()
     if (now - state.lastAt > 300) {
       state.startedAtTop = atTop
       state.pull = 0
-      state.fired = false
+      state.active = false
+      state.shrinking = 0
+      state.lastDelta = 0
     }
     state.lastAt = now
-    if (!atTop) {
+    if (!state.startedAtTop) return
+    if (!atTop && !state.active) {
       state.startedAtTop = false
       return
     }
-    if (!state.startedAtTop || amount <= 0 || state.fired) return
-    state.pull += amount
-    if (!largeGreetingRef.current) {
-      /* Stage one: grow the greeting (and Clawd slides in beside it). It
-         ends this gesture: the drop-in needs a pull of its own, or the same
-         pull carried on brought a second Clawd while the first was still
-         there. */
-      if (state.pull >= threshold * 0.35) {
-        state.pull = 0
-        state.fired = true
+    if (wheel && state.active) {
+      const size = Math.abs(amount)
+      state.shrinking = size < state.lastDelta * 0.97 ? state.shrinking + 1 : 0
+      state.lastDelta = size
+      if (state.shrinking >= 3) {
+        /* Fingers lifted; the rest of this momentum belongs to no pull. */
+        state.startedAtTop = false
+        releasePullBlock()
+        return
+      }
+    }
+    state.pull = Math.max(0, state.pull + amount)
+    if (state.pull > 0 && !state.active) {
+      state.active = true
+      if (!largeGreetingRef.current) {
         largeGreetingRef.current = true
         setLargeGreeting(true)
-        setInlineGreetNonce((count) => count + 1)
       }
-      return
     }
-    if (state.pull >= threshold) {
-      state.fired = true
-      setGreetNonce((count) => count + 1)
+    if (state.active) pullHelloRef.current?.update(state.pull, threshold)
+    if (wheel) {
+      if (state.releaseTimer !== null) window.clearTimeout(state.releaseTimer)
+      state.releaseTimer = window.setTimeout(releasePullBlock, 140)
     }
+  }, [releasePullBlock])
+  useEffect(() => () => {
+    const timer = overscrollRef.current.releaseTimer
+    if (timer !== null) window.clearTimeout(timer)
   }, [])
+  const onHelloBlock = useCallback(() => setHelloNonce((count) => count + 1), [])
   const largeTitle = phoneLargeTitle.trim()
   const hasLargeTitle = largeTitle.length > 0
   const calmHeader = calmHeaderProp && !collapseSearchToButton && !hasLargeTitle
@@ -1960,7 +1994,7 @@ function VaultExplorerBlockInner({
           ]
           return (
             <>
-              <ExplorerPullHelloBlock nonce={greetNonce} />
+              <ExplorerPullHelloBlock ref={pullHelloRef} onHello={onHelloBlock} />
               <div className={cn(
                 'mb-2 mt-1 flex items-center gap-0.5 transition-[height] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
                 largeGreeting ? 'h-12' : 'h-9',
@@ -1968,20 +2002,33 @@ function VaultExplorerBlockInner({
                 <ExplorerGreetingBlock
                   name={profile.name}
                   large={largeGreeting}
-                  greetNonce={inlineGreetNonce}
-                  dismissNonce={greetNonce}
+                  dismissNonce={helloNonce}
                   className="flex-1 pl-1"
                 />
-                {calmSearchFolded && (
+                {calmSessionLine && (
+                  /* Stays while search is open (highlighted), so there is
+                     always a way to see and close it. Pressing it must not
+                     blur the field first — the blur would fold search away
+                     and this click would reopen it. */
                   <button
                     type="button"
-                    title="Search files"
-                    aria-label="Search files"
+                    title={calmSearchFolded ? 'Search files' : 'Close search'}
+                    aria-label={calmSearchFolded ? 'Search files' : 'Close search'}
+                    aria-pressed={!calmSearchFolded}
+                    onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
+                      if (!calmSearchFolded) {
+                        setQuery('')
+                        setCompactSearchOpen(false)
+                        return
+                      }
                       setCompactSearchOpen(true)
                       window.requestAnimationFrame(() => calmSearchInputRef.current?.focus())
                     }}
-                    className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className={cn(
+                      'rounded-lg p-1.5 transition-colors hover:bg-muted hover:text-foreground',
+                      calmSearchFolded ? 'text-muted-foreground' : 'bg-muted text-foreground',
+                    )}
                   >
                     <Search className="h-4 w-4" />
                   </button>
@@ -1991,11 +2038,19 @@ function VaultExplorerBlockInner({
                 <OverflowMenuButtonBlock title="Explorer options" entries={optionEntries} />
               </div>
               {sessionTelemetry && sessionTelemetry.all.files.size > 0 && (() => {
-                const touched = sessionProjectsBlock((telemetrySession ?? sessionTelemetry.all).files.keys(), projects)
+                const touched = sessionProjectsBlock(
+                  (telemetrySession ? [telemetrySession] : sessionTelemetry.sessions)
+                    .map((session) => ({ project: session.project, fileCount: session.files.size })),
+                )
                 return (
                 <div className="mb-2">
                   <SessionTelemetryStripBlock
                     projectLabel={sessionProjectsLabelBlock(touched)}
+                    /* The AI Activity panel's colour for the project, so the
+                       same project reads the same everywhere. */
+                    projectColor={touched[0]
+                      ? getProjectColor(touched[0].name, document.documentElement.classList.contains('dark')).stroke
+                      : null}
                     projectDetail={touched.length > 0 ? touched.map((p) => `${p.name} (${p.count})`).join(', ') : null}
                     telemetry={sessionTelemetry}
                     selected={telemetrySession}
@@ -2264,21 +2319,23 @@ function VaultExplorerBlockInner({
           }
         } : undefined}
         onWheel={calmHeader ? (event) => {
-          pullForHelloBlock(event.currentTarget.scrollTop <= 0, -event.deltaY, 220)
+          pullForHelloBlock(event.currentTarget.scrollTop <= 0, -event.deltaY, 160, true)
         } : undefined}
         onTouchStart={calmHeader ? (event) => {
           const atTop = event.currentTarget.scrollTop <= 0
           overscrollRef.current.touchY = atTop ? event.touches[0]?.clientY ?? null : null
           overscrollRef.current.lastAt = 0
-          pullForHelloBlock(atTop, 0, 90)
+          pullForHelloBlock(atTop, 0, 80, false)
         } : undefined}
         onTouchMove={calmHeader ? (event) => {
           const startY = overscrollRef.current.touchY
           const y = event.touches[0]?.clientY
           if (startY === null || y === undefined) return
           overscrollRef.current.touchY = y
-          pullForHelloBlock(event.currentTarget.scrollTop <= 0, y - startY, 90)
+          pullForHelloBlock(event.currentTarget.scrollTop <= 0, y - startY, 80, false)
         } : undefined}
+        onTouchEnd={calmHeader ? releasePullBlock : undefined}
+        onTouchCancel={calmHeader ? releasePullBlock : undefined}
 
         onDragOver={canDropOnRows ? (event) => {
           void handleDragOverTarget(event, '')
