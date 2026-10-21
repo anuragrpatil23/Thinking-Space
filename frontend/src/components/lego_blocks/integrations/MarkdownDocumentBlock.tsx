@@ -141,7 +141,7 @@ import { isPdfDocumentPathBlock } from '@/services/lego_blocks/units/pdfDocument
 import { isGoogleDocDocumentPathBlock } from '@/services/lego_blocks/units/googleDocDocumentPathBlock'
 import { isImageDocumentPathBlock } from '@/services/lego_blocks/units/imageDocumentPathBlock'
 import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPathBlock'
-import { dispatchPageTopInsetBlock } from '@/services/lego_blocks/units/pageTopInsetBlock'
+import { claimPageTopInsetBlock } from '@/services/lego_blocks/units/pageTopInsetBlock'
 import { isHtmlDocumentPathBlock } from '@/services/lego_blocks/units/htmlDocumentPathBlock'
 import { isExternalDocumentPathBlock } from '@/services/lego_blocks/units/externalDocumentPathBlock'
 import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
@@ -393,8 +393,7 @@ function MarkdownTextDocumentRuntimeBlock({
   // panes stay mounted behind `hidden` when you switch files.
   useEffect(() => {
     if (!isIosPhone || !active) return
-    dispatchPageTopInsetBlock({ mode: 'paper' })
-    return () => dispatchPageTopInsetBlock({ mode: 'default' })
+    return claimPageTopInsetBlock('paper')
   }, [isIosPhone, active])
   const manualSaveFeedbackTimeoutRef = useRef<number | null>(null)
   const excalidrawSceneRef = useRef<ParsedExcalidrawScene | null>(null)

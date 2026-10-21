@@ -86,10 +86,32 @@ function getStateBlock(): RssFeedsStateBlock {
   return state
 }
 
-function setStateBlock(patch: Partial<RssFeedsStateBlock>): void {
-  state = { ...state, ...patch }
+let notifyTimer: number | null = null
+
+function notifyBlock(): void {
+  if (notifyTimer !== null) {
+    window.clearTimeout(notifyTimer)
+    notifyTimer = null
+  }
   for (const listener of listeners) listener()
 }
+
+/** `background` patches (a feed or a cached page arriving during a load) are
+ *  coalesced: subscribers hear about them at most every BACKGROUND_NOTIFY_MS.
+ *  Every notify rebuilds and re-sorts the reels deck and the timeline over
+ *  every article, and a reload delivers one patch per feed and per cached
+ *  page — on returning to the app that was a burst of full rebuilds on the
+ *  main thread. Anything the reader did notifies at once, and carries any
+ *  pending background change with it. */
+function setStateBlock(patch: Partial<RssFeedsStateBlock>, background = false): void {
+  state = { ...state, ...patch }
+  if (!background) {
+    notifyBlock()
+    return
+  }
+  if (notifyTimer === null) notifyTimer = window.setTimeout(notifyBlock, BACKGROUND_NOTIFY_MS)
+}
+const BACKGROUND_NOTIFY_MS = 300
 
 /** Re-key the store onto the configured feed list, keeping whatever each feed
  *  already holds. Feeds are never blanked: emptying them made the list collapse
@@ -117,7 +139,7 @@ function mergeFeedResultBlock(feedConfigs: RssFeedConfigBlock[], next: RssFeedRe
       ...next,
       items: unionRssFeedItemsBlock(current?.items ?? [], next.items, true),
     }),
-  })
+  }, true)
 }
 
 /** A page of retained cache must not clobber the live copy or an optimistic
@@ -134,7 +156,7 @@ function mergeStoredPageBlock(feedConfigs: RssFeedConfigBlock[], page: RssFeedRe
       items,
       error: current?.error ?? null,
     }),
-  })
+  }, true)
 }
 
 /** Apply an optimistic patch to specific articles. */
@@ -199,7 +221,7 @@ export async function loadRssFeedsBlock(isRefresh = false, clearReadSession = is
         if (requestId === loadRequestId && state.loadingFeedIds.has(config.id)) {
           const loadingFeedIds = new Set(state.loadingFeedIds)
           loadingFeedIds.delete(config.id)
-          setStateBlock({ loadingFeedIds })
+          setStateBlock({ loadingFeedIds }, true)
         }
       }
       // Yield a frame between feeds so scrolling stays responsive during load.

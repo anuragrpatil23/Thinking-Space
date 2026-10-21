@@ -19,8 +19,13 @@
  * stay mounted behind `hidden` / `visibility: hidden` when you switch tabs, and
  * `:has()` has no notion of visibility — a `:has(.ltm-page-flush-top)` probe
  * latched on for every other tab once one such page had been opened
- * (2026-08-02). Publishers must therefore report `default` when they go
- * inactive or unmount, which is exactly what an effect cleanup does.
+ * (2026-08-02).
+ *
+ * Each page holds a CLAIM and releases it when it goes inactive or unmounts
+ * (an effect cleanup). It used to be one last-writer-wins value, and a
+ * document pane going inactive reported `default` over the reels deck that
+ * was still on screen, dropping it out of full-screen mid-read (2026-10-21).
+ * With claims, `flush` wins over `paper`, which wins over nothing.
  *
  * Same window-event pattern as `topChromeAppearanceBlock`; kept separate so the
  * two signals can never clobber each other's field.
@@ -34,12 +39,27 @@ export interface PageTopInsetStateBlock {
   mode: PageTopInsetModeBlock
 }
 
+const claims = new Map<symbol, PageTopInsetModeBlock>()
 let lastState: PageTopInsetStateBlock = { mode: 'default' }
 
-export function dispatchPageTopInsetBlock(state: PageTopInsetStateBlock): void {
-  lastState = state
+function publishBlock(): void {
+  const modes = new Set(claims.values())
+  const mode: PageTopInsetModeBlock = modes.has('flush') ? 'flush' : modes.has('paper') ? 'paper' : 'default'
+  if (mode === lastState.mode) return
+  lastState = { mode }
   if (typeof window === 'undefined') return
-  window.dispatchEvent(new CustomEvent(PAGE_TOP_INSET_EVENT_BLOCK, { detail: state }))
+  window.dispatchEvent(new CustomEvent(PAGE_TOP_INSET_EVENT_BLOCK, { detail: lastState }))
+}
+
+/** Ask for a top-inset mode while active; call the result to release it. */
+export function claimPageTopInsetBlock(mode: PageTopInsetModeBlock): () => void {
+  const id = Symbol('page-top-inset')
+  claims.set(id, mode)
+  publishBlock()
+  return () => {
+    claims.delete(id)
+    publishBlock()
+  }
 }
 
 /** Snapshot for subscribers that mount after the page already dispatched. */

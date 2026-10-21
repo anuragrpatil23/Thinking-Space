@@ -684,7 +684,9 @@ export default function RssReelsBlock({
           return (
             <section
               key={entry.item.id}
-              className="ltm-reels-card relative flex h-full w-full flex-col"
+              // Dark even before its card mounts: cards far from the reader
+              // are empty sections, and a fast swipe showed them as light gaps.
+              className="ltm-reels-card relative flex h-full w-full flex-col bg-neutral-950"
             >
               {mounted ? (
                 <ReelCard
@@ -877,7 +879,7 @@ function ReelCard({
       {/* Status stack: where you are in the day, and what this card is. Both are
           facts about the card rather than actions on it, so they sit apart from
           the action rail, on the same right-hand axis. */}
-      <div className="absolute right-3 top-4 flex flex-col items-end gap-1.5">
+      <div className="absolute right-3 top-[calc(var(--ltm-reels-top,1.5rem)-0.5rem)] flex flex-col items-end gap-1.5">
         {position > 0 && (
           <span className="rounded-full border border-white/20 bg-black/30 px-2.5 py-1 text-[11px] font-medium tabular-nums text-white/80 backdrop-blur-sm">
             {position}/{total}

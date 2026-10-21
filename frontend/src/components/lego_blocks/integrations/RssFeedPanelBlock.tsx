@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
-import { dispatchPageTopInsetBlock } from '@/services/lego_blocks/units/pageTopInsetBlock'
+import { claimPageTopInsetBlock } from '@/services/lego_blocks/units/pageTopInsetBlock'
 import { dispatchTopChromeAppearanceBlock } from '@/services/lego_blocks/units/topChromeAppearanceBlock'
 import RssTimelineBlock from './RssTimelineBlock'
 import RssReelsBlock from './RssReelsBlock'
@@ -383,10 +383,10 @@ export default function RssFeedPanelBlock({
   const reelsOnScreen = reelsFullBleed && routeActive && !articleOpen
   useEffect(() => {
     if (!reelsOnScreen) return
-    dispatchPageTopInsetBlock({ mode: 'flush' })
+    const releaseInset = claimPageTopInsetBlock('flush')
     dispatchTopChromeAppearanceBlock({ dark: true })
     return () => {
-      dispatchPageTopInsetBlock({ mode: 'default' })
+      releaseInset()
       dispatchTopChromeAppearanceBlock({ dark: false })
     }
   }, [reelsOnScreen])
