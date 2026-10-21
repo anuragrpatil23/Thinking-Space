@@ -634,6 +634,8 @@ export async function fetchAndParseRssFeedOrch(
   options?: {
     onStoredResult?: (result: RssFeedResultBlock) => void
     onStoredPage?: (result: RssFeedResultBlock) => void
+    /** The retained backlog has been streamed in full. */
+    onStoredDone?: () => void
   },
 ): Promise<RssFeedResultBlock> {
   // On iOS, Capacitor can surface raw readdir plugin errors for missing folders
@@ -764,7 +766,7 @@ export async function fetchAndParseRssFeedOrch(
     if (options?.onStoredPage) {
       void streamStoredFeedItemsOrch(config.id, (items) => {
         options.onStoredPage?.({ feedId: config.id, feedTitle, items, error: null })
-      })
+      }).then(() => options.onStoredDone?.(), () => undefined)
     }
 
     return { feedId: config.id, feedTitle, items: liveItems, error: null }

@@ -60,6 +60,12 @@ interface RssFeedsStateBlock {
 /** A cached store older than this refetches in the background on remount. Not a
  *  timer — nothing polls; this is only consulted when a surface mounts. */
 const STALE_AFTER_MS = 5 * 60 * 1000
+/** Feeds whose retained backlog has been streamed in this session. The backlog
+ *  is every saved article file for the feed, read from the vault 24 at a time;
+ *  it does not change under the reader, so later loads fetch the live feed
+ *  only. Reading it on every load is what made returning to the app re-fetch
+ *  the same days over and over, and kept the main thread busy doing it. */
+const backlogStreamedFeedIds = new Set<string>()
 
 /** How many feeds fetch concurrently. Network, XML parsing and native
  *  filesystem hydration all settle on the renderer, so an unbounded fan-out
@@ -205,14 +211,22 @@ export async function loadRssFeedsBlock(isRefresh = false, clearReadSession = is
       const config = feedConfigs[nextConfigIndex++]
       if (!config) return
       try {
+        const streamBacklog = !backlogStreamedFeedIds.has(config.id)
         const result = await fetchAndParseRssFeedOrch(config, {
           onStoredResult: (storedResult) => {
             if (requestId !== loadRequestId) return
             mergeFeedResultBlock(feedConfigs, storedResult)
           },
-          onStoredPage: (storedPage) => {
-            if (requestId !== loadRequestId) return
-            mergeStoredPageBlock(feedConfigs, storedPage)
+          onStoredPage: streamBacklog
+            ? (storedPage) => {
+                if (requestId !== loadRequestId) return
+                mergeStoredPageBlock(feedConfigs, storedPage)
+              }
+            : undefined,
+          // Only a stream this load still owns counts: one cut short by a newer
+          // load dropped its pages, so that load must stream again.
+          onStoredDone: () => {
+            if (requestId === loadRequestId) backlogStreamedFeedIds.add(config.id)
           },
         })
         if (requestId !== loadRequestId) return
@@ -255,7 +269,11 @@ function onVisibilityChangeBlock(): void {
   // There is deliberately no polling (the reader is commonly open for a long
   // time on battery). Returning to the app is the natural moment to pull
   // vault-backed viewed/dismissed state written on another device.
-  if (document.visibilityState === 'visible') void loadRssFeedsBlock(true, false)
+  // Only when stale, like a remount: coming back after a glance at another app
+  // re-fetched every feed and re-read its whole saved backlog each time.
+  if (document.visibilityState === 'visible' && Date.now() - lastLoadedAt > STALE_AFTER_MS) {
+    void loadRssFeedsBlock(true, false)
+  }
 }
 
 function subscribeBlock(listener: () => void): () => void {

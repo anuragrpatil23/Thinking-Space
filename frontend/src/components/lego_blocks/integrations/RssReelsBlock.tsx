@@ -462,6 +462,29 @@ export default function RssReelsBlock({
 
   const loading = loadingFeedIds.size > 0
 
+  // Fetch the photos the reader is about to reach. Only the centred card
+  // shows its image (so a flick never decodes bitmaps nobody stops on), which
+  // left each landing card downloading its photo only once you got there. A
+  // detached Image downloads into the HTTP cache without decoding; holding
+  // just these few keeps the requests alive and nothing more (IOS-MEMORY).
+  const prefetchRef = useRef(new Map<string, HTMLImageElement>())
+  useEffect(() => {
+    const wanted = new Set<string>()
+    for (const offset of [1, 2, -1]) {
+      const url = entries[activeIndex + offset]?.item.imageUrl
+      if (url) wanted.add(url)
+    }
+    const held = prefetchRef.current
+    for (const url of held.keys()) if (!wanted.has(url)) held.delete(url)
+    for (const url of wanted) {
+      if (held.has(url)) continue
+      const image = new Image()
+      image.decoding = 'async'
+      image.src = url
+      held.set(url, image)
+    }
+  }, [entries, activeIndex])
+
   if (entries.length === 0) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
