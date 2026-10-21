@@ -1037,15 +1037,9 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   const inlineExplorerContent = useMemo(() => (
     <>
       {/* On iPhone the title moves inside the explorer as an iOS large title
-          (see `phoneLargeTitle`) — it has to live in the scroller to scroll
-          away, so this fixed micro-label strip would only duplicate it. */}
-      {!isIPhoneIosSurface && (
-        <div className="ltm-shell-segment-header ltm-thinking-space-explorer-chrome flex h-11 shrink-0 items-center px-2">
-          <span className="px-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            {inlineExplorerTitle}
-          </span>
-        </div>
-      )}
+          (see `phoneLargeTitle`). Everywhere else the explorer draws its own
+          calm header (moon sliver, greeting, ＋/⋯) in place of the old
+          "THINKING SPACE EXPLORER" micro-label strip that lived here. */}
       {rssPanelOpen ? (
         <div className="min-h-0 flex-1">
           <RssFeedPanelBlock
@@ -1086,6 +1080,7 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
             toolbarActionsSlot={rssExplorerToolbarButton}
             collapseSearchToButton={useTopRssExplorerToggle}
             phoneLargeTitle={isIPhoneIosSurface ? inlineExplorerTitle : ''}
+            calmHeader={!isIPhoneIosSurface}
             draggableFiles
             draggableFolders
             title=""

@@ -80,10 +80,10 @@ export default function SessionTelemetryStripBlock({
     <div className="mt-2">
       <div
         className={cn(
-          'ltm-explorer-session-strip flex w-full items-center rounded-md border text-[11px] transition-colors',
-          filterOn
-            ? 'border-emerald-500/50 bg-emerald-500/10 text-foreground'
-            : 'border-border/50 bg-muted/30 text-muted-foreground',
+          /* A quiet status line, not a boxed control: it is read at a
+             glance far more often than it is clicked. */
+          'ltm-explorer-session-strip flex w-full items-center text-[12px] transition-colors',
+          filterOn ? 'text-foreground' : 'text-muted-foreground',
         )}
       >
         <button
@@ -91,16 +91,14 @@ export default function SessionTelemetryStripBlock({
           onClick={onToggleFilter}
           title={`${scopeTitle}\nClick to ${filterOn ? 'show all files again' : 'show only the files touched'}`}
           className={cn(
-            'flex min-w-0 flex-1 items-center gap-1.5 rounded-l-md px-2 py-1 text-left',
-            !filterOn && 'hover:bg-muted/60',
-            !multiple && 'rounded-r-md',
+            'flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left hover:bg-muted/50',
           )}
         >
           <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
           <span className="min-w-0 truncate">{label}:</span>
           <Counts view={view} />
           {filterOn && (
-            <span className="ml-auto shrink-0 pl-1 text-emerald-600 dark:text-emerald-400">filtered</span>
+            <span className="ml-auto shrink-0 pl-1 text-emerald-600 dark:text-emerald-400">showing only these</span>
           )}
         </button>
         {multiple && (
@@ -110,7 +108,7 @@ export default function SessionTelemetryStripBlock({
             aria-expanded={listOpen}
             aria-label="Choose AI session"
             title="Choose which AI session to show"
-            className="flex shrink-0 items-center self-stretch rounded-r-md border-l border-inherit px-1.5 hover:bg-muted/60"
+            className="flex shrink-0 items-center self-stretch rounded-md px-1.5 hover:bg-muted/50"
           >
             <ChevronDown className={cn('h-3 w-3 transition-transform', listOpen && 'rotate-180')} />
           </button>

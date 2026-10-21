@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ComponentType } from 'react'
 import { MoreHorizontal } from 'lucide-react'
 import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import { cn } from '@/lib/utils'
@@ -7,6 +7,8 @@ interface OverflowMenuButtonBlockProps {
   entries: ContextMenuEntryBlock[]
   title?: string
   className?: string
+  /** The trigger's glyph; three dots by default. */
+  icon?: ComponentType<{ className?: string }>
 }
 
 /**
@@ -18,6 +20,7 @@ export default function OverflowMenuButtonBlock({
   entries,
   title = 'More actions',
   className,
+  icon: Icon = MoreHorizontal,
 }: OverflowMenuButtonBlockProps) {
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   // ContextMenuBlock closes itself on any outside pointerdown — including one
@@ -51,7 +54,7 @@ export default function OverflowMenuButtonBlock({
           className,
         )}
       >
-        <MoreHorizontal className="h-4 w-4" />
+        <Icon className="h-4 w-4" />
       </button>
       {menuPosition && (
         <ContextMenuBlock

@@ -33,6 +33,7 @@ import {
   Link2,
   ListOrdered,
   Loader2,
+  Plus,
   Search,
 } from 'lucide-react'
 import UniversalSearchBlock from '@/components/lego_blocks/integrations/UniversalSearchBlock'
@@ -82,6 +83,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import CursorTooltipBlock from '@/components/lego_blocks/units/CursorTooltipBlock'
 import type { SessionTelemetry } from '@/services/orchestrators/sessionTelemetryOrch'
 import SessionTelemetryStripBlock from '@/components/lego_blocks/units/SessionTelemetryStripBlock'
+import ExplorerGreetingBlock from '@/components/lego_blocks/units/ExplorerGreetingBlock'
+import ExplorerPullHelloBlock from '@/components/lego_blocks/units/ExplorerPullHelloBlock'
+import OverflowMenuButtonBlock from '@/components/lego_blocks/units/ui/OverflowMenuButtonBlock'
+import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
+import { useTimeOfDayBlock } from '@/components/lego_blocks/hooks/shared/useTimeOfDayBlock'
 import { writeSortOrdersBlock } from '@/services/lego_blocks/units/notebookOrderBlock'
 import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebookSidecarBlock'
 import { getAbsolutePathForClipboardOrch } from '@/services/orchestrators/fileSystemOrch'
@@ -312,6 +318,9 @@ interface VaultExplorerBlockProps {
   /** Extra action(s) rendered inline in the top toolbar row, alongside the
    *  New Folder/File/Drawing buttons (e.g. the RSS Feeds toggle). */
   toolbarActionsSlot?: ReactNode
+  /** Draw the calm header (moon sliver, greeting, session line, ＋ and ⋯)
+   *  in place of the title and icon toolbar. */
+  calmHeader?: boolean
   /**
    * Collapse the always-visible filter input into a toolbar search button in
    * EVERY view mode (compact mode already does this). Used on iPhone, where
@@ -459,6 +468,7 @@ function VaultExplorerBlockInner({
   belowToolbarSlot = null,
   toolbarActionsSlot = null,
   collapseSearchToButton = false,
+  calmHeader: calmHeaderProp = false,
   phoneLargeTitle = '',
   sessionTelemetry = null,
 }: VaultExplorerBlockProps, ref: Ref<VaultExplorerHandle>) {
@@ -724,8 +734,65 @@ function VaultExplorerBlockInner({
 
   const normalizedQuery = query.trim().toLowerCase()
   const hasTitle = title.trim().length > 0
+  /* The calm header (desktop and iPad sidebar): a greeting (Clawd says hello
+     once per session), the session line, a soft search pill — and one ＋ and
+     one ⋯ instead of a row of five look-alike icons. The iPhone keeps its own
+     large-title header. */
+  const { profile } = useUserProfileBlock()
+  /* Re-renders the greeting as the day moves on (visibility-aware, 60s). */
+  useTimeOfDayBlock()
+  /* Pull past the top of the tree to have Clawd say hi — the pull-to-refresh
+     gesture, with a hello instead of a refresh. Only a gesture that *starts*
+     with the tree already at the top counts: the momentum of a scroll that
+     merely arrives at the top kept going and set it off the instant the top
+     was reached. A gesture is a run of wheel events with no gap over 300ms. */
+  const [greetNonce, setGreetNonce] = useState(0)
+  const [inlineGreetNonce, setInlineGreetNonce] = useState(0)
+  /* iOS-style large title: big at rest at the top, small once the tree
+     scrolls. Coming back up to the top leaves it small — arriving is not
+     asking; only pulling on past the top grows it again (the first stage of
+     the same pull that, carried further, brings Clawd). */
+  const [largeGreeting, setLargeGreeting] = useState(true)
+  const largeGreetingRef = useRef(true)
+  largeGreetingRef.current = largeGreeting
+  const overscrollRef = useRef({ pull: 0, lastAt: 0, startedAtTop: false, fired: false, touchY: null as number | null })
+  const pullForHelloBlock = useCallback((atTop: boolean, amount: number, threshold: number) => {
+    const state = overscrollRef.current
+    const now = performance.now()
+    if (now - state.lastAt > 300) {
+      state.startedAtTop = atTop
+      state.pull = 0
+      state.fired = false
+    }
+    state.lastAt = now
+    if (!atTop) {
+      state.startedAtTop = false
+      return
+    }
+    if (!state.startedAtTop || amount <= 0 || state.fired) return
+    state.pull += amount
+    if (!largeGreetingRef.current) {
+      /* Stage one: grow the greeting (and Clawd slides in beside it). It
+         ends this gesture: the drop-in needs a pull of its own, or the same
+         pull carried on brought a second Clawd while the first was still
+         there. */
+      if (state.pull >= threshold * 0.35) {
+        state.pull = 0
+        state.fired = true
+        largeGreetingRef.current = true
+        setLargeGreeting(true)
+        setInlineGreetNonce((count) => count + 1)
+      }
+      return
+    }
+    if (state.pull >= threshold) {
+      state.fired = true
+      setGreetNonce((count) => count + 1)
+    }
+  }, [])
   const largeTitle = phoneLargeTitle.trim()
   const hasLargeTitle = largeTitle.length > 0
+  const calmHeader = calmHeaderProp && !collapseSearchToButton && !hasLargeTitle
   const inlineRenameSession = inlineRename ? `${inlineRename.kind}:${inlineRename.path}` : null
 
   // Filtering asks the shared vault search engine, which knows the whole vault
@@ -1827,7 +1894,7 @@ function VaultExplorerBlockInner({
         hasLargeTitle && 'sticky top-11 z-10 shrink-0 bg-background',
         viewMode === 'compact' ? 'py-1.5' : 'py-2',
       )}>
-        {hasTitle && (
+        {hasTitle && !calmHeader && (
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               {title}
@@ -1835,24 +1902,108 @@ function VaultExplorerBlockInner({
           </div>
         )}
 
-        {((viewMode !== 'compact' && !collapseSearchToButton) || compactSearchOpen || query) && (
+        {calmHeader && (() => {
+          const parentPath = selectedFolderPath ?? (selectedFilePath ? getParentPath(selectedFilePath) : '')
+          /* ＋ creates where you are working — the selected folder, or the
+             open file's folder — and says so, so it never needs scrolling
+             back to a folder row and never surprises. */
+          const where = parentPath ? parentPath.split('/').pop() : 'the vault'
+          const createEntries: ContextMenuEntryBlock[] = [
+            {
+              key: 'note',
+              label: `New note in ${where}`,
+              disabled: !onCreateFile,
+              onClick: () => { void runContextAction(onCreateFile ? () => onCreateFile(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) },
+            },
+            {
+              key: 'folder',
+              label: `New folder in ${where}`,
+              disabled: !onCreateFolder,
+              onClick: () => { void runContextAction(onCreateFolder ? () => onCreateFolder(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'folder' }) },
+            },
+            {
+              key: 'drawing',
+              label: `New drawing in ${where}`,
+              disabled: !onCreateDrawing,
+              onClick: () => { void runContextAction(onCreateDrawing ? () => onCreateDrawing(parentPath) : undefined, { refreshPath: parentPath, armRenameOnEnterKind: 'file' }) },
+            },
+            {
+              key: 'link',
+              label: `Add link in ${where}`,
+              disabled: !onCreateLink,
+              onClick: () => { void runContextAction(onCreateLink ? () => onCreateLink(parentPath) : undefined, { refreshPath: parentPath }) },
+            },
+          ]
+          const optionEntries: ContextMenuEntryBlock[] = [
+            { key: 'tree', label: 'Tree view', checked: viewMode === 'tree', onClick: () => setViewMode('tree') },
+            { key: 'compact', label: 'Compact view', checked: viewMode === 'compact', onClick: () => setViewMode('compact') },
+            { key: 'grid', label: 'Grid view', checked: viewMode === 'grid', onClick: () => setViewMode('grid') },
+            { key: 'sep', kind: 'separator' },
+            {
+              key: 'info',
+              label: showInfoPanel ? 'Hide file info' : 'Show file info',
+              disabled: !loadFileTags || !activeFilePath,
+              onClick: () => setShowInfoPanel((prev) => !prev),
+            },
+          ]
+          return (
+            <>
+              <ExplorerPullHelloBlock nonce={greetNonce} />
+              <div className={cn(
+                'mb-2 mt-1 flex items-center gap-0.5 transition-[height] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+                largeGreeting ? 'h-12' : 'h-9',
+              )}>
+                <ExplorerGreetingBlock
+                  name={profile.name}
+                  large={largeGreeting}
+                  greetNonce={inlineGreetNonce}
+                  dismissNonce={greetNonce}
+                  className="flex-1 pl-1"
+                />
+                {toolbarActionsSlot}
+                <OverflowMenuButtonBlock icon={Plus} title="New…" entries={createEntries} />
+                <OverflowMenuButtonBlock title="Explorer options" entries={optionEntries} />
+              </div>
+              {sessionTelemetry && sessionTelemetry.all.files.size > 0 && (
+                <div className="mb-2">
+                  <SessionTelemetryStripBlock
+                    telemetry={sessionTelemetry}
+                    selected={telemetrySession}
+                    filterOn={telemetryFilterOn}
+                    listOpen={telemetryListOpen}
+                    onToggleFilter={toggleTelemetryFilter}
+                    onToggleList={() => setTelemetryListOpen(prev => !prev)}
+                    onSelectSession={selectTelemetrySession}
+                  />
+                </div>
+              )}
+            </>
+          )
+        })()}
+
+        {(calmHeader || (viewMode !== 'compact' && !collapseSearchToButton) || compactSearchOpen || query) && (
           <div className="flex w-full items-center">
             <UniversalSearchBlock
               {...UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK}
+              {...(calmHeader ? {
+                /* A soft filled pill rather than an outlined form field: it
+                   reads as part of the panel until you use it. */
+                inputClassName: 'h-9 rounded-lg border border-transparent bg-muted/60 pl-9 pr-3 text-[13px] text-foreground outline-none ring-0 transition-colors placeholder:text-muted-foreground/70 hover:bg-muted focus:border-border focus:bg-background focus:ring-0 focus:ring-offset-0',
+              } : {})}
               items={[]}
               query={query}
               onQueryChange={setQuery}
               onSelect={() => {}}
               getItemKey={(value) => value}
               getItemLabel={(value) => value}
-              placeholder="Filter files..."
+              placeholder={calmHeader ? 'Search files' : 'Filter files...'}
               className="w-full"
             />
           </div>
         )}
         {filterActive && <SearchResultSummaryBlock ranking={searchRanking} />}
 
-        <div className={cn(
+        {!calmHeader && <div className={cn(
           'flex items-center gap-1 px-1',
           (viewMode !== 'compact' && !collapseSearchToButton) ? 'mt-2' : (compactSearchOpen || query) ? 'mt-1' : 'mt-0',
         )}>
@@ -1981,9 +2132,9 @@ function VaultExplorerBlockInner({
               </TooltipProvider>
             )
           })()}
-        </div>
+        </div>}
 
-        {sessionTelemetry && sessionTelemetry.all.files.size > 0 && (
+        {!calmHeader && sessionTelemetry && sessionTelemetry.all.files.size > 0 && (
           <SessionTelemetryStripBlock
             telemetry={sessionTelemetry}
             selected={telemetrySession}
@@ -2064,6 +2215,29 @@ function VaultExplorerBlockInner({
           hasLargeTitle && 'flex-none overflow-visible pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
           canDropOnRows && dropOverPath === '' && 'ring-2 ring-blue-500/60 bg-blue-500/5',
         )}
+        onScroll={calmHeader ? (event) => {
+          if (event.currentTarget.scrollTop > 8 && largeGreetingRef.current) {
+            largeGreetingRef.current = false
+            setLargeGreeting(false)
+          }
+        } : undefined}
+        onWheel={calmHeader ? (event) => {
+          pullForHelloBlock(event.currentTarget.scrollTop <= 0, -event.deltaY, 220)
+        } : undefined}
+        onTouchStart={calmHeader ? (event) => {
+          const atTop = event.currentTarget.scrollTop <= 0
+          overscrollRef.current.touchY = atTop ? event.touches[0]?.clientY ?? null : null
+          overscrollRef.current.lastAt = 0
+          pullForHelloBlock(atTop, 0, 90)
+        } : undefined}
+        onTouchMove={calmHeader ? (event) => {
+          const startY = overscrollRef.current.touchY
+          const y = event.touches[0]?.clientY
+          if (startY === null || y === undefined) return
+          overscrollRef.current.touchY = y
+          pullForHelloBlock(event.currentTarget.scrollTop <= 0, y - startY, 90)
+        } : undefined}
+
         onDragOver={canDropOnRows ? (event) => {
           void handleDragOverTarget(event, '')
         } : undefined}

@@ -71,6 +71,27 @@ Model-agnostic layer for internal AI tasks (session titles, structured extracts,
 - `frontend/electron/src/lego_blocks/localBuildUpdateNoticeBlock.ts` — update story for custom builds: apps with the `local-build` marker (written by `scripts/checkpoint-ship.sh`) skip electron-updater (official DMG would erase user modifications) and instead get a native notification when a newer official release exists; their upgrade path is fork-merge + rebuild (PLAYBOOKS §12 Step 5).
 
 
+## Explorer Header and Moon Characters
+
+- Calm explorer header (`VaultExplorerBlock` `calmHeader`, desktop/iPad; iPhone
+  keeps its large-title header): greeting (`ExplorerGreetingBlock`, iOS-style
+  large at rest, small once the tree scrolls, grows again only on a pull past
+  the top — arriving at the top is not asking), the AI-session line as quiet
+  text (still the filter toggle), a soft search pill, one ＋ that names the
+  folder it creates in, one ⋯ for view options. Clawd says hello once per
+  session and on pulls: stage one slides him in beside the greeting, a second
+  separate pull drops him in from the top with an encouraging line
+  (`explorerEncouragementBlock`, never "take a break"-style advice). One
+  Clawd on screen at a time. Nothing idles or loops (ENERGY.md).
+- Moon characters are shared: sprites and pixel data
+  (`moonSpritesBlock.ts`), renderer (`MoonPixelSpriteBlock`, SVG paths per
+  colour with crisp edges — per-pixel box-shadows seamed at fractional zoom),
+  Clawd (`MoonClawdBlock`), props (`MoonMessageOverlaysBlock`), keyframes
+  (`MoonSceneKeyframesBlock`). Home draws through the same components; the
+  explorer scales Clawd as a whole (`ExplorerClawdBlock`) so every Home
+  animation works unchanged. With idle life off, Clawd's eyelids are hidden
+  explicitly — they are drawn shut and only the blink loop opens them.
+
 ## Key PDF Reader Blocks
 
 Rebuilt 2026-09-03. The viewer no longer uses react-pdf's `<Page>`; it drives
