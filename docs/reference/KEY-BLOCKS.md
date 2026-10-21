@@ -75,14 +75,20 @@ Model-agnostic layer for internal AI tasks (session titles, structured extracts,
 
 - Calm explorer header (`VaultExplorerBlock` `calmHeader`, desktop/iPad; iPhone
   keeps its large-title header): greeting (`ExplorerGreetingBlock`, iOS-style
-  large at rest, small once the tree scrolls, grows again only on a pull past
-  the top — arriving at the top is not asking), the AI-session line as quiet
-  text (still the filter toggle), a soft search pill, one ＋ that names the
-  folder it creates in, one ⋯ for view options. Clawd says hello once per
-  session and on pulls: stage one slides him in beside the greeting, a second
-  separate pull drops him in from the top with an encouraging line
-  (`explorerEncouragementBlock`, never "take a break"-style advice). One
-  Clawd on screen at a time. Nothing idles or loops (ENERGY.md).
+  large at rest, small once the tree scrolls, never grows back), the
+  AI-session line as quiet text (still the filter toggle), a soft search
+  pill, one ＋ that names the folder it creates in, one ⋯ for view options.
+  Clawd says hello once per session (beside the greeting), and on a pull past
+  the top (`ExplorerPullHelloBlock`): the whole explorer slides down by
+  `translate` (never resize — that reflowed per wheel event), 1:1 with the
+  fingers then easing into a stop, Clawd rising in the gap; the hello fires
+  only at the far end of a slow, deliberate pull and the spring-back is a
+  fixed-time critically damped `linear()` spring (further pull → faster
+  snap). Gesture rules in `pullForHelloBlock` were tuned by hand on a Mac
+  trackpad — each comment records a rejected variant (rubber band, caps,
+  speed filters, silence waits); read them before changing anything. Lines
+  come from `explorerEncouragementBlock` (never "take a break"-style advice).
+  One Clawd on screen at a time. Nothing idles or loops (ENERGY.md).
 - Moon characters are shared: sprites and pixel data
   (`moonSpritesBlock.ts`), renderer (`MoonPixelSpriteBlock`, SVG paths per
   colour with crisp edges — per-pixel box-shadows seamed at fractional zoom),

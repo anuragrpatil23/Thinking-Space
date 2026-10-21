@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useImperativeHandle, useRef, useState, type RefObject } from 'react'
 import ExplorerClawdBlock, { EXPLORER_CLAWD_HEIGHT_BLOCK, EXPLORER_CLAWD_WIDTH_BLOCK } from '@/components/lego_blocks/units/ExplorerClawdBlock'
 import MoonPixelBubbleBlock from '@/components/lego_blocks/units/MoonPixelBubbleBlock'
 import { nextEncouragementBlock } from '@/services/lego_blocks/units/explorerEncouragementBlock'
@@ -7,30 +7,57 @@ import type { MoonSceneAnimationBlock } from '@/services/lego_blocks/units/vault
 /* Pull past the top of the file tree and Clawd says hello — pull-to-refresh
    from the Claude iPhone app, with a hello instead of a refresh.
 
-   It is a visible pull, not a hidden trigger: as you pull, a space opens
-   above the header on a rubber band and Clawd's head rises into it, further
-   the further you pull. Letting go past the line commits — he pops up, does
-   one of Home's tricks and says something kind in a pixel bubble; letting go
-   short springs the space shut and nothing happens. That release rule is what
-   makes it feel intended rather than accidental.
+   It is a visible pull, not a hidden trigger: as you pull, the whole
+   explorer — greeting, session line, tree — slides down with your fingers,
+   one to one up to a stop, and Clawd's head rises out of the gap it leaves at the top,
+   further the further you pull. Pulling on to the line brings him out right
+   there, fingers still down — he pops up, does one of Home's tricks and says
+   something kind in a pixel bubble, and the rest of that pull is ignored.
+   Letting go short springs everything back and nothing happens. (It used to
+   wait for the release; triggering at the line feels more direct.)
 
-   The pull moves every frame, so it is driven straight on the elements
-   (`update`/`release` through a ref) rather than through React state — a
-   render of the whole explorer per wheel event would make the pull feel
-   heavy. React takes over only for the hello itself. Nothing stays or loops
-   afterwards (docs/contracts/ENERGY.md); reduced motion turns it off. */
+   Everything moves by `translate` only: the explorer's children slide and
+   this layer (absolute, its bottom edge riding the header's top) follows, so
+   nothing reflows per frame. An earlier version grew a space above the
+   header instead, and resizing the panel every wheel event made the pull
+   feel heavy. For the same reason it is driven straight on the elements
+   (`update`/`release` through a ref) rather than through React state; React
+   takes over only for the hello itself. Nothing stays or loops afterwards
+   (docs/contracts/ENERGY.md); reduced motion turns it off. */
 
 export interface ExplorerPullHelloHandle {
-  /** Raw pull distance past the top, px; `threshold` is the commit line. */
+  /** Raw pull distance past the top, px; reaching `threshold` says hello. */
   update: (pull: number, threshold: number) => void
-  /** Fingers lifted: commit if past the line, otherwise spring shut. */
+  /** Fingers lifted (or still): short of the line, spring back; re-arms. */
   release: () => void
+  /** The pull that matches where the explorer is right now — mid spring-back
+      included — so a pull resumed during it continues without a jump. */
+  currentPull: () => number
 }
 
 const HELLO_MS_BLOCK = 3400
-const PULL_REACH_PX_BLOCK = 72
-const OPEN_HEIGHT_PX_BLOCK = 84
+const PULL_REACH_PX_BLOCK = 230
+/* One to one up to here, then easing into the reach. */
+const PULL_EASE_FROM_PX_BLOCK = 150
+const OPEN_HEIGHT_PX_BLOCK = 108
 const SPRING_BLOCK = 'cubic-bezier(0.22, 1, 0.36, 1)'
+/* Going back is a real spring: a critically damped one let go from rest,
+   x(t) = 1 − (1 + ωt)·e^(−ωt). It leaves gently (a curve starting at full
+   speed read as a jolt) and settles without overshoot, and like any spring
+   it takes the same time whatever the stretch — so the further you pulled,
+   the faster it snaps back. (Scaling the time with distance did the
+   opposite and made long pulls drag.) */
+const SETTLE_MS_BLOCK = 560
+const SETTLE_BLOCK = (() => {
+  const omega = 7.4 // ≈99.5% home at the end of SETTLE_MS_BLOCK
+  const stops: string[] = []
+  for (let i = 0; i <= 24; i += 1) {
+    const t = i / 24
+    const x = i === 24 ? 1 : 1 - (1 + omega * t) * Math.exp(-omega * t)
+    stops.push(x.toFixed(4))
+  }
+  return `linear(${stops.join(', ')})`
+})()
 /* Walked in order, so each hello shows a different trick. */
 const TRICKS_BLOCK: readonly MoonSceneAnimationBlock[] = ['wave', 'skate', 'dance', 'wizard', 'cheer', 'hop', 'spin', 'backflip']
 
@@ -42,80 +69,142 @@ function prefersReducedMotionBlock(): boolean {
   }
 }
 
-/* The pull follows the fingers with growing resistance and never passes
-   `reach` — the iOS rubber band. */
-function rubberBandBlock(pull: number, reach: number): number {
-  return (1 - 1 / ((pull * 0.55) / reach + 1)) * reach
+interface ExplorerPullHelloProps {
+  /** The explorer root: every child but this layer slides with the pull. It
+      must be `relative overflow-hidden`. */
+  containerRef: RefObject<HTMLElement | null>
+  onHello?: () => void
 }
 
-const ExplorerPullHelloBlock = forwardRef<ExplorerPullHelloHandle, { onHello?: () => void }>(
-  function ExplorerPullHelloBlock({ onHello }, ref) {
+const ExplorerPullHelloBlock = forwardRef<ExplorerPullHelloHandle, ExplorerPullHelloProps>(
+  function ExplorerPullHelloBlock({ containerRef, onHello }, ref) {
     const spaceRef = useRef<HTMLDivElement | null>(null)
     const peekRef = useRef<HTMLSpanElement | null>(null)
-    const progressRef = useRef(0)
+    /* This pull already said hello; the rest of it is ignored. */
+    const spentRef = useRef(false)
     const [hello, setHello] = useState<{ count: number; line: string; trick: MoonSceneAnimationBlock } | null>(null)
     const helloRef = useRef(false)
     const countRef = useRef(0)
+    const settleTimerRef = useRef<number | null>(null)
+
+    /* Where the explorer is right now, mid-animation included: the layer
+       rides the header's top edge, so its live translate is the offset. */
+    function liveOffsetBlock(): number {
+      const space = spaceRef.current
+      if (!space) return 0
+      const live = getComputedStyle(space).translate.split(' ')
+      return Math.max(0, (Number.parseFloat(live[1] ?? '') || -OPEN_HEIGHT_PX_BLOCK) + OPEN_HEIGHT_PX_BLOCK)
+    }
+
+    /* Slides the explorer's contents and this layer to `offset` px down,
+       springing over `ms` (0 = follow the fingers). */
+    function slideBlock(offset: number, ms: number, curve = SPRING_BLOCK) {
+      const space = spaceRef.current
+      const container = containerRef.current
+      if (!space || !container) return
+      if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current)
+      settleTimerRef.current = null
+      const transition = ms ? `translate ${ms}ms ${curve}` : 'none'
+      const moving: HTMLElement[] = [space]
+      for (const child of Array.from(container.children)) {
+        if (child !== space && child instanceof HTMLElement) moving.push(child)
+      }
+      for (const el of moving) {
+        el.style.willChange = 'translate'
+        el.style.transition = transition
+      }
+      for (const el of moving) {
+        el.style.translate = el === space ? `0 ${offset - OPEN_HEIGHT_PX_BLOCK}px` : offset ? `0 ${offset}px` : ''
+      }
+      /* Back at rest: drop the layer hints so nothing stays composited. */
+      if (offset === 0) {
+        settleTimerRef.current = window.setTimeout(() => {
+          settleTimerRef.current = null
+          for (const el of moving) {
+            el.style.willChange = ''
+            el.style.transition = ''
+          }
+        }, ms + 40)
+      }
+    }
 
     useImperativeHandle(ref, () => ({
       update(pull, threshold) {
-        if (helloRef.current || prefersReducedMotionBlock()) return
-        const space = spaceRef.current
+        if (helloRef.current || spentRef.current || prefersReducedMotionBlock()) return
         const peek = peekRef.current
-        if (!space || !peek) return
-        const progress = Math.max(0, Math.min(1, pull / threshold))
-        progressRef.current = progress
-        space.style.transition = 'none'
-        space.style.height = `${rubberBandBlock(Math.max(0, pull), PULL_REACH_PX_BLOCK)}px`
-        peek.style.transition = 'none'
-        /* His head rises with the pull; at the line he is fully up, the cue
-           that letting go now will bring him out. */
-        peek.style.transform = `translateY(${Math.round((1 - progress) * (EXPLORER_CLAWD_HEIGHT_BLOCK + 6))}px)`
-        peek.style.opacity = String(Math.min(1, progress * 1.4))
-      },
-      release() {
-        const space = spaceRef.current
-        const peek = peekRef.current
-        if (!space || !peek || helloRef.current) return
-        const committed = progressRef.current >= 1
-        progressRef.current = 0
-        if (!committed) {
-          space.style.transition = `height 320ms ${SPRING_BLOCK}`
-          space.style.height = '0px'
-          peek.style.transition = `transform 320ms ${SPRING_BLOCK}, opacity 200ms ease-out`
-          peek.style.transform = `translateY(${EXPLORER_CLAWD_HEIGHT_BLOCK + 6}px)`
-          peek.style.opacity = '0'
+        if (!peek) return
+        if (pull >= threshold) {
+          spentRef.current = true
+          sayHelloBlock(peek)
           return
         }
-        helloRef.current = true
-        countRef.current += 1
-        space.style.transition = `height 260ms ${SPRING_BLOCK}`
-        space.style.height = `${OPEN_HEIGHT_PX_BLOCK}px`
+        /* Tracks the fingers exactly — a rubber band's resistance made the
+           pull feel like it was fighting back — then eases into the reach
+           instead of stopping dead: a hard stop left the last stretch of the
+           pull (to the line) frozen, which read as a stutter. */
+        const lead = Math.max(0, pull)
+        const tail = PULL_REACH_PX_BLOCK - PULL_EASE_FROM_PX_BLOCK
+        const offset = lead <= PULL_EASE_FROM_PX_BLOCK
+          ? lead
+          : PULL_EASE_FROM_PX_BLOCK + tail * (1 - Math.exp(-(lead - PULL_EASE_FROM_PX_BLOCK) / (tail * 2.5)))  // inverse in currentPull
+        slideBlock(offset, 0)
+        /* He rises as soon as the gap fits him and stands there, quiet, for
+           the rest of the pull — you see him well before anything happens. */
+        const rise = Math.min(1, offset / (EXPLORER_CLAWD_HEIGHT_BLOCK + 14))
         peek.style.transition = 'none'
-        peek.style.opacity = '0'
-        setHello({
-          count: countRef.current,
-          line: nextEncouragementBlock(),
-          trick: TRICKS_BLOCK[(countRef.current - 1) % TRICKS_BLOCK.length],
-        })
-        onHello?.()
-        window.setTimeout(() => {
-          space.style.transition = `height 360ms ${SPRING_BLOCK}`
-          space.style.height = '0px'
-          window.setTimeout(() => {
-            helloRef.current = false
-            setHello(null)
-          }, 380)
-        }, HELLO_MS_BLOCK)
+        peek.style.transform = `translateY(${Math.round((1 - rise) * (EXPLORER_CLAWD_HEIGHT_BLOCK + 6))}px)`
+        /* Brightens over the last stretch, so the pull visibly still counts. */
+        const near = Math.max(0, (lead - PULL_EASE_FROM_PX_BLOCK) / Math.max(1, threshold - PULL_EASE_FROM_PX_BLOCK))
+        peek.style.opacity = String(Math.min(1, rise * (0.6 + 0.4 * near)))
       },
-    }), [onHello])
+      release() {
+        spentRef.current = false
+        const peek = peekRef.current
+        if (!peek || helloRef.current) return
+        const ms = SETTLE_MS_BLOCK
+        slideBlock(0, ms, SETTLE_BLOCK)
+        /* He sinks with the explorer and is gone a little before it lands. */
+        peek.style.transition = `transform ${ms}ms ${SETTLE_BLOCK}, opacity ${Math.round(ms * 0.7)}ms ease-out`
+        peek.style.transform = `translateY(${EXPLORER_CLAWD_HEIGHT_BLOCK + 6}px)`
+        peek.style.opacity = '0'
+      },
+      currentPull() {
+        if (helloRef.current) return 0
+        const offset = liveOffsetBlock()
+        if (offset <= PULL_EASE_FROM_PX_BLOCK) return offset
+        const tail = PULL_REACH_PX_BLOCK - PULL_EASE_FROM_PX_BLOCK
+        const eased = Math.min(0.99, (offset - PULL_EASE_FROM_PX_BLOCK) / tail)
+        return PULL_EASE_FROM_PX_BLOCK - tail * 2.5 * Math.log(1 - eased)
+      },
+    }), [onHello])  // eslint-disable-line react-hooks/exhaustive-deps -- the helpers read refs only
+
+    function sayHelloBlock(peek: HTMLSpanElement) {
+      helloRef.current = true
+      countRef.current += 1
+      slideBlock(OPEN_HEIGHT_PX_BLOCK, 260)
+      peek.style.transition = 'none'
+      peek.style.opacity = '0'
+      setHello({
+        count: countRef.current,
+        line: nextEncouragementBlock(),
+        trick: TRICKS_BLOCK[(countRef.current - 1) % TRICKS_BLOCK.length],
+      })
+      onHello?.()
+      window.setTimeout(() => {
+        slideBlock(0, SETTLE_MS_BLOCK, SETTLE_BLOCK)
+        window.setTimeout(() => {
+          helloRef.current = false
+          setHello(null)
+        }, SETTLE_MS_BLOCK + 20)
+      }, HELLO_MS_BLOCK)
+    }
 
     return (
       <div
         ref={spaceRef}
         aria-hidden="true"
-        className="relative flex items-end justify-center overflow-hidden"
-        style={{ height: 0 }}
+        className="pointer-events-none absolute inset-x-0 top-0 flex items-end justify-center overflow-hidden"
+        style={{ height: OPEN_HEIGHT_PX_BLOCK, translate: `0 ${-OPEN_HEIGHT_PX_BLOCK}px` }}
       >
         <style>{`
           @keyframes ltm-pull-hello-pop {

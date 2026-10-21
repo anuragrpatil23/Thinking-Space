@@ -746,20 +746,31 @@ function VaultExplorerBlockInner({
   useTimeOfDayBlock()
   /* Pull past the top of the tree to have Clawd say hello — pull-to-refresh,
      with a hello instead of a refresh (ExplorerPullHelloBlock draws it).
-     One gesture, visible as it happens, committed on release:
-     - Only a gesture that *starts* with the tree already at the top counts;
-       the momentum of a scroll that merely arrives at the top is ignored.
-     - The pull grows the greeting at once and feeds the visible pull.
+     One gesture, visible as it happens:
+     - A gesture that starts at the top always pulls, one to one with the
+       fingers — no speed filter, caps or resistance (each was tried and made
+       the pull feel ignored or fighting back).
+     - A scroll arriving from below carries on into the pull only if it
+       reaches the top slowly with the fingers on. A fast scroll, or momentum
+       coasting after the fingers lifted, just gets you to the top.
+     - The line is crossed only by slow movement: fast deltas can bring the
+       pull up to it but not over, so a flick never says hello.
+     - The pull feeds the visible pull only; the greeting keeps its size
+       (growing it first, then Clawd, made two things happen in a row).
      - Release is the fingers lifting: on the trackpad, the moment the deltas
-       turn into macOS's decaying momentum tail (three shrinking in a row, as
-       in the PDF rubber band), or a short silence; on touch, touchend. Past
-       the line he says hello, short of it the space springs shut.
+       turn into macOS's decaying momentum tail (six shrinking in a row),
+       the empty wheel event Chromium sends on lift, or the fingers stopping
+       (160ms quiet — a hold looks the same, and resuming catches the spring
+       back mid-way); on touch, touchend.
+       Reaching the line says hello at once; release only springs a short
+       pull back and re-arms it.
      A gesture is a run of wheel events with no gap over 300ms. */
   const pullHelloRef = useRef<ExplorerPullHelloHandle | null>(null)
+  const explorerRootRef = useRef<HTMLDivElement | null>(null)
   const [helloNonce, setHelloNonce] = useState(0)
   /* iOS-style large title: big at rest at the top, small once the tree
-     scrolls. Coming back up to the top leaves it small — arriving is not
-     asking; pulling on past the top grows it again. */
+     scrolls. Once small it stays small for the session — coming back up,
+     even pulling past the top, never grows it again. */
   const [largeGreeting, setLargeGreeting] = useState(true)
   const largeGreetingRef = useRef(true)
   largeGreetingRef.current = largeGreeting
@@ -770,6 +781,13 @@ function VaultExplorerBlockInner({
     active: false,
     lastDelta: 0,
     shrinking: 0,
+    growing: 0,
+    /* This gesture has turned into momentum; sticky, because the tail of a
+       coast repeats equal deltas that would reset `shrinking`. */
+    coasting: false,
+    /* Sprang back on the fingers stopping; the gesture may still be going. */
+    settled: false,
+    steady: 0,
     releaseTimer: null as number | null,
     touchY: null as number | null,
   })
@@ -779,48 +797,93 @@ function VaultExplorerBlockInner({
     state.releaseTimer = null
     if (!state.active) return
     state.active = false
+    state.settled = true
+    state.steady = 0
     state.pull = 0
     pullHelloRef.current?.release()
   }, [])
   const pullForHelloBlock = useCallback((atTop: boolean, amount: number, threshold: number, wheel: boolean) => {
     const state = overscrollRef.current
     const now = performance.now()
-    if (now - state.lastAt > 300) {
+    /* A pause mid-pull is the fingers holding still, not a new gesture. */
+    if (!state.active && now - state.lastAt > 300) {
       state.startedAtTop = atTop
       state.pull = 0
       state.active = false
       state.shrinking = 0
+      state.growing = 0
       state.lastDelta = 0
+      state.settled = false
+      state.coasting = false
     }
     state.lastAt = now
-    if (!state.startedAtTop) return
-    if (!atTop && !state.active) {
-      state.startedAtTop = false
-      return
-    }
-    if (wheel && state.active) {
+    if (wheel) {
       const size = Math.abs(amount)
       state.shrinking = size < state.lastDelta * 0.97 ? state.shrinking + 1 : 0
+      /* Growing and not tiny: a coast's last ticks wobble (1, 2, 2, 3), and
+         reading that as fingers back stalled the spring-back mid-way. */
+      state.growing = size > state.lastDelta && size >= 4 ? state.growing + 1 : 0
       state.lastDelta = size
-      if (state.shrinking >= 3) {
-        /* Fingers lifted; the rest of this momentum belongs to no pull. */
-        state.startedAtTop = false
-        releasePullBlock()
+      if (state.shrinking >= 3 && !state.active) state.coasting = true
+      /* Deltas growing again: fingers are back on. */
+      if (state.growing >= 2) state.coasting = false
+    }
+    if (state.coasting) return
+    if (!state.startedAtTop) {
+      /* Arrived at the top mid-gesture: it carries on into the pull only if
+         it got here slowly with the fingers on — a fast scroll, or momentum
+         coasting after the fingers lifted, just stops at the top. */
+      if (atTop && amount > 0 && (!wheel || amount <= 16)) state.startedAtTop = true
+      else return
+    }
+    if (!atTop && !state.active) return
+    /* After springing back, what follows in the same gesture is either the
+       lift's momentum or the fingers pulling again (back-to-back pulls run
+       together as one gesture). Momentum decays every tick, so the next two
+       deltas decide: one shrinks → coasting, ignored (picking the pull up on
+       it made the explorer go up, down and up again); two that hold or grow
+       → fingers, resume at once. Demanding clearly growing deltas instead
+       left quick repeat pulls ignored, which felt slow. */
+    if (state.settled) {
+      if (!wheel) state.settled = false
+      else if (state.shrinking > 0) {
+        state.coasting = true
         return
-      }
+      } else if (++state.steady >= 2) state.settled = false
+      else return
     }
+    /* Six shrinking in a row: momentum decays smoothly, while fingers easing
+       to a hold jitter — three was too few and let go of a held pull. */
+    /* Chromium on macOS ends a trackpad gesture with an empty wheel event
+       when the fingers lift — the one direct "let go" signal there is. */
+    if (wheel && state.active && amount === 0) {
+      state.startedAtTop = false
+      releasePullBlock()
+      return
+    }
+    if (wheel && state.active && state.shrinking >= 6) {
+      /* Fingers lifted; the rest of this momentum belongs to no pull. */
+      state.startedAtTop = false
+      releasePullBlock()
+      return
+    }
+    /* Starting (or resuming mid spring-back): pick up from where the
+       explorer is, so there is never a jump. */
+    if (!state.active) state.pull = pullHelloRef.current?.currentPull() ?? 0
     state.pull = Math.max(0, state.pull + amount)
-    if (state.pull > 0 && !state.active) {
-      state.active = true
-      if (!largeGreetingRef.current) {
-        largeGreetingRef.current = true
-        setLargeGreeting(true)
-      }
-    }
+    /* Only slow movement crosses the line. A wrist flick opens with a burst
+       of big deltas that would reach it before the momentum tail shows; held
+       just short, the flick's own tail then releases it. */
+    if (wheel && amount > 20 && state.pull >= threshold) state.pull = threshold - 1
+    if (state.pull > 0 && !state.active) state.active = true
     if (state.active) pullHelloRef.current?.update(state.pull, threshold)
     if (wheel) {
       if (state.releaseTimer !== null) window.clearTimeout(state.releaseTimer)
-      state.releaseTimer = window.setTimeout(releasePullBlock, 140)
+      /* The trackpad is silent both when the fingers lift and when they
+         hold, so there is no telling them apart. Waiting to find out read
+         as the explorer getting stuck; instead it starts springing back as
+         soon as the fingers stop, and a resumed pull catches it mid-way. */
+      state.releaseTimer = window.setTimeout(releasePullBlock, 160)
     }
   }, [releasePullBlock])
   useEffect(() => () => {
@@ -1920,14 +1983,18 @@ function VaultExplorerBlockInner({
 
 
   return (
-    <div className={cn(
+    <div ref={explorerRootRef} className={cn(
       'flex h-full min-h-0 flex-col',
+      // The pull hello slides everything in here down by `translate`; the
+      // gap it opens at the top must clip, not spill.
+      calmHeader && 'relative overflow-hidden',
       // Large-title mode makes THIS the scroller (see `phoneLargeTitle`):
       // `position: sticky` is confined to its parent's box, so the bar only
       // pins if its parent is the element that scrolls.
       hasLargeTitle && 'overflow-auto',
       className,
     )}>
+      {calmHeader && <ExplorerPullHelloBlock ref={pullHelloRef} containerRef={explorerRootRef} onHello={onHelloBlock} />}
       {hasLargeTitle && <PhoneLargeTitleBlock title={largeTitle} />}
       <div className={cn(
         'ltm-vault-explorer-search-wrap px-3',
@@ -1994,7 +2061,6 @@ function VaultExplorerBlockInner({
           ]
           return (
             <>
-              <ExplorerPullHelloBlock ref={pullHelloRef} onHello={onHelloBlock} />
               <div className={cn(
                 'mb-2 mt-1 flex items-center gap-0.5 transition-[height] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
                 largeGreeting ? 'h-12' : 'h-9',
@@ -2319,20 +2385,22 @@ function VaultExplorerBlockInner({
           }
         } : undefined}
         onWheel={calmHeader ? (event) => {
-          pullForHelloBlock(event.currentTarget.scrollTop <= 0, -event.deltaY, 160, true)
+          /* Sideways-only movement is not a lift (see the empty-event rule). */
+          if (event.deltaY === 0 && event.deltaX !== 0) return
+          pullForHelloBlock(event.currentTarget.scrollTop <= 0, -event.deltaY, 520, true)
         } : undefined}
         onTouchStart={calmHeader ? (event) => {
           const atTop = event.currentTarget.scrollTop <= 0
-          overscrollRef.current.touchY = atTop ? event.touches[0]?.clientY ?? null : null
+          overscrollRef.current.touchY = event.touches[0]?.clientY ?? null
           overscrollRef.current.lastAt = 0
-          pullForHelloBlock(atTop, 0, 80, false)
+          pullForHelloBlock(atTop, 0, 360, false)
         } : undefined}
         onTouchMove={calmHeader ? (event) => {
           const startY = overscrollRef.current.touchY
           const y = event.touches[0]?.clientY
           if (startY === null || y === undefined) return
           overscrollRef.current.touchY = y
-          pullForHelloBlock(event.currentTarget.scrollTop <= 0, y - startY, 80, false)
+          pullForHelloBlock(event.currentTarget.scrollTop <= 0, y - startY, 360, false)
         } : undefined}
         onTouchEnd={calmHeader ? releasePullBlock : undefined}
         onTouchCancel={calmHeader ? releasePullBlock : undefined}
