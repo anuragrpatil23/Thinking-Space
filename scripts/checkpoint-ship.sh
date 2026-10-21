@@ -247,17 +247,40 @@ if [ -d "$APP_DST" ]; then
   rm -rf "$BACKUP_DIR/Thinking Space.app"
   ditto "$APP_DST" "$BACKUP_DIR/Thinking Space.app"
 fi
+# Install by staging and renaming, never by deleting first. The old
+# \`rm -rf DST && ditto\` left a half-deleted app behind when macOS App
+# Management blocked the write part-way (2026-10-20: a broken
+# /Applications copy plus a working ~/Applications one, which then fought
+# over /usr/local/bin/thinkspc with an admin prompt). Copy to a sibling
+# first; only swap once the copy is complete; on any failure put the old
+# app back untouched.
+install_at() {
+  local dst="\$1" stage="\${1%.app}.incoming.app" old="\${1%.app}.previous.app"
+  rm -rf "\$stage" "\$old" 2>/dev/null || true
+  ditto "$APP_SRC" "\$stage" || { rm -rf "\$stage" 2>/dev/null || true; return 1; }
+  if [ -d "\$dst" ]; then
+    mv "\$dst" "\$old" || { rm -rf "\$stage" 2>/dev/null || true; return 1; }
+  fi
+  if ! mv "\$stage" "\$dst"; then
+    [ -d "\$old" ] && mv "\$old" "\$dst"
+    rm -rf "\$stage" 2>/dev/null || true
+    return 1
+  fi
+  rm -rf "\$old" 2>/dev/null || true
+}
 # macOS App Management can block scripted writes into /Applications on some
 # machines ("Operation not permitted") — fall back to ~/Applications, which
 # runs identically (docs/BUILD-macOS-LOCAL.md §4).
 TARGET="$APP_DST"
-if ! { rm -rf "$APP_DST" && ditto "$APP_SRC" "$APP_DST"; }; then
+if ! install_at "$APP_DST"; then
   echo "install to $APP_DST blocked (App Management TCC) — falling back to ~/Applications"
   TARGET="\$HOME/Applications/Thinking Space.app"
   mkdir -p "\$HOME/Applications"
-  rm -rf "\$TARGET"
-  ditto "$APP_SRC" "\$TARGET"
+  install_at "\$TARGET"
 fi
+# Where it actually went, for the summary line.
+echo "\$TARGET" > "$TMP_DIR/checkpoint-target-$STAMP"
+
 xattr -dr com.apple.quarantine "\$TARGET" 2>/dev/null || true
 open "\$TARGET"
 # Clean build artifacts once the install is done — the ~GB-scale unpacked
@@ -274,6 +297,16 @@ if [ $INSIDE_APP = 1 ]; then
   say "✓ built v$NEW_VERSION ($BRANCH@$HEAD_SHA) — app will quit, swap, and relaunch itself now"
 else
   "$SWAP"
-  say "✓ shipped v$NEW_VERSION ($BRANCH@$HEAD_SHA) → $APP_DST (relaunched)"
+  # Report where it really landed, and flag a second installed copy: two
+  # copies fight over the thinkspc CLI and prompt for an admin password.
+  ACTUAL_DST="$(cat "$TMP_DIR/checkpoint-target-$STAMP" 2>/dev/null || echo "$APP_DST")"
+  rm -f "$TMP_DIR/checkpoint-target-$STAMP"
+  say "✓ shipped v$NEW_VERSION ($BRANCH@$HEAD_SHA) → $ACTUAL_DST (relaunched)"
+  if [ "$ACTUAL_DST" != "$APP_DST" ]; then
+    say "⚠ /Applications was blocked (System Settings → Privacy & Security → App Management: allow your terminal)"
+  fi
+  if [ -d "/Applications/Thinking Space.app" ] && [ -d "$HOME/Applications/Thinking Space.app" ]; then
+    say "⚠ two copies installed (/Applications and ~/Applications) — keep one; they fight over the thinkspc CLI"
+  fi
 fi
 say "log: $LOG"
