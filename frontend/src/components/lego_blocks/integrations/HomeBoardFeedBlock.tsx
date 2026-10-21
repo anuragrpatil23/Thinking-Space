@@ -1,5 +1,11 @@
 import HomeTileBlock, { HomeTileFigureBlock, HOME_TILE_SHADOW_BLOCK } from '@/components/lego_blocks/units/HomeTileBlock'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  addBoardInboxNoteBlock,
+  readBoardInboxBlock,
+  type BoardInboxNoteBlock,
+} from '@/services/lego_blocks/integrations/boardInboxBlock'
+import { DEFAULT_POST_IT_COLOR } from '@/components/lego_blocks/units/postItPaletteBlock'
 import { useNavigate } from 'react-router-dom'
 import { homeCanvasStorage } from '@/services/lego_blocks/integrations/homeCanvasStorageBlock'
 import { POST_IT_PALETTE } from '@/components/lego_blocks/units/postItPaletteBlock'
@@ -209,6 +215,10 @@ export default function HomeBoardFeedBlock({ surface = 'feed', onOpen }: HomeBoa
   const theme = useCanvasThemeBlock()
   const columnCount = useBoardColumnCountBlock()
   const [tiles, setTiles] = useState<CanvasTile[] | null>(null)
+  // Notes jotted on this phone that the desktop board has not pulled in yet
+  // (see boardInboxBlock). Shown alongside the board so a note appears the
+  // moment it is written.
+  const [inboxNotes, setInboxNotes] = useState<BoardInboxNoteBlock[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -216,12 +226,33 @@ export default function HomeBoardFeedBlock({ surface = 'feed', onOpen }: HomeBoa
       .read()
       .then(loaded => { if (!cancelled) setTiles(loaded ?? []) })
       .catch(() => { if (!cancelled) setTiles([]) })
+    void readBoardInboxBlock().then(notes => { if (!cancelled) setInboxNotes(notes) })
     return () => { cancelled = true }
+  }, [])
+
+  const addNote = useCallback(async (text: string) => {
+    const note = await addBoardInboxNoteBlock(text)
+    setInboxNotes(prev => [...prev, note])
   }, [])
 
   const feed = useMemo(() => {
     if (!tiles) return []
-    return tiles
+    const onBoard = new Set(tiles.map(t => t.id))
+    const waiting: CanvasTile[] = inboxNotes
+      .filter(note => !onBoard.has(note.id))
+      .map(note => ({
+        id: note.id,
+        type: 'post-it',
+        x: 0,
+        y: 0,
+        w: 280,
+        h: 280,
+        text: note.text,
+        color: DEFAULT_POST_IT_COLOR,
+        locked: true,
+        createdAt: note.createdAt,
+      }))
+    return [...tiles, ...waiting]
       // Onboarding seeds (canvas gesture hints) and empty post-its are noise in
       // a feed; web-widgets are desktop-only webview regions.
       .filter(t => !t.id.startsWith('seed-'))
@@ -230,7 +261,7 @@ export default function HomeBoardFeedBlock({ surface = 'feed', onOpen }: HomeBoa
         return t.type === 'note'
       })
       .sort((a, b) => tileOrder(b) - tileOrder(a))
-  }, [tiles])
+  }, [tiles, inboxNotes])
 
   // Shortest-column-first, which is what CSS multi-column was doing for us.
   // Reading order goes down each column rather than across rows; the feed is
@@ -249,7 +280,29 @@ export default function HomeBoardFeedBlock({ surface = 'feed', onOpen }: HomeBoa
     return buckets
   }, [feed, columnCount])
 
-  if (!tiles || feed.length === 0) return null
+  if (!tiles) return null
+  // The board's own column on desktop Home has nothing to show. The phone's
+  // tile and page still render: they are where a note gets jotted.
+  if (feed.length === 0 && surface === 'feed') return null
+
+  if (surface === 'tile' && feed.length === 0) {
+    return (
+      <div
+        style={{
+          height: '100%',
+          borderRadius: 22,
+          padding: '22px 20px',
+          background: theme.anchorPanelBg,
+          border: `1px solid ${theme.anchorPanelBorder}`,
+          boxShadow: HOME_TILE_SHADOW_BLOCK,
+        }}
+      >
+        <HomeTileBlock label="Board" onOpen={onOpen ?? (() => {})}>
+          <HomeTileFigureBlock figure="Jot" line="A quick thought" />
+        </HomeTileBlock>
+      </div>
+    )
+  }
 
   if (surface === 'tile') {
     const newest = feed[0]
@@ -311,6 +364,7 @@ export default function HomeBoardFeedBlock({ surface = 'feed', onOpen }: HomeBoa
 
   return (
     <section>
+      {surface === 'page' && <BoardQuickCaptureBlock onAdd={addNote} />}
       {surface !== 'page' && (
       <h2
         style={{
@@ -341,5 +395,58 @@ export default function HomeBoardFeedBlock({ surface = 'feed', onOpen }: HomeBoa
         ))}
       </div>
     </section>
+  )
+}
+
+/** The phone's way onto the board: type, add, and it is a post-it. It lands
+ *  in the board inbox; the desktop board places it where you are looking the
+ *  next time it is open. */
+function BoardQuickCaptureBlock({ onAdd }: { onAdd: (text: string) => Promise<void> }) {
+  const [text, setText] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const trimmed = text.trim()
+
+  const submit = async () => {
+    if (!trimmed || saving) return
+    setSaving(true)
+    setFailed(false)
+    try {
+      await onAdd(trimmed)
+      setText('')
+    } catch {
+      // Keep the text: a failed save must not cost the thought.
+      setFailed(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const palette = POST_IT_PALETTE[DEFAULT_POST_IT_COLOR]
+  return (
+    <div
+      className="mb-4 rounded-[18px] p-3"
+      style={{ background: palette.background, border: `1px solid ${palette.border}`, color: palette.text }}
+    >
+      {/* 16px: anything smaller and iOS zooms the page in on focus. */}
+      <textarea
+        value={text}
+        onChange={event => setText(event.target.value)}
+        placeholder="A quick thought…"
+        rows={3}
+        className="w-full resize-none bg-transparent text-[16px] leading-snug outline-none placeholder:text-current placeholder:opacity-40"
+      />
+      <div className="mt-1 flex items-center justify-end gap-3">
+        {failed && <span className="mr-auto text-[12px] text-red-700">Couldn't save — try again</span>}
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={!trimmed || saving}
+          className="ltm-touch-target rounded-full bg-neutral-900 px-4 py-1.5 text-[13px] font-medium text-white disabled:opacity-30"
+        >
+          {saving ? 'Adding…' : 'Add to board'}
+        </button>
+      </div>
+    </div>
   )
 }

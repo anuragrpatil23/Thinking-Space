@@ -185,6 +185,11 @@ Reaping rules:
   canvas tiles, a custom title, emotions, tags, or hand-edited frontmatter.
   An empty file with *hand-written* frontmatter may be a deliberate stub.
 - **Never** delete while a journal entry claims unsaved text for that path.
+- **A board-inbox note is deleted only after a board write containing it
+  succeeds** (`boardInboxBlock`, `CanvasSurfaceOrch` `inbox`). The board is one
+  file every holder overwrites whole, so phone notes never go into it directly,
+  and only the desktop board pulls the inbox in — two pullers could each drop
+  the other's placement and both delete the note's file.
 - The journal still records session provenance, but as a **secondary** signal.
   Content-derived provenance is the primary one precisely because it is the only
   one that survives the events this contract assumes will happen.

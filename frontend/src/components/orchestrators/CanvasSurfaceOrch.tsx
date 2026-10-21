@@ -21,6 +21,8 @@ import CanvasSaveToVaultDialogBlock from '@/components/lego_blocks/integrations/
 import CanvasMinimapBlock from '@/components/lego_blocks/units/CanvasMinimapBlock'
 import ZoomIndicatorBlock from '@/components/lego_blocks/units/ZoomIndicatorBlock'
 import type { CanvasStorageAdapter } from '@/services/lego_blocks/integrations/canvasStorageBlock'
+import type { BoardInboxNoteBlock } from '@/services/lego_blocks/integrations/boardInboxBlock'
+import { DEFAULT_POST_IT_COLOR } from '@/components/lego_blocks/units/postItPaletteBlock'
 import { savePostItToVaultOrch } from '@/services/orchestrators/postItVaultSaveOrch'
 
 const WRITE_DEBOUNCE_MS = 500
@@ -46,6 +48,13 @@ export interface CanvasSurfaceOrchProps {
   worldExtras?: ReactNode
   /** Draw the dot grid over the world. Default true; a surface that draws its own background turns it off. */
   showGrid?: boolean
+  /** Notes jotted elsewhere (the iPhone) waiting to join this board. Pulled
+   *  in on load and whenever the window comes back; a note's inbox file is
+   *  removed only after a board write containing it succeeds. */
+  inbox?: {
+    read: () => Promise<BoardInboxNoteBlock[]>
+    remove: (ids: string[]) => Promise<void>
+  }
 }
 
 const DEFAULT_WORLD_WIDTH = 4500
@@ -61,6 +70,7 @@ export default function CanvasSurfaceOrch({
   clampMinScaleToFit,
   worldExtras,
   showGrid = true,
+  inbox,
 }: CanvasSurfaceOrchProps) {
   const navigate = useNavigate()
   const theme = useCanvasThemeBlock()
@@ -196,19 +206,29 @@ export default function CanvasSurfaceOrch({
     }
   }, [storage, setAllTiles])
 
+  /** Inbox notes on the board whose inbox file is not yet removed. */
+  const pendingInboxIdsRef = useRef<Set<string>>(new Set())
   const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (!loaded) return
     if (writeTimerRef.current != null) clearTimeout(writeTimerRef.current)
     writeTimerRef.current = setTimeout(() => {
-      void storage.write(tiles).catch(() => {
+      const written = tiles
+      void storage.write(written).then(() => {
+        const pending = pendingInboxIdsRef.current
+        if (!inbox || pending.size === 0) return
+        const saved = written.filter(t => pending.has(t.id)).map(t => t.id)
+        saved.forEach(id => pending.delete(id))
+        if (saved.length > 0) void inbox.remove(saved)
+      }).catch(() => {
         // Storage errors are silent for now; future toolbar can surface them.
+        // Inbox files stay, so a failed write loses no phone note.
       })
     }, WRITE_DEBOUNCE_MS)
     return () => {
       if (writeTimerRef.current != null) clearTimeout(writeTimerRef.current)
     }
-  }, [tiles, loaded, storage])
+  }, [tiles, loaded, storage, inbox])
 
   const screenToWorld = useCallback(
     (clientX: number, clientY: number) => {
@@ -222,6 +242,51 @@ export default function CanvasSurfaceOrch({
     },
     [containerRef],
   )
+
+  const tilesRef = useRef(tiles)
+  tilesRef.current = tiles
+  const pullInbox = useCallback(async () => {
+    if (!inbox) return
+    const notes = await inbox.read()
+    if (notes.length === 0) return
+    const onBoard = new Set(tilesRef.current.map(t => t.id))
+    // Already on the board (pulled in before a cleanup that never ran): the
+    // next write clears its file.
+    notes.filter(n => onBoard.has(n.id)).forEach(n => pendingInboxIdsRef.current.add(n.id))
+    const fresh = notes.filter(n => !onBoard.has(n.id))
+    if (fresh.length === 0) return
+    // Where the reader is looking, fanned out so a batch reads as a batch.
+    const rect = containerRef.current?.getBoundingClientRect()
+    const center = rect ? screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2) : { x: 0, y: 0 }
+    const placed: CanvasTile[] = fresh.map((note, i) => ({
+      id: note.id,
+      type: 'post-it',
+      x: Math.round(center.x - 140 + i * 28),
+      y: Math.round(center.y - 140 + i * 28),
+      w: 280,
+      h: 280,
+      text: note.text,
+      color: DEFAULT_POST_IT_COLOR,
+      locked: true,
+      createdAt: note.createdAt,
+    }))
+    fresh.forEach(n => pendingInboxIdsRef.current.add(n.id))
+    setAllTiles([...tilesRef.current, ...placed])
+  }, [inbox, containerRef, screenToWorld, setAllTiles])
+
+  useEffect(() => {
+    if (!loaded || !inbox) return
+    void pullInbox()
+    const onReturn = () => {
+      if (document.visibilityState === 'visible') void pullInbox()
+    }
+    window.addEventListener('focus', onReturn)
+    document.addEventListener('visibilitychange', onReturn)
+    return () => {
+      window.removeEventListener('focus', onReturn)
+      document.removeEventListener('visibilitychange', onReturn)
+    }
+  }, [loaded, inbox, pullInbox])
 
   const handleCanvasDoubleClick = (e: React.MouseEvent) => {
     if (
