@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
+import { startActivity } from '@/services/lego_blocks/units/backgroundActivityBlock'
 import {
   fetchAndParseRssFeedOrch,
   markRssItemViewedOrch,
@@ -155,6 +156,14 @@ function patchItemsBlock(itemIds: Iterable<string>, patch: Partial<RssFeedItemBl
 export async function loadRssFeedsBlock(isRefresh = false, clearReadSession = isRefresh): Promise<void> {
   const requestId = ++loadRequestId
   setStateBlock(isRefresh ? { refreshing: true } : { loading: !loadedOnce })
+  // Labelled so a main-thread stall during a reload names it (see
+  // mainThreadStallBlock). Ambient: routine work, no banner of its own.
+  const activity = startActivity({
+    kind: 'generic',
+    channel: 'ambient',
+    label: 'Loading feeds…',
+    detail: isRefresh ? 'Refresh' : 'Open',
+  })
   try {
     const prefs = await readRssFeedPreferencesOrch()
     if (requestId !== loadRequestId) return
@@ -201,6 +210,7 @@ export async function loadRssFeedsBlock(isRefresh = false, clearReadSession = is
       Array.from({ length: Math.min(FETCH_CONCURRENCY, feedConfigs.length) }, loadOne),
     )
   } finally {
+    activity.end()
     if (requestId === loadRequestId) {
       loadedOnce = true
       lastLoadedAt = Date.now()

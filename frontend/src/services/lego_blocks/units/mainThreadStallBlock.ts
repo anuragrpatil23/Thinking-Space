@@ -9,9 +9,19 @@
  */
 
 import {
+  getActivities,
   startActivity,
   type BackgroundActivityHandle,
 } from './backgroundActivityBlock'
+
+/** What labelled work is running, so a stall names its suspect instead of
+ *  saying only "busy". Unlabelled work shows as nothing — label it. */
+function inFlightLabelsBlock(): string {
+  return getActivities()
+    .filter(activity => activity.kind !== 'stall')
+    .map(activity => (activity.detail ? `${activity.label} (${activity.detail})` : activity.label))
+    .join(', ')
+}
 
 export interface StallDetectorOptions {
   /** Frame-gap (ms) above which we consider the main thread stalled. */
@@ -33,7 +43,20 @@ export function startStallDetector(options: StallDetectorOptions = {}): () => vo
   let lastTick = performance.now()
   let stallHandle: BackgroundActivityHandle | null = null
   let lastStallSeenAt = 0
+  let stallStartedAt = 0
+  let longestGapMs = 0
+  let suspects = ''
   let disposed = false
+
+  // One line per stall in the debug console: how long the thread was held,
+  // the single worst freeze, and what was in flight. Info, not warn — a warn
+  // raises a toast, and the banner already showed.
+  const endStall = (reason: string) => {
+    if (!stallHandle) return
+    stallHandle.end()
+    stallHandle = null
+    console.info(`[stall] main thread busy ~${Math.round(lastStallSeenAt - stallStartedAt + longestGapMs)}ms, worst freeze ${Math.round(longestGapMs)}ms, during: ${suspects || 'nothing labelled'}${reason ? ` (${reason})` : ''}`)
+  }
 
   const tick = () => {
     if (disposed) return
@@ -47,15 +70,24 @@ export function startStallDetector(options: StallDetectorOptions = {}): () => vo
     if (overrun > stallMs) {
       lastStallSeenAt = now
       if (!stallHandle) {
+        stallStartedAt = now - gap
+        longestGapMs = 0
+        suspects = inFlightLabelsBlock()
+        // Ambient: spins the refresh pill like a sync rather than raising
+        // the banner — a stall is worth seeing, not worth interrupting.
         stallHandle = startActivity({
           kind: 'stall',
+          channel: 'ambient',
           label,
-          detail: 'Main thread is busy',
+          detail: suspects ? `Main thread is busy · ${suspects}` : 'Main thread is busy',
         })
+      } else {
+        const more = inFlightLabelsBlock()
+        if (more && !suspects.includes(more)) suspects = suspects ? `${suspects}, ${more}` : more
       }
+      longestGapMs = Math.max(longestGapMs, gap)
     } else if (stallHandle && now - lastStallSeenAt > recoverMs) {
-      stallHandle.end()
-      stallHandle = null
+      endStall('')
     }
   }
 
@@ -84,16 +116,10 @@ export function startStallDetector(options: StallDetectorOptions = {}): () => vo
   const onVisibilityChange = () => {
     if (document.visibilityState === 'visible') {
       startTicking()
-      if (stallHandle) {
-        stallHandle.end()
-        stallHandle = null
-      }
+      endStall('cut short: app shown')
     } else {
       stopTicking()
-      if (stallHandle) {
-        stallHandle.end()
-        stallHandle = null
-      }
+      endStall('cut short: app hidden')
     }
   }
   document.addEventListener('visibilitychange', onVisibilityChange)
@@ -104,9 +130,6 @@ export function startStallDetector(options: StallDetectorOptions = {}): () => vo
     disposed = true
     stopTicking()
     document.removeEventListener('visibilitychange', onVisibilityChange)
-    if (stallHandle) {
-      stallHandle.end()
-      stallHandle = null
-    }
+    endStall('')
   }
 }

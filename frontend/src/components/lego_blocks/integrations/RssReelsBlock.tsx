@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Bookmark, CalendarDays, Check, ChevronLeft, ChevronRight, ExternalLink, Loader2, SkipForward, Undo2 } from 'lucide-react'
 import {
   buildRssDeckEntriesBlock,
@@ -49,6 +49,11 @@ interface RssReelsBlockProps {
   onUnmarkRead: (item: RssFeedItemBlock) => void
   onToggleSaved: (item: RssFeedItemBlock) => void
   onToggleTag: (item: RssFeedItemBlock, tag: string) => void
+  /** The deck runs under the status bar (iPhone): the date bar floats over
+   *  the card instead of sitting above it as a solid strip. */
+  fullBleed?: boolean
+  /** The panel's controls, carried in the floating date bar when full-bleed. */
+  headerActions?: ReactNode
 }
 
 /**
@@ -63,6 +68,8 @@ interface RssReelsBlockProps {
  * for the card you just left.
  */
 export default function RssReelsBlock({
+  fullBleed = false,
+  headerActions,
   feeds,
   loadingFeedIds,
   presetTags,
@@ -481,21 +488,42 @@ export default function RssReelsBlock({
   const windowStart = Math.max(0, activeIndex - WINDOW_RADIUS)
   const windowEnd = Math.min(entries.length - 1, activeIndex + WINDOW_RADIUS)
 
+  // Where a card's content starts. Full-bleed, it clears the clock and the
+  // floating date bar; otherwise the bar sits above the deck.
+  const deckStyle = {
+    '--ltm-reels-top': fullBleed && !datePickerOpen ? 'calc(var(--ltm-safe-top, 0px) + 3.75rem)' : '1.5rem',
+  } as CSSProperties
+  const floatBar = fullBleed && !datePickerOpen
+
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col" style={deckStyle}>
       {/* Date bar. Always visible, because "which day am I in" is the question
           a chronological deck constantly raises and a full-screen card gives no
           other way to answer — the timeline can show day headers between cards,
           reels cannot. The count is the stack's, not the whole inbox's. */}
-      <div className="shrink-0 border-b border-border/60 bg-background/95 backdrop-blur-xl">
+      <div
+        className={cn(
+          'shrink-0',
+          // Full-bleed: over the photo, under the clock, on a scrim that fades
+          // into the card. Opening the picker turns it back into a sheet.
+          floatBar
+            ? 'absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-black/70 via-black/35 to-transparent pb-6 text-white'
+            : 'border-b border-border/60 bg-background/95 backdrop-blur-xl',
+          // The clock above is light for the deck; keep the open sheet dark
+          // under it so it stays readable.
+          fullBleed && datePickerOpen && 'dark text-foreground',
+        )}
+        style={fullBleed ? { paddingTop: 'var(--ltm-safe-top, 0px)' } : undefined}
+      >
+        <div className="flex items-center pr-2">
         <button
           type="button"
           onClick={() => setDatePickerOpen(open => !open)}
           aria-expanded={datePickerOpen}
           aria-label="Jump to a date"
-          className="flex w-full items-center gap-2 px-4 py-2 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2 px-4 py-2 text-left"
         >
-          <CalendarDays className={cn('h-4 w-4 shrink-0', datePickerOpen ? 'text-foreground' : 'text-muted-foreground')} />
+          <CalendarDays className={cn('h-4 w-4 shrink-0', floatBar ? 'text-white/80' : datePickerOpen ? 'text-foreground' : 'text-muted-foreground')} />
           <span className="min-w-0 truncate text-[13px] font-semibold">
             {rssDayDateLabelBlock(activeDayKey)}
           </span>
@@ -503,12 +531,18 @@ export default function RssReelsBlock({
               "one thirtieth of them are unread", which is the opposite of what
               it means. The two numbers describe different things — one moves,
               one does not — so they get their own labels. */}
-          <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
-            <span className="font-semibold text-foreground">{activeCounts.unread}</span> unread
+          <span className={cn('ml-auto shrink-0 text-[11px] tabular-nums', floatBar ? 'text-white/70' : 'text-muted-foreground')}>
+            <span className={cn('font-semibold', floatBar ? 'text-white' : 'text-foreground')}>{activeCounts.unread}</span> unread
             <span aria-hidden className="mx-1 opacity-50">·</span>
             {activeCounts.total} total
           </span>
         </button>
+        {headerActions && (
+          <div className={cn('flex shrink-0 items-center', !floatBar && '[&_button]:text-muted-foreground')}>
+            {headerActions}
+          </div>
+        )}
+        </div>
 
         {datePickerOpen && (
           <div className="flex items-center gap-1 border-t border-border/40 px-4 py-2">
@@ -756,7 +790,7 @@ function ReelCard({
       </div>
 
       {/* Content */}
-      <div className="relative flex min-h-0 flex-1 flex-col justify-start overflow-hidden pl-5 pr-20 pt-6 text-white pb-[calc(env(safe-area-inset-bottom,0px)+5rem)]">
+      <div className="relative flex min-h-0 flex-1 flex-col justify-start overflow-hidden pl-5 pr-20 pt-[var(--ltm-reels-top,1.5rem)] text-white pb-[calc(env(safe-area-inset-bottom,0px)+5rem)]">
         <div className="flex items-center gap-2 text-[13px]">
           <RssSourceAvatarBlock
             link={item.link}

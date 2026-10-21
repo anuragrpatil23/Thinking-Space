@@ -18,6 +18,9 @@ import {
   X,
 } from 'lucide-react'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
+import { dispatchPageTopInsetBlock } from '@/services/lego_blocks/units/pageTopInsetBlock'
+import { dispatchTopChromeAppearanceBlock } from '@/services/lego_blocks/units/topChromeAppearanceBlock'
 import RssTimelineBlock from './RssTimelineBlock'
 import RssReelsBlock from './RssReelsBlock'
 import { useExpandedSetBlock } from '@/components/lego_blocks/hooks/shared/useExpandedSetBlock'
@@ -140,6 +143,7 @@ export default function RssFeedPanelBlock({
   // the whole screen. On desktop the toggle skips it rather than offering a
   // mode that would render one article inside a sidebar.
   const reelsAvailable = layout.surface === 'capacitor-ios'
+  const routeActive = useRouteActivityBlock()
   // Feed data, read state and every article mutation live in one module-level
   // store shared by every RSS surface — see useRssFeedsBlock.
   const {
@@ -372,6 +376,21 @@ export default function RssFeedPanelBlock({
     })
   }, [onNavStateChange, activeIndex, visibleRows, stepToRow])
 
+  // On the iPhone the deck is the whole screen, clock included: the panel's
+  // own bar and the shell's reserved strip under the status bar read as a
+  // white band above the photos. The deck floats the bar's controls instead.
+  const reelsFullBleed = viewMode === 'reels' && reelsAvailable && layout.mode === 'phone'
+  const reelsOnScreen = reelsFullBleed && routeActive && !articleOpen
+  useEffect(() => {
+    if (!reelsOnScreen) return
+    dispatchPageTopInsetBlock({ mode: 'flush' })
+    dispatchTopChromeAppearanceBlock({ dark: true })
+    return () => {
+      dispatchPageTopInsetBlock({ mode: 'default' })
+      dispatchTopChromeAppearanceBlock({ dark: false })
+    }
+  }, [reelsOnScreen])
+
   if (loading) {
     return (
       <div className={cn('flex h-full flex-col items-center justify-center gap-2 text-muted-foreground', className)}>
@@ -408,9 +427,39 @@ export default function RssFeedPanelBlock({
     )
   }
 
+  const reelsHeaderActions = (
+    <>
+      <button
+        type="button"
+        onClick={cycleViewMode}
+        className="ltm-touch-target shrink-0 rounded-full p-2 text-white/85 hover:bg-white/10 hover:text-white"
+        title="Use compact feed view"
+      >
+        <Layers className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={refresh}
+        disabled={refreshing}
+        className="ltm-touch-target shrink-0 rounded-full p-2 text-white/85 hover:bg-white/10 hover:text-white disabled:opacity-40"
+        title="Refresh feeds"
+      >
+        <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        className="ltm-touch-target shrink-0 rounded-full p-2 text-white/85 hover:bg-white/10 hover:text-white"
+        title="Close RSS panel"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </>
+  )
+
   return (
     <div className={cn('flex h-full flex-col', className)}>
-      <PanelHeader
+      {!reelsFullBleed && <PanelHeader
         title={focusedFeedId ? (feeds.find(f => f.feedId === focusedFeedId)?.feedTitle ?? 'Feed') : 'RSS Feeds'}
         onClose={onClose}
         onRefresh={refresh}
@@ -426,7 +475,7 @@ export default function RssFeedPanelBlock({
         onClearFocus={() => setFocusedFeedId(null)}
         viewMode={viewMode}
         onToggleViewMode={cycleViewMode}
-      />
+      />}
 
       {/* Delete-mode hint */}
       {deleteMode && (
@@ -448,6 +497,8 @@ export default function RssFeedPanelBlock({
           onUnmarkRead={(item) => setRssItemsReadBlock([item], false)}
           onToggleSaved={toggleRssItemSavedBlock}
           onToggleTag={toggleRssItemTagBlock}
+          fullBleed={reelsFullBleed}
+          headerActions={reelsFullBleed ? reelsHeaderActions : undefined}
         />
       ) : viewMode === 'timeline' ? (
         <RssTimelineBlock

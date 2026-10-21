@@ -6,7 +6,10 @@ import {
 import { useVisibleIntervalBlock } from './shared/useVisibleIntervalBlock'
 
 /**
- * Live view of ambient-channel background activities (vault syncs).
+ * Live view of ambient-channel background activities (vault syncs, and
+ * main-thread stalls, which spin the same pill instead of raising a banner).
+ * Other ambient work (a feed reload) is labelled for stall attribution only
+ * and never spins it.
  *
  * `running` only turns true once a sync has been in flight for
  * `visibilityDelayMs` — sub-threshold syncs (the constant watcher churn)
@@ -34,7 +37,7 @@ export function useAmbientSyncActivityBlock(
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => subscribeActivities(all => {
-    setAmbient(all.filter(a => a.channel === 'ambient'))
+    setAmbient(all.filter(a => a.channel === 'ambient' && (a.kind === 'sync' || a.kind === 'stall')))
   }), [])
 
   // While syncs are in flight AND the document is visible, tick so activities
@@ -45,12 +48,15 @@ export function useAmbientSyncActivityBlock(
     ambient.length === 0 ? null : 250,
   )
 
-  const visible = ambient.filter(a => now - a.startedAt >= visibilityDelayMs)
+  // A stall has already waited out its own threshold, so it shows at once.
+  const visible = ambient.filter(a => a.kind === 'stall' || now - a.startedAt >= visibilityDelayMs)
+  const syncs = visible.filter(a => a.kind === 'sync')
 
+  // Progress is the syncs' alone: a stall during a counted sync keeps the count.
   let total = 0
   let completed = 0
-  let determinate = visible.length > 0
-  for (const a of visible) {
+  let determinate = syncs.length > 0
+  for (const a of syncs) {
     if (typeof a.total !== 'number' || a.total <= 0) {
       determinate = false
       break

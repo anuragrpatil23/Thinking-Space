@@ -738,7 +738,7 @@ function App() {
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<PageTopInsetStateBlock>).detail
-      setPageTopInsetMode(detail?.mode === 'paper' ? 'paper' : 'default')
+      setPageTopInsetMode(detail?.mode === 'paper' || detail?.mode === 'flush' ? detail.mode : 'default')
     }
     window.addEventListener(PAGE_TOP_INSET_EVENT_BLOCK, handler)
     setPageTopInsetMode(getPageTopInsetBlock().mode)
@@ -2244,8 +2244,9 @@ function App() {
     topBarDark: nativeTopBarDark,
     // New Note paints its own opaque strip under the status bar and the
     // document viewer asks for a paper one, so the native scrim has nothing to
-    // refract over either and shows as a grey feathered band.
-    topScrimHidden: isNewThoughtRoute || pageWantsPaperTopInset,
+    // refract over either and shows as a grey feathered band. The reels deck
+    // (`flush`) runs a photo under the clock and darkens it itself.
+    topScrimHidden: isNewThoughtRoute || pageWantsPaperTopInset || pageTopInsetMode === 'flush',
     bottomBarCollapsed: nativeBottomBarCollapsed,
     showSearch: true,
     showTools: true,
@@ -2678,7 +2679,7 @@ function App() {
       // mounts stay in the DOM behind `visibility: hidden`, and `:has()` cannot
       // see that, so once New Note had been opened every other tab lost its top
       // inset for the rest of the session (2026-08-02).
-      data-ltm-page-top-inset={isNewThoughtRoute ? 'flush' : (pageWantsPaperTopInset ? 'paper' : undefined)}
+      data-ltm-page-top-inset={isNewThoughtRoute || pageTopInsetMode === 'flush' ? 'flush' : (pageWantsPaperTopInset ? 'paper' : undefined)}
     >
       {explorerFolderColorCss && <style>{explorerFolderColorCss}</style>}
       <div className="ltm-shell-layer-base">

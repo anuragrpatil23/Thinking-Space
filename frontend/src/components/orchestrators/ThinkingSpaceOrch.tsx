@@ -80,6 +80,8 @@ const RULED_NOTEBOOK_QUERY_PARAM = 'ruledNotebook'
 // `?rss=<itemId>` opens that cached article in the reader. Other pages link
 // to an article this way; the param is cleared once the article is open.
 const RSS_ITEM_QUERY_PARAM = 'rss'
+/** `?feeds=1` opens the RSS panel itself (the phone Home's Feeds tile). */
+const RSS_PANEL_QUERY_PARAM = 'feeds'
 const MAX_MOUNTED_INLINE_DOCS = 3
 const EXPLORER_DEFAULT_WIDTH_PX = 320
 const EXPLORER_MIN_WIDTH_PX = 220
@@ -228,6 +230,9 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   const rssItemFromRoute = routeOverride !== undefined
     ? readThinkingSpaceRouteParamBlock(routeOverride, RSS_ITEM_QUERY_PARAM)
     : (searchParams.get(RSS_ITEM_QUERY_PARAM)?.trim() || null)
+  const rssPanelFromRoute = routeOverride !== undefined
+    ? readThinkingSpaceRouteParamBlock(routeOverride, RSS_PANEL_QUERY_PARAM)
+    : (searchParams.get(RSS_PANEL_QUERY_PARAM)?.trim() || null)
   const [linkPromptOpen, setLinkPromptOpen] = useState(false)
   const linkPromptResolveRef = useRef<((url: string | null) => void) | null>(null)
   const [isExplorerResizing, setIsExplorerResizing] = useState(false)
@@ -647,6 +652,17 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
     })()
     return () => { cancelled = true }
   }, [handleRssOpenArticle, rssItemFromRoute, setSearchParams])
+
+  useEffect(() => {
+    if (!rssPanelFromRoute) return
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete(RSS_PANEL_QUERY_PARAM)
+      return next
+    }, { replace: true })
+    setRssActiveArticle(null)
+    setRssPanelOpen(true)
+  }, [rssPanelFromRoute, setSearchParams])
 
   const handleExplorerShowInGraph = useCallback((path: string, kind: 'file' | 'folder') => {
     const normalized = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')

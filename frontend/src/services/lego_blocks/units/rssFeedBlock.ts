@@ -398,8 +398,11 @@ export function rssDayDateLabelBlock(key: string, now: Date = new Date()): strin
 
 export type RssDeckFilterBlock = 'all' | 'unread'
 
-/** Every article across every feed, newest first — the stable ordering the
- *  deck traverses. Membership is decided by the caller's admission set, not by
+/** Every article across every feed, newest day first and oldest first within
+ *  a day — the stable ordering the deck traverses. Within a day it runs
+ *  forward in time so an article arriving while the deck is open joins the
+ *  end of its day instead of landing above the reader and pushing the card
+ *  they are on down. Membership is decided by the caller's admission set, not by
  *  a live predicate, so a card never vanishes because it was just read. */
 export function buildRssDeckEntriesBlock(
   feeds: RssFeedResultBlock[],
@@ -413,7 +416,25 @@ export function buildRssDeckEntriesBlock(
     if (sourceIds && sourceIds.size > 0 && !sourceIds.has(feed.feedId)) continue
     for (const item of feed.items) entries.push({ item, feedTitle: feed.feedTitle })
   }
-  return sortRssEntriesByRecencyBlock(collapseDuplicateRssEntriesBlock(entries))
+  return sortRssDeckEntriesBlock(collapseDuplicateRssEntriesBlock(entries))
+}
+
+/** Day stacks newest first, each one oldest first; undated items sink to the
+ *  bottom. */
+function sortRssDeckEntriesBlock(entries: RssUnreadInboxEntryBlock[]): RssUnreadInboxEntryBlock[] {
+  // Day and time are worked out once per article, not per comparison: the
+  // deck runs to thousands of articles and this sort runs on the main thread.
+  const keyed = entries.map(entry => ({
+    entry,
+    day: rssItemDayKeyBlock(entry.item.pubDate),
+    time: entry.item.pubDate ? new Date(entry.item.pubDate).getTime() : 0,
+  }))
+  keyed.sort((a, b) => {
+    if (a.day === null || b.day === null) return a.day === b.day ? 0 : a.day === null ? 1 : -1
+    if (a.day !== b.day) return a.day < b.day ? 1 : -1
+    return a.time - b.time
+  })
+  return keyed.map(k => k.entry)
 }
 
 /** Unread and total per day, over whatever the deck currently holds. Both

@@ -28,13 +28,24 @@ describe('buildRssDeckEntriesBlock', () => {
     expect(entries.map(e => e.item.id).sort()).toEqual(['a', 'b'])
   })
 
-  it('orders newest first and sinks undated articles to the bottom', () => {
+  it('orders newest day first and sinks undated articles to the bottom', () => {
     const entries = buildRssDeckEntriesBlock([feed([
       item('old', '2026-08-20T10:00:00Z'),
       item('undated', null),
       item('new', '2026-08-22T10:00:00Z'),
     ])])
     expect(entries.map(e => e.item.id)).toEqual(['new', 'old', 'undated'])
+  })
+
+  it('runs oldest first within a day, so a new arrival joins the end of its day', () => {
+    const local = (day: number, hour: number) => new Date(2026, 7, day, hour).toISOString()
+    const entries = buildRssDeckEntriesBlock([feed([
+      item('22-late', local(22, 18)),
+      item('21-late', local(21, 18)),
+      item('22-early', local(22, 8)),
+      item('21-early', local(21, 8)),
+    ])])
+    expect(entries.map(e => e.item.id)).toEqual(['22-early', '22-late', '21-early', '21-late'])
   })
 })
 

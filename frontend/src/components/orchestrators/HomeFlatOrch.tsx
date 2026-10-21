@@ -5,6 +5,7 @@ import HomeWelcomeBlock from '@/components/lego_blocks/integrations/HomeWelcomeB
 import AiActivityPanelBlock from '@/components/lego_blocks/integrations/AiActivityPanelBlock'
 import { HOME_TILE_SHADOW_BLOCK } from '@/components/lego_blocks/units/HomeTileBlock'
 import AiActivityHomeTileBlock from '@/components/lego_blocks/integrations/AiActivityHomeTileBlock'
+import RssHomeTileBlock from '@/components/lego_blocks/units/RssHomeTileBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -357,6 +358,9 @@ export default function HomeFlatOrch() {
                     <ThisWeekDigestBlock surface="tile" onOpen={() => openSection('worked-on')} />
                   </FlatPanel>
                   <HomeBoardFeedBlock surface="tile" onOpen={() => openSection('board')} />
+                  {/* Not a Home section page: the reader lives in Thinking
+                      Space's panel, so this switches tab and opens it there. */}
+                  <RssHomeTileBlock theme={theme} onOpen={() => navigate('/thinking-space?feeds=1')} />
                 </div>
               </div>
             </div>

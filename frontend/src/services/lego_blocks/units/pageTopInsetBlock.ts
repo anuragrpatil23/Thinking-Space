@@ -8,8 +8,10 @@
  * sheet of paper from the top edge down (the document viewer). Without it the
  * strip inherits the shell's grey and reads as a seam above the document.
  *
- * Distinct from New Note's `flush`, which drops the inset entirely because that
- * page paints its own strip. Dropping it here instead was tried and reverted
+ * `flush` drops the inset entirely, for a page that runs under the status bar
+ * and clears it itself: the RSS reels deck, whose cards are full-screen photos
+ * (the reserved strip read as a white bar above them). New Note gets the same
+ * treatment from its route instead. Dropping it here instead was tried and reverted
  * (2026-08-02): the doc header auto-hides on scroll, and with no inset the
  * Contents/Mindmap bar then stuck under the clock.
  *
@@ -26,7 +28,7 @@
 
 export const PAGE_TOP_INSET_EVENT_BLOCK = 'ltm-page-top-inset'
 
-export type PageTopInsetModeBlock = 'default' | 'paper'
+export type PageTopInsetModeBlock = 'default' | 'paper' | 'flush'
 
 export interface PageTopInsetStateBlock {
   mode: PageTopInsetModeBlock
