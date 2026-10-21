@@ -26,8 +26,9 @@ import type { MoonSceneAnimationBlock } from '@/services/lego_blocks/units/vault
    (docs/contracts/ENERGY.md); reduced motion turns it off. */
 
 export interface ExplorerPullHelloHandle {
-  /** Raw pull distance past the top, px; reaching `threshold` says hello. */
-  update: (pull: number, threshold: number) => void
+  /** Raw pull distance past the top, px; reaching `threshold` says hello.
+      `glide` eases to it instead of jumping (the trackpad's coarse deltas). */
+  update: (pull: number, threshold: number, glide?: boolean) => void
   /** Fingers lifted (or still): short of the line, spring back; re-arms. */
   release: () => void
   /** The pull that matches where the explorer is right now — mid spring-back
@@ -41,13 +42,19 @@ const PULL_REACH_PX_BLOCK = 230
 const PULL_EASE_FROM_PX_BLOCK = 150
 const OPEN_HEIGHT_PX_BLOCK = 108
 const SPRING_BLOCK = 'cubic-bezier(0.22, 1, 0.36, 1)'
+/* A fast trackpad scroll arrives as a few big deltas, and jumping to each
+   one read as jerky. Instead each one glides there, briefly; the next delta
+   retargets the glide from wherever it is, so a burst blurs into one
+   motion while slow pulls stay just behind the fingers. */
+const GLIDE_MS_BLOCK = 120
+const GLIDE_BLOCK = 'cubic-bezier(0.25, 1, 0.5, 1)'
 /* Going back is a real spring: a critically damped one let go from rest,
    x(t) = 1 − (1 + ωt)·e^(−ωt). It leaves gently (a curve starting at full
    speed read as a jolt) and settles without overshoot, and like any spring
    it takes the same time whatever the stretch — so the further you pulled,
    the faster it snaps back. (Scaling the time with distance did the
    opposite and made long pulls drag.) */
-const SETTLE_MS_BLOCK = 560
+const SETTLE_MS_BLOCK = 450
 const SETTLE_BLOCK = (() => {
   const omega = 7.4 // ≈99.5% home at the end of SETTLE_MS_BLOCK
   const stops: string[] = []
@@ -129,7 +136,7 @@ const ExplorerPullHelloBlock = forwardRef<ExplorerPullHelloHandle, ExplorerPullH
     }
 
     useImperativeHandle(ref, () => ({
-      update(pull, threshold) {
+      update(pull, threshold, glide = false) {
         if (helloRef.current || spentRef.current || prefersReducedMotionBlock()) return
         const peek = peekRef.current
         if (!peek) return
@@ -147,11 +154,11 @@ const ExplorerPullHelloBlock = forwardRef<ExplorerPullHelloHandle, ExplorerPullH
         const offset = lead <= PULL_EASE_FROM_PX_BLOCK
           ? lead
           : PULL_EASE_FROM_PX_BLOCK + tail * (1 - Math.exp(-(lead - PULL_EASE_FROM_PX_BLOCK) / (tail * 2.5)))  // inverse in currentPull
-        slideBlock(offset, 0)
+        slideBlock(offset, glide ? GLIDE_MS_BLOCK : 0, GLIDE_BLOCK)
         /* He rises as soon as the gap fits him and stands there, quiet, for
            the rest of the pull — you see him well before anything happens. */
         const rise = Math.min(1, offset / (EXPLORER_CLAWD_HEIGHT_BLOCK + 14))
-        peek.style.transition = 'none'
+        peek.style.transition = glide ? `transform ${GLIDE_MS_BLOCK}ms ${GLIDE_BLOCK}, opacity ${GLIDE_MS_BLOCK}ms ${GLIDE_BLOCK}` : 'none'
         peek.style.transform = `translateY(${Math.round((1 - rise) * (EXPLORER_CLAWD_HEIGHT_BLOCK + 6))}px)`
         /* Brightens over the last stretch, so the pull visibly still counts. */
         const near = Math.max(0, (lead - PULL_EASE_FROM_PX_BLOCK) / Math.max(1, threshold - PULL_EASE_FROM_PX_BLOCK))

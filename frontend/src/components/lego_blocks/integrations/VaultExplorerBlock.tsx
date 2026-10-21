@@ -753,15 +753,18 @@ function VaultExplorerBlockInner({
      - A scroll arriving from below carries on into the pull only if it
        reaches the top slowly with the fingers on. A fast scroll, or momentum
        coasting after the fingers lifted, just gets you to the top.
-     - The line is crossed only by slow movement: fast deltas can bring the
-       pull up to it but not over, so a flick never says hello.
+     - The line is crossed only by a slow pull: a gesture that went fast
+       can bring the pull up to it but not over, so a flick never says
+       hello; its momentum is caught there and springs it back.
+     - The trackpad moves the explorer at 0.6 of the fingers, gliding to
+       each delta rather than jumping.
      - The pull feeds the visible pull only; the greeting keeps its size
        (growing it first, then Clawd, made two things happen in a row).
      - Release is the fingers lifting: on the trackpad, the moment the deltas
-       turn into macOS's decaying momentum tail (six shrinking in a row),
-       the empty wheel event Chromium sends on lift, or the fingers stopping
-       (160ms quiet — a hold looks the same, and resuming catches the spring
-       back mid-way); on touch, touchend.
+       turn into the lift's coast (see `decay`, `smooth`, `crawl`), the
+       empty wheel event Chromium sends on lift, or the fingers stopping
+       (300ms quiet — a hold looks the same, and resuming catches the
+       spring back mid-way); on touch, touchend.
        Reaching the line says hello at once; release only springs a short
        pull back and re-arms it.
      A gesture is a run of wheel events with no gap over 300ms. */
@@ -780,10 +783,30 @@ function VaultExplorerBlockInner({
     startedAtTop: false,
     active: false,
     lastDelta: 0,
-    shrinking: 0,
+    /* Momentum, read off a logged flick: Chromium's coast neither shrinks
+       every tick nor arrives one value at a time — it repeats (36, 36, 34,
+       34) and interleaves (3, 1, 3, 1). "Six shrinking in a row" never
+       happened, so a coast kept feeding the pull until it died out: the
+       explorer drifted down, hung near the line, and the coast's tail
+       even crossed it into a hello. Summing each delta with the one
+       before smooths both quirks; `decay` counts ticks that sum has not
+       grown (by more than 1) since `peak`. */
+    lastPair: 0,
+    peak: 0,
+    decay: 0,
+    /* Ticks in a row that changed by little: momentum is smooth (36, 36,
+       34; 3, 1, 3), fingers easing off are not (5, 8, 4, 7) — reading
+       those as momentum let go of a pull still under the fingers. */
+    smooth: 0,
+    /* 1px deltas in a row. A slow pull's lift leaves no real momentum,
+       only a floor of 1s, further and further apart (8, 17, 34, 66ms) —
+       it kept the pull up through that and the 450ms quiet after, which
+       read as a pause. Fingers on the pad do not crawl at 1px for long. */
+    crawl: 0,
+    /* Highest pair this gesture. */
+    top: 0,
     growing: 0,
-    /* This gesture has turned into momentum; sticky, because the tail of a
-       coast repeats equal deltas that would reset `shrinking`. */
+    /* This gesture has turned into momentum; sticky until fingers are back. */
     coasting: false,
     /* Sprang back on the fingers stopping; the gesture may still be going. */
     settled: false,
@@ -810,21 +833,52 @@ function VaultExplorerBlockInner({
       state.startedAtTop = atTop
       state.pull = 0
       state.active = false
-      state.shrinking = 0
+      state.lastPair = 0
+      state.peak = 0
+      state.decay = 0
+      state.smooth = 0
+      state.crawl = 0
+      state.top = 0
       state.growing = 0
       state.lastDelta = 0
       state.settled = false
       state.coasting = false
     }
     state.lastAt = now
+    let decaying = false
+    let gliding = false
     if (wheel) {
       const size = Math.abs(amount)
-      state.shrinking = size < state.lastDelta * 0.97 ? state.shrinking + 1 : 0
+      const pair = size + state.lastDelta
+      if (pair > state.lastPair + 1) {
+        state.peak = pair
+        state.decay = 0
+      } else state.decay += 1
+      state.lastPair = pair
+      state.crawl = size <= 1 ? state.crawl + 1 : 0
+      state.top = Math.max(state.top, pair)
+      state.smooth = Math.abs(size - state.lastDelta) <= Math.max(1, state.lastDelta * 0.15) ? state.smooth + 1 : 0
       /* Growing and not tiny: a coast's last ticks wobble (1, 2, 2, 3), and
          reading that as fingers back stalled the spring-back mid-way. */
       state.growing = size > state.lastDelta && size >= 4 ? state.growing + 1 : 0
       state.lastDelta = size
-      if (state.shrinking >= 3 && !state.active) state.coasting = true
+      /* A fast coast: six ticks without growing, smooth, down a quarter
+         from a real speed (a slow pull's 1–9px deltas are always smooth,
+         and read as momentum they let go of every slow pull). Or a slow
+         lift's floor of 1px ticks. */
+      decaying = (state.peak >= 20 && state.decay >= 6 && pair <= state.peak * 0.75 && state.smooth >= 4)
+        || state.crawl >= 6
+      /* Fingers on the pad zig-zag (12, 1, 14, 2); after a slow pull's lift
+         the coast glides (4, 3, 3, 3, 2, 2) for half a second and carried
+         the explorer up to twice as far as the fingers went. Letting go
+         there also let go of fingers slowing down, so a slow pull never
+         got anywhere: a glide just adds nothing — the pull stays where the
+         fingers left it, and zig-zag (fingers moving again) resumes it. */
+      gliding = state.smooth >= 5 && state.top >= 8 && pair <= state.top * 0.75
+      /* Fingers do not glide for long; ten smooth ticks (~80ms) is the
+         lift's coast, and waiting it out read as a pause. */
+      if (gliding && state.smooth >= 10) decaying = true
+      if (decaying && !state.active) state.coasting = true
       /* Deltas growing again: fingers are back on. */
       if (state.growing >= 2) state.coasting = false
     }
@@ -846,14 +900,12 @@ function VaultExplorerBlockInner({
        left quick repeat pulls ignored, which felt slow. */
     if (state.settled) {
       if (!wheel) state.settled = false
-      else if (state.shrinking > 0) {
+      else if (state.decay > 0) {
         state.coasting = true
         return
       } else if (++state.steady >= 2) state.settled = false
       else return
     }
-    /* Six shrinking in a row: momentum decays smoothly, while fingers easing
-       to a hold jitter — three was too few and let go of a held pull. */
     /* Chromium on macOS ends a trackpad gesture with an empty wheel event
        when the fingers lift — the one direct "let go" signal there is. */
     if (wheel && state.active && amount === 0) {
@@ -861,29 +913,35 @@ function VaultExplorerBlockInner({
       releasePullBlock()
       return
     }
-    if (wheel && state.active && state.shrinking >= 6) {
+    if (wheel && state.active && decaying) {
       /* Fingers lifted; the rest of this momentum belongs to no pull. */
       state.startedAtTop = false
       releasePullBlock()
+      state.coasting = true
       return
     }
     /* Starting (or resuming mid spring-back): pick up from where the
        explorer is, so there is never a jump. */
     if (!state.active) state.pull = pullHelloRef.current?.currentPull() ?? 0
-    state.pull = Math.max(0, state.pull + amount)
-    /* Only slow movement crosses the line. A wrist flick opens with a burst
-       of big deltas that would reach it before the momentum tail shows; held
-       just short, the flick's own tail then releases it. */
-    if (wheel && amount > 20 && state.pull >= threshold) state.pull = threshold - 1
+    /* The trackpad moves the explorer at a steady 0.6 of the fingers: 1:1
+       read as twitchy (tried twice). A constant gain, not resistance — it
+       never stiffens as the pull grows. Touch stays 1:1, under the finger. */
+    if (!gliding) state.pull = Math.max(0, state.pull + (wheel ? amount * 0.6 : amount))
+    /* Only a slow pull crosses the line. A gesture that has gone fast at
+       any point (pairs over 40 — a flick's burst) is held just short, and
+       its momentum then springs it back. Gating on the current delta let
+       a fast swipe's slower tail cross into a hello. */
+    if (wheel && state.top > 40 && state.pull >= threshold) state.pull = threshold - 1
     if (state.pull > 0 && !state.active) state.active = true
-    if (state.active) pullHelloRef.current?.update(state.pull, threshold)
+    if (state.active) pullHelloRef.current?.update(state.pull, threshold, wheel)
     if (wheel) {
       if (state.releaseTimer !== null) window.clearTimeout(state.releaseTimer)
       /* The trackpad is silent both when the fingers lift and when they
-         hold, so there is no telling them apart. Waiting to find out read
-         as the explorer getting stuck; instead it starts springing back as
-         soon as the fingers stop, and a resumed pull catches it mid-way. */
-      state.releaseTimer = window.setTimeout(releasePullBlock, 160)
+         hold, so there is no telling them apart. A lift that moves leaves
+         momentum, caught above; silence is a hold, or a lift from still.
+         160ms let go of every hold; 450ms read as a pause after a still
+         lift; 300ms keeps a short hold and lets go soon after a lift. */
+      state.releaseTimer = window.setTimeout(releasePullBlock, 300)
     }
   }, [releasePullBlock])
   useEffect(() => () => {
@@ -2393,7 +2451,7 @@ function VaultExplorerBlockInner({
         onWheel={calmHeader ? (event) => {
           /* Sideways-only movement is not a lift (see the empty-event rule). */
           if (event.deltaY === 0 && event.deltaX !== 0) return
-          pullForHelloBlock(event.currentTarget.scrollTop <= 0, -event.deltaY, 520, true)
+          pullForHelloBlock(event.currentTarget.scrollTop <= 0, -event.deltaY, 160, true)
         } : undefined}
         onTouchStart={calmHeader ? (event) => {
           const atTop = event.currentTarget.scrollTop <= 0
