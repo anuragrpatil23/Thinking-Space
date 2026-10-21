@@ -1,5 +1,7 @@
 import {
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -72,6 +74,7 @@ import { isUrlShortcutPathBlock } from '@/services/lego_blocks/units/urlShortcut
 import TableDocumentBlock from '@/components/lego_blocks/integrations/TableDocumentBlock'
 import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import { useHeaderPeekBlock } from '@/components/lego_blocks/hooks/shared/useHeaderPeekBlock'
+import { isEpubDocumentPathBlock } from '@/services/lego_blocks/units/epubReaderBlock'
 import GoogleDocDocumentBlock from '@/components/lego_blocks/integrations/GoogleDocDocumentBlock'
 import ImageDocumentBlock from '@/components/lego_blocks/integrations/ImageDocumentBlock'
 import HtmlDocumentBlock from '@/components/lego_blocks/integrations/HtmlDocumentBlock'
@@ -2808,8 +2811,15 @@ function MarkdownTextDocumentRuntimeBlock({
   )
 }
 
-function PdfDocumentRuntimeBlock({
+/* The EPUB reader and foliate-js load only when a book is opened. */
+const EpubDocumentBlock = lazy(() => import('@/components/lego_blocks/integrations/EpubDocumentBlock'))
+
+/* PDF and EPUB share one reader shell: the header, its hover peek, the
+   docked/floating controls and the overlay that lets the title slide away.
+   Only the body differs. */
+function ReaderDocumentRuntimeBlock({
   path,
+  format,
   active = true,
   countsAsReading = false,
   topBarHidden = false,
@@ -2817,7 +2827,7 @@ function PdfDocumentRuntimeBlock({
   onClose,
   showCloseButton = false,
   className,
-}: MarkdownDocumentBlockProps) {
+}: MarkdownDocumentBlockProps & { format: 'pdf' | 'epub' }) {
   const filename = path.split('/').pop() || path
   const breadcrumb = path.split('/').slice(0, -1).join(' / ')
   const openInSystemLabel = getOpenInSystemLabelOrch()
@@ -2938,7 +2948,9 @@ function PdfDocumentRuntimeBlock({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                {format === 'epub'
+                  ? <BookOpenText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  : <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />}
                 <span className="truncate font-medium">{filename}</span>
               </div>
               {breadcrumb && <div className="mt-0.5 truncate text-xs text-muted-foreground">{breadcrumb}</div>}
@@ -2993,15 +3005,27 @@ function PdfDocumentRuntimeBlock({
       </div>
 
       <div className="min-h-0 flex-1">
-        <PdfDocumentBlock
-          path={path}
-          active={active}
-          countsAsReading={countsAsReading}
-          toolbarHost={topBarHidden ? null : toolbarHost}
-          topInset={topBarHidden ? 0 : chromeHeight}
-          onChromeHiddenChange={setScrolledAway}
-          className="h-full"
-        />
+        {format === 'epub' ? (
+          <Suspense fallback={null}>
+            <EpubDocumentBlock
+              path={path}
+              active={active}
+              toolbarHost={topBarHidden ? null : toolbarHost}
+              topInset={topBarHidden ? 0 : chromeHeight}
+              className="h-full"
+            />
+          </Suspense>
+        ) : (
+          <PdfDocumentBlock
+            path={path}
+            active={active}
+            countsAsReading={countsAsReading}
+            toolbarHost={topBarHidden ? null : toolbarHost}
+            topInset={topBarHidden ? 0 : chromeHeight}
+            onChromeHiddenChange={setScrolledAway}
+            className="h-full"
+          />
+        )}
       </div>
     </div>
   )
@@ -3223,10 +3247,11 @@ function MarkdownDocumentBlock(props: MarkdownDocumentBlockProps) {
       />
     )
   }
-  if (isPdfDocumentPathBlock(props.path)) {
+  if (isPdfDocumentPathBlock(props.path) || isEpubDocumentPathBlock(props.path)) {
     return (
-      <PdfDocumentRuntimeBlock
+      <ReaderDocumentRuntimeBlock
         path={props.path}
+        format={isEpubDocumentPathBlock(props.path) ? 'epub' : 'pdf'}
         active={props.active}
         countsAsReading={props.countsAsReading}
         topBarHidden={props.topBarHidden}

@@ -44,6 +44,7 @@ export default tseslint.config(
       'ios/**',
       'android/**',
       'src/personal_extension/vendor/**',
+      'src/vendor/**',
       '**/*.d.ts',
     ],
   },

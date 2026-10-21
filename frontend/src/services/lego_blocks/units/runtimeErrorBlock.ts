@@ -95,6 +95,22 @@ export function createRuntimeErrorReportBlock(
   }
 }
 
+/* Window errors that are not failures. "ResizeObserver loop completed with
+   undelivered notifications" means an observer's callback changed layout and
+   the browser deferred the follow-up notifications to the next frame — which
+   it then delivers. Paginating layout engines (the EPUB reader's) trigger it
+   routinely; surfacing it told the reader something had broken when nothing
+   had. */
+const BENIGN_WINDOW_ERRORS_BLOCK = [
+  /^ResizeObserver loop completed with undelivered notifications\.?$/,
+  /^ResizeObserver loop limit exceeded\.?$/,
+]
+
+export function isBenignWindowErrorBlock(event: Event): boolean {
+  const message = (event as ErrorEvent).message
+  return typeof message === 'string' && BENIGN_WINDOW_ERRORS_BLOCK.some((pattern) => pattern.test(message.trim()))
+}
+
 export function captureWindowErrorReportBlock(
   event: Event,
   location?: string | null,

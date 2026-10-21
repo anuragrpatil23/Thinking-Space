@@ -223,6 +223,7 @@ import SidebarChromeButtonBlock from '@/components/lego_blocks/units/SidebarChro
 import {
   captureUnhandledRejectionReportBlock,
   captureWindowErrorReportBlock,
+  isBenignWindowErrorBlock,
   createRuntimeErrorReportBlock,
   formatRuntimeErrorReportForClipboardBlock,
   formatRuntimeErrorReportsForClipboardBlock,
@@ -1480,6 +1481,7 @@ function App() {
 
   useEffect(() => {
     const handleWindowError = (event: Event) => {
+      if (isBenignWindowErrorBlock(event)) return
       pushRuntimeErrorReport(captureWindowErrorReportBlock(event, currentRoute))
     }
 

@@ -145,6 +145,24 @@ pdf.js directly so the bitmap can be decoupled from the layout box.
   resizes the viewport on every toggle and jumps the text. The toolbar docks
   into the header via portal (`toolbarHost`) and morphs into the floating
   pill once the title is away; with the header hidden it floats from the start.
+- EPUB reader (`EpubDocumentBlock.tsx`, 2026-10): foliate-js vendored at a
+  pinned commit in `src/vendor/foliate-js/` (provenance, local patch and update
+  steps in its README; the PDF backend is not vendored). It shares the PDF
+  reader's shell (`ReaderDocumentRuntimeBlock` in `MarkdownDocumentBlock.tsx`:
+  header, peek, docked row / floating pill) and paper-tone choice; tones and
+  type settings are CSS (`buildEpubReaderCssBlock`) because EPUB is reflowable
+  text, not artwork. Position is a CFI per vault path
+  (`thinkspc:epub-reading-positions`), which survives width, font and layout
+  changes. Safety is SECURITY.md's EPUB rule. Lazy: `React.lazy` + dynamic
+  import of foliate, so startup preloads are unchanged.
+  Page turns are a 3D leaf (`epubPageFlipBlock.ts`): foliate pages by
+  scrolling one wide section document, so there is no page to rotate — each
+  turn serializes the section into script-free sandboxed iframes clipped to
+  single pages, turns the live view instantly underneath, rotates the copied
+  leaf over the spine, then drops the copies. The visible page area comes
+  from the renderer's centred layout; the section iframe's own rect does not
+  move as foliate scrolls. Chapter boundaries, RTL books, continuous scroll
+  and coarse-pointer devices keep foliate's slide.
 - `usePenInkCaptureBlock.ts` — Apple Pencil. **Neither `touch-action` nor
   `preventDefault` on the pointer event stops WebKit scrolling**; it decides a
   touch is a scroll inside its own touch pipeline before either is consulted, so

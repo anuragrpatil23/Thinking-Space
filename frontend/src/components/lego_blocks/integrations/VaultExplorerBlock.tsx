@@ -357,6 +357,7 @@ function getFileIconColor(name: string, isSelected: boolean): string {
   if (lower.endsWith('.url')) return 'text-blue-400'
   if (isExcalidrawPathBlock(lower)) return 'text-violet-400'
   if (lower.endsWith('.pdf')) return 'text-red-400'
+  if (lower.endsWith('.epub')) return 'text-amber-500'
   return 'text-muted-foreground'
 }
 

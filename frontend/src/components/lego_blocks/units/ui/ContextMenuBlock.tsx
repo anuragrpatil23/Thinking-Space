@@ -70,7 +70,7 @@ export default function ContextMenuBlock({ entries, position, onClose }: Context
   return createPortal(
     <div
       ref={menuRef}
-      className="context-menu-surface fixed z-[90] min-w-[220px] rounded-lg border border-border/80 bg-background/95 p-[5px] backdrop-blur-xl"
+      className="context-menu-surface fixed z-[90] max-h-[70vh] min-w-[220px] overflow-y-auto rounded-lg border border-border/80 bg-background/95 p-[5px] backdrop-blur-xl"
       style={style}
       role="menu"
     >
