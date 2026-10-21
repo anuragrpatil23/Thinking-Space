@@ -189,70 +189,74 @@ export async function bulkUpsertNodes(
     dedupedByUuid.set(record.uuid, record)
   }
   const normalized = [...dedupedByUuid.values()]
-  // Fetch existing uuids in one indexed query
-  const uuids = normalized.map(r => r.uuid)
-  const existingNodes = await db.nodes.where('uuid').anyOf(uuids).toArray()
-  const existingByUuid = new Map(existingNodes.map(n => [n.uuid, n]))
-  const keys = [...new Set(normalized.map(r => r.key).filter(Boolean))]
-  const existingKeyNodes = keys.length > 0
-    ? await db.nodes.where('key').anyOf(keys).toArray()
-    : []
-  const existingByKey = new Map(existingKeyNodes.map(n => [n.key, n]))
-  const incomingByKey = new Map<string, Omit<NodeRecord, 'id'>>()
+  // Read, classify and write in one rw transaction. Reading first and
+  // writing later let two overlapping syncs (focus refresh, startup, a
+  // backfill) both see the same notes as new and both bulkAdd them — the
+  // second failed on the unique `&uuid` index ("31 of 32 operations failed.
+  // ConstraintError"). Inside one transaction they queue instead.
+  return db.transaction('rw', db.nodes, async () => {
+    // Fetch existing uuids in one indexed query
+    const uuids = normalized.map(r => r.uuid)
+    const existingNodes = await db.nodes.where('uuid').anyOf(uuids).toArray()
+    const existingByUuid = new Map(existingNodes.map(n => [n.uuid, n]))
+    const keys = [...new Set(normalized.map(r => r.key).filter(Boolean))]
+    const existingKeyNodes = keys.length > 0
+      ? await db.nodes.where('key').anyOf(keys).toArray()
+      : []
+    const existingByKey = new Map(existingKeyNodes.map(n => [n.key, n]))
+    const incomingByKey = new Map<string, Omit<NodeRecord, 'id'>>()
 
-  const toUpdate: NodeRecord[] = []
-  const toAdd: Omit<NodeRecord, 'id'>[] = []
-  const conflicts: NodeKeyConflictBlock[] = []
-  for (const record of normalized) {
-    // Only real (truthy) keys can collide. A note with no `key:` (or an empty
-    // one) is a valid, keyless note — many hand-written vault notes have no
-    // YAML key at all — and must never be treated as conflicting with another
-    // keyless note, or all but the first would be dropped here.
-    if (record.key) {
-      const incomingConflict = incomingByKey.get(record.key)
-      if (incomingConflict && incomingConflict.uuid !== record.uuid) {
-        conflicts.push({
-          key: record.key,
-          uuid: record.uuid,
-          filePath: record.filePath,
-          conflictingUuid: incomingConflict.uuid,
-          conflictingFilePath: incomingConflict.filePath,
-        })
-        continue
+    const toUpdate: NodeRecord[] = []
+    const toAdd: Omit<NodeRecord, 'id'>[] = []
+    const conflicts: NodeKeyConflictBlock[] = []
+    for (const record of normalized) {
+      // Only real (truthy) keys can collide. A note with no `key:` (or an empty
+      // one) is a valid, keyless note — many hand-written vault notes have no
+      // YAML key at all — and must never be treated as conflicting with another
+      // keyless note, or all but the first would be dropped here.
+      if (record.key) {
+        const incomingConflict = incomingByKey.get(record.key)
+        if (incomingConflict && incomingConflict.uuid !== record.uuid) {
+          conflicts.push({
+            key: record.key,
+            uuid: record.uuid,
+            filePath: record.filePath,
+            conflictingUuid: incomingConflict.uuid,
+            conflictingFilePath: incomingConflict.filePath,
+          })
+          continue
+        }
+
+        const existingKeyNode = existingByKey.get(record.key)
+        if (existingKeyNode && existingKeyNode.uuid !== record.uuid) {
+          conflicts.push({
+            key: record.key,
+            uuid: record.uuid,
+            filePath: record.filePath,
+            conflictingUuid: existingKeyNode.uuid,
+            conflictingFilePath: existingKeyNode.filePath,
+          })
+          continue
+        }
+
+        incomingByKey.set(record.key, record)
       }
 
-      const existingKeyNode = existingByKey.get(record.key)
-      if (existingKeyNode && existingKeyNode.uuid !== record.uuid) {
-        conflicts.push({
-          key: record.key,
-          uuid: record.uuid,
-          filePath: record.filePath,
-          conflictingUuid: existingKeyNode.uuid,
-          conflictingFilePath: existingKeyNode.filePath,
-        })
-        continue
+      const existingNode = existingByUuid.get(record.uuid)
+      if (existingNode?.id !== undefined) {
+        toUpdate.push({ ...record, id: existingNode.id })
+      } else {
+        toAdd.push(record)
       }
-
-      incomingByKey.set(record.key, record)
     }
 
-    const existingNode = existingByUuid.get(record.uuid)
-    if (existingNode?.id !== undefined) {
-      toUpdate.push({ ...record, id: existingNode.id })
-    } else {
-      toAdd.push(record)
-    }
-  }
-
-  await db.transaction('rw', db.nodes, async () => {
     if (toUpdate.length > 0) await db.nodes.bulkPut(toUpdate)
     if (toAdd.length > 0) await db.nodes.bulkAdd(toAdd)
+    return {
+      writtenCount: toUpdate.length + toAdd.length,
+      conflicts,
+    }
   })
-
-  return {
-    writtenCount: toUpdate.length + toAdd.length,
-    conflicts,
-  }
 }
 
 /**
