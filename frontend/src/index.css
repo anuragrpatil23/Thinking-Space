@@ -998,8 +998,11 @@
       var(--ltm-shell-stage-bg);
   }
 
+  /* No margin beside the explorer: the stage's own background already marks
+     the boundary, and a margin left the explorer's scrollbar floating in a
+     strip of dead space. */
   .ltm-thinking-space-shell[data-ltm-explorer-open='true'] .ltm-thinking-space-document-stage {
-    margin-left: clamp(0.24rem, 0.52vw, 0.42rem);
+    margin-left: 0;
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
   }

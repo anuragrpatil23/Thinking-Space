@@ -2371,7 +2371,11 @@ function VaultExplorerBlockInner({
       <div
         className={cn(
           'min-h-0 flex-1 overflow-auto px-1.5 py-2',
-          calmHeader && 'ltm-quiet-scrollbar',
+          // Just enough gutter for the thin overlay thumb (~8px from the
+          // edge), so rows don't run under it — a 12px gutter plus the
+          // panel's own margin read as a big empty strip.
+          calmHeader && viewMode !== 'grid' && 'ltm-quiet-scrollbar pr-2.5',
+          calmHeader && viewMode === 'grid' && 'ltm-quiet-scrollbar',
           viewMode === 'grid' && 'px-0 py-0',
           // In large-title mode the outer box scrolls, so this must not be a
           // nested scroller — and it pads itself past the floating native dock.
