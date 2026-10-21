@@ -4,7 +4,7 @@
 // inline list of sessions to choose from. Clicking the strip itself toggles
 // the "only touched files" filter, as before.
 
-import { ChevronDown } from 'lucide-react'
+import { Check, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type {
   SessionTelemetry,
@@ -21,6 +21,11 @@ export interface SessionTelemetryStripBlockProps {
   onToggleFilter: () => void
   onToggleList: () => void
   onSelectSession: (sessionKey: string | null) => void
+  /** Where the work happened: "sfresearch" or "sfresearch +1" (null = no
+   *  project folder matched; the line falls back to "This session"). */
+  projectLabel?: string | null
+  /** Full breakdown for the tooltip, e.g. "sfresearch (8), sfai (1)". */
+  projectDetail?: string | null
 }
 
 function formatAgo(ms: number, nowMs: number): string {
@@ -64,13 +69,20 @@ export default function SessionTelemetryStripBlock({
   onToggleFilter,
   onToggleList,
   onSelectSession,
+  projectLabel = null,
+  projectDetail = null,
 }: SessionTelemetryStripBlockProps) {
   const { sessions } = telemetry
   const multiple = sessions.length > 1
   const view = selected ?? telemetry.all
-  const label = selected
+  const baseLabel = selected
     ? (multiple ? selected.topic || 'Untitled session' : 'This session')
     : multiple ? `All ${sessions.length} sessions` : 'This session'
+  /* With one session in view, its project is the more useful name. With a
+     chooser of several, the session names stay — they are how you pick. */
+  const label = projectLabel && (!multiple || selected) && baseLabel === 'This session'
+    ? projectLabel
+    : baseLabel
   const scopeTitle = selected
     ? `AI session: ${selected.topic}`
     : sessions.map(s => `• ${s.topic}`).join('\n')
@@ -82,23 +94,30 @@ export default function SessionTelemetryStripBlock({
         className={cn(
           /* A quiet status line, not a boxed control: it is read at a
              glance far more often than it is clicked. */
-          'ltm-explorer-session-strip flex w-full items-center text-[12px] transition-colors',
-          filterOn ? 'text-foreground' : 'text-muted-foreground',
+          'ltm-explorer-session-strip flex w-full items-center rounded-md text-[12px] transition-colors',
+          /* Selected: a soft tinted chip the exact size of the line, so the
+             tree being filtered is obvious and nothing shifts. */
+          filterOn ? 'bg-emerald-500/10 text-foreground' : 'text-muted-foreground',
         )}
       >
         <button
           type="button"
           onClick={onToggleFilter}
-          title={`${scopeTitle}\nClick to ${filterOn ? 'show all files again' : 'show only the files touched'}`}
+          title={`${scopeTitle}${projectDetail ? `\nProjects: ${projectDetail}` : ''}\nClick to ${filterOn ? 'show all files again' : 'show only the files touched'}`}
           className={cn(
-            'flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left hover:bg-muted/50',
+            /* Focus ring for the keyboard only; a click left a ring around the
+               whole line. */
+            'flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            filterOn ? 'hover:bg-emerald-500/10' : 'hover:bg-muted/50',
           )}
         >
-          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+          {filterOn
+            ? <Check aria-hidden="true" className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
+            : <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />}
           <span className="min-w-0 truncate">{label}:</span>
           <Counts view={view} />
           {filterOn && (
-            <span className="ml-auto shrink-0 pl-1 text-emerald-600 dark:text-emerald-400">showing only these</span>
+            <span className="ml-auto shrink-0 pl-2 font-medium text-emerald-700 dark:text-emerald-400">Show all</span>
           )}
         </button>
         {multiple && (

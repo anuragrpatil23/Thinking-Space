@@ -14,11 +14,22 @@ const BODY_HEIGHT = CLAWD.length * PX
 export const EXPLORER_CLAWD_WIDTH_BLOCK = Math.round(BODY_WIDTH * EXPLORER_CLAWD_SCALE_BLOCK)
 export const EXPLORER_CLAWD_HEIGHT_BLOCK = Math.round(BODY_HEIGHT * EXPLORER_CLAWD_SCALE_BLOCK)
 
-export default function ExplorerClawdBlock({ anim }: { anim: MoonSceneAnimationBlock }) {
+/* Beside the greeting he matches the line's size; the inline greeting text
+   is 20px at most, so he is drawn smaller there than in the pull drop-in. */
+export const EXPLORER_INLINE_CLAWD_SCALE_BLOCK = 0.36
+export const EXPLORER_INLINE_CLAWD_WIDTH_BLOCK = Math.round(BODY_WIDTH * EXPLORER_INLINE_CLAWD_SCALE_BLOCK)
+
+export default function ExplorerClawdBlock({
+  anim,
+  scale = EXPLORER_CLAWD_SCALE_BLOCK,
+}: {
+  anim: MoonSceneAnimationBlock
+  scale?: number
+}) {
   return (
     <span
       className="relative block"
-      style={{ width: EXPLORER_CLAWD_WIDTH_BLOCK, height: EXPLORER_CLAWD_HEIGHT_BLOCK }}
+      style={{ width: Math.round(BODY_WIDTH * scale), height: Math.round(BODY_HEIGHT * scale) }}
     >
       <MoonSceneKeyframesBlock />
       <span
@@ -26,7 +37,7 @@ export default function ExplorerClawdBlock({ anim }: { anim: MoonSceneAnimationB
         style={{
           width: BODY_WIDTH,
           height: BODY_HEIGHT,
-          transform: `scale(${EXPLORER_CLAWD_SCALE_BLOCK})`,
+          transform: `scale(${scale})`,
           transformOrigin: 'left bottom',
         }}
       >

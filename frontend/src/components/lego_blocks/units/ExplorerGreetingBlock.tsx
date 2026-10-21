@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import ExplorerClawdBlock, { EXPLORER_CLAWD_WIDTH_BLOCK } from '@/components/lego_blocks/units/ExplorerClawdBlock'
+import ExplorerClawdBlock, {
+  EXPLORER_INLINE_CLAWD_SCALE_BLOCK,
+  EXPLORER_INLINE_CLAWD_WIDTH_BLOCK,
+} from '@/components/lego_blocks/units/ExplorerClawdBlock'
 import { explorerGreetingPartsBlock } from '@/services/lego_blocks/units/explorerGreetingBlock'
 import { cn } from '@/lib/utils'
 
@@ -71,7 +74,7 @@ export default function ExplorerGreetingBlock({
       <style>{`
         @keyframes ltm-greeter-slot {
           0% { width: 0; }
-          10%, 82% { width: ${EXPLORER_CLAWD_WIDTH_BLOCK + 6}px; }
+          10%, 82% { width: ${EXPLORER_INLINE_CLAWD_WIDTH_BLOCK + 6}px; }
           100% { width: 0; }
         }
         @keyframes ltm-greeter-clawd {
@@ -108,7 +111,7 @@ export default function ExplorerGreetingBlock({
             className="block"
             style={{ animation: `ltm-greeter-clawd ${GREETING_MS_BLOCK}ms ease-out forwards` }}
           >
-            <ExplorerClawdBlock anim="wave" />
+            <ExplorerClawdBlock anim="wave" scale={EXPLORER_INLINE_CLAWD_SCALE_BLOCK} />
           </span>
         </span>
       )}

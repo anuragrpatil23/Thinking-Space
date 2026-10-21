@@ -88,6 +88,8 @@ import ExplorerPullHelloBlock from '@/components/lego_blocks/units/ExplorerPullH
 import OverflowMenuButtonBlock from '@/components/lego_blocks/units/ui/OverflowMenuButtonBlock'
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
 import { useTimeOfDayBlock } from '@/components/lego_blocks/hooks/shared/useTimeOfDayBlock'
+import { useProjectsBlock } from '@/components/lego_blocks/hooks/shared/useProjectsBlock'
+import { sessionProjectsBlock, sessionProjectsLabelBlock } from '@/services/lego_blocks/units/sessionProjectsBlock'
 import { writeSortOrdersBlock } from '@/services/lego_blocks/units/notebookOrderBlock'
 import { writeNotebookSidecarBlock } from '@/services/lego_blocks/units/notebookSidecarBlock'
 import { getAbsolutePathForClipboardOrch } from '@/services/orchestrators/fileSystemOrch'
@@ -518,6 +520,7 @@ function VaultExplorerBlockInner({
   )
   // In compact view the filter collapses to a toolbar button; this reveals it.
   const [compactSearchOpen, setCompactSearchOpen] = useState(false)
+  const calmSearchInputRef = useRef<HTMLInputElement | null>(null)
   const [query, setQuery] = useState('')
   const [dropOverPath, setDropOverPath] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; path: string; kind: ExplorerPathKind } | null>(null)
@@ -739,6 +742,7 @@ function VaultExplorerBlockInner({
      one ⋯ instead of a row of five look-alike icons. The iPhone keeps its own
      large-title header. */
   const { profile } = useUserProfileBlock()
+  const { projects } = useProjectsBlock()
   /* Re-renders the greeting as the day moves on (visibility-aware, 60s). */
   useTimeOfDayBlock()
   /* Pull past the top of the tree to have Clawd say hi — the pull-to-refresh
@@ -793,6 +797,11 @@ function VaultExplorerBlockInner({
   const largeTitle = phoneLargeTitle.trim()
   const hasLargeTitle = largeTitle.length > 0
   const calmHeader = calmHeaderProp && !collapseSearchToButton && !hasLargeTitle
+  /* With the session line showing, the header would be three rows before the
+     files; search is the one used least from here, so it folds into a ⌕ in
+     the greeting row and opens in place when asked. */
+  const calmSessionLine = calmHeader && !!sessionTelemetry && sessionTelemetry.all.files.size > 0
+  const calmSearchFolded = calmSessionLine && !compactSearchOpen && !query
   const inlineRenameSession = inlineRename ? `${inlineRename.kind}:${inlineRename.path}` : null
 
   // Filtering asks the shared vault search engine, which knows the whole vault
@@ -1936,7 +1945,10 @@ function VaultExplorerBlockInner({
           ]
           const optionEntries: ContextMenuEntryBlock[] = [
             { key: 'tree', label: 'Tree view', checked: viewMode === 'tree', onClick: () => setViewMode('tree') },
-            { key: 'compact', label: 'Compact view', checked: viewMode === 'compact', onClick: () => setViewMode('compact') },
+            /* Labelled by what it shows — indent guides and the path bar —
+               not by density: with search always visible in the calm header
+               it is no longer compact. The stored value stays 'compact'. */
+            { key: 'compact', label: 'Outline view', checked: viewMode === 'compact', onClick: () => setViewMode('compact') },
             { key: 'grid', label: 'Grid view', checked: viewMode === 'grid', onClick: () => setViewMode('grid') },
             { key: 'sep', kind: 'separator' },
             {
@@ -1960,13 +1972,31 @@ function VaultExplorerBlockInner({
                   dismissNonce={greetNonce}
                   className="flex-1 pl-1"
                 />
+                {calmSearchFolded && (
+                  <button
+                    type="button"
+                    title="Search files"
+                    aria-label="Search files"
+                    onClick={() => {
+                      setCompactSearchOpen(true)
+                      window.requestAnimationFrame(() => calmSearchInputRef.current?.focus())
+                    }}
+                    className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Search className="h-4 w-4" />
+                  </button>
+                )}
                 {toolbarActionsSlot}
                 <OverflowMenuButtonBlock icon={Plus} title="New…" entries={createEntries} />
                 <OverflowMenuButtonBlock title="Explorer options" entries={optionEntries} />
               </div>
-              {sessionTelemetry && sessionTelemetry.all.files.size > 0 && (
+              {sessionTelemetry && sessionTelemetry.all.files.size > 0 && (() => {
+                const touched = sessionProjectsBlock((telemetrySession ?? sessionTelemetry.all).files.keys(), projects)
+                return (
                 <div className="mb-2">
                   <SessionTelemetryStripBlock
+                    projectLabel={sessionProjectsLabelBlock(touched)}
+                    projectDetail={touched.length > 0 ? touched.map((p) => `${p.name} (${p.count})`).join(', ') : null}
                     telemetry={sessionTelemetry}
                     selected={telemetrySession}
                     filterOn={telemetryFilterOn}
@@ -1976,14 +2006,26 @@ function VaultExplorerBlockInner({
                     onSelectSession={selectTelemetrySession}
                   />
                 </div>
-              )}
+                )
+              })()}
             </>
           )
         })()}
 
-        {(calmHeader || (viewMode !== 'compact' && !collapseSearchToButton) || compactSearchOpen || query) && (
-          <div className="flex w-full items-center">
+        {((calmHeader && !calmSearchFolded) || (!calmHeader && ((viewMode !== 'compact' && !collapseSearchToButton) || compactSearchOpen || query))) && (
+          <div
+            className="flex w-full items-center"
+            /* A search opened from the ⌕ folds back once it is left empty. */
+            onBlur={calmSessionLine ? () => { if (!query) setCompactSearchOpen(false) } : undefined}
+            onKeyDown={calmSessionLine ? (event) => {
+              if (event.key === 'Escape') {
+                setQuery('')
+                setCompactSearchOpen(false)
+              }
+            } : undefined}
+          >
             <UniversalSearchBlock
+              inputRef={calmHeader ? calmSearchInputRef : undefined}
               {...UNIVERSAL_SEARCH_INLINE_FILTER_PRESET_BLOCK}
               {...(calmHeader ? {
                 /* A soft filled pill rather than an outlined form field: it
@@ -2091,12 +2133,12 @@ function VaultExplorerBlockInner({
                           the menu items; the long form overflowed the toolbar
                           row on iPad and truncated to "Tre…". */}
                       <SelectValue aria-label={viewMode}>
-                        {viewMode === 'tree' ? 'Tree' : viewMode === 'compact' ? 'Compact' : 'Grid'}
+                        {viewMode === 'tree' ? 'Tree' : viewMode === 'compact' ? 'Outline' : 'Grid'}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="tree">Tree view</SelectItem>
-                      <SelectItem value="compact">Compact view</SelectItem>
+                      <SelectItem value="compact">Outline view</SelectItem>
                       <SelectItem value="grid">Grid view</SelectItem>
                     </SelectContent>
                   </Select>
