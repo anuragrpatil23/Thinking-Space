@@ -1,5 +1,6 @@
+import { ArrowUp } from 'lucide-react'
 import HomeTileBlock, { HomeTileFigureBlock, HOME_TILE_SHADOW_BLOCK } from '@/components/lego_blocks/units/HomeTileBlock'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addBoardInboxNoteBlock,
   readBoardInboxBlock,
@@ -364,7 +365,7 @@ export default function HomeBoardFeedBlock({ surface = 'feed', onOpen }: HomeBoa
 
   return (
     <section>
-      {surface === 'page' && <BoardQuickCaptureBlock onAdd={addNote} />}
+      {surface === 'page' && <BoardQuickCaptureBlock theme={theme} onAdd={addNote} />}
       {surface !== 'page' && (
       <h2
         style={{
@@ -400,12 +401,20 @@ export default function HomeBoardFeedBlock({ surface = 'feed', onOpen }: HomeBoa
 
 /** The phone's way onto the board: type, add, and it is a post-it. It lands
  *  in the board inbox; the desktop board places it where you are looking the
- *  next time it is open. */
-function BoardQuickCaptureBlock({ onAdd }: { onAdd: (text: string) => Promise<void> }) {
+ *  next time it is open.
+ *
+ *  Drawn as one of the cards below it (same surface, same corner mark) rather
+ *  than a yellow slab: the first version was louder than the notes it sits
+ *  over, a third of the screen tall before anything was typed, and its
+ *  disabled button went muddy on the yellow. One line that grows; the send
+ *  arrow appears only once there is something to send. */
+function BoardQuickCaptureBlock({ theme, onAdd }: { theme: CanvasThemeTokens; onAdd: (text: string) => Promise<void> }) {
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
+  const fieldRef = useRef<HTMLTextAreaElement | null>(null)
   const trimmed = text.trim()
+  const palette = POST_IT_PALETTE[DEFAULT_POST_IT_COLOR]
 
   const submit = async () => {
     if (!trimmed || saving) return
@@ -414,6 +423,7 @@ function BoardQuickCaptureBlock({ onAdd }: { onAdd: (text: string) => Promise<vo
     try {
       await onAdd(trimmed)
       setText('')
+      if (fieldRef.current) fieldRef.current.style.height = ''
     } catch {
       // Keep the text: a failed save must not cost the thought.
       setFailed(true)
@@ -422,31 +432,55 @@ function BoardQuickCaptureBlock({ onAdd }: { onAdd: (text: string) => Promise<vo
     }
   }
 
-  const palette = POST_IT_PALETTE[DEFAULT_POST_IT_COLOR]
   return (
-    <div
-      className="mb-4 rounded-[18px] p-3"
-      style={{ background: palette.background, border: `1px solid ${palette.border}`, color: palette.text }}
-    >
-      {/* 16px: anything smaller and iOS zooms the page in on focus. */}
-      <textarea
-        value={text}
-        onChange={event => setText(event.target.value)}
-        placeholder="A quick thought…"
-        rows={3}
-        className="w-full resize-none bg-transparent text-[16px] leading-snug outline-none placeholder:text-current placeholder:opacity-40"
-      />
-      <div className="mt-1 flex items-center justify-end gap-3">
-        {failed && <span className="mr-auto text-[12px] text-red-700">Couldn't save — try again</span>}
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={!trimmed || saving}
-          className="ltm-touch-target rounded-full bg-neutral-900 px-4 py-1.5 text-[13px] font-medium text-white disabled:opacity-30"
-        >
-          {saving ? 'Adding…' : 'Add to board'}
-        </button>
+    <div className="mb-3">
+      <div
+        className="relative flex items-end gap-2"
+        style={{
+          borderRadius: 12,
+          padding: '20px 10px 10px 16px',
+          background: theme.tileBg,
+          border: `1px solid ${theme.tileBorder}`,
+          boxShadow: theme.tileShadow,
+          color: theme.tileText,
+        }}
+      >
+        <span
+          aria-hidden
+          className="absolute left-2 top-2 h-2 w-2 rounded-[2px]"
+          style={{ background: palette.cornerMark, opacity: 0.85 }}
+        />
+        {/* 16px: anything smaller and iOS zooms the page in on focus. Grows
+            with its content, measured on each change (WebKit has no
+            field-sizing). */}
+        <textarea
+          ref={fieldRef}
+          value={text}
+          onChange={event => {
+            const field = event.currentTarget
+            setText(field.value)
+            field.style.height = 'auto'
+            field.style.height = `${field.scrollHeight}px`
+          }}
+          placeholder="Jot a thought…"
+          rows={1}
+          className="min-h-[24px] flex-1 resize-none bg-transparent pb-1 text-[16px] leading-6 outline-none placeholder:text-current placeholder:opacity-40"
+          style={{ maxHeight: '40vh' }}
+        />
+        {trimmed && (
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={saving}
+            aria-label="Add to board"
+            className="ltm-touch-target flex h-8 w-8 shrink-0 items-center justify-center rounded-full disabled:opacity-50"
+            style={{ background: palette.cornerMark, color: '#fff' }}
+          >
+            <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
+          </button>
+        )}
       </div>
+      {failed && <p className="mt-1.5 px-1 text-[12px] text-red-600">Couldn't save — try again</p>}
     </div>
   )
 }
