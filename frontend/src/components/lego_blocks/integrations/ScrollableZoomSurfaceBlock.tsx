@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Minus, Plus } from 'lucide-react'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import {
@@ -6,6 +7,8 @@ import {
   scaledWidthStyleFromClassBlock,
 } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { cn } from '@/lib/utils'
+
+const QUIET_BUTTON_CLASS_BLOCK = 'h-6 shrink-0 px-1.5 text-[11px] font-normal text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100'
 
 interface ScrollableZoomSurfaceBlockProps {
   children: ReactNode
@@ -23,6 +26,10 @@ interface ScrollableZoomSurfaceBlockProps {
   showFitColumnsToWidthButton?: boolean
   resetLabel?: string
   persistStateKey?: string
+  /** 'quiet': borderless grey text controls (F9's native tables). */
+  controlsAppearance?: 'buttons' | 'quiet'
+  /** Where the zoom controls dock (e.g. a section header); none keeps them under the table. */
+  controlsHost?: HTMLElement | null
 }
 
 interface PersistedScrollableZoomStateBlock {
@@ -68,6 +75,8 @@ export default function ScrollableZoomSurfaceBlock({
   showFitColumnsToWidthButton = false,
   resetLabel = 'Reset',
   persistStateKey,
+  controlsAppearance = 'buttons',
+  controlsHost = null,
 }: ScrollableZoomSurfaceBlockProps) {
   const normalizedPersistStateKey = persistStateKey?.trim() ?? ''
   const storageKey = normalizedPersistStateKey ? `scrollable-zoom-surface:${normalizedPersistStateKey}` : ''
@@ -181,6 +190,70 @@ export default function ScrollableZoomSurfaceBlock({
     }
   }, [columnWidthScale, fitColumnsLocked, storageKey, zoom])
 
+  const quiet = controlsAppearance === 'quiet'
+  const controls = (
+    <div className={cn(controlsHost ? '' : 'w-full', 'flex items-center justify-start overflow-x-auto whitespace-nowrap px-1 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:justify-end', quiet ? cn('gap-0.5 text-[11px] text-zinc-500', !controlsHost && 'pt-1.5') : 'gap-1.5 text-xs')}>
+      <span className="hidden shrink-0 text-muted-foreground sm:inline">{controlsLabel}</span>
+      {showFitColumnsToWidthButton && (
+        <Button
+          type="button"
+          variant={fitColumnsLocked ? (quiet ? 'secondary' : 'default') : (quiet ? 'ghost' : 'outline')}
+          size="sm"
+          className={quiet ? QUIET_BUTTON_CLASS_BLOCK : 'h-6 shrink-0 px-1.5 text-[11px] sm:h-7 sm:px-2 sm:text-xs'}
+          onClick={toggleFitColumnsToWidth}
+        >
+          {fitColumnsToWidthLabel}
+        </Button>
+      )}
+      <Button
+        type="button"
+        variant={quiet ? 'ghost' : 'outline'}
+        size="sm"
+        className={quiet ? QUIET_BUTTON_CLASS_BLOCK : 'h-6 shrink-0 px-1.5 text-[11px] sm:h-7 sm:px-2 sm:text-xs'}
+        onClick={fitToWidth}
+      >
+        {fitToWidthLabel}
+      </Button>
+      <Button
+        type="button"
+        variant={quiet ? 'ghost' : 'outline'}
+        size="sm"
+        className={quiet ? QUIET_BUTTON_CLASS_BLOCK : 'h-6 shrink-0 px-1.5 text-[11px] sm:h-7 sm:px-2 sm:text-xs'}
+        onClick={resetView}
+        disabled={!canReset}
+      >
+        {resetLabel}
+      </Button>
+      <Button
+        type="button"
+        variant={quiet ? 'ghost' : 'outline'}
+        size="icon"
+        className={quiet ? 'h-6 w-6 shrink-0 text-zinc-500' : 'h-6 w-6 shrink-0 sm:h-7 sm:w-7'}
+        disabled={!canZoomOut}
+        onClick={() => setZoom((current) => clampZoomBlock(Number((current - zoomStep).toFixed(2)), minZoom, maxZoom))}
+        aria-label="Zoom out"
+        title="Zoom out"
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </Button>
+      <span className="min-w-[2.5rem] shrink-0 text-center font-medium tabular-nums text-muted-foreground sm:min-w-[3rem]">
+        {zoomPercent}
+      </span>
+      <Button
+        type="button"
+        variant={quiet ? 'ghost' : 'outline'}
+        size="icon"
+        className={quiet ? 'h-6 w-6 shrink-0 text-zinc-500' : 'h-6 w-6 shrink-0 sm:h-7 sm:w-7'}
+        disabled={!canZoomIn}
+        onClick={() => setZoom((current) => clampZoomBlock(Number((current + zoomStep).toFixed(2)), minZoom, maxZoom))}
+        aria-label="Zoom in"
+        title="Zoom in"
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  )
+
   return (
     <div className={cn('space-y-2', className)}>
       <div ref={viewportRef} className={cn('overflow-x-auto', viewportClassName)}>
@@ -192,66 +265,7 @@ export default function ScrollableZoomSurfaceBlock({
           {children}
         </div>
       </div>
-      <div className="flex w-full items-center justify-start gap-1.5 overflow-x-auto whitespace-nowrap px-1 pb-1 text-xs [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:justify-end">
-        <span className="hidden shrink-0 text-muted-foreground sm:inline">{controlsLabel}</span>
-        {showFitColumnsToWidthButton && (
-          <Button
-            type="button"
-            variant={fitColumnsLocked ? 'default' : 'outline'}
-            size="sm"
-            className="h-6 shrink-0 px-1.5 text-[11px] sm:h-7 sm:px-2 sm:text-xs"
-            onClick={toggleFitColumnsToWidth}
-          >
-            {fitColumnsToWidthLabel}
-          </Button>
-        )}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-6 shrink-0 px-1.5 text-[11px] sm:h-7 sm:px-2 sm:text-xs"
-          onClick={fitToWidth}
-        >
-          {fitToWidthLabel}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-6 shrink-0 px-1.5 text-[11px] sm:h-7 sm:px-2 sm:text-xs"
-          onClick={resetView}
-          disabled={!canReset}
-        >
-          {resetLabel}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-6 w-6 shrink-0 sm:h-7 sm:w-7"
-          disabled={!canZoomOut}
-          onClick={() => setZoom((current) => clampZoomBlock(Number((current - zoomStep).toFixed(2)), minZoom, maxZoom))}
-          aria-label="Zoom out"
-          title="Zoom out"
-        >
-          <Minus className="h-3.5 w-3.5" />
-        </Button>
-        <span className="min-w-[2.5rem] shrink-0 text-center font-medium tabular-nums text-muted-foreground sm:min-w-[3rem]">
-          {zoomPercent}
-        </span>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-6 w-6 shrink-0 sm:h-7 sm:w-7"
-          disabled={!canZoomIn}
-          onClick={() => setZoom((current) => clampZoomBlock(Number((current + zoomStep).toFixed(2)), minZoom, maxZoom))}
-          aria-label="Zoom in"
-          title="Zoom in"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+      {controlsHost ? createPortal(controls, controlsHost) : controls}
     </div>
   )
 }

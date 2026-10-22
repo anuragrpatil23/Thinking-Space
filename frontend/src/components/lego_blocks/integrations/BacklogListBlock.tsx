@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { Loader2 } from 'lucide-react'
 import { BacklogNodeRowBlock } from '@/components/lego_blocks/units/BacklogNodeRowBlock'
 import { BacklogProgramRowBlock } from '@/components/lego_blocks/units/BacklogProgramRowBlock'
-import { scaledWidthStyleFromClassBlock, type BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
+import { nativeRowGridTemplateBlock, nativeSlotWidthBlock, scaledWidthStyleFromClassBlock, type BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { BacklogInlineCreateBlock } from '@/components/lego_blocks/integrations/BacklogInlineCreateBlock'
 import { BacklogInlineNotesEditorBlock } from '@/components/lego_blocks/integrations/BacklogInlineNotesEditorBlock'
@@ -173,6 +173,12 @@ export interface BacklogListBlockProps {
   showProgramStatus?: boolean
   showProgramCopyButton?: boolean
   preferInlineDetailsButton?: boolean
+  /** 'native': the column header as a plain hairline row with sentence-case labels (F9). */
+  appearance?: 'default' | 'native'
+  /** Replaces a position row's plain title (native tables). */
+  renderNodeTitle?: (node: NodeRecord) => ReactNode
+  /** A header label over the status pills (native tables). */
+  statusColumnLabel?: string
   allowInlineNotesInReadOnly?: boolean
   allowStatusEditingInReadOnly?: boolean
   allowProgramLayoutEditingInReadOnly?: boolean
@@ -249,6 +255,9 @@ function BacklogListBlockImpl({
   showProgramStatus = true,
   showProgramCopyButton = true,
   preferInlineDetailsButton = false,
+  appearance = 'default',
+  renderNodeTitle,
+  statusColumnLabel,
   allowInlineNotesInReadOnly = false,
   allowStatusEditingInReadOnly = false,
   allowProgramLayoutEditingInReadOnly = false,
@@ -336,6 +345,20 @@ function BacklogListBlockImpl({
     }
     return resolved
   }, [programGroupIdByProgram, validProgramGroupIds])
+  // Native tables lay the header and every row on one grid so columns line up
+  // and fill the width; status, links and the two row icons keep fixed slots.
+  const nativeGridTemplate = appearance === 'native' && rowColumns.length > 0
+    ? nativeRowGridTemplateBlock({
+        titleClassName: titleColumnClassName,
+        columns: rowColumns,
+        trailingSlots: [
+          ...(statusColumnLabel ? ['6.5rem'] : []),
+          ...(linksColumnLabel ? [nativeSlotWidthBlock(linksColumnWidthClassName, '4.5rem')] : []),
+          '22px',
+          '22px',
+        ],
+      })
+    : undefined
   const programIndexById = useMemo(() => new Map(programs.map((program, index) => [program.uuid, index])), [programs])
   const groupedProgramsByGroupId = useMemo(() => {
     const grouped = new Map<string, NodeRecord[]>(programGroups.map(group => [group.id, []]))
@@ -939,8 +962,11 @@ function BacklogListBlockImpl({
     const detailsBusy = rowDetailsRenderer ? false : inlineNotesSaving
 
     return (
-      <div key={node.uuid} className="border-b border-border/70 last:border-b-0">
+      <div key={node.uuid} className={cn('border-b last:border-b-0', appearance === 'native' ? 'border-b-[0.5px] border-[#EFEFF2] dark:border-zinc-800/70' : 'border-border/70')}>
         <BacklogNodeRowBlock
+          native={appearance === 'native'}
+          nativeGridTemplate={nativeGridTemplate}
+          titleSlot={renderNodeTitle?.(node)}
           node={node}
           depth={depth}
           siblingIndex={siblingIndex}
@@ -1033,7 +1059,7 @@ function BacklogListBlockImpl({
         )}
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, epicBorderClassByProgramUuid, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
+  }, [nativeGridTemplate, appearance, renderNodeTitle, actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureChildrenLoaded, epicBorderClassByProgramUuid, expandedNodes, groupingInfoOpenByNode, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, handleInlineTaskStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, newlyCreatedNodeIds, onOpenNodeDetails, onSelectNode, onUpdateNodeNotes, onUpdateNodeStatus, onUpdateTaskStatus, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
 
   const renderProgramSection = useCallback((program: NodeRecord, programIndex: number) => {
     // Programs with status='archived' are collapsed by default and gated by
@@ -1065,8 +1091,10 @@ function BacklogListBlockImpl({
     const detailsBusy = rowDetailsRenderer ? false : inlineNotesSaving
 
     return (
-      <div key={program.uuid} className="overflow-hidden rounded-xl border border-border/70 bg-muted/25">
+      <div key={program.uuid} className={appearance === 'native' ? 'overflow-hidden border-b-[0.5px] border-[#E5E5EA] last:border-b-0 dark:border-zinc-800' : 'overflow-hidden rounded-xl border border-border/70 bg-muted/25'}>
         <BacklogProgramRowBlock
+          native={appearance === 'native'}
+          nativeGridTemplate={nativeGridTemplate}
           program={program}
           programIndex={programIndex}
           programCount={programs.length}
@@ -1160,10 +1188,14 @@ function BacklogListBlockImpl({
         )}
       </div>
     )
-  }, [actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, expandedNodes, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, moveProgramToIndex, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onSetProgramOrdinal, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderProgramTitlePrefix, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, resolveProgramOrdinal, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
+  }, [nativeGridTemplate, appearance, actionsRightEdge, allowInlineNotesInReadOnly, allowProgramLayoutEditing, canOpenNodeDetails, childrenByNode, copiedRowNodeId, copyRowLabelForNode, dragOverEdge, dragOverNodeId, ensureProgramLoaded, expandedNodes, handleDragEnd, handleDragLeave, handleDragOver, handleDrop, handleInlineNodeStatusChange, inlineNotesNode?.uuid, inlineNotesSaving, linksBeforeTags, lookupTagColor, makeDragStart, moveProgramByOffset, moveProgramToIndex, newlyCreatedNodeIds, onAssignProgramToGroup, onOpenNodeDetails, onReorderSiblings, onSelectNode, onSetProgramOrdinal, onUpdateNodeNotes, onUpdateNodeStatus, programGroups, programs.length, projectPresetTagsByRoot, readOnly, renderInlineCreate, renderInlineDetailsPanel, renderInlineNotesEditor, renderNodeBranch, renderProgramTitlePrefix, renderRelatedNodeLinksSlot, renderTicketBadge, reserveTagsSlotWhenEmpty, resolvedProgramGroupIdByProgram, resolveProgramOrdinal, rowColumns, rowDetailsNodeId, rowDetailsRenderer, rowPresetTagLimit, rowPresetTagsClassName, selectedNodeId, showProgramCopyButton, showProgramStatus, showRowColumnsOnCompact, statusBusyByNode, statusRightAligned, titleColumnClassName, toggleNode, toggleRowDetails, wrapTitleText])
+
+  const headerLabelClassName = appearance === 'native'
+    ? 'text-[11px] font-medium text-zinc-500 dark:text-zinc-400'
+    : 'text-[10px] font-semibold uppercase tracking-wide text-muted-foreground'
 
   return (
-    <div className="flex flex-col space-y-3">
+    <div className={cn('flex flex-col', appearance === 'native' ? 'space-y-0' : 'space-y-3')}>
       {showProgramLayoutToggle && allowProgramLayoutModeToggle && (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
@@ -1179,13 +1211,39 @@ function BacklogListBlockImpl({
 
       {!readOnly && showRootInlineCreate && renderInlineCreate(null, ROOT_INPUT_KEY, `Add ${programNounSingular}...`)}
 
-      {rowColumns.length > 0 && (
+      {nativeGridTemplate && (
+        <div
+          className="grid min-w-max items-center gap-x-2 border-b-[0.5px] border-[#E5E5EA] px-4 pb-2 pt-1 dark:border-zinc-800"
+          style={{ gridTemplateColumns: nativeGridTemplate }}
+        >
+          <span className={cn('min-w-0 truncate', headerLabelClassName)}>Title</span>
+          {rowColumns.map(column => (
+            <span
+              key={`column-header-${column.id}`}
+              className={cn('min-w-0 truncate', headerLabelClassName, column.align === 'center' && 'text-center', column.align === 'right' && 'text-right')}
+            >
+              {column.label}
+            </span>
+          ))}
+          {statusColumnLabel && <span className={cn('min-w-0 truncate pl-4 text-right', headerLabelClassName)}>{statusColumnLabel}</span>}
+          {/* Links covers the row's info and copy icons plus any related links. */}
+          <span className={cn('col-span-3 min-w-0 truncate text-right', headerLabelClassName)}>{linksColumnLabel ?? ''}</span>
+        </div>
+      )}
+
+      {rowColumns.length > 0 && !nativeGridTemplate && (
         <div className={cn(
-          'items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-1',
+          'items-center gap-2 py-1',
+          appearance === 'native'
+            ? 'border-b-[0.5px] border-[#E5E5EA] px-4 pb-2 dark:border-zinc-800'
+            : 'px-3',
+          appearance === 'native'
+            ? ''
+            : 'rounded-md border border-border/60 bg-muted/20',
           showRowColumnsOnCompact ? 'flex' : 'hidden xl:flex',
         )}>
           <span className={cn(
-            'text-[10px] font-semibold uppercase tracking-wide text-muted-foreground',
+            headerLabelClassName,
             titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'min-w-0 flex-1',
           )} style={scaledWidthStyleFromClassBlock(titleColumnClassName)}>
             Title
@@ -1193,7 +1251,7 @@ function BacklogListBlockImpl({
           {rowColumns.map(column => (
             <span
               key={`column-header-${column.id}`}
-              className={`shrink-0 truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground ${column.widthClassName ?? 'w-24'} ${
+              className={`shrink-0 truncate ${headerLabelClassName} ${column.widthClassName ?? 'w-24'} ${
                 column.align === 'center' ? 'text-center' : column.align === 'right' ? 'text-right' : ''
               }`}
               style={scaledWidthStyleFromClassBlock(column.widthClassName ?? 'w-24')}
@@ -1201,9 +1259,15 @@ function BacklogListBlockImpl({
               {column.label}
             </span>
           ))}
+          {statusColumnLabel && (
+            <span className={cn('hidden w-[5.5rem] shrink-0 truncate lg:block', headerLabelClassName)}>
+              {statusColumnLabel}
+            </span>
+          )}
           {linksColumnLabel && (
             <span className={cn(
-              'hidden shrink-0 truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground lg:block',
+              'hidden shrink-0 truncate lg:block',
+              headerLabelClassName,
               linksColumnWidthClassName ?? 'w-72',
               linksColumnAlign === 'center'
                 ? 'text-center'

@@ -40,6 +40,10 @@ interface BacklogProgramRowBlockProps {
    * without coupling this generic row to domain-specific concepts. */
   titlePrefixSlot?: ReactNode
   rowColumns: BacklogRowColumnBlock[]
+  /** F9's native look: a quiet totals band, no ordinal. */
+  native?: boolean
+  /** Native tables: the grid template shared with the header (nativeRowGridTemplateBlock). */
+  nativeGridTemplate?: string
   showRowColumnsOnCompact?: boolean
   rowPresetTagsClassName?: string
   reserveTagsSlotWhenEmpty?: boolean
@@ -143,6 +147,8 @@ export function BacklogProgramRowBlock({
   linksSlot,
   titlePrefixSlot,
   rowColumns,
+  native = false,
+  nativeGridTemplate,
   showRowColumnsOnCompact = false,
   rowPresetTagsClassName,
   reserveTagsSlotWhenEmpty = false,
@@ -188,7 +194,9 @@ export function BacklogProgramRowBlock({
       onDrop={onDrop}
       className={cn(
         'cursor-pointer overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
-        'border-b border-border/70 bg-card px-3 py-2 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60',
+        native
+          ? 'border-b-[0.5px] border-[#E5E5EA] bg-[#FAFAFB] px-4 py-2 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-800/40 dark:hover:bg-zinc-800/70'
+          : 'border-b border-border/70 bg-card px-3 py-2 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60',
         selected && 'bg-accent/40',
         dragOver && 'ring-2 ring-primary/40 bg-primary/5',
         dragOver && dragOverEdge === 'before' && 'shadow-[inset_0_2px_0_rgba(59,130,246,0.7)]',
@@ -197,8 +205,11 @@ export function BacklogProgramRowBlock({
       )}
       onClick={onSelectProgram}
     >
-      <div className="flex min-w-max items-center gap-2">
-      {resolvedOrdinal !== null && !(allowProgramLayoutEditing && onSetProgramIndex) && (
+      <div
+        className={nativeGridTemplate ? 'grid min-w-max items-center gap-x-2' : 'flex min-w-max items-center gap-2'}
+        style={nativeGridTemplate ? { gridTemplateColumns: nativeGridTemplate } : undefined}
+      >
+      {!native && resolvedOrdinal !== null && !(allowProgramLayoutEditing && onSetProgramIndex) && (
         <sup
           aria-hidden="true"
           className="-ml-1.5 mr-0.5 mt-0.5 self-start font-mono text-[8px] leading-none tabular-nums text-muted-foreground/45"
@@ -246,13 +257,14 @@ export function BacklogProgramRowBlock({
       {showNodeTypeIcon && <FolderTree className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />}
       <div className={cn(
         'min-w-0 flex gap-2',
-        titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
+        nativeGridTemplate ? 'min-w-0' : titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
         'items-center',
-      )} style={scaledWidthStyleFromClassBlock(titleColumnClassName)}>
+      )} style={nativeGridTemplate ? undefined : scaledWidthStyleFromClassBlock(titleColumnClassName)}>
         {ticketBadge}
         {titlePrefixSlot}
         <span className={cn(
-          'min-w-0 text-sm font-bold',
+          'min-w-0',
+          native ? 'text-[13px] font-semibold' : 'text-sm font-bold',
           wrapTitleText ? 'break-words whitespace-normal leading-snug' : 'flex-1 truncate',
         )}>
           {nodeTitleWithoutTicket(program) || nodeDisplayTitle(program) || 'Untitled'}
@@ -261,7 +273,7 @@ export function BacklogProgramRowBlock({
       {applicableColumns.length > 0 && (
         <div className={cn(
           'items-center gap-2',
-          showRowColumnsOnCompact ? 'flex' : 'hidden xl:flex',
+          nativeGridTemplate ? 'contents' : showRowColumnsOnCompact ? 'flex' : 'hidden xl:flex',
         )}>
           {applicableColumns.map(column => {
             const content = column.render(program)
@@ -269,12 +281,13 @@ export function BacklogProgramRowBlock({
               <div
                 key={`${program.uuid}-column-${column.id}`}
                 className={cn(
-                  'shrink-0 truncate text-xs text-muted-foreground',
-                  column.widthClassName ?? 'w-24',
+                  'shrink-0 truncate',
+                  native ? 'text-[13px] font-semibold tabular-nums text-zinc-900 dark:text-zinc-100' : 'text-xs text-muted-foreground',
+                  nativeGridTemplate ? 'min-w-0' : (column.widthClassName ?? 'w-24'),
                   column.align === 'center' && 'text-center',
                   column.align === 'right' && 'text-right',
                 )}
-                style={scaledWidthStyleFromClassBlock(column.widthClassName ?? 'w-24')}
+                style={nativeGridTemplate ? undefined : scaledWidthStyleFromClassBlock(column.widthClassName ?? 'w-24')}
                 title={typeof content === 'string' ? content : undefined}
               >
                 {content}

@@ -58,6 +58,12 @@ interface BacklogNodeRowBlockProps {
   canToggleDetails: boolean
   linksSlot?: ReactNode
   rowColumns: BacklogRowColumnBlock[]
+  /** F9's native look: hairline rows, no section stripe or ordinal, larger cells. */
+  native?: boolean
+  /** Replaces the plain title (e.g. a two-line instrument name). */
+  titleSlot?: ReactNode
+  /** Native tables: the grid template shared with the header (nativeRowGridTemplateBlock). */
+  nativeGridTemplate?: string
   showRowColumnsOnCompact?: boolean
   rowPresetTagsClassName?: string
   reserveTagsSlotWhenEmpty?: boolean
@@ -112,6 +118,9 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
   canToggleDetails,
   linksSlot,
   rowColumns,
+  native = false,
+  titleSlot,
+  nativeGridTemplate,
   showRowColumnsOnCompact = false,
   rowPresetTagsClassName,
   reserveTagsSlotWhenEmpty = false,
@@ -155,24 +164,27 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
       onDrop={onDrop}
       className={cn(
         'cursor-pointer overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
-        'border-l-[3px] px-3 py-2 transition-colors',
+        native ? 'px-4 py-2 transition-colors' : 'border-l-[3px] px-3 py-2 transition-colors',
         'bg-card hover:bg-zinc-50 dark:hover:bg-zinc-800/60',
-        borderColorClass,
+        !native && borderColorClass,
         selected && 'bg-accent/40',
         dragOver && 'ring-2 ring-primary/40 bg-primary/5',
         dragOver && dragOverEdge === 'before' && 'shadow-[inset_0_2px_0_rgba(59,130,246,0.7)]',
         dragOver && dragOverEdge === 'after' && 'shadow-[inset_0_-2px_0_rgba(59,130,246,0.7)]',
         newlyCreated && 'bg-emerald-100/80 dark:bg-emerald-500/30 ring-2 ring-emerald-400/70',
       )}
-      style={{ paddingLeft: `${12 + (depth * 16)}px` }}
+      style={{ paddingLeft: `${native ? 16 : 12 + (depth * 16)}px` }}
     >
-      <div className="flex min-w-max items-center gap-2">
-      <sup
+      <div
+        className={nativeGridTemplate ? 'grid min-w-max items-center gap-x-2' : 'flex min-w-max items-center gap-2'}
+        style={nativeGridTemplate ? { gridTemplateColumns: nativeGridTemplate } : undefined}
+      >
+      {!native && <sup
         aria-hidden="true"
         className="-ml-1.5 mr-0.5 mt-0.5 self-start font-mono text-[8px] leading-none tabular-nums text-muted-foreground/45"
       >
         {formatRowOrdinal(siblingIndex)}
-      </sup>
+      </sup>}
       {showExpandToggle && (
         <button
           type="button"
@@ -187,24 +199,25 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
         type="button"
         onClick={onSelectNode}
         className={cn(
-          'group min-w-0 flex gap-2 text-left text-sm font-medium',
-          titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
+          'group min-w-0 flex gap-2 text-left',
+          native ? 'text-[13px]' : 'text-sm font-medium',
+          nativeGridTemplate ? 'min-w-0' : titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
           'items-center',
         )}
-        style={scaledWidthStyleFromClassBlock(titleColumnClassName)}
+        style={nativeGridTemplate ? undefined : scaledWidthStyleFromClassBlock(titleColumnClassName)}
       >
         {ticketBadge}
         <span className={cn(
           'min-w-0',
           wrapTitleText ? 'break-words whitespace-normal leading-snug' : 'flex-1 truncate',
         )}>
-          {nodeTitleWithoutTicket(node) || nodeDisplayTitle(node) || 'Untitled'}
+          {titleSlot ?? (nodeTitleWithoutTicket(node) || nodeDisplayTitle(node) || 'Untitled')}
         </span>
       </button>
       {applicableColumns.length > 0 && (
         <div className={cn(
           'items-center gap-2',
-          showRowColumnsOnCompact ? 'flex' : 'hidden xl:flex',
+          nativeGridTemplate ? 'contents' : showRowColumnsOnCompact ? 'flex' : 'hidden xl:flex',
         )}>
           {applicableColumns.map(column => {
             const content = column.render(node)
@@ -212,12 +225,13 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
               <div
                 key={`${node.uuid}-column-${column.id}`}
                 className={cn(
-                  'shrink-0 truncate text-xs text-muted-foreground',
-                  column.widthClassName ?? 'w-24',
+                  'shrink-0 truncate',
+                  native ? 'text-[13px] tabular-nums text-zinc-800 dark:text-zinc-200' : 'text-xs text-muted-foreground',
+                  nativeGridTemplate ? 'min-w-0' : (column.widthClassName ?? 'w-24'),
                   column.align === 'center' && 'text-center',
                   column.align === 'right' && 'text-right',
                 )}
-                style={scaledWidthStyleFromClassBlock(column.widthClassName ?? 'w-24')}
+                style={nativeGridTemplate ? undefined : scaledWidthStyleFromClassBlock(column.widthClassName ?? 'w-24')}
                 title={typeof content === 'string' ? content : undefined}
               >
                 {content}
@@ -226,7 +240,7 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
           })}
         </div>
       )}
-      {linksBeforeTags && linksSlot}
+      {!native && linksBeforeTags && linksSlot}
       {shouldRenderTagSlot && (
         <div className={cn(
           'flex self-center items-center gap-1 overflow-x-auto overflow-y-hidden whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
@@ -246,7 +260,7 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
           />
         </div>
       )}
-      {!linksBeforeTags && linksSlot}
+      {!native && !linksBeforeTags && linksSlot}
       {taskNode ? (
         statusReadOnly || !canEditTaskStatus ? (
           <div className={cn(
@@ -304,6 +318,7 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
           <div
             className={cn(
               'flex self-center items-center gap-1',
+              native && 'min-w-0 justify-end pl-4',
               actionsRightEdge && (statusRightAligned || (!linksSlot && !shouldRenderTagSlot)) && 'ml-auto',
             )}
             onPointerDown={(event) => { event.stopPropagation() }}
@@ -318,11 +333,13 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
                 onChange={onNodeStatusChange}
                 variant="pill"
                 title="Change status"
+                className={native ? 'h-5 gap-0.5 rounded-[5px] border-transparent bg-zinc-100 px-1.5 text-[12px] font-normal text-zinc-800 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:opacity-60' : undefined}
               />
             )}
           </div>
         )
       )}
+      {native && (linksSlot ?? <span aria-hidden="true" />)}
       {canToggleDetails && (
         <button
           type="button"

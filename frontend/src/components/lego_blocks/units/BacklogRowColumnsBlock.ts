@@ -78,3 +78,31 @@ export function scaledWidthStyleFromClassBlock(
 
   return Object.keys(style).length > 0 ? style : undefined
 }
+
+/**
+ * One CSS grid template shared by a native table's header and every row, so the
+ * columns line up and fill the width: title and data columns keep their class
+ * width as a minimum and split the spare space; trailing slots (status, links,
+ * row icons) stay fixed.
+ */
+export function nativeRowGridTemplateBlock(params: {
+  titleClassName?: string
+  columns: BacklogRowColumnBlock[]
+  trailingSlots: string[]
+}): string {
+  const minOf = (className: string | undefined, fallback: string) => {
+    const value = parseClassWidthValueBlock(className, 'w-')
+    return value ? scaleWidthValueBlock(value, BACKLOG_COLUMN_WIDTH_SCALE_CSS_VAR_BLOCK) : fallback
+  }
+  return [
+    `minmax(${minOf(params.titleClassName, '10rem')}, 1.6fr)`,
+    ...params.columns.map(column => `minmax(${minOf(column.widthClassName ?? 'w-24', '6rem')}, 1fr)`),
+    ...params.trailingSlots,
+  ].join(' ')
+}
+
+/** The min width of a class (e.g. "w-[4.5rem]"), scaled like the columns. */
+export function nativeSlotWidthBlock(className: string | undefined, fallback: string): string {
+  const value = parseClassWidthValueBlock(className, 'w-')
+  return value ? scaleWidthValueBlock(value, BACKLOG_COLUMN_WIDTH_SCALE_CSS_VAR_BLOCK) : fallback
+}

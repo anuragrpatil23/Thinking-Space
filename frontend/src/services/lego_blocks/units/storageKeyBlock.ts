@@ -33,6 +33,7 @@ export const STORAGE_KEYS = {
   gitSyncActionsByVault: 'ltm-git-sync-actions-by-vault',
   webullExecutionSettings: 'ltm-webull-execution-settings',
   webullProjectPresetTags: 'ltm-webull-project-preset-tags',
+  markdownSideSheetWidth: 'ltm-markdown-side-sheet-width',
   webullOverallRememberByProjectRoot: 'ltm-webull-overall-remember-by-project-root',
   aiManualCredentials: 'ltm-ai-manual-credentials',
   aiOauthCredentials: 'ltm-ai-oauth-credentials',

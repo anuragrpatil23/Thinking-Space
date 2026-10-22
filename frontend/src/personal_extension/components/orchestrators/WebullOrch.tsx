@@ -632,6 +632,7 @@ export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
       onUpdateCompanyOverlay={onUpdateCompanyOverlay}
       onSavePositionBody={onSavePositionBody}
       onOpenNodeFile={(filePath) => openFile(filePath, { mode: 'edit' })}
+      onOpenFileForReading={(filePath) => openFile(filePath, { mode: 'view' })}
     />
   )
 }

@@ -1740,6 +1740,11 @@ export default function PdfDocumentBlock({
              scroll padding does the same for page jumps, which use
              scrollIntoView and would otherwise park the page under it. */
           'min-h-0 flex-1 overflow-auto p-3',
+          /* A scrollbar that comes and goes changes the width fit-width is
+             computed from: the page refits, the scrollbar toggles back, and a
+             page that just fits flickers between the two. Reserving the
+             gutter keeps the width the same either way. */
+          '[scrollbar-gutter:stable]',
           !docked && 'pt-14 scroll-pt-14',
           /* Deliberately transparent. The pinch preview scales THIS element,
              so any background painted here scales and slides with the gesture —

@@ -249,3 +249,13 @@ measuring held first time. Two cheap tools did the work: `ffmpeg mpdecimate` ove
 a screen recording to count real stalls (filter to gaps with activity on *both*
 sides, or the reader pausing to read counts as a freeze), and a node harness
 against the real file for anything touching pdf.js payloads.
+
+## F9 (Webull) Native Design Blocks
+
+Added 2026-10-22 when the F9 tab moved to a macOS-native look (white grouped panels on a `#F5F5F7` ground, sentence-case labels, half-pixel `#EFEFF2` hairlines). The company page is the first view on it; the other subtabs follow.
+
+- `personal_extension/components/lego_blocks/units/F9NativeBlock.tsx` — the shared parts every F9 view builds from: `F9PanelBlock` / `F9_PANEL_CLASS_BLOCK`, `F9SectionLabelBlock`, `F9SegmentedBlock`, `F9FactRowBlock`.
+- `WebullCompanyPageBlock.tsx` + `useWebullCompanyDossierBlock` + `webullCompanyDossierVaultBlock.ts` — the company page pulls everything itself instead of hand-picked files: the study record (`<TICKER>/<ticker>-study.md` or `watchlist/<ticker>/`), `observations.md` (`## YYYY-MM-DD` sections), `prices.csv`, and the research folder under `F9/Thoughts, Predictions, launches and Postmortem/<TICKER or company name>` (ValueLine PDFs, earnings calls, launches). Files open read-only in the side sheet (`onOpenFileForReading`). Gaps come through `privateGapsBlock`'s optional loader (`gaps/companyGaps.tsx`), because `personal_extension/gaps/` is a gitignored private repo — **never import it statically from public code**, or builds without the folder break.
+- `BacklogListBlock appearance="native"` — opt-in look for the shared table (default look unchanged for the organizer). Header, program band and rows share one CSS grid (`nativeRowGridTemplateBlock`): title and data columns keep their class width as a *minimum* and split the spare space; status, links and the two row icons are fixed slots. This replaced a measured "fit columns" attempt — measuring a row that already spans the full width yields a ratio of 1, and measuring its children fed back into itself. `renderNodeTitle` / `statusColumnLabel` pair with it.
+- `ScrollableZoomSurfaceBlock` — `controlsAppearance="quiet"` and `controlsHost` (portal the zoom controls into a header slot).
+- `webullStudyRecordBlock` — js-yaml parses a bare `2026-12-16` as a `Date`; string fields convert it back to `YYYY-MM-DD` (before this, every Valid through / Last updated read "—").

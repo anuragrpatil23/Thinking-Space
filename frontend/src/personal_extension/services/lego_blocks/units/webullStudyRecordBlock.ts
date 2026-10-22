@@ -95,6 +95,8 @@ function parseFrontmatterAndBodyBlock(content: string): {
 }
 
 function asStringOrNullBlock(value: unknown): string | null {
+  // js-yaml reads a bare `2026-12-16` as a Date; dates stay YYYY-MM-DD here.
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10)
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null

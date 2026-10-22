@@ -9,7 +9,7 @@ import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListB
 import { chipColorClassBlock, type ChipColorBlock } from '@/services/lego_blocks/units/chipColorBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import WebullStudyBlock from './WebullStudyBlock'
-import WebullCompanyPageBlock, { WEBULL_COMPANY_SECTIONS_BLOCK, type WebullCompanyHoldingBlock } from './WebullCompanyPageBlock'
+import WebullCompanyPageBlock, { type WebullCompanyHoldingBlock } from './WebullCompanyPageBlock'
 import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
@@ -158,6 +158,8 @@ interface WebullWorkspaceBlockProps {
   }) => Promise<void>
   onSavePositionBody: (body: string) => Promise<void>
   onOpenNodeFile: (filePath: string) => void
+  /** Opens a file to read (the company page's study, notes and research). */
+  onOpenFileForReading?: (filePath: string) => void
 }
 
 const CASH_EQUIVALENT_SYMBOLS = new Set<string>(['JPST'])
@@ -1091,6 +1093,7 @@ export default function WebullWorkspaceBlock({
   onUpdateCompanyOverlay,
   onSavePositionBody,
   onOpenNodeFile,
+  onOpenFileForReading,
 }: WebullWorkspaceBlockProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
@@ -1820,13 +1823,34 @@ export default function WebullWorkspaceBlock({
     [accounts, selectedAccount],
   )
 
+  // A position's name as two lines: "$300 Call · Dec 17, 2027" over its raw
+  // symbol, or the ticker over "Stock". Companies keep their plain title.
+  const renderPositionTitle = useCallback((node: NodeRecord) => {
+    if (node.type !== 'epic') return undefined
+    const raw = (node.title ?? '').trim()
+    const option = raw.match(/^([A-Z.]+?)(\d+(?:\.\d+)?)-(\d{4}-\d{2}-\d{2})-(CALL|PUT)$/)
+    const metadata = asMetadataRecordBlock(node)
+    const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
+    const instrumentType = firstStringBlock(payload?.instrument_type, payload?.type).toUpperCase()
+    const name = option
+      ? `$${Number(option[2])} ${option[4] === 'CALL' ? 'Call' : 'Put'} · ${new Date(`${option[3]}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+      : raw
+    const sub = option ? raw : instrumentType === 'EQUITY' || instrumentType === 'STOCK' ? 'Stock' : (instrumentType ? instrumentType.charAt(0) + instrumentType.slice(1).toLowerCase() : null)
+    return (
+      <>
+        <span className="block">{name}</span>
+        {sub && <span className="block text-[11px] text-zinc-500 dark:text-zinc-400">{sub}</span>}
+      </>
+    )
+  }, [])
+
   const webullRowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
     return [
       {
         id: 'account',
         label: 'Account',
         widthClassName: 'w-[7rem]',
-        align: 'center',
+        align: 'left',
         render: (node) => {
           if (node.type !== 'epic') return '—'
           const metadata = asMetadataRecordBlock(node)
@@ -1837,15 +1861,13 @@ export default function WebullWorkspaceBlock({
             payload?.account_number ?? payload?.accountNumber,
           )
           return accountLabel ? (
-            <span className={accountPillClassBlock(accountLabel)}>
-              {accountLabel}
-            </span>
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">{accountLabel}</span>
           ) : '—'
         },
       },
       {
         id: 'quantity',
-        label: 'Quantity',
+        label: 'Qty',
         widthClassName: 'w-20',
         align: 'right',
         render: (node) => {
@@ -1871,7 +1893,7 @@ export default function WebullWorkspaceBlock({
       },
       {
         id: 'unit-cost',
-        label: 'Unit Cost',
+        label: 'Unit cost',
         widthClassName: 'w-24',
         align: 'right',
         render: (node) => {
@@ -1890,14 +1912,18 @@ export default function WebullWorkspaceBlock({
         align: 'right',
         render: (node) => {
           const metadata = asMetadataRecordBlock(node)
-          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.webull_total_unrealized_profit_loss)
           const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
-          return formatCurrencyFromUnknownBlock(payload?.unrealized_profit_loss)
+          const value = firstNumberBlock(node.type === 'program' ? metadata.webull_total_unrealized_profit_loss : payload?.unrealized_profit_loss)
+          return (
+            <span className={cn('tabular-nums', value !== null && value > 0 && 'text-emerald-600 dark:text-emerald-400', value !== null && value < 0 && 'text-red-600 dark:text-red-400')}>
+              {formatCurrencyBlock(value)}
+            </span>
+          )
         },
       },
       {
         id: 'current-price',
-        label: 'Current Price',
+        label: 'Price',
         widthClassName: 'w-24',
         align: 'right',
         render: (node) => {
@@ -2092,6 +2118,9 @@ export default function WebullWorkspaceBlock({
   // watch-only ones alphabetically.
   const [sidebarCompaniesExpanded, setSidebarCompaniesExpanded] = useState(false)
   const [createPositionOpen, setCreatePositionOpen] = useState(false)
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+  // The company positions table docks its zoom controls in the section header.
+  const [positionsZoomHost, setPositionsZoomHost] = useState<HTMLElement | null>(null)
   const sidebarCompanyGroups = useMemo(() => {
     const entries = (executionOverview?.companies ?? []).map((company) => {
       const activePositions = company.positions.filter(
@@ -2216,7 +2245,9 @@ export default function WebullWorkspaceBlock({
   const selectedCompanyLivePrice = (() => {
     if (!selectedCompany) return null
     const ticker = selectedCompany.companyTicker.toUpperCase()
-    const row = overallRows.find(r => firstStringBlock(r.symbol, r.ticker, r.position_symbol, r.stock_code).toUpperCase() === ticker)
+    // Options share the underlying's symbol; only the stock row carries its price.
+    const row = overallRows.find(r => firstStringBlock(r.symbol, r.ticker, r.position_symbol, r.stock_code).toUpperCase() === ticker
+      && firstStringBlock(r.instrument_type, r.instrumentType).toUpperCase() === 'STOCK')
     return row ? firstNumberBlock(row.last_price, row.lastPrice) : null
   })()
 
@@ -2372,33 +2403,7 @@ export default function WebullWorkspaceBlock({
                     {shareLabel && <span className="ml-auto text-xs tabular-nums opacity-70">{shareLabel}</span>}
                   </button>
                 )
-                if (!active) return row
-                // The open company unfolds in place: its page sections nest
-                // under its row as jump links, so the rest of the sidebar
-                // (views, other companies) never moves out from under you.
-                const positionCount = company.positions
-                  .filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length
-                const sections: Array<{ id: string; label: string; trailing?: number }> = WEBULL_COMPANY_SECTIONS_BLOCK.map(section => (
-                  section.id === 'webull-company-positions' ? { ...section, trailing: positionCount } : section
-                ))
-                return (
-                  <div key={company.companyTicker}>
-                    {row}
-                    <div className="ml-[18px] mt-1 space-y-0.5 border-l border-border/70 pl-2">
-                      {sections.map(({ id, label, trailing }) => (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                          className="ltm-motion-fast flex w-full items-center rounded-md px-2 py-1 text-left text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                        >
-                          <span className="truncate">{label}</span>
-                          {trailing !== undefined && <span className="ml-auto text-xs tabular-nums opacity-70">{trailing}</span>}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )
+                return row
               })
               const showGroupLabel = !phoneListMode && sidebarCompaniesExpanded
               return showGroupLabel
@@ -2508,7 +2513,7 @@ export default function WebullWorkspaceBlock({
 
         <CardContent className={cn('space-y-4', showCompanyView && 'p-0')}>
           {projectTagsOpen && !gapsTabActive && (
-            <div className="rounded-xl border bg-background p-3">
+            <div id="webull-project-tags" className={cn('scroll-mt-4 p-3', showCompanyView ? F9_PANEL_CLASS_BLOCK : 'rounded-xl border bg-background')}>
               <TagListEditorBlock
                 heading="Project Tags"
                 tags={availableProjectPresetTags}
@@ -2555,7 +2560,7 @@ export default function WebullWorkspaceBlock({
             </div>
           )}
 
-          {allWarnings.length > 0 && !gapsTabActive && (
+          {allWarnings.length > 0 && !gapsTabActive && !showCompanyView && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-800 dark:text-amber-300">
               {allWarnings.map((warning) => (
                 <p key={warning}>{warning}</p>
@@ -2840,16 +2845,50 @@ export default function WebullWorkspaceBlock({
               executionRoot={executionRoot}
               costShare={sidebarCompanyGroups.held.find(entry => entry.company.companyTicker === selectedCompany.companyTicker)?.share ?? null}
               livePrice={selectedCompanyLivePrice}
+              snapshotNotice={liveRefreshAvailable ? null : `${fetchedAt ? `Updated ${new Date(fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} ` : ''}from saved snapshot`}
+              footer={(
+                <p className="mx-1 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
+                  {liveRefreshAvailable
+                    ? (fetchedAt ? `Updated ${new Date(fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Not synced yet')
+                    : 'Saved snapshot'}
+                  {allWarnings.length > 0 && (
+                    <>
+                      {' · '}
+                      <button type="button" onClick={() => { setDiagnosticsOpen(true); requestAnimationFrame(() => document.getElementById('webull-diagnostics')?.scrollIntoView({ behavior: 'smooth' })) }} className="text-amber-700 hover:underline dark:text-amber-400">
+                        {allWarnings.length} {allWarnings.length === 1 ? 'warning' : 'warnings'}
+                      </button>
+                    </>
+                  )}
+                  {' · '}
+                  <button type="button" onClick={() => { setProjectTagsOpen(prev => !prev); requestAnimationFrame(() => document.getElementById('webull-project-tags')?.scrollIntoView({ behavior: 'smooth' })) }} className="hover:text-zinc-800 hover:underline dark:hover:text-zinc-200">
+                    Project tags
+                  </button>
+                  {' · '}
+                  <button type="button" onClick={() => { setDiagnosticsOpen(prev => !prev); requestAnimationFrame(() => document.getElementById('webull-diagnostics')?.scrollIntoView({ behavior: 'smooth' })) }} className="hover:text-zinc-800 hover:underline dark:hover:text-zinc-200">
+                    Diagnostics
+                  </button>
+                </p>
+              )}
               holding={selectedCompanyHolding}
+              positionsActions={(
+                <div className="flex items-center gap-4 text-xs">
+                  <button type="button" onClick={() => setCreatePositionOpen(prev => !prev)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">
+                    {createPositionOpen ? 'Cancel' : 'Add Position…'}
+                  </button>
+                  <button type="button" onClick={() => setBacklogLayoutEditMode(prev => !prev)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">
+                    {backlogLayoutEditMode ? 'Done' : 'Edit Layout'}
+                  </button>
+                  <span ref={setPositionsZoomHost} className="flex items-center" />
+                </div>
+              )}
               positionCount={selectedCompany.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length}
-              inlinePdf={!phoneListMode && !phoneDetailMode}
-              onOpenFile={onOpenNodeFile}
+              onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
               positionsSlot={(
                 <div className="space-y-3">
-                  <div className={cn(F9_PANEL_CLASS_BLOCK, 'p-4')}>
-                    <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
-                      {backlogLayoutEditMode && (
-                        <label className="mr-auto flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                  <div className={cn(F9_PANEL_CLASS_BLOCK, 'overflow-hidden pt-2')}>
+                    {backlogLayoutEditMode && (
+                    <div className="flex flex-wrap items-center gap-3 px-4 pb-2">
+                        <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-500">
                           <input
                             type="checkbox"
                             checked={showArchivedByDefault}
@@ -2858,40 +2897,29 @@ export default function WebullWorkspaceBlock({
                           />
                           Show archived positions by default
                         </label>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setCreatePositionOpen(prev => !prev)}
-                        className="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
-                      >
-                        {createPositionOpen ? 'Cancel' : '+ Position'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setBacklogLayoutEditMode(prev => !prev)}
-                        className={backlogLayoutEditMode
-                          ? 'inline-flex h-8 items-center rounded-md bg-foreground px-3 text-xs font-medium text-background transition-colors hover:bg-foreground/90'
-                          : 'inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted'}
-                      >
-                        {backlogLayoutEditMode ? 'Done' : 'Edit'}
-                      </button>
                     </div>
+                    )}
                     <ScrollableZoomSurfaceBlock
                       minWidthClassName={Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
-                      controlsLabel="Table zoom"
+                      controlsLabel="Zoom"
+                      controlsAppearance="quiet"
+                      controlsHost={positionsZoomHost}
+                      fitToWidthLabel="Fit"
+                      fitColumnsToWidthLabel="Fit columns"
                       showFitColumnsToWidthButton
-                      persistStateKey="webull-table-viewport-fit"
+                      persistStateKey="webull-company-positions"
                     >
                       <BacklogListBlock
+                        renderNodeTitle={renderPositionTitle}
                         programs={backlogTableModel.programs}
                         onReorderSiblings={handleReorderBacklogPrograms}
                         resolveProgramOrdinal={resolveBacklogProgramOrdinal}
                         onSetProgramOrdinal={handleSetBacklogProgramOrdinal}
-                        renderProgramTitlePrefix={renderProgramTitlePrefix}
+                        renderProgramTitlePrefix={backlogLayoutEditMode ? renderProgramTitlePrefix : undefined}
                         programLayoutEditMode={backlogLayoutEditMode}
                         onProgramLayoutEditModeChange={setBacklogLayoutEditMode}
                         showProgramLayoutToggle={false}
-                        epicBorderClassByProgramUuid={companyBorderClassByProgramUuid}
+                        appearance="native"
                         loadEpics={loadBacklogEpics}
                         loadChildren={loadBacklogChildren}
                         selectedNodeId={selectedBacklogNodeId}
@@ -2918,10 +2946,10 @@ export default function WebullWorkspaceBlock({
                         rowColumns={webullRowColumns}
                         showRowColumnsOnCompact
                         rowPresetTagLimit={5}
-                        rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
-                        reserveTagsSlotWhenEmpty
+                        rowPresetTagsClassName="w-[12rem]"
                         linksColumnLabel="Links"
-                        linksColumnWidthClassName="w-[8rem] mx-6"
+                        statusColumnLabel="Status"
+                        linksColumnWidthClassName="w-[4.5rem]"
                         linksColumnAlign="left"
                         linksColumnPaddingClassName="px-0"
                         linksBeforeTags
@@ -2929,7 +2957,6 @@ export default function WebullWorkspaceBlock({
                         rowDetailsRenderer={renderWebullInlineDetails}
                         titleColumnClassName="w-[11rem]"
                         wrapTitleText
-                        actionsRightEdge
                         showProgramStatus={false}
                         showProgramCopyButton={false}
                         preferInlineDetailsButton
@@ -3138,55 +3165,109 @@ export default function WebullWorkspaceBlock({
             </div>
           ) : null}
 
-          <details className={cn('rounded-xl border bg-background', gapsTabActive && 'hidden')}>
-            <summary className="cursor-pointer border-b px-3 py-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              Diagnostics
+          <details
+            id="webull-diagnostics"
+            open={diagnosticsOpen}
+            onToggle={(event) => setDiagnosticsOpen(event.currentTarget.open)}
+            className={cn(
+              'group scroll-mt-4 overflow-hidden',
+              F9_PANEL_CLASS_BLOCK,
+              (gapsTabActive || (showCompanyView && !diagnosticsOpen)) && 'hidden',
+            )}
+          >
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform group-open:rotate-90" />
+              <span className="text-[13px] font-semibold">Diagnostics</span>
+              <span className="truncate text-xs text-zinc-500 dark:text-zinc-400">The sync, accounts and endpoints behind these numbers</span>
             </summary>
-            <div className="space-y-2 p-3 text-xs text-muted-foreground">
-              {!liveRefreshAvailable && (
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-800 dark:text-amber-300">
-                  Live Webull refresh is available only in the Electron app. This runtime shows saved Webull data from your last Electron refresh.
-                </div>
-              )}
-              {liveRefreshAvailable && !hasConfig && (
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-700 dark:text-amber-300">
-                  Missing Webull credentials. Open Settings {'>'} Webull and save your Webull app key + app secret to secure device storage.
-                </div>
-              )}
-              <p><span className="font-medium text-foreground">Runtime:</span> {formatRuntimeLabelBlock(runtime)}</p>
-              <p><span className="font-medium text-foreground">Fetched:</span> {formatFetchedTimestampBlock(fetchedAt)}</p>
-              <p><span className="font-medium text-foreground">Fetched Runtime:</span> {formatRuntimeLabelBlock(lastRefreshRuntime)}</p>
-              <p><span className="font-medium text-foreground">Execution Root:</span> {executionRoot ?? 'Not configured'}</p>
-              <p><span className="font-medium text-foreground">Execution Companies:</span> {executionCompanyCount}</p>
-              <p><span className="font-medium text-foreground">Execution Positions:</span> {executionPositionCount}</p>
-              <p><span className="font-medium text-foreground">Execution Source:</span> {executionSyncSource}</p>
-              <p><span className="font-medium text-foreground">Account Count:</span> {accounts.length || (selectedAccount ? 1 : 0)}</p>
-              {accountLabelEntries.length > 0 ? (
-                <div className="space-y-1">
-                  {accountLabelEntries.map((entry) => (
-                    <p key={entry.accountId ?? entry.accountNumber ?? entry.label}>
-                      <span className="font-medium text-foreground">{entry.label}:</span>{' '}
-                      {entry.accountNumber ?? entry.accountId ?? 'Unknown'}
-                      {entry.accountId && entry.accountNumber ? ` · ${entry.accountId}` : ''}
-                    </p>
-                  ))}
-                </div>
-              ) : (
-                <>
-                  <p><span className="font-medium text-foreground">Account Id:</span> {selectedAccount?.accountId ?? 'Not available'}</p>
-                  <p><span className="font-medium text-foreground">Account Number:</span> {selectedAccount?.accountNumber ?? 'Not available'}</p>
-                </>
-              )}
-              <p><span className="font-medium text-foreground">Endpoint Account list:</span> {endpoints.accountList ?? 'Not requested'}</p>
-              <p><span className="font-medium text-foreground">Endpoint Legacy balance:</span> {endpoints.accountBalanceLegacy ?? 'Not requested'}</p>
-              <p><span className="font-medium text-foreground">Endpoint Legacy positions:</span> {endpoints.accountPositionsLegacy ?? 'Not requested'}</p>
-              <p><span className="font-medium text-foreground">Endpoint OpenAPI positions:</span> {endpoints.assetsPositions ?? 'Not requested'}</p>
+            <div className="space-y-4 border-t-[0.5px] border-[#E5E5EA] px-4 pb-4 pt-3 text-xs dark:border-zinc-800">
+              {(() => {
+                // One list of what needs attention, without saying the same thing twice.
+                const notices = [
+                  ...(showCompanyView ? allWarnings : []),
+                  ...(!liveRefreshAvailable ? ['Live Webull refresh runs only in the Electron app; this view shows the saved data from your last Electron refresh.'] : []),
+                  ...(liveRefreshAvailable && !hasConfig ? ['Missing Webull credentials. Open Settings > Webull and save your app key and app secret to secure device storage.'] : []),
+                ]
+                if (notices.length === 0) return null
+                return (
+                  <ul className="space-y-1.5 rounded-lg bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+                    {notices.map(notice => (
+                      <li key={notice} className="flex gap-2">
+                        <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                        <span>{notice}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              })()}
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {([
+                  {
+                    title: 'Sync',
+                    rows: [
+                      ['Runtime', formatRuntimeLabelBlock(runtime)],
+                      ['Fetched', formatFetchedTimestampBlock(fetchedAt)],
+                      ['Fetched in', formatRuntimeLabelBlock(lastRefreshRuntime)],
+                    ],
+                  },
+                  {
+                    title: 'Execution',
+                    rows: [
+                      ['Root', executionRoot ?? 'Not configured'],
+                      ['Companies', String(executionCompanyCount)],
+                      ['Positions', String(executionPositionCount)],
+                      ['Source', executionSyncSource],
+                    ],
+                  },
+                  {
+                    title: `Accounts · ${accounts.length || (selectedAccount ? 1 : 0)}`,
+                    rows: accountLabelEntries.length > 0
+                      ? accountLabelEntries.map(entry => [
+                          entry.label,
+                          `${entry.accountNumber ?? entry.accountId ?? 'Unknown'}${entry.accountId && entry.accountNumber ? ` · ${entry.accountId}` : ''}`,
+                        ])
+                      : [
+                          ['Account id', selectedAccount?.accountId ?? 'Not available'],
+                          ['Account number', selectedAccount?.accountNumber ?? 'Not available'],
+                        ],
+                  },
+                  {
+                    title: 'Endpoints',
+                    rows: [
+                      ['Account list', endpoints.accountList ?? 'Not requested'],
+                      ['Legacy balance', endpoints.accountBalanceLegacy ?? 'Not requested'],
+                      ['Legacy positions', endpoints.accountPositionsLegacy ?? 'Not requested'],
+                      ['OpenAPI positions', endpoints.assetsPositions ?? 'Not requested'],
+                    ],
+                  },
+                ] as Array<{ title: string; rows: Array<[string, string]> }>).map(group => (
+                  <div key={group.title} className="min-w-0 rounded-lg bg-zinc-50 px-3 py-2.5 dark:bg-zinc-800/50">
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.02em] text-zinc-500 dark:text-zinc-400">{group.title}</p>
+                    <dl>
+                      {group.rows.map(([label, value]) => (
+                        <div key={label} className="flex items-baseline justify-between gap-3 py-1">
+                          <dt className="shrink-0 text-zinc-500 dark:text-zinc-400">{label}</dt>
+                          <dd className={cn('min-w-0 break-all text-right text-zinc-800 dark:text-zinc-200', value === 'Not requested' && 'text-zinc-400 dark:text-zinc-500')}>{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ))}
+              </div>
+
               {attempts.length > 0 && (
-                <pre className="max-h-48 overflow-auto rounded border p-2 text-xs leading-5">{attempts.join('\n')}</pre>
+                <div>
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.02em] text-zinc-500 dark:text-zinc-400">Sync log</p>
+                  <pre className="max-h-48 overflow-auto rounded-lg bg-zinc-50 px-3 py-2 font-mono text-[11px] leading-5 text-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300">{attempts.join('\n')}</pre>
+                </div>
               )}
-              <details>
-                <summary className="cursor-pointer">Raw account positions payloads</summary>
-                <pre className="mt-2 max-h-64 overflow-auto rounded border p-2 text-xs leading-5">{toJsonBlock({
+              <details className="group/raw">
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[12px] text-sky-600 hover:text-sky-700 dark:text-sky-400 [&::-webkit-details-marker]:hidden">
+                  <ChevronRight className="h-3 w-3 transition-transform group-open/raw:rotate-90" />
+                  Raw account positions payloads
+                </summary>
+                <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-zinc-50 px-3 py-2 font-mono text-[11px] leading-5 text-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300">{toJsonBlock({
                   accountPositionsLegacy,
                   assetsPositions,
                 })}</pre>
