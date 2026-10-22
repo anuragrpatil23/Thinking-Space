@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, ChevronRight, Crosshair, Eye, EyeOff, History, Wallet, type LucideIcon } from 'lucide-react'
+import { BookOpen, ChevronRight, Binoculars, Crosshair, Eye, EyeOff, History, Wallet, type LucideIcon } from 'lucide-react'
 import {
   dispatchWebullSidebarChromeStateBlock,
   Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
@@ -16,10 +16,9 @@ import type { WebullUniverseCompanyBlock } from '@/personal_extension/services/l
 import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
-import WebullF9CanvasOrch from '@/personal_extension/components/orchestrators/WebullF9CanvasOrch'
 import WebullF9SimCanvasOrch from '@/personal_extension/components/orchestrators/WebullF9SimCanvasOrch'
 import WebullSimBoardBlock from './WebullSimBoardBlock'
-import { PrivateGapsBlock } from '../units/privateGapsBlock'
+import { PrivateGapsBlock, PrivateNoticedBlock } from '../units/privateGapsBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -56,7 +55,7 @@ import type {
   WebullPositionSummaryBlock,
 } from '@/personal_extension/services/orchestrators/webullExecutionOrch'
 
-type WebullSubtabIdBlock = 'overall' | 'study' | 'sim' | 'gaps'
+type WebullSubtabIdBlock = 'overall' | 'study' | 'sim' | 'noticed' | 'gaps'
 
 interface WebullSubtabBlock {
   id: WebullSubtabIdBlock
@@ -67,6 +66,7 @@ const WEBULL_SUBTAB_ICONS: Record<WebullSubtabIdBlock, LucideIcon> = {
   overall: Wallet,
   study: BookOpen,
   sim: History,
+  noticed: Binoculars,
   gaps: Crosshair,
 }
 
@@ -930,8 +930,7 @@ function computeCompanyTotalsBlock(positions: WebullPositionSummaryBlock[]): {
   let totalQuantity = 0
   let totalUnrealized = 0
   let unrealizedCount = 0
-  let totalCurrentPrice = 0
-  let currentPriceCount = 0
+  let sharePrice: number | null = null
 
   for (const position of positions) {
     const payload = positionPayloadFromSummaryBlock(position)
@@ -949,10 +948,12 @@ function computeCompanyTotalsBlock(positions: WebullPositionSummaryBlock[]): {
       totalUnrealized += unrealizedValue
       unrealizedCount += 1
     }
+    // The company's price is its share price; adding option premiums and
+    // cash to it would make a number that means nothing.
+    const instrumentType = firstStringBlock(payload.instrument_type, payload.type).toUpperCase()
     const currentPriceValue = firstNumberBlock(payload.last_price)
-    if (currentPriceValue !== null) {
-      totalCurrentPrice += currentPriceValue
-      currentPriceCount += 1
+    if (currentPriceValue !== null && sharePrice === null && (instrumentType === 'EQUITY' || instrumentType === 'STOCK')) {
+      sharePrice = currentPriceValue
     }
   }
 
@@ -960,7 +961,7 @@ function computeCompanyTotalsBlock(positions: WebullPositionSummaryBlock[]): {
     totalCost: totalCostCount > 0 ? totalCost : null,
     avgUnitCost: totalCostCount > 0 && totalQuantity > 0 ? totalCost / totalQuantity : null,
     totalUnrealizedProfitLoss: unrealizedCount > 0 ? totalUnrealized : null,
-    totalCurrentPrice: currentPriceCount > 0 ? totalCurrentPrice : null,
+    totalCurrentPrice: sharePrice,
   }
 }
 
@@ -1784,8 +1785,9 @@ export default function WebullWorkspaceBlock({
     [accounts, selectedAccount],
   )
 
-  // A position's name as two lines: "$300 Call · Dec 17, 2027" over its raw
-  // symbol, or the ticker over "Stock". Companies keep their plain title.
+  // A position's name as two lines: "$300 Call" over its raw symbol, or the
+  // ticker over "Stock". The date lives in the Expiry column. Companies keep
+  // their plain title.
   const renderPositionTitle = useCallback((node: NodeRecord) => {
     if (node.type !== 'epic') return undefined
     const raw = (node.title ?? '').trim()
@@ -1794,7 +1796,7 @@ export default function WebullWorkspaceBlock({
     const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
     const instrumentType = firstStringBlock(payload?.instrument_type, payload?.type).toUpperCase()
     const name = option
-      ? `$${Number(option[2])} ${option[4] === 'CALL' ? 'Call' : 'Put'} · ${new Date(`${option[3]}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+      ? `$${Number(option[2])} ${option[4] === 'CALL' ? 'Call' : 'Put'}`
       : raw
     const sub = option ? raw : instrumentType === 'EQUITY' || instrumentType === 'STOCK' ? 'Stock' : (instrumentType ? instrumentType.charAt(0) + instrumentType.slice(1).toLowerCase() : null)
     return (
@@ -1813,7 +1815,7 @@ export default function WebullWorkspaceBlock({
         widthClassName: 'w-[7rem]',
         align: 'left',
         render: (node) => {
-          if (node.type !== 'epic') return '—'
+          if (node.type !== 'epic') return null
           const metadata = asMetadataRecordBlock(node)
           const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
           const accountLabel = resolveAccountLabelBlock(
@@ -1823,7 +1825,38 @@ export default function WebullWorkspaceBlock({
           )
           return accountLabel ? (
             <span className="text-xs text-zinc-500 dark:text-zinc-400">{accountLabel}</span>
-          ) : '—'
+          ) : null
+        },
+      },
+      {
+        id: 'expiry',
+        label: 'Expiry',
+        widthClassName: 'w-36',
+        align: 'left',
+        render: (node) => {
+          if (node.type !== 'epic') return null
+          const metadata = asMetadataRecordBlock(node)
+          const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
+          const expiry = firstStringBlock(payload?.option_expire_date).slice(0, 10)
+            || ((node.title ?? '').match(/-(\d{4}-\d{2}-\d{2})-(?:CALL|PUT)$/)?.[1] ?? '')
+          if (!expiry) return null
+          const days = Math.round((Date.parse(`${expiry}T00:00:00`) - new Date().setHours(0, 0, 0, 0)) / 86_400_000)
+          // Weekdays from tomorrow through expiry; market holidays aren't subtracted.
+          let businessDays = 0
+          for (let i = 1; i <= days; i += 1) {
+            const day = new Date(Date.parse(`${expiry}T12:00:00`) - (days - i) * 86_400_000).getDay()
+            if (day !== 0 && day !== 6) businessDays += 1
+          }
+          return (
+            <span className="block leading-tight">
+              <span className="block tabular-nums">
+                {new Date(`${expiry}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </span>
+              <span className={cn('block text-[11px] tabular-nums', days <= 30 ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-500 dark:text-zinc-400')}>
+                {days < 0 ? 'expired' : days === 0 ? 'today' : `in ${days}d · ${businessDays} business days`}
+              </span>
+            </span>
+          )
         },
       },
       {
@@ -1832,11 +1865,11 @@ export default function WebullWorkspaceBlock({
         widthClassName: 'w-20',
         align: 'right',
         render: (node) => {
-          if (node.type !== 'epic') return '—'
+          if (node.type !== 'epic') return null
           const metadata = asMetadataRecordBlock(node)
           const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
           const instrumentType = firstStringBlock(payload?.instrument_type, payload?.type).toUpperCase()
-          if (instrumentType === 'CASH') return '—' // cash balances aren't a share count
+          if (instrumentType === 'CASH') return null // cash balances aren't a share count
           return formatQuantityBlock(readNumberFromRecordBlock(metadata, 'webull_position_quantity'))
         },
       },
@@ -1859,7 +1892,7 @@ export default function WebullWorkspaceBlock({
         align: 'right',
         render: (node) => {
           const metadata = asMetadataRecordBlock(node)
-          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.webull_avg_unit_cost)
+          if (node.type === 'program') return null // cost per share and per contract don't average into anything
           const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
           const totalCost = resolveTotalCostBlock(payload)
           const quantity = readNumberFromRecordBlock(metadata, 'webull_position_quantity')
@@ -1889,7 +1922,7 @@ export default function WebullWorkspaceBlock({
         align: 'right',
         render: (node) => {
           const metadata = asMetadataRecordBlock(node)
-          if (node.type === 'program') return formatCurrencyFromUnknownBlock(metadata.webull_total_current_price)
+          if (node.type === 'program') return metadata.webull_total_current_price == null ? null : formatCurrencyFromUnknownBlock(metadata.webull_total_current_price)
           const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
           return formatCurrencyFromUnknownBlock(payload?.last_price)
         },
@@ -2171,13 +2204,16 @@ export default function WebullWorkspaceBlock({
   )
   const overallTabActive = !companyPageOpen && activeSubtabId === 'overall'
   // Views on F9's native ground: grey, white panels, status folded into a footer line.
-  const nativeView = companyPageOpen || overallTabActive
-  const studyTabActive = !companyPageOpen && activeSubtabId === 'study'
-  const simTabActive = !companyPageOpen && activeSubtabId === 'sim'
   const gapsTabActive = !companyPageOpen && activeSubtabId === 'gaps'
+  const noticedTabActive = !companyPageOpen && activeSubtabId === 'noticed'
+  const studyTabActive = !companyPageOpen && activeSubtabId === 'study'
+  // Views that draw their own page (Study, Noticed, Gaps): no card header, tags or diagnostics.
+  const privateViewActive = gapsTabActive || noticedTabActive || studyTabActive
+  const nativeView = companyPageOpen || overallTabActive || privateViewActive
+  const simTabActive = !companyPageOpen && activeSubtabId === 'sim'
   const workspaceTitle = showCompanyView && selectedCompany
     ? `${selectedCompany.companyTicker} Positions`
-    : (studyTabActive ? 'Study' : simTabActive ? 'Sim' : gapsTabActive ? 'Gaps' : 'Overall Positions')
+    : (studyTabActive ? 'Study' : simTabActive ? 'Sim' : noticedTabActive ? 'Noticed' : gapsTabActive ? 'Gaps' : 'Overall Positions')
   const workspaceDescription = showCompanyView && selectedCompany
     ? 'Company-specific position rows and overlay edits.'
     : (studyTabActive
@@ -2422,12 +2458,13 @@ export default function WebullWorkspaceBlock({
         </aside>
       )}
 
-      {(studyTabActive || simTabActive) && isElectron && !showCompanyView ? (
+      {/* Only Sim keeps the canvas in the desktop app; Study is the same page everywhere. */}
+      {simTabActive && isElectron && !showCompanyView ? (
         <div className={cn(
           'min-w-0 overflow-hidden',
           phoneListMode ? 'hidden' : 'flex-1',
         )}>
-          {simTabActive ? <WebullF9SimCanvasOrch /> : <WebullF9CanvasOrch />}
+          <WebullF9SimCanvasOrch />
         </div>
       ) : (
       <div className={cn(
@@ -2437,7 +2474,7 @@ export default function WebullWorkspaceBlock({
         nativeView && 'bg-[#F5F5F7] px-7 py-6 dark:bg-zinc-950',
         phoneListMode ? 'hidden' : 'flex-1',
       )}>
-      {pageTitle && !gapsTabActive && !nativeView && (
+      {pageTitle && !privateViewActive && !nativeView && (
         <div className="mb-4">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{pageTitle}</h1>
           <p className="text-sm text-muted-foreground">
@@ -2457,7 +2494,7 @@ export default function WebullWorkspaceBlock({
             <CardDescription>{workspaceDescription}</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            {!gapsTabActive && (
+            {!privateViewActive && (
             <TagDisclosureButtonBlock
               label="Project Tags"
               expanded={projectTagsOpen}
@@ -2470,7 +2507,7 @@ export default function WebullWorkspaceBlock({
         )}
 
         <CardContent className={cn('space-y-4', nativeView && 'p-0')}>
-          {projectTagsOpen && !gapsTabActive && (
+          {projectTagsOpen && !privateViewActive && (
             <div id="webull-project-tags" className={cn('scroll-mt-4 p-3', nativeView ? F9_PANEL_CLASS_BLOCK : 'rounded-xl border bg-background')}>
               <TagListEditorBlock
                 heading="Project Tags"
@@ -2488,12 +2525,16 @@ export default function WebullWorkspaceBlock({
             </div>
           )}
 
-          {studyTabActive && !isElectron && (
+          {studyTabActive && (
             <WebullStudyBlock />
           )}
 
           {simTabActive && !isElectron && (
             <WebullSimBoardBlock />
+          )}
+
+          {noticedTabActive && PrivateNoticedBlock && (
+            <Suspense fallback={null}><PrivateNoticedBlock /></Suspense>
           )}
 
           {gapsTabActive && PrivateGapsBlock && (
@@ -2518,7 +2559,7 @@ export default function WebullWorkspaceBlock({
             </div>
           )}
 
-          {allWarnings.length > 0 && !gapsTabActive && !nativeView && (
+          {allWarnings.length > 0 && !privateViewActive && !nativeView && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-800 dark:text-amber-300">
               {allWarnings.map((warning) => (
                 <p key={warning}>{warning}</p>
@@ -2634,7 +2675,8 @@ export default function WebullWorkspaceBlock({
                 }}
                 positionsActions={overallPositionsActions}
                 positionsSlot={overallPositionsTable}
-                positionCount={executionPositionCount}
+                // What the table shows: archived (closed) positions stay in the index files but not here.
+                positionCount={pieCompanies.reduce((count, company) => count + company.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length, 0)}
                 footer={nativeFooter}
               />
             )
@@ -2867,7 +2909,7 @@ export default function WebullWorkspaceBlock({
             className={cn(
               'group scroll-mt-4 overflow-hidden',
               F9_PANEL_CLASS_BLOCK,
-              (gapsTabActive || (nativeView && !diagnosticsOpen)) && 'hidden',
+              (privateViewActive || (nativeView && !diagnosticsOpen)) && 'hidden',
             )}
           >
             <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">

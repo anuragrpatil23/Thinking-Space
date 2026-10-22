@@ -104,6 +104,8 @@ interface MarkdownRichEditorBlockProps {
    *  docs/contracts/DURABILITY.md. */
   onSaveRequest?: () => void
   currentPath?: string
+  /** Pick the grammar from this path instead of currentPath, e.g. a note's YAML frontmatter edited as YAML. */
+  languagePath?: string
   className?: string
   editorClassName?: string
   toolbarClassName?: string
@@ -500,6 +502,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   onFindRequest,
   onSaveRequest,
   currentPath = '',
+  languagePath,
   className,
   editorClassName,
   toolbarClassName,
@@ -555,7 +558,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   useEffect(() => { onSaveRequestRef.current = onSaveRequest }, [onSaveRequest])
   // One editor engine, per-file-type grammar: markdown files get the markdown
   // grammar + live-preview decorations, code files get real highlighting.
-  const editorLanguage = useMemo(() => resolveEditorLanguageBlock(currentPath), [currentPath])
+  const editorLanguage = useMemo(() => resolveEditorLanguageBlock(languagePath ?? currentPath), [languagePath, currentPath])
   // Live-preview markdown should LOOK like the document, not a code editor:
   // prose font + view-mode spacing, no gutters. Code files keep the editor feel.
   // Focus typography applies to markdown only — a code file in the New Note

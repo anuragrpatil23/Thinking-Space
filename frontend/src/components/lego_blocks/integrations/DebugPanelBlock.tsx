@@ -15,6 +15,8 @@ import {
   listFrameRecordingsBlock,
   type FrameRecordingBlock,
 } from '@/services/lego_blocks/units/frameTimingBlock'
+import { useResizableSheetBlock } from '@/components/lego_blocks/hooks/useResizableSheetBlock'
+import SheetResizeHandleBlock from '@/components/lego_blocks/units/SheetResizeHandleBlock'
 
 interface DebugPanelBlockProps {
   entries: DebugLogEntryBlock[]
@@ -670,6 +672,8 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
     }
   }
 
+  const sheet = useResizableSheetBlock('debug-console', 520)
+
   const handleScroll = () => {
     if (!listRef.current) return
     const { scrollTop, scrollHeight, clientHeight } = listRef.current
@@ -687,12 +691,15 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
         />
       )}
 
+      {isOpen && <SheetResizeHandleBlock {...sheet.handle} />}
+
       {/* Panel */}
       <div
         role="dialog"
         aria-label="Debug console"
         aria-hidden={!isOpen}
-        className={`fixed right-0 top-0 z-[89] flex h-full w-[520px] max-w-[96vw] flex-col border-l border-border/60 bg-background/95 shadow-2xl backdrop-blur-xl transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        style={{ width: `min(96vw, ${sheet.width}px)` }}
+        className={`fixed right-0 top-0 z-[89] flex h-full flex-col border-l border-border/60 bg-background/95 shadow-2xl backdrop-blur-xl transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >

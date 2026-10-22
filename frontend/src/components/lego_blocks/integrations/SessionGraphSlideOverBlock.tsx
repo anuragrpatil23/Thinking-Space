@@ -12,6 +12,8 @@ import { projectLabelBlock } from '@/services/lego_blocks/units/projectRegistryB
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
+import { useResizableSheetBlock } from '@/components/lego_blocks/hooks/useResizableSheetBlock'
+import SheetResizeHandleBlock from '@/components/lego_blocks/units/SheetResizeHandleBlock'
 
 interface SessionGraphSlideOverBlockProps {
   /** The session (chain) to light in the graph. `null` closes the panel. */
@@ -99,6 +101,8 @@ export default function SessionGraphSlideOverBlock({ chain, onClose }: SessionGr
 
   const litCount = selection?.ids.size ?? 0
 
+  const sheet = useResizableSheetBlock('session-graph', 920)
+
   if (!chain) return null
 
   const filesLabel = litCount > 0
@@ -114,9 +118,11 @@ export default function SessionGraphSlideOverBlock({ chain, onClose }: SessionGr
         }
       `}</style>
       <div className="absolute inset-0" onClick={onClose} />
+      <SheetResizeHandleBlock {...sheet.handle} />
       <div
-        className="absolute right-0 top-0 flex h-full w-[min(920px,94vw)] flex-col overflow-hidden border-l border-border/40 bg-background shadow-2xl"
+        className="absolute right-0 top-0 flex h-full flex-col overflow-hidden border-l border-border/40 bg-background shadow-2xl"
         style={{
+          width: `min(94vw, ${sheet.width}px)`,
           animation: 'ltm-session-graph-slideover-in 220ms cubic-bezier(0.22, 1, 0.36, 1)',
           paddingTop: 'env(safe-area-inset-top)',
           paddingBottom: 'env(safe-area-inset-bottom)',

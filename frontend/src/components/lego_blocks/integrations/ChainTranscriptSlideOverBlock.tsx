@@ -17,6 +17,8 @@ import ChainFilesSummaryBlock from '@/components/lego_blocks/units/ChainFilesSum
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 import TranscriptRailBlock from '@/components/lego_blocks/units/TranscriptRailBlock'
+import { useResizableSheetBlock } from '@/components/lego_blocks/hooks/useResizableSheetBlock'
+import SheetResizeHandleBlock from '@/components/lego_blocks/units/SheetResizeHandleBlock'
 
 /**
  * A chain's transcript, session by session.
@@ -312,6 +314,8 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
     [parts],
   )
 
+  const sheet = useResizableSheetBlock('chain-transcript', 760)
+
   if (!chain) return null
 
   // Portal to <body>: this block mounts inside the home-canvas anchor panel,
@@ -329,9 +333,11 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
       {/* Transparent click-catcher: closes on outside click but leaves the
           page visible so the day table can be read alongside the transcript. */}
       <div className="absolute inset-0" onClick={onClose} />
+      <SheetResizeHandleBlock {...sheet.handle} />
       <div
-        className="absolute right-0 top-0 flex h-full w-[min(760px,92vw)] flex-col overflow-hidden border-l border-border/40 bg-background shadow-2xl"
+        className="absolute right-0 top-0 flex h-full flex-col overflow-hidden border-l border-border/40 bg-background shadow-2xl"
         style={{
+          width: `min(92vw, ${sheet.width}px)`,
           animation: 'ltm-transcript-slideover-in 220ms cubic-bezier(0.22, 1, 0.36, 1)',
           paddingTop: 'env(safe-area-inset-top)',
           paddingBottom: 'env(safe-area-inset-bottom)',

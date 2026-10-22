@@ -252,6 +252,8 @@ against the real file for anything touching pdf.js payloads.
 
 ## F9 (Webull) Native Design Blocks
 
+**Reward studying, not output.** F9's headline numbers celebrate studies (the sidebar's "23/76 studied", study markers), never a count of gaps written; the Gaps header deliberately shows no gap count.
+
 Added 2026-10-22 when the F9 tab moved to a macOS-native look (white grouped panels on a `#F5F5F7` ground, sentence-case labels, half-pixel `#EFEFF2` hairlines). The company page is the first view on it; the other subtabs follow.
 
 - `personal_extension/components/lego_blocks/units/F9NativeBlock.tsx` — the shared parts every F9 view builds from: `F9PanelBlock` / `F9_PANEL_CLASS_BLOCK`, `F9SectionLabelBlock`, `F9SegmentedBlock`, `F9FactRowBlock`.
@@ -263,3 +265,22 @@ Added 2026-10-22 when the F9 tab moved to a macOS-native look (white grouped pan
 - `WebullOverallPageBlock` — Overall Positions on the native ground: Allocation (Cost donut + ranked list + shares/options-by-horizon summary · Open P/L column chart · Expiry by month), Value and Accounts panels, Track record, and the positions table. The workspace computes every number; the page lays them out.
 - Track record (`webullTrackRecordBlock` + `webullTrackRecordVaultBlock`, company panel + Overall section) — a TS port of `kai-workspace/F9/tools/short_term_options_page.py` reading `F9-execution/statements/webull-*.csv` (FIFO lots, NVDA split, open lots at the last month end, 120-day short/long line); verified to reproduce the script's totals exactly. Only as fresh as the last `webull_statements_to_csv.py` run; importing statements in-app is a known follow-up.
 - Native table rows: the Title column is sticky (pins while the table scrolls; light shadow only when scrolled, via `data-scrolled-x` on the zoom viewport). Native rows must not scroll or clip on their own, and companies stack flush — `space-y` between program cards is the organizer look only.
+
+## Resizable slide-overs (every right-hand sheet)
+
+Every slide-over in the app is resizable the same way: drag its left edge, double-click the edge to swap between its default width and ~92% of the window. Each sheet remembers its own width.
+
+- `components/lego_blocks/hooks/useResizableSheetBlock.ts` — `useResizableSheetBlock(sheetId, defaultWidth)` returns `{ width, resizing, handle }`. Width persists under `STORAGE_KEYS.sheetWidthPrefix + sheetId` (the markdown viewer keeps its older `markdownSideSheetWidth` key). Clamped to the window minus 48px.
+- `components/lego_blocks/units/SheetResizeHandleBlock.tsx` — the grab strip. It is `position: fixed` at `right: width`, so it works for sheets that scroll their whole container (organizer drawer, node detail). Hidden below `sm`.
+- The sheet takes the width as `style={{ width: \`min(96vw, ${width}px)\` }}` or, for a `w-full` panel, `style={{ maxWidth: width }}`, instead of a fixed `w-[…]` class.
+- Users: markdown viewer, organizer drawer, node detail, debug console, chain transcript, session graph, path graph, and the private gaps panels (write, grade, position).
+
+A new slide-over uses the hook and the handle; a fixed-width sheet is a regression.
+
+## F9 Noticed (private, step before a gap)
+
+The flow is **Noticed → Gap → Act**. A Noticed record is something seen happening around a company (earnings call, news, filing, price move, conversation), written on the day before it is a gap. Private code, loaded optionally like Gaps: `privateGapsBlock.ts` exposes `NOTICED_TAB_AVAILABLE`, `PrivateNoticedBlock` (`gaps/noticed.tsx`, the F9 sidebar view, ordered before Gaps) and `PrivateCompanyNoticedBlock` (`gaps/companyNoticed.tsx`, a section on the company page). Without the private folder neither appears.
+
+- Files: `<executionRoot>/noticed/<ticker>/<ticker>-YYYY-MM-DD-<slug>.md`, `type: noticed`, with `source`, `link`, `price_at_noticed`, `status` (watching | became-gap | let-go), `gap`; body sections What happened / Why it might matter / Questions / Takeaways. Format and parser: `gaps/services/lego_blocks/units/noticedRecordBlock.ts`; I/O: `gaps/services/orchestrators/webullNoticedOrch.ts`. Edits reuse the gap entry editors (`setGapEntryFieldBlock` / `setGapEntrySectionBlock` / `appendGapTakeawayBlock`).
+- "Make it a gap" opens the New gap panel pre-filled, then links both ways: the record gets `status: became-gap` + `gap: G-xxxx`, the gap gets `from_noticed: "[[<record>]]"`.
+- The record board (script headings, pastel notes, dashed time columns, the canvas sheet) is shared: `gaps/components/lego_blocks/units/GapRecordBoardPartsBlock.tsx`, used by the gap page and the Noticed page.

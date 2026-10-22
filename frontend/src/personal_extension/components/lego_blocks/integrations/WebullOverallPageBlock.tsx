@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Bar, BarChart, Cell, LabelList, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, type LabelProps } from 'recharts'
 import { useWebullOverallTrackRecordBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullTrackRecordBlock'
-import { F9TrackRowBlock } from '@/personal_extension/components/lego_blocks/units/F9TrackRecordPartsBlock'
+import { F9TrackRowBlock, F9TrackShareBlock } from '@/personal_extension/components/lego_blocks/units/F9TrackRecordPartsBlock'
 import { f9SignedMoneyKBlock, WEBULL_SHORT_DATED_DAYS_BLOCK, type WebullOverallTrackRecordBlock } from '@/personal_extension/services/lego_blocks/units/webullTrackRecordBlock'
 import { F9FactRowBlock, F9PanelBlock, F9SectionLabelBlock, F9SegmentedBlock } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { cn } from '@/lib/utils'
@@ -288,6 +288,23 @@ function CostViewBlock({ allocation, formatMoney, formatMoneyK, onSelectTicker }
   onSelectTicker: (ticker: string) => void
 }) {
   const { slices, total, legend } = allocation
+  // The list fills the panel's height; trim it to whole rows so none sits cut in half.
+  const listRef = useRef<HTMLOListElement>(null)
+  const [listHeight, setListHeight] = useState<number | null>(null)
+  useLayoutEffect(() => {
+    const list = listRef.current
+    const frame = list?.parentElement
+    if (!list || !frame) return
+    const fit = () => {
+      const row = list.firstElementChild?.getBoundingClientRect().height ?? 0
+      const available = frame.getBoundingClientRect().height
+      setListHeight(row > 0 && available > 0 ? Math.floor(available / row) * row : null)
+    }
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(frame)
+    return () => observer.disconnect()
+  }, [legend.length])
   // Each business's option cost split by time left, against the report's
   // 120-day line: short-dated (≤ 120 days) vs longer-dated, by today's date.
   const today = new Date().toISOString().slice(0, 10)
@@ -387,7 +404,7 @@ function CostViewBlock({ allocation, formatMoney, formatMoneyK, onSelectTicker }
         {/* The list fills the panel's height (set by the side column) and scrolls inside it,
             rather than leaving the panel half empty or stretching it. */}
         <div className="relative min-w-0 md:max-w-[34rem] md:flex-1">
-        <ol className="max-h-[260px] overflow-y-auto overflow-x-hidden pr-1 [scrollbar-width:thin] md:absolute md:inset-0 md:max-h-none">
+        <ol ref={listRef} style={listHeight ? { height: listHeight } : undefined} className="max-h-[260px] overflow-y-auto overflow-x-hidden pr-1 [scrollbar-width:thin] md:absolute md:inset-x-0 md:top-0 md:max-h-none">
           {legend.map(entry => (
             <li key={entry.ticker}>
               <button
@@ -447,11 +464,85 @@ const TRACK_LONG_COLOR_BLOCK = '#0A84FF'
 
 // How every option purchase and share has actually turned out, from the Webull
 // statements: short- and longer-dated side by side, and by year bought.
-function TrackRecordSectionBlock({ record, reportPath, onOpenFile }: {
+/** Whole-K chart money: +$531K, −$240K, $0, +$1.1M. */
+function chartMoneyKBlock(value: number, signed: boolean): string {
+  const abs = Math.abs(value)
+  const text = abs >= 1_000_000 ? `$${(abs / 1_000_000).toFixed(1)}M` : abs >= 1000 ? `$${Math.round(abs / 1000)}K` : `$${Math.round(abs)}`
+  if (value < 0) return `−${text}`
+  return signed && value > 0 ? `+${text}` : text
+}
+
+function TrackBusinessListBlock({ title, entries, total, onSelectTicker }: {
+  title: string
+  entries: Array<{ ticker: string; net: number }>
+  total: number
+  onSelectTicker: (ticker: string) => void
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-1 text-xs text-zinc-500 dark:text-zinc-400">{title}</p>
+      <ol>
+        {entries.map(entry => (
+          <li key={entry.ticker}>
+            <button
+              type="button"
+              onClick={() => onSelectTicker(entry.ticker)}
+              className="ltm-motion-fast flex w-full items-center justify-between gap-2 rounded-md px-1.5 py-1 text-[12px] tabular-nums transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+            >
+              <span className="font-medium">{entry.ticker}</span>
+              <span className="flex items-baseline gap-2">
+                {total > 0 && <span className="text-[11px] text-zinc-400">{Math.round((entry.net / total) * 100)}%</span>}
+                <span className={entry.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>{f9SignedMoneyKBlock(entry.net)}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+function TrackRecordSectionBlock({ record, reportPath, onOpenFile, onSelectTicker }: {
   record: WebullOverallTrackRecordBlock
   reportPath: string | null
   onOpenFile: (path: string) => void
+  onSelectTicker: (ticker: string) => void
 }) {
+  // Room under the lowest and above the highest bar so value labels clear the axis.
+  const values = record.byYear.flatMap(year => [year.shortDated, year.longerDated])
+  const low = Math.min(0, ...values)
+  const high = Math.max(0, ...values)
+  // Round ticks (multiples of a 1/2/2.5/5 step) with headroom so value labels clear the axis.
+  const rawStep = (high - low) / 4 || 1
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep))
+  const step = ([1, 2, 2.5, 5, 10].find(m => m * magnitude >= rawStep) ?? 10) * magnitude
+  // Loss labels hang below the plot into the axis margin, so no extra step below.
+  const domainLow = low < 0 ? Math.floor(low / step) * step : 0
+  const domainHigh = Math.ceil((high + step * 0.3) / step) * step
+  const ticks: number[] = []
+  for (let tick = domainLow; tick <= domainHigh + step / 2; tick += step) ticks.push(tick)
+  // Everything the record adds up to: options of both kinds plus shares.
+  const grandTotal = (record.shortDated?.net ?? 0) + (record.longerDated?.net ?? 0) + record.stockNet
+  const ranked = [...record.byTicker].sort((a, b) => b.net - a.net)
+  const best = ranked.filter(entry => entry.net > 0).slice(0, 3)
+  const worst = ranked.filter(entry => entry.net < 0).slice(-3).reverse()
+  // Gains labelled above their bar, losses below theirs.
+  const renderYearLabel = (props: LabelProps) => {
+    const x = Number(props.x ?? 0)
+    const y = Number(props.y ?? 0)
+    const width = Number(props.width ?? 0)
+    const height = Number(props.height ?? 0)
+    const value = Number(props.value ?? 0)
+    if (!value) return null
+    const below = value < 0
+    const bottom = height >= 0 ? y + height : y
+    const top = height >= 0 ? y : y + height
+    return (
+      <text x={x + width / 2} y={below ? bottom + 12 : top - 5} textAnchor="middle" fontSize={10} fill="#71717A">
+        {chartMoneyKBlock(value, true)}
+      </text>
+    )
+  }
   const through = new Date(`${record.throughStatement}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   return (
     <section className="min-w-0 lg:col-span-2">
@@ -467,21 +558,35 @@ function TrackRecordSectionBlock({ record, reportPath, onOpenFile }: {
       >
         Track record
       </F9SectionLabelBlock>
-      <F9PanelBlock className="grid gap-6 p-5 text-[13px] lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <F9PanelBlock className="grid gap-6 p-5 text-[13px] lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-0">
         <div className="divide-y divide-zinc-200/70 dark:divide-zinc-800">
-          {record.shortDated && <F9TrackRowBlock label="Short-dated options" summary={record.shortDated} />}
-          {record.longerDated && <F9TrackRowBlock label="Longer-dated options" summary={record.longerDated} />}
+          <div className="flex items-baseline justify-between gap-3 pb-2">
+            <span className="font-semibold">Total</span>
+            <span className={cn('font-semibold tabular-nums', grandTotal >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>{f9SignedMoneyKBlock(grandTotal)}</span>
+          </div>
+          {record.shortDated && <F9TrackRowBlock label="Short-dated options" summary={record.shortDated} total={grandTotal} />}
+          {record.longerDated && <F9TrackRowBlock label="Longer-dated options" summary={record.longerDated} total={grandTotal} />}
           <div className="py-2">
             <div className="flex items-center justify-between gap-3">
               <span className="text-zinc-500 dark:text-zinc-400">Shares</span>
-              <span className={cn('font-medium tabular-nums', record.stockNet >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
-                {f9SignedMoneyKBlock(record.stockNet)}
+              <span>
+                <span className={cn('block text-right font-medium tabular-nums', record.stockNet >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
+                  {f9SignedMoneyKBlock(record.stockNet)}
+                </span>
+                <F9TrackShareBlock net={record.stockNet} total={grandTotal} />
               </span>
             </div>
             <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">sold + still held − bought, across {record.stockCompanies} companies</p>
           </div>
+          {(best.length > 0 || worst.length > 0) && (
+            <div className="grid grid-cols-2 gap-4 pt-3">
+              <TrackBusinessListBlock title="Made the most" entries={best} total={grandTotal} onSelectTicker={onSelectTicker} />
+              <TrackBusinessListBlock title="Lost the most" entries={worst} total={grandTotal} onSelectTicker={onSelectTicker} />
+            </div>
+          )}
         </div>
-        <div className="min-w-0">
+        {/* A hairline and room between the figures and the chart; the chart fills the column's height. */}
+        <div className="flex min-w-0 flex-col lg:ml-8 lg:border-l-[0.5px] lg:border-[#E5E5EA] lg:pl-8 dark:lg:border-zinc-800">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <span className="font-semibold">Net by year bought</span>
             <span className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
@@ -489,11 +594,11 @@ function TrackRecordSectionBlock({ record, reportPath, onOpenFile }: {
               <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm" style={{ backgroundColor: TRACK_LONG_COLOR_BLOCK }} />Longer-dated</span>
             </span>
           </div>
-          <div className="h-[220px]">
+          <div className="h-[220px] lg:h-auto lg:min-h-[220px] lg:flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={record.byYear} margin={{ top: 18, right: 4, bottom: 0, left: 0 }} barGap={4}>
-                <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#8E8E93' }} axisLine={false} tickLine={false} />
-                <YAxis width={52} tick={{ fontSize: 11, fill: '#8E8E93' }} axisLine={false} tickLine={false} tickFormatter={(value: number) => f9SignedMoneyKBlock(value).replace('+', '')} />
+                <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#8E8E93' }} axisLine={false} tickLine={false} tickMargin={18} height={36} />
+                <YAxis width={52} domain={[domainLow, domainHigh]} ticks={ticks} tick={{ fontSize: 11, fill: '#8E8E93' }} axisLine={false} tickLine={false} tickFormatter={(value: number) => chartMoneyKBlock(value, false)} />
                 <ReferenceLine y={0} stroke="#D4D4D8" />
                 <Tooltip
                   cursor={{ fill: 'rgba(0,0,0,0.03)' }}
@@ -501,10 +606,10 @@ function TrackRecordSectionBlock({ record, reportPath, onOpenFile }: {
                   formatter={(value, name) => [f9SignedMoneyKBlock(Number(value)), name === 'shortDated' ? 'Short-dated' : 'Longer-dated']}
                 />
                 <Bar dataKey="shortDated" fill={TRACK_SHORT_COLOR_BLOCK} radius={[3, 3, 3, 3]} isAnimationActive={false}>
-                  <LabelList dataKey="shortDated" position="top" formatter={(value) => f9SignedMoneyKBlock(Number(value))} style={{ fontSize: 10, fill: '#71717A' }} />
+                  <LabelList dataKey="shortDated" content={renderYearLabel} />
                 </Bar>
                 <Bar dataKey="longerDated" fill={TRACK_LONG_COLOR_BLOCK} radius={[3, 3, 3, 3]} isAnimationActive={false}>
-                  <LabelList dataKey="longerDated" position="top" formatter={(value) => f9SignedMoneyKBlock(Number(value))} style={{ fontSize: 10, fill: '#71717A' }} />
+                  <LabelList dataKey="longerDated" content={renderYearLabel} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -575,7 +680,7 @@ export default function WebullOverallPageBlock({
         )}
       </div>
 
-      {trackRecord && <TrackRecordSectionBlock record={trackRecord} reportPath={reportPath} onOpenFile={onOpenFile} />}
+      {trackRecord && <TrackRecordSectionBlock record={trackRecord} reportPath={reportPath} onOpenFile={onOpenFile} onSelectTicker={onSelectTicker} />}
 
       <section className="min-w-0 lg:col-span-2">
         <F9SectionLabelBlock trailing={positionsActions}>Positions · {positionCount}</F9SectionLabelBlock>

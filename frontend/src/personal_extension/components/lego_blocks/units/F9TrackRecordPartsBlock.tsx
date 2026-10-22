@@ -30,15 +30,29 @@ export function F9TrackSparklineBlock({ running }: { running: WebullTrackSummary
   )
 }
 
-export function F9TrackRowBlock({ label, summary }: { label: string; summary: WebullTrackSummaryBlock }) {
+/** Its share of a whole, under the figure: "30% of total". */
+export function F9TrackShareBlock({ net, total }: { net: number; total: number | undefined }) {
+  if (!total || total <= 0) return null
+  return <span className="block text-right text-[11px] tabular-nums text-zinc-400">{Math.round((net / total) * 100)}% of total</span>
+}
+
+export function F9TrackRowBlock({ label, summary, total }: {
+  label: string
+  summary: WebullTrackSummaryBlock
+  /** The whole this row is a part of; shows the row's share under its figure. */
+  total?: number
+}) {
   return (
     <div className="py-2">
       <div className="flex items-center justify-between gap-3">
         <span className="text-zinc-500 dark:text-zinc-400">{label}</span>
         <span className="flex items-center gap-2">
           <F9TrackSparklineBlock running={summary.running} />
-          <span className={cn('font-medium tabular-nums', summary.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
-            {f9SignedMoneyKBlock(summary.net)}
+          <span>
+            <span className={cn('block text-right font-medium tabular-nums', summary.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
+              {f9SignedMoneyKBlock(summary.net)}
+            </span>
+            <F9TrackShareBlock net={summary.net} total={total} />
           </span>
         </span>
       </div>

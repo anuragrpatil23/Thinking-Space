@@ -29,19 +29,22 @@ import { readWebullCredentialStatusBlock } from '../../services/lego_blocks/unit
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
-import { GAPS_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
+import { GAPS_TAB_AVAILABLE, NOTICED_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
 
-type WebullSubtabId = 'overall' | 'study' | 'sim' | 'gaps'
+type WebullSubtabId = 'overall' | 'study' | 'sim' | 'noticed' | 'gaps'
 
+// In the order of the mission (maximize the number of things noticed and
+// understood): notice, understand, then what falls out of it. Noticed and Gaps
+// are private: shown only when their folder is present (see privateGapsBlock).
 const Webull_BASE_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
+  ...(NOTICED_TAB_AVAILABLE ? [{ id: 'noticed' as const, label: 'Noticed' }] : []),
   { id: 'study', label: 'Study' },
-  // Gaps is a private tab: shown only when its folder is present (see privateGapsBlock).
   ...(GAPS_TAB_AVAILABLE ? [{ id: 'gaps' as const, label: 'Gaps' }] : []),
   { id: 'overall', label: 'Overall Positions' },
 ]
 
-// The Sim subtab is gated behind a Settings → Webull toggle. Inserted right
-// after Study (its sibling practice surface) when enabled.
+// The Sim subtab is gated behind a Settings → Webull toggle. Practice comes
+// last, after the real record, when enabled.
 const Webull_SIM_SUBTAB: { id: WebullSubtabId; label: string } = { id: 'sim', label: 'Sim' }
 
 const WEBULL_AUTO_REFRESH_STALENESS_MS = 60_000
@@ -212,7 +215,7 @@ export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
 
   const subtabs = useMemo(() => (
     simTabEnabled
-      ? [Webull_BASE_SUBTABS[0], Webull_SIM_SUBTAB, ...Webull_BASE_SUBTABS.slice(1)]
+      ? [...Webull_BASE_SUBTABS, Webull_SIM_SUBTAB]
       : Webull_BASE_SUBTABS
   ), [simTabEnabled])
 

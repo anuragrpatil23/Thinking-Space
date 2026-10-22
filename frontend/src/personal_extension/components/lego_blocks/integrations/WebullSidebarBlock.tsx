@@ -161,6 +161,8 @@ export default function WebullSidebarBlock({
               aria-current={view.active ? 'page' : undefined}
               className={cn(
                 'ltm-motion-fast flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-[13px] transition-colors',
+                // A ring for the keyboard only; a click shouldn't leave an outline on the black row.
+                'outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40',
                 view.active
                   ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900'
                   : 'text-zinc-700 hover:bg-zinc-200/70 dark:text-zinc-200 dark:hover:bg-zinc-800',

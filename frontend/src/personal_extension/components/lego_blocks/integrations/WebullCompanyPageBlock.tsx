@@ -12,7 +12,7 @@ import {
   F9SectionLabelBlock,
   F9SegmentedBlock,
 } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
-import { PrivateCompanyGapsBlock } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
+import { PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
 import type { WebullResearchFileBlock, WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
 import { cn } from '@/lib/utils'
 
@@ -314,6 +314,14 @@ export default function WebullCompanyPageBlock({
         <section id="webull-company-gaps" className="scroll-mt-4">
           <Suspense fallback={null}>
             <PrivateCompanyGapsBlock ticker={ticker} executionRoot={executionRoot} onOpenFile={onOpenFile} />
+          </Suspense>
+        </section>
+      )}
+
+      {PrivateCompanyNoticedBlock && executionRoot && ticker && (
+        <section id="webull-company-noticed" className="scroll-mt-4">
+          <Suspense fallback={null}>
+            <PrivateCompanyNoticedBlock ticker={ticker} executionRoot={executionRoot} onOpenFile={onOpenFile} />
           </Suspense>
         </section>
       )}

@@ -48,6 +48,7 @@ import {
 } from '@/services/lego_blocks/integrations/noteDraftJournalStoreBlock'
 import type { ExcalidrawCanvasApiOrch } from '@/services/orchestrators/excalidrawIntegrationOrch'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import type { EditorTypographyProfileBlock } from '@/components/lego_blocks/units/iaTypographyProfileBlock'
 import { useNativeChromeImmersionBlock } from '@/components/lego_blocks/hooks/shared/useNativeChromeImmersionBlock'
 import {
   buildObsidianOpenUrlOrch,
@@ -179,6 +180,9 @@ export type MarkdownViewerMode = 'view' | 'edit'
 
 interface MarkdownDocumentBlockProps {
   path: string
+  /** 'focus' edits with New Note's writing surface: its typography, and the
+   *  phone keyboard inset. Used when a sheet is opened for writing. */
+  typographyProfile?: EditorTypographyProfileBlock
   active?: boolean
   /** Whether time on this document counts as reading. Opt-in, because this
    *  block also renders inside canvas tiles, memory-file lists and previews —
@@ -320,6 +324,7 @@ function MarkdownWikilinkImageBlock({
 
 function MarkdownTextDocumentRuntimeBlock({
   path,
+  typographyProfile,
   active = true,
   countsAsReading = false,
   initialMode = 'view',
@@ -2121,6 +2126,17 @@ function MarkdownTextDocumentRuntimeBlock({
                     >
                       {filename}
                     </button>
+                  ) : showCloseButton && onClose && !isExternalDocument ? (
+                    // In a sheet, the name is the way out to the vault: it opens the
+                    // file in Thinking Space in its own tab and closes the sheet.
+                    <button
+                      type="button"
+                      onClick={() => { openFileInNewTabOrch(path); onClose() }}
+                      className="min-w-0 truncate text-left font-medium underline-offset-4 hover:underline"
+                      title="Open in vault"
+                    >
+                      {filename}
+                    </button>
                   ) : (
                     <span className="truncate font-medium">{filename}</span>
                   )}
@@ -2384,30 +2400,31 @@ function MarkdownTextDocumentRuntimeBlock({
 
                 {!isExcalidrawDoc && (
                   <div className="space-y-1.5 border-t border-border/30 pt-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                      YAML Metadata
-                    </div>
+                    <div className="text-[11px] font-medium text-muted-foreground">Properties</div>
 
                     {isEditing ? (
-                      <div className="space-y-1.5">
-                        <MarkdownRichEditorBlock
-                          value={frontmatterMeta.yamlText}
-                          onChange={setDraftFrontmatterYaml}
-                          currentPath={path}
-                          enableFormattingToolbar={false}
-                          className="h-44 w-full"
-                          editorClassName="rounded-md border border-border/60 bg-background"
-                          placeholder={'title: My note\ntype: thought\nparent: project-root'}
-                          compactMobile={isIosPhone}
-                        />
+                      <div className="space-y-1">
+                        {/* Edited as raw YAML so the file stays byte-identical (EDITOR contract), but
+                            as YAML: highlighted, compact, and as tall as its lines (up to a cap). */}
+                        <div style={{ height: Math.min(360, Math.max(88, frontmatterMeta.yamlText.split('\n').length * 21 + 16)) }}>
+                          <MarkdownRichEditorBlock
+                            value={frontmatterMeta.yamlText}
+                            onChange={setDraftFrontmatterYaml}
+                            currentPath={path}
+                            languagePath="frontmatter.yaml"
+                            enableFormattingToolbar={false}
+                            className="h-full w-full"
+                            editorClassName="rounded-lg border border-border/50 bg-background text-[12.5px]"
+                            placeholder={'title: My note\ntype: thought\nparent: project-root'}
+                            compactMobile={isIosPhone}
+                          />
+                        </div>
                         {frontmatterMeta.parseError ? (
                           <div className="text-[11px] text-destructive">
                             YAML parse error: {frontmatterMeta.parseError}
                           </div>
-                        ) : (
-                          <div className="text-[11px] text-muted-foreground">
-                            {frontmatterMeta.hasFrontmatter ? 'Frontmatter is valid YAML.' : 'Add YAML above to create frontmatter.'}
-                          </div>
+                        ) : !frontmatterMeta.hasFrontmatter && (
+                          <div className="text-[11px] text-muted-foreground">Add YAML above to create properties.</div>
                         )}
                       </div>
                     ) : (
@@ -2424,11 +2441,11 @@ function MarkdownTextDocumentRuntimeBlock({
                           <div className="text-[11px] text-muted-foreground">YAML frontmatter is empty.</div>
                         )}
                         {frontmatterMeta.entries.length > 0 && (
-                          <dl className="grid grid-cols-[minmax(6rem,auto)_1fr] gap-x-3 gap-y-1 text-[11px]">
+                          <dl className="grid grid-cols-[minmax(7rem,max-content)_1fr] gap-x-4 text-[12px]">
                             {frontmatterMeta.entries.map((entry) => (
-                              <div key={entry.key} className="contents">
-                                <dt className="font-medium text-foreground/80">{entry.key}</dt>
-                                <dd className="break-all text-muted-foreground">{entry.value}</dd>
+                              <div key={entry.key} className="contents [&>*]:border-b-[0.5px] [&>*]:border-border/40 [&>*]:py-1 last:[&>*]:border-b-0">
+                                <dt className="text-muted-foreground">{entry.key}</dt>
+                                <dd className="break-words text-foreground/90">{entry.value || <span className="text-muted-foreground/60">empty</span>}</dd>
                               </div>
                             ))}
                           </dl>
@@ -2745,6 +2762,8 @@ function MarkdownTextDocumentRuntimeBlock({
                 value={displayDraft}
                 currentPath={path}
                 compactMobile={isIosPhone}
+                typographyProfile={typographyProfile}
+                focusKeyboardInsetPx={typographyProfile === 'focus' ? layout.keyboardInset : undefined}
                 toolbarAlwaysVisible
                 aiPanelOpen={showAiPanel}
                 onAiPanelOpenChange={setShowAiPanel}

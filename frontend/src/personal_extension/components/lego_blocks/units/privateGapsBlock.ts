@@ -21,3 +21,14 @@ export interface PrivateCompanyGapsPropsBlock {
 }
 
 export const PrivateCompanyGapsBlock = loadCompanyGaps ? lazy(loadCompanyGaps) : null
+
+// Noticed (things seen happening, before they are gaps) lives in the same
+// private folder: its own F9 view, and a section on the company page.
+const NOTICED_MODULES = import.meta.glob<{ default: ComponentType }>('../../../gaps/noticed.tsx')
+const loadNoticed = Object.values(NOTICED_MODULES)[0]
+export const NOTICED_TAB_AVAILABLE = Boolean(loadNoticed)
+export const PrivateNoticedBlock = loadNoticed ? lazy(loadNoticed) : null
+
+const COMPANY_NOTICED_MODULES = import.meta.glob<{ default: ComponentType<PrivateCompanyGapsPropsBlock> }>('../../../gaps/companyNoticed.tsx')
+const loadCompanyNoticed = Object.values(COMPANY_NOTICED_MODULES)[0]
+export const PrivateCompanyNoticedBlock = loadCompanyNoticed ? lazy(loadCompanyNoticed) : null

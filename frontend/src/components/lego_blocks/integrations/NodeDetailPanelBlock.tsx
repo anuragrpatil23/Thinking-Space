@@ -54,6 +54,8 @@ import {
   getCommentAuthorSymbolBlock,
   getUserCommentAuthorBlock,
 } from '@/services/lego_blocks/units/userProfileBlock'
+import { useResizableSheetBlock } from '@/components/lego_blocks/hooks/useResizableSheetBlock'
+import SheetResizeHandleBlock from '@/components/lego_blocks/units/SheetResizeHandleBlock'
 
 function iconForNodeType(type: NodeType) {
   if (type === 'program') return FolderTree
@@ -632,6 +634,8 @@ export default function NodeDetailPanelBlock({
     }
   }, [busy, commitNotes, notesDirty, notesPayloadSignature, notesSaving])
 
+  const sheet = useResizableSheetBlock('node-detail', 928)
+
   if (typeof document === 'undefined') return null
 
   return createPortal(
@@ -641,9 +645,10 @@ export default function NodeDetailPanelBlock({
         className="fixed inset-0 z-[120] bg-background/60 backdrop-blur-sm"
         onClick={onClose}
       />
+      <SheetResizeHandleBlock {...sheet.handle} />
 
       {/* Panel */}
-      <div className={`fixed inset-y-0 right-0 z-[121] w-[min(96vw,58rem)] overflow-auto border-l bg-background pt-[max(env(safe-area-inset-top),3.5rem)] shadow-2xl animate-slide-in sm:pt-0 ${separatorBorderClassName}`}>
+      <div style={{ width: `min(96vw, ${sheet.width}px)` }} className={`fixed inset-y-0 right-0 z-[121] overflow-auto border-l bg-background pt-[max(env(safe-area-inset-top),3.5rem)] shadow-2xl animate-slide-in sm:pt-0 ${separatorBorderClassName}`}>
         <div className="flex flex-col gap-5 p-5">
           {/* Header */}
           <div className="flex items-start justify-between gap-3">

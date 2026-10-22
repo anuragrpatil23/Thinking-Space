@@ -51,8 +51,8 @@ function readStackOpenPreference(): boolean {
 }
 
 /**
- * The reading view's Contents button. It names the section being read and,
- * when clicked, pins the note's outline under the strip as thin rows, the
+ * The reading view's Contents button: the label and the heading count. When
+ * clicked, it pins the note's outline under the strip as thin rows, the
  * heading being read highlighted. The same rows narrow to just the current
  * section ("This section only") — the whole section, so what is still ahead
  * stays visible — and that choice is remembered. There is no separate menu.
@@ -157,19 +157,10 @@ export default function MarkdownSectionContentsBlock({
         <span className="shrink-0 rounded bg-background/80 px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
           {rows.length}
         </span>
-        {hasSection && (
-          <>
-            <span className="min-w-0 truncate font-medium">
-              {location.path.map((row, index) => (
-                <span key={row.id}>
-                  {index > 0 && <span className="mx-1 text-muted-foreground/60">›</span>}
-                  {row.label && <span className="mr-1 font-mono text-[10px] text-muted-foreground/70">{row.label}</span>}
-                  {row.title}
-                </span>
-              ))}
-            </span>
-            <ChevronDown className={cn('h-3 w-3 shrink-0 transition-transform', showStack && 'rotate-180')} />
-          </>
+        {/* The section being read is not named here (decided 2026-10-22: busy, and the
+            pinned outline already highlights it); it stays in the tooltip. */}
+        {rows.length > 0 && (
+          <ChevronDown className={cn('h-3 w-3 shrink-0 transition-transform', showStack && 'rotate-180')} />
         )}
       </button>
 

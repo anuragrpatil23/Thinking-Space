@@ -1,6 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
-import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
+import { STORAGE_KEYS } from '@/services/orchestrators/storageOrch'
+import { useResizableSheetBlock } from '@/components/lego_blocks/hooks/useResizableSheetBlock'
+import SheetResizeHandleBlock from '@/components/lego_blocks/units/SheetResizeHandleBlock'
 import MarkdownDocumentBlock, {
   type MarkdownViewerMode,
 } from '@/components/lego_blocks/integrations/MarkdownDocumentLazyBlock'
@@ -10,6 +12,9 @@ type MarkdownSavedCallback = (result: { output_path: string; revision_path: stri
 interface OpenMarkdownOptions {
   mode?: MarkdownViewerMode
   onSaved?: MarkdownSavedCallback
+  /** Open the sheet for writing: New Note's editor surface (focus typography,
+   *  phone keyboard inset) instead of the plain editor. */
+  writing?: boolean
 }
 
 interface MarkdownViewerCtx {
@@ -32,20 +37,16 @@ export function useMarkdownViewer() {
   return useContext(Ctx)
 }
 
-// The sheet's width is the reader's to choose: drag its left edge, or
-// double-click the edge to swap between the default and nearly full screen.
+// The sheet is resizable like every slide-over (useResizableSheetBlock); it
+// keeps the width key it has always had.
 const SIDE_SHEET_DEFAULT_WIDTH_BLOCK = 896
 const SIDE_SHEET_MIN_WIDTH_BLOCK = 420
-const SIDE_SHEET_WIDE_FRACTION_BLOCK = 0.92
-
-function clampSheetWidthBlock(width: number): number {
-  const max = Math.max(SIDE_SHEET_MIN_WIDTH_BLOCK, window.innerWidth - 48)
-  return Math.round(Math.min(max, Math.max(SIDE_SHEET_MIN_WIDTH_BLOCK, width)))
-}
+const SIDE_SHEET_WRITING_FRACTION_BLOCK = 0.7
 
 function MarkdownSideSheet({
   path,
   initialMode,
+  writing = false,
   onSaved,
   onOpenPath,
   onOpenPathForEdit,
@@ -53,45 +54,18 @@ function MarkdownSideSheet({
 }: {
   path: string
   initialMode: MarkdownViewerMode
+  writing?: boolean
   onSaved?: MarkdownSavedCallback
   onOpenPath: (path: string) => void
   onOpenPathForEdit: (path: string) => void
   onClose: () => void
 }) {
-  const [width, setWidth] = useState(() => {
-    const stored = getJsonStorageItem<number>(STORAGE_KEYS.markdownSideSheetWidth, SIDE_SHEET_DEFAULT_WIDTH_BLOCK)
-    return clampSheetWidthBlock(typeof stored === 'number' && Number.isFinite(stored) ? stored : SIDE_SHEET_DEFAULT_WIDTH_BLOCK)
-  })
-  const [resizing, setResizing] = useState(false)
-
-  const commitWidth = useCallback((next: number) => {
-    const clamped = clampSheetWidthBlock(next)
-    setWidth(clamped)
-    setJsonStorageItem(STORAGE_KEYS.markdownSideSheetWidth, clamped)
-  }, [])
-
-  const onResizeStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const handle = event.currentTarget
-    handle.setPointerCapture(event.pointerId)
-    setResizing(true)
-    const onMove = (move: PointerEvent) => setWidth(clampSheetWidthBlock(window.innerWidth - move.clientX))
-    const onUp = (up: PointerEvent) => {
-      handle.removeEventListener('pointermove', onMove)
-      handle.removeEventListener('pointerup', onUp)
-      handle.removeEventListener('pointercancel', onUp)
-      setResizing(false)
-      commitWidth(window.innerWidth - up.clientX)
-    }
-    handle.addEventListener('pointermove', onMove)
-    handle.addEventListener('pointerup', onUp)
-    handle.addEventListener('pointercancel', onUp)
-  }, [commitWidth])
-
-  const toggleWide = useCallback(() => {
-    const wide = clampSheetWidthBlock(window.innerWidth * SIDE_SHEET_WIDE_FRACTION_BLOCK)
-    commitWidth(width >= wide - 8 ? SIDE_SHEET_DEFAULT_WIDTH_BLOCK : wide)
-  }, [commitWidth, width])
+  // A writing sheet keeps its own width, and opens wide: about 70% of the window.
+  const { width, resizing, handle } = useResizableSheetBlock(
+    writing ? 'markdown-writing' : 'markdown',
+    writing ? Math.round(window.innerWidth * SIDE_SHEET_WRITING_FRACTION_BLOCK) : SIDE_SHEET_DEFAULT_WIDTH_BLOCK,
+    writing ? { minWidth: SIDE_SHEET_MIN_WIDTH_BLOCK } : { storageKey: STORAGE_KEYS.markdownSideSheetWidth, minWidth: SIDE_SHEET_MIN_WIDTH_BLOCK },
+  )
 
   return (
     <>
@@ -104,24 +78,13 @@ function MarkdownSideSheet({
         className={cn('fixed inset-y-0 right-0 z-50 w-full border-l border-border shadow-2xl animate-slide-in', resizing && 'select-none')}
         style={{ maxWidth: width }}
       >
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize panel (double-click to widen)"
-          title="Drag to resize · double-click to widen"
-          onPointerDown={onResizeStart}
-          onDoubleClick={toggleWide}
-          className={cn(
-            'absolute inset-y-0 -left-1 z-10 hidden w-2 cursor-col-resize sm:block',
-            'after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:transition-colors hover:after:bg-sky-500/60',
-            resizing && 'after:bg-sky-500/80',
-          )}
-        />
+        <SheetResizeHandleBlock {...handle} />
         <MarkdownDocumentBlock
           key={path}
           path={path}
           countsAsReading
           initialMode={initialMode}
+          typographyProfile={writing ? 'focus' : undefined}
           onSaved={onSaved}
           onOpenPath={onOpenPath}
           onOpenPathForEdit={onOpenPathForEdit}
@@ -138,23 +101,27 @@ export function MarkdownViewerProvider({ children }: { children: ReactNode }) {
   const [currentPath, setCurrentPath] = useState<string | null>(null)
   const [currentMode, setCurrentMode] = useState<MarkdownViewerMode>('view')
   const [onSaved, setOnSaved] = useState<MarkdownSavedCallback | undefined>(undefined)
+  const [writing, setWriting] = useState(false)
 
   const openFile = useCallback((path: string, options?: OpenMarkdownOptions) => {
     setCurrentPath(path)
     setCurrentMode(options?.mode ?? 'view')
     setOnSaved(() => options?.onSaved)
+    setWriting(Boolean(options?.writing))
   }, [])
 
   const openFileForEdit = useCallback((path: string, options?: Omit<OpenMarkdownOptions, 'mode'>) => {
     setCurrentPath(path)
     setCurrentMode('edit')
     setOnSaved(() => options?.onSaved)
+    setWriting(Boolean(options?.writing))
   }, [])
 
   const closeFile = useCallback(() => {
     setCurrentPath(null)
     setCurrentMode('view')
     setOnSaved(undefined)
+    setWriting(false)
   }, [])
 
   useEffect(() => {
@@ -183,8 +150,11 @@ export function MarkdownViewerProvider({ children }: { children: ReactNode }) {
       {children}
       {currentPath && (
         <MarkdownSideSheet
+          // Writing and reading sheets size themselves differently: remount on a switch.
+          key={writing ? 'writing' : 'reading'}
           path={currentPath}
           initialMode={currentMode}
+          writing={writing}
           onSaved={onSaved}
           onOpenPath={openFile}
           onOpenPathForEdit={openFileForEdit}

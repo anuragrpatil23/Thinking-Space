@@ -220,6 +220,8 @@ export interface WebullOverallTrackRecordBlock {
   stockCompanies: number
   /** Net of what was bought in each year, short- and longer-dated. */
   byYear: Array<{ year: string; shortDated: number; longerDated: number }>
+  /** Each company's net across its options and shares. */
+  byTicker: Array<{ ticker: string; net: number }>
   throughStatement: string
 }
 
@@ -238,7 +240,11 @@ export function overallTrackRecordBlock(params: {
     else entry.longerDated += lot.net
     years.set(year, entry)
   }
+  const tickers = new Map<string, number>()
+  for (const lot of params.lots) tickers.set(lot.ticker.toUpperCase(), (tickers.get(lot.ticker.toUpperCase()) ?? 0) + lot.net)
+  for (const [ticker, value] of params.stock) tickers.set(ticker.toUpperCase(), (tickers.get(ticker.toUpperCase()) ?? 0) + value.net)
   return {
+    byTicker: [...tickers.entries()].map(([ticker, net]) => ({ ticker, net })),
     shortDated: summarizeLotsBlock(shortLots),
     longerDated: summarizeLotsBlock(longLots),
     stockNet: [...params.stock.values()].reduce((sum, value) => sum + value.net, 0),

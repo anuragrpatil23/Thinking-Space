@@ -59,6 +59,8 @@ export interface WebullStudyRowOrch {
   held: boolean
   /** True if the underlying stock itself is currently held (not just options). */
   heldStock: boolean
+  /** True if any option on this ticker is currently held. */
+  heldOptions: boolean
   /** Live stock price (may be null if unavailable). */
   livePrice: WebullStudyLivePriceOrch
   /** Per-option rows with their own price + holding match. */
@@ -88,6 +90,7 @@ interface HoldingsIndexOrch {
   optionLegPriceByKey: Map<string, number>
   optionLegSet: Set<string>
   heldStockTickers: Set<string>
+  heldOptionTickers: Set<string>
   heldUnderlyingTickers: Set<string>
 }
 
@@ -132,6 +135,7 @@ function indexHoldingsOrch(holdings: Array<Record<string, unknown>>): HoldingsIn
   const optionLegPriceByKey = new Map<string, number>()
   const optionLegSet = new Set<string>()
   const heldStockTickers = new Set<string>()
+  const heldOptionTickers = new Set<string>()
   const heldUnderlyingTickers = new Set<string>()
 
   for (const h of holdings) {
@@ -149,6 +153,7 @@ function indexHoldingsOrch(holdings: Array<Record<string, unknown>>): HoldingsIn
 
     if (instrumentType === 'OPTION') {
       heldUnderlyingTickers.add(symbol)
+      heldOptionTickers.add(symbol)
       const legs = asRecordArrayOrch(h.legs)
       for (const leg of legs) {
         const legSymbol = (asStringOrNullOrch(leg.symbol) ?? symbol).toUpperCase()
@@ -171,6 +176,7 @@ function indexHoldingsOrch(holdings: Array<Record<string, unknown>>): HoldingsIn
     optionLegPriceByKey,
     optionLegSet,
     heldStockTickers,
+    heldOptionTickers,
     heldUnderlyingTickers,
   }
 }
@@ -261,6 +267,7 @@ function buildRowOrch(
   const record = loaded?.record ?? null
   const tickerUpper = ticker.toUpperCase()
   const heldStock = holdingsIndex.heldStockTickers.has(tickerUpper)
+  const heldOptions = holdingsIndex.heldOptionTickers.has(tickerUpper)
   const heldUnderlying = holdingsIndex.heldUnderlyingTickers.has(tickerUpper)
   const held = heldUnderlying
 
@@ -345,6 +352,7 @@ function buildRowOrch(
     record,
     held,
     heldStock,
+    heldOptions,
     livePrice,
     options: optionRows,
     daysToValidThrough,

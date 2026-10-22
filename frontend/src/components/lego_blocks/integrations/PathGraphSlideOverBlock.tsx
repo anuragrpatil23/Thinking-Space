@@ -9,6 +9,8 @@ import { selectGraphNodesForPathBlock } from '@/services/lego_blocks/integration
 import { getProjectColor } from '@/components/lego_blocks/units/aiActivityColorsBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
+import { useResizableSheetBlock } from '@/components/lego_blocks/hooks/useResizableSheetBlock'
+import SheetResizeHandleBlock from '@/components/lego_blocks/units/SheetResizeHandleBlock'
 
 export interface PathGraphTarget {
   /** Vault-relative path of the note or folder. */
@@ -89,6 +91,8 @@ export default function PathGraphSlideOverBlock({ target, onClose }: PathGraphSl
     return map
   }, [data, isDark])
 
+  const sheet = useResizableSheetBlock('path-graph', 920)
+
   if (!target) return null
 
   const litCount = selection?.ids.size ?? 0
@@ -110,9 +114,11 @@ export default function PathGraphSlideOverBlock({ target, onClose }: PathGraphSl
         }
       `}</style>
       <div className="absolute inset-0" onClick={onClose} />
+      <SheetResizeHandleBlock {...sheet.handle} />
       <div
-        className="absolute right-0 top-0 flex h-full w-[min(920px,94vw)] flex-col overflow-hidden border-l border-border/40 bg-background shadow-2xl"
+        className="absolute right-0 top-0 flex h-full flex-col overflow-hidden border-l border-border/40 bg-background shadow-2xl"
         style={{
+          width: `min(94vw, ${sheet.width}px)`,
           animation: 'ltm-path-graph-slideover-in 220ms cubic-bezier(0.22, 1, 0.36, 1)',
           paddingTop: 'env(safe-area-inset-top)',
           paddingBottom: 'env(safe-area-inset-bottom)',

@@ -2282,6 +2282,25 @@ body.ltm-ruled-notebook-active .excalidraw .layer-ui__wrapper {
   animation: ltm-ruled-page-over-reverse 640ms cubic-bezier(0.4, 0.05, 0.2, 1) forwards;
 }
 
+/* List → detail inside a view (F9 Gaps, Noticed): the detail pushes in from
+   the right, the list comes back from the left, the row you came from glows
+   once so the eye lands on it. */
+@keyframes ltm-page-push-in {
+  0% { transform: translateX(28px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes ltm-page-pop-in {
+  0% { transform: translateX(-20px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes ltm-row-return {
+  0%, 35% { background-color: rgb(14 165 233 / 0.12); }
+  100% { background-color: transparent; }
+}
+.ltm-page-push-in { animation: ltm-page-push-in 260ms cubic-bezier(0.22, 1, 0.36, 1); }
+.ltm-page-pop-in { animation: ltm-page-pop-in 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+.ltm-row-return, .ltm-row-return > td { animation: ltm-row-return 1400ms ease-out; }
+
 /* Page-slide: whole sheet slides off to next sheet stack. */
 @keyframes ltm-ruled-slide-in-forward {
   0% { transform: translateX(40px); opacity: 0.5; }
@@ -2516,7 +2535,11 @@ body.ltm-ruled-notebook-active .excalidraw .layer-ui__wrapper {
   .animate-slide-in,
   .ltm-bubble-in,
   .ltm-bubble-pop,
-  .ltm-tag-pop {
+  .ltm-tag-pop,
+  .ltm-page-push-in,
+  .ltm-page-pop-in,
+  .ltm-row-return,
+  .ltm-row-return > td {
     animation: none !important;
   }
 }

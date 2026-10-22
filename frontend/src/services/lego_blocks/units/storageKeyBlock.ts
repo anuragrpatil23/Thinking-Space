@@ -34,6 +34,8 @@ export const STORAGE_KEYS = {
   webullExecutionSettings: 'ltm-webull-execution-settings',
   webullProjectPresetTags: 'ltm-webull-project-preset-tags',
   markdownSideSheetWidth: 'ltm-markdown-side-sheet-width',
+  /** Prefix: each slide-over keeps its own width under `${prefix}${sheetId}`. */
+  sheetWidthPrefix: 'ltm-sheet-width:',
   webullOverallRememberByProjectRoot: 'ltm-webull-overall-remember-by-project-root',
   aiManualCredentials: 'ltm-ai-manual-credentials',
   aiOauthCredentials: 'ltm-ai-oauth-credentials',

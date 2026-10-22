@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, FileText, MessageSquareText } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { chipColorClassBlock } from '@/services/lego_blocks/units/chipColorBlock'
 import type {
   WebullStudyCategoryOrch,
@@ -98,12 +99,25 @@ function rangeDeltaDollarsBlock(row: WebullStudyRowOrch): number | null {
   return price - (range.low + range.high) / 2
 }
 
-function formatValidThroughBlock(row: WebullStudyRowOrch): string {
-  if (!row.record?.validThrough) return '—'
+function dayWordBlock(day: string | null | undefined): string | null {
+  if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return day ?? null
+  return new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+/** "Dec 6, 2026" over "in 44d" (or "44d past"). */
+function ValidThroughBlock({ row }: { row: WebullStudyRowOrch }) {
+  if (!row.record?.validThrough) return null
   const days = row.daysToValidThrough
-  if (days === null) return row.record.validThrough
-  if (days < 0) return `${row.record.validThrough} (${Math.abs(days)}d past)`
-  return `${row.record.validThrough} (${days}d)`
+  return (
+    <span className="block leading-tight">
+      <span className="block">{dayWordBlock(row.record.validThrough)}</span>
+      {days !== null && (
+        <span className={cn('block text-[11px]', days < 0 ? 'text-red-600 dark:text-red-400' : days <= 30 ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-500 dark:text-zinc-400')}>
+          {days < 0 ? `${Math.abs(days)}d past` : days === 0 ? 'today' : `in ${days}d`}
+        </span>
+      )}
+    </span>
+  )
 }
 
 // Pick the comment to surface inline: the most recent dated one, else the last
@@ -122,6 +136,17 @@ function pickHighlightCommentBlock(
 function HeldBadgeBlock({ row }: { row: WebullStudyRowOrch }) {
   if (!row.held) {
     return <span className="text-xs text-muted-foreground/70">—</span>
+  }
+  if (row.heldStock && row.heldOptions) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-foreground/80">
+        <span className="flex -space-x-0.5" aria-hidden="true">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+        </span>
+        Stock + options
+      </span>
+    )
   }
   if (row.heldStock) {
     return (
@@ -157,7 +182,7 @@ function SortHeaderBlock({
       type="button"
       onClick={() => onToggle(sortKey)}
       className={cn(
-        'inline-flex items-center gap-1 text-left uppercase tracking-wide hover:text-foreground',
+        'inline-flex items-center gap-1 text-left hover:text-foreground',
         active && 'text-foreground',
       )}
       title={`Sort by ${label}`}
@@ -178,7 +203,7 @@ function CategoryDotBlock({ category }: { category: WebullStudyCategoryOrch }) {
 }
 
 const COLUMN_TEMPLATE_BLOCK =
-  'grid grid-cols-[24px_minmax(120px,1.2fr)_84px_minmax(120px,1fr)_minmax(110px,1fr)_80px_minmax(150px,1.2fr)_minmax(110px,1fr)] gap-3 items-center px-1'
+  'grid grid-cols-[24px_minmax(120px,1.2fr)_124px_minmax(120px,1fr)_minmax(110px,1fr)_80px_minmax(150px,1.2fr)_minmax(110px,1fr)] gap-3 items-center px-4'
 
 type SortKey =
   | 'ticker'
@@ -305,7 +330,7 @@ export default function WebullStudyTableBlock({
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+      <div className={cn(F9_PANEL_CLASS_BLOCK, 'p-8 text-center text-sm text-muted-foreground')}>
         No study records found. Add one under <code>watchlist/</code> or as
         <code>{'<TICKER>/<ticker>-study.md'}</code> in the F9-execution folder.
       </div>
@@ -313,8 +338,8 @@ export default function WebullStudyTableBlock({
   }
 
   return (
-    <div>
-      <div className={cn(COLUMN_TEMPLATE_BLOCK, 'py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70')}>
+    <div className={cn(F9_PANEL_CLASS_BLOCK, 'overflow-hidden pb-2')}>
+      <div className={cn(COLUMN_TEMPLATE_BLOCK, 'border-b-[0.5px] border-[#E5E5EA] py-2.5 text-[11px] font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-400')}>
         <span aria-hidden="true" />
         <SortHeaderBlock label="Ticker" sortKey="ticker" sort={sort} onToggle={toggleSort} />
         <SortHeaderBlock label="Held" sortKey="held" sort={sort} onToggle={toggleSort} />
@@ -327,7 +352,7 @@ export default function WebullStudyTableBlock({
 
       {groupedRows.map((group) => (
         <div key={group.category} className="mt-4 first:mt-2">
-          <div className="flex items-baseline gap-2 px-1 pb-1.5">
+          <div className="flex items-baseline gap-2 px-4 pb-1.5">
             <CategoryDotBlock category={group.category} />
             <span className="text-xs font-medium text-foreground/80">
               {CATEGORY_LABEL_BLOCK[group.category]}
@@ -336,7 +361,7 @@ export default function WebullStudyTableBlock({
               {group.rows.length}
             </span>
           </div>
-          <div className="divide-y divide-border/40">
+          <div className="divide-y-[0.5px] divide-[#EFEFF2] dark:divide-zinc-800">
             {group.rows.map((row) => {
           const isExpanded = expanded.has(row.ticker)
           const range = row.record?.currentRange
@@ -356,7 +381,7 @@ export default function WebullStudyTableBlock({
               key={row.ticker}
               className={cn(
                 'transition-colors',
-                isExpanded ? 'bg-muted/20' : 'hover:bg-muted/30',
+                isExpanded ? 'bg-zinc-50 dark:bg-zinc-800/40' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/40',
               )}
             >
               <div
@@ -383,7 +408,7 @@ export default function WebullStudyTableBlock({
 
                 <div className="flex items-center gap-2">
                   <TickerLogoBlock ticker={row.ticker} executionRoot={executionRoot} />
-                  <span className="text-base font-semibold tracking-tight">{row.ticker}</span>
+                  <span className="text-[14px] font-semibold tracking-tight">{row.ticker}</span>
                   {optionCount > 0 && (
                     <span className="text-[10px] font-medium text-muted-foreground/70">
                       +{optionCount} opt
@@ -408,7 +433,8 @@ export default function WebullStudyTableBlock({
                   <div className="text-sm">{formatMoneyBlock(row.livePrice.value)}</div>
                   {row.livePrice.source !== 'unavailable' && (
                     <div className="text-[10px] text-muted-foreground">
-                      {row.livePrice.source === 'webull-holding' ? 'Webull' : row.livePrice.source === 'yahoo-chart' ? 'Yahoo' : ''}
+                      {/* Only an outside price is worth naming; Webull is the default */}
+                      {row.livePrice.source === 'yahoo-chart' ? 'Yahoo' : ''}
                     </div>
                   )}
                 </div>
@@ -429,11 +455,11 @@ export default function WebullStudyTableBlock({
                 </div>
 
                 <div className={cn('text-sm tabular-nums', row.category === 'stale' && 'text-destructive')}>
-                  {formatValidThroughBlock(row)}
+                  <ValidThroughBlock row={row} />
                 </div>
 
                 <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
-                  <span className="tabular-nums">{row.record?.lastUpdated ?? '—'}</span>
+                  <span className="tabular-nums">{dayWordBlock(row.record?.lastUpdated) ?? ''}</span>
                   {row.record?.filePath && (
                     <button
                       type="button"
@@ -453,7 +479,7 @@ export default function WebullStudyTableBlock({
 
               {impNote && !isExpanded && (
                 <div
-                  className="flex cursor-pointer items-start gap-1.5 px-1 pb-2 pl-9 text-xs"
+                  className="flex cursor-pointer items-start gap-1.5 px-4 pb-2 pl-[3.25rem] text-xs"
                   onClick={() => toggleExpanded(row.ticker)}
                   title={impNote.raw}
                 >
@@ -479,7 +505,7 @@ export default function WebullStudyTableBlock({
               )}
 
               {isExpanded && (
-                <div className="border-t border-border/40 py-4 pl-9 pr-1">
+                <div className="border-t-[0.5px] border-[#EFEFF2] py-4 pl-[3.25rem] pr-4 dark:border-zinc-800">
                   {!row.record ? (
                     <p className="text-sm text-muted-foreground">
                       No study record yet for this held ticker. Add one under
