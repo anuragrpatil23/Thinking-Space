@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, Building2, Clock, Crosshair, Eye, EyeOff, History, Layers, Wallet, type LucideIcon } from 'lucide-react'
+import { BookOpen, Building2, ChevronRight, Clock, Crosshair, Eye, EyeOff, History, Layers, Wallet, type LucideIcon } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import {
   dispatchWebullSidebarChromeStateBlock,
@@ -7,11 +7,10 @@ import {
 } from '@/personal_extension/services/lego_blocks/units/webullSidebarChromeBlock'
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import { chipColorClassBlock, type ChipColorBlock } from '@/services/lego_blocks/units/chipColorBlock'
-import FileSelectionViewerBlock from '@/components/lego_blocks/integrations/FileSelectionViewerBlock'
-import MarkdownDocumentBlock from '@/components/lego_blocks/integrations/MarkdownDocumentBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
-import PdfDocumentBlock from '@/components/lego_blocks/integrations/PdfDocumentBlock'
 import WebullStudyBlock from './WebullStudyBlock'
+import WebullCompanyPageBlock, { WEBULL_COMPANY_SECTIONS_BLOCK, type WebullCompanyHoldingBlock } from './WebullCompanyPageBlock'
+import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import WebullF9CanvasOrch from '@/personal_extension/components/orchestrators/WebullF9CanvasOrch'
@@ -47,7 +46,7 @@ import {
 } from '@/services/lego_blocks/integrations/organizerUiStateBlock'
 import { normalizeTagBlock, normalizeTagListBlock, splitTagInputBlock, tagsEqualBlock } from '@/services/lego_blocks/units/tagBlock'
 import { NODE_STATUSES, type NodePriority, type NodeStatus, type YAMLCommentEntry, type YAMLFrontmatter } from '@/services/lego_blocks/units/yamlNoteBlock'
-import { listMarkdownEntries, listPdfFiles } from '@/services/orchestrators/fileSystemOrch'
+import { listMarkdownEntries } from '@/services/orchestrators/fileSystemOrch'
 import type {
   WebullAccountSnapshotOrch,
   WebullRuntimeSurfaceOrch,
@@ -78,11 +77,6 @@ interface WebullLinkOptionBlock {
   path: string
   label: string
   summary?: string
-}
-
-interface WebullPdfOptionBlock {
-  path: string
-  label: string
 }
 
 interface WebullWorkspaceBlockProps {
@@ -1087,7 +1081,6 @@ export default function WebullWorkspaceBlock({
   activePositionFileName,
   onSelectPositionFileName,
   activePositionDetail,
-  positionDetailLoading,
   positionDetailError,
   loading,
   workspaceBusy,
@@ -1501,15 +1494,6 @@ export default function WebullWorkspaceBlock({
     () => getJsonStorageItem<WebullProjectProgramGroupsByRootBlock>(STORAGE_KEYS.thinkingOrganizerProjectProgramGroups, {}),
   )
   const [linkOptions, setLinkOptions] = useState<WebullLinkOptionBlock[]>([])
-  const [pdfOptions, setPdfOptions] = useState<WebullPdfOptionBlock[]>([])
-  const [companyFilePickerOpen, setCompanyFilePickerOpen] = useState(false)
-  const [companyFileQuery, setCompanyFileQuery] = useState('')
-  const [companyFileViewerNonce, setCompanyFileViewerNonce] = useState(0)
-  const [companyFileControlsHidden, setCompanyFileControlsHidden] = useState(false)
-  const [companyPdfPickerOpen, setCompanyPdfPickerOpen] = useState(false)
-  const [companyPdfQuery, setCompanyPdfQuery] = useState('')
-  const [companyPdfViewerNonce, setCompanyPdfViewerNonce] = useState(0)
-  const [companyPdfControlsHidden, setCompanyPdfControlsHidden] = useState(false)
 
   const updateProjectProgramGroups = useCallback((
     root: string,
@@ -1789,15 +1773,13 @@ export default function WebullWorkspaceBlock({
     let cancelled = false
     void Promise.allSettled([
       listMarkdownEntries(),
-      listPdfFiles(),
       getAllNodes(),
     ])
       .then((results) => {
         if (cancelled) return
 
         const markdownResult = results[0]
-        const pdfResult = results[1]
-        const nodesResult = results[2]
+        const nodesResult = results[1]
 
         const nodes = (nodesResult.status === 'fulfilled') ? nodesResult.value : []
         const nodeByPath = new Map(
@@ -1821,22 +1803,6 @@ export default function WebullWorkspaceBlock({
         } else {
           setLinkOptions([])
         }
-
-        if (pdfResult.status === 'fulfilled') {
-          const pdfFileOptions = pdfResult.value
-            .map((path) => {
-              const normalizedPath = normalizeRelativePathBlock(path)
-              return {
-                path: normalizedPath,
-                label: path.split('/').pop() || normalizedPath,
-              } satisfies WebullPdfOptionBlock
-            })
-            .filter((option) => option.path.length > 0)
-            .sort((a, b) => a.label.localeCompare(b.label))
-          setPdfOptions(pdfFileOptions)
-        } else {
-          setPdfOptions([])
-        }
       })
     return () => {
       cancelled = true
@@ -1848,39 +1814,6 @@ export default function WebullWorkspaceBlock({
     if (backlogTableModel.nodeByUuid.has(detailPanelNodeId)) return
     setDetailPanelNodeId(null)
   }, [backlogTableModel.nodeByUuid, detailPanelNodeId])
-
-  useEffect(() => {
-    setCompanyFilePickerOpen(false)
-    setCompanyFileQuery('')
-    setCompanyPdfPickerOpen(false)
-    setCompanyPdfQuery('')
-  }, [selectedCompany?.companyTicker])
-
-  const selectCompanyFilePath = useCallback(async (rawPath: string) => {
-    if (!selectedCompany) return
-    const normalizedPath = normalizeRelativePathBlock(rawPath)
-    const currentPath = normalizeRelativePathBlock(selectedCompany.valuationNotePath ?? '')
-    setCompanyFilePickerOpen(false)
-    setCompanyFileQuery('')
-    if (normalizedPath === currentPath) return
-    await onUpdateCompanyOverlay({
-      valuationNotePath: normalizedPath || null,
-    })
-    setCompanyFileViewerNonce((prev) => prev + 1)
-  }, [onUpdateCompanyOverlay, selectedCompany])
-
-  const selectCompanyPdfPath = useCallback(async (rawPath: string) => {
-    if (!selectedCompany) return
-    const normalizedPath = normalizeRelativePathBlock(rawPath)
-    const currentPath = normalizeRelativePathBlock(selectedCompany.companyPdfReportPath ?? '')
-    setCompanyPdfPickerOpen(false)
-    setCompanyPdfQuery('')
-    if (normalizedPath === currentPath) return
-    await onUpdateCompanyOverlay({
-      companyPdfReportPath: normalizedPath || null,
-    })
-    setCompanyPdfViewerNonce((prev) => prev + 1)
-  }, [onUpdateCompanyOverlay, selectedCompany])
 
   const accountLabelEntries = useMemo(
     () => buildAccountLabelEntriesBlock(accounts, selectedAccount),
@@ -2152,6 +2085,34 @@ export default function WebullWorkspaceBlock({
     [availableProjectPresetTags, detailPanelNode?.projectPresetTags],
   )
 
+  // The views (Study/Sim/Gaps/Overall) are where you go; companies are what you
+  // look at, and they already appear as rows in those views. So the sidebar
+  // list starts collapsed every session and, when open, carries signal:
+  // held companies by cost-basis share (the Allocation pie order), then
+  // watch-only ones alphabetically.
+  const [sidebarCompaniesExpanded, setSidebarCompaniesExpanded] = useState(false)
+  const [createPositionOpen, setCreatePositionOpen] = useState(false)
+  const sidebarCompanyGroups = useMemo(() => {
+    const entries = (executionOverview?.companies ?? []).map((company) => {
+      const activePositions = company.positions.filter(
+        p => normalizePositionStatusBlock(p.status) !== 'archived',
+      )
+      const metrics = computeCompanySummaryMetricsBlock(activePositions)
+      const cost = Math.max(0, metrics.stockCost ?? 0) + Math.max(0, metrics.optionCost ?? 0)
+      return { company, cost }
+    })
+    const totalCost = entries.reduce((sum, entry) => sum + entry.cost, 0)
+    const held = entries
+      .filter(entry => entry.cost > 0)
+      .sort((a, b) => b.cost - a.cost)
+      .map(entry => ({ ...entry, share: totalCost > 0 ? entry.cost / totalCost : 0 }))
+    const watching = entries
+      .filter(entry => entry.cost <= 0)
+      .sort((a, b) => a.company.companyTicker.localeCompare(b.company.companyTicker))
+      .map(entry => ({ ...entry, share: null as number | null }))
+    return { held, watching, count: entries.length }
+  }, [executionOverview])
+
   const [newCompanyTicker, setNewCompanyTicker] = useState('')
   const [newPositionTitle, setNewPositionTitle] = useState('')
   const [newPositionStatus, setNewPositionStatus] = useState<NodeStatus>('planned')
@@ -2213,14 +2174,6 @@ export default function WebullWorkspaceBlock({
     selectedCompanyMetrics?.totalProfitLoss ?? null,
     selectedCompanyMetrics?.totalCost ?? null,
   )
-  const selectedCompanyFilePath = normalizeRelativePathBlock(selectedCompany?.valuationNotePath ?? '')
-  const selectedCompanyFileLabel = selectedCompanyFilePath
-    ? (linkOptionsByPath.get(selectedCompanyFilePath)?.label ?? linkLabelFromPathBlock(selectedCompanyFilePath))
-    : ''
-  const selectedCompanyPdfPath = normalizeRelativePathBlock(selectedCompany?.companyPdfReportPath ?? '')
-  const selectedCompanyPdfLabel = selectedCompanyPdfPath
-    ? (pdfOptions.find((option) => option.path === selectedCompanyPdfPath)?.label ?? selectedCompanyPdfPath.split('/').pop() ?? selectedCompanyPdfPath)
-    : ''
   const overallTabActive = !showCompanyView && activeSubtabId === 'overall'
   const studyTabActive = !showCompanyView && activeSubtabId === 'study'
   const simTabActive = !showCompanyView && activeSubtabId === 'sim'
@@ -2237,6 +2190,35 @@ export default function WebullWorkspaceBlock({
         : gapsTabActive
           ? 'Every gap identified, bet or not, graded when the fog clears.'
           : 'Canonical overall positions from Webull sync.')
+
+  const plToneBlock = (value: number | null): 'up' | 'down' | null => (value === null || value === 0 ? null : value > 0 ? 'up' : 'down')
+  const signedPercentBlock = (value: number | null) => (value === null || !Number.isFinite(value) ? '—' : `${value > 0 ? '+' : ''}${value.toFixed(1)}%`)
+  const selectedCompanyHolding: WebullCompanyHoldingBlock | null = selectedCompanyMetrics && (selectedCompanyMetrics.totalCost ?? 0) > 0
+    ? {
+        totalCost: formatCurrencyBlock(selectedCompanyMetrics.totalCost ?? null),
+        portfolioShare: formatPercentBlock(companyPortfolioWeight),
+        stockCost: formatCurrencyKBlock(selectedCompanyMetrics.stockCost ?? null),
+        stockShare: formatPercentBlock(stockCostWeight),
+        optionCost: formatCurrencyKBlock(selectedCompanyMetrics.optionCost ?? null),
+        optionShare: formatPercentBlock(optionCostWeight),
+        pl: formatCurrencyKBlock(selectedCompanyMetrics.totalProfitLoss ?? null),
+        plReturn: signedPercentBlock(totalProfitLossReturn),
+        stockPl: formatCurrencyKBlock(selectedCompanyMetrics.stockProfitLoss ?? null),
+        stockPlReturn: signedPercentBlock(stockProfitLossReturn),
+        optionPl: formatCurrencyKBlock(selectedCompanyMetrics.optionProfitLoss ?? null),
+        optionPlReturn: signedPercentBlock(optionProfitLossReturn),
+        plTone: plToneBlock(selectedCompanyMetrics.totalProfitLoss ?? null),
+        stockPlTone: plToneBlock(selectedCompanyMetrics.stockProfitLoss ?? null),
+        optionPlTone: plToneBlock(selectedCompanyMetrics.optionProfitLoss ?? null),
+      }
+    : null
+  // The stock's last Webull price, from the overall snapshot row for its symbol.
+  const selectedCompanyLivePrice = (() => {
+    if (!selectedCompany) return null
+    const ticker = selectedCompany.companyTicker.toUpperCase()
+    const row = overallRows.find(r => firstStringBlock(r.symbol, r.ticker, r.position_symbol, r.stock_code).toUpperCase() === ticker)
+    return row ? firstNumberBlock(row.last_price, row.lastPrice) : null
+  })()
 
   // Sidebar rows are a 220px desktop nav by origin — 32px tall, which is fine
   // for a pointer and below the 44pt floor for a thumb. On the phone the same
@@ -2327,53 +2309,108 @@ export default function WebullWorkspaceBlock({
           {phoneListMode ? (
             <PhoneListSectionHeaderBlock>Companies</PhoneListSectionHeaderBlock>
           ) : (
-            <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Companies
-            </p>
+            <button
+              type="button"
+              onClick={() => setSidebarCompaniesExpanded(prev => !prev)}
+              aria-expanded={sidebarCompaniesExpanded}
+              className="ltm-motion-fast mb-2 mt-5 flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronRight className={cn('h-3 w-3 shrink-0 transition-transform duration-150', sidebarCompaniesExpanded && 'rotate-90')} />
+              <span>Companies</span>
+              <span className="ml-auto font-medium normal-case tracking-normal tabular-nums opacity-70">
+                {sidebarCompanyGroups.count}
+              </span>
+            </button>
           )}
           <nav className={phoneListMode ? undefined : 'space-y-1'}>
             <PhoneListGroupBlock enabled={phoneListMode}>
-            {(executionOverview?.companies ?? []).map((company, companyIndex) => {
-              const active = showCompanyView && activeCompanyTicker === company.companyTicker
-              const positionCount = company.positions
-                .filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length
-              const onSelect = () => pushDetailIfPhone(() => {
-                setPreserveOverallContext(false)
-                onSelectCompanyTicker(company.companyTicker)
-              })
-              if (phoneListMode) {
-                return (
-                  <PhoneListRowBlock
+            {[
+              { key: 'held', label: 'Held', entries: sidebarCompanyGroups.held },
+              { key: 'watching', label: 'Watching', entries: sidebarCompanyGroups.watching },
+            ].flatMap((group) => {
+              // Collapsed on desktop: only the company you're in stays visible,
+              // so the sidebar still says where you are.
+              const visible = phoneListMode || sidebarCompaniesExpanded
+                ? group.entries
+                : group.entries.filter(({ company }) => showCompanyView && activeCompanyTicker === company.companyTicker)
+              if (visible.length === 0) return []
+              const rows = visible.map(({ company, share }) => {
+                const active = showCompanyView && activeCompanyTicker === company.companyTicker
+                const shareLabel = share === null ? null : `${(share * 100).toFixed(share >= 0.1 ? 0 : 1)}%`
+                const onSelect = () => pushDetailIfPhone(() => {
+                  setPreserveOverallContext(false)
+                  onSelectCompanyTicker(company.companyTicker)
+                })
+                const logo = executionRoot
+                  ? <TickerLogoBlock ticker={company.companyTicker} executionRoot={executionRoot} className={phoneListMode ? 'h-[22px] w-[22px]' : 'h-4 w-4'} />
+                  : <Building2 className={cn(phoneListMode ? PHONE_LIST_ICON_CLASS_BLOCK : navIconClass, 'shrink-0')} />
+                if (phoneListMode) {
+                  return (
+                    <PhoneListRowBlock
+                      key={company.companyTicker}
+                      icon={logo}
+                      label={company.companyTicker}
+                      trailing={shareLabel ?? undefined}
+                      onClick={onSelect}
+                    />
+                  )
+                }
+                const row = (
+                  <button
                     key={company.companyTicker}
-                    icon={<Building2 className={PHONE_LIST_ICON_CLASS_BLOCK} />}
-                    label={company.companyTicker}
-                    trailing={positionCount}
+                    type="button"
                     onClick={onSelect}
-                  />
+                    className={cn(
+                      navRowClass,
+                      active
+                        ? 'bg-foreground text-background'
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                    )}
+                  >
+                    {logo}
+                    <span className="truncate">{company.companyTicker}</span>
+                    {shareLabel && <span className="ml-auto text-xs tabular-nums opacity-70">{shareLabel}</span>}
+                  </button>
                 )
-              }
-              return (
-                <button
-                  key={company.companyTicker}
-                  type="button"
-                  onClick={onSelect}
-                  className={cn(
-                    navRowClass,
-                    active
-                      ? 'bg-foreground text-background'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                  )}
-                >
-                  <Building2 className={cn(navIconClass, 'shrink-0')} />
-                  <sup className="-ml-1 inline-flex pt-0.5 align-super text-[9px] font-medium opacity-65 tabular-nums">
-                    {companyIndex + 1}
-                  </sup>
-                  <span className="truncate">{company.companyTicker}</span>
-                  <span className="ml-auto text-xs opacity-80">{positionCount}</span>
-                </button>
-              )
+                if (!active) return row
+                // The open company unfolds in place: its page sections nest
+                // under its row as jump links, so the rest of the sidebar
+                // (views, other companies) never moves out from under you.
+                const positionCount = company.positions
+                  .filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length
+                const sections: Array<{ id: string; label: string; trailing?: number }> = WEBULL_COMPANY_SECTIONS_BLOCK.map(section => (
+                  section.id === 'webull-company-positions' ? { ...section, trailing: positionCount } : section
+                ))
+                return (
+                  <div key={company.companyTicker}>
+                    {row}
+                    <div className="ml-[18px] mt-1 space-y-0.5 border-l border-border/70 pl-2">
+                      {sections.map(({ id, label, trailing }) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                          className="ltm-motion-fast flex w-full items-center rounded-md px-2 py-1 text-left text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                        >
+                          <span className="truncate">{label}</span>
+                          {trailing !== undefined && <span className="ml-auto text-xs tabular-nums opacity-70">{trailing}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })
+              const showGroupLabel = !phoneListMode && sidebarCompaniesExpanded
+              return showGroupLabel
+                ? [
+                    <p key={`${group.key}-label`} className="px-2.5 pb-0.5 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/60">
+                      {group.label}
+                    </p>,
+                    ...rows,
+                  ]
+                : rows
             })}
-            {(executionOverview?.companies.length ?? 0) === 0 && (
+            {(executionOverview?.companies.length ?? 0) === 0 && (phoneListMode || sidebarCompaniesExpanded) && (
               <p className={cn(
                 'text-xs text-muted-foreground/60',
                 phoneListMode ? 'px-4 py-3 text-[15px]' : 'px-2 py-1',
@@ -2382,6 +2419,7 @@ export default function WebullWorkspaceBlock({
             </PhoneListGroupBlock>
           </nav>
 
+          {(phoneListMode || sidebarCompaniesExpanded) && (<>
           {phoneListMode ? (
             <PhoneListSectionHeaderBlock>Add Company</PhoneListSectionHeaderBlock>
           ) : (
@@ -2416,6 +2454,7 @@ export default function WebullWorkspaceBlock({
               Add Company
             </Button>
           </div>
+          </>)}
         </div>
         </aside>
       )}
@@ -2430,9 +2469,12 @@ export default function WebullWorkspaceBlock({
       ) : (
       <div className={cn(
         'min-w-0 overflow-auto px-6 py-5',
+        // The company page is the first F9 view on the native ground: grey,
+        // with white panels instead of one big card.
+        showCompanyView && 'bg-[#F5F5F7] px-7 py-6 dark:bg-zinc-950',
         phoneListMode ? 'hidden' : 'flex-1',
       )}>
-      {pageTitle && !gapsTabActive && (
+      {pageTitle && !gapsTabActive && !showCompanyView && (
         <div className="mb-4">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{pageTitle}</h1>
           <p className="text-sm text-muted-foreground">
@@ -2440,7 +2482,12 @@ export default function WebullWorkspaceBlock({
           </p>
         </div>
       )}
-      <Card className="border-foreground/[0.06] bg-white shadow-[0_2px_10px_-4px_rgba(20,20,24,0.08)] hover:shadow-[0_2px_10px_-4px_rgba(20,20,24,0.08)] dark:bg-background">
+      <Card className={cn(
+        showCompanyView
+          ? 'border-0 bg-transparent shadow-none hover:shadow-none'
+          : 'border-foreground/[0.06] bg-white shadow-[0_2px_10px_-4px_rgba(20,20,24,0.08)] hover:shadow-[0_2px_10px_-4px_rgba(20,20,24,0.08)] dark:bg-background',
+      )}>
+        {!showCompanyView && (
         <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
           <div>
             <CardTitle>{workspaceTitle}</CardTitle>
@@ -2457,8 +2504,9 @@ export default function WebullWorkspaceBlock({
             )}
           </div>
         </CardHeader>
+        )}
 
-        <CardContent className="space-y-4">
+        <CardContent className={cn('space-y-4', showCompanyView && 'p-0')}>
           {projectTagsOpen && !gapsTabActive && (
             <div className="rounded-xl border bg-background p-3">
               <TagListEditorBlock
@@ -2784,306 +2832,222 @@ export default function WebullWorkspaceBlock({
             )
           })()}
 
-          {showCompanyView ? (
-            <>
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-lg border bg-background p-3">
-                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Total Cost</p>
-                  <p className="mt-1 text-lg font-semibold">{formatCurrencyKBlock(selectedCompanyMetrics?.totalCost ?? null)}</p>
-                  <p className="text-xs text-muted-foreground">{formatCurrencyBlock(selectedCompanyMetrics?.totalCost ?? null)}</p>
-                </div>
-                <div className="rounded-lg border bg-background p-3">
-                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">% Of Portfolio</p>
-                  <p className="mt-1 text-lg font-semibold">{formatPercentBlock(companyPortfolioWeight)}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Stock {formatPercentBlock(stockCostWeight)} ({formatCurrencyKBlock(selectedCompanyMetrics?.stockCost ?? null)})
-                    {' · '}
-                    Option {formatPercentBlock(optionCostWeight)} ({formatCurrencyKBlock(selectedCompanyMetrics?.optionCost ?? null)})
-                  </p>
-                </div>
-                <div className="rounded-lg border bg-background p-3">
-                  <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Current P/L</p>
-                  <p className="mt-1 text-lg font-semibold">
-                    {formatCurrencyKBlock(selectedCompanyMetrics?.totalProfitLoss ?? null)}
-                    {totalProfitLossReturn !== null && (
-                      <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                        ({totalProfitLossReturn >= 0 ? '+' : ''}{totalProfitLossReturn.toFixed(1)}%)
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Stock {formatPercentBlock(stockProfitLossReturn)} ({formatCurrencyKBlock(selectedCompanyMetrics?.stockProfitLoss ?? null)})
-                    {' · '}
-                    Option {formatPercentBlock(optionProfitLossReturn)} ({formatCurrencyKBlock(selectedCompanyMetrics?.optionProfitLoss ?? null)})
-                  </p>
-                </div>
-              </div>
-
-              <FileSelectionViewerBlock
-                heading="Company File"
-                summary="Your most important notes on company, e.g. valuations, quick things to always remember, etc."
-                selectedPath={selectedCompanyFilePath || null}
-                selectedLabel={selectedCompanyFileLabel}
-                emptySelectionMessage="No company file selected."
-                options={linkOptions}
-                query={companyFileQuery}
-                onQueryChange={setCompanyFileQuery}
-                pickerOpen={companyFilePickerOpen}
-                onPickerOpenChange={setCompanyFilePickerOpen}
-                controlsHidden={companyFileControlsHidden}
-                onControlsHiddenChange={setCompanyFileControlsHidden}
-                onSelectPath={(path) => { void selectCompanyFilePath(path ?? '') }}
-                onOpenPath={onOpenNodeFile}
-                disabled={workspaceBusy}
-                searchPlaceholder="Search markdown file"
-                searchEmptyMessage="No markdown files found"
-                allowCustomValue
-                hideDetailsWithSelectionControls
-                searchHelperText="Select a file to set it as the company file."
-                emptyViewerMessage="Select a company file to display it here with the full markdown viewer."
-                renderSelectedContent={() => (
-                  <div className="h-[700px] overflow-hidden rounded-lg border">
-                    <MarkdownDocumentBlock
-                      key={`${selectedCompanyFilePath}::${companyFileViewerNonce}`}
-                      path={selectedCompanyFilePath}
-                      initialMode="view"
-                      onOpenPath={(path) => onOpenNodeFile(path)}
-                      onOpenPathForEdit={(path) => onOpenNodeFile(path)}
-                      className="h-full"
-                    />
-                  </div>
-                )}
-              />
-
-              <div className="rounded-2xl border p-5">
-                <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
-                  {backlogLayoutEditMode && (
-                    <label className="mr-auto flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={showArchivedByDefault}
-                        onChange={toggleShowArchivedByDefault}
-                        className="h-3.5 w-3.5"
-                      />
-                      Show archived positions by default
-                    </label>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setBacklogLayoutEditMode(prev => !prev)}
-                    className={backlogLayoutEditMode
-                      ? 'inline-flex h-8 items-center rounded-md bg-foreground px-3 text-xs font-medium text-background transition-colors hover:bg-foreground/90'
-                      : 'inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted'}
-                  >
-                    {backlogLayoutEditMode ? 'Done' : 'Edit'}
-                  </button>
-                </div>
-                <ScrollableZoomSurfaceBlock
-                  minWidthClassName={Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
-                  controlsLabel="Table zoom"
-                  showFitColumnsToWidthButton
-                  persistStateKey="webull-table-viewport-fit"
-                >
-                  <BacklogListBlock
-                    programs={backlogTableModel.programs}
-                    onReorderSiblings={handleReorderBacklogPrograms}
-                    resolveProgramOrdinal={resolveBacklogProgramOrdinal}
-                    onSetProgramOrdinal={handleSetBacklogProgramOrdinal}
-                    renderProgramTitlePrefix={renderProgramTitlePrefix}
-                    programLayoutEditMode={backlogLayoutEditMode}
-                    onProgramLayoutEditModeChange={setBacklogLayoutEditMode}
-                    showProgramLayoutToggle={false}
-                    epicBorderClassByProgramUuid={companyBorderClassByProgramUuid}
-                    loadEpics={loadBacklogEpics}
-                    loadChildren={loadBacklogChildren}
-                    selectedNodeId={selectedBacklogNodeId}
-                    readOnly
-                    allowStatusEditingInReadOnly
-                    allowProgramLayoutEditingInReadOnly
-                    onSelectNode={onSelectBacklogNode}
-                    programGroups={activeProjectProgramGroups}
-                    programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
-                    onCreateProgramGroup={createActiveProjectCompanyGroup}
-                    onDeleteProgramGroup={deleteActiveProjectCompanyGroup}
-                    onToggleProgramGroupCollapsed={toggleActiveProjectCompanyGroupCollapsed}
-                    onAssignProgramToGroup={assignProgramToActiveProjectCompanyGroup}
-                    onOpenNodeDetails={onOpenBacklogNodeDetails}
-                    onUpdateNodeStatus={onUpdateBacklogNodeStatus}
-                    onUpdateNodeNotes={onUpdateBacklogNodeNotes}
-                    relatedNodeOptions={linkOptions}
-                    onOpenRelatedNode={handleBacklogOpenRelated}
-                    programLabelSingular="company"
-                    programLabelPlural="companies"
-                    programGroupLabelSingular="company group"
-                    projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
-                    canOpenNodeDetails={handleBacklogCanOpenDetails}
-                    rowColumns={webullRowColumns}
-                    showRowColumnsOnCompact
-                    rowPresetTagLimit={5}
-                    rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
-                    reserveTagsSlotWhenEmpty
-                    linksColumnLabel="Links"
-                    linksColumnWidthClassName="w-[8rem] mx-6"
-                    linksColumnAlign="left"
-                    linksColumnPaddingClassName="px-0"
-                    linksBeforeTags
-                    statusRightAligned={false}
-                    rowDetailsRenderer={renderWebullInlineDetails}
-                    titleColumnClassName="w-[11rem]"
-                    wrapTitleText
-                    actionsRightEdge
-                    showProgramStatus={false}
-                    showProgramCopyButton={false}
-                    preferInlineDetailsButton
-                    allowInlineNotesInReadOnly
-                    showNodeTypeIcons={false}
-                    showExpandToggles={false}
-                    showPriorityDots={false}
-                  />
-                </ScrollableZoomSurfaceBlock>
-              </div>
-
-              <div className="rounded-xl border bg-background p-3">
-                <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Create Position</p>
-                <div className="grid gap-2 md:grid-cols-2">
-                  <input
-                    type="text"
-                    value={newPositionTitle}
-                    onChange={(event) => setNewPositionTitle(event.target.value)}
-                    placeholder="Position title"
-                    className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring"
-                  />
-                  <select
-                    value={newPositionStatus}
-                    onChange={(event) => setNewPositionStatus(event.target.value as NodeStatus)}
-                    className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring"
-                  >
-                    <option value="planned">planned</option>
-                    <option value="watchlist">watchlist</option>
-                    <option value="taken">taken</option>
-                    <option value="completed">completed</option>
-                  </select>
-                  <select
-                    value={newInstrumentType}
-                    onChange={(event) => setNewInstrumentType(event.target.value as 'STOCK' | 'OPTION')}
-                    className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring"
-                  >
-                    <option value="STOCK">STOCK</option>
-                    <option value="OPTION">OPTION</option>
-                  </select>
-                  <input
-                    type="text"
-                    value={newLinkedIdeaId}
-                    onChange={(event) => setNewLinkedIdeaId(event.target.value)}
-                    placeholder="Linked idea UUID (optional)"
-                    className="h-9 rounded-md border border-input bg-background px-2.5 font-mono text-xs outline-none focus:border-ring"
-                  />
-                  {newInstrumentType === 'OPTION' && (
-                    <>
-                      <select
-                        value={newOptionType}
-                        onChange={(event) => setNewOptionType(event.target.value as 'CALL' | 'PUT')}
-                        className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring"
+          {showCompanyView && selectedCompany ? (
+            <WebullCompanyPageBlock
+              key={selectedCompany.companyTicker}
+              ticker={selectedCompany.companyTicker}
+              companyName={tickerToCompanyName.get(selectedCompany.companyTicker) ?? null}
+              executionRoot={executionRoot}
+              costShare={sidebarCompanyGroups.held.find(entry => entry.company.companyTicker === selectedCompany.companyTicker)?.share ?? null}
+              livePrice={selectedCompanyLivePrice}
+              holding={selectedCompanyHolding}
+              positionCount={selectedCompany.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length}
+              inlinePdf={!phoneListMode && !phoneDetailMode}
+              onOpenFile={onOpenNodeFile}
+              positionsSlot={(
+                <div className="space-y-3">
+                  <div className={cn(F9_PANEL_CLASS_BLOCK, 'p-4')}>
+                    <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
+                      {backlogLayoutEditMode && (
+                        <label className="mr-auto flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={showArchivedByDefault}
+                            onChange={toggleShowArchivedByDefault}
+                            className="h-3.5 w-3.5"
+                          />
+                          Show archived positions by default
+                        </label>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setCreatePositionOpen(prev => !prev)}
+                        className="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
                       >
-                        <option value="CALL">CALL</option>
-                        <option value="PUT">PUT</option>
-                      </select>
-                      <input
-                        type="date"
-                        value={newOptionExpiry}
-                        onChange={(event) => setNewOptionExpiry(event.target.value)}
-                        className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring"
+                        {createPositionOpen ? 'Cancel' : '+ Position'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBacklogLayoutEditMode(prev => !prev)}
+                        className={backlogLayoutEditMode
+                          ? 'inline-flex h-8 items-center rounded-md bg-foreground px-3 text-xs font-medium text-background transition-colors hover:bg-foreground/90'
+                          : 'inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted'}
+                      >
+                        {backlogLayoutEditMode ? 'Done' : 'Edit'}
+                      </button>
+                    </div>
+                    <ScrollableZoomSurfaceBlock
+                      minWidthClassName={Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
+                      controlsLabel="Table zoom"
+                      showFitColumnsToWidthButton
+                      persistStateKey="webull-table-viewport-fit"
+                    >
+                      <BacklogListBlock
+                        programs={backlogTableModel.programs}
+                        onReorderSiblings={handleReorderBacklogPrograms}
+                        resolveProgramOrdinal={resolveBacklogProgramOrdinal}
+                        onSetProgramOrdinal={handleSetBacklogProgramOrdinal}
+                        renderProgramTitlePrefix={renderProgramTitlePrefix}
+                        programLayoutEditMode={backlogLayoutEditMode}
+                        onProgramLayoutEditModeChange={setBacklogLayoutEditMode}
+                        showProgramLayoutToggle={false}
+                        epicBorderClassByProgramUuid={companyBorderClassByProgramUuid}
+                        loadEpics={loadBacklogEpics}
+                        loadChildren={loadBacklogChildren}
+                        selectedNodeId={selectedBacklogNodeId}
+                        readOnly
+                        allowStatusEditingInReadOnly
+                        allowProgramLayoutEditingInReadOnly
+                        onSelectNode={onSelectBacklogNode}
+                        programGroups={activeProjectProgramGroups}
+                        programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
+                        onCreateProgramGroup={createActiveProjectCompanyGroup}
+                        onDeleteProgramGroup={deleteActiveProjectCompanyGroup}
+                        onToggleProgramGroupCollapsed={toggleActiveProjectCompanyGroupCollapsed}
+                        onAssignProgramToGroup={assignProgramToActiveProjectCompanyGroup}
+                        onOpenNodeDetails={onOpenBacklogNodeDetails}
+                        onUpdateNodeStatus={onUpdateBacklogNodeStatus}
+                        onUpdateNodeNotes={onUpdateBacklogNodeNotes}
+                        relatedNodeOptions={linkOptions}
+                        onOpenRelatedNode={handleBacklogOpenRelated}
+                        programLabelSingular="company"
+                        programLabelPlural="companies"
+                        programGroupLabelSingular="company group"
+                        projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
+                        canOpenNodeDetails={handleBacklogCanOpenDetails}
+                        rowColumns={webullRowColumns}
+                        showRowColumnsOnCompact
+                        rowPresetTagLimit={5}
+                        rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
+                        reserveTagsSlotWhenEmpty
+                        linksColumnLabel="Links"
+                        linksColumnWidthClassName="w-[8rem] mx-6"
+                        linksColumnAlign="left"
+                        linksColumnPaddingClassName="px-0"
+                        linksBeforeTags
+                        statusRightAligned={false}
+                        rowDetailsRenderer={renderWebullInlineDetails}
+                        titleColumnClassName="w-[11rem]"
+                        wrapTitleText
+                        actionsRightEdge
+                        showProgramStatus={false}
+                        showProgramCopyButton={false}
+                        preferInlineDetailsButton
+                        allowInlineNotesInReadOnly
+                        showNodeTypeIcons={false}
+                        showExpandToggles={false}
+                        showPriorityDots={false}
                       />
-                      <input
-                        type="text"
-                        value={newOptionStrike}
-                        onChange={(event) => setNewOptionStrike(event.target.value)}
-                        placeholder="Strike price"
-                        className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring md:col-span-2"
-                      />
-                    </>
-                  )}
-                  <textarea
-                    value={newPositionNotes}
-                    onChange={(event) => setNewPositionNotes(event.target.value)}
-                    placeholder="Initial notes (optional)"
-                    className="min-h-[90px] rounded-md border border-input bg-background px-2.5 py-2 text-sm outline-none focus:border-ring md:col-span-2"
-                  />
-                </div>
-                <div className="mt-2 flex justify-end">
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={workspaceBusy}
-                    onClick={() => {
-                      void onCreateManualPosition({
-                        title: newPositionTitle,
-                        status: newPositionStatus,
-                        instrumentType: newInstrumentType,
-                        optionType: newInstrumentType === 'OPTION' ? newOptionType : null,
-                        optionExpireDate: newInstrumentType === 'OPTION' ? newOptionExpiry : null,
-                        optionExercisePrice: newInstrumentType === 'OPTION' ? newOptionStrike : null,
-                        linkedIdeaId: newLinkedIdeaId || null,
-                        notes: newPositionNotes || '',
-                      }).then(() => {
-                        setNewPositionTitle('')
-                        setNewPositionStatus('planned')
-                        setNewInstrumentType('STOCK')
-                        setNewOptionType('CALL')
-                        setNewOptionExpiry('')
-                        setNewOptionStrike('')
-                        setNewLinkedIdeaId('')
-                        setNewPositionNotes('')
-                      })
-                    }}
-                  >
-                    Add Position
-                  </Button>
-                </div>
-              </div>
-
-              <p className="rounded-xl border border-border/60 bg-muted/15 px-3 py-2 text-sm text-muted-foreground">
-                {positionDetailError
-                  ? `Detail load warning: ${positionDetailError}`
-                  : (positionDetailLoading
-                    ? 'Loading selected row details...'
-                    : 'Click a position row (or its details icon) to open the shared details panel with note, description, comments, and tags.')}
-              </p>
-
-              <FileSelectionViewerBlock
-                heading="ValueLine PDF Report"
-                summary="Keep your core external research report for this company here."
-                selectedPath={selectedCompanyPdfPath || null}
-                selectedLabel={selectedCompanyPdfLabel}
-                emptySelectionMessage="No PDF report selected."
-                options={pdfOptions}
-                query={companyPdfQuery}
-                onQueryChange={setCompanyPdfQuery}
-                pickerOpen={companyPdfPickerOpen}
-                onPickerOpenChange={setCompanyPdfPickerOpen}
-                controlsHidden={companyPdfControlsHidden}
-                onControlsHiddenChange={setCompanyPdfControlsHidden}
-                onSelectPath={(path) => { void selectCompanyPdfPath(path ?? '') }}
-                onOpenPath={onOpenNodeFile}
-                disabled={workspaceBusy}
-                selectButtonLabel="Select PDF"
-                searchPlaceholder="Search PDF report"
-                searchEmptyMessage="No PDF files found"
-                allowCustomValue
-                hideDetailsWithSelectionControls
-                searchHelperText="Select a PDF report file to view it inline."
-                emptyViewerMessage="Select a PDF report to display it here."
-                renderSelectedContent={() => (
-                  <div className="h-[820px] overflow-hidden rounded-lg border">
-                    <PdfDocumentBlock
-                      key={`${selectedCompanyPdfPath}::${companyPdfViewerNonce}`}
-                      path={selectedCompanyPdfPath}
-                      className="h-full"
-                    />
+                    </ScrollableZoomSurfaceBlock>
                   </div>
-                )}
-              />
-            </>
+
+                  {createPositionOpen && (
+                    <div className="rounded-xl border bg-background p-3">
+                      <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Create Position</p>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <input
+                          type="text"
+                          value={newPositionTitle}
+                          onChange={(event) => setNewPositionTitle(event.target.value)}
+                          placeholder="Position title"
+                          className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring"
+                        />
+                        <select
+                          value={newPositionStatus}
+                          onChange={(event) => setNewPositionStatus(event.target.value as NodeStatus)}
+                          className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring"
+                        >
+                          <option value="planned">planned</option>
+                          <option value="watchlist">watchlist</option>
+                          <option value="taken">taken</option>
+                          <option value="completed">completed</option>
+                        </select>
+                        <select
+                          value={newInstrumentType}
+                          onChange={(event) => setNewInstrumentType(event.target.value as 'STOCK' | 'OPTION')}
+                          className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring"
+                        >
+                          <option value="STOCK">STOCK</option>
+                          <option value="OPTION">OPTION</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={newLinkedIdeaId}
+                          onChange={(event) => setNewLinkedIdeaId(event.target.value)}
+                          placeholder="Linked idea UUID (optional)"
+                          className="h-9 rounded-md border border-input bg-background px-2.5 font-mono text-xs outline-none focus:border-ring"
+                        />
+                        {newInstrumentType === 'OPTION' && (
+                          <>
+                            <select
+                              value={newOptionType}
+                              onChange={(event) => setNewOptionType(event.target.value as 'CALL' | 'PUT')}
+                              className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring"
+                            >
+                              <option value="CALL">CALL</option>
+                              <option value="PUT">PUT</option>
+                            </select>
+                            <input
+                              type="date"
+                              value={newOptionExpiry}
+                              onChange={(event) => setNewOptionExpiry(event.target.value)}
+                              className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring"
+                            />
+                            <input
+                              type="text"
+                              value={newOptionStrike}
+                              onChange={(event) => setNewOptionStrike(event.target.value)}
+                              placeholder="Strike price"
+                              className="h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring md:col-span-2"
+                            />
+                          </>
+                        )}
+                        <textarea
+                          value={newPositionNotes}
+                          onChange={(event) => setNewPositionNotes(event.target.value)}
+                          placeholder="Initial notes (optional)"
+                          className="min-h-[90px] rounded-md border border-input bg-background px-2.5 py-2 text-sm outline-none focus:border-ring md:col-span-2"
+                        />
+                      </div>
+                      <div className="mt-2 flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={workspaceBusy}
+                          onClick={() => {
+                            void onCreateManualPosition({
+                              title: newPositionTitle,
+                              status: newPositionStatus,
+                              instrumentType: newInstrumentType,
+                              optionType: newInstrumentType === 'OPTION' ? newOptionType : null,
+                              optionExpireDate: newInstrumentType === 'OPTION' ? newOptionExpiry : null,
+                              optionExercisePrice: newInstrumentType === 'OPTION' ? newOptionStrike : null,
+                              linkedIdeaId: newLinkedIdeaId || null,
+                              notes: newPositionNotes || '',
+                            }).then(() => {
+                              setNewPositionTitle('')
+                              setNewPositionStatus('planned')
+                              setNewInstrumentType('STOCK')
+                              setNewOptionType('CALL')
+                              setNewOptionExpiry('')
+                              setNewOptionStrike('')
+                              setNewLinkedIdeaId('')
+                              setNewPositionNotes('')
+                            })
+                          }}
+                        >
+                          Add Position
+                        </Button>
+                      </div>
+                    </div>
+
+                  )}
+                  {positionDetailError && (
+                    <p className="text-sm text-muted-foreground">Detail load warning: {positionDetailError}</p>
+                  )}
+                </div>
+              )}
+            />
           ) : overallTabActive ? (
             <div className="rounded-2xl border p-5">
               <div className="mb-3 flex flex-wrap items-center justify-end gap-3">

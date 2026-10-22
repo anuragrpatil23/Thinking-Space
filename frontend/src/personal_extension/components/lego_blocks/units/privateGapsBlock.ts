@@ -8,3 +8,16 @@ const loadGaps = Object.values(GAPS_MODULES)[0]
 
 export const GAPS_TAB_AVAILABLE = Boolean(loadGaps)
 export const PrivateGapsBlock = loadGaps ? lazy(loadGaps) : null
+
+// The company page's gaps section lives in the same private folder; without it
+// the page simply has no gaps section.
+const COMPANY_GAPS_MODULES = import.meta.glob<{ default: ComponentType<PrivateCompanyGapsPropsBlock> }>('../../../gaps/companyGaps.tsx')
+const loadCompanyGaps = Object.values(COMPANY_GAPS_MODULES)[0]
+
+export interface PrivateCompanyGapsPropsBlock {
+  ticker: string
+  executionRoot: string
+  onOpenFile: (path: string) => void
+}
+
+export const PrivateCompanyGapsBlock = loadCompanyGaps ? lazy(loadCompanyGaps) : null
