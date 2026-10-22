@@ -193,7 +193,7 @@ export function BacklogProgramRowBlock({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       className={cn(
-        'cursor-pointer overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
+        native ? 'group/programrow cursor-pointer' : 'cursor-pointer overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
         native
           ? 'border-b-[0.5px] border-[#E5E5EA] bg-[#FAFAFB] px-4 py-2 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-800/40 dark:hover:bg-zinc-800/70'
           : 'border-b border-border/70 bg-card px-3 py-2 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60',
@@ -257,7 +257,9 @@ export function BacklogProgramRowBlock({
       {showNodeTypeIcon && <FolderTree className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />}
       <div className={cn(
         'min-w-0 flex gap-2',
-        nativeGridTemplate ? 'min-w-0' : titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
+        nativeGridTemplate
+          ? 'sticky left-0 z-[1] -ml-4 min-w-0 bg-[#FAFAFB] pl-4 transition-shadow group-hover/programrow:bg-zinc-100 dark:bg-zinc-800 dark:group-hover/programrow:bg-zinc-700 group-data-[scrolled-x]/zoomsurface:shadow-[6px_0_10px_-8px_rgba(0,0,0,0.18)] dark:group-data-[scrolled-x]/zoomsurface:shadow-[6px_0_10px_-8px_rgba(0,0,0,0.6)]'
+          : titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
         'items-center',
       )} style={nativeGridTemplate ? undefined : scaledWidthStyleFromClassBlock(titleColumnClassName)}>
         {ticketBadge}

@@ -19,13 +19,13 @@ import {
 } from '../units/webullCompanyDossierBlock'
 
 export const WEBULL_RESEARCH_FOLDER_NAME_BLOCK = 'Thoughts, Predictions, launches and Postmortem'
-const ADDITIONAL_COMPANIES_FOLDER_BLOCK = 'Additional companies'
+export const ADDITIONAL_COMPANIES_FOLDER_BLOCK = 'Additional companies'
 const SKIPPED_RESEARCH_FOLDERS_BLOCK = new Set(['images', 'attachments', 'assets'])
 
 export interface WebullCompanyDossierBlock {
   ticker: string
   study: WebullStudyRecordBlock | null
-  /** The company's name: the study's `company`, else its "# Name — Study Record" heading. */
+  /** The company's name, from the study record's `company` field. */
   companyName: string | null
   observationsPath: string | null
   observations: WebullObservationEntryBlock[]
@@ -46,7 +46,7 @@ async function readTextBlock(path: string): Promise<string | null> {
   }
 }
 
-async function findStudyRecordBlock(executionRoot: string, ticker: string): Promise<{ record: WebullStudyRecordBlock; headingName: string | null } | null> {
+async function findStudyRecordBlock(executionRoot: string, ticker: string): Promise<WebullStudyRecordBlock | null> {
   // Held companies keep the study in their own folder; watch-only ones under watchlist/<ticker>/.
   for (const folder of [`${executionRoot}/${ticker}`, `${executionRoot}/watchlist/${ticker.toLowerCase()}`]) {
     const { files } = await listFolderEntries(folder).catch(() => EMPTY_ENTRIES_BLOCK)
@@ -56,10 +56,7 @@ async function findStudyRecordBlock(executionRoot: string, ticker: string): Prom
     const filePath = `${folder}/${fileName}`
     const content = await readTextBlock(filePath)
     const record = content ? parseWebullStudyRecordBlock({ filePath, fileName, content }) : null
-    if (record) {
-      const heading = content?.match(/^#\s+(.+?)\s+[—–-]\s+Study Record\s*$/m)?.[1]?.trim() ?? null
-      return { record, headingName: heading }
-    }
+    if (record) return record
   }
   return null
 }
@@ -122,13 +119,15 @@ export async function loadWebullCompanyDossierBlock(params: {
   const researchRoot = `${executionRoot.replace(/\/[^/]+$/, '')}/${WEBULL_RESEARCH_FOLDER_NAME_BLOCK}`
   const warnings: string[] = []
 
-  const [studyFound, observationsText, pricesText] = await Promise.all([
-    findStudyRecordBlock(executionRoot, ticker),
-    readTextBlock(`${companyFolder}/observations.md`),
-    readTextBlock(`${companyFolder}/prices.csv`),
-  ])
-  const study = studyFound?.record ?? null
-  const companyName = study?.company ?? studyFound?.headingName ?? params.companyName
+  // Without a ticker (a research-only company) there is no company folder to read.
+  const [study, observationsText, pricesText] = ticker
+    ? await Promise.all([
+        findStudyRecordBlock(executionRoot, ticker),
+        readTextBlock(`${companyFolder}/observations.md`),
+        readTextBlock(`${companyFolder}/prices.csv`),
+      ])
+    : [null, null, null]
+  const companyName = study?.company ?? params.companyName
   const researchFolderPath = await findResearchFolderBlock(researchRoot, ticker, companyName)
   const research = researchFolderPath
     ? await loadResearchBlock(researchFolderPath)

@@ -1029,7 +1029,8 @@ function BacklogListBlockImpl({
         {renderInlineDetailsPanel(node, 36 + (depth * 16))}
         {renderInlineNotesEditor(node, 36 + (depth * 16))}
 
-        {isExpanded && (
+        {/* Native tables list positions, which have no children: no child area to leave a strip. */}
+        {isExpanded && appearance !== 'native' && (
           <div className="bg-muted/15">
             {childState?.loading && (
               <div className="flex items-center gap-2 border-t border-border/70 px-6 py-2 text-xs text-muted-foreground">
@@ -1091,7 +1092,7 @@ function BacklogListBlockImpl({
     const detailsBusy = rowDetailsRenderer ? false : inlineNotesSaving
 
     return (
-      <div key={program.uuid} className={appearance === 'native' ? 'overflow-hidden border-b-[0.5px] border-[#E5E5EA] last:border-b-0 dark:border-zinc-800' : 'overflow-hidden rounded-xl border border-border/70 bg-muted/25'}>
+      <div key={program.uuid} className={appearance === 'native' ? 'border-b-[0.5px] border-[#E5E5EA] last:border-b-0 dark:border-zinc-800' : 'overflow-hidden rounded-xl border border-border/70 bg-muted/25'}>
         <BacklogProgramRowBlock
           native={appearance === 'native'}
           nativeGridTemplate={nativeGridTemplate}
@@ -1216,7 +1217,7 @@ function BacklogListBlockImpl({
           className="grid min-w-max items-center gap-x-2 border-b-[0.5px] border-[#E5E5EA] px-4 pb-2 pt-1 dark:border-zinc-800"
           style={{ gridTemplateColumns: nativeGridTemplate }}
         >
-          <span className={cn('min-w-0 truncate', headerLabelClassName)}>Title</span>
+          <span className={cn('sticky left-0 z-[1] -ml-4 min-w-0 truncate bg-white pl-4 transition-shadow dark:bg-zinc-900 group-data-[scrolled-x]/zoomsurface:shadow-[6px_0_10px_-8px_rgba(0,0,0,0.18)] dark:group-data-[scrolled-x]/zoomsurface:shadow-[6px_0_10px_-8px_rgba(0,0,0,0.6)]', headerLabelClassName)}>Title</span>
           {rowColumns.map(column => (
             <span
               key={`column-header-${column.id}`}
@@ -1339,7 +1340,7 @@ function BacklogListBlockImpl({
                 )}
                 {!group.collapsed && (
                   groupedPrograms.length > 0 ? (
-                    <div className="space-y-2">
+                    <div className={appearance === 'native' ? undefined : 'space-y-2'}>
                       {groupedPrograms.map(program => renderProgramSection(program, programIndexById.get(program.uuid) ?? 0))}
                     </div>
                   ) : (
@@ -1355,7 +1356,7 @@ function BacklogListBlockImpl({
       )}
 
       {groupedProgramsByGroupId.ungrouped.length > 0 && (
-        <div className="space-y-2">
+        <div className={appearance === 'native' ? undefined : 'space-y-2'}>
           {programGroups.length > 0 && (
             <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               {`Ungrouped ${programNounPluralTitle}`}

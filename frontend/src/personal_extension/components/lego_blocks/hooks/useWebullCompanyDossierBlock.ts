@@ -11,7 +11,8 @@ export function useWebullCompanyDossierBlock(executionRoot: string | null, ticke
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!executionRoot || !ticker) {
+    // A research-only company may have a name but no ticker yet.
+    if (!executionRoot || (!ticker && !companyName)) {
       setDossier(null)
       return
     }

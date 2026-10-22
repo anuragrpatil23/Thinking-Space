@@ -3,6 +3,9 @@ import { ChevronRight } from 'lucide-react'
 import { Area, AreaChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import { useWebullCompanyDossierBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullCompanyDossierBlock'
+import { useWebullTrackRecordBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullTrackRecordBlock'
+import { f9SignedMoneyKBlock, type WebullCompanyTrackRecordBlock } from '@/personal_extension/services/lego_blocks/units/webullTrackRecordBlock'
+import { F9TrackRowBlock } from '@/personal_extension/components/lego_blocks/units/F9TrackRecordPartsBlock'
 import {
   F9FactRowBlock,
   F9PanelBlock,
@@ -47,13 +50,11 @@ interface WebullCompanyPageBlockProps {
   livePrice: number | null
   holding: WebullCompanyHoldingBlock | null
   positionCount: number
-  /** The positions table and its controls, owned by the workspace. */
-  positionsSlot: ReactNode
+  /** The positions table and its controls, owned by the workspace; none for a company you don't hold. */
+  positionsSlot?: ReactNode
   positionsActions?: ReactNode
   /** The quiet status line under the side panel: sync time, warnings, tags, diagnostics. */
   footer?: ReactNode
-  /** Set when the numbers come from a saved snapshot rather than a live sync: shown beside the price. */
-  snapshotNotice?: string | null
   onOpenFile: (path: string) => void
 }
 
@@ -122,6 +123,47 @@ function ResearchPanelBlock({ reports, groups, onOpenFile }: {
   )
 }
 
+// How this company's trades have actually turned out, from the Webull
+// statements: short- and longer-dated options counted purchase by purchase,
+// and shares as dollars in and out.
+function TrackRecordPanelBlock({ record, reportPath, onOpenFile }: {
+  record: WebullCompanyTrackRecordBlock
+  reportPath: string | null
+  onOpenFile: (path: string) => void
+}) {
+  const through = new Date(`${record.throughStatement}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return (
+    <F9PanelBlock className="px-4 py-3.5 text-[13px]">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-semibold">Track record</span>
+        <span className="text-xs text-zinc-400" title="From the Webull statements; re-run webull_statements_to_csv.py for newer ones">through {through}</span>
+      </div>
+      <div className="mt-1 divide-y divide-zinc-200/70 dark:divide-zinc-800">
+        {record.shortDated && <F9TrackRowBlock label="Short-dated options" summary={record.shortDated} />}
+        {record.longerDated && <F9TrackRowBlock label="Longer-dated options" summary={record.longerDated} />}
+        {record.stock && (
+          <div className="py-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-zinc-500 dark:text-zinc-400">Shares</span>
+              <span className={cn('font-medium tabular-nums', record.stock.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
+                {f9SignedMoneyKBlock(record.stock.net)}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+              bought ${Math.round(record.stock.bought).toLocaleString('en-US')} · sold ${Math.round(record.stock.sold).toLocaleString('en-US')} · held ${Math.round(record.stock.held).toLocaleString('en-US')}
+            </p>
+          </div>
+        )}
+      </div>
+      {reportPath && (
+        <button type="button" onClick={() => onOpenFile(reportPath)} className="mt-1.5 text-xs text-sky-600 hover:text-sky-700 dark:text-sky-400">
+          Full history ›
+        </button>
+      )}
+    </F9PanelBlock>
+  )
+}
+
 export default function WebullCompanyPageBlock({
   ticker,
   companyName,
@@ -133,10 +175,10 @@ export default function WebullCompanyPageBlock({
   positionsSlot,
   positionsActions,
   footer,
-  snapshotNotice,
   onOpenFile,
 }: WebullCompanyPageBlockProps) {
   const { dossier, loading, error } = useWebullCompanyDossierBlock(executionRoot, ticker, companyName)
+  const { record: trackRecord, reportPath } = useWebullTrackRecordBlock(executionRoot, ticker)
   const [priceWindow, setPriceWindow] = useState<PriceWindowBlock>('2y')
   const [observationsExpanded, setObservationsExpanded] = useState(false)
 
@@ -176,8 +218,8 @@ export default function WebullCompanyPageBlock({
   const observations = dossier?.observations ?? []
   const visibleObservations = observationsExpanded ? observations : observations.slice(0, OBSERVATION_PREVIEW_BLOCK)
   const sublineParts = [
-    displayName,
-    costShare !== null ? `Held · ${(costShare * 100).toFixed(costShare >= 0.1 ? 0 : 1)}% of cost` : 'Watching',
+    ticker ? displayName : null,
+    costShare !== null ? `Held · ${(costShare * 100).toFixed(costShare >= 0.1 ? 0 : 1)}% of cost` : dossier && !study ? 'Not studied yet' : 'Watchlist',
     rangeState,
   ].filter(Boolean)
 
@@ -186,20 +228,15 @@ export default function WebullCompanyPageBlock({
       <div className="flex min-w-0 flex-col gap-5">
       <header id="webull-company-overview" className="scroll-mt-4 flex flex-wrap items-end justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3.5">
-          {executionRoot && <TickerLogoBlock ticker={ticker} executionRoot={executionRoot} className="h-11 w-11 shadow-[0_0_0_0.5px_rgba(0,0,0,0.08)]" />}
+          {executionRoot && ticker && <TickerLogoBlock ticker={ticker} executionRoot={executionRoot} className="h-11 w-11 shadow-[0_0_0_0.5px_rgba(0,0,0,0.08)]" />}
           <div className="min-w-0">
-            <h1 className="text-[26px] font-bold leading-tight tracking-tight">{ticker}</h1>
+            <h1 className="text-[26px] font-bold leading-tight tracking-tight">{ticker || displayName}</h1>
             <p className="mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">{sublineParts.join(' · ')}</p>
           </div>
         </div>
-        {(price !== null || snapshotNotice) && (
+        {(price !== null || footer) && (
           <div className="flex flex-col items-end text-right tabular-nums">
-            {snapshotNotice && (
-              <span className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300" title="Live Webull sync runs in the Electron app; these numbers are from the last saved sync.">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                {snapshotNotice}
-              </span>
-            )}
+            {footer && <div className="mb-1.5">{footer}</div>}
             {price !== null && (<>
             <p className="text-[26px] font-semibold leading-tight">{formatPriceBlock(price)}</p>
             <p className="text-[13px] text-zinc-500 dark:text-zinc-400">
@@ -257,9 +294,9 @@ export default function WebullCompanyPageBlock({
 
       </div>
 
-      <div className="lg:row-start-1 lg:col-start-2">
+      <div className="flex min-w-0 flex-col gap-4 lg:row-start-1 lg:col-start-2">
         {holding && (
-          <F9PanelBlock className="h-full px-5 pb-3 pt-[18px] text-[13px]">
+          <F9PanelBlock className="flex-1 px-5 pb-3 pt-[18px] text-[13px]">
             <p className="font-semibold">Holding</p>
             <p className="mt-2.5 text-2xl font-semibold tabular-nums">{holding.totalCost}</p>
             <p className="mb-1.5 mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Total cost · {holding.portfolioShare} of portfolio</p>
@@ -273,7 +310,7 @@ export default function WebullCompanyPageBlock({
       </div>
 
       <div className="min-w-0 space-y-5">
-      {PrivateCompanyGapsBlock && executionRoot && (
+      {PrivateCompanyGapsBlock && executionRoot && ticker && (
         <section id="webull-company-gaps" className="scroll-mt-4">
           <Suspense fallback={null}>
             <PrivateCompanyGapsBlock ticker={ticker} executionRoot={executionRoot} onOpenFile={onOpenFile} />
@@ -281,15 +318,18 @@ export default function WebullCompanyPageBlock({
         </section>
       )}
 
-      <section id="webull-company-positions" className="scroll-mt-4">
-        <F9SectionLabelBlock trailing={positionsActions}>Positions · {positionCount}</F9SectionLabelBlock>
-        {positionsSlot}
-      </section>
+      {positionsSlot && (
+        <section id="webull-company-positions" className="scroll-mt-4">
+          <F9SectionLabelBlock trailing={positionsActions}>Positions · {positionCount}</F9SectionLabelBlock>
+          {positionsSlot}
+        </section>
+      )}
 
 
       </div>
 
       <aside aria-label={`${ticker} details`} className="flex min-w-0 flex-col gap-4 self-start">
+        {trackRecord && <TrackRecordPanelBlock record={trackRecord} reportPath={reportPath} onOpenFile={onOpenFile} />}
 
         <F9PanelBlock id="webull-company-study" className="scroll-mt-4 px-4 py-3.5 text-[13px]">
           <div className="flex items-center justify-between">
@@ -361,7 +401,6 @@ export default function WebullCompanyPageBlock({
         {dossier?.researchFolderPath && (
           <ResearchPanelBlock reports={reports} groups={dossier.researchGroups} onOpenFile={onOpenFile} />
         )}
-        {footer}
       </aside>
     </div>
   )

@@ -163,7 +163,8 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       className={cn(
-        'cursor-pointer overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
+        // Native rows don't scroll on their own: the table's viewport does, so the title can pin to it.
+        native ? 'group/noderow cursor-pointer' : 'cursor-pointer overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
         native ? 'px-4 py-2 transition-colors' : 'border-l-[3px] px-3 py-2 transition-colors',
         'bg-card hover:bg-zinc-50 dark:hover:bg-zinc-800/60',
         !native && borderColorClass,
@@ -201,7 +202,9 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
         className={cn(
           'group min-w-0 flex gap-2 text-left',
           native ? 'text-[13px]' : 'text-sm font-medium',
-          nativeGridTemplate ? 'min-w-0' : titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
+          nativeGridTemplate
+            ? 'sticky left-0 z-[1] -ml-4 min-w-0 bg-white pl-4 transition-shadow group-hover/noderow:bg-zinc-50 dark:bg-zinc-900 dark:group-hover/noderow:bg-zinc-800 group-data-[scrolled-x]/zoomsurface:shadow-[6px_0_10px_-8px_rgba(0,0,0,0.18)] dark:group-data-[scrolled-x]/zoomsurface:shadow-[6px_0_10px_-8px_rgba(0,0,0,0.6)]'
+            : titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
           'items-center',
         )}
         style={nativeGridTemplate ? undefined : scaledWidthStyleFromClassBlock(titleColumnClassName)}

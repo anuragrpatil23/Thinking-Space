@@ -191,6 +191,8 @@ export default function ScrollableZoomSurfaceBlock({
   }, [columnWidthScale, fitColumnsLocked, storageKey, zoom])
 
   const quiet = controlsAppearance === 'quiet'
+  // Pinned cells inside cast a light shadow only once the content has scrolled sideways.
+  const [scrolledX, setScrolledX] = useState(false)
   const controls = (
     <div className={cn(controlsHost ? '' : 'w-full', 'flex items-center justify-start overflow-x-auto whitespace-nowrap px-1 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:justify-end', quiet ? cn('gap-0.5 text-[11px] text-zinc-500', !controlsHost && 'pt-1.5') : 'gap-1.5 text-xs')}>
       <span className="hidden shrink-0 text-muted-foreground sm:inline">{controlsLabel}</span>
@@ -256,7 +258,15 @@ export default function ScrollableZoomSurfaceBlock({
 
   return (
     <div className={cn('space-y-2', className)}>
-      <div ref={viewportRef} className={cn('overflow-x-auto', viewportClassName)}>
+      <div
+        ref={viewportRef}
+        className={cn('group/zoomsurface overflow-x-auto', viewportClassName)}
+        data-scrolled-x={scrolledX ? '' : undefined}
+        onScroll={(event) => {
+          const next = event.currentTarget.scrollLeft > 0
+          if (next !== scrolledX) setScrolledX(next)
+        }}
+      >
         <div
           ref={contentRef}
           className={cn(minWidthClassName, contentClassName)}

@@ -36,6 +36,8 @@ export function F9SegmentedBlock<T extends string>({ options, value, onChange, a
           onClick={() => onChange(option.value)}
           className={cn(
             'rounded-[5px] px-2.5 py-0.5 text-xs transition-colors',
+            // A soft ring for the keyboard only; a click shouldn't leave an outline.
+            'outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40',
             value === option.value
               ? 'bg-white text-zinc-900 shadow-[0_1px_2px_rgba(0,0,0,0.12)] dark:bg-zinc-600 dark:text-white'
               : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-white',

@@ -1,6 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, Building2, ChevronRight, Clock, Crosshair, Eye, EyeOff, History, Layers, Wallet, type LucideIcon } from 'lucide-react'
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
+import { BookOpen, ChevronRight, Crosshair, Eye, EyeOff, History, Wallet, type LucideIcon } from 'lucide-react'
 import {
   dispatchWebullSidebarChromeStateBlock,
   Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
@@ -10,6 +9,10 @@ import { chipColorClassBlock, type ChipColorBlock } from '@/services/lego_blocks
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import WebullStudyBlock from './WebullStudyBlock'
 import WebullCompanyPageBlock, { type WebullCompanyHoldingBlock } from './WebullCompanyPageBlock'
+import WebullOverallPageBlock from './WebullOverallPageBlock'
+import WebullSidebarBlock from './WebullSidebarBlock'
+import { useWebullCompanyUniverseBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullCompanyUniverseBlock'
+import type { WebullUniverseCompanyBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
 import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
@@ -21,16 +24,10 @@ import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/Sc
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
+import OverflowMenuButtonBlock from '@/components/lego_blocks/units/ui/OverflowMenuButtonBlock'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
-import {
-  PHONE_LIST_ICON_CLASS_BLOCK,
-  PhoneLargeTitleBlock,
-  PhoneListGroupBlock,
-  PhoneListRowBlock,
-  PhoneListSectionHeaderBlock,
-} from '@/components/lego_blocks/units/PhoneListBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
 import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
@@ -167,15 +164,6 @@ const CASH_EQUIVALENT_SYMBOLS = new Set<string>(['JPST'])
 const COMPANY_PIE_PALETTE = [
   '#10b981', '#0ea5e9', '#a855f7', '#f59e0b', '#ef4444', '#14b8a6',
   '#6366f1', '#ec4899', '#84cc16', '#f97316', '#06b6d4', '#8b5cf6',
-]
-
-// Parallel to COMPANY_PIE_PALETTE, expressed as Tailwind border classes so the
-// position-table left stripe matches the donut wedge for the same business.
-const COMPANY_PIE_BORDER_PALETTE = [
-  'border-l-emerald-500', 'border-l-sky-500', 'border-l-purple-500',
-  'border-l-amber-500', 'border-l-red-500', 'border-l-teal-500',
-  'border-l-indigo-500', 'border-l-pink-500', 'border-l-lime-500',
-  'border-l-orange-500', 'border-l-cyan-500', 'border-l-violet-500',
 ]
 
 interface CompanyPieSliceBlock {
@@ -1087,7 +1075,6 @@ export default function WebullWorkspaceBlock({
   loading,
   workspaceBusy,
   workspaceMessage,
-  onCreateCompany,
   onCreateManualPosition,
   onUpdatePositionOverlay,
   onUpdateCompanyOverlay,
@@ -1271,6 +1258,11 @@ export default function WebullWorkspaceBlock({
     [activeCompanyTicker, executionOverview],
   )
   const showCompanyView = !!selectedCompany && !preserveOverallContext
+  // A company with no F9-execution folder (watchlist or research only) still
+  // gets its page: study, research, gaps and price, without holdings.
+  const [virtualCompany, setVirtualCompany] = useState<WebullUniverseCompanyBlock | null>(null)
+  const showVirtualCompany = !selectedCompany && !!virtualCompany && !preserveOverallContext
+  const companyPageOpen = showCompanyView || showVirtualCompany
   const selectedCompanyMetrics = useMemo(() => {
     if (!selectedCompany) return null
     const activePositions = selectedCompany.positions.filter(
@@ -1457,37 +1449,6 @@ export default function WebullWorkspaceBlock({
     }
   }, [companiesForTable, executionRoot, isArchivedVisibleForTickerBlock, tickerToCompanyName])
 
-  // Sort companies by active cost-basis to match the Allocation pie ordering,
-  // then map each program (live + archived) to the same Tailwind border class
-  // the pie wedge uses. Keeps the position-table left stripe visually anchored
-  // to the donut.
-  const companyBorderClassByProgramUuid = useMemo(() => {
-    const sourceCompanies = (executionOverview?.companies.length ?? 0) > 0
-      ? executionOverview!.companies
-      : companiesForTable
-    const tickerTotals = sourceCompanies
-      .map((company) => {
-        const ticker = company.companyTicker.toUpperCase()
-        const activePositions = company.positions.filter(
-          p => normalizePositionStatusBlock(p.status) !== 'archived',
-        )
-        const metrics = computeCompanySummaryMetricsBlock(activePositions)
-        const total = Math.max(0, metrics.stockCost ?? 0) + Math.max(0, metrics.optionCost ?? 0)
-        return { ticker, total }
-      })
-      .filter(entry => entry.total > 0)
-      .sort((a, b) => b.total - a.total)
-    const borderByTicker = new Map<string, string>()
-    tickerTotals.forEach((entry, index) => {
-      borderByTicker.set(entry.ticker, COMPANY_PIE_BORDER_PALETTE[index % COMPANY_PIE_BORDER_PALETTE.length])
-    })
-    const map: Record<string, string> = {}
-    for (const [programUuid, ticker] of backlogTableModel.companyTickerByProgramUuid) {
-      const borderClass = borderByTicker.get(ticker.toUpperCase())
-      if (borderClass) map[programUuid] = borderClass
-    }
-    return map
-  }, [backlogTableModel.companyTickerByProgramUuid, companiesForTable, executionOverview])
 
   const [detailPanelNodeId, setDetailPanelNodeId] = useState<string | null>(null)
   const [projectPresetTagsByRoot, setProjectPresetTagsByRoot] = useState<WebullProjectPresetTagsByRootBlock>(
@@ -2116,7 +2077,13 @@ export default function WebullWorkspaceBlock({
   // list starts collapsed every session and, when open, carries signal:
   // held companies by cost-basis share (the Allocation pie order), then
   // watch-only ones alphabetically.
-  const [sidebarCompaniesExpanded, setSidebarCompaniesExpanded] = useState(false)
+  const universeExecutionCompanies = useMemo(() => (executionOverview?.companies ?? []).map((company) => {
+    const metrics = computeCompanySummaryMetricsBlock(
+      company.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived'),
+    )
+    return { ticker: company.companyTicker, cost: Math.max(0, metrics.stockCost ?? 0) + Math.max(0, metrics.optionCost ?? 0) }
+  }), [executionOverview])
+  const companyUniverse = useWebullCompanyUniverseBlock(executionRoot, universeExecutionCompanies)
   const [createPositionOpen, setCreatePositionOpen] = useState(false)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   // The company positions table docks its zoom controls in the section header.
@@ -2142,7 +2109,6 @@ export default function WebullWorkspaceBlock({
     return { held, watching, count: entries.length }
   }, [executionOverview])
 
-  const [newCompanyTicker, setNewCompanyTicker] = useState('')
   const [newPositionTitle, setNewPositionTitle] = useState('')
   const [newPositionStatus, setNewPositionStatus] = useState<NodeStatus>('planned')
   const [newInstrumentType, setNewInstrumentType] = useState<'STOCK' | 'OPTION'>('STOCK')
@@ -2203,10 +2169,12 @@ export default function WebullWorkspaceBlock({
     selectedCompanyMetrics?.totalProfitLoss ?? null,
     selectedCompanyMetrics?.totalCost ?? null,
   )
-  const overallTabActive = !showCompanyView && activeSubtabId === 'overall'
-  const studyTabActive = !showCompanyView && activeSubtabId === 'study'
-  const simTabActive = !showCompanyView && activeSubtabId === 'sim'
-  const gapsTabActive = !showCompanyView && activeSubtabId === 'gaps'
+  const overallTabActive = !companyPageOpen && activeSubtabId === 'overall'
+  // Views on F9's native ground: grey, white panels, status folded into a footer line.
+  const nativeView = companyPageOpen || overallTabActive
+  const studyTabActive = !companyPageOpen && activeSubtabId === 'study'
+  const simTabActive = !companyPageOpen && activeSubtabId === 'sim'
+  const gapsTabActive = !companyPageOpen && activeSubtabId === 'gaps'
   const workspaceTitle = showCompanyView && selectedCompany
     ? `${selectedCompany.companyTicker} Positions`
     : (studyTabActive ? 'Study' : simTabActive ? 'Sim' : gapsTabActive ? 'Gaps' : 'Overall Positions')
@@ -2252,14 +2220,142 @@ export default function WebullWorkspaceBlock({
     return row ? firstNumberBlock(row.last_price, row.lastPrice) : null
   })()
 
-  // Sidebar rows are a 220px desktop nav by origin — 32px tall, which is fine
-  // for a pointer and below the 44pt floor for a thumb. On the phone the same
-  // nav IS the page, so it gets iOS list metrics.
-  const navRowClass = cn(
-    'ltm-motion-fast flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-    phoneListMode && 'min-h-[44px] gap-3 rounded-xl px-3 py-2.5 text-[15px]',
+  const nativeSnapshotNotice = liveRefreshAvailable ? null : `${fetchedAt ? `Updated ${new Date(fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} ` : ''}from saved snapshot`
+  const nativeFooter = (
+    <p className="flex flex-wrap items-center justify-end gap-1.5 text-right text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
+      {nativeSnapshotNotice ? (
+        <span className="inline-flex h-[22px] items-center gap-1.5 rounded-full bg-amber-100 px-2 font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300" title="Live Webull sync runs in the Electron app; these numbers are from the last saved sync.">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+          {nativeSnapshotNotice}
+        </span>
+      ) : (fetchedAt ? `Updated ${new Date(fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Not synced yet')}
+      {allWarnings.length > 0 && (
+        <button
+          type="button"
+          onClick={() => { setDiagnosticsOpen(true); requestAnimationFrame(() => document.getElementById('webull-diagnostics')?.scrollIntoView({ behavior: 'smooth' })) }}
+          className="inline-flex h-[22px] items-center rounded-full px-2 font-medium text-amber-800 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.45)] transition-colors hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-500/10"
+        >
+          {allWarnings.length} {allWarnings.length === 1 ? 'warning' : 'warnings'}
+        </button>
+      )}
+      {/* Rarely needed: tucked behind the overflow menu. */}
+      <OverflowMenuButtonBlock
+        title="More"
+        className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-zinc-200/70 p-0 text-zinc-600 hover:bg-zinc-300/80 hover:text-zinc-900 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 [&>svg]:h-3.5 [&>svg]:w-3.5"
+        entries={[
+          {
+            key: 'project-tags',
+            label: projectTagsOpen ? 'Hide project tags' : 'Project tags',
+            onClick: () => { setProjectTagsOpen(prev => !prev); requestAnimationFrame(() => document.getElementById('webull-project-tags')?.scrollIntoView({ behavior: 'smooth' })) },
+          },
+          {
+            key: 'diagnostics',
+            label: diagnosticsOpen ? 'Hide diagnostics' : 'Diagnostics',
+            onClick: () => { setDiagnosticsOpen(prev => !prev); requestAnimationFrame(() => document.getElementById('webull-diagnostics')?.scrollIntoView({ behavior: 'smooth' })) },
+          },
+        ]}
+      />
+    </p>
   )
-  const navIconClass = phoneListMode ? 'h-[18px] w-[18px]' : 'h-4 w-4'
+  const nativePositionsActions = (
+    <div className="flex items-center gap-4 text-xs">
+      <button type="button" onClick={() => setCreatePositionOpen(prev => !prev)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">
+        {createPositionOpen ? 'Cancel' : 'Add Position…'}
+      </button>
+      <button type="button" onClick={() => setBacklogLayoutEditMode(prev => !prev)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">
+        {backlogLayoutEditMode ? 'Done' : 'Edit Layout'}
+      </button>
+      <span ref={setPositionsZoomHost} className="flex items-center" />
+    </div>
+  )
+  const overallPositionsActions = (
+    <div className="flex items-center gap-4 text-xs">
+      <button type="button" onClick={() => setBacklogLayoutEditMode(prev => !prev)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">
+        {backlogLayoutEditMode ? 'Done' : 'Edit Layout'}
+      </button>
+      <span ref={setPositionsZoomHost} className="flex items-center" />
+    </div>
+  )
+  const overallPositionsTable = (
+    <div className={cn(F9_PANEL_CLASS_BLOCK, 'overflow-hidden pt-2')}>
+      {backlogLayoutEditMode && (
+        <div className="flex flex-wrap items-center gap-3 px-4 pb-2">
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-500">
+            <input type="checkbox" checked={showArchivedByDefault} onChange={toggleShowArchivedByDefault} className="h-3.5 w-3.5" />
+            Show archived positions by default
+          </label>
+        </div>
+      )}
+      <ScrollableZoomSurfaceBlock
+        minWidthClassName={Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
+        controlsLabel="Zoom"
+        controlsAppearance="quiet"
+        controlsHost={positionsZoomHost}
+        fitToWidthLabel="Fit"
+        fitColumnsToWidthLabel="Fit columns"
+        showFitColumnsToWidthButton
+        persistStateKey="webull-overall-positions"
+      >
+          <BacklogListBlock
+            renderNodeTitle={renderPositionTitle}
+            programs={backlogTableModel.programs}
+            onReorderSiblings={handleReorderBacklogPrograms}
+            resolveProgramOrdinal={resolveBacklogProgramOrdinal}
+            onSetProgramOrdinal={handleSetBacklogProgramOrdinal}
+            renderProgramTitlePrefix={renderProgramTitlePrefix}
+            programLayoutEditMode={backlogLayoutEditMode}
+            onProgramLayoutEditModeChange={setBacklogLayoutEditMode}
+            showProgramLayoutToggle={false}
+            appearance="native"
+            loadEpics={loadBacklogEpics}
+            loadChildren={loadBacklogChildren}
+            selectedNodeId={selectedBacklogNodeId}
+            readOnly
+            allowStatusEditingInReadOnly
+            allowProgramLayoutEditingInReadOnly
+            onSelectNode={onSelectBacklogNode}
+            programGroups={activeProjectProgramGroups}
+            programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
+            onCreateProgramGroup={createActiveProjectCompanyGroup}
+            onDeleteProgramGroup={deleteActiveProjectCompanyGroup}
+            onToggleProgramGroupCollapsed={toggleActiveProjectCompanyGroupCollapsed}
+            onAssignProgramToGroup={assignProgramToActiveProjectCompanyGroup}
+            onOpenNodeDetails={onOpenBacklogNodeDetails}
+            onUpdateNodeStatus={onUpdateBacklogNodeStatus}
+            onUpdateNodeNotes={onUpdateBacklogNodeNotes}
+            relatedNodeOptions={linkOptions}
+            onOpenRelatedNode={handleBacklogOpenRelated}
+            programLabelSingular="company"
+            programLabelPlural="companies"
+            programGroupLabelSingular="company group"
+            projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
+            canOpenNodeDetails={handleBacklogCanOpenDetails}
+            rowColumns={webullRowColumns}
+            showRowColumnsOnCompact
+            rowPresetTagLimit={5}
+            rowPresetTagsClassName="w-[12rem]"
+            linksColumnLabel="Links"
+            statusColumnLabel="Status"
+            linksColumnWidthClassName="w-[4.5rem]"
+            linksColumnAlign="left"
+            linksColumnPaddingClassName="px-0"
+            linksBeforeTags
+            statusRightAligned={false}
+            rowDetailsRenderer={renderWebullInlineDetails}
+            titleColumnClassName="w-[11rem]"
+            wrapTitleText
+            showProgramStatus={false}
+            showProgramCopyButton={false}
+            preferInlineDetailsButton
+            allowInlineNotesInReadOnly
+            showNodeTypeIcons={false}
+            showExpandToggles={false}
+            showPriorityDots={false}
+          />
+      </ScrollableZoomSurfaceBlock>
+    </div>
+  )
+
 
   return (
     <div className="ltm-webull-shell flex h-full min-h-0 w-full">
@@ -2279,8 +2375,8 @@ export default function WebullWorkspaceBlock({
           aria-hidden={!phoneListMode && sideTabsCollapsed}
         >
         <div className={cn(
-          'h-full overflow-y-auto bg-background/40 px-3 py-4',
-          phoneListMode ? 'w-full' : 'w-[220px] border-r border-border/60',
+          'h-full overflow-y-auto px-3 py-4',
+          phoneListMode ? 'w-full bg-background/40' : 'w-[220px] border-r border-border/60 bg-background/40 px-2.5',
           // The native dock floats over the web view (64pt above the home
           // indicator) — nothing reserves room for it, so the last company
           // row sat under it with no way to scroll clear.
@@ -2289,178 +2385,39 @@ export default function WebullWorkspaceBlock({
           phoneListMode && 'px-0 pt-0 pb-[calc(var(--ltm-safe-bottom,0px)+5.5rem)]',
           !phoneListMode && sideTabsCollapsed && 'pointer-events-none',
         )}>
-          {phoneListMode ? (
-            // Negative margins cancel this scroller's own `px-4 py-4` so the
-            // blurred bar reaches the screen edges and the status bar.
-            <PhoneLargeTitleBlock title="F9" />
-          ) : (
-            <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Webull
-            </p>
-          )}
-          <nav className={phoneListMode ? undefined : 'space-y-1'}>
-            <PhoneListGroupBlock enabled={phoneListMode}>
-            {subtabs.map((subtab) => {
-              const active = activeSubtabId === subtab.id && !showCompanyView
-              const Icon = WEBULL_SUBTAB_ICONS[subtab.id]
-              const onSelect = () => pushDetailIfPhone(() => {
+          <WebullSidebarBlock
+            phoneListMode={phoneListMode}
+            executionRoot={executionRoot}
+            views={subtabs.map((subtab) => ({
+              id: subtab.id,
+              label: subtab.label,
+              icon: WEBULL_SUBTAB_ICONS[subtab.id],
+              active: activeSubtabId === subtab.id && !companyPageOpen,
+              onSelect: () => pushDetailIfPhone(() => {
                 onSelectSubtab(subtab.id)
                 setPreserveOverallContext(false)
+                setVirtualCompany(null)
                 onSelectCompanyTicker(null)
-              })
-              if (phoneListMode) {
-                return (
-                  <PhoneListRowBlock
-                    key={subtab.id}
-                    icon={<Icon className={PHONE_LIST_ICON_CLASS_BLOCK} />}
-                    label={subtab.label}
-                    onClick={onSelect}
-                  />
-                )
+              }),
+            }))}
+            companies={companyUniverse}
+            activeCompanyKey={showCompanyView && selectedCompany
+              ? selectedCompany.companyTicker.toUpperCase()
+              : showVirtualCompany ? virtualCompany?.key ?? null : null}
+            onSelectCompany={(company) => pushDetailIfPhone(() => {
+              setPreserveOverallContext(false)
+              const folder = company.hasExecutionFolder && company.ticker
+                ? executionOverview?.companies.find(c => c.companyTicker.toUpperCase() === company.ticker)
+                : undefined
+              if (folder) {
+                setVirtualCompany(null)
+                onSelectCompanyTicker(folder.companyTicker)
+              } else {
+                onSelectCompanyTicker(null)
+                setVirtualCompany(company)
               }
-              return (
-                <button
-                  key={subtab.id}
-                  type="button"
-                  onClick={onSelect}
-                  className={cn(
-                    navRowClass,
-                    active
-                      ? 'bg-foreground text-background'
-                      : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                  )}
-                >
-                  <Icon className={navIconClass} />
-                  <span className="truncate">{subtab.label}</span>
-                </button>
-              )
             })}
-            </PhoneListGroupBlock>
-          </nav>
-
-          {phoneListMode ? (
-            <PhoneListSectionHeaderBlock>Companies</PhoneListSectionHeaderBlock>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setSidebarCompaniesExpanded(prev => !prev)}
-              aria-expanded={sidebarCompaniesExpanded}
-              className="ltm-motion-fast mb-2 mt-5 flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ChevronRight className={cn('h-3 w-3 shrink-0 transition-transform duration-150', sidebarCompaniesExpanded && 'rotate-90')} />
-              <span>Companies</span>
-              <span className="ml-auto font-medium normal-case tracking-normal tabular-nums opacity-70">
-                {sidebarCompanyGroups.count}
-              </span>
-            </button>
-          )}
-          <nav className={phoneListMode ? undefined : 'space-y-1'}>
-            <PhoneListGroupBlock enabled={phoneListMode}>
-            {[
-              { key: 'held', label: 'Held', entries: sidebarCompanyGroups.held },
-              { key: 'watching', label: 'Watching', entries: sidebarCompanyGroups.watching },
-            ].flatMap((group) => {
-              // Collapsed on desktop: only the company you're in stays visible,
-              // so the sidebar still says where you are.
-              const visible = phoneListMode || sidebarCompaniesExpanded
-                ? group.entries
-                : group.entries.filter(({ company }) => showCompanyView && activeCompanyTicker === company.companyTicker)
-              if (visible.length === 0) return []
-              const rows = visible.map(({ company, share }) => {
-                const active = showCompanyView && activeCompanyTicker === company.companyTicker
-                const shareLabel = share === null ? null : `${(share * 100).toFixed(share >= 0.1 ? 0 : 1)}%`
-                const onSelect = () => pushDetailIfPhone(() => {
-                  setPreserveOverallContext(false)
-                  onSelectCompanyTicker(company.companyTicker)
-                })
-                const logo = executionRoot
-                  ? <TickerLogoBlock ticker={company.companyTicker} executionRoot={executionRoot} className={phoneListMode ? 'h-[22px] w-[22px]' : 'h-4 w-4'} />
-                  : <Building2 className={cn(phoneListMode ? PHONE_LIST_ICON_CLASS_BLOCK : navIconClass, 'shrink-0')} />
-                if (phoneListMode) {
-                  return (
-                    <PhoneListRowBlock
-                      key={company.companyTicker}
-                      icon={logo}
-                      label={company.companyTicker}
-                      trailing={shareLabel ?? undefined}
-                      onClick={onSelect}
-                    />
-                  )
-                }
-                const row = (
-                  <button
-                    key={company.companyTicker}
-                    type="button"
-                    onClick={onSelect}
-                    className={cn(
-                      navRowClass,
-                      active
-                        ? 'bg-foreground text-background'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                    )}
-                  >
-                    {logo}
-                    <span className="truncate">{company.companyTicker}</span>
-                    {shareLabel && <span className="ml-auto text-xs tabular-nums opacity-70">{shareLabel}</span>}
-                  </button>
-                )
-                return row
-              })
-              const showGroupLabel = !phoneListMode && sidebarCompaniesExpanded
-              return showGroupLabel
-                ? [
-                    <p key={`${group.key}-label`} className="px-2.5 pb-0.5 pt-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/60">
-                      {group.label}
-                    </p>,
-                    ...rows,
-                  ]
-                : rows
-            })}
-            {(executionOverview?.companies.length ?? 0) === 0 && (phoneListMode || sidebarCompaniesExpanded) && (
-              <p className={cn(
-                'text-xs text-muted-foreground/60',
-                phoneListMode ? 'px-4 py-3 text-[15px]' : 'px-2 py-1',
-              )}>No companies yet.</p>
-            )}
-            </PhoneListGroupBlock>
-          </nav>
-
-          {(phoneListMode || sidebarCompaniesExpanded) && (<>
-          {phoneListMode ? (
-            <PhoneListSectionHeaderBlock>Add Company</PhoneListSectionHeaderBlock>
-          ) : (
-            <p className="mb-2 mt-5 px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Add Company
-            </p>
-          )}
-          <div className={cn('space-y-2', phoneListMode ? 'px-4' : 'px-1')}>
-            <input
-              type="text"
-              value={newCompanyTicker}
-              onChange={(event) => setNewCompanyTicker(event.target.value.toUpperCase())}
-              placeholder="Ticker (e.g. TSLA)"
-              className={cn(
-                'h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:border-ring',
-                // 16px minimum or iOS zooms the whole page on focus.
-                phoneListMode && 'h-11 rounded-lg px-3 text-base',
-              )}
-            />
-            <Button
-              type="button"
-              className={cn('w-full', phoneListMode && 'h-11 text-[15px]')}
-              size="sm"
-              variant="outline"
-              disabled={workspaceBusy || !newCompanyTicker.trim()}
-              onClick={() => {
-                const ticker = newCompanyTicker.trim()
-                if (!ticker) return
-                void onCreateCompany(ticker).then(() => setNewCompanyTicker(''))
-              }}
-            >
-              Add Company
-            </Button>
-          </div>
-          </>)}
+          />
         </div>
         </aside>
       )}
@@ -2477,10 +2434,10 @@ export default function WebullWorkspaceBlock({
         'min-w-0 overflow-auto px-6 py-5',
         // The company page is the first F9 view on the native ground: grey,
         // with white panels instead of one big card.
-        showCompanyView && 'bg-[#F5F5F7] px-7 py-6 dark:bg-zinc-950',
+        nativeView && 'bg-[#F5F5F7] px-7 py-6 dark:bg-zinc-950',
         phoneListMode ? 'hidden' : 'flex-1',
       )}>
-      {pageTitle && !gapsTabActive && !showCompanyView && (
+      {pageTitle && !gapsTabActive && !nativeView && (
         <div className="mb-4">
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{pageTitle}</h1>
           <p className="text-sm text-muted-foreground">
@@ -2489,11 +2446,11 @@ export default function WebullWorkspaceBlock({
         </div>
       )}
       <Card className={cn(
-        showCompanyView
+        nativeView
           ? 'border-0 bg-transparent shadow-none hover:shadow-none'
           : 'border-foreground/[0.06] bg-white shadow-[0_2px_10px_-4px_rgba(20,20,24,0.08)] hover:shadow-[0_2px_10px_-4px_rgba(20,20,24,0.08)] dark:bg-background',
       )}>
-        {!showCompanyView && (
+        {!nativeView && (
         <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
           <div>
             <CardTitle>{workspaceTitle}</CardTitle>
@@ -2512,9 +2469,9 @@ export default function WebullWorkspaceBlock({
         </CardHeader>
         )}
 
-        <CardContent className={cn('space-y-4', showCompanyView && 'p-0')}>
+        <CardContent className={cn('space-y-4', nativeView && 'p-0')}>
           {projectTagsOpen && !gapsTabActive && (
-            <div id="webull-project-tags" className={cn('scroll-mt-4 p-3', showCompanyView ? F9_PANEL_CLASS_BLOCK : 'rounded-xl border bg-background')}>
+            <div id="webull-project-tags" className={cn('scroll-mt-4 p-3', nativeView ? F9_PANEL_CLASS_BLOCK : 'rounded-xl border bg-background')}>
               <TagListEditorBlock
                 heading="Project Tags"
                 tags={availableProjectPresetTags}
@@ -2561,7 +2518,7 @@ export default function WebullWorkspaceBlock({
             </div>
           )}
 
-          {allWarnings.length > 0 && !gapsTabActive && !showCompanyView && (
+          {allWarnings.length > 0 && !gapsTabActive && !nativeView && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 dark:bg-amber-500/20 p-3 text-sm text-amber-800 dark:text-amber-300">
               {allWarnings.map((warning) => (
                 <p key={warning}>{warning}</p>
@@ -2606,235 +2563,80 @@ export default function WebullWorkspaceBlock({
             const accountDescriptor = accountLabelEntries.length > 0
               ? accountLabelEntries.map(formatAccountDescriptorBlock).join(' · ')
               : (selectedAccount?.accountNumber ?? selectedAccount?.accountId ?? 'No account metadata')
+            const pieCompanies = (executionOverview?.companies.length ?? 0) > 0
+              ? executionOverview!.companies
+              : companiesForTable
+            const { slices, total } = buildCompanyPieDataBlock(pieCompanies)
+            if (slices.length === 0 || total <= 0) return null
+            const profitLossByTicker = new Map<string, number | null>()
+            for (const company of pieCompanies) {
+              const ticker = company.companyTicker.toUpperCase()
+              const activePositions = company.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived')
+              const metrics = computeCompanySummaryMetricsBlock(activePositions)
+              profitLossByTicker.set(ticker, metrics.totalProfitLoss)
+            }
+            const byTicker = new Map<string, { color: string; stock: number; option: number; other: number; total: number }>()
+            for (const slice of slices) {
+              const entry = byTicker.get(slice.ticker) ?? { color: slice.color, stock: 0, option: 0, other: 0, total: 0 }
+              if (slice.kind === 'STOCK') entry.stock += slice.value
+              else if (slice.kind === 'OPTION') entry.option += slice.value
+              else entry.other += slice.value
+              entry.total += slice.value
+              entry.color = slice.color
+              byTicker.set(slice.ticker, entry)
+            }
+            const legend = [...byTicker.entries()]
+              .map(([ticker, agg]) => {
+                const pl = profitLossByTicker.get(ticker) ?? null
+                const plPercent = (pl !== null && agg.total > 0) ? (pl / agg.total) * 100 : null
+                return { ticker, ...agg, share: (agg.total / total) * 100, plPercent, pl }
+              })
+              .sort((a, b) => b.total - a.total)
+            // Each open option: when it expires and what it cost, for the Expiry view.
+            const colorByTicker = new Map(legend.map(entry => [entry.ticker, entry.color]))
+            const optionExpiries = pieCompanies.flatMap((company) => {
+              const ticker = company.companyTicker.toUpperCase()
+              return company.positions
+                .filter(p => normalizePositionStatusBlock(p.status) !== 'archived' && isOptionPositionBlock(p))
+                .flatMap((p) => {
+                  const expiry = firstStringBlock(p.optionExpireDate).slice(0, 10) || (p.symbol.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ?? '')
+                  const cost = computeCompanySummaryMetricsBlock([p]).optionCost ?? 0
+                  return expiry && cost > 0 ? [{ ticker, color: colorByTicker.get(ticker) ?? '#a1a1aa', expiry, cost }] : []
+                })
+            })
+            const allocation = slices.length > 0 && total > 0 ? { slices, total, legend, optionExpiries } : null
             return (
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-background/60 px-3 py-2 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5" />
-                    <span className="text-foreground">{formatFetchedTimestampBlock(fetchedAt)}</span>
-                    <span className="text-muted-foreground">· {formatRuntimeLabelBlock(lastRefreshRuntime)}</span>
-                  </span>
-                  <span className="hidden h-3 w-px bg-border sm:inline-block" />
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <Building2 className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate" title={accountDescriptor}>{accountDescriptor}</span>
-                  </span>
-                  <span className="hidden h-3 w-px bg-border sm:inline-block" />
-                  <span className="flex items-center gap-1.5">
-                    <Layers className="h-3.5 w-3.5" />
-                    <span className="text-foreground">{executionCompanyCount}</span> indexed
-                  </span>
-                </div>
-                <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-emerald-500/10 via-background to-sky-500/10 p-5 shadow-sm">
-                  <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 blur-3xl" />
-                  <div className="pointer-events-none absolute -bottom-20 -left-10 h-44 w-44 rounded-full bg-sky-500/10 dark:bg-sky-500/20 blur-3xl" />
-                  <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                        <Wallet className="h-3.5 w-3.5" />
-                        Overall Value
-                      </div>
-                      <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
-                        {formatOverallValueBlock(accountBalanceLegacy ?? assetsAccount)}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Across {accountCount || '—'} {accountCount === 1 ? 'account' : 'accounts'}
-                        {executionCompanyCount > 0 ? ` · ${executionCompanyCount} indexed ${executionCompanyCount === 1 ? 'company' : 'companies'}` : ''}
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 text-sm sm:max-w-sm sm:flex-1">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Invested</p>
-                        <p className="mt-0.5 font-semibold text-emerald-500">
-                          {formatCurrencyBlock(investedNumber)}
-                          {investedShare !== null && (
-                            <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{investedShare.toFixed(1)}%</span>
-                          )}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Cash &amp; Equivalents</p>
-                        <p className="mt-0.5 font-semibold text-sky-500">
-                          {formatCurrencyBlock(cashAndEquivalents)}
-                          {cashShare !== null && (
-                            <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{cashShare.toFixed(1)}%</span>
-                          )}
-                        </p>
-                        {cashEquivalentHasAny && (
-                          <p className="text-[11px] text-muted-foreground">
-                            incl. {formatCurrencyBlock(cashEquivalentExtra)} JPST
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {(() => {
-                  const pieCompanies = (executionOverview?.companies.length ?? 0) > 0
-                    ? executionOverview!.companies
-                    : companiesForTable
-                  const { slices, total } = buildCompanyPieDataBlock(pieCompanies)
-                  if (slices.length === 0 || total <= 0) return null
-                  const profitLossByTicker = new Map<string, number | null>()
-                  for (const company of pieCompanies) {
-                    const ticker = company.companyTicker.toUpperCase()
-                    const activePositions = company.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived')
-                    const metrics = computeCompanySummaryMetricsBlock(activePositions)
-                    profitLossByTicker.set(ticker, metrics.totalProfitLoss)
-                  }
-                  const byTicker = new Map<string, { color: string; stock: number; option: number; other: number; total: number }>()
-                  for (const slice of slices) {
-                    const entry = byTicker.get(slice.ticker) ?? { color: slice.color, stock: 0, option: 0, other: 0, total: 0 }
-                    if (slice.kind === 'STOCK') entry.stock += slice.value
-                    else if (slice.kind === 'OPTION') entry.option += slice.value
-                    else entry.other += slice.value
-                    entry.total += slice.value
-                    entry.color = slice.color
-                    byTicker.set(slice.ticker, entry)
-                  }
-                  const legend = [...byTicker.entries()]
-                    .map(([ticker, agg]) => {
-                      const pl = profitLossByTicker.get(ticker) ?? null
-                      const plPercent = (pl !== null && agg.total > 0) ? (pl / agg.total) * 100 : null
-                      return { ticker, ...agg, share: (agg.total / total) * 100, plPercent }
-                    })
-                    .sort((a, b) => b.total - a.total)
-                  const renderTickerLabel = (props: {
-                    cx?: number; cy?: number; midAngle?: number; outerRadius?: number;
-                    payload?: CompanyPieSliceBlock;
-                  }) => {
-                    const { cx, cy, midAngle, outerRadius, payload } = props
-                    if (cx === undefined || cy === undefined || midAngle === undefined || outerRadius === undefined || !payload) return null
-                    if (!payload.isFirstForTicker) return null
-                    const tickerShare = total > 0 ? (byTicker.get(payload.ticker)?.total ?? 0) / total : 0
-                    if (tickerShare < 0.025) return null
-                    const RADIAN = Math.PI / 180
-                    const sin = Math.sin(-midAngle * RADIAN)
-                    const cos = Math.cos(-midAngle * RADIAN)
-                    const x = cx + (outerRadius + 14) * cos
-                    const y = cy + (outerRadius + 14) * sin
-                    const anchor = cos >= 0 ? 'start' : 'end'
-                    return (
-                      <g>
-                        <text
-                          x={x}
-                          y={y - 6}
-                          textAnchor={anchor}
-                          dominantBaseline="central"
-                          fontSize={11}
-                          fontWeight={600}
-                          fill={payload.color}
-                        >
-                          {payload.ticker}
-                        </text>
-                        <text
-                          x={x}
-                          y={y + 6}
-                          textAnchor={anchor}
-                          dominantBaseline="central"
-                          fontSize={10}
-                          fontWeight={500}
-                          fill="hsl(var(--muted-foreground))"
-                        >
-                          {(tickerShare * 100).toFixed(1)}%
-                        </text>
-                      </g>
-                    )
-                  }
-                  return (
-                    <div className="rounded-2xl border bg-background/40 p-5">
-                      <div className="mb-4 flex items-baseline justify-between border-b border-border/40 pb-3">
-                        <div>
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Allocation by Businesses</p>
-                          <p className="text-[11px] text-muted-foreground">by cost basis</p>
-                        </div>
-                        <p className="text-base font-semibold tracking-tight text-foreground">{formatCurrencyBlock(total)}</p>
-                      </div>
-                      <div className="flex flex-col gap-6 md:flex-row md:items-center">
-                        <div className="relative h-[260px] w-full md:w-[320px] md:shrink-0">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie
-                                data={slices}
-                                dataKey="value"
-                                nameKey="key"
-                                innerRadius={70}
-                                outerRadius={105}
-                                paddingAngle={0}
-                                stroke="hsl(var(--background))"
-                                strokeWidth={1}
-                                label={renderTickerLabel}
-                                labelLine={false}
-                                isAnimationActive={false}
-                              >
-                                {slices.map((slice) => (
-                                  <Cell key={slice.key} fill={slice.color} fillOpacity={slice.fillOpacity} />
-                                ))}
-                              </Pie>
-                              <Tooltip
-                                cursor={false}
-                                contentStyle={{
-                                  background: 'hsl(var(--background))',
-                                  border: '1px solid hsl(var(--border))',
-                                  borderRadius: 8,
-                                  fontSize: 12,
-                                }}
-                                formatter={(value, _name, item) => {
-                                  const numeric = typeof value === 'number' ? value : Number(value)
-                                  const share = total > 0 ? (numeric / total) * 100 : 0
-                                  const payload = (item as { payload?: CompanyPieSliceBlock } | undefined)?.payload
-                                  const label = payload ? `${payload.ticker} · ${payload.kind.toLowerCase()}` : ''
-                                  return [`${formatCurrencyBlock(numeric)} (${share.toFixed(1)}%)`, label]
-                                }}
-                              />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        </div>
-                        <div className="relative flex-1">
-                          <ul className="grid grid-cols-1 justify-center gap-x-16 gap-y-0.5 text-xs sm:grid-cols-[max-content_max-content] md:max-h-[260px] md:overflow-y-auto md:pr-2">
-                          {legend.map((entry) => (
-                            <li key={entry.ticker} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-foreground/[0.04]">
-                              <div className="flex w-16 min-w-0 items-center gap-2">
-                                <span
-                                  className="inline-block h-2 w-2 shrink-0 rounded-full"
-                                  style={{ backgroundColor: entry.color }}
-                                />
-                                <span className="truncate font-medium text-foreground">{entry.ticker}</span>
-                                {entry.option > 0 && (
-                                  <span
-                                    className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-                                    style={{ backgroundColor: 'transparent', boxShadow: `inset 0 0 0 1px ${entry.color}` }}
-                                    title={entry.stock > 0 ? 'Has stock and options' : 'Options only'}
-                                  />
-                                )}
-                              </div>
-                              <div className="flex shrink-0 items-center gap-3 tabular-nums">
-                                <span className="w-12 text-right text-muted-foreground">{entry.share.toFixed(1)}%</span>
-                                <span className="w-14 text-right text-foreground/80">{formatCurrencyKBlock(entry.total)}</span>
-                                <span
-                                  className={cn(
-                                    'w-12 text-right text-[10px]',
-                                    entry.plPercent === null
-                                      ? 'text-muted-foreground/60'
-                                      : entry.plPercent >= 0
-                                        ? 'text-emerald-500'
-                                        : 'text-rose-500',
-                                  )}
-                                >
-                                  {entry.plPercent === null
-                                    ? '—'
-                                    : `${entry.plPercent >= 0 ? '+' : ''}${entry.plPercent.toFixed(1)}%`}
-                                </span>
-                              </div>
-                            </li>
-                          ))}
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })()}
-              </div>
+              <WebullOverallPageBlock
+                executionRoot={executionRoot}
+                onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
+                accountCount={accountCount}
+                companyCount={executionCompanyCount}
+                value={{
+                  overallValue: formatOverallValueBlock(accountBalanceLegacy ?? assetsAccount),
+                  invested: formatCurrencyBlock(investedNumber),
+                  investedShare,
+                  cash: formatCurrencyBlock(cashAndEquivalents),
+                  cashShare,
+                  cashNote: cashEquivalentHasAny ? `incl. ${formatCurrencyBlock(cashEquivalentExtra)} JPST` : null,
+                }}
+                accounts={accountLabelEntries.length > 0
+                  ? accountLabelEntries.map(entry => ({
+                      label: entry.label,
+                      detail: `${entry.accountNumber ?? entry.accountId ?? 'Unknown'}`,
+                    }))
+                  : [{ label: 'Account', detail: accountDescriptor }]}
+                allocation={allocation}
+                formatMoney={(value) => formatCurrencyBlock(value)}
+                formatMoneyK={(value) => formatCurrencyKBlock(value)}
+                onSelectTicker={(ticker) => {
+                  setPreserveOverallContext(false)
+                  onSelectCompanyTicker(ticker)
+                }}
+                positionsActions={overallPositionsActions}
+                positionsSlot={overallPositionsTable}
+                positionCount={executionPositionCount}
+                footer={nativeFooter}
+              />
             )
           })()}
 
@@ -2846,42 +2648,9 @@ export default function WebullWorkspaceBlock({
               executionRoot={executionRoot}
               costShare={sidebarCompanyGroups.held.find(entry => entry.company.companyTicker === selectedCompany.companyTicker)?.share ?? null}
               livePrice={selectedCompanyLivePrice}
-              snapshotNotice={liveRefreshAvailable ? null : `${fetchedAt ? `Updated ${new Date(fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} ` : ''}from saved snapshot`}
-              footer={(
-                <p className="mx-1 text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
-                  {liveRefreshAvailable
-                    ? (fetchedAt ? `Updated ${new Date(fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'Not synced yet')
-                    : 'Saved snapshot'}
-                  {allWarnings.length > 0 && (
-                    <>
-                      {' · '}
-                      <button type="button" onClick={() => { setDiagnosticsOpen(true); requestAnimationFrame(() => document.getElementById('webull-diagnostics')?.scrollIntoView({ behavior: 'smooth' })) }} className="text-amber-700 hover:underline dark:text-amber-400">
-                        {allWarnings.length} {allWarnings.length === 1 ? 'warning' : 'warnings'}
-                      </button>
-                    </>
-                  )}
-                  {' · '}
-                  <button type="button" onClick={() => { setProjectTagsOpen(prev => !prev); requestAnimationFrame(() => document.getElementById('webull-project-tags')?.scrollIntoView({ behavior: 'smooth' })) }} className="hover:text-zinc-800 hover:underline dark:hover:text-zinc-200">
-                    Project tags
-                  </button>
-                  {' · '}
-                  <button type="button" onClick={() => { setDiagnosticsOpen(prev => !prev); requestAnimationFrame(() => document.getElementById('webull-diagnostics')?.scrollIntoView({ behavior: 'smooth' })) }} className="hover:text-zinc-800 hover:underline dark:hover:text-zinc-200">
-                    Diagnostics
-                  </button>
-                </p>
-              )}
+              footer={nativeFooter}
               holding={selectedCompanyHolding}
-              positionsActions={(
-                <div className="flex items-center gap-4 text-xs">
-                  <button type="button" onClick={() => setCreatePositionOpen(prev => !prev)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">
-                    {createPositionOpen ? 'Cancel' : 'Add Position…'}
-                  </button>
-                  <button type="button" onClick={() => setBacklogLayoutEditMode(prev => !prev)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">
-                    {backlogLayoutEditMode ? 'Done' : 'Edit Layout'}
-                  </button>
-                  <span ref={setPositionsZoomHost} className="flex items-center" />
-                </div>
-              )}
+              positionsActions={nativePositionsActions}
               positionCount={selectedCompany.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length}
               onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
               positionsSlot={(
@@ -3076,94 +2845,19 @@ export default function WebullWorkspaceBlock({
                 </div>
               )}
             />
-          ) : overallTabActive ? (
-            <div className="rounded-2xl border p-5">
-              <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
-                {backlogLayoutEditMode && (
-                  <label className="mr-auto flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={showArchivedByDefault}
-                      onChange={toggleShowArchivedByDefault}
-                      className="h-3.5 w-3.5"
-                    />
-                    Show archived positions by default
-                  </label>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setBacklogLayoutEditMode(prev => !prev)}
-                  className={backlogLayoutEditMode
-                    ? 'inline-flex h-8 items-center rounded-md bg-foreground px-3 text-xs font-medium text-background transition-colors hover:bg-foreground/90'
-                    : 'inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted'}
-                >
-                  {backlogLayoutEditMode ? 'Done' : 'Edit'}
-                </button>
-              </div>
-              <ScrollableZoomSurfaceBlock
-                minWidthClassName={Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
-                controlsLabel="Table zoom"
-                showFitColumnsToWidthButton
-                persistStateKey="webull-table-viewport-fit"
-              >
-                <BacklogListBlock
-                  programs={backlogTableModel.programs}
-                  onReorderSiblings={handleReorderBacklogPrograms}
-                  resolveProgramOrdinal={resolveBacklogProgramOrdinal}
-                  onSetProgramOrdinal={handleSetBacklogProgramOrdinal}
-                  renderProgramTitlePrefix={renderProgramTitlePrefix}
-                  programLayoutEditMode={backlogLayoutEditMode}
-                  onProgramLayoutEditModeChange={setBacklogLayoutEditMode}
-                  showProgramLayoutToggle={false}
-                  epicBorderClassByProgramUuid={companyBorderClassByProgramUuid}
-                  loadEpics={loadBacklogEpics}
-                  loadChildren={loadBacklogChildren}
-                  selectedNodeId={selectedBacklogNodeId}
-                  readOnly
-                  allowStatusEditingInReadOnly
-                  allowProgramLayoutEditingInReadOnly
-                  onSelectNode={onSelectBacklogNode}
-                  programGroups={activeProjectProgramGroups}
-                  programGroupIdByProgram={activeProjectProgramGroupIdByProgram}
-                  onCreateProgramGroup={createActiveProjectCompanyGroup}
-                  onDeleteProgramGroup={deleteActiveProjectCompanyGroup}
-                  onToggleProgramGroupCollapsed={toggleActiveProjectCompanyGroupCollapsed}
-                  onAssignProgramToGroup={assignProgramToActiveProjectCompanyGroup}
-                  onOpenNodeDetails={onOpenBacklogNodeDetails}
-                  onUpdateNodeStatus={onUpdateBacklogNodeStatus}
-                  onUpdateNodeNotes={onUpdateBacklogNodeNotes}
-                  relatedNodeOptions={linkOptions}
-                  onOpenRelatedNode={handleBacklogOpenRelated}
-                  programLabelSingular="company"
-                  programLabelPlural="companies"
-                  programGroupLabelSingular="company group"
-                  projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
-                  canOpenNodeDetails={handleBacklogCanOpenDetails}
-                  rowColumns={webullRowColumns}
-                  showRowColumnsOnCompact
-                  rowPresetTagLimit={5}
-                  rowPresetTagsClassName="ml-auto w-[18rem] justify-end"
-                  reserveTagsSlotWhenEmpty
-                  linksColumnLabel="Links"
-                  linksColumnWidthClassName="w-[8rem] mx-6"
-                  linksColumnAlign="left"
-                  linksColumnPaddingClassName="px-0"
-                  linksBeforeTags
-                  statusRightAligned={false}
-                  rowDetailsRenderer={renderWebullInlineDetails}
-                  titleColumnClassName="w-[11rem]"
-                  wrapTitleText
-                  actionsRightEdge
-                  showProgramStatus={false}
-                  showProgramCopyButton={false}
-                  preferInlineDetailsButton
-                  allowInlineNotesInReadOnly
-                  showNodeTypeIcons={false}
-                  showExpandToggles={false}
-                  showPriorityDots={false}
-                />
-              </ScrollableZoomSurfaceBlock>
-            </div>
+          ) : showVirtualCompany && virtualCompany ? (
+            <WebullCompanyPageBlock
+              key={virtualCompany.key}
+              ticker={virtualCompany.ticker ?? ''}
+              companyName={virtualCompany.name ?? (virtualCompany.ticker ? tickerToCompanyName.get(virtualCompany.ticker) ?? null : null)}
+              executionRoot={executionRoot}
+              costShare={null}
+              livePrice={null}
+              holding={null}
+              positionCount={0}
+              footer={nativeFooter}
+              onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
+            />
           ) : null}
 
           <details
@@ -3173,7 +2867,7 @@ export default function WebullWorkspaceBlock({
             className={cn(
               'group scroll-mt-4 overflow-hidden',
               F9_PANEL_CLASS_BLOCK,
-              (gapsTabActive || (showCompanyView && !diagnosticsOpen)) && 'hidden',
+              (gapsTabActive || (nativeView && !diagnosticsOpen)) && 'hidden',
             )}
           >
             <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
@@ -3185,7 +2879,7 @@ export default function WebullWorkspaceBlock({
               {(() => {
                 // One list of what needs attention, without saying the same thing twice.
                 const notices = [
-                  ...(showCompanyView ? allWarnings : []),
+                  ...(nativeView ? allWarnings : []),
                   ...(!liveRefreshAvailable ? ['Live Webull refresh runs only in the Electron app; this view shows the saved data from your last Electron refresh.'] : []),
                   ...(liveRefreshAvailable && !hasConfig ? ['Missing Webull credentials. Open Settings > Webull and save your app key and app secret to secure device storage.'] : []),
                 ]
