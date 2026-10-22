@@ -2247,7 +2247,8 @@ export default function WebullWorkspaceBlock({
     const ticker = selectedCompany.companyTicker.toUpperCase()
     // Options share the underlying's symbol; only the stock row carries its price.
     const row = overallRows.find(r => firstStringBlock(r.symbol, r.ticker, r.position_symbol, r.stock_code).toUpperCase() === ticker
-      && firstStringBlock(r.instrument_type, r.instrumentType).toUpperCase() === 'STOCK')
+      // OpenAPI holdings say EQUITY, the legacy positions payload says STOCK.
+      && ['EQUITY', 'STOCK'].includes(firstStringBlock(r.instrument_type, r.instrumentType).toUpperCase()))
     return row ? firstNumberBlock(row.last_price, row.lastPrice) : null
   })()
 

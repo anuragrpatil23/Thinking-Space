@@ -154,7 +154,7 @@ export default function WebullCompanyPageBlock({
     ? Math.min(1, Math.max(0, (price - range.low) / (range.high - range.low)))
     : null
   const validThroughPassed = study?.validThrough ? study.validThrough < new Date().toISOString().slice(0, 10) : false
-  const displayName = study?.company ?? companyName ?? ticker
+  const displayName = dossier?.companyName ?? study?.company ?? companyName ?? null
 
   const chartPoints = useMemo(() => {
     const days = PRICE_WINDOW_DAYS_BLOCK[priceWindow]
@@ -176,7 +176,7 @@ export default function WebullCompanyPageBlock({
   const observations = dossier?.observations ?? []
   const visibleObservations = observationsExpanded ? observations : observations.slice(0, OBSERVATION_PREVIEW_BLOCK)
   const sublineParts = [
-    ticker,
+    displayName,
     costShare !== null ? `Held · ${(costShare * 100).toFixed(costShare >= 0.1 ? 0 : 1)}% of cost` : 'Watching',
     rangeState,
   ].filter(Boolean)
@@ -188,7 +188,7 @@ export default function WebullCompanyPageBlock({
         <div className="flex min-w-0 items-center gap-3.5">
           {executionRoot && <TickerLogoBlock ticker={ticker} executionRoot={executionRoot} className="h-11 w-11 shadow-[0_0_0_0.5px_rgba(0,0,0,0.08)]" />}
           <div className="min-w-0">
-            <h1 className="text-[26px] font-bold leading-tight tracking-tight">{displayName}</h1>
+            <h1 className="text-[26px] font-bold leading-tight tracking-tight">{ticker}</h1>
             <p className="mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">{sublineParts.join(' · ')}</p>
           </div>
         </div>
@@ -339,7 +339,7 @@ export default function WebullCompanyPageBlock({
               {visibleObservations.map(entry => (
                 <div key={entry.date}>
                   <p className="text-xs text-zinc-500">{formatDateBlock(entry.date)}</p>
-                  <p className={cn('mt-0.5 whitespace-pre-line text-xs leading-relaxed', !observationsExpanded && 'line-clamp-6')}>{entry.body}</p>
+                  <p className={cn('mt-0.5 whitespace-pre-line text-xs leading-relaxed', !observationsExpanded && 'line-clamp-4')}>{entry.body}</p>
                 </div>
               ))}
               <div className="flex gap-4 text-xs">
