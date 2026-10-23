@@ -2365,6 +2365,19 @@ ipcMain.handle('vault:writeBytesBase64', async (_event, vaultRoot: string, relPa
 });
 
 // -- List directory (returns { files, folders }) --
+// -- List a folder's files with their modification times --
+// For caches that re-read only what changed (the feed's article index). Files
+// only, same path validation as vault:list; hidden files skipped.
+ipcMain.handle('vault:listFileStats', async (_event, vaultRoot: string, relPath: string) => {
+  const full = assertInsideVault(vaultRoot, relPath || '.');
+  const entries = await fsPromises.readdir(full, { withFileTypes: true }).catch(() => []);
+  const files = entries.filter((e) => e.isFile() && !e.name.startsWith('.'));
+  return Promise.all(files.map(async (e) => {
+    const st = await fsPromises.stat(path.join(full, e.name));
+    return { name: e.name, mtimeMs: st.mtimeMs, size: st.size };
+  }));
+});
+
 ipcMain.handle('vault:list', async (_event, vaultRoot: string, relPath: string) => {
   const full = assertInsideVault(vaultRoot, relPath || '.');
   const entries = await fsPromises.readdir(full, { withFileTypes: true });

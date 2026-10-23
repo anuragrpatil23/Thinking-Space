@@ -354,6 +354,7 @@ interface ElectronAPI {
   readBytesBase64?(vaultRoot: string, relPath: string): Promise<string>
   writeBytesBase64?(vaultRoot: string, relPath: string, base64Data: string): Promise<void>
   list(vaultRoot: string, relPath: string): Promise<ListedFiles>
+  listFileStats?(vaultRoot: string, relPath: string): Promise<VaultFileStatBlock[]>
   walkVault(vaultRoot: string, extensions: string[]): Promise<VaultEntry[]>
   stat(vaultRoot: string, relPath: string): Promise<VaultStat>
   exists(vaultRoot: string, relPath: string): Promise<boolean>
@@ -522,7 +523,16 @@ declare global {
 
 // ── Interface ──
 
+/** A file in a folder with its modification time, for caches that re-read only what changed. */
+export interface VaultFileStatBlock {
+  name: string
+  mtimeMs: number
+  size: number
+}
+
 export interface VaultFS {
+  /** Files in a folder with their modification times; absent where the backend cannot list them cheaply. */
+  listFileStats?(path: string): Promise<VaultFileStatBlock[]>
   read(path: string): Promise<string>
   write(path: string, data: string): Promise<void>
   readBytes(path: string): Promise<Uint8Array>
@@ -741,6 +751,12 @@ class ElectronVaultFS implements VaultFS {
   async list(path: string): Promise<ListedFiles> {
     const safePath = assertValidVaultPathBlock('list', path, { allowEmpty: true })
     return this.api.list(this.vaultRoot, safePath || '.')
+  }
+
+  async listFileStats(path: string): Promise<VaultFileStatBlock[]> {
+    const safePath = assertValidVaultPathBlock('listFileStats', path, { allowEmpty: true })
+    if (!this.api.listFileStats) throw new Error('listFileStats unavailable')
+    return this.api.listFileStats(this.vaultRoot, safePath || '.')
   }
 
   async walkVault(extensions: string[] = ['.md']): Promise<VaultEntry[]> {
@@ -984,6 +1000,18 @@ class CapacitorVaultFS implements VaultFS {
       else files.push(f.name)
     }
     return { files, folders }
+  }
+
+  // readdir already carries each file's mtime: one bridge call for the folder
+  async listFileStats(path: string): Promise<VaultFileStatBlock[]> {
+    const safePath = assertValidVaultPathBlock('listFileStats', path, { allowEmpty: true })
+    const { Filesystem } = await import('@capacitor/filesystem')
+    const exists = await this.exists(safePath).catch(() => false)
+    if (!exists) return []
+    const result = await Filesystem.readdir(await this.fsOpts(safePath))
+    return result.files
+      .filter(f => f.type !== 'directory' && !f.name.startsWith('.'))
+      .map(f => ({ name: f.name, mtimeMs: Number(f.mtime) || 0, size: Number(f.size) || 0 }))
   }
 
   async walkVault(extensions: string[] = ['.md']): Promise<VaultEntry[]> {

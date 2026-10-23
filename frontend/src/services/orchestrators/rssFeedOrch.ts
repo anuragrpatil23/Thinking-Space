@@ -20,7 +20,9 @@ import {
   type RssFeedPreferencesBlock,
   type RssFeedResultBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
-import { getVaultFS, isElectron } from '@/services/lego_blocks/integrations/fsBlock'
+import { getVaultFS, isElectron, type VaultFileStatBlock } from '@/services/lego_blocks/integrations/fsBlock'
+import { pruneRssArticleIndexBlock, readRssArticleIndexBlock, writeRssArticleIndexBlock } from '@/services/lego_blocks/integrations/rssArticleIndexBlock'
+import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
 
 // ---------------------------------------------------------------------------
 // Feed config persistence — vault-backed so configs sync across devices
@@ -151,20 +153,59 @@ async function ensureRssArticleDirOrch(feedId: string): Promise<void> {
   try { await fs.mkdir(`${RSS_ARTICLES_DIR}/${feedId}`) } catch { /* exists */ }
 }
 
+/** A feed folder's article files, with their mtimes when the backend can list them cheaply. */
+interface StoredFeedFilesBlock {
+  files: string[]
+  stats: Map<string, VaultFileStatBlock> | null
+}
+
+function indexKeyBlock(path: string): string {
+  return `${getStoredVaultRoot() ?? ''}|${path}`
+}
+
+/**
+ * Read stored article files. With their stats, articles whose file is
+ * unchanged since it was last parsed come from the article index
+ * (rssArticleIndexBlock) and only the rest are read; what is read is indexed.
+ * `onIndexed` gets the indexed ones first, before any file is read.
+ */
 async function readStoredFeedFilesOrch(
   dir: string,
   files: string[],
+  stats: Map<string, VaultFileStatBlock> | null = null,
+  onIndexed?: (items: RssFeedItemBlock[]) => void,
 ): Promise<Map<string, RssFeedItemBlock>> {
   const fs = getVaultFS()
   const result = new Map<string, RssFeedItemBlock>()
+  const feedKey = indexKeyBlock(dir.slice(RSS_ARTICLES_DIR.length + 1))
+  let toRead = files
+  const fresh: Array<{ key: string; feedKey: string; mtimeMs: number; size: number; item: RssFeedItemBlock }> = []
+  if (stats) {
+    const wanted = files.flatMap(name => {
+      const st = stats.get(name)
+      return st ? [{ name, key: indexKeyBlock(`${dir}/${name}`), mtimeMs: st.mtimeMs, size: st.size }] : []
+    })
+    const indexed = await readRssArticleIndexBlock(wanted)
+    for (const w of wanted) {
+      const item = indexed.get(w.key)
+      if (!item) continue
+      const existing = result.get(item.id)
+      result.set(item.id, existing ? mergeStoredRssItemsBlock(existing, item) : item)
+    }
+    const hit = new Set(wanted.filter(w => indexed.has(w.key)).map(w => w.name))
+    toRead = files.filter(name => !hit.has(name))
+    if (onIndexed && result.size > 0) onIndexed([...result.values()])
+  }
   // Capacitor filesystem calls resolve on the JS thread. Keep the work in
   // small batches so a large live window never monopolizes a scroll frame.
-  for (let offset = 0; offset < files.length; offset += 8) {
-    await Promise.all(files.slice(offset, offset + 8).map(async filename => {
+  for (let offset = 0; offset < toRead.length; offset += 8) {
+    await Promise.all(toRead.slice(offset, offset + 8).map(async filename => {
       try {
         const content = await fs.read(`${dir}/${filename}`)
         const item = parseRssItemFileBlock(content)
         if (!item?.id) return
+        const st = stats?.get(filename)
+        if (st) fresh.push({ key: indexKeyBlock(`${dir}/${filename}`), feedKey, mtimeMs: st.mtimeMs, size: st.size, item })
         // iCloud conflict copies ("abc 2.md") carry the same id with an older
         // snapshot. These batches resolve in parallel, so a plain set() let
         // whichever copy finished last win — and a stale one would resurrect a
@@ -174,30 +215,40 @@ async function readStoredFeedFilesOrch(
         result.set(item.id, existing ? mergeStoredRssItemsBlock(existing, item) : item)
       } catch { /* state file may not exist yet */ }
     }))
-    if (offset + 8 < files.length) await new Promise<void>(resolve => window.setTimeout(resolve, 0))
+    if (offset + 8 < toRead.length) await new Promise<void>(resolve => window.setTimeout(resolve, 0))
   }
+  if (fresh.length > 0) void writeRssArticleIndexBlock(fresh)
   return result
 }
 
-async function listStoredFeedFilesOrch(feedId: string): Promise<string[]> {
+async function listStoredFeedFilesOrch(feedId: string): Promise<StoredFeedFilesBlock> {
   const fs = getVaultFS()
   const dir = `${RSS_ARTICLES_DIR}/${feedId}`
+  if (fs.listFileStats) {
+    try {
+      const listed = (await fs.listFileStats(dir)).filter(f => f.name.endsWith('.md'))
+      // Records of files that are gone are dropped from the index on the way
+      void pruneRssArticleIndexBlock(indexKeyBlock(feedId), new Set(listed.map(f => indexKeyBlock(`${dir}/${f.name}`))))
+      return { files: listed.map(f => f.name), stats: new Map(listed.map(f => [f.name, f])) }
+    } catch { /* fall back to a plain listing */ }
+  }
   try {
     const listed = await fs.list(dir)
-    return listed.files.filter(f => f.endsWith('.md'))
+    return { files: listed.files.filter(f => f.endsWith('.md')), stats: null }
   } catch {
-    return []
+    return { files: [], stats: null }
   }
 }
 
 async function loadStoredFeedItemsOrch(feedId: string, itemIds?: string[]): Promise<Map<string, RssFeedItemBlock>> {
   const dir = `${RSS_ARTICLES_DIR}/${feedId}`
-  const files = itemIds
+  if (itemIds) {
     // A live RSS response normally contains a few dozen items; reading their
     // state is cheap. Reading every retained item on every panel open was not.
-    ? [...new Set(itemIds.map(itemFilenameBlock))]
-    : await listStoredFeedFilesOrch(feedId)
-  return readStoredFeedFilesOrch(dir, files)
+    return readStoredFeedFilesOrch(dir, [...new Set(itemIds.map(itemFilenameBlock))])
+  }
+  const { files, stats } = await listStoredFeedFilesOrch(feedId)
+  return readStoredFeedFilesOrch(dir, files, stats)
 }
 
 /** Hydrate cached, feed-expired articles only after the live window is usable.
@@ -207,8 +258,15 @@ async function streamStoredFeedItemsOrch(
   feedId: string,
   onPage: (items: RssFeedItemBlock[]) => void,
 ): Promise<void> {
-  const files = await listStoredFeedFilesOrch(feedId)
+  const { files, stats } = await listStoredFeedFilesOrch(feedId)
   const dir = `${RSS_ARTICLES_DIR}/${feedId}`
+  if (stats) {
+    // Indexed articles arrive in one page at once; only changed or new files
+    // are read, and those still in pages so the first scroll stays smooth
+    const all = await readStoredFeedFilesOrch(dir, files, stats, onPage)
+    if (all.size > 0) onPage([...all.values()])
+    return
+  }
   for (let offset = 0; offset < files.length; offset += 24) {
     const page = await readStoredFeedFilesOrch(dir, files.slice(offset, offset + 24))
     if (page.size > 0) onPage([...page.values()])
