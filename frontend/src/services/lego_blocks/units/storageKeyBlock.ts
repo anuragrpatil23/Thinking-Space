@@ -44,6 +44,8 @@ export const STORAGE_KEYS = {
   feedAiReadLast: 'ltm-feed-ai-read-last',
   valueLineChecks: 'ltm-value-line-checks',
   valueLineIssueLists: 'ltm-value-line-issue-lists',
+  earningsCallChecks: 'ltm-earnings-call-checks',
+  earningsCallPassLast: 'ltm-earnings-call-pass-last',
   webullOverallRememberByProjectRoot: 'ltm-webull-overall-remember-by-project-root',
   aiManualCredentials: 'ltm-ai-manual-credentials',
   aiOauthCredentials: 'ltm-ai-oauth-credentials',

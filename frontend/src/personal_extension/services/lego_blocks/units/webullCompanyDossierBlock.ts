@@ -102,6 +102,68 @@ export function isValueLineFolderBlock(folderName: string): boolean {
  * about every 13 weeks, so an issue older than that is due for a new one.
  */
 export const VALUE_LINE_FOLDER_NAME_BLOCK = 'valueline'
+
+/**
+ * Earnings call transcripts live in F9-execution/<TICKER>/calls/, one Markdown
+ * file per call named by its quarter's bucket month ("2026-05.md"; the
+ * buckets are in kai-workspace/F9/f9-earnings-call-naming-convention.md),
+ * plus an optional index.md listing the source pages. Moved there from the
+ * research folders 2026-10-23.
+ */
+export const EARNINGS_CALLS_FOLDER_NAME_BLOCK = 'calls'
+
+// The naming convention's buckets: a call is filed under the nearest of
+// Feb / May / Aug / Nov by its real date (day-of-year on a 30-day month grid,
+// a tie keeps the first candidate, as the vault's backfill script does), year =
+// the bucket's year. Some tickers shift by
+// whole buckets so their fiscal quarters line up (MU: one earlier).
+const CALL_BUCKET_MONTHS_BLOCK = [2, 5, 8, 11]
+const CALL_BUCKET_SHIFT_BLOCK: Record<string, number> = { MU: -1 }
+
+/** "2026-09-30" for MU → "2026-08": the file a call is saved as (without .md). */
+export function earningsCallBucketBlock(callDate: string, ticker: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(callDate)
+  if (!m) return null
+  const year = Number(m[1])
+  const pos = (Number(m[2]) - 1) * 30 + Number(m[3])
+  const candidates: Array<[number, number, number]> = [
+    ...CALL_BUCKET_MONTHS_BLOCK.map((month): [number, number, number] => [month, (month - 1) * 30 + 1, year]),
+    [2, 31 + 360, year + 1],
+    [11, 301 - 360, year - 1],
+  ]
+  let best = candidates[0]
+  for (const c of candidates) if (Math.abs(pos - c[1]) < Math.abs(pos - best[1])) best = c
+  let index = CALL_BUCKET_MONTHS_BLOCK.indexOf(best[0]) + (CALL_BUCKET_SHIFT_BLOCK[ticker.toUpperCase()] ?? 0)
+  let bucketYear = best[2]
+  bucketYear += Math.floor(index / 4)
+  index = ((index % 4) + 4) % 4
+  return `${bucketYear}-${String(CALL_BUCKET_MONTHS_BLOCK[index]).padStart(2, '0')}`
+}
+
+/** "2026-08" moved by whole months: (-3) → "2026-05". */
+export function shiftCallMonthBlock(month: string, delta: number): string {
+  const total = Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1 + delta
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`
+}
+
+/** How far back a company's calls are kept: four years, sixteen quarters. */
+export const EARNINGS_CALL_HISTORY_QUARTERS_BLOCK = 16
+
+/** A call is expected about every quarter; past this many days since the newest one's bucket month, look for the next. */
+export const EARNINGS_CALL_DUE_DAYS_BLOCK = 80
+
+export type EarningsCallPlanBlock = 'current' | 'not-covered' | 'checked' | 'ask'
+
+export function earningsCallPlanBlock(latest: WebullResearchFileBlock | null, check: ValueLineCheckBlock | undefined, now: Date): EarningsCallPlanBlock {
+  if (latest?.dateKey) {
+    const year = Math.floor(latest.dateKey / 10000)
+    const month = Math.floor((latest.dateKey % 10000) / 100)
+    const since = (now.getTime() - new Date(year, month - 1, 1).getTime()) / 86_400_000
+    if (since <= EARNINGS_CALL_DUE_DAYS_BLOCK) return 'current'
+  }
+  // Same rechecks as Value Line: a day when nothing newer was found, a month when not covered
+  return valueLinePlanBlock(null, check, now) as Exclude<EarningsCallPlanBlock, 'current'>
+}
 export const VALUE_LINE_REVIEW_DAYS_BLOCK = 13 * 7
 
 /** "August 2025" from a report's date key; the file name when it has none. */

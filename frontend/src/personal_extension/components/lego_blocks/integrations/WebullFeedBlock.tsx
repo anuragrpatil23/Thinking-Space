@@ -26,6 +26,7 @@ import {
   type RssFeedItemBlock,
   type RssMergedViewsModeBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
+import { readEarningsCallPassProgressOrch, readLastEarningsCallPassOrch, subscribeEarningsCallPassOrch } from '@/personal_extension/services/orchestrators/webullEarningsCallsOrch'
 import { readLastValueLinePassOrch, readValueLinePassProgressOrch, subscribeValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { FeedAiReaderSettingsBlock, useFeedAiReadBlock } from './FeedAiReaderBlock'
 import { FeedOverviewBlock } from './FeedOverviewBlock'
@@ -153,6 +154,7 @@ function LibraryStatusBlock({ library }: { library: ReturnType<typeof useLibrary
         Fill from library
       </button>
       <ValueLineStatusBlock />
+      <EarningsCallsStatusBlock />
     </F9PanelBlock>
   )
 }
@@ -177,6 +179,29 @@ function ValueLineStatusBlock() {
           minutesAgoBlock(last.at),
         ].filter(Boolean).join(' · ')
         : 'Not run yet; it runs when the F9 page opens'}
+      {!running && last?.error && <span className="ml-2 text-red-600 dark:text-red-400">{last.error}</span>}
+    </span>
+  )
+}
+
+// The daily earnings call pass runs beside Value Line's; this reports it.
+function EarningsCallsStatusBlock() {
+  const running = useSyncExternalStore(subscribeEarningsCallPassOrch, readEarningsCallPassProgressOrch)
+  const last = useMemo(() => readLastEarningsCallPassOrch(), [running]) // eslint-disable-line react-hooks/exhaustive-deps
+  const listBlock = (tickers: string[]) => (tickers.length > 4 ? `${tickers.slice(0, 4).join(', ')}…` : tickers.join(', '))
+  return (
+    <span className="basis-full text-[12px] text-zinc-500 dark:text-zinc-400">
+      <span className="mr-2 font-semibold text-zinc-900 dark:text-zinc-100">Earnings calls</span>
+      {running
+        ? `Fetching · ${running.done} of ${running.total}${running.fetched ? ` · ${running.fetched} with new calls` : ''}`
+        : last
+          ? [
+            last.fetched.length > 0 ? `New calls for ${listBlock(last.fetched)}` : 'No new calls',
+            last.notCovered.length > 0 ? `${last.notCovered.length} not covered` : null,
+            last.failed.length > 0 ? `${last.failed.length} failed (${listBlock(last.failed)})` : null,
+            minutesAgoBlock(last.at),
+          ].filter(Boolean).join(' · ')
+          : 'Not run yet; it runs when the F9 page opens'}
       {!running && last?.error && <span className="ml-2 text-red-600 dark:text-red-400">{last.error}</span>}
     </span>
   )

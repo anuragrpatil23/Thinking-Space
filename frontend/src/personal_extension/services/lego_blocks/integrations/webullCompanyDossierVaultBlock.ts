@@ -7,6 +7,7 @@ import { getFileContent, listFolderEntries } from '@/services/orchestrators/file
 import { parseWebullStudyRecordBlock, type WebullStudyRecordBlock } from '../units/webullStudyRecordBlock'
 import {
   isValueLineFolderBlock,
+  EARNINGS_CALLS_FOLDER_NAME_BLOCK,
   VALUE_LINE_FOLDER_NAME_BLOCK,
   parseResearchDateKeyBlock,
   parseWebullObservationsBlock,
@@ -33,6 +34,8 @@ export interface WebullCompanyDossierBlock {
   prices: WebullPricePointBlock[]
   researchFolderPath: string | null
   valueLineReports: WebullResearchFileBlock[]
+  /** Earnings call transcripts, newest first */
+  earningsCalls: WebullResearchFileBlock[]
   researchGroups: WebullResearchGroupBlock[]
   warnings: string[]
 }
@@ -121,14 +124,15 @@ export async function loadWebullCompanyDossierBlock(params: {
   const warnings: string[] = []
 
   // Without a ticker (a research-only company) there is no company folder to read.
-  const [study, observationsText, pricesText, valueLineFiles] = ticker
+  const [study, observationsText, pricesText, valueLineFiles, callFiles] = ticker
     ? await Promise.all([
         findStudyRecordBlock(executionRoot, ticker),
         readTextBlock(`${companyFolder}/observations.md`),
         readTextBlock(`${companyFolder}/prices.csv`),
         listFolderEntries(`${companyFolder}/${VALUE_LINE_FOLDER_NAME_BLOCK}`).then(e => e.files).catch(() => [] as string[]),
+        listFolderEntries(`${companyFolder}/${EARNINGS_CALLS_FOLDER_NAME_BLOCK}`).then(e => e.files).catch(() => [] as string[]),
       ])
-    : [null, null, null, [] as string[]]
+    : [null, null, null, [] as string[], [] as string[]]
   const companyName = study?.company ?? params.companyName
   const researchFolderPath = await findResearchFolderBlock(researchRoot, ticker, companyName)
   const research = researchFolderPath
@@ -148,6 +152,10 @@ export async function loadWebullCompanyDossierBlock(params: {
       ...valueLineFiles.filter(name => /\.pdf$/i.test(name)).map(name => toResearchFileBlock(`${companyFolder}/${VALUE_LINE_FOLDER_NAME_BLOCK}`, name)),
       ...research.valueLineReports,
     ]),
+    earningsCalls: sortResearchFilesBlock(
+      callFiles.filter(name => /^\d{4}-\d{2}\.md$/.test(name)).map(name => toResearchFileBlock(`${companyFolder}/${EARNINGS_CALLS_FOLDER_NAME_BLOCK}`, name)),
+    ),
+    // Transcripts left in an old research folder still show there
     researchGroups: research.groups,
     warnings,
   }

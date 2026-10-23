@@ -8,6 +8,14 @@ import {
   valueLineNotCoveredOrch,
 } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 
+/** A library failure in words: the IPC wrapper stripped, known network faults named. */
+function libraryErrorTextBlock(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : ''
+  if (/ERR_TOO_MANY_REDIRECTS/.test(raw)) return 'The library session got stuck. Try again.'
+  if (/ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ERR_NETWORK_CHANGED/.test(raw)) return 'No connection to the library.'
+  return raw || fallback
+}
+
 /**
  * Opening a company brings its Value Line report up to date (desktop only).
  * `fetchedCount` goes up when a new issue lands, so the page can reload.
@@ -46,9 +54,10 @@ export function useValueLineCompanyBlock(executionRoot: string | null, ticker: s
 
   const loadIssues = useCallback(() => {
     if (!available) return
+    setIssueError(null)
     void listValueLineIssuesOrch(symbol)
       .then(setIssues)
-      .catch((err) => setIssueError(err instanceof Error ? err.message : 'Could not list the issues.'))
+      .catch((err) => setIssueError(libraryErrorTextBlock(err, 'Could not list the issues.')))
   }, [available, symbol])
 
   /** Download an issue and return its vault path, or null when it failed. */
@@ -61,7 +70,7 @@ export function useValueLineCompanyBlock(executionRoot: string | null, ticker: s
       setFetchedCount(n => n + 1)
       return path
     } catch (err) {
-      setIssueError(err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : 'Download failed.')
+      setIssueError(libraryErrorTextBlock(err, 'Download failed.'))
       return null
     } finally {
       setFetchingIssue(null)

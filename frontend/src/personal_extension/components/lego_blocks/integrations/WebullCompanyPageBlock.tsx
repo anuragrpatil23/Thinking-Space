@@ -4,6 +4,7 @@ import { Area, AreaChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YA
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import { useWebullCompanyDossierBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullCompanyDossierBlock'
 import { useValueLineCompanyBlock } from '@/personal_extension/components/lego_blocks/hooks/useValueLineCompanyBlock'
+import { useEarningsCallsCompanyBlock } from '@/personal_extension/components/lego_blocks/hooks/useEarningsCallsCompanyBlock'
 import { useWebullTrackRecordBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullTrackRecordBlock'
 import { f9SignedMoneyKBlock, type WebullCompanyTrackRecordBlock } from '@/personal_extension/services/lego_blocks/units/webullTrackRecordBlock'
 import { F9TrackRowBlock } from '@/personal_extension/components/lego_blocks/units/F9TrackRecordPartsBlock'
@@ -131,10 +132,16 @@ function ValueLineRowBlock({ reports, valueLine, expanded, onToggle, onOpenFile 
         <div className="pb-1.5">
           {valueLine.available && (
             <p className="px-4 pb-1 pl-7 text-[11px] text-zinc-500 dark:text-zinc-400">
-              {valueLine.issues === null
-                ? 'Listing issues from the library…'
-                : `${valueLine.issues.length} ${valueLine.issues.length === 1 ? 'issue' : 'issues'} in the library · ${savedCount} saved`}
-              {valueLine.issueError && <span className="ml-1 text-red-600 dark:text-red-400">{valueLine.issueError}</span>}
+              {valueLine.issueError
+                ? (
+                  <>
+                    <span className="text-red-600 dark:text-red-400">{valueLine.issueError}</span>
+                    <button type="button" onClick={() => valueLine.loadIssues()} className="ml-2 text-sky-600 hover:text-sky-700 dark:text-sky-400">Try again</button>
+                  </>
+                )
+                : valueLine.issues === null
+                  ? 'Listing issues from the library…'
+                  : `${valueLine.issues.length} ${valueLine.issues.length === 1 ? 'issue' : 'issues'} in the library · ${savedCount} saved`}
             </p>
           )}
           <ul className="max-h-80 overflow-y-auto">
@@ -169,10 +176,63 @@ function ValueLineRowBlock({ reports, valueLine, expanded, onToggle, onOpenFile 
   )
 }
 
-// Research lives in the side panel: Value Line first, then each research
-// folder folds out its files.
-function ResearchPanelBlock({ reports, groups, valueLine, onOpenFile }: {
+// Earnings calls, the newest on the row and the rest folded below it by month
+function EarningsCallsRowBlock({ calls, sync, expanded, onToggle, onOpenFile }: {
+  calls: WebullResearchFileBlock[]
+  sync: { checking: boolean; notCovered: boolean }
+  expanded: boolean
+  onToggle: () => void
+  onOpenFile: (path: string) => void
+}) {
+  if (calls.length === 0) {
+    const note = sync.checking ? 'Fetching…' : sync.notCovered ? 'Not covered' : null
+    return note ? (
+      <div className="flex items-center justify-between gap-3 border-b border-zinc-200/70 px-4 py-2.5 text-[13px] last:border-b-0 dark:border-zinc-800">
+        <span>Earnings calls</span>
+        <span className="text-zinc-500 dark:text-zinc-400">{note}</span>
+      </div>
+    ) : null
+  }
+  return (
+    <div className="border-b border-zinc-200/70 last:border-b-0 dark:border-zinc-800">
+      <button
+        type="button"
+        aria-expanded={calls.length > 1 ? expanded : undefined}
+        onClick={() => (calls.length === 1 ? onOpenFile(calls[0].path) : onToggle())}
+        className="ltm-motion-fast flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+      >
+        <span className="truncate">Earnings calls</span>
+        <span className="flex shrink-0 items-center gap-1 text-zinc-500 dark:text-zinc-400">
+          {valueLineIssueLabelBlock(calls[0])}
+          {calls.length > 1 && <span className="tabular-nums text-zinc-400"> · {calls.length}</span>}
+          {calls.length > 1 && <ChevronRight className={cn('h-3.5 w-3.5 opacity-60 transition-transform', expanded && 'rotate-90')} />}
+        </span>
+      </button>
+      {expanded && (
+        <ul className="max-h-80 overflow-y-auto pb-1.5">
+          {calls.map(call => (
+            <li key={call.path}>
+              <button
+                type="button"
+                onClick={() => onOpenFile(call.path)}
+                className="block w-full truncate px-4 py-1.5 pl-7 text-left text-xs text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
+              >
+                {valueLineIssueLabelBlock(call)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// Research lives in the side panel: Value Line and the earnings calls first,
+// then each research folder folds out its files.
+function ResearchPanelBlock({ reports, calls, callsSync, groups, valueLine, onOpenFile }: {
   reports: WebullResearchFileBlock[]
+  calls: WebullResearchFileBlock[]
+  callsSync: { checking: boolean; notCovered: boolean }
   groups: WebullResearchGroupBlock[]
   valueLine: ValueLinePanelStateBlock
   onOpenFile: (path: string) => void
@@ -186,6 +246,13 @@ function ResearchPanelBlock({ reports, groups, valueLine, onOpenFile }: {
         valueLine={valueLine}
         expanded={openGroup === 'Value Line'}
         onToggle={() => toggle('Value Line')}
+        onOpenFile={onOpenFile}
+      />
+      <EarningsCallsRowBlock
+        calls={calls}
+        sync={callsSync}
+        expanded={openGroup === 'Earnings calls'}
+        onToggle={() => toggle('Earnings calls')}
         onOpenFile={onOpenFile}
       />
       {groups.map(group => {
@@ -281,7 +348,8 @@ export default function WebullCompanyPageBlock({
   onOpenFile,
 }: WebullCompanyPageBlockProps) {
   const valueLine = useValueLineCompanyBlock(executionRoot, ticker)
-  const { dossier, loading, error } = useWebullCompanyDossierBlock(executionRoot, ticker, companyName, valueLine.fetchedCount)
+  const callsSync = useEarningsCallsCompanyBlock(executionRoot, ticker)
+  const { dossier, loading, error } = useWebullCompanyDossierBlock(executionRoot, ticker, companyName, valueLine.fetchedCount + callsSync.fetchedCount)
   const { record: trackRecord, reportPath } = useWebullTrackRecordBlock(executionRoot, ticker)
   const [priceWindow, setPriceWindow] = useState<PriceWindowBlock>('2y')
   const [observationsExpanded, setObservationsExpanded] = useState(false)
@@ -511,8 +579,8 @@ export default function WebullCompanyPageBlock({
           )}
         </F9PanelBlock>
 
-        {dossier && (dossier.researchFolderPath || reports.length > 0 || valueLine.available) && (
-          <ResearchPanelBlock reports={reports} groups={dossier.researchGroups} valueLine={valueLine} onOpenFile={onOpenFile} />
+        {dossier && (dossier.researchFolderPath || reports.length > 0 || dossier.earningsCalls.length > 0 || valueLine.available) && (
+          <ResearchPanelBlock reports={reports} calls={dossier.earningsCalls} callsSync={callsSync} groups={dossier.researchGroups} valueLine={valueLine} onOpenFile={onOpenFile} />
         )}
       </aside>
     </div>

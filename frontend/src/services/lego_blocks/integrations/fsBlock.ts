@@ -460,6 +460,9 @@ interface ElectronAPI {
   /** Value Line company reports through the same library session. Desktop only. */
   libraryValueLineIssues?(payload: { ticker: string }): Promise<{ covered: boolean; issues: Array<{ issueDate: string }> }>
   libraryValueLineReport?(payload: { ticker: string; issueDate: string }): Promise<{ pdfBase64: string }>
+  /** Earnings call transcripts (StockAnalysis public pages). Desktop only. */
+  earningsCallsList?(payload: { ticker: string }): Promise<{ covered: boolean; calls: Array<{ slug: string; quarter: number; fiscalYear: number }> }>
+  earningsCallGet?(payload: { ticker: string; slug: string }): Promise<{ date: string; text: string }>
   webullCredentialStatus?(): Promise<{
     secureStorageAvailable: boolean
     configured: boolean

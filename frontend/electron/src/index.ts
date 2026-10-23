@@ -51,6 +51,7 @@ import {
 } from './lego_blocks/libraryGaleBlock';
 import { libraryValueLineIssuesBlock, libraryValueLineReportBlock } from './lego_blocks/libraryValueLineBlock';
 import { clearLibraryCardBlock, saveLibraryCardBlock } from './lego_blocks/librarySessionBlock';
+import { earningsCallGetBlock, earningsCallsListBlock } from './lego_blocks/earningsCallsBlock';
 import {
   readAiPlanUsageBlock,
   readClaudeUsageLogBlock,
@@ -1816,6 +1817,11 @@ ipcMain.handle('library:clearCard', async () => clearLibraryCardBlock());
 ipcMain.handle('library:galeSearch', async (_event, payload: LibraryGaleSearchPayload) => libraryGaleSearchBlock(payload));
 ipcMain.handle('library:galeArticle', async (_event, payload: { docId: string; db: string }) => libraryGaleArticleBlock(payload));
 ipcMain.handle('library:valueLineIssues', async (_event, payload: { ticker: string }) => libraryValueLineIssuesBlock(payload));
+// -- Earnings call transcripts (StockAnalysis public pages) --
+// A ticker, or a ticker and a call id from its list; main builds the URLs, on
+// stockanalysis.com only (earningsCallsBlock.ts).
+ipcMain.handle('earningsCalls:list', async (_event, payload: { ticker: string }) => earningsCallsListBlock(payload));
+ipcMain.handle('earningsCalls:get', async (_event, payload: { ticker: string; slug: string }) => earningsCallGetBlock(payload));
 ipcMain.handle('library:valueLineReport', async (_event, payload: { ticker: string; issueDate: string }) => libraryValueLineReportBlock(payload));
 
 // -- Webull Webull GET bridge (main-process network bridge) --

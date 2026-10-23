@@ -151,17 +151,29 @@ export function libraryRequestBlock<T>(request: LibraryRequestBlock<T>): Promise
       headers: { 'User-Agent': BROWSER_UA, ...request.headers },
     }));
     if (loggedIn) {
-      const value = await ask();
-      if (request.expect(value)) return value;
+      try {
+        const value = await ask();
+        if (request.expect(value)) return value;
+      } catch {
+        // A lapsed session can answer with a redirect loop instead of a login page
+      }
     }
     const loginUrl = request.loginUrl ?? request.url;
-    const landed = await loginBlock(loginUrl);
-    let value: T;
-    if (loginUrl === request.url && (request.method ?? 'GET') === 'GET') {
-      value = await request.read(landed);
-    } else {
+    const signInAndAsk = async (): Promise<T> => {
+      const landed = await loginBlock(loginUrl);
+      if (loginUrl === request.url && (request.method ?? 'GET') === 'GET') return request.read(landed);
       await landed.arrayBuffer();
-      value = await ask();
+      return ask();
+    };
+    let value: T;
+    try {
+      value = await signInAndAsk();
+    } catch (err) {
+      if (!/ERR_TOO_MANY_REDIRECTS/.test(String(err))) throw err;
+      // Stale cookies can keep the proxy and the database bouncing between
+      // each other; start from a clean session and sign in once more.
+      await librarySessionBlock().clearStorageData({ storages: ['cookies'] });
+      value = await signInAndAsk();
     }
     if (!request.expect(value)) {
       loggedIn = false;
