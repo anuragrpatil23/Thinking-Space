@@ -8,7 +8,8 @@ import {
   useState,
   type MutableRefObject,
 } from 'react'
-import { ChevronLeft, ExternalLink, Globe, Loader2, RotateCw, X } from 'lucide-react'
+import { Check, ChevronLeft, Link2, ExternalLink, Globe, Loader2, RotateCw, X } from 'lucide-react'
+import { copyTextToClipboard } from '@/components/lego_blocks/units/BacklogListDomainBlock'
 import { useNavigate } from 'react-router-dom'
 import { startWebviewShortcutRelayBlock } from '@/services/lego_blocks/units/webviewShortcutRelayBlock'
 import { startWebviewMagnifierBlock } from '@/services/lego_blocks/units/webviewPinchZoomBlock'
@@ -595,6 +596,15 @@ function UrlDocumentBlock({
     }
   }, [passwordAutofillContext, passwordAutofillSaveTarget, passwordSession.vaultState])
 
+  // The page's current address, with a brief check as the only confirmation
+  const [linkCopied, setLinkCopied] = useState(false)
+  const copyLink = useCallback(async () => {
+    if (!resolvedUrl) return
+    await copyTextToClipboard(resolvedUrl)
+    setLinkCopied(true)
+    window.setTimeout(() => setLinkCopied(false), 1500)
+  }, [resolvedUrl])
+
   const openExternal = useCallback(() => {
     if (!resolvedUrl) return
     if (window.electronAPI?.openExternal) {
@@ -651,6 +661,15 @@ function UrlDocumentBlock({
             title="Reload"
           >
             <RotateCw className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => { void copyLink() }}
+            className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+            title={linkCopied ? 'Copied' : 'Copy link'}
+            aria-label="Copy link"
+          >
+            {linkCopied ? <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> : <Link2 className="h-3.5 w-3.5" />}
           </button>
           <button
             type="button"

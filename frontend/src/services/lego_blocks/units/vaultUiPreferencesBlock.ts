@@ -67,9 +67,8 @@ export interface VaultUiPreferencesBlock {
   /** Gate for the experimental Webull → Sim subtab (F9 practice timeline). Off by default. */
   webullSimTabEnabled: boolean
   /**
-   * Vault-relative folder the Sim timeline reads (cases/, eras.yaml, bench.md).
-   * Blank means "derive a default beside the execution folder" (a sibling
-   * `F9-sim`, mirroring `F9-execution`).
+   * No longer read: the Sim lives at `<execution folder>/sim` (2026-10-23).
+   * Kept so preferences written by older builds still parse.
    */
   webullSimFolderPath: string
   fileActivityIgnoredPaths: string[]

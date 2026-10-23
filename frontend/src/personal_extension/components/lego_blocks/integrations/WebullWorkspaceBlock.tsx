@@ -12,6 +12,7 @@ import WebullCompanyPageBlock, { type WebullCompanyHoldingBlock } from './Webull
 import WebullOverallPageBlock from './WebullOverallPageBlock'
 import WebullSidebarBlock from './WebullSidebarBlock'
 import { useWebullCompanyUniverseBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullCompanyUniverseBlock'
+import { useValueLinePassBlock } from '@/personal_extension/components/lego_blocks/hooks/useValueLinePassBlock'
 import type { WebullUniverseCompanyBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
 import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
@@ -2119,6 +2120,9 @@ export default function WebullWorkspaceBlock({
     return { ticker: company.companyTicker, cost: Math.max(0, metrics.stockCost ?? 0) + Math.max(0, metrics.optionCost ?? 0) }
   }), [executionOverview])
   const companyUniverse = useWebullCompanyUniverseBlock(executionRoot, universeExecutionCompanies)
+  // Every tracked company gets its newest Value Line report, once a day (desktop only)
+  const universeTickers = useMemo(() => companyUniverse.map(company => company.ticker), [companyUniverse])
+  useValueLinePassBlock(executionRoot, universeTickers)
   const [createPositionOpen, setCreatePositionOpen] = useState(false)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   // The company positions table docks its zoom controls in the section header.

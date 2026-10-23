@@ -33,6 +33,7 @@ import {
 import { WorkspaceProfilesSettingsBlock } from '@/components/lego_blocks/integrations/WorkspaceProfilesSettingsBlock'
 import { NavRailSettingsBlock } from '@/components/lego_blocks/integrations/NavRailSettingsBlock'
 import { Switch } from '@/components/lego_blocks/units/ui/switch'
+import { SavedCredentialInputBlock } from '@/components/lego_blocks/units/SavedCredentialInputBlock'
 import AiSettingsOrch from '@/components/orchestrators/AiSettingsOrch'
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
 import { UI_COLOR_MODE_OPTIONS_BLOCK, UI_THEME_OPTIONS_BLOCK, useUIThemeBlock } from '@/components/lego_blocks/units/UIThemeBlock'
@@ -52,7 +53,6 @@ import {
 } from '@/services/orchestrators/schedulerSettingsOrch'
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
 import {
-  getDefaultWebullExecutionSettingsOrch,
   readWebullExecutionSettingsOrch,
   writeWebullExecutionSettingsOrch,
 } from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
@@ -61,7 +61,7 @@ import {
   readWebullCredentialStatusBlock,
   saveWebullCredentialsBlock,
 } from '@/personal_extension/services/lego_blocks/units/webullConfigBlock'
-import { deriveDefaultWebullSimRootBlock } from '@/personal_extension/services/orchestrators/webullSimOrch'
+import { LibrarySettingsGroupBlock } from '@/personal_extension/components/lego_blocks/integrations/LibrarySettingsGroupBlock'
 import {
   clearGoogleDriveAuthOrch,
   connectGoogleDriveAuthOrch,
@@ -77,7 +77,6 @@ import {
   setMoonSceneMessagesPreferenceOrch,
   setShowDailyHighlightsPreferenceOrch,
   setWebullSimTabEnabledPreferenceOrch,
-  setWebullSimFolderPathPreferenceOrch,
   type ExplorerFolderColorPreferenceBlock,
   type ExplorerIconStyleBlock,
   type MoonSceneMessagePreferenceBlock,
@@ -311,8 +310,6 @@ export default function SettingsOrch({
   const [moonSceneMessagesDirty, setMoonSceneMessagesDirty] = useState(false)
   const [moonSceneIdleAnimationsEnabled, setMoonSceneIdleAnimationsEnabled] = useState(true)
   const [webullSimTabEnabled, setWebullSimTabEnabled] = useState(false)
-  const [webullSimFolderPathInput, setWebullSimFolderPathInput] = useState('')
-  const [webullSavedSimFolderPath, setWebullSavedSimFolderPath] = useState('')
   useEffect(() => {
     let cancelled = false
     void readVaultUiPreferencesOrch()
@@ -323,8 +320,6 @@ export default function SettingsOrch({
         setMoonSceneMessagesDraft(prefs.moonSceneMessages)
         setMoonSceneIdleAnimationsEnabled(prefs.moonSceneIdleAnimationsEnabled)
         setWebullSimTabEnabled(prefs.webullSimTabEnabled)
-        setWebullSimFolderPathInput(prefs.webullSimFolderPath)
-        setWebullSavedSimFolderPath(prefs.webullSimFolderPath)
       })
       .catch(() => {
         /* leave default */
@@ -345,23 +340,7 @@ export default function SettingsOrch({
       console.warn('[settings] failed to persist webullSimTabEnabled:', err)
     })
   }
-  const onSaveWebullSimFolderPath = async () => {
-    setBusyAction('webull')
-    setError(null)
-    setMessage(null)
-    try {
-      const saved = await setWebullSimFolderPathPreferenceOrch(webullSimFolderPathInput)
-      setWebullSimFolderPathInput(saved.webullSimFolderPath)
-      setWebullSavedSimFolderPath(saved.webullSimFolderPath)
-      setMessage(saved.webullSimFolderPath
-        ? 'Sim folder path saved.'
-        : 'Sim folder path cleared. The Sim tab now uses the default sibling folder beside the execution folder.')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save the Sim folder path.')
-    } finally {
-      setBusyAction(null)
-    }
-  }
+
   const [schedulerSettingsDraft, setSchedulerSettingsDraft] = useState<SchedulerSettingsBlock>(() => schedulerSettings)
   const [schedulerDirty, setSchedulerDirty] = useState(false)
   const [schedulerNewTimeByTaskId, setSchedulerNewTimeByTaskId] = useState<Record<string, string>>({})
@@ -773,23 +752,6 @@ export default function SettingsOrch({
         : 'Webull execution folder path cleared. Execution file sync is disabled until a path is set.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save Webull settings')
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
-  const onResetWebullSettings = async () => {
-    setBusyAction('webull')
-    setError(null)
-    setMessage(null)
-    try {
-      const defaults = getDefaultWebullExecutionSettingsOrch()
-      const saved = await writeWebullExecutionSettingsOrch(defaults)
-      setWebullExecutionFolderPathInput(saved.executionFolderPath)
-      setWebullSavedExecutionFolderPath(saved.executionFolderPath)
-      setMessage('Webull execution folder path reset to default (not configured).')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reset Webull settings')
     } finally {
       setBusyAction(null)
     }
@@ -1923,139 +1885,30 @@ export default function SettingsOrch({
         <>
           <SettingsSectionHeaderBlock
             title="Webull"
-            description="Tab name and icon, API credentials, and where execution files are stored."
+            description="Your brokerage connection, the library card behind Feed and Value Line, and where F9 keeps its files."
           />
 
           <SettingsGroupBlock
-            heading="Tab appearance"
-            description="The label and icon shown in the sidebar and tab strip. Changes sync across devices via your vault."
-          >
-            <SettingsRowBlock
-              as="label"
-              htmlFor="ltm-settings-webull-tab-label"
-              label="Tab label"
-              control={(
-                <input
-                  id="ltm-settings-webull-tab-label"
-                  type="text"
-                  value={webullTabLabelInput}
-                  onChange={(event) => setWebullTabLabelInput(event.target.value)}
-                  placeholder="Webull"
-                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[220px]')}
-                />
-              )}
-            />
-            <SettingsRowBlock
-              as="label"
-              htmlFor="ltm-settings-webull-tab-icon"
-              label="Tab icon"
-              description="Text or emoji (e.g. 📈, W). Blank uses the Webull crescent icon."
-              control={(
-                <input
-                  id="ltm-settings-webull-tab-icon"
-                  type="text"
-                  value={webullTabIconTextInput}
-                  onChange={(event) => setWebullTabIconTextInput(event.target.value)}
-                  placeholder="Default"
-                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[220px]')}
-                />
-              )}
-            />
-            <SettingsRowBlock
-              label="Apply"
-              control={(
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8"
-                  onClick={() => { void onSaveWebullTabPreferences() }}
-                  disabled={busyAction === 'webull' || !onWebullTabPreferencesChange}
-                >
-                  {busyAction === 'webull' ? 'Saving...' : 'Save Tab Appearance'}
-                </Button>
-              )}
-            />
-          </SettingsGroupBlock>
-
-          <SettingsGroupBlock
-            heading="Experimental subtabs"
-            footnote={(
-              <>
-                Vault-relative folder holding the Sim data (<code>cases/</code>, <code>eras.yaml</code>, <code>bench.md</code>).
-                {' '}
-                {webullSavedSimFolderPath
-                  ? <>Currently saved: <span className="font-mono">{webullSavedSimFolderPath}</span>.</>
-                  : deriveDefaultWebullSimRootBlock(webullSavedExecutionFolderPath)
-                    ? <>Blank uses the default <span className="font-mono">{deriveDefaultWebullSimRootBlock(webullSavedExecutionFolderPath)}</span>.</>
-                    : <>Blank uses an <span className="font-mono">F9-sim</span> folder beside the execution folder.</>}
-              </>
-            )}
-          >
-            <SettingsRowBlock
-              as="label"
-              label="Sim subtab"
-              description="Adds a Sim timeline of F9 practice reps across market history, beside Study. Applied on next visit to the Webull tab."
-              control={(
-                <Switch
-                  checked={webullSimTabEnabled}
-                  onCheckedChange={updateWebullSimTabEnabled}
-                  aria-label="Enable the Webull Sim subtab"
-                />
-              )}
-            />
-            <SettingsRowBlock
-              as="label"
-              htmlFor="ltm-settings-webull-sim-folder"
-              label="Sim folder path"
-              control={(
-                <>
-                  <input
-                    id="ltm-settings-webull-sim-folder"
-                    type="text"
-                    value={webullSimFolderPathInput}
-                    onChange={(event) => setWebullSimFolderPathInput(event.target.value)}
-                    placeholder={
-                      deriveDefaultWebullSimRootBlock(webullSavedExecutionFolderPath)
-                      || 'e.g. acceleration_core/F9/F9-sim'
-                    }
-                    className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[280px]')}
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-8"
-                    onClick={() => { void onSaveWebullSimFolderPath() }}
-                    disabled={busyAction === 'webull'}
-                  >
-                    Save
-                  </Button>
-                </>
-              )}
-            />
-          </SettingsGroupBlock>
-
-          <SettingsGroupBlock
-            heading="API credentials"
+            heading="Webull API"
             description={
               !webullCredentialEditingSupported
-                ? 'Secure credential entry is available only in the Electron desktop app.'
+                ? 'Secure credential entry is available only in the desktop app.'
                 : !webullSecureStorageAvailable
                   ? 'Secure storage is unavailable on this device — credentials cannot be saved safely.'
-                  : undefined
+                  : 'Stored encrypted on this Mac, never synced.'
             }
-            footnote={`Status: ${webullCredentialsConfigured ? `configured (${webullAppKeyHint ?? 'saved'})` : 'not configured'}`}
           >
             <SettingsRowBlock
               as="label"
               htmlFor="ltm-settings-webull-webull-app-key"
               label="App key"
               control={(
-                <input
+                <SavedCredentialInputBlock
                   id="ltm-settings-webull-webull-app-key"
-                  type="text"
+                  saved={webullCredentialsConfigured}
+                  savedDisplay={webullAppKeyHint}
                   value={webullAppKeyInput}
-                  onChange={(event) => setWebullAppKeyInput(event.target.value)}
+                  onValueChange={setWebullAppKeyInput}
                   placeholder="Enter app key"
                   disabled={!webullCredentialEditingSupported}
                   className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[280px] disabled:cursor-not-allowed disabled:opacity-60')}
@@ -2067,11 +1920,12 @@ export default function SettingsOrch({
               htmlFor="ltm-settings-webull-webull-app-secret"
               label="App secret"
               control={(
-                <input
+                <SavedCredentialInputBlock
                   id="ltm-settings-webull-webull-app-secret"
-                  type="password"
+                  secret
+                  saved={webullCredentialsConfigured}
                   value={webullAppSecretInput}
-                  onChange={(event) => setWebullAppSecretInput(event.target.value)}
+                  onValueChange={setWebullAppSecretInput}
                   placeholder="Enter app secret"
                   disabled={!webullCredentialEditingSupported}
                   className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[280px] disabled:cursor-not-allowed disabled:opacity-60')}
@@ -2079,7 +1933,8 @@ export default function SettingsOrch({
               )}
             />
             <SettingsRowBlock
-              label="Stored credentials"
+              label="Status"
+              description={webullCredentialsConfigured ? `Connected · key ${webullAppKeyHint ?? 'saved'}` : 'Not connected'}
               control={(
                 <>
                   <Button
@@ -2087,9 +1942,9 @@ export default function SettingsOrch({
                     size="sm"
                     className="h-8"
                     onClick={() => { void onSaveWebullCredentials() }}
-                    disabled={busyAction === 'webull' || !webullCredentialEditingSupported}
+                    disabled={busyAction === 'webull' || !webullCredentialEditingSupported || !webullAppKeyInput.trim() || !webullAppSecretInput.trim()}
                   >
-                    {busyAction === 'webull' ? 'Saving...' : 'Save'}
+                    {busyAction === 'webull' ? 'Saving…' : 'Save'}
                   </Button>
                   <Button
                     type="button"
@@ -2106,53 +1961,82 @@ export default function SettingsOrch({
             />
           </SettingsGroupBlock>
 
+          <LibrarySettingsGroupBlock />
+
           <SettingsGroupBlock
-            heading="Execution storage"
-            description="Where Webull writes overall.json, company index files, and per-position markdown."
-            footnote={(
-              <>
-                Currently saved:{' '}
-                {webullSavedExecutionFolderPath
-                  ? <span className="font-mono">{webullSavedExecutionFolderPath}</span>
-                  : <span className="italic">not configured</span>}
-              </>
-            )}
+            heading="Folder"
+            description="Vault-relative. Saved when you leave the field."
           >
             <SettingsRowBlock
               as="label"
               htmlFor="ltm-settings-webull-execution-folder"
-              label="Execution folder path"
-              description="Blank disables execution file sync."
+              label="F9 folder"
+              description={<>Everything F9 keeps: positions, company files, <code>gaps/</code>, <code>noticed/</code>, <code>reading/</code> and <code>sim/</code>. Blank turns file sync off.</>}
               control={(
                 <input
                   id="ltm-settings-webull-execution-folder"
                   type="text"
                   value={webullExecutionFolderPathInput}
                   onChange={(event) => setWebullExecutionFolderPathInput(event.target.value)}
-                  placeholder="Optional"
+                  onBlur={() => { if (webullExecutionFolderPathInput.trim() !== webullSavedExecutionFolderPath) void onSaveWebullSettings() }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
+                  placeholder="Not set"
                   className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[280px]')}
                 />
               )}
             />
           </SettingsGroupBlock>
 
-          <div className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'flex flex-wrap gap-2')}>
-            <Button
-              type="button"
-              onClick={() => { void onSaveWebullSettings() }}
-              disabled={busyAction === 'webull'}
-            >
-              {busyAction === 'webull' ? 'Saving...' : 'Save Webull Path'}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => { void onResetWebullSettings() }}
-              disabled={busyAction === 'webull'}
-            >
-              Reset to Default
-            </Button>
-          </div>
+          <SettingsGroupBlock heading="Tab">
+            <SettingsRowBlock
+              as="label"
+              label="Sim subtab"
+              description="Replays of a company through a market era, beside Study."
+              control={(
+                <Switch
+                  checked={webullSimTabEnabled}
+                  onCheckedChange={updateWebullSimTabEnabled}
+                  aria-label="Show the Sim subtab"
+                />
+              )}
+            />
+            <SettingsRowBlock
+              as="label"
+              htmlFor="ltm-settings-webull-tab-label"
+              label="Label"
+              description="Shown in the sidebar and tab strip, on every device."
+              control={(
+                <input
+                  id="ltm-settings-webull-tab-label"
+                  type="text"
+                  value={webullTabLabelInput}
+                  onChange={(event) => setWebullTabLabelInput(event.target.value)}
+                  onBlur={() => { if (webullTabLabelInput !== webullTabLabelProp) void onSaveWebullTabPreferences() }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
+                  placeholder="Webull"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[220px]')}
+                />
+              )}
+            />
+            <SettingsRowBlock
+              as="label"
+              htmlFor="ltm-settings-webull-tab-icon"
+              label="Icon"
+              description="Text or emoji (📈, W). Blank uses the Webull crescent."
+              control={(
+                <input
+                  id="ltm-settings-webull-tab-icon"
+                  type="text"
+                  value={webullTabIconTextInput}
+                  onChange={(event) => setWebullTabIconTextInput(event.target.value)}
+                  onBlur={() => { if (webullTabIconTextInput !== webullTabIconTextProp) void onSaveWebullTabPreferences() }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
+                  placeholder="Default"
+                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-[220px]')}
+                />
+              )}
+            />
+          </SettingsGroupBlock>
         </>
       )}
 

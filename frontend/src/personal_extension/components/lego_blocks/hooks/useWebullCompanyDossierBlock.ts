@@ -4,8 +4,8 @@ import {
   type WebullCompanyDossierBlock,
 } from '@/personal_extension/services/lego_blocks/integrations/webullCompanyDossierVaultBlock'
 
-/** Load a company's page from the vault whenever the company changes. */
-export function useWebullCompanyDossierBlock(executionRoot: string | null, ticker: string, companyName: string | null) {
+/** Load a company's page from the vault whenever the company changes, or `reloadKey` does. */
+export function useWebullCompanyDossierBlock(executionRoot: string | null, ticker: string, companyName: string | null, reloadKey = 0) {
   const [dossier, setDossier] = useState<WebullCompanyDossierBlock | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -32,7 +32,7 @@ export function useWebullCompanyDossierBlock(executionRoot: string | null, ticke
     return () => {
       cancelled = true
     }
-  }, [companyName, executionRoot, ticker])
+  }, [companyName, executionRoot, reloadKey, ticker])
 
   return { dossier, loading, error }
 }

@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react'
 import { Area, AreaChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import { useWebullCompanyDossierBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullCompanyDossierBlock'
+import { useValueLineCompanyBlock } from '@/personal_extension/components/lego_blocks/hooks/useValueLineCompanyBlock'
 import { useWebullTrackRecordBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullTrackRecordBlock'
 import { f9SignedMoneyKBlock, type WebullCompanyTrackRecordBlock } from '@/personal_extension/services/lego_blocks/units/webullTrackRecordBlock'
 import { F9TrackRowBlock } from '@/personal_extension/components/lego_blocks/units/F9TrackRecordPartsBlock'
@@ -72,10 +73,12 @@ function formatDateBlock(iso: string | null): string {
 }
 
 // Research lives in the side panel: ValueLine opens the newest report (older
-// ones fold out below it), and each research folder folds out its files.
-function ResearchPanelBlock({ reports, groups, onOpenFile }: {
+// ones fold out below it), and each research folder folds out its files. On
+// the desktop the newest report is fetched from the library on open.
+function ResearchPanelBlock({ reports, groups, valueLine, onOpenFile }: {
   reports: WebullResearchFileBlock[]
   groups: WebullResearchGroupBlock[]
+  valueLine: { checking: boolean; notCovered: boolean }
   onOpenFile: (path: string) => void
 }) {
   const [openGroup, setOpenGroup] = useState<string | null>(null)
@@ -84,8 +87,15 @@ function ResearchPanelBlock({ reports, groups, onOpenFile }: {
     ...(reports.length > 0 ? [{ label: 'Value Line', files: reports, isReport: true }] : []),
     ...groups.map(group => ({ label: group.label, files: group.files, isReport: false })),
   ]
+  const valueLineNote = reports.length > 0 ? null : valueLine.checking ? 'Fetching…' : valueLine.notCovered ? 'Not covered' : null
   return (
     <F9PanelBlock id="webull-company-research" className="scroll-mt-4 overflow-hidden">
+      {valueLineNote && (
+        <div className="flex items-center justify-between gap-3 border-b border-zinc-200/70 px-4 py-2.5 text-[13px] last:border-b-0 dark:border-zinc-800">
+          <span>Value Line</span>
+          <span className="text-zinc-500 dark:text-zinc-400" title={valueLine.notCovered ? 'Value Line has no report for this ticker' : 'From the library'}>{valueLineNote}</span>
+        </div>
+      )}
       {rows.map(row => {
         const expanded = openGroup === row.label
         const single = row.isReport && row.files.length === 1
@@ -186,7 +196,8 @@ export default function WebullCompanyPageBlock({
   footer,
   onOpenFile,
 }: WebullCompanyPageBlockProps) {
-  const { dossier, loading, error } = useWebullCompanyDossierBlock(executionRoot, ticker, companyName)
+  const valueLine = useValueLineCompanyBlock(executionRoot, ticker)
+  const { dossier, loading, error } = useWebullCompanyDossierBlock(executionRoot, ticker, companyName, valueLine.fetchedCount)
   const { record: trackRecord, reportPath } = useWebullTrackRecordBlock(executionRoot, ticker)
   const [priceWindow, setPriceWindow] = useState<PriceWindowBlock>('2y')
   const [observationsExpanded, setObservationsExpanded] = useState(false)
@@ -416,8 +427,8 @@ export default function WebullCompanyPageBlock({
           )}
         </F9PanelBlock>
 
-        {dossier?.researchFolderPath && (
-          <ResearchPanelBlock reports={reports} groups={dossier.researchGroups} onOpenFile={onOpenFile} />
+        {dossier && (dossier.researchFolderPath || reports.length > 0 || valueLine.checking || valueLine.notCovered) && (
+          <ResearchPanelBlock reports={reports} groups={dossier.researchGroups} valueLine={valueLine} onOpenFile={onOpenFile} />
         )}
       </aside>
     </div>

@@ -49,6 +49,8 @@ import {
   libraryGaleSearchBlock,
   type LibraryGaleSearchPayload,
 } from './lego_blocks/libraryGaleBlock';
+import { libraryValueLineIssuesBlock, libraryValueLineReportBlock } from './lego_blocks/libraryValueLineBlock';
+import { clearLibraryCardBlock, saveLibraryCardBlock } from './lego_blocks/librarySessionBlock';
 import {
   readAiPlanUsageBlock,
   readClaudeUsageLogBlock,
@@ -1803,12 +1805,18 @@ ipcMain.handle('extension-runtime:invoke', async (_event, payload: ExtensionRunt
   });
 });
 
-// -- Library (Gale through the public library's proxy) --
-// No URLs from the renderer: a search in a known publication, or one article
-// by its Gale id. The card and password stay in main (libraryGaleBlock.ts).
+// -- Library (Gale and Value Line through the public library's proxy) --
+// No URLs from the renderer: a search in a known publication, one article by
+// its Gale id, a ticker's Value Line issues, or one issue's report by date.
+// The card and password stay in main (librarySessionBlock.ts).
 ipcMain.handle('library:status', async () => libraryCredentialStatusBlock());
+// Settings saves or clears the card (write-only: status returns a masked hint)
+ipcMain.handle('library:saveCard', async (_event, payload: { card: unknown; pin: unknown }) => saveLibraryCardBlock(payload));
+ipcMain.handle('library:clearCard', async () => clearLibraryCardBlock());
 ipcMain.handle('library:galeSearch', async (_event, payload: LibraryGaleSearchPayload) => libraryGaleSearchBlock(payload));
 ipcMain.handle('library:galeArticle', async (_event, payload: { docId: string; db: string }) => libraryGaleArticleBlock(payload));
+ipcMain.handle('library:valueLineIssues', async (_event, payload: { ticker: string }) => libraryValueLineIssuesBlock(payload));
+ipcMain.handle('library:valueLineReport', async (_event, payload: { ticker: string; issueDate: string }) => libraryValueLineReportBlock(payload));
 
 // -- Webull Webull GET bridge (main-process network bridge) --
 ipcMain.handle('webull:get', async (_event, payload: WebullGetPayload) => {

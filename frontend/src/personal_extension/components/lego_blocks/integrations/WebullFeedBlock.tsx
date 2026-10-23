@@ -22,6 +22,7 @@ import {
   type RssFeedItemBlock,
   type RssMergedViewsModeBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
+import { readLastValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK, F9_CHART_TOOLTIP_STYLE_BLOCK, F9PanelBlock, F9SegmentedBlock } from '../units/F9NativeBlock'
 
 // F9's Feed: the front of the loop, where things are first seen. The reader is
@@ -109,7 +110,28 @@ function LibraryStatusBlock({ library }: { library: ReturnType<typeof useLibrary
       <button type="button" disabled={Boolean(progress)} onClick={() => { void run() }} className="text-[13px] text-sky-600 hover:text-sky-700 disabled:text-zinc-400 dark:text-sky-400">
         Fill from library
       </button>
+      <ValueLineStatusBlock />
     </F9PanelBlock>
+  )
+}
+
+// The daily Value Line pass runs from the F9 page (useValueLinePassBlock); this
+// only reports the last one.
+function ValueLineStatusBlock() {
+  const last = readLastValueLinePassOrch()
+  const listBlock = (tickers: string[]) => (tickers.length > 4 ? `${tickers.slice(0, 4).join(', ')}…` : tickers.join(', '))
+  return (
+    <span className="basis-full text-[12px] text-zinc-500 dark:text-zinc-400">
+      <span className="mr-2 font-semibold text-zinc-900 dark:text-zinc-100">Value Line</span>
+      {last
+        ? [
+          last.fetched.length > 0 ? `${last.fetched.length} new ${last.fetched.length === 1 ? 'report' : 'reports'} (${listBlock(last.fetched)})` : 'No new reports',
+          last.notCovered.length > 0 ? `${last.notCovered.length} not covered` : null,
+          minutesAgoBlock(last.at),
+        ].filter(Boolean).join(' · ')
+        : 'Not run yet; it runs when the F9 page opens'}
+      {last?.error && <span className="ml-2 text-red-600 dark:text-red-400">{last.error}</span>}
+    </span>
   )
 }
 

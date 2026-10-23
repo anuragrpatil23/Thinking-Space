@@ -38,6 +38,8 @@ export const STORAGE_KEYS = {
   sheetWidthPrefix: 'ltm-sheet-width:',
   /** The last library full-text pass (time and counts), this device only. */
   libraryFillLast: 'ltm-library-fill-last',
+  valueLinePassLast: 'ltm-value-line-pass-last',
+  valueLineChecks: 'ltm-value-line-checks',
   webullOverallRememberByProjectRoot: 'ltm-webull-overall-remember-by-project-root',
   aiManualCredentials: 'ltm-ai-manual-credentials',
   aiOauthCredentials: 'ltm-ai-oauth-credentials',

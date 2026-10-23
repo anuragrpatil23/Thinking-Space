@@ -121,3 +121,50 @@ export function valueLineDueBlock(latest: WebullResearchFileBlock | null, now: D
   const issued = day ? new Date(year, month - 1, day) : new Date(year, month, 0)
   return (now.getTime() - issued.getTime()) / 86_400_000 > VALUE_LINE_REVIEW_DAYS_BLOCK
 }
+
+/**
+ * Fetching a company's newest issue from the library (desktop only). The
+ * library is asked only when there is something to find: no issue yet, or the
+ * newest one is due. A due company with nothing newer is asked again the next
+ * day; one Value Line doesn't cover, after a month.
+ */
+export const VALUE_LINE_RECHECK_MS_BLOCK = 24 * 60 * 60 * 1000
+export const VALUE_LINE_NOT_COVERED_RECHECK_MS_BLOCK = 30 * 24 * 60 * 60 * 1000
+
+export interface ValueLineCheckBlock {
+  /** ISO time of the last answer from the library */
+  at: string
+  result: 'not-covered' | 'no-new' | 'fetched'
+}
+
+export type ValueLinePlanBlock = 'current' | 'not-covered' | 'checked' | 'ask'
+
+/** The newest issue among a valueline/ folder's files, or null. */
+export function latestValueLineFileBlock(folder: string, names: string[]): WebullResearchFileBlock | null {
+  const files = names
+    .filter(name => /\.pdf$/i.test(name))
+    .map(name => ({ path: `${folder}/${name}`, name: name.replace(/\.pdf$/i, ''), dateKey: parseResearchDateKeyBlock(name) }))
+  return sortResearchFilesBlock(files)[0] ?? null
+}
+
+export function valueLinePlanBlock(latest: WebullResearchFileBlock | null, check: ValueLineCheckBlock | undefined, now: Date): ValueLinePlanBlock {
+  if (latest && !valueLineDueBlock(latest, now)) return 'current'
+  const age = check ? now.getTime() - Date.parse(check.at) : Infinity
+  if (check?.result === 'not-covered' && age < VALUE_LINE_NOT_COVERED_RECHECK_MS_BLOCK) return 'not-covered'
+  if (check && check.result !== 'not-covered' && age < VALUE_LINE_RECHECK_MS_BLOCK) return 'checked'
+  return 'ask'
+}
+
+/** "2026-09-18" → "2026-09.pdf": one issue a month at most, named like the rest. */
+export function valueLineFileNameBlock(issueDate: string): string {
+  return `${issueDate.slice(0, 7)}.pdf`
+}
+
+/** The library's newest issue when it is newer than what the folder has; null when nothing to fetch. */
+export function valueLineIssueToFetchBlock(latest: WebullResearchFileBlock | null, issues: Array<{ issueDate: string }>): string | null {
+  const newest = issues[0]?.issueDate
+  if (!newest) return null
+  const newestKey = Number(newest.slice(0, 4)) * 10000 + Number(newest.slice(5, 7)) * 100
+  const latestMonthKey = latest ? Math.floor(latest.dateKey / 100) * 100 : 0
+  return newestKey > latestMonthKey ? newest : null
+}

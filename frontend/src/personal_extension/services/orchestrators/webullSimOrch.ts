@@ -10,46 +10,27 @@
 // so the sim root is derived from the execution folder's parent.
 
 import { readWebullExecutionSettingsOrch } from './webullExecutionSettingsOrch'
-import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import { scanWebullSimVaultBlock } from '../lego_blocks/integrations/webullSimVaultBlock'
 import {
   buildWebullSimTimelineModelBlock,
   type WebullSimTimelineModelBlock,
 } from '../lego_blocks/units/webullSimRecordBlock'
 
-// Default sim folder name — a sibling of the execution folder, mirroring the
-// `F9-execution` naming so the pair reads consistently in the vault.
-const SIM_DEFAULT_FOLDER_NAME_BLOCK = 'F9-sim'
+// The sim lives inside the execution folder, beside gaps/, noticed/ and
+// reading/, so F9 has one folder (moved from a sibling F9-sim 2026-10-23).
+const SIM_FOLDER_NAME_BLOCK = 'sim'
 
 function normalizeVaultRelativePathBlock(value: string): string {
   return value.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
 }
 
 /**
- * Default sim folder derived from the execution folder path (its sibling):
- * `acceleration_core/F9/F9-execution` → `acceleration_core/F9/F9-sim`.
- * Returns '' when the execution folder isn't configured.
+ * The sim folder: `<execution folder>/sim`, e.g.
+ * `acceleration_core/F9/F9-execution/sim`. '' when the execution folder isn't set.
  */
-export function deriveDefaultWebullSimRootBlock(executionFolderPath: string): string {
+export function resolveWebullSimRootBlock(executionFolderPath: string): string {
   const normalized = normalizeVaultRelativePathBlock(executionFolderPath)
-  if (!normalized) return ''
-  const lastSlash = normalized.lastIndexOf('/')
-  const parent = lastSlash >= 0 ? normalized.slice(0, lastSlash) : ''
-  return parent ? `${parent}/${SIM_DEFAULT_FOLDER_NAME_BLOCK}` : SIM_DEFAULT_FOLDER_NAME_BLOCK
-}
-
-/**
- * Resolve the sim folder the timeline reads. An explicit user-configured path
- * wins (and works even without an execution folder set); otherwise fall back to
- * the sibling default beside the execution folder.
- */
-export function resolveWebullSimRootBlock(
-  executionFolderPath: string,
-  configuredSimFolderPath: string,
-): string {
-  const explicit = normalizeVaultRelativePathBlock(configuredSimFolderPath)
-  if (explicit) return explicit
-  return deriveDefaultWebullSimRootBlock(executionFolderPath)
+  return normalized ? `${normalized}/${SIM_FOLDER_NAME_BLOCK}` : ''
 }
 
 export interface WebullSimOverviewBlock {
@@ -70,17 +51,14 @@ const EMPTY_MODEL_BLOCK: WebullSimTimelineModelBlock = {
 }
 
 export async function loadWebullSimOverviewOrch(): Promise<WebullSimOverviewBlock> {
-  const [settings, preferences] = await Promise.all([
-    readWebullExecutionSettingsOrch(),
-    readVaultUiPreferencesOrch(),
-  ])
-  const simRoot = resolveWebullSimRootBlock(settings.executionFolderPath, preferences.webullSimFolderPath)
+  const settings = await readWebullExecutionSettingsOrch()
+  const simRoot = resolveWebullSimRootBlock(settings.executionFolderPath)
   if (!simRoot) {
     return {
       simRoot: '',
       configured: false,
       model: EMPTY_MODEL_BLOCK,
-      warnings: ['Set the Sim folder path (or the execution folder path) in Settings → Webull to locate the Sim data.'],
+      warnings: ['Set the execution folder in Settings → Webull; the Sim lives in its sim/ folder.'],
     }
   }
 

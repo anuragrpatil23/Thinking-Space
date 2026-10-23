@@ -452,9 +452,14 @@ interface ElectronAPI {
     body?: string
   }): Promise<{ status: number; body: string }>
   /** Library full text (Gale through the library proxy). Desktop only. */
-  libraryStatus?(): Promise<{ available: boolean }>
+  libraryStatus?(): Promise<{ available: boolean; source: 'saved' | 'keychain' | null; cardHint: string | null; secureStorageAvailable: boolean }>
+  librarySaveCard?(payload: { card: string; pin: string }): Promise<{ available: boolean; source: 'saved' | 'keychain' | null; cardHint: string | null; secureStorageAvailable: boolean }>
+  libraryClearCard?(): Promise<{ available: boolean; source: 'saved' | 'keychain' | null; cardHint: string | null; secureStorageAvailable: boolean }>
   libraryGaleSearch?(payload: { publication: string; words: string[]; day: string; db: string; windowDays: number }): Promise<Array<{ title: string; docId: string; sourceLine: string }>>
   libraryGaleArticle?(payload: { docId: string; db: string }): Promise<{ text: string; citationOnly: boolean }>
+  /** Value Line company reports through the same library session. Desktop only. */
+  libraryValueLineIssues?(payload: { ticker: string }): Promise<{ covered: boolean; issues: Array<{ issueDate: string }> }>
+  libraryValueLineReport?(payload: { ticker: string; issueDate: string }): Promise<{ pdfBase64: string }>
   webullCredentialStatus?(): Promise<{
     secureStorageAvailable: boolean
     configured: boolean
