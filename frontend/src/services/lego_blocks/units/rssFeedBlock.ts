@@ -12,11 +12,24 @@ export interface RssFeedConfigBlock {
    *  the reels): always, only items whose full text the app has, or never. A
    *  paywalled source sits on 'readable' so its dead links stay out of the
    *  reels and its items come back on their own once their text is fetched.
-   *  Missing means 'show'. It is still readable under its own feed. */
+   *  Missing means 'readable' (RSS_DEFAULT_MERGED_VIEWS_MODE_BLOCK). It is
+   *  still readable under its own feed. */
   inMergedViews?: RssMergedViewsModeBlock
+  /** How far the source is trusted. When several sources carry one story, the
+   *  inbox shows it under the most trusted; nothing is hidden. Missing means
+   *  'normal'. */
+  trust?: 'high' | 'normal' | 'low'
 }
 
 export type RssMergedViewsModeBlock = 'show' | 'readable' | 'hidden'
+
+/** A source nobody has set reaches the merged views only with articles the
+ *  app can show in full: a teaser that opens a paywall is a dead end in the reels. */
+export const RSS_DEFAULT_MERGED_VIEWS_MODE_BLOCK: RssMergedViewsModeBlock = 'readable'
+
+export function rssMergedViewsModeBlock(feed: Pick<RssFeedConfigBlock, 'inMergedViews'>): RssMergedViewsModeBlock {
+  return feed.inMergedViews ?? RSS_DEFAULT_MERGED_VIEWS_MODE_BLOCK
+}
 
 /** Below this much plain text, a feed item is a teaser, not the article. */
 export const RSS_READABLE_MIN_CHARS_BLOCK = 1200
@@ -155,6 +168,17 @@ export interface RssFeedItemBlock {
    *  marked `textInCache: true` in its frontmatter). The reader shows that
    *  text instead of opening the link, which may need a login. */
   textInCache?: boolean
+  /** A short summary written by the AI that read the article (a derived
+   *  record: the model and prompt version say how to rebuild it). */
+  aiSummary?: RssAiSummaryBlock
+}
+
+export interface RssAiSummaryBlock {
+  text: string
+  model: string
+  version: number
+  /** ISO time it was written */
+  at: string
 }
 
 export interface RssFeedResultBlock {
@@ -423,6 +447,7 @@ export function mergeStoredRssItemsBlock(
     keep: a.keep || b.keep,
     important: a.important || b.important,
     ...(a.textInCache || b.textInCache ? { textInCache: true } : {}),
+    ...(a.aiSummary || b.aiSummary ? { aiSummary: a.aiSummary ?? b.aiSummary } : {}),
   }
 }
 
@@ -682,7 +707,7 @@ export function rssReaderFeedsBlock(
 ): RssFeedResultBlock[] {
   if (!preferences) return feeds
   const excluded = rssFeedIdsExcludedFromAllUnreadBlock(preferences.groups, preferences.feeds)
-  const modeById = new Map(preferences.feeds.map(f => [f.id, f.inMergedViews ?? 'show']))
+  const modeById = new Map(preferences.feeds.map(f => [f.id, rssMergedViewsModeBlock(f)]))
   return feeds
     .filter(feed => !excluded.has(feed.feedId) && modeById.get(feed.feedId) !== 'hidden')
     .map(feed => (modeById.get(feed.feedId) === 'readable'

@@ -6,6 +6,7 @@ import { parseValueLineIssuesBlock } from '../electron/src/lego_blocks/libraryVa
 import {
   latestValueLineFileBlock,
   valueLineFileNameBlock,
+  valueLineIssueRowsBlock,
   valueLineIssueToFetchBlock,
   valueLinePlanBlock,
 } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
@@ -75,5 +76,22 @@ describe('when to ask the library', () => {
     expect(valueLineIssueToFetchBlock(null, issues)).toBe('2026-09-18')
     expect(valueLineIssueToFetchBlock(null, [])).toBeNull()
     expect(valueLineFileNameBlock('2026-09-18')).toBe('2026-09.pdf')
+  })
+})
+
+describe('the issue list on the company page', () => {
+  it('merges saved issues with the library list by month, newest first', () => {
+    const saved = [latestValueLineFileBlock('F9-execution/MU/valueline', ['2026-04.pdf'])!]
+    const rows = valueLineIssueRowsBlock(saved, ['2026-09-18', '2026-04-03', '1997-01-24'])
+    expect(rows.map(r => [r.label, r.path !== null, r.issueDate])).toEqual([
+      ['September 2026', false, '2026-09-18'],
+      ['April 2026', true, '2026-04-03'],
+      ['January 1997', false, '1997-01-24'],
+    ])
+  })
+
+  it('shows only saved issues when the library list is not there', () => {
+    const saved = [latestValueLineFileBlock('F9-execution/MU/valueline', ['2025-08.pdf'])!]
+    expect(valueLineIssueRowsBlock(saved, null).map(r => r.label)).toEqual(['August 2025'])
   })
 })

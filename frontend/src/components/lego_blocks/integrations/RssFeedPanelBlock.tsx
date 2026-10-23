@@ -64,6 +64,12 @@ import {
 } from '@/services/lego_blocks/units/tagBlock'
 import { cn } from '@/lib/utils'
 import RssItemAnnotationMarksBlock from '@/components/lego_blocks/units/RssItemAnnotationMarksBlock'
+import {
+  buildRssDayInboxBlock,
+  rssDayLabelBlock,
+  rssStoryOthersLabelBlock,
+  type RssDayInboxBlock,
+} from '@/services/lego_blocks/units/rssStoryBlock'
 
 // F9's Feed draws the list in its native look: quiet header, no RSS or folder
 // icons, plain counts, a failing source as a red dot instead of an error row.
@@ -220,6 +226,15 @@ export default function RssFeedPanelBlock({
     toggleGroupExpanded(groupId)
   }, [toggleGroupExpanded])
 
+  // The other copies of each story shown in the day inbox, by the lead's id:
+  // reading the lead marks them read too, so the story does not come back.
+  const storyOthersRef = useRef(new Map<string, RssFeedItemBlock[]>())
+  const replaceWithStoryBlock = useCallback((updated: RssFeedItemBlock) => {
+    replaceRssItemBlock(updated)
+    const others = storyOthersRef.current.get(updated.id)
+    if (updated.read && others?.some(other => !other.read)) setRssItemsReadBlock(others.filter(other => !other.read), true)
+  }, [])
+
   const handleItemClick = useCallback((item: RssFeedItemBlock, rowId: string) => {
     if (deleteMode) {
       // Toggle selection in delete-preview mode
@@ -239,7 +254,7 @@ export default function RssFeedPanelBlock({
     // engagement (scrolling or dwelling) back through onItemUpdate below.
     onOpenArticle(
       item,
-      replaceRssItemBlock,
+      replaceWithStoryBlock,
       () => {
         forgetRssItemBlock(item.id)
         setSelectedItemId(null)
@@ -248,7 +263,7 @@ export default function RssFeedPanelBlock({
       presetTags,
       tagColors,
     )
-  }, [deleteMode, onOpenArticle, presetTags, tagColors])
+  }, [deleteMode, onOpenArticle, presetTags, tagColors, replaceWithStoryBlock])
 
   const setTimelineViewMode = useCallback((next: RssViewModeBlock) => {
     setViewMode(next)
@@ -307,6 +322,23 @@ export default function RssFeedPanelBlock({
   // count.
   const inboxFeeds = useMemo(() => rssReaderFeedsBlock(feeds, preferences), [feeds, preferences])
 
+  // Native: the list is an inbox by day across every source (the merged-view
+  // rules apply), sources inside each day, one row per story. Days fold;
+  // folded days are remembered on this device.
+  const dayMode = native && !focusedFeedId
+  const dayInbox = useMemo<RssDayInboxBlock[]>(
+    () => (dayMode ? buildRssDayInboxBlock({ feeds: inboxFeeds, configs: preferences?.feeds ?? [], unreadOnly, sessionReadIds }) : []),
+    [dayMode, inboxFeeds, preferences, unreadOnly, sessionReadIds],
+  )
+  useEffect(() => {
+    const map = new Map<string, RssFeedItemBlock[]>()
+    for (const day of dayInbox) for (const source of day.sources) for (const story of source.stories) {
+      if (story.others.length > 0) map.set(story.lead.item.id, story.others.map(other => other.item))
+    }
+    storyOthersRef.current = map
+  }, [dayInbox])
+  const { expanded: foldedDays, toggle: toggleDayFolded } = useExpandedSetBlock('ltm-rss-folded-days')
+
   // Counted per article, not per copy, so the number agrees with the inbox.
   const totalUnread = useMemo(
     () => collapseDuplicateRssEntriesBlock(
@@ -346,7 +378,12 @@ export default function RssFeedPanelBlock({
     }
   }, [anythingExpanded, feeds, preferences, setExpandedFeeds, setExpandedGroups])
 
-  const visibleRows = useMemo(() => flattenVisibleRssRowsBlock({
+  const visibleRows = useMemo(() => (dayMode
+    ? dayInbox.filter(day => !foldedDays.has(day.day)).flatMap(day => day.sources.flatMap(source => source.stories.map(story => ({
+      rowId: rssRowIdBlock(`day:${day.day}`, story.lead.item.id),
+      itemId: story.lead.item.id,
+    }))))
+    : flattenVisibleRssRowsBlock({
     // Native lists filter by Unread instead of offering the merged row
     unreadInbox: showUnreadInbox && !native
       ? { expanded: unreadInboxExpanded, itemIds: unreadInboxEntries.map(entry => entry.item.id) }
@@ -355,9 +392,10 @@ export default function RssFeedPanelBlock({
     feeds: useGroupedRendering ? feeds : visibleFeeds,
     expandedFeedIds,
     expandedGroupIds,
-  }), [
+  })), [
     native, showUnreadInbox, unreadInboxExpanded, unreadInboxEntries,
     useGroupedRendering, groupTree, feeds, visibleFeeds, expandedFeedIds, expandedGroupIds,
+    dayMode, dayInbox, foldedDays,
   ])
 
   const registerItemButton = useCallback((rowId: string, node: HTMLButtonElement | null) => {
@@ -622,8 +660,21 @@ export default function RssFeedPanelBlock({
           </div>
         )}
 
+        {dayMode && (
+          <DayInboxRenderer
+            days={dayInbox}
+            foldedDays={foldedDays}
+            toggleDayFolded={toggleDayFolded}
+            setFocusedFeedId={setFocusedFeedId}
+            selectedItemId={selectedItemId}
+            handleItemClick={handleItemClick}
+            onItemKeyDown={handleItemKeyDown}
+            registerItemButton={registerItemButton}
+            tagColors={tagColors}
+          />
+        )}
         {/* Group tree rendering */}
-        {preferences && preferences.groups.length > 0 && !focusedFeedId && (
+        {!dayMode && preferences && preferences.groups.length > 0 && !focusedFeedId && (
           <GroupTreeRenderer
             tree={groupTree}
             feedResults={feeds}
@@ -644,7 +695,7 @@ export default function RssFeedPanelBlock({
           />
         )}
         {/* Flat rendering (no groups or focused on single feed) */}
-        {(!preferences || preferences.groups.length === 0 || focusedFeedId) && visibleFeeds.map(feed => (
+        {!dayMode && (!preferences || preferences.groups.length === 0 || focusedFeedId) && visibleFeeds.map(feed => (
           <FeedSection
             key={feed.feedId}
             feed={feed}
@@ -1156,6 +1207,96 @@ function FeedSection({
 }
 
 // ---------------------------------------------------------------------------
+// Day inbox — native: days, then sources, one row per story
+// ---------------------------------------------------------------------------
+
+function DayInboxRenderer({
+  days,
+  foldedDays,
+  toggleDayFolded,
+  setFocusedFeedId,
+  selectedItemId,
+  handleItemClick,
+  onItemKeyDown,
+  registerItemButton,
+  tagColors,
+}: {
+  days: RssDayInboxBlock[]
+  foldedDays: Set<string>
+  toggleDayFolded: (day: string) => void
+  setFocusedFeedId: (feedId: string) => void
+  selectedItemId: string | null
+  handleItemClick: (item: RssFeedItemBlock, rowId: string) => void
+  onItemKeyDown: (rowId: string, event: KeyboardEvent<HTMLButtonElement>) => void
+  registerItemButton: (rowId: string, node: HTMLButtonElement | null) => void
+  tagColors: Record<string, string>
+}) {
+  const now = new Date()
+  if (days.length === 0) {
+    return <div className="px-4 py-8 text-center text-[13px] text-zinc-500 dark:text-zinc-400">Nothing here.</div>
+  }
+  return (
+    <>
+      {days.map(day => {
+        const folded = foldedDays.has(day.day)
+        let idx = 0
+        return (
+          <section key={day.day}>
+            <button
+              type="button"
+              aria-expanded={!folded}
+              onClick={() => toggleDayFolded(day.day)}
+              className="sticky top-0 z-10 flex w-full items-center gap-2 border-b-[0.5px] border-[#EFEFF2] bg-[#F6F6F8]/95 px-3 py-2 text-left backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95"
+            >
+              <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform', !folded && 'rotate-90')} />
+              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{rssDayLabelBlock(day.day, now)}</span>
+              <span className="shrink-0 text-[11px] tabular-nums text-zinc-500 dark:text-zinc-400">
+                {day.unreadCount > 0 ? `${day.unreadCount} unread · ` : ''}{day.storyCount} {day.storyCount === 1 ? 'story' : 'stories'}
+              </span>
+            </button>
+            {!folded && day.sources.map(source => (
+              <div key={source.feedId}>
+                <button
+                  type="button"
+                  onClick={() => setFocusedFeedId(source.feedId)}
+                  title="Show only this source"
+                  className="block w-full truncate px-3 pb-1 pt-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                >
+                  {source.feedTitle}
+                </button>
+                {source.stories.map(story => {
+                  const rowId = rssRowIdBlock(`day:${day.day}`, story.lead.item.id)
+                  const others = rssStoryOthersLabelBlock(story)
+                  const row = (
+                    <FeedItemRow
+                      key={rowId}
+                      item={story.read && !story.lead.item.read ? { ...story.lead.item, read: true } : story.lead.item}
+                      rowId={rowId}
+                      idx={idx}
+                      alsoInLabel={others?.label}
+                      alsoInTitle={others?.title}
+                      isSelected={selectedItemId === story.lead.item.id}
+                      isPendingDelete={false}
+                      deleteMode={false}
+                      handleItemClick={handleItemClick}
+                      onItemKeyDown={onItemKeyDown}
+                      registerItemButton={registerItemButton}
+                      tagColors={tagColors}
+                    />
+                  )
+                  idx += 1
+                  return row
+                })}
+              </div>
+            ))}
+          </section>
+        )
+      })}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Feed item row — single article row
 // ---------------------------------------------------------------------------
 
@@ -1236,7 +1377,16 @@ function FeedItemRow({
         )}>
           {item.title || '(Untitled)'}
         </div>
-        {item.description && !isPendingDelete && (
+        {/* The AI's summary when it has read the article; otherwise the feed's own teaser */}
+        {item.aiSummary && !isPendingDelete ? (
+          <div className={cn(
+            'mt-0.5 line-clamp-3 text-[11px] leading-snug',
+            isSelected ? 'text-white/85' : 'text-zinc-600 dark:text-zinc-300',
+          )}>
+            <span className={cn('mr-1 rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide', isSelected ? 'bg-white/20 text-white' : 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300')} title={`Summary by ${item.aiSummary.model || 'AI'}`}>AI</span>
+            {item.aiSummary.text}
+          </div>
+        ) : item.description && !isPendingDelete && (
           <div className={cn(
             'mt-0.5 line-clamp-2 text-[11px] leading-snug',
             isSelected ? 'text-white/75' : 'text-muted-foreground',

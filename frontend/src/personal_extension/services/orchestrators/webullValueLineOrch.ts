@@ -37,6 +37,8 @@ export interface ValueLinePassBlock {
   at: string
   fetched: string[]
   notCovered: string[]
+  /** Companies that failed twice; the next pass or opening the company tries again. */
+  failed: string[]
   error: string | null
 }
 
@@ -68,6 +70,48 @@ export function valueLinePassDueOrch(now = Date.now()): boolean {
   return !last || now - Date.parse(last.at) > VALUE_LINE_PASS_STALE_MS
 }
 
+// Each company's issue list (dates, newest first), from its last listing.
+// Refreshed when older than a week; a new issue comes out about every 13.
+const ISSUE_LIST_FRESH_MS = 7 * 24 * 60 * 60 * 1000
+
+function readIssueListsBlock(): Record<string, { at: string; issues: string[] }> {
+  return getJsonStorageItem<Record<string, { at: string; issues: string[] }>>(STORAGE_KEYS.valueLineIssueLists, {})
+}
+
+function writeIssueListBlock(ticker: string, issues: string[]): void {
+  setJsonStorageItem(STORAGE_KEYS.valueLineIssueLists, { ...readIssueListsBlock(), [ticker]: { at: new Date().toISOString(), issues } })
+}
+
+/** The cached issue list, without asking the library; null when never listed. */
+export function cachedValueLineIssuesOrch(ticker: string): string[] | null {
+  return readIssueListsBlock()[ticker.toUpperCase()]?.issues ?? null
+}
+
+/** Every issue the library has for a ticker, newest first; cached for a week. */
+export async function listValueLineIssuesOrch(rawTicker: string): Promise<string[]> {
+  const ticker = rawTicker.toUpperCase()
+  const cached = readIssueListsBlock()[ticker]
+  if (cached && Date.now() - Date.parse(cached.at) < ISSUE_LIST_FRESH_MS) return cached.issues
+  const api = window.electronAPI
+  if (!valueLineAvailableOrch() || !api?.libraryValueLineIssues) return cached?.issues ?? []
+  const { covered, issues } = await api.libraryValueLineIssues({ ticker })
+  if (!covered) writeCheckBlock(ticker, 'not-covered')
+  const dates = issues.map(i => i.issueDate)
+  writeIssueListBlock(ticker, dates)
+  return dates
+}
+
+/** Download one issue into the company's valueline/ folder; returns its vault path. */
+export async function fetchValueLineIssueOrch(executionRoot: string, rawTicker: string, issueDate: string): Promise<string> {
+  const ticker = rawTicker.toUpperCase()
+  const api = window.electronAPI
+  if (!valueLineAvailableOrch() || !api?.libraryValueLineReport) throw new Error('Value Line is reached from the desktop app only.')
+  const path = `${executionRoot.replace(/\/+$/, '')}/${ticker}/${VALUE_LINE_FOLDER_NAME_BLOCK}/${valueLineFileNameBlock(issueDate)}`
+  const { pdfBase64 } = await api.libraryValueLineReport({ ticker, issueDate })
+  await getVaultFS().writeBytes(path, base64ToBytesBlock(pdfBase64))
+  return path
+}
+
 const inflight = new Map<string, Promise<ValueLineSyncResultBlock>>()
 
 /** Bring one company's Value Line folder up to date. Concurrent calls for a ticker share the work. */
@@ -93,6 +137,7 @@ async function syncBlock(executionRoot: string, ticker: string): Promise<ValueLi
   if (plan === 'not-covered') return { ticker, outcome: 'not-covered' }
   try {
     const { covered, issues } = await api.libraryValueLineIssues({ ticker })
+    writeIssueListBlock(ticker, issues.map(i => i.issueDate))
     if (!covered) {
       writeCheckBlock(ticker, 'not-covered')
       return { ticker, outcome: 'not-covered' }
@@ -113,25 +158,73 @@ async function syncBlock(executionRoot: string, ticker: string): Promise<ValueLi
 
 let running: Promise<ValueLinePassBlock> | null = null
 
-/** One pass over the tracked companies. A login failure stops the pass; concurrent calls share it. */
-export function runValueLinePassOrch(executionRoot: string, tickers: string[], onProgress?: (done: number, total: number) => void): Promise<ValueLinePassBlock> {
+// The pass in progress, for the status line in Feed → Sources
+export interface ValueLinePassProgressBlock {
+  done: number
+  total: number
+  fetched: number
+}
+let progress: ValueLinePassProgressBlock | null = null
+const listeners = new Set<() => void>()
+
+function setProgressBlock(next: ValueLinePassProgressBlock | null): void {
+  progress = next
+  for (const listener of listeners) listener()
+}
+
+export function readValueLinePassProgressOrch(): ValueLinePassProgressBlock | null {
+  return progress
+}
+
+/** Called when a pass moves or ends. */
+export function subscribeValueLinePassOrch(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
+
+/**
+ * One pass over the tracked companies. A company that fails is tried once
+ * more at the end (a library hiccup, or the session being re-made by another
+ * request); a login failure stops the pass. Concurrent calls share it.
+ */
+export function runValueLinePassOrch(executionRoot: string, tickers: string[]): Promise<ValueLinePassBlock> {
   if (running) return running
   running = (async () => {
-    const pass: ValueLinePassBlock = { at: new Date().toISOString(), fetched: [], notCovered: [], error: null }
+    const pass: ValueLinePassBlock = { at: new Date().toISOString(), fetched: [], notCovered: [], failed: [], error: null }
     const unique = [...new Set(tickers.map(t => t.toUpperCase()))]
-    for (const [index, ticker] of unique.entries()) {
-      onProgress?.(index, unique.length)
-      const result = await syncValueLineOrch(executionRoot, ticker)
+    const failed: string[] = []
+    let done = 0
+    const total = unique.length
+    const record = (ticker: string, result: ValueLineSyncResultBlock, last: boolean): boolean => {
       if (result.outcome === 'fetched') pass.fetched.push(ticker)
       if (result.outcome === 'not-covered') pass.notCovered.push(ticker)
-      if (result.outcome === 'error') {
-        pass.error = `${ticker}: ${result.error}`
-        if (/library login|Keychain|desktop app/i.test(result.error ?? '')) break
-      }
+      if (result.outcome !== 'error') return true
+      if (last) pass.failed.push(ticker)
+      else failed.push(ticker)
+      pass.error = `${ticker}: ${result.error}`
+      return !/Keychain|login saved|desktop app/i.test(result.error ?? '')
     }
-    onProgress?.(unique.length, unique.length)
+    setProgressBlock({ done, total, fetched: 0 })
+    let carryOn = true
+    for (const ticker of unique) {
+      carryOn = record(ticker, await syncValueLineOrch(executionRoot, ticker), false)
+      done += 1
+      setProgressBlock({ done, total, fetched: pass.fetched.length })
+      if (!carryOn) break
+    }
+    if (carryOn) {
+      for (const ticker of failed) {
+        if (!record(ticker, await syncValueLineOrch(executionRoot, ticker), true)) break
+      }
+      if (pass.failed.length === 0) pass.error = null
+    } else {
+      pass.failed.push(...failed)
+    }
     setJsonStorageItem(STORAGE_KEYS.valueLinePassLast, pass)
     return pass
-  })().finally(() => { running = null })
+  })().finally(() => {
+    running = null
+    setProgressBlock(null)
+  })
   return running
 }

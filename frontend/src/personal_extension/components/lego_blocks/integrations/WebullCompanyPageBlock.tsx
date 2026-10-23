@@ -1,5 +1,5 @@
 import { Suspense, useMemo, useState, type ReactNode } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Download, Loader2 } from 'lucide-react'
 import { Area, AreaChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import { useWebullCompanyDossierBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullCompanyDossierBlock'
@@ -16,7 +16,7 @@ import {
   F9_CHART_TOOLTIP_STYLE_BLOCK,
 } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
-import { valueLineDueBlock, valueLineIssueLabelBlock, type WebullResearchFileBlock, type WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
+import { valueLineDueBlock, valueLineIssueLabelBlock, valueLineIssueRowsBlock, type ValueLineIssueRowBlock, type WebullResearchFileBlock, type WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
 import { cn } from '@/lib/utils'
 
 const OBSERVATION_PREVIEW_BLOCK = 1
@@ -72,64 +72,148 @@ function formatDateBlock(iso: string | null): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// Research lives in the side panel: ValueLine opens the newest report (older
-// ones fold out below it), and each research folder folds out its files. On
-// the desktop the newest report is fetched from the library on open.
+type ValueLinePanelStateBlock = ReturnType<typeof useValueLineCompanyBlock>
+
+// Value Line in the research panel: the newest issue on the row; opening it
+// lists every issue — saved ones open, and on the desktop the library's older
+// ones download on click (one at a time, so the library sees a reader).
+function ValueLineRowBlock({ reports, valueLine, expanded, onToggle, onOpenFile }: {
+  reports: WebullResearchFileBlock[]
+  valueLine: ValueLinePanelStateBlock
+  expanded: boolean
+  onToggle: () => void
+  onOpenFile: (path: string) => void
+}) {
+  const rows = useMemo(() => valueLineIssueRowsBlock(reports, valueLine.available ? valueLine.issues : null), [reports, valueLine.available, valueLine.issues])
+  const latest = reports[0] ?? null
+  const status = latest
+    ? null
+    : valueLine.checking ? 'Fetching…' : valueLine.notCovered ? 'Not covered' : null
+  const savedCount = rows.filter(row => row.path).length
+  // On the phone, or with one saved issue and nothing more listed, the row opens the report
+  const opensDirectly = rows.length === 1 && rows[0].path !== null && !valueLine.available
+  const toggle = () => {
+    if (!expanded && valueLine.available) valueLine.loadIssues()
+    onToggle()
+  }
+  const open = async (row: ValueLineIssueRowBlock) => {
+    if (row.path) {
+      onOpenFile(row.path)
+      return
+    }
+    if (!row.issueDate || valueLine.fetchingIssue) return
+    const path = await valueLine.fetchIssue(row.issueDate)
+    if (path) onOpenFile(path)
+  }
+  if (!latest && !status && !valueLine.available) return null
+  return (
+    <div className="border-b border-zinc-200/70 last:border-b-0 dark:border-zinc-800">
+      <button
+        type="button"
+        aria-expanded={opensDirectly ? undefined : expanded}
+        onClick={() => (opensDirectly ? onOpenFile(rows[0].path!) : toggle())}
+        className="ltm-motion-fast flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+      >
+        <span className="truncate">Value Line</span>
+        <span className="flex shrink-0 items-center gap-1 text-zinc-500 dark:text-zinc-400">
+          {latest
+            ? (
+              <>
+                {valueLineDueBlock(latest, new Date()) && <span className="text-[11px] text-amber-700 dark:text-amber-400" title="Older than one review cycle (about 13 weeks)">due ·</span>}
+                {valueLineIssueLabelBlock(latest)}
+              </>
+            )
+            : status ?? 'None saved'}
+          {!opensDirectly && <ChevronRight className={cn('h-3.5 w-3.5 opacity-60 transition-transform', expanded && 'rotate-90')} />}
+        </span>
+      </button>
+      {expanded && (
+        <div className="pb-1.5">
+          {valueLine.available && (
+            <p className="px-4 pb-1 pl-7 text-[11px] text-zinc-500 dark:text-zinc-400">
+              {valueLine.issues === null
+                ? 'Listing issues from the library…'
+                : `${valueLine.issues.length} ${valueLine.issues.length === 1 ? 'issue' : 'issues'} in the library · ${savedCount} saved`}
+              {valueLine.issueError && <span className="ml-1 text-red-600 dark:text-red-400">{valueLine.issueError}</span>}
+            </p>
+          )}
+          <ul className="max-h-80 overflow-y-auto">
+            {rows.map(row => {
+              const fetching = valueLine.fetchingIssue !== null && valueLine.fetchingIssue === row.issueDate
+              return (
+                <li key={row.path ?? row.issueDate ?? row.label}>
+                  <button
+                    type="button"
+                    onClick={() => { void open(row) }}
+                    disabled={!row.path && Boolean(valueLine.fetchingIssue)}
+                    title={row.path ? 'Open' : 'Download from the library and open'}
+                    className={cn(
+                      'flex w-full items-center justify-between gap-3 px-4 py-1.5 pl-7 text-left text-xs transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60',
+                      row.path ? 'text-zinc-700 hover:text-zinc-900 dark:text-zinc-200' : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200',
+                    )}
+                  >
+                    <span className="truncate">{row.label}</span>
+                    {fetching
+                      ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                      : row.path
+                        ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-label="Saved" />
+                        : <Download className="h-3 w-3 shrink-0 opacity-60" aria-label="Download" />}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Research lives in the side panel: Value Line first, then each research
+// folder folds out its files.
 function ResearchPanelBlock({ reports, groups, valueLine, onOpenFile }: {
   reports: WebullResearchFileBlock[]
   groups: WebullResearchGroupBlock[]
-  valueLine: { checking: boolean; notCovered: boolean }
+  valueLine: ValueLinePanelStateBlock
   onOpenFile: (path: string) => void
 }) {
   const [openGroup, setOpenGroup] = useState<string | null>(null)
   const toggle = (label: string) => setOpenGroup(prev => (prev === label ? null : label))
-  const rows: Array<{ label: string; files: WebullResearchFileBlock[]; isReport: boolean }> = [
-    ...(reports.length > 0 ? [{ label: 'Value Line', files: reports, isReport: true }] : []),
-    ...groups.map(group => ({ label: group.label, files: group.files, isReport: false })),
-  ]
-  const valueLineNote = reports.length > 0 ? null : valueLine.checking ? 'Fetching…' : valueLine.notCovered ? 'Not covered' : null
   return (
     <F9PanelBlock id="webull-company-research" className="scroll-mt-4 overflow-hidden">
-      {valueLineNote && (
-        <div className="flex items-center justify-between gap-3 border-b border-zinc-200/70 px-4 py-2.5 text-[13px] last:border-b-0 dark:border-zinc-800">
-          <span>Value Line</span>
-          <span className="text-zinc-500 dark:text-zinc-400" title={valueLine.notCovered ? 'Value Line has no report for this ticker' : 'From the library'}>{valueLineNote}</span>
-        </div>
-      )}
-      {rows.map(row => {
-        const expanded = openGroup === row.label
-        const single = row.isReport && row.files.length === 1
+      <ValueLineRowBlock
+        reports={reports}
+        valueLine={valueLine}
+        expanded={openGroup === 'Value Line'}
+        onToggle={() => toggle('Value Line')}
+        onOpenFile={onOpenFile}
+      />
+      {groups.map(group => {
+        const expanded = openGroup === group.label
         return (
-          <div key={row.label} className="border-b border-zinc-200/70 last:border-b-0 dark:border-zinc-800">
+          <div key={group.label} className="border-b border-zinc-200/70 last:border-b-0 dark:border-zinc-800">
             <button
               type="button"
-              aria-expanded={single ? undefined : expanded}
-              onClick={() => (single ? onOpenFile(row.files[0].path) : toggle(row.label))}
+              aria-expanded={expanded}
+              onClick={() => toggle(group.label)}
               className="ltm-motion-fast flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
             >
-              <span className="truncate">{row.label}</span>
+              <span className="truncate">{group.label}</span>
               <span className="flex shrink-0 items-center gap-1 text-zinc-500 dark:text-zinc-400">
-                {row.isReport
-                  ? (
-                    <>
-                      {valueLineDueBlock(row.files[0], new Date()) && <span className="text-[11px] text-amber-700 dark:text-amber-400" title="Older than one review cycle (about 13 weeks)">due ·</span>}
-                      {valueLineIssueLabelBlock(row.files[0])}
-                    </>
-                  )
-                  : row.files.length}
+                {group.files.length}
                 <ChevronRight className={cn('h-3.5 w-3.5 opacity-60 transition-transform', expanded && 'rotate-90')} />
               </span>
             </button>
             {expanded && (
               <ul className="pb-1.5">
-                {row.files.map(file => (
+                {group.files.map(file => (
                   <li key={file.path}>
                     <button
                       type="button"
                       onClick={() => onOpenFile(file.path)}
                       className="block w-full truncate px-4 py-1.5 pl-7 text-left text-xs text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
                     >
-                      {row.isReport ? valueLineIssueLabelBlock(file) : file.name}
+                      {file.name}
                     </button>
                   </li>
                 ))}
@@ -427,7 +511,7 @@ export default function WebullCompanyPageBlock({
           )}
         </F9PanelBlock>
 
-        {dossier && (dossier.researchFolderPath || reports.length > 0 || valueLine.checking || valueLine.notCovered) && (
+        {dossier && (dossier.researchFolderPath || reports.length > 0 || valueLine.available) && (
           <ResearchPanelBlock reports={reports} groups={dossier.researchGroups} valueLine={valueLine} onOpenFile={onOpenFile} />
         )}
       </aside>

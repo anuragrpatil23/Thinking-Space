@@ -160,6 +160,38 @@ export function valueLineFileNameBlock(issueDate: string): string {
   return `${issueDate.slice(0, 7)}.pdf`
 }
 
+export interface ValueLineIssueRowBlock {
+  /** year*100 + month; 0 for a saved file with no date in its name */
+  monthKey: number
+  label: string
+  /** The saved PDF, when the issue is in the vault */
+  path: string | null
+  /** The library's issue date (YYYY-MM-DD), when the library lists it */
+  issueDate: string | null
+}
+
+/** Saved issues and the library's list as one list by month, newest first. */
+export function valueLineIssueRowsBlock(saved: WebullResearchFileBlock[], libraryIssues: string[] | null): ValueLineIssueRowBlock[] {
+  const rows = new Map<string, ValueLineIssueRowBlock>()
+  for (const file of saved) {
+    const monthKey = Math.floor(file.dateKey / 100)
+    const key = monthKey ? String(monthKey) : `file:${file.path}`
+    if (!rows.has(key)) rows.set(key, { monthKey, label: valueLineIssueLabelBlock(file), path: file.path, issueDate: null })
+  }
+  for (const issueDate of libraryIssues ?? []) {
+    const monthKey = Number(issueDate.slice(0, 4)) * 100 + Number(issueDate.slice(5, 7))
+    const row = rows.get(String(monthKey))
+    if (row) {
+      row.issueDate ??= issueDate
+      continue
+    }
+    const label = new Date(Number(issueDate.slice(0, 4)), Number(issueDate.slice(5, 7)) - 1, 1)
+      .toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    rows.set(String(monthKey), { monthKey, label, path: null, issueDate })
+  }
+  return [...rows.values()].sort((a, b) => b.monthKey - a.monthKey)
+}
+
 /** The library's newest issue when it is newer than what the folder has; null when nothing to fetch. */
 export function valueLineIssueToFetchBlock(latest: WebullResearchFileBlock | null, issues: Array<{ issueDate: string }>): string | null {
   const newest = issues[0]?.issueDate

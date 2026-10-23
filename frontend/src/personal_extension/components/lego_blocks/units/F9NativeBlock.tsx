@@ -16,6 +16,16 @@ export const F9_CHART_TOOLTIP_STYLE_BLOCK = {
 }
 export const F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK = { color: 'hsl(var(--muted-foreground))' }
 
+
+// Pastels for the Feed's charts: soft fills, a touch deeper where a line or
+// bar edge needs to hold. Values are always in the tooltip and the legend
+// names every series, so identity never rests on colour alone.
+export const FEED_PASTELS_BLOCK = {
+  lavender: { fill: '#C9C6F5', line: '#9F9BE6' },
+  mint: { fill: '#B5E3D3', line: '#7CC7AE' },
+  peach: { fill: '#F6D2B5', line: '#E7AE84' },
+}
+
 export const F9_PANEL_CLASS_BLOCK = 'rounded-xl bg-white shadow-[0_0_0_0.5px_rgba(0,0,0,0.09)] dark:bg-zinc-900 dark:shadow-[0_0_0_0.5px_rgba(255,255,255,0.1)]'
 
 export function F9PanelBlock({ children, className, id }: { children: ReactNode; className?: string; id?: string }) {

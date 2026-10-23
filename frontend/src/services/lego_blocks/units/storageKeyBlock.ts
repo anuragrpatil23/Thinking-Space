@@ -39,7 +39,11 @@ export const STORAGE_KEYS = {
   /** The last library full-text pass (time and counts), this device only. */
   libraryFillLast: 'ltm-library-fill-last',
   valueLinePassLast: 'ltm-value-line-pass-last',
+  /** Which model reads feed articles (provider + model), this device only. */
+  feedAiReader: 'ltm-feed-ai-reader',
+  feedAiReadLast: 'ltm-feed-ai-read-last',
   valueLineChecks: 'ltm-value-line-checks',
+  valueLineIssueLists: 'ltm-value-line-issue-lists',
   webullOverallRememberByProjectRoot: 'ltm-webull-overall-remember-by-project-root',
   aiManualCredentials: 'ltm-ai-manual-credentials',
   aiOauthCredentials: 'ltm-ai-oauth-credentials',

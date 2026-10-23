@@ -15,6 +15,7 @@ import {
   normalizeRssFeedPreferencesBlock,
   type RssFeedConfigBlock,
   type RssFeedGroupBlock,
+  type RssAiSummaryBlock,
   type RssFeedItemBlock,
   type RssFeedPreferencesBlock,
   type RssFeedResultBlock,
@@ -80,6 +81,12 @@ function serializeRssItemFileBlock(
     important: item.important ?? false,
     // Only written when set, so ordinary article files keep their usual shape.
     ...(item.textInCache ? { textInCache: true } : {}),
+    ...(item.aiSummary ? {
+      aiSummary: item.aiSummary.text,
+      aiSummaryModel: item.aiSummary.model,
+      aiSummaryVersion: item.aiSummary.version,
+      aiSummaryAt: item.aiSummary.at,
+    } : {}),
   }
   const yamlStr = (yaml.dump(fm, {
     lineWidth: -1,
@@ -126,6 +133,14 @@ function parseRssItemFileBlock(content: string): RssFeedItemBlock | null {
     important: f.important === true,
     // An outside tool put the full article text in the body.
     ...(f.textInCache === true ? { textInCache: true } : {}),
+    ...(typeof f.aiSummary === 'string' && f.aiSummary.trim() ? {
+      aiSummary: {
+        text: f.aiSummary,
+        model: typeof f.aiSummaryModel === 'string' ? f.aiSummaryModel : '',
+        version: typeof f.aiSummaryVersion === 'number' ? f.aiSummaryVersion : 0,
+        at: typeof f.aiSummaryAt === 'string' ? f.aiSummaryAt : '',
+      },
+    } : {}),
   }
 }
 
@@ -360,6 +375,16 @@ export async function setRssItemFullTextOrch(itemId: string, text: string): Prom
   return true
 }
 
+/** Record the AI's summary of a cached article in its frontmatter. */
+export async function setRssItemAiSummaryOrch(itemId: string, summary: RssAiSummaryBlock): Promise<void> {
+  await patchRssItemFrontmatterOrch(itemId, {
+    aiSummary: summary.text,
+    aiSummaryModel: summary.model,
+    aiSummaryVersion: summary.version,
+    aiSummaryAt: summary.at,
+  })
+}
+
 /** One cached article by its id, or null when it is not in the cache. */
 export async function loadRssItemByIdOrch(itemId: string): Promise<RssFeedItemBlock | null> {
   const feedId = itemId.split('::')[0]
@@ -457,7 +482,7 @@ export async function removeRssFeedOrch(feedId: string): Promise<void> {
 
 export async function updateRssFeedOrch(
   feedId: string,
-  patch: Partial<Pick<RssFeedConfigBlock, 'url' | 'title' | 'groupId' | 'inMergedViews'>>,
+  patch: Partial<Pick<RssFeedConfigBlock, 'url' | 'title' | 'groupId' | 'inMergedViews' | 'trust'>>,
 ): Promise<void> {
   const prefs = await readRssFeedPreferencesOrch()
   prefs.feeds = prefs.feeds.map(c =>
@@ -759,6 +784,7 @@ export async function fetchAndParseRssFeedOrch(
         important: stored?.important ?? false,
         // Full text an outside tool wrote into the cache beats the feed's summary.
         ...(stored?.textInCache ? { textInCache: true, description: stored.description } : {}),
+        ...(stored?.aiSummary ? { aiSummary: stored.aiSummary } : {}),
       }
     })
 

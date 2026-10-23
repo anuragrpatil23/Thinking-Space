@@ -368,6 +368,14 @@ export default function RssArticleViewBlock({
         </button>
       </div>}
 
+      {/* The AI's summary, when it has read the article: the same record either reader leaves */}
+      {item.aiSummary && (
+        <div className="shrink-0 border-b border-border/50 bg-violet-50/60 px-4 py-2.5 text-[12.5px] leading-snug text-zinc-700 dark:bg-violet-500/5 dark:text-zinc-200">
+          <span className="mr-1.5 rounded bg-violet-100 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" title={`Summary by ${item.aiSummary.model || 'AI'}`}>AI read</span>
+          {item.aiSummary.text}
+        </div>
+      )}
+
       {/* URL content — wrapped so h-full inside UrlDocumentBlock resolves to the
            flex-allocated space, not the full container (fixes iOS WKWebView overlap) */}
       <div className="relative min-h-0 flex-1">
