@@ -6,7 +6,7 @@ let n = 0
 function item(feedId: string, title: string, pubDate: string, extra: Partial<RssFeedItemBlock> = {}): RssFeedItemBlock {
   n += 1
   return {
-    id: `${feedId}::${n}`, feedId, title, link: `https://${feedId}.example.com/${n}`, description: `<p>${'word '.repeat(300)}</p>`,
+    id: `${feedId}::${n}`, feedId, title, link: `https://${feedId}.com/${n}`, description: `<p>${'word '.repeat(300)}</p>`,
     pubDate, imageUrl: null, read: false, viewedAt: null, dismissedAt: null, tags: [], keep: false, important: false, ...extra,
   }
 }

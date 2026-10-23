@@ -179,6 +179,8 @@ export interface RssAiSummaryBlock {
   version: number
   /** ISO time it was written */
   at: string
+  /** "Who; what happened", in a few words: what the story groups on */
+  storyKey?: string
 }
 
 export interface RssFeedResultBlock {

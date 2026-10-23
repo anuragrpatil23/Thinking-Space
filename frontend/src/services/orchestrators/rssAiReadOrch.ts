@@ -3,7 +3,11 @@
 // so the phone shows it after sync and the list marks it as read by the AI.
 //
 // The model is the app's: the default provider and model in Settings → AI,
-// like every other AI task. The Feed only switches the reader on or off. Runs only in the desktop app, while it is open, when asked:
+// like every other AI task. The Feed only switches the reader on or off.
+//
+// Work comes in this order, one job at a time (runFeedAiNextOrch): first the
+// articles of stories several publishers carry, then those stories' cards
+// (rssStoryCardOrch), then every other recent article. Runs only in the desktop app, while it is open, when asked:
 // the Feed opening or new articles arriving. No timers. Requests go through
 // the intelligence job queue one at a time; a summary already written for the
 // current prompt version is never asked for again.
@@ -14,10 +18,13 @@ import { setRssItemAiSummaryOrch } from '@/services/orchestrators/rssFeedOrch'
 import { isElectron } from '@/services/lego_blocks/integrations/fsBlock'
 import { readDefaultProviderBlock, resolveProviderBlock } from '@/services/lego_blocks/integrations/intelligence/providerRegistryBlock'
 import type { ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
-import type { RssFeedItemBlock, RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
+import { rssReaderFeedsBlock, type RssFeedItemBlock, type RssFeedPreferencesBlock, type RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
+import { buildRssDayInboxBlock, recentRssFeedsBlock, rssLoudStoriesBlock } from '@/services/lego_blocks/units/rssStoryBlock'
+import { runStoryCardPassOrch, storyNeedsCardBlock, loadStoryCardsOrch } from '@/services/orchestrators/rssStoryCardOrch'
 import {
   ARTICLE_SUMMARY_TEXT_CHARS_BLOCK,
   articleSummaryContract,
+  type ArticleSummaryOutputBlock,
   plainArticleTextBlock,
 } from '@/services/lego_blocks/units/intelligence/contracts/articleSummaryContractBlock'
 
@@ -79,6 +86,8 @@ const PROVIDER_RETRY_MS = 15 * 60 * 1000
 export interface FeedAiReadProgressBlock {
   done: number
   total: number
+  /** Reading articles, or writing story cards */
+  kind: 'articles' | 'stories'
 }
 
 let progress: FeedAiReadProgressBlock | null = null
@@ -100,12 +109,16 @@ export function readLastFeedAiReadOrch(): FeedAiReadPassBlock | null {
   return getJsonStorageItem<FeedAiReadPassBlock | null>(STORAGE_KEYS.feedAiReadLast, null)
 }
 
+/** Articles that failed this session; not asked for again until the app restarts. */
+const failedThisSession = new Set<string>()
+
 /** Recent articles the AI has not read (under the current prompt), newest first. */
 export function feedAiUnreadItemsBlock(feeds: RssFeedResultBlock[], now = Date.now()): Array<{ item: RssFeedItemBlock; source: string }> {
   const since = now - LOOKBACK_DAYS * 86_400_000
   return feeds
     .flatMap(feed => feed.items.map(item => ({ item, source: feed.feedTitle })))
     .filter(({ item }) => {
+      if (failedThisSession.has(item.id)) return false
       const t = item.pubDate ? Date.parse(item.pubDate) : NaN
       if (Number.isNaN(t) || t < since) return false
       return !item.aiSummary || item.aiSummary.version < articleSummaryContract.promptVersion
@@ -113,28 +126,24 @@ export function feedAiUnreadItemsBlock(feeds: RssFeedResultBlock[], now = Date.n
     .sort((a, b) => Date.parse(b.item.pubDate ?? '') - Date.parse(a.item.pubDate ?? ''))
 }
 
-let running: Promise<FeedAiReadPassBlock> | null = null
+let running: Promise<FeedAiReadPassBlock | null> | null = null
 
 /**
  * Read the recent articles the AI has not read yet. `onRead` gets each article
  * with its new summary, so the list updates as the pass goes.
  */
-export function runFeedAiReadPassOrch(
+function runFeedAiReadPassOrch(
   feeds: RssFeedResultBlock[],
   onRead: (item: RssFeedItemBlock) => void,
+  provider: ProviderId,
+  /** Only these articles (the ones in stories many are telling) */
+  onlyIds?: Set<string>,
 ): Promise<FeedAiReadPassBlock> {
-  if (running) return running
-  const settings = readFeedAiReaderOrch()
-  const last = readLastFeedAiReadOrch()
-  const provider = feedAiReaderProviderOrch()
-  if (last?.providerDown && last.provider === provider
-    && Date.now() - Date.parse(last.at) < PROVIDER_RETRY_MS) return Promise.resolve(last)
-  running = (async () => {
+  return (async () => {
     const pass: FeedAiReadPassBlock = { at: new Date().toISOString(), read: 0, failed: 0, provider, model: '', error: null }
-    if (!settings.on || !feedAiReadAvailableOrch()) return pass
-    const work = feedAiUnreadItemsBlock(feeds).slice(0, MAX_PER_PASS)
+    const work = feedAiUnreadItemsBlock(feeds).filter(({ item }) => !onlyIds || onlyIds.has(item.id)).slice(0, MAX_PER_PASS)
     if (work.length === 0) return pass
-    progress = { done: 0, total: work.length }
+    progress = { done: 0, total: work.length, kind: 'articles' }
     notifyBlock()
     for (const { item, source } of work) {
       const result = await runContract(articleSummaryContract, {
@@ -144,13 +153,22 @@ export function runFeedAiReadPassOrch(
         text: plainArticleTextBlock(item.description).slice(0, ARTICLE_SUMMARY_TEXT_CHARS_BLOCK),
       }, { provider })
       if (result.ok && result.value) {
-        const aiSummary = { text: String(result.value), model: result.model, version: articleSummaryContract.promptVersion, at: new Date().toISOString() }
+        // runContract types the value from the schema (a string); finalize made it this
+        const value = result.value as unknown as ArticleSummaryOutputBlock
+        const aiSummary = {
+          text: value.text,
+          model: result.model,
+          version: articleSummaryContract.promptVersion,
+          at: new Date().toISOString(),
+          ...(value.storyKey ? { storyKey: value.storyKey } : {}),
+        }
         await setRssItemAiSummaryOrch(item.id, aiSummary)
         onRead({ ...item, aiSummary })
         pass.read += 1
         pass.model = result.model
       } else {
         pass.failed += 1
+        failedThisSession.add(item.id)
         pass.error = result.ok ? 'The model gave no usable summary.' : result.error.message
         // A provider that is off or missing fails every article the same way
         if (!result.ok && /not configured|no model|unavailable|ECONNREFUSED|fetch failed/i.test(result.error.message)) {
@@ -158,10 +176,56 @@ export function runFeedAiReadPassOrch(
           break
         }
       }
-      progress = { done: pass.read + pass.failed, total: work.length }
+      progress = { done: pass.read + pass.failed, total: work.length, kind: 'articles' }
       notifyBlock()
     }
-    setJsonStorageItem(STORAGE_KEYS.feedAiReadLast, pass)
+    return pass
+  })()
+}
+
+/**
+ * Do the next piece of the AI's reading, if there is one: the articles of
+ * stories many are telling, then their story cards, then the rest. Returns
+ * null when there was nothing to do. One job at a time; the caller asks again
+ * when it ends.
+ */
+export function runFeedAiNextOrch(
+  feeds: RssFeedResultBlock[],
+  preferences: RssFeedPreferencesBlock | null,
+  onRead: (item: RssFeedItemBlock) => void,
+): Promise<FeedAiReadPassBlock | null> {
+  if (running) return running
+  if (!readFeedAiReaderOrch().on || !feedAiReadAvailableOrch() || !preferences) return Promise.resolve(null)
+  const provider = feedAiReaderProviderOrch()
+  const last = readLastFeedAiReadOrch()
+  if (last?.providerDown && last.provider === provider
+    && Date.now() - Date.parse(last.at) < PROVIDER_RETRY_MS) return Promise.resolve(null)
+  running = (async () => {
+    await loadStoryCardsOrch()
+    const days = buildRssDayInboxBlock({ feeds: recentRssFeedsBlock(rssReaderFeedsBlock(feeds, preferences), 3), configs: preferences.feeds })
+    const loud = rssLoudStoriesBlock(days, preferences.feeds).map(entry => entry.story)
+    const unread = new Set(feedAiUnreadItemsBlock(feeds).map(({ item }) => item.id))
+    const loudUnread = new Set(loud.flatMap(story => [story.lead, ...story.others].map(m => m.item.id)).filter(id => unread.has(id)))
+
+    let pass: FeedAiReadPassBlock | null = null
+    if (loudUnread.size > 0) {
+      pass = await runFeedAiReadPassOrch(feeds, onRead, provider, loudUnread)
+    } else if (loud.some(story => storyNeedsCardBlock(story))) {
+      const cards = await runStoryCardPassOrch(loud, provider, (done, total) => {
+        progress = { done, total, kind: 'stories' }
+        notifyBlock()
+      })
+      if (cards.made + cards.failed > 0) {
+        pass = { at: new Date().toISOString(), read: 0, failed: cards.failed, provider, model: '', error: cards.error, ...(cards.providerDown ? { providerDown: true } : {}) }
+        if (cards.made > 0) pass.read = 0
+      }
+    } else if (unread.size > 0) {
+      pass = await runFeedAiReadPassOrch(feeds, onRead, provider)
+    }
+    if (pass && (pass.read + pass.failed > 0 || pass.providerDown)) {
+      // Keep the last reading pass's model on record when this job only wrote cards
+      setJsonStorageItem(STORAGE_KEYS.feedAiReadLast, pass.model ? pass : { ...pass, model: last?.model ?? '', read: last?.read ?? 0 })
+    }
     return pass
   })().finally(() => {
     running = null

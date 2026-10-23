@@ -29,6 +29,8 @@ import {
 import { readEarningsCallPassProgressOrch, readLastEarningsCallPassOrch, subscribeEarningsCallPassOrch } from '@/personal_extension/services/orchestrators/webullEarningsCallsOrch'
 import { readLastValueLinePassOrch, readValueLinePassProgressOrch, subscribeValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { FeedAiReaderSettingsBlock, useFeedAiReadBlock } from './FeedAiReaderBlock'
+import { FeedNoteCaptureBlock } from './FeedNoteCaptureBlock'
+import { pickUpTaggedArticlesOrch } from '@/personal_extension/services/orchestrators/feedNotesOrch'
 import { FeedOverviewBlock } from './FeedOverviewBlock'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK } from './WebullSidebarBlock'
@@ -635,6 +637,12 @@ export default function WebullFeedBlock() {
     void writeFeedReadLogsOrch(latestRef.current.feeds, latestRef.current.preferences)
   }, [])
 
+  // Articles tagged to come back to (new company, understand more, …) land in
+  // the reading notes, and from there in the Overview and Noticed
+  useEffect(() => {
+    if (feedsReady) void pickUpTaggedArticlesOrch(feeds)
+  }, [feeds, feedsReady])
+
   // From Overview: open the story in Reading
   const openFromOverview = useCallback((item: RssFeedItemBlock) => {
     setView('reading')
@@ -686,6 +694,7 @@ export default function WebullFeedBlock() {
       nav={nav}
       appearance="native"
       sourceLabel={feeds.find((f) => f.feedId === article.item.feedId)?.feedTitle.replace(/\s*\(.*\)$/, '')}
+      belowSummary={<FeedNoteCaptureBlock item={article.item} feedTitle={feeds.find((f) => f.feedId === article.item.feedId)?.feedTitle ?? ''} />}
     />
   )
 

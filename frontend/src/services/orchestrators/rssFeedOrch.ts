@@ -88,6 +88,7 @@ function serializeRssItemFileBlock(
       aiSummaryModel: item.aiSummary.model,
       aiSummaryVersion: item.aiSummary.version,
       aiSummaryAt: item.aiSummary.at,
+      ...(item.aiSummary.storyKey ? { aiStoryKey: item.aiSummary.storyKey } : {}),
     } : {}),
   }
   const yamlStr = (yaml.dump(fm, {
@@ -141,6 +142,7 @@ function parseRssItemFileBlock(content: string): RssFeedItemBlock | null {
         model: typeof f.aiSummaryModel === 'string' ? f.aiSummaryModel : '',
         version: typeof f.aiSummaryVersion === 'number' ? f.aiSummaryVersion : 0,
         at: typeof f.aiSummaryAt === 'string' ? f.aiSummaryAt : '',
+        ...(typeof f.aiStoryKey === 'string' && f.aiStoryKey.trim() ? { storyKey: f.aiStoryKey } : {}),
       },
     } : {}),
   }
@@ -468,6 +470,7 @@ export async function setRssItemAiSummaryOrch(itemId: string, summary: RssAiSumm
     aiSummaryModel: summary.model,
     aiSummaryVersion: summary.version,
     aiSummaryAt: summary.at,
+    ...(summary.storyKey ? { aiStoryKey: summary.storyKey } : {}),
   })
 }
 

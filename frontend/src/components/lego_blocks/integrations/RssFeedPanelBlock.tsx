@@ -1504,7 +1504,7 @@ function FeedItemRowImpl({
             isSelected ? 'text-white/85' : 'text-zinc-600 dark:text-zinc-300',
           )}>
             <span className={cn('mr-1 rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide', isSelected ? 'bg-white/20 text-white' : 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300')} title={`Summary by ${item.aiSummary.model || 'AI'}`}>AI</span>
-            {item.aiSummary.text}
+            {item.aiSummary.text.replace(/\n/g, ' ')}
           </div>
         ) : item.description && !isPendingDelete && (
           <div className={cn(

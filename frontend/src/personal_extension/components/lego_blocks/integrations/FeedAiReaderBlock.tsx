@@ -10,19 +10,21 @@ import {
   readFeedAiReaderOrch,
   readFeedAiReadProgressOrch,
   readLastFeedAiReadOrch,
-  runFeedAiReadPassOrch,
+  runFeedAiNextOrch,
   subscribeFeedAiReadOrch,
   writeFeedAiReaderOrch,
 } from '@/services/orchestrators/rssAiReadOrch'
+import { loadStoryCardsOrch, readStoryCardsOrch, subscribeStoryCardsOrch } from '@/services/orchestrators/rssStoryCardOrch'
 import { F9PanelBlock } from '../units/F9NativeBlock'
 
 /**
- * The AI reads the feed while the Feed is open on the desktop: a pass starts
- * when there are recent articles it has not read (the Feed opening, a refresh
- * bringing new ones, or the reader being switched on). No timers.
+ * The AI reads the feed while the Feed is open on the desktop: a job starts
+ * when there is something to do (the Feed opening, a refresh bringing new
+ * articles, the reader being switched on) and the next when one ends. No
+ * timers. Order and jobs: runFeedAiNextOrch.
  */
 export function useFeedAiReadBlock() {
-  const { feeds } = useRssFeedsBlock()
+  const { feeds, preferences } = useRssFeedsBlock()
   const progress = useSyncExternalStore(subscribeFeedAiReadOrch, readFeedAiReadProgressOrch)
   // Settings changes notify the same subscribers; re-read them each time
   const settings = useMemo(() => readFeedAiReaderOrch(), [progress]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -30,16 +32,17 @@ export function useFeedAiReadBlock() {
   const available = feedAiReadAvailableOrch()
 
   useEffect(() => {
-    if (!available || !settings.on || waiting === 0 || progress) return
-    // A pass covers what was loaded when it started; the next one starts when
-    // it ends (`progress` going back to null), unless that pass read nothing,
-    // so articles that keep failing are not asked for over and over
-    const last = readLastFeedAiReadOrch()
-    if (last && last.read === 0 && last.failed > 0 && Date.now() - Date.parse(last.at) < 60_000) return
-    void runFeedAiReadPassOrch(feeds, replaceRssItemBlock)
-  }, [available, settings.on, waiting, progress === null]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!available || !settings.on || progress) return
+    void runFeedAiNextOrch(feeds, preferences, replaceRssItemBlock)
+  }, [available, settings.on, waiting, preferences, progress === null]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return { available, settings, progress, waiting, last: readLastFeedAiReadOrch() }
+}
+
+/** The story cards the AI has written (loaded from the vault once). */
+export function useStoryCardsBlock() {
+  useEffect(() => { void loadStoryCardsOrch() }, [])
+  return useSyncExternalStore(subscribeStoryCardsOrch, readStoryCardsOrch)
 }
 
 /** Whether the AI reads the feed, and how it is going. The model is Settings → AI's. */
@@ -54,7 +57,9 @@ export function FeedAiReaderSettingsBlock({ reader }: { reader: ReturnType<typeo
     : !settings.on
       ? 'Off. Turn it on to have every new article summarised.'
       : progress
-        ? `Reading · ${progress.done} of ${progress.total}`
+        ? progress.kind === 'stories'
+          ? `Writing story cards · ${progress.done} of ${progress.total}`
+          : `Reading · ${progress.done} of ${progress.total}`
         : waiting > 0
           ? `${waiting} waiting`
           : `Up to date${last?.read ? ` · ${last.read} read last time` : ''}`

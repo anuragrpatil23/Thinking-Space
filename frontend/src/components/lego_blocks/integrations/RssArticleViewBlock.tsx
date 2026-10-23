@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { articleSummaryPointsBlock } from '@/services/lego_blocks/units/intelligence/contracts/articleSummaryContractBlock'
 import { BookOpen, Bookmark, Check, ChevronLeft, ChevronRight, FolderInput, Globe, Loader2, Star, Tag, X } from 'lucide-react'
 import { loadReaderViewOrch, readerViewAvailableOrch } from '@/services/orchestrators/rssReaderViewOrch'
 import { rssLinkPaywalledBlock } from '@/services/lego_blocks/units/rssFeedBlock'
@@ -54,6 +55,8 @@ interface RssArticleViewBlockProps {
   appearance?: 'default' | 'native'
   /** The source's name, shown above a cached article's title (native). */
   sourceLabel?: string
+  /** Shown under the AI's points (the F9 Feed puts its reading notes here) */
+  belowSummary?: React.ReactNode
 }
 
 export default function RssArticleViewBlock({
@@ -69,6 +72,7 @@ export default function RssArticleViewBlock({
   nav,
   appearance = 'default',
   sourceLabel,
+  belowSummary,
 }: RssArticleViewBlockProps) {
   const native = appearance === 'native'
   // Native: the site opens by default (it has the pictures); R or the book
@@ -446,9 +450,19 @@ export default function RssArticleViewBlock({
       {item.aiSummary && (
         <div className="shrink-0 border-b border-border/50 bg-violet-50/60 px-4 py-2.5 text-[12.5px] leading-snug text-zinc-700 dark:bg-violet-500/5 dark:text-zinc-200">
           <span className="mr-1.5 rounded bg-violet-100 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" title={`Summary by ${item.aiSummary.model || 'AI'}`}>AI read</span>
-          {item.aiSummary.text}
+          {(() => {
+            const points = articleSummaryPointsBlock(item.aiSummary.text)
+            if (points.length < 2) return points[0]
+            return (
+              <ul className="mt-1.5 max-h-[30vh] list-disc space-y-1 overflow-y-auto pl-4 marker:text-violet-400">
+                {points.map(point => <li key={point}>{point}</li>)}
+              </ul>
+            )
+          })()}
         </div>
       )}
+
+      {belowSummary}
 
       {/* URL content — wrapped so h-full inside UrlDocumentBlock resolves to the
            flex-allocated space, not the full container (fixes iOS WKWebView overlap) */}

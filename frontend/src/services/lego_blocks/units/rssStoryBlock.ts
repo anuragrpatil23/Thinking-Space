@@ -5,11 +5,16 @@
 // rest are listed with it. Trust only chooses which copy stands for the story;
 // nothing is hidden, so what the crowd is being told stays visible.
 //
-// Grouping is by headline, without a model: two headlines are the same story
-// when they share at least two distinctive words and those words carry most of
-// the weight of the shorter headline, within two days of each other. A word is
-// distinctive by how rare it is across the articles in view (idf), so
-// "Decart" ties stories together and "talks" does not.
+// Grouping is by headline: two headlines are the same story when they share at
+// least two distinctive words and those words carry most of the weight of the
+// shorter headline, within two days of each other. A word is distinctive by
+// how rare it is across the articles in view (idf), so "Decart" ties stories
+// together and "talks" does not. Once the AI has read an article it also has
+// a story key ("Meta; shares fall after earnings"); keys are matched the same
+// way, so outlets that word a headline differently still meet.
+//
+// "How many tell it" counts publishers, not feeds: the same outlet through two
+// of its feeds (the Guardian's Business and Technology) is one voice.
 
 import {
   rssArticleKeyBlock,
@@ -49,6 +54,40 @@ export function storyWordsBlock(title: string): string[] {
   return [...new Set(words)]
 }
 
+/** The outlet behind an article: its link's site (theguardian.com), else the feed. */
+export function rssPublisherBlock(member: { item: Pick<RssFeedItemBlock, 'link'>; feedTitle: string }): string {
+  const link = member.item.link ?? ''
+  const cached = publisherByLinkBlock.get(link)
+  if (cached) return cached
+  try {
+    const labels = new URL(link).hostname.toLowerCase().split('.').filter(Boolean)
+    if (labels.length >= 2) {
+      const secondLevel = labels.length >= 3 && /^(co|com|org|net|ac|gov)$/.test(labels[labels.length - 2])
+      const publisher = labels.slice(secondLevel ? -3 : -2).join('.')
+      if (publisherByLinkBlock.size > 20_000) publisherByLinkBlock.clear()
+      publisherByLinkBlock.set(link, publisher)
+      return publisher
+    }
+  } catch { /* no usable link */ }
+  return member.feedTitle.toLowerCase()
+}
+
+/** Every row asks; parsing a URL each time adds up over a few thousand articles. */
+const publisherByLinkBlock = new Map<string, string>()
+
+/** Each publisher once, with the name of the feed it came through (the lead's first). */
+export function rssStoryPublishersBlock(story: Pick<RssStoryBlock, 'lead' | 'others'>): Array<{ publisher: string; name: string; member: RssStoryMemberBlock }> {
+  const out = new Map<string, { publisher: string; name: string; member: RssStoryMemberBlock }>()
+  for (const member of [story.lead, ...story.others]) {
+    const publisher = rssPublisherBlock(member)
+    const seen = out.get(publisher)
+    // Within one publisher, stand on the copy the AI has read
+    if (!seen) out.set(publisher, { publisher, name: member.feedTitle, member })
+    else if (!seen.member.item.aiSummary && member.item.aiSummary) out.set(publisher, { ...seen, member })
+  }
+  return [...out.values()]
+}
+
 export interface RssStoryMemberBlock {
   item: RssFeedItemBlock
   feedId: string
@@ -69,6 +108,42 @@ function timeOfBlock(item: RssFeedItemBlock): number {
   return Number.isNaN(t) ? 0 : t
 }
 
+/** Join articles whose word lists share enough distinctive weight (see the top). Empty lists never join. */
+function linkByWordsBlock(words: string[][], times: number[], union: (a: number, b: number) => void): void {
+  const n = words.filter(ws => ws.length > 0).length
+  if (n < 2) return
+  const df = new Map<string, number>()
+  for (const ws of words) for (const w of ws) df.set(w, (df.get(w) ?? 0) + 1)
+  const commonAt = Math.max(3, Math.ceil(n * COMMON_WORD_SHARE_BLOCK))
+  const weight = (w: string) => Math.log((n + 1) / (df.get(w) ?? 1))
+  const totalWeight = words.map(ws => ws.reduce((s, w) => s + weight(w), 0))
+  const index = new Map<string, number[]>()
+  words.forEach((ws, i) => {
+    for (const w of ws) {
+      if ((df.get(w) ?? 0) > commonAt) continue
+      const list = index.get(w)
+      if (list) list.push(i)
+      else index.set(w, [i])
+    }
+  })
+  for (let i = 0; i < words.length; i += 1) {
+    const seen = new Set<number>()
+    for (const w of words[i]) {
+      for (const j of index.get(w) ?? []) {
+        if (j <= i || seen.has(j)) continue
+        seen.add(j)
+        if (times[i] && times[j] && Math.abs(times[i] - times[j]) > STORY_WINDOW_MS_BLOCK) continue
+        const other = new Set(words[j])
+        const shared = words[i].filter(x => other.has(x) && (df.get(x) ?? 0) <= commonAt)
+        if (shared.length < 2) continue
+        const sharedWeight = shared.reduce((s, x) => s + weight(x), 0)
+        const smaller = Math.min(totalWeight[i], totalWeight[j])
+        if (smaller > 0 && sharedWeight / smaller >= STORY_MATCH_SHARE_BLOCK) union(i, j)
+      }
+    }
+  }
+}
+
 /**
  * Group articles into stories. Same article (by link) always groups; different
  * articles group by headline as described above.
@@ -77,7 +152,6 @@ export function groupRssStoriesBlock(
   members: RssStoryMemberBlock[],
   trustByFeedId: Map<string, RssTrustBlock> = new Map(),
 ): RssStoryBlock[] {
-  const n = members.length
   const parent = members.map((_, i) => i)
   const find = (i: number): number => {
     while (parent[i] !== i) {
@@ -101,39 +175,10 @@ export function groupRssStoriesBlock(
     else union(first, i)
   })
 
-  // The same story from several outlets
-  const words = members.map(m => storyWordsBlock(m.item.title))
+  // The same story from several outlets: by headline, then by the AI's story key
   const times = members.map(m => timeOfBlock(m.item))
-  const df = new Map<string, number>()
-  for (const ws of words) for (const w of ws) df.set(w, (df.get(w) ?? 0) + 1)
-  const commonAt = Math.max(3, Math.ceil(n * COMMON_WORD_SHARE_BLOCK))
-  const weight = (w: string) => Math.log((n + 1) / (df.get(w) ?? 1))
-  const totalWeight = words.map(ws => ws.reduce((s, w) => s + weight(w), 0))
-  const index = new Map<string, number[]>()
-  words.forEach((ws, i) => {
-    for (const w of ws) {
-      if ((df.get(w) ?? 0) > commonAt) continue
-      const list = index.get(w)
-      if (list) list.push(i)
-      else index.set(w, [i])
-    }
-  })
-  for (let i = 0; i < n; i += 1) {
-    const seen = new Set<number>()
-    for (const w of words[i]) {
-      for (const j of index.get(w) ?? []) {
-        if (j <= i || seen.has(j)) continue
-        seen.add(j)
-        if (times[i] && times[j] && Math.abs(times[i] - times[j]) > STORY_WINDOW_MS_BLOCK) continue
-        const other = new Set(words[j])
-        const shared = words[i].filter(x => other.has(x) && (df.get(x) ?? 0) <= commonAt)
-        if (shared.length < 2) continue
-        const sharedWeight = shared.reduce((s, x) => s + weight(x), 0)
-        const smaller = Math.min(totalWeight[i], totalWeight[j])
-        if (smaller > 0 && sharedWeight / smaller >= STORY_MATCH_SHARE_BLOCK) union(i, j)
-      }
-    }
-  }
+  linkByWordsBlock(members.map(m => storyWordsBlock(m.item.title)), times, union)
+  linkByWordsBlock(members.map(m => storyWordsBlock(m.item.aiSummary?.storyKey ?? '')), times, union)
 
   const groups = new Map<number, RssStoryMemberBlock[]>()
   members.forEach((m, i) => {
@@ -233,9 +278,30 @@ export function rssDayLabelBlock(day: string, now = new Date()): string {
   })
 }
 
-/** "+2 sources" and their names, for the row. */
+/** "+2 sources" and their names, for the row: other publishers, not other feeds of the same one. */
 export function rssStoryOthersLabelBlock(story: RssStoryBlock): { label: string; title: string } | null {
-  const names = [...new Set(story.others.map(m => m.feedTitle))]
+  const leadPublisher = rssPublisherBlock(story.lead)
+  const names = rssStoryPublishersBlock(story).filter(p => p.publisher !== leadPublisher).map(p => p.name)
   if (names.length === 0) return null
   return { label: `+${names.length} ${names.length === 1 ? 'source' : 'sources'}`, title: names.join(', ') }
+}
+
+/**
+ * Stories many are telling: from the newest two days of the inbox, the ones
+ * at least two publishers carry, most publishers first (then the lead's
+ * trust, then the newest). The Overview shows these and the AI writes their
+ * story cards in this order.
+ */
+export function rssLoudStoriesBlock(
+  days: RssDayInboxBlock[],
+  configs: Array<Pick<RssFeedConfigBlock, 'id' | 'trust'>> = [],
+): Array<{ story: RssStoryBlock; publishers: number }> {
+  const trustByFeedId = new Map(configs.map(c => [c.id, rssTrustBlock(c)]))
+  return days.filter(d => d.day !== 'undated').slice(0, 2)
+    .flatMap(d => d.sources.flatMap(s => s.stories))
+    .map(story => ({ story, publishers: rssStoryPublishersBlock(story).length }))
+    .filter(entry => entry.publishers >= 2)
+    .sort((a, b) => (b.publishers - a.publishers)
+      || (TRUST_RANK_BLOCK[trustByFeedId.get(a.story.lead.feedId) ?? 'normal'] - TRUST_RANK_BLOCK[trustByFeedId.get(b.story.lead.feedId) ?? 'normal'])
+      || (timeOfBlock(b.story.lead.item) - timeOfBlock(a.story.lead.item)))
 }
