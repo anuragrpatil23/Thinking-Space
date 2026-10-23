@@ -31,9 +31,13 @@ export function useFeedAiReadBlock() {
 
   useEffect(() => {
     if (!available || !settings.on || waiting === 0 || progress) return
+    // A pass covers what was loaded when it started; the next one starts when
+    // it ends (`progress` going back to null), unless that pass read nothing,
+    // so articles that keep failing are not asked for over and over
+    const last = readLastFeedAiReadOrch()
+    if (last && last.read === 0 && last.failed > 0 && Date.now() - Date.parse(last.at) < 60_000) return
     void runFeedAiReadPassOrch(feeds, replaceRssItemBlock)
-    // A pass covers what is waiting now; new arrivals change `waiting` and start the next
-  }, [available, settings.on, waiting]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [available, settings.on, waiting, progress === null]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return { available, settings, progress, waiting, last: readLastFeedAiReadOrch() }
 }
