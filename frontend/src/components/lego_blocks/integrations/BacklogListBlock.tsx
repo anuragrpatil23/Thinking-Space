@@ -1214,7 +1214,7 @@ function BacklogListBlockImpl({
 
       {nativeGridTemplate && (
         <div
-          className="grid min-w-max items-center gap-x-2 border-b-[0.5px] border-[#E5E5EA] px-4 pb-2 pt-1 dark:border-zinc-800"
+          className="grid w-full items-center gap-x-2 border-b-[0.5px] border-[#E5E5EA] px-4 pb-2 pt-1 dark:border-zinc-800"
           style={{ gridTemplateColumns: nativeGridTemplate }}
         >
           <span className={cn('sticky left-0 z-[1] -ml-4 min-w-0 truncate bg-white pl-4 transition-shadow dark:bg-zinc-900 group-data-[scrolled-x]/zoomsurface:shadow-[6px_0_10px_-8px_rgba(0,0,0,0.18)] dark:group-data-[scrolled-x]/zoomsurface:shadow-[6px_0_10px_-8px_rgba(0,0,0,0.6)]', headerLabelClassName)}>Title</span>
@@ -1283,7 +1283,14 @@ function BacklogListBlockImpl({
       )}
 
       {allowProgramLayoutEditing && onCreateProgramGroup && (
-        <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5">
+        <div className={appearance === 'native'
+          ? 'flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b-[0.5px] border-[#E5E5EA] px-4 py-2.5 dark:border-zinc-800'
+          : 'flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2 py-1.5'}>
+          {appearance === 'native' && (
+            <p className="w-full text-[12px] text-zinc-500 dark:text-zinc-400">
+              {`Groups put ${programNounPlural.toLowerCase()} under a shared heading, like a year or a theme. Make one here, then pick each ${programNounSingular.toLowerCase()}'s group from its row.`}
+            </p>
+          )}
           <input
             value={programGroupDraft}
             onChange={event => setProgramGroupDraft(event.target.value)}
@@ -1292,18 +1299,34 @@ function BacklogListBlockImpl({
               event.preventDefault()
               createProgramGroupFromDraft()
             }}
-            placeholder={`Add ${programNounSingular} ${programGroupNounSingular} (e.g. 2025)`}
-            className="h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+            // "company group" already names the company; don't say it twice
+            placeholder={programGroupNounSingular.toLowerCase().startsWith(programNounSingular.toLowerCase())
+              ? `New ${programGroupNounSingular.toLowerCase()}, e.g. 2025 or Core holdings`
+              : `Add ${programNounSingular} ${programGroupNounSingular} (e.g. 2025)`}
+            className={appearance === 'native'
+              ? 'h-7 flex-1 rounded-md bg-zinc-100 px-2.5 text-[12px] placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500/40 dark:bg-zinc-800 dark:placeholder:text-zinc-500'
+              : 'h-7 flex-1 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring'}
           />
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 px-2 text-xs"
-            onClick={createProgramGroupFromDraft}
-            disabled={!programGroupDraft.trim()}
-          >
-            Add Group
-          </Button>
+          {appearance === 'native' ? (
+            <button
+              type="button"
+              onClick={createProgramGroupFromDraft}
+              disabled={!programGroupDraft.trim()}
+              className="text-[12px] text-sky-600 hover:text-sky-700 disabled:text-zinc-400 dark:text-sky-400 dark:disabled:text-zinc-600"
+            >
+              Add group
+            </button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2 text-xs"
+              onClick={createProgramGroupFromDraft}
+              disabled={!programGroupDraft.trim()}
+            >
+              Add Group
+            </Button>
+          )}
         </div>
       )}
 

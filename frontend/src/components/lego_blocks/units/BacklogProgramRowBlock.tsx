@@ -82,9 +82,11 @@ interface BacklogProgramRowBlockProps {
 function ProgramSortOrdinalInputBlock({
   value,
   onCommit,
+  native = false,
 }: {
   value: number
   onCommit: (next: number) => void
+  native?: boolean
 }) {
   const [text, setText] = useState<string>(String(value))
   const focusedRef = useRef(false)
@@ -99,7 +101,9 @@ function ProgramSortOrdinalInputBlock({
       min={1}
       value={text}
       title="Sort position"
-      className="h-6 w-11 rounded border border-input bg-background px-1 text-center text-xs tabular-nums outline-none focus:border-ring"
+      className={native
+        ? 'h-[22px] w-8 rounded-[5px] border-0 bg-zinc-100 px-0 text-center text-[11px] tabular-nums text-zinc-600 outline-none [appearance:textfield] focus:ring-2 focus:ring-sky-500/40 dark:bg-zinc-800 dark:text-zinc-300 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
+        : 'h-6 w-11 rounded border border-input bg-background px-1 text-center text-xs tabular-nums outline-none focus:border-ring'}
       onClick={(event) => event.stopPropagation()}
       onFocus={(event) => {
         focusedRef.current = true
@@ -184,6 +188,72 @@ export function BacklogProgramRowBlock({
   const applicableColumns = rowColumns.filter(column => !column.showForTypes || column.showForTypes.includes(program.type))
   const shouldRenderTagSlot = rowPresetTags.visible.length > 0 || reserveTagsSlotWhenEmpty
 
+  const layoutControl = allowProgramLayoutEditing && resolvedOrdinal !== null && (
+    onSetProgramIndex ? (
+      <div
+        className="mr-0.5 flex items-center"
+        onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+      >
+        <ProgramSortOrdinalInputBlock
+          value={resolvedOrdinal ?? (programIndex + 1)}
+          onCommit={(next) => onSetProgramIndex(next - 1)}
+          native={native}
+        />
+      </div>
+    ) : (
+      <div
+        className="mr-0.5 flex items-center gap-0.5"
+        onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+      >
+        <button
+          type="button"
+          className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          title="Move up"
+          onClick={onMoveProgramUp}
+          disabled={programIndex <= 0}
+        >
+          <ArrowUp className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          title="Move down"
+          onClick={onMoveProgramDown}
+          disabled={programIndex >= (programCount - 1)}
+        >
+          <ArrowDown className="h-3 w-3" />
+        </button>
+      </div>
+    )
+  )
+
+  // The group picker; on native tables it rides at the end of the title cell.
+  const groupPicker = canAssignToGroup && (
+    <div
+      className={native ? 'ml-auto flex items-center pr-2' : 'hidden self-center items-center md:flex'}
+      onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+    >
+      <select
+        value={assignedGroupId}
+        onChange={(event) => {
+          const nextValue = event.target.value
+          onAssignProgramToGroup(nextValue === '__ungrouped__' ? null : nextValue)
+        }}
+        className={native
+          ? 'h-[22px] max-w-[120px] rounded-[5px] border-0 bg-zinc-100 px-1.5 text-[11px] text-zinc-600 focus:outline-none focus:ring-2 focus:ring-sky-500/40 dark:bg-zinc-800 dark:text-zinc-300'
+          : 'h-6 max-w-[140px] rounded-md border border-input bg-background px-1.5 text-[10px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring'}
+        title="Assign group"
+      >
+        <option value="__ungrouped__">Ungrouped</option>
+        {programGroups.map(group => (
+          <option key={`${program.uuid}-group-opt-${group.id}`} value={group.id}>
+            {group.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+
   return (
     <div
       draggable={allowProgramLayoutEditing}
@@ -195,7 +265,7 @@ export function BacklogProgramRowBlock({
       className={cn(
         native ? 'group/programrow cursor-pointer' : 'cursor-pointer overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',
         native
-          ? 'border-b-[0.5px] border-[#E5E5EA] bg-[#FAFAFB] px-4 py-2 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-800/40 dark:hover:bg-zinc-800/70'
+          ? 'border-b-[0.5px] border-[#E5E5EA] bg-[#FAFAFB] px-4 py-2 transition-colors hover:bg-zinc-100 dark:border-zinc-800 dark:bg-[#1E1E21] dark:hover:bg-[#232326]'
           : 'border-b border-border/70 bg-card px-3 py-2 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60',
         selected && 'bg-accent/40',
         dragOver && 'ring-2 ring-primary/40 bg-primary/5',
@@ -206,7 +276,7 @@ export function BacklogProgramRowBlock({
       onClick={onSelectProgram}
     >
       <div
-        className={nativeGridTemplate ? 'grid min-w-max items-center gap-x-2' : 'flex min-w-max items-center gap-2'}
+        className={nativeGridTemplate ? 'grid w-full items-center gap-x-2' : 'flex min-w-max items-center gap-2'}
         style={nativeGridTemplate ? { gridTemplateColumns: nativeGridTemplate } : undefined}
       >
       {!native && resolvedOrdinal !== null && !(allowProgramLayoutEditing && onSetProgramIndex) && (
@@ -217,51 +287,17 @@ export function BacklogProgramRowBlock({
           {formatRowOrdinal((resolvedOrdinal ?? (programIndex + 1)) - 1)}
         </sup>
       )}
-      {allowProgramLayoutEditing && resolvedOrdinal !== null && (
-        onSetProgramIndex ? (
-          <div
-            className="mr-0.5 flex items-center"
-            onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
-          >
-            <ProgramSortOrdinalInputBlock
-              value={resolvedOrdinal ?? (programIndex + 1)}
-              onCommit={(next) => onSetProgramIndex(next - 1)}
-            />
-          </div>
-        ) : (
-          <div
-            className="mr-0.5 flex items-center gap-0.5"
-            onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
-          >
-            <button
-              type="button"
-              className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-              title="Move up"
-              onClick={onMoveProgramUp}
-              disabled={programIndex <= 0}
-            >
-              <ArrowUp className="h-3 w-3" />
-            </button>
-            <button
-              type="button"
-              className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-              title="Move down"
-              onClick={onMoveProgramDown}
-              disabled={programIndex >= (programCount - 1)}
-            >
-              <ArrowDown className="h-3 w-3" />
-            </button>
-          </div>
-        )
-      )}
+      {!native && layoutControl}
       {showNodeTypeIcon && <FolderTree className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />}
       <div className={cn(
         'min-w-0 flex gap-2',
         nativeGridTemplate
-          ? 'sticky left-0 z-[1] -ml-4 min-w-0 bg-[#FAFAFB] pl-4 transition-shadow group-hover/programrow:bg-zinc-100 dark:bg-zinc-800 dark:group-hover/programrow:bg-zinc-700 group-data-[scrolled-x]/zoomsurface:shadow-[6px_0_10px_-8px_rgba(0,0,0,0.18)] dark:group-data-[scrolled-x]/zoomsurface:shadow-[6px_0_10px_-8px_rgba(0,0,0,0.6)]'
+          ? 'sticky left-0 z-[1] -ml-4 -my-2 min-w-0 self-stretch bg-[#FAFAFB] py-2 pl-4 transition-[background-color,box-shadow] group-hover/programrow:bg-zinc-100 dark:bg-[#1E1E21] dark:group-hover/programrow:bg-[#232326] group-data-[scrolled-x]/zoomsurface:shadow-[6px_0_10px_-8px_rgba(0,0,0,0.18)] dark:group-data-[scrolled-x]/zoomsurface:shadow-[6px_0_10px_-8px_rgba(0,0,0,0.6)]'
           : titleColumnClassName ? ['shrink-0', titleColumnClassName] : 'flex-1',
         'items-center',
       )} style={nativeGridTemplate ? undefined : scaledWidthStyleFromClassBlock(titleColumnClassName)}>
+        {/* Native tables keep one cell per column, so the order control rides inside the title */}
+        {native && layoutControl}
         {ticketBadge}
         {titlePrefixSlot}
         <span className={cn(
@@ -271,6 +307,7 @@ export function BacklogProgramRowBlock({
         )}>
           {nodeTitleWithoutTicket(program) || nodeDisplayTitle(program) || 'Untitled'}
         </span>
+        {native && groupPicker}
       </div>
       {applicableColumns.length > 0 && (
         <div className={cn(
@@ -350,29 +387,7 @@ export function BacklogProgramRowBlock({
           </div>
         )
       )}
-      {canAssignToGroup && (
-        <div
-          className="hidden self-center items-center md:flex"
-          onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
-        >
-          <select
-            value={assignedGroupId}
-            onChange={(event) => {
-              const nextValue = event.target.value
-              onAssignProgramToGroup(nextValue === '__ungrouped__' ? null : nextValue)
-            }}
-            className="h-6 max-w-[140px] rounded-md border border-input bg-background px-1.5 text-[10px] text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            title="Assign group"
-          >
-            <option value="__ungrouped__">Ungrouped</option>
-            {programGroups.map(group => (
-              <option key={`${program.uuid}-group-opt-${group.id}`} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+      {!native && groupPicker}
       {canToggleDetails && (
         <button
           type="button"

@@ -193,7 +193,42 @@ export default function ScrollableZoomSurfaceBlock({
   const quiet = controlsAppearance === 'quiet'
   // Pinned cells inside cast a light shadow only once the content has scrolled sideways.
   const [scrolledX, setScrolledX] = useState(false)
-  const controls = (
+  // Quiet (F9): just a − 100% + stepper, and Reset once there is something to
+  // reset. No Fit buttons: native tables already fill the width.
+  const quietPillButtonClass = 'inline-flex h-[22px] items-center justify-center rounded-[5px] px-2 text-[11px] leading-none transition-colors disabled:opacity-40'
+  const quietControls = (
+    <div className={cn(controlsHost ? '' : 'w-full pt-1.5', 'flex items-center justify-start gap-2 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:justify-end')} role="group" aria-label={controlsLabel}>
+      {canReset && (
+        <button type="button" onClick={resetView} className="inline-flex h-6 items-center text-[11px] leading-none text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100">
+          {resetLabel}
+        </button>
+      )}
+      <div className="flex h-6 items-center rounded-md bg-zinc-100 p-px text-zinc-600 dark:bg-zinc-800/80 dark:text-zinc-300">
+        <button
+          type="button"
+          className={cn(quietPillButtonClass, 'px-1.5 hover:text-zinc-900 dark:hover:text-white')}
+          disabled={!canZoomOut}
+          onClick={() => setZoom((current) => clampZoomBlock(Number((current - zoomStep).toFixed(2)), minZoom, maxZoom))}
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <Minus className="h-3 w-3" />
+        </button>
+        <span className="min-w-[2.6rem] text-center text-[11px] leading-none tabular-nums">{zoomPercent}</span>
+        <button
+          type="button"
+          className={cn(quietPillButtonClass, 'px-1.5 hover:text-zinc-900 dark:hover:text-white')}
+          disabled={!canZoomIn}
+          onClick={() => setZoom((current) => clampZoomBlock(Number((current + zoomStep).toFixed(2)), minZoom, maxZoom))}
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          <Plus className="h-3 w-3" />
+        </button>
+      </div>
+    </div>
+  )
+  const controls = quiet ? quietControls : (
     <div className={cn(controlsHost ? '' : 'w-full', 'flex items-center justify-start overflow-x-auto whitespace-nowrap px-1 pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:justify-end', quiet ? cn('gap-0.5 text-[11px] text-zinc-500', !controlsHost && 'pt-1.5') : 'gap-1.5 text-xs')}>
       <span className="hidden shrink-0 text-muted-foreground sm:inline">{controlsLabel}</span>
       {showFitColumnsToWidthButton && (

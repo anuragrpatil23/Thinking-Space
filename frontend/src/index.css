@@ -1884,6 +1884,28 @@ body.ltm-ruled-notebook-active .excalidraw .layer-ui__wrapper {
   animation: slide-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* On iPhone a slide-over is the next screen, not a panel: every sheet tagged
+   `data-ltm-sheet` fills the screen edge to edge, pushes in from the right,
+   and clears the status bar and home indicator itself. SheetResizeHandleBlock
+   takes the native-chrome immersion lease while it is open, so the dock and
+   top veil hide instead of floating over it (IOS-NATIVE-CHROME). */
+html[data-ltm-ios-phone='true'] [data-ltm-sheet] {
+  width: 100vw !important;
+  max-width: none !important;
+  border-left-width: 0 !important;
+  box-shadow: none !important;
+  padding-top: var(--safe-area-inset-top) !important;
+  padding-bottom: var(--safe-area-inset-bottom) !important;
+  animation: ltm-sheet-push 340ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes ltm-sheet-push {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-ltm-ios-phone='true'] [data-ltm-sheet] { animation: none; }
+}
+
 /* The index row's inline peek unfolding — a short, quiet reveal. */
 @keyframes ltm-peek-in {
   from { opacity: 0; transform: translateY(-3px); }

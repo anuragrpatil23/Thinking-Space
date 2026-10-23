@@ -3,7 +3,7 @@ import { Bar, BarChart, Cell, LabelList, Pie, PieChart, ReferenceLine, Responsiv
 import { useWebullOverallTrackRecordBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullTrackRecordBlock'
 import { F9TrackRowBlock, F9TrackShareBlock } from '@/personal_extension/components/lego_blocks/units/F9TrackRecordPartsBlock'
 import { f9SignedMoneyKBlock, WEBULL_SHORT_DATED_DAYS_BLOCK, type WebullOverallTrackRecordBlock } from '@/personal_extension/services/lego_blocks/units/webullTrackRecordBlock'
-import { F9FactRowBlock, F9PanelBlock, F9SectionLabelBlock, F9SegmentedBlock } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
+import { F9FactRowBlock, F9PanelBlock, F9SectionLabelBlock, F9SegmentedBlock, F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK, F9_CHART_TOOLTIP_STYLE_BLOCK } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { cn } from '@/lib/utils'
 
 // Overall Positions in F9's native layout: the header and allocation in the
@@ -141,7 +141,8 @@ function OpenPlViewBlock({ legend, formatMoneyK, onSelectTicker }: {
             <ReferenceLine y={0} stroke="#D4D4D8" />
             <Tooltip
               cursor={{ fill: 'rgba(0,0,0,0.03)' }}
-              contentStyle={{ fontSize: 12, borderRadius: 8, border: 'none', boxShadow: '0 0 0 0.5px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.08)' }}
+              contentStyle={F9_CHART_TOOLTIP_STYLE_BLOCK}
+              labelStyle={F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK}
               formatter={(value) => [`${Number(value) >= 0 ? '+' : '−'}${formatMoneyK(Math.abs(Number(value)))}`, 'Open P/L']}
             />
             <Bar
@@ -384,7 +385,8 @@ function CostViewBlock({ allocation, formatMoney, formatMoneyK, onSelectTicker }
               </Pie>
               <Tooltip
                 cursor={false}
-                contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                contentStyle={F9_CHART_TOOLTIP_STYLE_BLOCK}
+                labelStyle={F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK}
                 formatter={(value, _name, item) => {
                   const numeric = typeof value === 'number' ? value : Number(value)
                   const share = total > 0 ? (numeric / total) * 100 : 0
@@ -602,7 +604,8 @@ function TrackRecordSectionBlock({ record, reportPath, onOpenFile, onSelectTicke
                 <ReferenceLine y={0} stroke="#D4D4D8" />
                 <Tooltip
                   cursor={{ fill: 'rgba(0,0,0,0.03)' }}
-                  contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                  contentStyle={F9_CHART_TOOLTIP_STYLE_BLOCK}
+                  labelStyle={F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK}
                   formatter={(value, name) => [f9SignedMoneyKBlock(Number(value)), name === 'shortDated' ? 'Short-dated' : 'Longer-dated']}
                 />
                 <Bar dataKey="shortDated" fill={TRACK_SHORT_COLOR_BLOCK} radius={[3, 3, 3, 3]} isAnimationActive={false}>
@@ -642,8 +645,10 @@ export default function WebullOverallPageBlock({
     companyCount > 0 ? `${companyCount} ${companyCount === 1 ? 'company' : 'companies'} indexed` : null,
   ].filter(Boolean).join(' · ')
 
+  // Chart strokes are drawn for the white panel; in dark mode the slice gaps take
+  // the dark panel's colour, the zero line dims, and the hover band lightens.
   return (
-    <div className="grid gap-5 pb-12 lg:grid-cols-[minmax(0,1fr)_minmax(290px,340px)]">
+    <div className="grid gap-5 pb-12 lg:grid-cols-[minmax(0,1fr)_minmax(290px,340px)] dark:[&_.recharts-sector]:stroke-zinc-900 dark:[&_.recharts-reference-line_line]:stroke-zinc-700 dark:[&_.recharts-tooltip-cursor]:fill-white/[0.04]">
       <div className="flex min-w-0 flex-col gap-5">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">

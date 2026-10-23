@@ -336,7 +336,7 @@ export default function ChainTranscriptSlideOverBlock({ chain, onClose }: ChainT
       <SheetResizeHandleBlock {...sheet.handle} />
       <div
         className="absolute right-0 top-0 flex h-full flex-col overflow-hidden border-l border-border/40 bg-background shadow-2xl"
-        style={{
+        data-ltm-sheet="" style={{
           width: `min(92vw, ${sheet.width}px)`,
           animation: 'ltm-transcript-slideover-in 220ms cubic-bezier(0.22, 1, 0.36, 1)',
           paddingTop: 'env(safe-area-inset-top)',

@@ -76,7 +76,7 @@ function MarkdownSideSheet({
 
       <div
         className={cn('fixed inset-y-0 right-0 z-50 w-full border-l border-border shadow-2xl animate-slide-in', resizing && 'select-none')}
-        style={{ maxWidth: width }}
+        data-ltm-sheet="" style={{ maxWidth: width }}
       >
         <SheetResizeHandleBlock {...handle} />
         <MarkdownDocumentBlock

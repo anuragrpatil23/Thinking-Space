@@ -5,6 +5,17 @@ import { cn } from '@/lib/utils'
 // soft grey ground, small grey section labels, segmented controls, and
 // label/value rows. Every F9 view builds from these so the tab reads as one app.
 
+// Recharts paints its tooltip white inline; F9's follows the theme instead.
+export const F9_CHART_TOOLTIP_STYLE_BLOCK = {
+  fontSize: 12,
+  borderRadius: 8,
+  border: 'none',
+  backgroundColor: 'hsl(var(--card))',
+  color: 'hsl(var(--foreground))',
+  boxShadow: '0 0 0 0.5px hsl(var(--border)), 0 4px 12px rgba(0,0,0,0.12)',
+}
+export const F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK = { color: 'hsl(var(--muted-foreground))' }
+
 export const F9_PANEL_CLASS_BLOCK = 'rounded-xl bg-white shadow-[0_0_0_0.5px_rgba(0,0,0,0.09)] dark:bg-zinc-900 dark:shadow-[0_0_0_0.5px_rgba(255,255,255,0.1)]'
 
 export function F9PanelBlock({ children, className, id }: { children: ReactNode; className?: string; id?: string }) {

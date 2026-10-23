@@ -11,6 +11,8 @@ import {
   F9PanelBlock,
   F9SectionLabelBlock,
   F9SegmentedBlock,
+  F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK,
+  F9_CHART_TOOLTIP_STYLE_BLOCK,
 } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
 import type { WebullResearchFileBlock, WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
@@ -281,7 +283,8 @@ export default function WebullCompanyPageBlock({
                 <Tooltip
                   formatter={(value) => [formatPriceBlock(Number(value)), 'Price']}
                   labelFormatter={(label) => formatDateBlock(String(label))}
-                  contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                  contentStyle={F9_CHART_TOOLTIP_STYLE_BLOCK}
+                  labelStyle={F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK}
                 />
                 <Area type="monotone" dataKey="price" stroke="currentColor" strokeWidth={2} fill={`url(#webull-price-fill-${ticker})`} isAnimationActive={false} />
               </AreaChart>

@@ -2296,10 +2296,10 @@ export default function WebullWorkspaceBlock({
   const nativePositionsActions = (
     <div className="flex items-center gap-4 text-xs">
       <button type="button" onClick={() => setCreatePositionOpen(prev => !prev)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">
-        {createPositionOpen ? 'Cancel' : 'Add Position…'}
+        {createPositionOpen ? 'Cancel' : 'Add position…'}
       </button>
       <button type="button" onClick={() => setBacklogLayoutEditMode(prev => !prev)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">
-        {backlogLayoutEditMode ? 'Done' : 'Edit Layout'}
+        {backlogLayoutEditMode ? 'Done' : 'Edit layout'}
       </button>
       <span ref={setPositionsZoomHost} className="flex items-center" />
     </div>
@@ -2307,7 +2307,7 @@ export default function WebullWorkspaceBlock({
   const overallPositionsActions = (
     <div className="flex items-center gap-4 text-xs">
       <button type="button" onClick={() => setBacklogLayoutEditMode(prev => !prev)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">
-        {backlogLayoutEditMode ? 'Done' : 'Edit Layout'}
+        {backlogLayoutEditMode ? 'Done' : 'Edit layout'}
       </button>
       <span ref={setPositionsZoomHost} className="flex items-center" />
     </div>

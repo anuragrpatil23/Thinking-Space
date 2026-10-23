@@ -1431,6 +1431,8 @@ function App() {
     const viewportMeta = document.querySelector('meta[name="viewport"]')
     if (!(viewportMeta instanceof HTMLMetaElement)) return
     const defaultViewport = 'width=device-width, initial-scale=1.0, viewport-fit=cover'
+    // Sheets portal to <body>, outside the shell, so the phone flag rides <html> too
+    document.documentElement.setAttribute('data-ltm-ios-phone', iPhoneHandsetMode ? 'true' : 'false')
     if (!iPhoneHandsetMode) {
       viewportMeta.setAttribute('content', defaultViewport)
       return
