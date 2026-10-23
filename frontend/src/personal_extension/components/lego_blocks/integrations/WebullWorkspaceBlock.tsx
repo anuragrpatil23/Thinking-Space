@@ -18,7 +18,7 @@ import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_bl
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import WebullF9SimCanvasOrch from '@/personal_extension/components/orchestrators/WebullF9SimCanvasOrch'
 import WebullSimBoardBlock from './WebullSimBoardBlock'
-import { PrivateGapsBlock, PrivateNoticedBlock } from '../units/privateGapsBlock'
+import { PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock } from '../units/privateGapsBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -2208,9 +2208,10 @@ export default function WebullWorkspaceBlock({
   const noticedTabActive = !companyPageOpen && activeSubtabId === 'noticed'
   const studyTabActive = !companyPageOpen && activeSubtabId === 'study'
   // Views that draw their own page (Study, Noticed, Gaps): no card header, tags or diagnostics.
-  const privateViewActive = gapsTabActive || noticedTabActive || studyTabActive
-  const nativeView = companyPageOpen || overallTabActive || privateViewActive
   const simTabActive = !companyPageOpen && activeSubtabId === 'sim'
+  // Sim is a native page when the private replays view is present
+  const privateViewActive = gapsTabActive || noticedTabActive || studyTabActive || (simTabActive && Boolean(PrivateSimBlock))
+  const nativeView = companyPageOpen || overallTabActive || privateViewActive
   const workspaceTitle = showCompanyView && selectedCompany
     ? `${selectedCompany.companyTicker} Positions`
     : (studyTabActive ? 'Study' : simTabActive ? 'Sim' : noticedTabActive ? 'Noticed' : gapsTabActive ? 'Gaps' : 'Overall Positions')
@@ -2458,8 +2459,8 @@ export default function WebullWorkspaceBlock({
         </aside>
       )}
 
-      {/* Only Sim keeps the canvas in the desktop app; Study is the same page everywhere. */}
-      {simTabActive && isElectron && !showCompanyView ? (
+      {/* Without the private Sim view, the desktop app keeps the public Sim canvas. */}
+      {simTabActive && isElectron && !PrivateSimBlock && !showCompanyView ? (
         <div className={cn(
           'min-w-0 overflow-hidden',
           phoneListMode ? 'hidden' : 'flex-1',
@@ -2529,7 +2530,11 @@ export default function WebullWorkspaceBlock({
             <WebullStudyBlock />
           )}
 
-          {simTabActive && !isElectron && (
+          {simTabActive && PrivateSimBlock && (
+            <Suspense fallback={null}><PrivateSimBlock /></Suspense>
+          )}
+
+          {simTabActive && !PrivateSimBlock && !isElectron && (
             <WebullSimBoardBlock />
           )}
 

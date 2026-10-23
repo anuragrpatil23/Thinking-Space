@@ -64,6 +64,10 @@ interface WebullSimTimelineBlockProps {
    * (default), it stays in a fixed card and scrolls horizontally.
    */
   fitWidth?: boolean
+  /** Hide the status chips above the timeline (a page that shows its own summary). */
+  hideSummary?: boolean
+  /** Native F9 look: no frame of its own, it sits inside a panel. */
+  native?: boolean
 }
 
 // Alternating neutral tints so adjacent era blocks read as distinct named spans.
@@ -76,7 +80,7 @@ const ERA_TINTS = [
 const DASHED_DIVIDER_CLASS = 'absolute top-0 bottom-0 border-l border-dashed border-border/40'
 const TOP_SCALE_HEIGHT = 18
 
-export default function WebullSimTimelineBlock({ model, onOpenCase, fitWidth = false }: WebullSimTimelineBlockProps) {
+export default function WebullSimTimelineBlock({ model, onOpenCase, fitWidth = false, hideSummary = false, native = false }: WebullSimTimelineBlockProps) {
   const plotWidth = useMemo(() => computeSimTimelinePlotWidthBlock(model), [model])
   const span = Math.max(1, model.maxYear - model.minYear)
   const yearToX = (year: number) => ((year - model.minYear) / span) * plotWidth
@@ -124,7 +128,7 @@ export default function WebullSimTimelineBlock({ model, onOpenCase, fitWidth = f
   return (
     <div className="space-y-4">
       {/* Summary strip: counts by status + totals. */}
-      <div className="flex flex-wrap items-center gap-2">
+      {!hideSummary && <div className="flex flex-wrap items-center gap-2">
         {summaryTiles.map((tile) => (
           <div
             key={tile.label}
@@ -138,10 +142,10 @@ export default function WebullSimTimelineBlock({ model, onOpenCase, fitWidth = f
           <span><span className="font-semibold text-foreground tabular-nums">{model.totalReps}</span> reps</span>
           <span><span className="font-semibold text-foreground tabular-nums">{model.benchSize}</span> bench</span>
         </div>
-      </div>
+      </div>}
 
       {/* Timeline: era band + company lanes, aligned to a shared year axis. */}
-      <div className={cn('rounded-xl border border-border/60 bg-background/40', !fitWidth && 'overflow-x-auto')}>
+      <div className={cn(native ? '' : 'rounded-xl border border-border/60 bg-background/40', !fitWidth && 'overflow-x-auto')}>
         <div style={{ width: totalWidth, minWidth: fitWidth ? undefined : '100%' }}>
           {/* Era band */}
           <div className="flex items-stretch border-b border-border/50">

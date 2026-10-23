@@ -284,3 +284,14 @@ The flow is **Noticed → Gap → Act**. A Noticed record is something seen happ
 - Files: `<executionRoot>/noticed/<ticker>/<ticker>-YYYY-MM-DD-<slug>.md`, `type: noticed`, with `source`, `link`, `price_at_noticed`, `status` (watching | became-gap | let-go), `gap`; body sections What happened / Why it might matter / Questions / Takeaways. Format and parser: `gaps/services/lego_blocks/units/noticedRecordBlock.ts`; I/O: `gaps/services/orchestrators/webullNoticedOrch.ts`. Edits reuse the gap entry editors (`setGapEntryFieldBlock` / `setGapEntrySectionBlock` / `appendGapTakeawayBlock`).
 - "Make it a gap" opens the New gap panel pre-filled, then links both ways: the record gets `status: became-gap` + `gap: G-xxxx`, the gap gets `from_noticed: "[[<record>]]"`.
 - The record board (script headings, pastel notes, dashed time columns, the canvas sheet) is shared: `gaps/components/lego_blocks/units/GapRecordBoardPartsBlock.tsx`, used by the gap page and the Noticed page.
+
+## F9 Sim replays (private)
+
+A replay is the F9 loop at a moment in history: one company, the desk on day 0, the weeks after it a week at a time, then the year that followed. Spec: vault `kai-workspace/F9/f9-sim-replay-build-spec.md`. It is a **walk with an anchor** (`kind: replay` in `walk.yaml`), not a third system: the same folder, fetcher (`fetch-sim-walk.py`), masking, tags and sim gaps as walks. The first `lookback_steps` weeks of the stream are the desk on day 0.
+
+- `simReplayRecordBlock.ts` (pure): weeks relative to day 0, pacing (`steps_per_day` new weeks per real day; day 0 does not count), weekly prices (hidden past the current week until the end), `calls.yaml` (act / pass / exit, append-only), results at the reveal.
+- `simReplayOrch.ts`: load, next week (refuses past the pace), record a call, end (writes `reveal-request.md` for Kai).
+- `SimViewBlock` (Sim tab, via `gaps/sim.tsx` and `PrivateSimBlock`): replays list, summary card, the era timeline. An unrevealed replay is drawn across its whole era so the timeline never gives the year away.
+- `SimReplayViewBlock` + `SimReplayChartBlock`: the replay page. Axis in weeks, never dates.
+- Masking runs twice (fetcher and on display) and covers slash dates ("10/21/02"): a filing title leaked one before that rule.
+- Plain walks (no anchor) stay under Noticed → Reading → Sim; replays are filtered out there.

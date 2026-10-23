@@ -32,3 +32,9 @@ export const PrivateNoticedBlock = loadNoticed ? lazy(loadNoticed) : null
 const COMPANY_NOTICED_MODULES = import.meta.glob<{ default: ComponentType<PrivateCompanyGapsPropsBlock> }>('../../../gaps/companyNoticed.tsx')
 const loadCompanyNoticed = Object.values(COMPANY_NOTICED_MODULES)[0]
 export const PrivateCompanyNoticedBlock = loadCompanyNoticed ? lazy(loadCompanyNoticed) : null
+
+// Sim (replays: the loop at a moment in history) lives in the same private
+// folder; without it, the Sim tab shows the public era timeline only.
+const SIM_MODULES = import.meta.glob<{ default: ComponentType }>('../../../gaps/sim.tsx')
+const loadSim = Object.values(SIM_MODULES)[0]
+export const PrivateSimBlock = loadSim ? lazy(loadSim) : null
