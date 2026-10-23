@@ -360,7 +360,7 @@ export default function HomeFlatOrch() {
                   <HomeBoardFeedBlock surface="tile" onOpen={() => openSection('board')} />
                   {/* Not a Home section page: the reader lives in Thinking
                       Space's panel, so this switches tab and opens it there. */}
-                  <RssHomeTileBlock theme={theme} onOpen={() => navigate('/thinking-space?feeds=1')} />
+                  <RssHomeTileBlock theme={theme} onOpen={() => navigate('/webull?subtab=feed')} />
                 </div>
               </div>
             </div>

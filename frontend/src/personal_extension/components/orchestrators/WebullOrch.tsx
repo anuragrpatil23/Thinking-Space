@@ -31,12 +31,14 @@ import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPref
 import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
 import { GAPS_TAB_AVAILABLE, NOTICED_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
 
-type WebullSubtabId = 'overall' | 'study' | 'sim' | 'noticed' | 'gaps'
+type WebullSubtabId = 'overall' | 'study' | 'sim' | 'noticed' | 'gaps' | 'feed'
 
 // In the order of the mission (maximize the number of things noticed and
 // understood): notice, understand, then what falls out of it. Noticed and Gaps
 // are private: shown only when their folder is present (see privateGapsBlock).
 const Webull_BASE_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
+  // The front of the loop: where things are first seen
+  { id: 'feed', label: 'Feed' },
   ...(NOTICED_TAB_AVAILABLE ? [{ id: 'noticed' as const, label: 'Noticed' }] : []),
   { id: 'study', label: 'Study' },
   ...(GAPS_TAB_AVAILABLE ? [{ id: 'gaps' as const, label: 'Gaps' }] : []),

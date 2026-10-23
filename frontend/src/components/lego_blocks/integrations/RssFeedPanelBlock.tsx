@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   ArrowLeft,
   Bookmark,
@@ -62,7 +62,13 @@ import {
 import { cn } from '@/lib/utils'
 import RssItemAnnotationMarksBlock from '@/components/lego_blocks/units/RssItemAnnotationMarksBlock'
 
+// F9's Feed draws the list in its native look: quiet header, no RSS or folder
+// icons, plain counts, a failing source as a red dot instead of an error row.
+const NativeListContextBlock = createContext(false)
+
 interface RssFeedPanelBlockProps {
+  /** 'native': F9's look (see NativeListContextBlock). */
+  appearance?: 'default' | 'native'
   onOpenArticle: (
     item: RssFeedItemBlock,
     onItemUpdate: (updated: RssFeedItemBlock) => void,
@@ -128,7 +134,9 @@ export default function RssFeedPanelBlock({
   onNavStateChange,
   articleOpen,
   className,
+  appearance = 'default',
 }: RssFeedPanelBlockProps) {
+  const native = appearance === 'native'
   const { layout } = useUILayoutBlock()
   // This is intentionally device-local: iPhone gets the spacious timeline by
   // default without changing a desktop user's compact explorer preference.
@@ -462,6 +470,7 @@ export default function RssFeedPanelBlock({
   )
 
   return (
+    <NativeListContextBlock.Provider value={native}>
     <div className={cn('flex h-full flex-col', className)}>
       {!reelsFullBleed && <PanelHeader
         title={focusedFeedId ? (feeds.find(f => f.feedId === focusedFeedId)?.feedTitle ?? 'Feed') : 'RSS Feeds'}
@@ -598,6 +607,7 @@ export default function RssFeedPanelBlock({
         ))}
       </div>}
     </div>
+    </NativeListContextBlock.Provider>
   )
 }
 
@@ -637,10 +647,12 @@ function PanelHeader({
   viewMode: RssViewModeBlock
   onToggleViewMode: () => void
 }) {
+  const native = useContext(NativeListContextBlock)
   return (
     <div className={cn(
       'flex shrink-0 items-center gap-1 border-b px-2 py-1.5 transition-colors duration-200',
-      deleteMode ? 'border-destructive/30 bg-destructive/5' : 'border-border/50',
+      deleteMode ? 'border-destructive/30 bg-destructive/5' : native ? 'border-[#EFEFF2] dark:border-zinc-800' : 'border-border/50',
+      native && '[&_button]:text-zinc-400 [&_button:hover]:text-zinc-900 dark:[&_button:hover]:text-zinc-100',
     )}>
       {focusedFeedId && onClearFocus && !deleteMode && (
         <button
@@ -652,8 +664,8 @@ function PanelHeader({
           <ArrowLeft className="h-4 w-4" />
         </button>
       )}
-      <Rss className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-      <span className="min-w-0 flex-1 truncate text-xs font-medium">{title}</span>
+      {!native && <Rss className="h-3.5 w-3.5 shrink-0 text-orange-400" />}
+      <span className={cn('min-w-0 flex-1 truncate', native ? 'pl-1.5 text-[13px] font-semibold' : 'text-xs font-medium')}>{title}</span>
 
       {!deleteMode && (
         <button
@@ -731,14 +743,17 @@ function PanelHeader({
           >
             <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 rounded-md p-2 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-            title="Close RSS panel"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          {/* In F9 the feed is a page, not a panel: nothing to close */}
+          {!native && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded-md p-2 text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+              title="Close RSS panel"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </>
       )}
     </div>
@@ -784,6 +799,7 @@ function GroupTreeRenderer({
   tagColors: Record<string, string>
   depth: number
 }) {
+  const native = useContext(NativeListContextBlock)
   const feedResultMap = useMemo(() => {
     const map = new Map<string, RssFeedResultBlock>()
     for (const f of feedResults) map.set(f.feedId, f)
@@ -860,8 +876,16 @@ function GroupTreeRenderer({
               name={node.group.name}
               expanded={!groupCollapsed}
               onToggle={() => toggleGroupCollapsed(node.group!.id)}
-              icon={<FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+              icon={native ? undefined : <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
               badge={totalUnread > 0 ? totalUnread : undefined}
+              quietBadge={native}
+              // Native: folder rows carry a soft tint (deeper for top-level folders) so the groups read apart from their sources
+              className={native
+                ? cn(
+                  'border-[#E5E5EA] py-2.5 dark:border-zinc-800 [&>span:nth-of-type(1)]:text-zinc-800 dark:[&>span:nth-of-type(1)]:text-zinc-100',
+                  depth === 0 ? 'bg-[#EEEEF3] hover:bg-[#E5E5EC] dark:bg-zinc-800/70 dark:hover:bg-zinc-800' : 'bg-[#F6F6F9] hover:bg-[#EEEEF3] dark:bg-zinc-800/35 dark:hover:bg-zinc-800/60',
+                )
+                : undefined}
               depth={depth}
             />
             {/* Group content */}
@@ -951,6 +975,7 @@ function FeedSection({
   tagColors: Record<string, string>
   depth: number
 }) {
+  const native = useContext(NativeListContextBlock)
   const unread = feed.items.filter(i => !i.read).length
   return (
     <div>
@@ -958,24 +983,32 @@ function FeedSection({
         type="button"
         onClick={() => !deleteMode && toggleCollapsed(feed.feedId)}
         onDoubleClick={() => !deleteMode && setFocusedFeedId(feed.feedId)}
-        className="flex w-full items-center gap-1.5 border-b border-border/30 px-3 py-3 text-left text-xs hover:bg-muted/50"
+        className={cn(
+          'flex w-full items-center gap-1.5 border-b px-3 py-3 text-left text-xs hover:bg-muted/50',
+          native ? 'border-[#EFEFF2] py-2.5 text-[13px] dark:border-zinc-800' : 'border-border/30',
+        )}
         style={depth > 0 ? { paddingLeft: `${12 + depth * 12}px` } : undefined}
+        title={native && feed.error ? `Not loading: ${feed.error}` : undefined}
       >
         {collapsed
           ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-        <Rss className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-        <span className="min-w-0 flex-1 truncate font-medium">{feed.feedTitle}</span>
+        {!native && <Rss className="h-3.5 w-3.5 shrink-0 text-orange-400" />}
+        <span className={cn('min-w-0 flex-1 truncate', native ? '' : 'font-medium')}>{feed.feedTitle}</span>
+        {/* Native: a failing source is a red dot; Feed → Sources has the detail */}
+        {native && feed.error && <span aria-label="Not loading" className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />}
         {loading && (
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
         )}
         {unread > 0 && (
-          <span className="shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+          <span className={native
+            ? 'shrink-0 text-[11px] tabular-nums text-zinc-500 dark:text-zinc-400'
+            : 'shrink-0 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary'}>
             {unread}
           </span>
         )}
       </button>
-      {feed.error && (
+      {feed.error && !native && (
         <div className="border-b border-border/30 bg-destructive/5 px-3 py-1.5 text-[10px] text-destructive">
           {feed.error}
         </div>

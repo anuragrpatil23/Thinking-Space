@@ -8,6 +8,81 @@ export interface RssFeedConfigBlock {
    *  example one that has to log in first). The app shows the cached articles
    *  and never fetches the URL itself. */
   fetchedExternally?: boolean
+  /** Whether this source reaches the merged views (All Unread, the timeline,
+   *  the reels): always, only items whose full text the app has, or never. A
+   *  paywalled source sits on 'readable' so its dead links stay out of the
+   *  reels and its items come back on their own once their text is fetched.
+   *  Missing means 'show'. It is still readable under its own feed. */
+  inMergedViews?: RssMergedViewsModeBlock
+}
+
+export type RssMergedViewsModeBlock = 'show' | 'readable' | 'hidden'
+
+/** Below this much plain text, a feed item is a teaser, not the article. */
+export const RSS_READABLE_MIN_CHARS_BLOCK = 1200
+
+/** The app has the article itself: the full text in the cache, or a feed that ships whole articles. */
+export function rssItemReadableBlock(item: Pick<RssFeedItemBlock, 'textInCache' | 'description'>): boolean {
+  if (item.textInCache) return true
+  const text = item.description.replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim()
+  return text.length >= RSS_READABLE_MIN_CHARS_BLOCK
+}
+
+export interface RssFeedHealthBlock {
+  feedId: string
+  total: number
+  readable: number
+  /** Items published in the last `days` days, and how many of those are readable. */
+  recent: number
+  recentReadable: number
+}
+
+export interface RssDailyVolumeBlock {
+  /** Local day, YYYY-MM-DD */
+  day: string
+  readable: number
+  teaser: number
+}
+
+/** Articles published per day over the last `days` days, split by whether the app has them in full. */
+export function rssDailyVolumeBlock(feeds: RssFeedResultBlock[], now: Date, days = 30): RssDailyVolumeBlock[] {
+  const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const out: RssDailyVolumeBlock[] = []
+  const index = new Map<string, RssDailyVolumeBlock>()
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
+    const row = { day: dayKey(d), readable: 0, teaser: 0 }
+    out.push(row)
+    index.set(row.day, row)
+  }
+  for (const feed of feeds) {
+    for (const item of feed.items) {
+      const at = item.pubDate ? new Date(item.pubDate) : null
+      const row = at && !Number.isNaN(at.getTime()) ? index.get(dayKey(at)) : undefined
+      if (!row) continue
+      if (rssItemReadableBlock(item)) row.readable += 1
+      else row.teaser += 1
+    }
+  }
+  return out
+}
+
+/** How much of a source the app can actually show in full. */
+export function rssFeedHealthBlock(feed: RssFeedResultBlock, now: Date, days = 7): RssFeedHealthBlock {
+  const since = now.getTime() - days * 86_400_000
+  let readable = 0
+  let recent = 0
+  let recentReadable = 0
+  for (const item of feed.items) {
+    const ok = rssItemReadableBlock(item)
+    if (ok) readable += 1
+    const at = item.pubDate ? Date.parse(item.pubDate) : NaN
+    if (Number.isFinite(at) && at >= since) {
+      recent += 1
+      if (ok) recentReadable += 1
+    }
+  }
+  return { feedId: feed.feedId, total: feed.items.length, readable, recent, recentReadable }
 }
 
 export interface RssFeedGroupBlock {
@@ -579,14 +654,20 @@ export function rssDuplicateItemsBlock(
   return copies
 }
 
-/** Drop the feeds that are kept out of the merged views. */
+/** The feeds as the merged views see them: sources kept out are dropped, and a
+ *  'readable' source keeps only the items whose full text the app has. */
 export function rssReaderFeedsBlock(
   feeds: RssFeedResultBlock[],
   preferences: Pick<RssFeedPreferencesBlock, 'groups' | 'feeds'> | null,
 ): RssFeedResultBlock[] {
   if (!preferences) return feeds
   const excluded = rssFeedIdsExcludedFromAllUnreadBlock(preferences.groups, preferences.feeds)
-  return excluded.size === 0 ? feeds : feeds.filter(feed => !excluded.has(feed.feedId))
+  const modeById = new Map(preferences.feeds.map(f => [f.id, f.inMergedViews ?? 'show']))
+  return feeds
+    .filter(feed => !excluded.has(feed.feedId) && modeById.get(feed.feedId) !== 'hidden')
+    .map(feed => (modeById.get(feed.feedId) === 'readable'
+      ? { ...feed, items: feed.items.filter(rssItemReadableBlock) }
+      : feed))
 }
 
 /** Feed ids that belong to a group marked `excludeFromAllUnread`, directly or

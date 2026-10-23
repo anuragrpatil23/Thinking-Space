@@ -285,6 +285,12 @@ The flow is **Noticed → Gap → Act**. A Noticed record is something seen happ
 - "Make it a gap" opens the New gap panel pre-filled, then links both ways: the record gets `status: became-gap` + `gap: G-xxxx`, the gap gets `from_noticed: "[[<record>]]"`.
 - The record board (script headings, pastel notes, dashed time columns, the canvas sheet) is shared: `gaps/components/lego_blocks/units/GapRecordBoardPartsBlock.tsx`, used by the gap page and the Noticed page.
 
+## F9 Feed (the RSS reader's home)
+
+The RSS reader is F9's first subtab, Feed (`WebullFeedBlock`), not an Explorer toggle (moved 2026-10-23). The reader is still the shared `RssFeedPanelBlock` + `RssArticleViewBlock`; F9 hosts them side by side on desktop and as list → pushed article on iPhone. `?rss=<item>` and the old `?feeds=1` on the Explorer route forward to `/webull?subtab=feed`.
+
+Each source has `inMergedViews` in `rss-feeds.json`: `show` (default), `readable` (only items the app has in full: `textInCache`, or a feed body of at least `RSS_READABLE_MIN_CHARS_BLOCK` characters), or `hidden`. `rssReaderFeedsBlock` is the one place the merged views (All Unread, timeline, reels) are cut, so the reels obey it everywhere. Feed → Sources shows each source's health (`rssFeedHealthBlock`: readable of total, and this week) next to the switch. Paywalled sources belong on `readable`: their items return to the reels on their own once the library fetch fills in their text.
+
 ## F9 Value Line reports
 
 Value Line PDFs are first-class F9 records: `F9-execution/<TICKER>/valueline/YYYY-MM.pdf`, one file per issue, named by issue month (moved there from the per-company research folders 2026-10-23, vault commit `cc854e24`). `webullCompanyDossierVaultBlock` reads that folder first and still picks up any PDF left in an old "Valueline Reports" research folder. `valueLineIssueLabelBlock` shows "April 2026"; `valueLineDueBlock` flags an issue older than one review cycle (13 weeks, counted from the month's end) — the company page shows "due ·", and it is the hook the library auto-fetch will use. The fetch itself (every tracked company, through the library session in the Electron main process) is not built yet.

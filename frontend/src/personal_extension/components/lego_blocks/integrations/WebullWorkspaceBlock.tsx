@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, ChevronRight, Binoculars, Crosshair, Eye, EyeOff, History, Wallet, type LucideIcon } from 'lucide-react'
+import { BookOpen, ChevronRight, Binoculars, Crosshair, Eye, EyeOff, History, Rss, Wallet, type LucideIcon } from 'lucide-react'
 import {
   dispatchWebullSidebarChromeStateBlock,
   Webull_SIDEBAR_CHROME_TOGGLE_EVENT_BLOCK,
@@ -18,6 +18,7 @@ import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_bl
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import WebullF9SimCanvasOrch from '@/personal_extension/components/orchestrators/WebullF9SimCanvasOrch'
 import WebullSimBoardBlock from './WebullSimBoardBlock'
+import WebullFeedBlock from './WebullFeedBlock'
 import { PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock } from '../units/privateGapsBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
@@ -55,7 +56,7 @@ import type {
   WebullPositionSummaryBlock,
 } from '@/personal_extension/services/orchestrators/webullExecutionOrch'
 
-type WebullSubtabIdBlock = 'overall' | 'study' | 'sim' | 'noticed' | 'gaps'
+type WebullSubtabIdBlock = 'overall' | 'study' | 'sim' | 'noticed' | 'gaps' | 'feed'
 
 interface WebullSubtabBlock {
   id: WebullSubtabIdBlock
@@ -68,6 +69,7 @@ const WEBULL_SUBTAB_ICONS: Record<WebullSubtabIdBlock, LucideIcon> = {
   sim: History,
   noticed: Binoculars,
   gaps: Crosshair,
+  feed: Rss,
 }
 
 interface WebullLinkOptionBlock {
@@ -2207,14 +2209,15 @@ export default function WebullWorkspaceBlock({
   const gapsTabActive = !companyPageOpen && activeSubtabId === 'gaps'
   const noticedTabActive = !companyPageOpen && activeSubtabId === 'noticed'
   const studyTabActive = !companyPageOpen && activeSubtabId === 'study'
+  const feedTabActive = !companyPageOpen && activeSubtabId === 'feed'
   // Views that draw their own page (Study, Noticed, Gaps): no card header, tags or diagnostics.
   const simTabActive = !companyPageOpen && activeSubtabId === 'sim'
   // Sim is a native page when the private replays view is present
-  const privateViewActive = gapsTabActive || noticedTabActive || studyTabActive || (simTabActive && Boolean(PrivateSimBlock))
+  const privateViewActive = feedTabActive || gapsTabActive || noticedTabActive || studyTabActive || (simTabActive && Boolean(PrivateSimBlock))
   const nativeView = companyPageOpen || overallTabActive || privateViewActive
   const workspaceTitle = showCompanyView && selectedCompany
     ? `${selectedCompany.companyTicker} Positions`
-    : (studyTabActive ? 'Study' : simTabActive ? 'Sim' : noticedTabActive ? 'Noticed' : gapsTabActive ? 'Gaps' : 'Overall Positions')
+    : (feedTabActive ? 'Feed' : studyTabActive ? 'Study' : simTabActive ? 'Sim' : noticedTabActive ? 'Noticed' : gapsTabActive ? 'Gaps' : 'Overall Positions')
   const workspaceDescription = showCompanyView && selectedCompany
     ? 'Company-specific position rows and overlay edits.'
     : (studyTabActive
@@ -2524,6 +2527,10 @@ export default function WebullWorkspaceBlock({
                 disabled={workspaceBusy}
               />
             </div>
+          )}
+
+          {feedTabActive && (
+            <WebullFeedBlock />
           )}
 
           {studyTabActive && (

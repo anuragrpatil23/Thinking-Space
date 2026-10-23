@@ -427,7 +427,7 @@ export async function removeRssFeedOrch(feedId: string): Promise<void> {
 
 export async function updateRssFeedOrch(
   feedId: string,
-  patch: Partial<Pick<RssFeedConfigBlock, 'url' | 'title' | 'groupId'>>,
+  patch: Partial<Pick<RssFeedConfigBlock, 'url' | 'title' | 'groupId' | 'inMergedViews'>>,
 ): Promise<void> {
   const prefs = await readRssFeedPreferencesOrch()
   prefs.feeds = prefs.feeds.map(c =>

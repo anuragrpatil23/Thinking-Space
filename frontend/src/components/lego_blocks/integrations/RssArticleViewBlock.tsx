@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bookmark, ChevronLeft, ChevronRight, FolderInput, Loader2, Star, X } from 'lucide-react'
+import { Bookmark, Check, ChevronLeft, ChevronRight, FolderInput, Loader2, Star, Tag, X } from 'lucide-react'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import {
   markRssItemViewedOrch,
@@ -47,6 +47,11 @@ interface RssArticleViewBlockProps {
   /** Walks the same queue the feed panel is showing, so the reader can move to
    *  the next article without bouncing back to the list. */
   nav?: RssArticleNavStateBlock | null
+  /** 'native': F9's look. The preset tags fold into one Tag menu, and a
+   *  cached article reads like a publication (source line, serif text). */
+  appearance?: 'default' | 'native'
+  /** The source's name, shown above a cached article's title (native). */
+  sourceLabel?: string
 }
 
 export default function RssArticleViewBlock({
@@ -60,7 +65,11 @@ export default function RssArticleViewBlock({
   suspended,
   hideUrlBar,
   nav,
+  appearance = 'default',
+  sourceLabel,
 }: RssArticleViewBlockProps) {
+  const native = appearance === 'native'
+  const [tagMenuOpen, setTagMenuOpen] = useState(false)
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
   const [tags, setTags] = useState<string[]>(item.tags ?? [])
@@ -236,8 +245,46 @@ export default function RssArticleViewBlock({
           <div className="h-4 w-px shrink-0 bg-border/50" />
         )}
 
+        {/* Native: one Tag menu instead of a row of chips; applied tags sit beside it */}
+        {native && presetTags.length > 0 && (
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setTagMenuOpen(v => !v)}
+              aria-expanded={tagMenuOpen}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            >
+              <Tag className="h-3.5 w-3.5" /> Tag
+            </button>
+            {tagMenuOpen && (
+              <>
+                <button type="button" aria-label="Close tags" className="fixed inset-0 z-40 cursor-default" onClick={() => setTagMenuOpen(false)} />
+                <div className="absolute left-0 top-full z-50 mt-1 w-52 rounded-lg bg-white p-1 shadow-[0_0_0_0.5px_rgba(0,0,0,0.12),0_8px_24px_rgba(0,0,0,0.16)] dark:bg-zinc-900 dark:shadow-[0_0_0_0.5px_rgba(255,255,255,0.12),0_8px_24px_rgba(0,0,0,0.5)]">
+                  {presetTags.map(tag => {
+                    const selected = hasTagBlock(tags, tag)
+                    return (
+                      <button
+                        key={`menu-${tag}`}
+                        type="button"
+                        onClick={() => toggleTag(tag)}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                      >
+                        <span className="flex h-3.5 w-3.5 items-center justify-center">{selected && <Check className="h-3.5 w-3.5" />}</span>
+                        {tag}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+        {native && tags.filter(t => presetTags.some(p => p.toLowerCase() === t.toLowerCase())).map(tag => (
+          <span key={`applied-${tag}`} className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{tag}</span>
+        ))}
+
         {/* Preset tag chips — toggle on/off */}
-        {presetTags.map(tag => {
+        {!native && presetTags.map(tag => {
           const selected = hasTagBlock(tags, tag)
           return (
             <button
@@ -325,7 +372,7 @@ export default function RssArticleViewBlock({
            flex-allocated space, not the full container (fixes iOS WKWebView overlap) */}
       <div className="relative min-h-0 flex-1">
         {item.textInCache ? (
-          <CachedArticleTextBlock item={item} />
+          <CachedArticleTextBlock item={item} native={native} sourceLabel={sourceLabel} />
         ) : (
         <UrlDocumentBlock
           url={item.link}
@@ -408,9 +455,31 @@ export default function RssArticleViewBlock({
 
 /** The article's own text from the cache, for feeds whose links need a login.
  *  Paragraphs are the blank-line-separated blocks the outside tool wrote. */
-function CachedArticleTextBlock({ item }: { item: RssFeedItemBlock }) {
+function CachedArticleTextBlock({ item, native = false, sourceLabel }: { item: RssFeedItemBlock; native?: boolean; sourceLabel?: string }) {
   const paragraphs = item.description.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean)
   const when = item.pubDate ? new Date(item.pubDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : null
+  // Native: read like a publication — source and date in small caps above a
+  // serif title, serif body, the original linked quietly at the end
+  if (native) {
+    return (
+      <div className="absolute inset-0 overflow-y-auto">
+        <article className="mx-auto max-w-[680px] px-6 pb-16 pt-10">
+          <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-500 dark:text-zinc-400">
+            {[sourceLabel, when].filter(Boolean).join(' · ')}
+          </p>
+          <h1 className="mt-2 font-serif text-[32px] leading-[1.15] tracking-[-0.01em] text-foreground">{item.title}</h1>
+          <div className="mt-7 space-y-5 font-serif text-[18px] leading-[1.65] text-zinc-800 dark:text-zinc-200">
+            {paragraphs.map((p, i) => <p key={i}>{p}</p>)}
+          </div>
+          {item.link && (
+            <a href={item.link} target="_blank" rel="noreferrer" className="mt-10 inline-block text-[12px] text-zinc-500 underline-offset-2 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100">
+              Open the original ›
+            </a>
+          )}
+        </article>
+      </div>
+    )
+  }
   return (
     <div className="absolute inset-0 overflow-y-auto">
       <article className="mx-auto max-w-[680px] px-6 py-8">

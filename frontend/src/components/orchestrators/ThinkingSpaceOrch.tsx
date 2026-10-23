@@ -1,7 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { IS_STATIC_WEB_BUILD_BLOCK } from '@/services/lego_blocks/units/staticWebBuildBlock'
-import { useSearchParams } from 'react-router-dom'
-import { PanelLeftClose, FileText, Rss as RssIcon } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { PanelLeftClose, FileText } from 'lucide-react'
 import VaultExplorerBlock, { type VaultExplorerHandle } from '@/components/lego_blocks/integrations/VaultExplorerBlock'
 import MarkdownDocumentBlock, { type MarkdownViewerMode } from '@/components/lego_blocks/integrations/MarkdownDocumentLazyBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
@@ -50,7 +49,6 @@ import { createUrlShortcutOrch } from '@/services/orchestrators/urlShortcutOrch'
 import { getNodeByPath } from '@/services/lego_blocks/integrations/dbBlock'
 import RssFeedPanelBlock from '@/components/lego_blocks/integrations/RssFeedPanelBlock'
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
-import { loadRssItemByIdOrch, readRssFeedPreferencesOrch } from '@/services/orchestrators/rssFeedOrch'
 import UrlDocumentBlock from '@/components/lego_blocks/integrations/UrlDocumentBlock'
 import RuledNotebookDocumentBlock from '@/components/lego_blocks/integrations/RuledNotebookDocumentBlock'
 import type {
@@ -191,6 +189,7 @@ function VaultFooterBar({ vaultRoot, onCollapse }: { vaultRoot: string | null; o
 }
 
 export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchProps) {
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const inlinePathFromRoute = routeOverride !== undefined
     ? readThinkingSpaceRouteParamBlock(routeOverride, FILE_QUERY_PARAM)
@@ -633,36 +632,15 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
 
   // Another page asked for an article (`?rss=<itemId>`): open the reader on it.
   useEffect(() => {
+    // The reader lives in F9's Feed now: an old link to an article goes there
     if (!rssItemFromRoute) return
-    let cancelled = false
-    void (async () => {
-      const [item, prefs] = await Promise.all([
-        loadRssItemByIdOrch(rssItemFromRoute),
-        readRssFeedPreferencesOrch(),
-      ])
-      if (cancelled) return
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete(RSS_ITEM_QUERY_PARAM)
-        return next
-      }, { replace: true })
-      if (!item) return
-      setRssPanelOpen(true)
-      handleRssOpenArticle(item, () => {}, () => {}, prefs.presetTags, prefs.tagColors)
-    })()
-    return () => { cancelled = true }
-  }, [handleRssOpenArticle, rssItemFromRoute, setSearchParams])
+    navigate(`/webull?subtab=feed&rss=${encodeURIComponent(rssItemFromRoute)}`, { replace: true })
+  }, [navigate, rssItemFromRoute])
 
   useEffect(() => {
     if (!rssPanelFromRoute) return
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      next.delete(RSS_PANEL_QUERY_PARAM)
-      return next
-    }, { replace: true })
-    setRssActiveArticle(null)
-    setRssPanelOpen(true)
-  }, [rssPanelFromRoute, setSearchParams])
+    navigate('/webull?subtab=feed', { replace: true })
+  }, [navigate, rssPanelFromRoute])
 
   const handleExplorerShowInGraph = useCallback((path: string, kind: 'file' | 'folder') => {
     const normalized = path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
@@ -1028,26 +1006,9 @@ export default function ThinkingSpaceOrch({ routeOverride }: ThinkingSpaceOrchPr
   // iPhone full-width "RSS Feeds" row was folded into this on 2026-07-19 to
   // give the tree back its vertical room).
   // Left out of the static web build, which cannot fetch feeds (staticWebBuildBlock).
-  const rssExplorerToolbarButton = IS_STATIC_WEB_BUILD_BLOCK ? null : (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label="RSS Feeds"
-            onClick={() => setRssPanelOpen(prev => { if (prev) setRssActiveArticle(null); return !prev })}
-            className={cn(
-              'ltm-touch-target flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors',
-              rssPanelOpen ? 'bg-muted text-foreground' : 'hover:bg-muted hover:text-foreground',
-            )}
-          >
-            <RssIcon className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">RSS Feeds</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
+  // The feed moved to F9's Feed subtab (2026-10-23); the Explorer no longer
+  // offers a toggle for it. The slot stays so the toolbar keeps its shape.
+  const rssExplorerToolbarButton = null
   const useTopRssExplorerToggle = isIPhoneIosSurface
 
   const inlineExplorerContent = useMemo(() => (
