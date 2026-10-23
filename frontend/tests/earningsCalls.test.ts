@@ -65,3 +65,26 @@ describe('reading StockAnalysis pages', () => {
     expect(parseEarningsCallPageBlock('<html>no transcript</html>')).toBeNull()
   })
 })
+
+describe('the call as Markdown', () => {
+  it('adds frontmatter, a title, the two sections and bold speakers, keeping the words', async () => {
+    const { formatEarningsCallBlock } = await import('@/personal_extension/services/lego_blocks/units/earningsCallFormatBlock')
+    const body = [
+      'Travis Axelrod: Welcome to the call. Elon has remarks.',
+      'Elon Musk: One. Two. Three. Four. Five. Six.',
+      'Travis Axelrod: Our first question comes from investors.',
+      'Elon Musk: Yes.',
+    ].join('\n')
+    expect(formatEarningsCallBlock({ ticker: 'TSLA', date: '2026-04-22', quarter: '2026-05', body })).toBe([
+      '---', 'ticker: TSLA', 'date: 2026-04-22', 'quarter: 2026-05', 'type: earnings-call', '---', '',
+      '# TSLA earnings call · April 22, 2026', '',
+      '## Prepared remarks', '',
+      '**Travis Axelrod:** Welcome to the call. Elon has remarks.', '',
+      '**Elon Musk:** One. Two. Three. Four. Five.', '',
+      'Six.', '',
+      '## Questions and answers', '',
+      '**Travis Axelrod:** Our first question comes from investors.', '',
+      '**Elon Musk:** Yes.', '',
+    ].join('\n'))
+  })
+})

@@ -375,6 +375,11 @@ export async function setRssItemFullTextOrch(itemId: string, text: string): Prom
   return true
 }
 
+/** The vault path of a cached article's file. */
+export function rssItemPathOrch(itemId: string): string {
+  return `${RSS_ARTICLES_DIR}/${itemId.split('::')[0]}/${itemFilenameBlock(itemId)}`
+}
+
 /** Record the AI's summary of a cached article in its frontmatter. */
 export async function setRssItemAiSummaryOrch(itemId: string, summary: RssAiSummaryBlock): Promise<void> {
   await patchRssItemFrontmatterOrch(itemId, {

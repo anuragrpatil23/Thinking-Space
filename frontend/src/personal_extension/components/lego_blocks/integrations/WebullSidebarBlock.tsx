@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronRight, type LucideIcon } from 'lucide-react'
 import {
   PHONE_LIST_ICON_CLASS_BLOCK,
@@ -72,6 +72,9 @@ function CompanyAvatarBlock({ company, executionRoot, className }: { company: We
   )
 }
 
+/** Fired by a view that needs the width: the sidebar folds its business groups. */
+export const WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK = 'ltm-webull-fold-sidebar-groups'
+
 export interface WebullSidebarViewBlock {
   id: string
   label: string
@@ -106,6 +109,16 @@ export default function WebullSidebarBlock({
     return next
   })
   const studiedCount = companies.filter(c => c.studyState !== 'none').length
+  // A view that wants the room (Feed → Reading) asks for the business groups to fold
+  useEffect(() => {
+    const fold = () => setOpenGroups((prev) => {
+      if (prev.size === 0) return prev
+      try { window.localStorage.setItem(OPEN_GROUPS_STORAGE_KEY_BLOCK, '[]') } catch { /* per-viewer nicety only */ }
+      return new Set()
+    })
+    window.addEventListener(WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK, fold)
+    return () => window.removeEventListener(WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK, fold)
+  }, [])
 
   if (phoneListMode) {
     return (

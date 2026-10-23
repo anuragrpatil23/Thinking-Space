@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
   ArrowLeft,
   Bookmark,
@@ -326,10 +326,23 @@ export default function RssFeedPanelBlock({
   // rules apply), sources inside each day, one row per story. Days fold;
   // folded days are remembered on this device.
   const dayMode = native && !focusedFeedId
+  // Native: show only some sources, across every day. Remembered on this device.
+  const [sourceFilter, setSourceFilter] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('ltm-rss-source-filter') ?? '[]') as string[] } catch { return [] }
+  })
+  const chooseSourceFilter = useCallback((next: string[]) => {
+    setSourceFilter(next)
+    try { localStorage.setItem('ltm-rss-source-filter', JSON.stringify(next)) } catch { /* storage is optional */ }
+  }, [])
+  const filteredInboxFeeds = useMemo(() => {
+    const chosen = new Set(sourceFilter)
+    return chosen.size > 0 && inboxFeeds.some(feed => chosen.has(feed.feedId)) ? inboxFeeds.filter(feed => chosen.has(feed.feedId)) : inboxFeeds
+  }, [inboxFeeds, sourceFilter])
   const dayInbox = useMemo<RssDayInboxBlock[]>(
-    () => (dayMode ? buildRssDayInboxBlock({ feeds: inboxFeeds, configs: preferences?.feeds ?? [], unreadOnly, sessionReadIds }) : []),
-    [dayMode, inboxFeeds, preferences, unreadOnly, sessionReadIds],
+    () => (dayMode ? buildRssDayInboxBlock({ feeds: filteredInboxFeeds, configs: preferences?.feeds ?? [], unreadOnly, sessionReadIds }) : []),
+    [dayMode, filteredInboxFeeds, preferences, unreadOnly, sessionReadIds],
   )
+  const { expanded: foldedSources, toggle: toggleSourceFolded } = useExpandedSetBlock('ltm-rss-folded-sources')
   useEffect(() => {
     const map = new Map<string, RssFeedItemBlock[]>()
     for (const day of dayInbox) for (const source of day.sources) for (const story of source.stories) {
@@ -379,7 +392,7 @@ export default function RssFeedPanelBlock({
   }, [anythingExpanded, feeds, preferences, setExpandedFeeds, setExpandedGroups])
 
   const visibleRows = useMemo(() => (dayMode
-    ? dayInbox.filter(day => !foldedDays.has(day.day)).flatMap(day => day.sources.flatMap(source => source.stories.map(story => ({
+    ? dayInbox.filter(day => !foldedDays.has(day.day)).flatMap(day => day.sources.filter(source => !foldedSources.has(`${day.day}|${source.feedId}`)).flatMap(source => source.stories.map(story => ({
       rowId: rssRowIdBlock(`day:${day.day}`, story.lead.item.id),
       itemId: story.lead.item.id,
     }))))
@@ -395,7 +408,7 @@ export default function RssFeedPanelBlock({
   })), [
     native, showUnreadInbox, unreadInboxExpanded, unreadInboxEntries,
     useGroupedRendering, groupTree, feeds, visibleFeeds, expandedFeedIds, expandedGroupIds,
-    dayMode, dayInbox, foldedDays,
+    dayMode, dayInbox, foldedDays, foldedSources,
   ])
 
   const registerItemButton = useCallback((rowId: string, node: HTMLButtonElement | null) => {
@@ -583,6 +596,9 @@ export default function RssFeedPanelBlock({
         onToggleUnreadOnly={native ? toggleUnreadOnly : undefined}
         anythingExpanded={anythingExpanded}
         onToggleExpandAll={native ? toggleExpandAll : undefined}
+        sourceFilter={dayMode && viewMode === 'compact'
+          ? <SourceFilterBlock options={inboxFeeds.map(feed => ({ feedId: feed.feedId, title: feed.feedTitle }))} chosen={sourceFilter} onChange={chooseSourceFilter} />
+          : undefined}
       />}
 
       {/* Delete-mode hint */}
@@ -665,7 +681,9 @@ export default function RssFeedPanelBlock({
             days={dayInbox}
             foldedDays={foldedDays}
             toggleDayFolded={toggleDayFolded}
-            setFocusedFeedId={setFocusedFeedId}
+            foldedSources={foldedSources}
+            toggleSourceFolded={toggleSourceFolded}
+            onSourceFilter={chooseSourceFilter}
             selectedItemId={selectedItemId}
             handleItemClick={handleItemClick}
             onItemKeyDown={handleItemKeyDown}
@@ -741,6 +759,7 @@ function PanelHeader({
   onToggleUnreadOnly,
   anythingExpanded,
   onToggleExpandAll,
+  sourceFilter,
 }: {
   title: string
   onClose: () => void
@@ -768,6 +787,8 @@ function PanelHeader({
   onToggleUnreadOnly?: () => void
   anythingExpanded?: boolean
   onToggleExpandAll?: () => void
+  /** Native day inbox: the sources pill, beside Unread */
+  sourceFilter?: ReactNode
 }) {
   const native = useContext(NativeListContextBlock)
   return (
@@ -825,6 +846,7 @@ function PanelHeader({
           Unread
         </button>
       )}
+      {!deleteMode && sourceFilter}
       {!deleteMode && onToggleExpandAll && (
         <button
           type="button"
@@ -1206,6 +1228,63 @@ function FeedSection({
   )
 }
 
+// Which sources the day inbox shows: a pill beside Unread that opens a small
+// menu of sources to tick; the choice holds on every day.
+function SourceFilterBlock({ options, chosen, onChange }: {
+  options: Array<{ feedId: string; title: string }>
+  chosen: string[]
+  onChange: (feedIds: string[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => { if (!rootRef.current?.contains(event.target as Node)) setOpen(false) }
+    const escape = (event: globalThis.KeyboardEvent) => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', escape)
+    }
+  }, [open])
+  const chosenSet = new Set(chosen)
+  const active = options.filter(option => chosenSet.has(option.feedId))
+  const sorted = [...options].sort((a, b) => a.title.localeCompare(b.title))
+  const toggle = (feedId: string) => onChange(chosenSet.has(feedId) ? chosen.filter(id => id !== feedId) : [...chosen, feedId])
+  const label = active.length === 0 ? 'Sources' : active.length === 1 ? active[0].title : `${active.length} sources`
+  return (
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="true"
+        onClick={() => setOpen(prev => !prev)}
+        title={active.length > 0 ? active.map(option => option.title).join(', ') : 'Show only some sources'}
+        className={cn('max-w-[120px] truncate rounded-md px-2 py-1 text-[11px] font-medium', active.length > 0 && '!bg-zinc-200/80 !text-zinc-900 dark:!bg-zinc-700 dark:!text-white')}
+      >
+        {label}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg bg-white text-[12px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.12),0_8px_24px_rgba(0,0,0,0.12)] dark:bg-zinc-900 dark:shadow-[0_0_0_0.5px_rgba(255,255,255,0.12),0_8px_24px_rgba(0,0,0,0.5)]">
+          <div className="flex items-center justify-between border-b-[0.5px] border-[#EFEFF2] px-3 py-2 dark:border-zinc-800">
+            <span className="font-semibold text-zinc-700 dark:text-zinc-200">Show sources</span>
+            <button type="button" onClick={() => onChange([])} disabled={active.length === 0} className="!text-sky-600 hover:!text-sky-700 disabled:!text-zinc-300 dark:!text-sky-400 dark:disabled:!text-zinc-600">All</button>
+          </div>
+          <div className="max-h-72 overflow-y-auto py-1">
+            {sorted.map(option => (
+              <label key={option.feedId} className="flex cursor-pointer items-center gap-2.5 px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                <input type="checkbox" checked={chosenSet.has(option.feedId)} onChange={() => toggle(option.feedId)} className="h-3.5 w-3.5 accent-[var(--ltm-explorer-selected-color,#c73773)]" />
+                <span className="truncate text-zinc-700 dark:text-zinc-200">{option.title}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Day inbox — native: days, then sources, one row per story
 // ---------------------------------------------------------------------------
@@ -1214,7 +1293,9 @@ function DayInboxRenderer({
   days,
   foldedDays,
   toggleDayFolded,
-  setFocusedFeedId,
+  foldedSources,
+  toggleSourceFolded,
+  onSourceFilter,
   selectedItemId,
   handleItemClick,
   onItemKeyDown,
@@ -1224,7 +1305,9 @@ function DayInboxRenderer({
   days: RssDayInboxBlock[]
   foldedDays: Set<string>
   toggleDayFolded: (day: string) => void
-  setFocusedFeedId: (feedId: string) => void
+  foldedSources: Set<string>
+  toggleSourceFolded: (key: string) => void
+  onSourceFilter: (feedIds: string[]) => void
   selectedItemId: string | null
   handleItemClick: (item: RssFeedItemBlock, rowId: string) => void
   onItemKeyDown: (rowId: string, event: KeyboardEvent<HTMLButtonElement>) => void
@@ -1254,17 +1337,34 @@ function DayInboxRenderer({
                 {day.unreadCount > 0 ? `${day.unreadCount} unread · ` : ''}{day.storyCount} {day.storyCount === 1 ? 'story' : 'stories'}
               </span>
             </button>
-            {!folded && day.sources.map(source => (
+            {!folded && day.sources.map(source => {
+              const key = `${day.day}|${source.feedId}`
+              const sourceFolded = foldedSources.has(key)
+              const unread = source.stories.filter(story => !story.read).length
+              if (sourceFolded) idx += source.stories.length
+              return (
               <div key={source.feedId}>
-                <button
-                  type="button"
-                  onClick={() => setFocusedFeedId(source.feedId)}
-                  title="Show only this source"
-                  className="block w-full truncate px-3 pb-1 pt-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-                >
-                  {source.feedTitle}
-                </button>
-                {source.stories.map(story => {
+                <div className="group flex items-center gap-1.5 px-3 pb-1 pt-2.5">
+                  <button
+                    type="button"
+                    aria-expanded={!sourceFolded}
+                    onClick={() => toggleSourceFolded(key)}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  >
+                    <ChevronRight className={cn('h-3 w-3 shrink-0 transition-transform', !sourceFolded && 'rotate-90')} />
+                    <span className="truncate">{source.feedTitle}</span>
+                    <span className="shrink-0 font-normal normal-case tracking-normal text-zinc-400">{unread > 0 ? `${unread} of ${source.stories.length}` : source.stories.length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSourceFilter([source.feedId])}
+                    className="shrink-0 text-[11px] text-sky-600 opacity-0 transition-opacity hover:text-sky-700 group-hover:opacity-100 dark:text-sky-400"
+                    title="Show only this source, on every day"
+                  >
+                    only this
+                  </button>
+                </div>
+                {!sourceFolded && source.stories.map(story => {
                   const rowId = rssRowIdBlock(`day:${day.day}`, story.lead.item.id)
                   const others = rssStoryOthersLabelBlock(story)
                   const row = (
@@ -1288,7 +1388,8 @@ function DayInboxRenderer({
                   return row
                 })}
               </div>
-            ))}
+              )
+            })}
           </section>
         )
       })}

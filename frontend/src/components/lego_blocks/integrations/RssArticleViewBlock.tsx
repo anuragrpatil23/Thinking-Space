@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bookmark, Check, ChevronLeft, ChevronRight, FolderInput, Loader2, Star, Tag, X } from 'lucide-react'
+import { BookOpen, Bookmark, Check, ChevronLeft, ChevronRight, FolderInput, Globe, Loader2, Star, Tag, X } from 'lucide-react'
+import { loadReaderViewOrch, readerViewAvailableOrch } from '@/services/orchestrators/rssReaderViewOrch'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import {
   markRssItemViewedOrch,
@@ -69,6 +70,26 @@ export default function RssArticleViewBlock({
   sourceLabel,
 }: RssArticleViewBlockProps) {
   const native = appearance === 'native'
+  // Native: the article opens as clean text (the reader view) when its text is
+  // in the cache or can be pulled from its page; "Page" shows the site itself.
+  const [showPage, setShowPage] = useState(false)
+  const [preparingReader, setPreparingReader] = useState(() => native && !item.textInCache && readerViewAvailableOrch(item))
+  useEffect(() => {
+    if (!native || item.textInCache || showPage || !readerViewAvailableOrch(item)) {
+      setPreparingReader(false)
+      return
+    }
+    let cancelled = false
+    setPreparingReader(true)
+    void loadReaderViewOrch(item).then((withText) => {
+      if (cancelled) return
+      setPreparingReader(false)
+      if (withText) onItemUpdate?.(withText)
+    })
+    return () => { cancelled = true }
+    // One attempt per article; a change of its text is what ends it
+  }, [item.id, native, showPage]) // eslint-disable-line react-hooks/exhaustive-deps
+  const readerView = item.textInCache && !showPage
   const [tagMenuOpen, setTagMenuOpen] = useState(false)
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
@@ -357,6 +378,18 @@ export default function RssArticleViewBlock({
           </div>
         )}
 
+        {/* Reader view ↔ the site itself */}
+        {native && (item.textInCache || readerViewAvailableOrch(item)) && (
+          <button
+            type="button"
+            onClick={() => setShowPage(prev => !prev)}
+            title={readerView || preparingReader ? 'Show the page itself' : 'Show the article as clean text'}
+            className="mr-1 shrink-0 rounded p-0.5 text-muted-foreground/60 hover:text-muted-foreground"
+          >
+            {readerView || preparingReader ? <Globe className="h-3.5 w-3.5" /> : <BookOpen className="h-3.5 w-3.5" />}
+          </button>
+        )}
+
         {/* Move to vault */}
         <button
           type="button"
@@ -379,8 +412,14 @@ export default function RssArticleViewBlock({
       {/* URL content — wrapped so h-full inside UrlDocumentBlock resolves to the
            flex-allocated space, not the full container (fixes iOS WKWebView overlap) */}
       <div className="relative min-h-0 flex-1">
-        {item.textInCache ? (
+        {readerView ? (
           <CachedArticleTextBlock item={item} native={native} sourceLabel={sourceLabel} />
+        ) : preparingReader && !showPage ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[13px] text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Preparing the reader view…
+            <button type="button" onClick={() => setShowPage(true)} className="text-[12px] text-sky-600 hover:text-sky-700 dark:text-sky-400">Open the page instead</button>
+          </div>
         ) : (
         <UrlDocumentBlock
           url={item.link}

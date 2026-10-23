@@ -58,7 +58,7 @@ export function startWebviewMagnifierBlock(webview: MagnifiableWebviewBlock): ()
     try {
       webview.executeJavaScript?.(WEBVIEW_MAGNIFY_SCRIPT_BLOCK)?.catch(() => { /* guest went away */ })
     } catch {
-      // Guest not attached yet; dom-ready will install it.
+      // Guest not attached yet (throws rather than rejects); dom-ready will install it.
     }
   }
   webview.addEventListener('dom-ready', install)

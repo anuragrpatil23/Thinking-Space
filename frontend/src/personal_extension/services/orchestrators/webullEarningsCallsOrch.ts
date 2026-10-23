@@ -26,6 +26,7 @@ import {
   type ValueLineCheckBlock,
   type WebullResearchFileBlock,
 } from '../lego_blocks/units/webullCompanyDossierBlock'
+import { formatEarningsCallBlock } from '../lego_blocks/units/earningsCallFormatBlock'
 
 /** Pages fetched for one company in one go (sixteen quarters and a spare). */
 const MAX_PAGES_PER_SYNC = 18
@@ -123,7 +124,7 @@ async function syncBlock(executionRoot: string, ticker: string): Promise<Earning
       const transcript = await api.earningsCallGet!({ ticker, slug })
       const month = earningsCallBucketBlock(transcript.date, ticker)
       if (month && month >= cutoff && !saved.has(month)) {
-        await getVaultFS().write(`${folder}/${month}.md`, `Date: ${transcript.date}\n\n${transcript.text.trim()}\n`)
+        await getVaultFS().write(`${folder}/${month}.md`, formatEarningsCallBlock({ ticker, date: transcript.date, quarter: month, body: transcript.text }))
         saved.add(month)
         written.push(month)
       }

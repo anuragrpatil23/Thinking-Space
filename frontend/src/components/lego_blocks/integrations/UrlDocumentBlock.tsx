@@ -13,6 +13,7 @@ import { copyTextToClipboard } from '@/components/lego_blocks/units/BacklogListD
 import { useNavigate } from 'react-router-dom'
 import { startWebviewShortcutRelayBlock } from '@/services/lego_blocks/units/webviewShortcutRelayBlock'
 import { startWebviewMagnifierBlock } from '@/services/lego_blocks/units/webviewPinchZoomBlock'
+import { startWebviewSiteCleanupBlock } from '@/services/lego_blocks/units/webviewSiteCleanupBlock'
 import { useElectronWebviewLoadErrorBlock } from '@/components/lego_blocks/hooks/shared/useElectronWebviewLoadErrorBlock'
 import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
 import { useWindowActivityBlock } from '@/components/lego_blocks/hooks/shared/useWindowActivityBlock'
@@ -196,7 +197,7 @@ function UrlDocumentBlock({
     () => resolvedUrl !== null && isValidHttpUrlBlock(resolvedUrl),
     [resolvedUrl],
   )
-  useElectronWebviewLoadErrorBlock({
+  const pageLoadError = useElectronWebviewLoadErrorBlock({
     enabled: isElectronRuntime && isTrusted && electronGuestMounted,
     webviewRef,
     resolvedUrl,
@@ -293,9 +294,13 @@ function UrlDocumentBlock({
     scrollerRef.current = (deltaPx: number) => {
       const webview = getElectronWebviewBlock()
       if (!webview?.executeJavaScript) return
-      void webview
-        .executeJavaScript(`window.scrollBy({ top: ${Number(deltaPx)}, behavior: 'instant' })`)
-        .catch(() => { /* guest navigated or was destroyed mid-keypress */ })
+      // Throws (rather than rejects) while a new article's page is still
+      // attaching; a keypress then is simply dropped.
+      try {
+        void webview
+          .executeJavaScript(`window.scrollBy({ top: ${Number(deltaPx)}, behavior: 'instant' })`)
+          .catch(() => { /* guest navigated or was destroyed mid-keypress */ })
+      } catch { /* not dom-ready yet */ }
     }
     return () => { scrollerRef.current = null }
   }, [scrollerRef, isElectronRuntime, electronGuestMounted, getElectronWebviewBlock])
@@ -391,6 +396,7 @@ function UrlDocumentBlock({
 
     const stopMagnifier = startWebviewMagnifierBlock(webview)
     const stopShortcutRelay = startWebviewShortcutRelayBlock(webview, ['sidebar', 'header'])
+    const stopSiteCleanup = startWebviewSiteCleanupBlock(webview as unknown as Parameters<typeof startWebviewSiteCleanupBlock>[0])
 
     webview.addEventListener('did-navigate', updateCanGoBack)
     webview.addEventListener('did-navigate-in-page', updateCanGoBack)
@@ -398,6 +404,7 @@ function UrlDocumentBlock({
     return () => {
       stopMagnifier()
       stopShortcutRelay()
+      stopSiteCleanup()
       webview.removeEventListener('did-navigate', updateCanGoBack)
       webview.removeEventListener('did-navigate-in-page', updateCanGoBack)
       webview.removeEventListener('did-finish-load', updateCanGoBack as EventListener)
@@ -694,6 +701,19 @@ function UrlDocumentBlock({
 
       {/* Content area */}
       <div ref={contentAreaRef} className="relative min-h-0 flex-1 overflow-hidden">
+        {/* The site would not load: say so here, with the ways out */}
+        {pageLoadError && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background p-6">
+            <div className="w-full max-w-sm text-center">
+              <div className="text-sm font-medium text-foreground">This page did not load</div>
+              <p className="mt-1.5 text-xs text-muted-foreground">{pageLoadError}</p>
+              <div className="mt-4 flex justify-center gap-2">
+                <button type="button" onClick={handleReload} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted">Try again</button>
+                <button type="button" onClick={openExternal} className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted">Open in browser</button>
+              </div>
+            </div>
+          </div>
+        )}
         {isElectronRuntime ? (
           electronGuestMounted ? (
             <ElectronPersistentWebviewBlock

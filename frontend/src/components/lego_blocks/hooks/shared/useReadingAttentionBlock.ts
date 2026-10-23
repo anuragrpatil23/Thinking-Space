@@ -119,6 +119,9 @@ export interface ReadingAttentionOptions {
    * inactive, a surface leaving the screen.
    */
   inputs?: Record<string, unknown>
+  /** The record's title, when the file name is not one (a feed article's
+   *  cached file is named by its id; its headline is the title). */
+  title?: string
 }
 
 function sourceForPath(path: string): ThinkingspaceReadingSource {
@@ -315,7 +318,7 @@ export function useReadingAttentionBlock(
         source,
         filePath: path,
         ...(uuid ? { uuid } : {}),
-        title: readingTitleFromPathBlock(path),
+        title: optionsRef.current.title || readingTitleFromPathBlock(path),
         method: 'measured',
         startMs,
         endMs,

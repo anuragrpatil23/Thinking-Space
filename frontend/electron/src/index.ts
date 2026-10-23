@@ -52,6 +52,7 @@ import {
 import { libraryValueLineIssuesBlock, libraryValueLineReportBlock } from './lego_blocks/libraryValueLineBlock';
 import { clearLibraryCardBlock, saveLibraryCardBlock } from './lego_blocks/librarySessionBlock';
 import { earningsCallGetBlock, earningsCallsListBlock } from './lego_blocks/earningsCallsBlock';
+import { installReaderAdblockBlock } from './lego_blocks/readerAdblockBlock';
 import {
   readAiPlanUsageBlock,
   readClaudeUsageLogBlock,
@@ -433,6 +434,9 @@ if (electronIsDev) {
 }
 
 // Run Application
+// Ads and clutter blocked in the reader's in-app browser only (readerAdblockBlock.ts)
+installReaderAdblockBlock();
+
 if (hasSingleInstanceLock) {
   (async () => {
     try {

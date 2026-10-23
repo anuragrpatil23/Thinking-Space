@@ -30,7 +30,11 @@ import { readEarningsCallPassProgressOrch, readLastEarningsCallPassOrch, subscri
 import { readLastValueLinePassOrch, readValueLinePassProgressOrch, subscribeValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { FeedAiReaderSettingsBlock, useFeedAiReadBlock } from './FeedAiReaderBlock'
 import { FeedOverviewBlock } from './FeedOverviewBlock'
+import { WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK } from './WebullSidebarBlock'
 import { writeFeedReadLogsOrch } from '@/personal_extension/services/orchestrators/feedReadLogOrch'
+import { readWebullExecutionSettingsOrch } from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
+import { feedReadLogPathBlock } from '@/personal_extension/services/lego_blocks/units/feedReadLogBlock'
+import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import { F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK, F9_CHART_TOOLTIP_STYLE_BLOCK, F9PanelBlock, F9SegmentedBlock, FEED_PASTELS_BLOCK } from '../units/F9NativeBlock'
 
 // F9's Feed: the front of the loop, where things are first seen. One product
@@ -587,6 +591,30 @@ export default function WebullFeedBlock() {
   const library = useLibraryPassBlock()
   const aiReader = useFeedAiReadBlock()
 
+  // Reading the feed is reading, credited as one document per day — the day's
+  // record (F9-execution/feed/<day>.md) — so a pass through many articles is one
+  // sitting in AI activity, not a row per article. The surface is the whole
+  // Reading view (list and article): moving between articles keeps the
+  // sitting; only a real break ends it. Text read in the reader view and keys
+  // in the list count; a page in the in-app browser cannot be seen inside.
+  const readingSurfaceRef = useRef<HTMLDivElement>(null)
+  const [feedLogRoot, setFeedLogRoot] = useState<string | null>(null)
+  useEffect(() => {
+    void readWebullExecutionSettingsOrch().then(s => setFeedLogRoot(s.executionFolderPath || null)).catch(() => setFeedLogRoot(null))
+  }, [])
+  const today = new Date()
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  useReadingAttentionBlock(view === 'reading' && feedLogRoot ? feedReadLogPathBlock(feedLogRoot, todayKey) : null, view === 'reading', {
+    surfaceRef: readingSurfaceRef,
+    title: `Feed · ${today.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}`,
+    inputs: { surface: 'f9-feed', articleOpen: article !== null },
+  })
+
+  // Reading wants the room: fold the sidebar's business groups when it opens
+  useEffect(() => {
+    if (view === 'reading') window.dispatchEvent(new Event(WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK))
+  }, [view])
+
   // The lasting record (F9-execution/feed/<day>.md): written when the Feed
   // opens, when the AI finishes a pass, and when the Feed is left — read marks
   // made while reading land with the next of these. No timers.
@@ -657,7 +685,7 @@ export default function WebullFeedBlock() {
 
   // On iPhone an open article is the next screen; the list waits underneath.
   if (phone && article) {
-    return <div className="ltm-page-push-in -mx-7 -my-6 h-[calc(100dvh-1rem)] min-h-0">{reader}</div>
+    return <div ref={readingSurfaceRef} className="ltm-page-push-in -mx-7 -my-6 h-[calc(100dvh-1rem)] min-h-0">{reader}</div>
   }
 
   const panel = (
@@ -671,11 +699,13 @@ export default function WebullFeedBlock() {
     />
   )
 
+  // Reading keeps the header to one line, so the list and the article get the height
+  const compactHeader = view === 'reading' && !phone
   const header = (
-      <header className="flex flex-wrap items-start justify-between gap-4">
+      <header className={cn('flex flex-wrap justify-between gap-4', compactHeader ? 'items-center' : 'items-start')}>
         <div className="min-w-0">
-          <h1 className="text-[26px] font-bold leading-tight tracking-tight">Feed</h1>
-          <p className="mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">Where things are first seen. Write down what you notice.</p>
+          <h1 className={cn('font-bold leading-tight tracking-tight', compactHeader ? 'text-[20px]' : 'text-[26px]')}>Feed</h1>
+          {!compactHeader && <p className="mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">Where things are first seen. Write down what you notice.</p>}
         </div>
         <F9SegmentedBlock ariaLabel="Feed view" value={view} onChange={setView} options={[{ value: 'overview', label: 'Overview' }, { value: 'reading', label: 'Reading' }, { value: 'sources', label: 'Sources' }]} />
       </header>
@@ -686,7 +716,7 @@ export default function WebullFeedBlock() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className={cn("flex h-full min-h-0 flex-col", compactHeader ? "gap-3" : "gap-4")}>
       {header}
 
       {view === 'sources' ? (
@@ -696,11 +726,11 @@ export default function WebullFeedBlock() {
           <SourcesBlock />
         </div>
       ) : phone ? (
-        <div className="-mx-7 min-h-0 flex-1">{panel}</div>
+        <div ref={readingSurfaceRef} className="-mx-7 min-h-0 flex-1">{panel}</div>
       ) : (
         // Desktop: the list beside the article. The pair is pinned to the window's
         // height so the list and the article each scroll on their own, not the page.
-        <div className="grid h-[calc(100dvh-12rem)] min-h-[420px] grid-cols-[minmax(300px,380px)_minmax(0,1fr)] gap-4">
+        <div ref={readingSurfaceRef} className="grid h-[calc(100dvh-10rem)] min-h-[420px] grid-cols-[minmax(320px,400px)_minmax(0,1fr)] gap-3">
           <F9PanelBlock className="flex min-h-0 flex-col overflow-hidden"><div className="h-full min-h-0 flex-1">{panel}</div></F9PanelBlock>
           <F9PanelBlock className="flex min-h-0 flex-col overflow-hidden">
             {reader

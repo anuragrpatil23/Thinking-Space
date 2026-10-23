@@ -1,5 +1,5 @@
 import { type RefObject, useEffect, useState } from 'react'
-import { logError } from '@/services/lego_blocks/units/debugLogBlock'
+import { logInfo } from '@/services/lego_blocks/units/debugLogBlock'
 
 interface ElectronWebviewLoadFailureEventBlock {
   errorCode?: number
@@ -60,7 +60,9 @@ export function useElectronWebviewLoadErrorBlock({
       const description = String(ev?.errorDescription ?? 'Failed to load page.')
       const failedUrl = ev?.validatedURL ?? resolvedUrl ?? ''
       setLoadError(formatWebviewLoadErrorMessageBlock(description))
-      logError(description, failedUrl ? `URL: ${failedUrl}` : undefined, logSource)
+      // A site that will not load is the site's problem, not the app's: shown
+      // in place by the caller, and only noted in the debug log (no toast).
+      logInfo(description, failedUrl ? `URL: ${failedUrl}` : undefined, logSource)
     }
 
     webview.addEventListener('did-fail-load', handleFailLoad as EventListener)
