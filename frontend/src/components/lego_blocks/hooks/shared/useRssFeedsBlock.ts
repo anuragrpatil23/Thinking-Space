@@ -59,7 +59,9 @@ interface RssFeedsStateBlock {
 
 /** A cached store older than this refetches in the background on remount. Not a
  *  timer — nothing polls; this is only consulted when a surface mounts. */
-const STALE_AFTER_MS = 5 * 60 * 1000
+// Coming back after this long fetches every feed again (network only; the
+// stored backlog is not re-read). Fifteen minutes: news does not need more.
+const STALE_AFTER_MS = 15 * 60 * 1000
 /** Feeds whose retained backlog has been streamed in this session. The backlog
  *  is every saved article file for the feed, read from the vault 24 at a time;
  *  it does not change under the reader, so later loads fetch the live feed

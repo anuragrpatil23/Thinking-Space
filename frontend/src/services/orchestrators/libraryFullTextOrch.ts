@@ -64,13 +64,22 @@ function localDayBlock(d: Date): string {
 let running: Promise<LibraryPassBlock> | null = null
 
 /** One pass over the recent paywalled items. Concurrent calls share the pass. */
-export function runLibraryPassOrch(feeds: RssFeedResultBlock[], onProgress?: (done: number, total: number) => void): Promise<LibraryPassBlock> {
+export function runLibraryPassOrch(
+  feeds: RssFeedResultBlock[],
+  onProgress?: (done: number, total: number) => void,
+  /** Each article as its text lands, so the reader can update it in place */
+  onFilled?: (itemId: string, text: string) => void,
+): Promise<LibraryPassBlock> {
   if (running) return running
-  running = runPassBlock(feeds, onProgress).finally(() => { running = null })
+  running = runPassBlock(feeds, onProgress, onFilled).finally(() => { running = null })
   return running
 }
 
-async function runPassBlock(feeds: RssFeedResultBlock[], onProgress?: (done: number, total: number) => void): Promise<LibraryPassBlock> {
+async function runPassBlock(
+  feeds: RssFeedResultBlock[],
+  onProgress?: (done: number, total: number) => void,
+  onFilled?: (itemId: string, text: string) => void,
+): Promise<LibraryPassBlock> {
   const api = window.electronAPI
   const now = new Date()
   const results = new Map<string, LibrarySourceResultBlock>(LIBRARY_SOURCES_BLOCK.map((s) => [s.name, { name: s.name, tried: 0, filled: 0, notFound: 0, citationOnly: 0 }]))
@@ -126,6 +135,7 @@ async function runPassBlock(feeds: RssFeedResultBlock[], onProgress?: (done: num
       if (article.citationOnly || article.text.length < LIBRARY_MIN_TEXT_CHARS_BLOCK) { result.citationOnly += 1; continue }
       for (const itemId of entry.itemIds) {
         if (await setRssItemFullTextOrch(itemId, article.text)) {
+          onFilled?.(itemId, article.text.trim())
           result.filled += 1
           pass.filled += 1
         }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BookOpen, Bookmark, Check, ChevronLeft, ChevronRight, FolderInput, Globe, Loader2, Star, Tag, X } from 'lucide-react'
 import { loadReaderViewOrch, readerViewAvailableOrch } from '@/services/orchestrators/rssReaderViewOrch'
+import { rssLinkPaywalledBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import {
   markRssItemViewedOrch,
@@ -70,26 +71,43 @@ export default function RssArticleViewBlock({
   sourceLabel,
 }: RssArticleViewBlockProps) {
   const native = appearance === 'native'
-  // Native: the article opens as clean text (the reader view) when its text is
-  // in the cache or can be pulled from its page; "Page" shows the site itself.
-  const [showPage, setShowPage] = useState(false)
-  const [preparingReader, setPreparingReader] = useState(() => native && !item.textInCache && readerViewAvailableOrch(item))
+  // Native: the site opens by default (it has the pictures); R or the book
+  // button switches to the reader view, clean text pulled from the page on
+  // first use. Articles whose text came from the library or a feed behind a
+  // paywall open in the reader view, since their site would only show the wall.
+  const [readerOn, setReaderOn] = useState(() => native && Boolean(item.textInCache) && (!item.link || rssLinkPaywalledBlock(item.link)))
+  const [preparingReader, setPreparingReader] = useState(false)
+  const [readerNote, setReaderNote] = useState<string | null>(null)
   useEffect(() => {
-    if (!native || item.textInCache || showPage || !readerViewAvailableOrch(item)) {
+    if (!native || !readerOn || item.textInCache) {
       setPreparingReader(false)
+      return
+    }
+    if (!readerViewAvailableOrch(item)) {
+      setReaderOn(false)
+      setReaderNote('No reader view for this page.')
       return
     }
     let cancelled = false
     setPreparingReader(true)
+    setReaderNote(null)
     void loadReaderViewOrch(item).then((withText) => {
       if (cancelled) return
       setPreparingReader(false)
       if (withText) onItemUpdate?.(withText)
+      else {
+        setReaderOn(false)
+        setReaderNote('No reader view for this page.')
+      }
     })
     return () => { cancelled = true }
-    // One attempt per article; a change of its text is what ends it
-  }, [item.id, native, showPage]) // eslint-disable-line react-hooks/exhaustive-deps
-  const readerView = item.textInCache && !showPage
+    // One attempt per switch; a change of the article's text is what ends it
+  }, [item.id, native, readerOn]) // eslint-disable-line react-hooks/exhaustive-deps
+  const readerView = native && readerOn && Boolean(item.textInCache)
+  const toggleReader = useCallback(() => {
+    setReaderNote(null)
+    setReaderOn(prev => !prev)
+  }, [])
   const [tagMenuOpen, setTagMenuOpen] = useState(false)
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
@@ -160,6 +178,11 @@ export default function RssArticleViewBlock({
           onClose()
           return
       }
+      if (native && (event.key === 'r' || event.key === 'R') && (item.textInCache || readerViewAvailableOrch(item))) {
+        event.preventDefault()
+        toggleReader()
+        return
+      }
 
       const key = event.key === 'ArrowRight' || event.key === 'ArrowLeft'
         ? event.key
@@ -177,7 +200,7 @@ export default function RssArticleViewBlock({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => { window.removeEventListener('keydown', onKeyDown) }
-  }, [nav, showMoveDialog, onClose, markViewed])
+  }, [nav, showMoveDialog, onClose, markViewed, native, item, toggleReader])
 
   const applyMeta = useCallback((
     nextTags: string[],
@@ -382,11 +405,11 @@ export default function RssArticleViewBlock({
         {native && (item.textInCache || readerViewAvailableOrch(item)) && (
           <button
             type="button"
-            onClick={() => setShowPage(prev => !prev)}
-            title={readerView || preparingReader ? 'Show the page itself' : 'Show the article as clean text'}
-            className="mr-1 shrink-0 rounded p-0.5 text-muted-foreground/60 hover:text-muted-foreground"
+            onClick={toggleReader}
+            title={readerOn ? 'Show the page itself (R)' : 'Reader view: the article as clean text (R)'}
+            className={cn('mr-1 shrink-0 rounded p-0.5 hover:text-muted-foreground', readerOn ? 'text-foreground' : 'text-muted-foreground/60')}
           >
-            {readerView || preparingReader ? <Globe className="h-3.5 w-3.5" /> : <BookOpen className="h-3.5 w-3.5" />}
+            {readerOn ? <Globe className="h-3.5 w-3.5" /> : <BookOpen className="h-3.5 w-3.5" />}
           </button>
         )}
 
@@ -412,13 +435,16 @@ export default function RssArticleViewBlock({
       {/* URL content — wrapped so h-full inside UrlDocumentBlock resolves to the
            flex-allocated space, not the full container (fixes iOS WKWebView overlap) */}
       <div className="relative min-h-0 flex-1">
-        {readerView ? (
-          <CachedArticleTextBlock item={item} native={native} sourceLabel={sourceLabel} />
-        ) : preparingReader && !showPage ? (
+        {readerNote && (
+          <div className="absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-full bg-zinc-900/85 px-3 py-1 text-[11px] text-white shadow">{readerNote}</div>
+        )}
+        {(readerView || (!native && item.textInCache)) ? (
+          <CachedArticleTextBlock item={item} native={native} sourceLabel={sourceLabel} scrollerRef={articleScrollerRef} />
+        ) : preparingReader ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-[13px] text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             Preparing the reader view…
-            <button type="button" onClick={() => setShowPage(true)} className="text-[12px] text-sky-600 hover:text-sky-700 dark:text-sky-400">Open the page instead</button>
+            <button type="button" onClick={() => setReaderOn(false)} className="text-[12px] text-sky-600 hover:text-sky-700 dark:text-sky-400">Show the page instead</button>
           </div>
         ) : (
         <UrlDocumentBlock
@@ -502,14 +528,26 @@ export default function RssArticleViewBlock({
 
 /** The article's own text from the cache, for feeds whose links need a login.
  *  Paragraphs are the blank-line-separated blocks the outside tool wrote. */
-function CachedArticleTextBlock({ item, native = false, sourceLabel }: { item: RssFeedItemBlock; native?: boolean; sourceLabel?: string }) {
+function CachedArticleTextBlock({ item, native = false, sourceLabel, scrollerRef }: {
+  item: RssFeedItemBlock
+  native?: boolean
+  sourceLabel?: string
+  /** ↑/↓ and Page Up/Down scroll this text, as they scroll a page */
+  scrollerRef?: React.MutableRefObject<UrlDocumentScrollerBlock | null>
+}) {
+  const textScrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!scrollerRef) return
+    scrollerRef.current = (deltaPx: number) => { textScrollRef.current?.scrollBy({ top: deltaPx, behavior: 'smooth' }) }
+    return () => { scrollerRef.current = null }
+  }, [scrollerRef])
   const paragraphs = item.description.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean)
   const when = item.pubDate ? new Date(item.pubDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : null
   // Native: read like a publication — source and date in small caps above a
   // serif title, serif body, the original linked quietly at the end
   if (native) {
     return (
-      <div className="absolute inset-0 overflow-y-auto">
+      <div ref={textScrollRef} className="absolute inset-0 overflow-y-auto">
         <article className="mx-auto max-w-[680px] px-6 pb-16 pt-10">
           <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-500 dark:text-zinc-400">
             {[sourceLabel, when].filter(Boolean).join(' · ')}
@@ -528,7 +566,7 @@ function CachedArticleTextBlock({ item, native = false, sourceLabel }: { item: R
     )
   }
   return (
-    <div className="absolute inset-0 overflow-y-auto">
+    <div ref={textScrollRef} className="absolute inset-0 overflow-y-auto">
       <article className="mx-auto max-w-[680px] px-6 py-8">
         <h1 className="text-[24px] font-semibold leading-tight text-foreground">{item.title}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground">

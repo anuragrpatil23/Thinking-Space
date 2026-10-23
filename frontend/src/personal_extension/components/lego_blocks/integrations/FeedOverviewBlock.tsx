@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useRssFeedsBlock } from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
 import { rssFeedIdsExcludedFromAllUnreadBlock, rssReaderFeedsBlock, type RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
-import { buildRssDayInboxBlock, rssDayLabelBlock, rssStoryOthersLabelBlock, type RssStoryBlock } from '@/services/lego_blocks/units/rssStoryBlock'
+import { buildRssDayInboxBlock, recentRssFeedsBlock, rssDayLabelBlock, rssStoryOthersLabelBlock, type RssStoryBlock } from '@/services/lego_blocks/units/rssStoryBlock'
 import { readLastLibraryPassOrch } from '@/services/orchestrators/libraryFullTextOrch'
 import { readLastValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { cn } from '@/lib/utils'
@@ -74,9 +74,12 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
     try { localStorage.setItem(LAST_SEEN_KEY_BLOCK, String(Date.now())) } catch { /* optional */ }
   }, [])
 
+  // Today, yesterday and the week are all this page shows: group only those
+  // days, at low priority, so arriving feeds never hold up the page.
+  const deferredFeeds = useDeferredValue(feeds)
   const days = useMemo(
-    () => buildRssDayInboxBlock({ feeds: rssReaderFeedsBlock(feeds, preferences), configs: preferences?.feeds ?? [] }),
-    [feeds, preferences],
+    () => buildRssDayInboxBlock({ feeds: recentRssFeedsBlock(rssReaderFeedsBlock(deferredFeeds, preferences), 8), configs: preferences?.feeds ?? [] }),
+    [deferredFeeds, preferences],
   )
   const todayStories = useMemo(
     () => (days[0] && rssDayLabelBlock(days[0].day) === 'Today' ? days[0].sources.flatMap(s => s.stories) : []),

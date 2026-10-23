@@ -157,6 +157,13 @@ export function groupRssStoriesBlock(
   })
 }
 
+/** Only the articles published in the last `days` days (undated ones dropped):
+ *  grouping is the costly step, so views that show a few days group only those. */
+export function recentRssFeedsBlock(feeds: RssFeedResultBlock[], days: number, now = Date.now()): RssFeedResultBlock[] {
+  const since = now - days * 86_400_000
+  return feeds.map(feed => ({ ...feed, items: feed.items.filter(item => timeOfBlock(item) >= since) }))
+}
+
 export interface RssDayInboxBlock {
   /** YYYY-MM-DD, local */
   day: string

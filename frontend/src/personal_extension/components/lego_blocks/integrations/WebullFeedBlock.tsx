@@ -6,7 +6,7 @@ import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/use
 import { cn } from '@/lib/utils'
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
 import RssFeedPanelBlock from '@/components/lego_blocks/integrations/RssFeedPanelBlock'
-import { loadRssFeedsBlock, useRssFeedsBlock } from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
+import { loadRssFeedsBlock, replaceRssItemBlock, useRssFeedsBlock } from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { loadRssItemByIdOrch, readRssFeedPreferencesOrch, updateRssFeedOrch } from '@/services/orchestrators/rssFeedOrch'
@@ -107,9 +107,13 @@ function useLibraryPassBlock() {
     if (!available || feeds.length === 0) return
     setProgress({ done: 0, total: 0 })
     try {
-      const pass = await runLibraryPassOrch(feeds, (done, total) => setProgress({ done, total }))
+      // Filled articles are updated in place; reloading every feed re-read the whole cache
+      const byId = new Map(feeds.flatMap((feed) => feed.items.map((item) => [item.id, item] as const)))
+      const pass = await runLibraryPassOrch(feeds, (done, total) => setProgress({ done, total }), (itemId, text) => {
+        const item = byId.get(itemId)
+        if (item) replaceRssItemBlock({ ...item, description: text, textInCache: true })
+      })
       setLast(pass)
-      if (pass.filled > 0) await loadRssFeedsBlock(false, false)
     } finally {
       setProgress(null)
     }

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
   ArrowLeft,
   Bookmark,
@@ -338,9 +338,12 @@ export default function RssFeedPanelBlock({
     const chosen = new Set(sourceFilter)
     return chosen.size > 0 && inboxFeeds.some(feed => chosen.has(feed.feedId)) ? inboxFeeds.filter(feed => chosen.has(feed.feedId)) : inboxFeeds
   }, [inboxFeeds, sourceFilter])
+  // Grouping every day's stories is the costly step; deferred so a backlog
+  // still streaming in never holds up scrolling or the keyboard.
+  const deferredInboxFeeds = useDeferredValue(filteredInboxFeeds)
   const dayInbox = useMemo<RssDayInboxBlock[]>(
-    () => (dayMode ? buildRssDayInboxBlock({ feeds: filteredInboxFeeds, configs: preferences?.feeds ?? [], unreadOnly, sessionReadIds }) : []),
-    [dayMode, filteredInboxFeeds, preferences, unreadOnly, sessionReadIds],
+    () => (dayMode ? buildRssDayInboxBlock({ feeds: deferredInboxFeeds, configs: preferences?.feeds ?? [], unreadOnly, sessionReadIds }) : []),
+    [dayMode, deferredInboxFeeds, preferences, unreadOnly, sessionReadIds],
   )
   const { expanded: foldedSources, toggle: toggleSourceFolded } = useExpandedSetBlock('ltm-rss-folded-sources')
   useEffect(() => {

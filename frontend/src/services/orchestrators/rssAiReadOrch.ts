@@ -63,7 +63,12 @@ export interface FeedAiReadPassBlock {
   provider: string
   model: string
   error: string | null
+  /** The provider itself failed (not running, no model): wait before asking again */
+  providerDown?: boolean
 }
+
+/** After the model was not there, how long before trying it again (or until the settings change). */
+const PROVIDER_RETRY_MS = 15 * 60 * 1000
 
 export interface FeedAiReadProgressBlock {
   done: number
@@ -114,6 +119,9 @@ export function runFeedAiReadPassOrch(
 ): Promise<FeedAiReadPassBlock> {
   if (running) return running
   const settings = readFeedAiReaderOrch()
+  const last = readLastFeedAiReadOrch()
+  if (last?.providerDown && last.provider === settings.provider && last.model === settings.model
+    && Date.now() - Date.parse(last.at) < PROVIDER_RETRY_MS) return Promise.resolve(last)
   running = (async () => {
     const pass: FeedAiReadPassBlock = { at: new Date().toISOString(), read: 0, failed: 0, provider: settings.provider, model: settings.model, error: null }
     if (settings.provider === 'off' || !feedAiReadAvailableOrch()) return pass
@@ -138,7 +146,10 @@ export function runFeedAiReadPassOrch(
         pass.failed += 1
         pass.error = result.ok ? 'The model gave no usable summary.' : result.error.message
         // A provider that is off or missing fails every article the same way
-        if (!result.ok && /not configured|no model|unavailable|ECONNREFUSED|fetch failed/i.test(result.error.message)) break
+        if (!result.ok && /not configured|no model|unavailable|ECONNREFUSED|fetch failed/i.test(result.error.message)) {
+          pass.providerDown = true
+          break
+        }
       }
       progress = { done: pass.read + pass.failed, total: work.length }
       notifyBlock()

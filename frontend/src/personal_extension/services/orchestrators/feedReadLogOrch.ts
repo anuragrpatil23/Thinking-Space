@@ -7,7 +7,7 @@
 
 import { getVaultFS, isElectron } from '@/services/lego_blocks/integrations/fsBlock'
 import { rssReaderFeedsBlock, type RssFeedPreferencesBlock, type RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
-import { buildRssDayInboxBlock } from '@/services/lego_blocks/units/rssStoryBlock'
+import { buildRssDayInboxBlock, recentRssFeedsBlock } from '@/services/lego_blocks/units/rssStoryBlock'
 import { buildFeedReadLogBlock, feedReadLogPathBlock, feedReadLogStoryCountBlock } from '../lego_blocks/units/feedReadLogBlock'
 import { readWebullExecutionSettingsOrch } from './webullExecutionSettingsOrch'
 
@@ -22,7 +22,7 @@ export function writeFeedReadLogsOrch(feeds: RssFeedResultBlock[], preferences: 
     if (!isElectron() || !preferences || feeds.length === 0) return 0
     const { executionFolderPath } = await readWebullExecutionSettingsOrch()
     if (!executionFolderPath) return 0
-    const days = buildRssDayInboxBlock({ feeds: rssReaderFeedsBlock(feeds, preferences), configs: preferences.feeds })
+    const days = buildRssDayInboxBlock({ feeds: recentRssFeedsBlock(rssReaderFeedsBlock(feeds, preferences), REWRITE_DAYS + 1), configs: preferences.feeds })
       .filter(day => day.day !== 'undated')
       .slice(0, REWRITE_DAYS)
     const fs = getVaultFS()

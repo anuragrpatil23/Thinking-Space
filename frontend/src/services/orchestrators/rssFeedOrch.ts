@@ -265,8 +265,31 @@ function extractRssFrontmatterBlock(content: string): Record<string, unknown> | 
  * unless they have tags or `keep: true` / `important: true` in their frontmatter.
  * Called fire-and-forget after each fetch.
  */
+// The purge reads every stored article of a feed to learn its age, so it runs
+// at most once a day per feed, not after every fetch: a refresh of ~80 feeds
+// used to re-read the whole cache (thousands of files) each time.
+const PURGE_EVERY_MS = 24 * 60 * 60 * 1000
+const PURGE_LAST_KEY = 'ltm-rss-last-purge'
+
+function purgeDueBlock(feedId: string, now = Date.now()): boolean {
+  try {
+    const last = (JSON.parse(localStorage.getItem(PURGE_LAST_KEY) ?? '{}') as Record<string, number>)[feedId] ?? 0
+    return now - last > PURGE_EVERY_MS
+  } catch {
+    return true
+  }
+}
+
+function markPurgedBlock(feedId: string, now = Date.now()): void {
+  try {
+    const all = JSON.parse(localStorage.getItem(PURGE_LAST_KEY) ?? '{}') as Record<string, number>
+    localStorage.setItem(PURGE_LAST_KEY, JSON.stringify({ ...all, [feedId]: now }))
+  } catch { /* storage is optional; the next fetch purges again */ }
+}
+
 async function purgeOldRssItemsOrch(feedId: string, retentionDays: number): Promise<void> {
-  if (retentionDays <= 0) return
+  if (retentionDays <= 0 || !purgeDueBlock(feedId)) return
+  markPurgedBlock(feedId)
   const fs = getVaultFS()
   const dir = `${RSS_ARTICLES_DIR}/${feedId}`
   let files: string[]
