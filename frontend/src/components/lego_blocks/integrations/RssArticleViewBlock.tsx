@@ -121,6 +121,24 @@ export default function RssArticleViewBlock({
   const [moving, setMoving] = useState(false)
   const [moveError, setMoveError] = useState<string | null>(null)
 
+  // The view stays mounted from article to article (its in-app browser just
+  // navigates, rather than a new one being created each time), so per-article
+  // state resets here when the article changes — during render, before any
+  // effect reads it.
+  const [shownItemId, setShownItemId] = useState(item.id)
+  if (shownItemId !== item.id) {
+    setShownItemId(item.id)
+    setTags(item.tags ?? [])
+    setKeep(item.keep ?? false)
+    setImportant(item.important ?? false)
+    setTagMenuOpen(false)
+    setShowMoveDialog(false)
+    setMoveError(null)
+    setReaderOn(native && Boolean(item.textInCache) && (!item.link || rssLinkPaywalledBlock(item.link)))
+    setPreparingReader(false)
+    setReaderNote(null)
+  }
+
   // Scrolls the embedded article from the host document. Only Electron populates
   // this (see UrlDocumentBlock) — elsewhere the guest page is unscriptable and
   // ↑/↓ fall back to being ignored here.

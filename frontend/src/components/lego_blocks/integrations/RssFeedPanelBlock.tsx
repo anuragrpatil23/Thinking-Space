@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { createContext, memo, useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
   ArrowLeft,
   Bookmark,
@@ -64,6 +64,7 @@ import {
 } from '@/services/lego_blocks/units/tagBlock'
 import { cn } from '@/lib/utils'
 import RssItemAnnotationMarksBlock from '@/components/lego_blocks/units/RssItemAnnotationMarksBlock'
+import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import {
   buildRssDayInboxBlock,
   rssDayLabelBlock,
@@ -341,9 +342,14 @@ export default function RssFeedPanelBlock({
   // Grouping every day's stories is the costly step; deferred so a backlog
   // still streaming in never holds up scrolling or the keyboard.
   const deferredInboxFeeds = useDeferredValue(filteredInboxFeeds)
+  // Remembered across visits, keyed on the store snapshot and the filters that
+  // shape it, so returning to the list does not regroup every story
   const dayInbox = useMemo<RssDayInboxBlock[]>(
-    () => (dayMode ? buildRssDayInboxBlock({ feeds: deferredInboxFeeds, configs: preferences?.feeds ?? [], unreadOnly, sessionReadIds }) : []),
-    [dayMode, deferredInboxFeeds, preferences, unreadOnly, sessionReadIds],
+    () => (dayMode
+      ? identityMemoBlock('rss-day-inbox', [allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter.join(','), deferredInboxFeeds === filteredInboxFeeds], () =>
+        buildRssDayInboxBlock({ feeds: deferredInboxFeeds, configs: preferences?.feeds ?? [], unreadOnly, sessionReadIds }))
+      : []),
+    [dayMode, deferredInboxFeeds, filteredInboxFeeds, allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter],
   )
   const { expanded: foldedSources, toggle: toggleSourceFolded } = useExpandedSetBlock('ltm-rss-folded-sources')
   useEffect(() => {
@@ -1373,7 +1379,8 @@ function DayInboxRenderer({
                   const row = (
                     <FeedItemRow
                       key={rowId}
-                      item={story.read && !story.lead.item.read ? { ...story.lead.item, read: true } : story.lead.item}
+                      item={story.lead.item}
+                      readOverride={story.read}
                       rowId={rowId}
                       idx={idx}
                       alsoInLabel={others?.label}
@@ -1404,8 +1411,13 @@ function DayInboxRenderer({
 // Feed item row — single article row
 // ---------------------------------------------------------------------------
 
-function FeedItemRow({
-  item,
+// Memoised: moving the selection re-renders only the two rows whose
+// `isSelected` changed, not every row of every day in the list.
+const FeedItemRow = memo(FeedItemRowImpl)
+
+function FeedItemRowImpl({
+  item: rawItem,
+  readOverride,
   rowId,
   idx,
   sourceLabel,
@@ -1420,6 +1432,8 @@ function FeedItemRow({
   tagColors,
 }: {
   item: RssFeedItemBlock
+  /** The whole story is read (another copy was): show this row as read */
+  readOverride?: boolean
   rowId: string
   idx: number
   /** Source feed name, shown only in the merged unread inbox. */
@@ -1435,6 +1449,7 @@ function FeedItemRow({
   registerItemButton: (rowId: string, node: HTMLButtonElement | null) => void
   tagColors: Record<string, string>
 }) {
+  const item = readOverride && !rawItem.read ? { ...rawItem, read: true } : rawItem
   const hasMeta = item.keep || item.important || (item.tags?.length ?? 0) > 0
   return (
     <button
@@ -1444,7 +1459,8 @@ function FeedItemRow({
       onKeyDown={event => onItemKeyDown(rowId, event)}
       className={cn(
         // No focus ring: the selection colour already marks the row, and keyboard reading is the main way through
-        'flex w-full items-start gap-2 border-b border-border/40 px-3 py-3 text-left text-xs outline-none transition-colors duration-200 focus-visible:outline-none focus-visible:ring-0',
+        // No colour transition: the selection must land the moment a key is pressed
+        'flex w-full items-start gap-2 border-b border-border/40 px-3 py-3 text-left text-xs outline-none focus-visible:outline-none focus-visible:ring-0',
         deleteMode && isPendingDelete && 'border-destructive/30 bg-destructive/10 hover:bg-destructive/15',
         deleteMode && !isPendingDelete && 'opacity-40',
         !deleteMode && isSelected && 'border-[var(--ltm-explorer-selected-color,#c73773)] bg-[var(--ltm-explorer-selected-color,#c73773)] text-white hover:bg-[var(--ltm-explorer-selected-color,#c73773)]',

@@ -30,6 +30,7 @@ import { readEarningsCallPassProgressOrch, readLastEarningsCallPassOrch, subscri
 import { readLastValueLinePassOrch, readValueLinePassProgressOrch, subscribeValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { FeedAiReaderSettingsBlock, useFeedAiReadBlock } from './FeedAiReaderBlock'
 import { FeedOverviewBlock } from './FeedOverviewBlock'
+import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK } from './WebullSidebarBlock'
 import { writeFeedReadLogsOrch } from '@/personal_extension/services/orchestrators/feedReadLogOrch'
 import { readWebullExecutionSettingsOrch } from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
@@ -222,7 +223,7 @@ function VolumeChartBlock() {
   const { hostRef, isDark } = useDarkModeClassBlock()
   const colors = { all: FEED_PASTELS_BLOCK.lavender.line, readable: FEED_PASTELS_BLOCK.mint.line }
   const fills = { all: FEED_PASTELS_BLOCK.lavender.fill, readable: FEED_PASTELS_BLOCK.mint.fill }
-  const data = useMemo(() => rssDailyVolumeBlock(feeds, new Date(), 30).map((d) => ({
+  const data = useMemo(() => identityMemoBlock('feed-volume', [feeds, new Date().toDateString()], () => rssDailyVolumeBlock(feeds, new Date(), 30)).map((d) => ({
     day: d.day,
     all: d.readable + d.teaser,
     readable: d.readable,
@@ -666,8 +667,9 @@ export default function WebullFeedBlock() {
   }, [])
 
   const reader = article && (
+    // Not keyed by article: the reader (and its in-app browser) stays mounted and
+    // navigates, which makes stepping to the next article immediate
     <RssArticleViewBlock
-      key={article.item.id}
       item={article.item}
       onClose={() => setArticle(null)}
       onItemUpdate={(updated) => {

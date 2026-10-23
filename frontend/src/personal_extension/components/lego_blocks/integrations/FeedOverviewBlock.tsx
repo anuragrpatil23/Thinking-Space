@@ -5,6 +5,7 @@ import { buildRssDayInboxBlock, recentRssFeedsBlock, rssDayLabelBlock, rssStoryO
 import { readLastLibraryPassOrch } from '@/services/orchestrators/libraryFullTextOrch'
 import { readLastValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { cn } from '@/lib/utils'
+import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { FEED_PASTELS_BLOCK, F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK, F9_CHART_TOOLTIP_STYLE_BLOCK, F9FactRowBlock, F9PanelBlock } from '../units/F9NativeBlock'
 import type { useFeedAiReadBlock } from './FeedAiReaderBlock'
@@ -77,8 +78,10 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
   // Today, yesterday and the week are all this page shows: group only those
   // days, at low priority, so arriving feeds never hold up the page.
   const deferredFeeds = useDeferredValue(feeds)
+  // Remembered across visits: the same feed snapshot never regroups
   const days = useMemo(
-    () => buildRssDayInboxBlock({ feeds: recentRssFeedsBlock(rssReaderFeedsBlock(deferredFeeds, preferences), 8), configs: preferences?.feeds ?? [] }),
+    () => identityMemoBlock('feed-overview-days', [deferredFeeds, preferences], () =>
+      buildRssDayInboxBlock({ feeds: recentRssFeedsBlock(rssReaderFeedsBlock(deferredFeeds, preferences), 8), configs: preferences?.feeds ?? [] })),
     [deferredFeeds, preferences],
   )
   const todayStories = useMemo(
