@@ -62,6 +62,9 @@ const MONTHS_BLOCK = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 's
 export function parseResearchDateKeyBlock(name: string): number {
   const iso = name.match(/(\d{4})-(\d{2})-(\d{2})/)
   if (iso) return Number(iso[1]) * 10000 + Number(iso[2]) * 100 + Number(iso[3])
+  // Value Line issues are filed by month: "2026-04.pdf"
+  const yearMonth = name.match(/^(\d{4})-(\d{2})(?:\D|$)/)
+  if (yearMonth) return Number(yearMonth[1]) * 10000 + Number(yearMonth[2]) * 100
   const year = name.match(/(?:^|\D)(20\d{2})(?:\D|$)/)?.[1]
   if (!year) return 0
   const lower = name.toLowerCase()
@@ -91,4 +94,30 @@ export function researchFolderMatchesBlock(folderName: string, ticker: string, c
 
 export function isValueLineFolderBlock(folderName: string): boolean {
   return /value\s*line/i.test(folderName)
+}
+
+/**
+ * Value Line reports live in F9-execution/<TICKER>/valueline/, one PDF per
+ * issue named by its month ("2026-04.pdf"). Value Line reviews each stock
+ * about every 13 weeks, so an issue older than that is due for a new one.
+ */
+export const VALUE_LINE_FOLDER_NAME_BLOCK = 'valueline'
+export const VALUE_LINE_REVIEW_DAYS_BLOCK = 13 * 7
+
+/** "August 2025" from a report's date key; the file name when it has none. */
+export function valueLineIssueLabelBlock(file: WebullResearchFileBlock): string {
+  const year = Math.floor(file.dateKey / 10000)
+  const month = Math.floor((file.dateKey % 10000) / 100)
+  if (!year || !month) return file.name
+  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
+/** True when the newest issue is older than one review cycle (a month-dated issue counts from its month's end). */
+export function valueLineDueBlock(latest: WebullResearchFileBlock | null, now: Date): boolean {
+  if (!latest || !latest.dateKey) return false
+  const year = Math.floor(latest.dateKey / 10000)
+  const month = Math.floor((latest.dateKey % 10000) / 100) || 12
+  const day = latest.dateKey % 100
+  const issued = day ? new Date(year, month - 1, day) : new Date(year, month, 0)
+  return (now.getTime() - issued.getTime()) / 86_400_000 > VALUE_LINE_REVIEW_DAYS_BLOCK
 }

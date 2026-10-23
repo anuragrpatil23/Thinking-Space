@@ -4,6 +4,8 @@ import {
   parseWebullObservationsBlock,
   parseWebullPriceSeriesBlock,
   researchFolderMatchesBlock,
+  valueLineDueBlock,
+  valueLineIssueLabelBlock,
 } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
 
 describe('webullCompanyDossierBlock', () => {
@@ -28,5 +30,17 @@ describe('webullCompanyDossierBlock', () => {
     expect(researchFolderMatchesBlock('Marvell', 'MRVL', 'Marvell Technology')).toBe(true)
     expect(researchFolderMatchesBlock('Applied Digital', 'AMAT', 'Applied Materials')).toBe(false)
     expect(researchFolderMatchesBlock('Applied Materials', 'AMAT', 'Applied Materials, Inc.')).toBe(true)
+  })
+
+  it('reads Value Line issues filed by month and knows when one is due', () => {
+    const key = parseResearchDateKeyBlock('2026-04.pdf')
+    expect(key).toBe(20260400)
+    const issue = { path: 'MU/valueline/2026-04.pdf', name: '2026-04', dateKey: key }
+    expect(valueLineIssueLabelBlock(issue)).toBe('April 2026')
+    // Counted from the end of April: due once 13 weeks have passed
+    expect(valueLineDueBlock(issue, new Date(2026, 6, 25))).toBe(false)
+    expect(valueLineDueBlock(issue, new Date(2026, 7, 5))).toBe(true)
+    expect(valueLineDueBlock(null, new Date())).toBe(false)
+    expect(parseResearchDateKeyBlock('August 2025.pdf')).toBe(20250800)
   })
 })

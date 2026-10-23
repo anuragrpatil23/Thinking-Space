@@ -285,6 +285,10 @@ The flow is **Noticed → Gap → Act**. A Noticed record is something seen happ
 - "Make it a gap" opens the New gap panel pre-filled, then links both ways: the record gets `status: became-gap` + `gap: G-xxxx`, the gap gets `from_noticed: "[[<record>]]"`.
 - The record board (script headings, pastel notes, dashed time columns, the canvas sheet) is shared: `gaps/components/lego_blocks/units/GapRecordBoardPartsBlock.tsx`, used by the gap page and the Noticed page.
 
+## F9 Value Line reports
+
+Value Line PDFs are first-class F9 records: `F9-execution/<TICKER>/valueline/YYYY-MM.pdf`, one file per issue, named by issue month (moved there from the per-company research folders 2026-10-23, vault commit `cc854e24`). `webullCompanyDossierVaultBlock` reads that folder first and still picks up any PDF left in an old "Valueline Reports" research folder. `valueLineIssueLabelBlock` shows "April 2026"; `valueLineDueBlock` flags an issue older than one review cycle (13 weeks, counted from the month's end) — the company page shows "due ·", and it is the hook the library auto-fetch will use. The fetch itself (every tracked company, through the library session in the Electron main process) is not built yet.
+
 ## F9 Sim replays (private)
 
 A replay is the F9 loop at a moment in history: one company, the desk on day 0, the weeks after it a week at a time, then the year that followed. Spec: vault `kai-workspace/F9/f9-sim-replay-build-spec.md`. It is a **walk with an anchor** (`kind: replay` in `walk.yaml`), not a third system: the same folder, fetcher (`fetch-sim-walk.py`), masking, tags and sim gaps as walks. The first `lookback_steps` weeks of the stream are the desk on day 0.

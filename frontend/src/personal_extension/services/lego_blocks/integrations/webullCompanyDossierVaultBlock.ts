@@ -1,5 +1,5 @@
-// Gather one company's page from the vault: its study record, observations
-// and price history (under F9-execution), plus its research folder
+// Gather one company's page from the vault: its study record, observations,
+// price history and Value Line issues (under F9-execution), plus its research folder
 // (ValueLine reports, earnings calls, launches, thoughts) under
 // "Thoughts, Predictions, launches and Postmortem". Read-only.
 
@@ -7,6 +7,7 @@ import { getFileContent, listFolderEntries } from '@/services/orchestrators/file
 import { parseWebullStudyRecordBlock, type WebullStudyRecordBlock } from '../units/webullStudyRecordBlock'
 import {
   isValueLineFolderBlock,
+  VALUE_LINE_FOLDER_NAME_BLOCK,
   parseResearchDateKeyBlock,
   parseWebullObservationsBlock,
   parseWebullPriceSeriesBlock,
@@ -120,13 +121,14 @@ export async function loadWebullCompanyDossierBlock(params: {
   const warnings: string[] = []
 
   // Without a ticker (a research-only company) there is no company folder to read.
-  const [study, observationsText, pricesText] = ticker
+  const [study, observationsText, pricesText, valueLineFiles] = ticker
     ? await Promise.all([
         findStudyRecordBlock(executionRoot, ticker),
         readTextBlock(`${companyFolder}/observations.md`),
         readTextBlock(`${companyFolder}/prices.csv`),
+        listFolderEntries(`${companyFolder}/${VALUE_LINE_FOLDER_NAME_BLOCK}`).then(e => e.files).catch(() => [] as string[]),
       ])
-    : [null, null, null]
+    : [null, null, null, [] as string[]]
   const companyName = study?.company ?? params.companyName
   const researchFolderPath = await findResearchFolderBlock(researchRoot, ticker, companyName)
   const research = researchFolderPath
@@ -141,7 +143,11 @@ export async function loadWebullCompanyDossierBlock(params: {
     observations: observationsText ? parseWebullObservationsBlock(observationsText) : [],
     prices: pricesText ? parseWebullPriceSeriesBlock(pricesText) : [],
     researchFolderPath,
-    valueLineReports: research.valueLineReports,
+    // Issues in F9-execution/<TICKER>/valueline/ first; any still in an old research folder too
+    valueLineReports: sortResearchFilesBlock([
+      ...valueLineFiles.filter(name => /\.pdf$/i.test(name)).map(name => toResearchFileBlock(`${companyFolder}/${VALUE_LINE_FOLDER_NAME_BLOCK}`, name)),
+      ...research.valueLineReports,
+    ]),
     researchGroups: research.groups,
     warnings,
   }

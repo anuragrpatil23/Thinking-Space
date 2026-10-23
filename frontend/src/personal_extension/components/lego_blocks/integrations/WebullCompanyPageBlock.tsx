@@ -15,7 +15,7 @@ import {
   F9_CHART_TOOLTIP_STYLE_BLOCK,
 } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
-import type { WebullResearchFileBlock, WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
+import { valueLineDueBlock, valueLineIssueLabelBlock, type WebullResearchFileBlock, type WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
 import { cn } from '@/lib/utils'
 
 const OBSERVATION_PREVIEW_BLOCK = 1
@@ -81,7 +81,7 @@ function ResearchPanelBlock({ reports, groups, onOpenFile }: {
   const [openGroup, setOpenGroup] = useState<string | null>(null)
   const toggle = (label: string) => setOpenGroup(prev => (prev === label ? null : label))
   const rows: Array<{ label: string; files: WebullResearchFileBlock[]; isReport: boolean }> = [
-    ...(reports.length > 0 ? [{ label: 'ValueLine', files: reports, isReport: true }] : []),
+    ...(reports.length > 0 ? [{ label: 'Value Line', files: reports, isReport: true }] : []),
     ...groups.map(group => ({ label: group.label, files: group.files, isReport: false })),
   ]
   return (
@@ -99,7 +99,14 @@ function ResearchPanelBlock({ reports, groups, onOpenFile }: {
             >
               <span className="truncate">{row.label}</span>
               <span className="flex shrink-0 items-center gap-1 text-zinc-500 dark:text-zinc-400">
-                {row.isReport ? row.files[0].name : row.files.length}
+                {row.isReport
+                  ? (
+                    <>
+                      {valueLineDueBlock(row.files[0], new Date()) && <span className="text-[11px] text-amber-700 dark:text-amber-400" title="Older than one review cycle (about 13 weeks)">due ·</span>}
+                      {valueLineIssueLabelBlock(row.files[0])}
+                    </>
+                  )
+                  : row.files.length}
                 <ChevronRight className={cn('h-3.5 w-3.5 opacity-60 transition-transform', expanded && 'rotate-90')} />
               </span>
             </button>
@@ -112,7 +119,7 @@ function ResearchPanelBlock({ reports, groups, onOpenFile }: {
                       onClick={() => onOpenFile(file.path)}
                       className="block w-full truncate px-4 py-1.5 pl-7 text-left text-xs text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
                     >
-                      {file.name}
+                      {row.isReport ? valueLineIssueLabelBlock(file) : file.name}
                     </button>
                   </li>
                 ))}
