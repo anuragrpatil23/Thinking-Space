@@ -205,9 +205,82 @@ interface IntervalBlock {
   spenders: Array<{ sid: string; spend: number; model: string | null; uncertain: boolean }>
 }
 
+/**
+ * A drop this far below the high-water mark, inside one window, may be the
+ * provider wiping the meter early without moving its reset time (seen on
+ * 2026-10-21: weekly 66% → 0%, reset still three days out). Stale readings
+ * from idle sessions dip by a few points, never this far without also failing
+ * the freshness and confirmation checks below.
+ */
+const IN_PLACE_RESET_DROP_BLOCK = 20
+
+/**
+ * After an in-place reset, a jump larger than this back into the old window's
+ * range is presumed to be an echo of a pre-reset value until the same session
+ * confirms it.
+ */
+const ECHO_JUMP_BLOCK = 10
+
 interface WindowInstanceBlock {
   resetsAt: number | null
   hwm: number
+  /** A fresh reading far below `hwm`, waiting for its session to confirm it. */
+  pendingReset?: { sid: string }
+  /** Set once the meter was wiped in place: the highest value before the wipe. */
+  echoCeiling?: number
+  /** A big post-reset jump into the echo range, waiting for confirmation. */
+  pendingJump?: { sid: string; value: number }
+}
+
+/**
+ * Movement revealed by one reading of a window we already know. Mutates the
+ * instance's high-water mark and in-place reset state.
+ *
+ * `fresh` means the reading's session spent since its previous sample, so the
+ * value came from a new response rather than an idle status line re-showing an
+ * old one. Only fresh readings can wipe the meter, and after a wipe only fresh
+ * ones can move it while it is still below the pre-wipe peak.
+ */
+function knownWindowDeltaBlock(
+  instance: WindowInstanceBlock,
+  value: number,
+  sid: string,
+  fresh: boolean,
+): number {
+  if (value < instance.hwm - IN_PLACE_RESET_DROP_BLOCK) {
+    if (!fresh) return 0
+    if (instance.pendingReset?.sid === sid) {
+      // The same session read low twice in a row: the meter really was wiped,
+      // and it restarted from zero, so its current value is all new movement.
+      instance.echoCeiling = Math.max(instance.hwm, instance.echoCeiling ?? 0)
+      instance.hwm = value
+      instance.pendingReset = undefined
+      instance.pendingJump = undefined
+      return Math.max(0, value)
+    }
+    instance.pendingReset = { sid }
+    return 0
+  }
+  if (fresh && instance.pendingReset?.sid === sid) instance.pendingReset = undefined
+
+  const ceiling = instance.echoCeiling
+  if (ceiling != null && value <= ceiling) {
+    if (!fresh) return 0
+    if (value > instance.hwm + ECHO_JUMP_BLOCK) {
+      const pending = instance.pendingJump
+      if (pending?.sid !== sid || value < pending.value - ECHO_JUMP_BLOCK) {
+        instance.pendingJump = { sid, value }
+        return 0
+      }
+    }
+    if (instance.pendingJump?.sid === sid) instance.pendingJump = undefined
+  }
+
+  // High-water mark, so a meter that dips a point and recovers is not counted
+  // twice.
+  const delta = Math.max(0, value - instance.hwm)
+  instance.hwm = Math.max(instance.hwm, value)
+  return delta
 }
 
 /**
@@ -230,7 +303,16 @@ function intervalsForKindBlock(
   let nextCurve = 0
   let active: SessionCurveBlock[] = []
 
+  // sid → its spend at its previous sample, to tell a new response's reading
+  // from an idle status line re-showing an old one.
+  const lastSpend = new Map<string, number>()
+
   for (const s of samples) {
+    const prevSpend = lastSpend.get(s.sid)
+    // Changed rather than grew: a resumed session's counter restarts lower.
+    const spentSincePrev = s.spend != null && prevSpend != null && s.spend !== prevSpend
+    if (s.spend != null && Number.isFinite(s.spend)) lastSpend.set(s.sid, s.spend)
+
     const value = kind === 'session' ? s.session : s.weekly
     if (value == null || !Number.isFinite(value)) continue
     const resetsAt = kind === 'session' ? s.sessionResetsAt : s.weeklyResetsAt
@@ -254,10 +336,7 @@ function intervalsForKindBlock(
     let lower = prevT
     let fresh = false
     if (instance) {
-      // High-water mark, so a meter that dips a point and recovers is not
-      // counted twice.
-      delta = Math.max(0, value - instance.hwm)
-      instance.hwm = Math.max(instance.hwm, value)
+      delta = knownWindowDeltaBlock(instance, value, s.sid, spentSincePrev)
     } else {
       fresh = true
       const startedAt = resetsAt != null ? resetsAt - WINDOW_SECONDS_BLOCK[kind] : null

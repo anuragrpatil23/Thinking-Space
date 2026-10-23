@@ -192,6 +192,60 @@ describe('buildLimitLedgerBlock', () => {
     expect(got.a.session + (got.x?.session ?? 0) + (got['(none)']?.session ?? 0)).toBeLessThanOrEqual(5)
   })
 
+  it('keeps counting after the provider wipes the meter without moving its reset time', () => {
+    // 2026-10-21: weekly went 66% → 0% with the reset still three days out.
+    const ledger = buildLimitLedgerBlock([
+      sample(0, 'a', null, 60, 0),
+      sample(5, 'a', null, 66, 1),
+      sample(10, 'a', null, 0, 2), // wiped
+      sample(15, 'a', null, 0, 3), // confirmed by the same session
+      sample(20, 'a', null, 3, 4),
+      sample(25, 'a', null, 8, 5),
+    ])
+    expect(totals(ledger).a.weekly).toBeCloseTo(14)
+  })
+
+  it('does not take an idle session re-showing an old low value for a wipe', () => {
+    const ledger = buildLimitLedgerBlock([
+      sample(0, 'a', null, 10, 0),
+      sample(5, 'idle', null, 10, 7),
+      sample(10, 'a', null, 39, 1),
+      sample(15, 'idle', null, 13, 7), // no new spend: a stale echo
+      sample(16, 'idle', null, 13, 7),
+      sample(20, 'a', null, 40, 2),
+      sample(25, 'a', null, 41, 3),
+    ])
+    expect(totals(ledger).a.weekly).toBe(31)
+  })
+
+  it('needs the same session to read low twice before calling it a wipe', () => {
+    const ledger = buildLimitLedgerBlock([
+      sample(0, 'a', null, 40, 0),
+      sample(5, 'b', null, 40, 0),
+      sample(10, 'b', null, 1, 1), // one fresh but stale low reading
+      sample(15, 'a', null, 41, 1),
+      sample(20, 'b', null, 42, 2),
+    ])
+    const got = totals(ledger)
+    expect((got.a?.weekly ?? 0) + (got.b?.weekly ?? 0) + (got['(none)']?.weekly ?? 0)).toBe(2)
+  })
+
+  it('ignores a pre-wipe value echoed after the wipe, but accepts a confirmed jump', () => {
+    const ledger = buildLimitLedgerBlock([
+      sample(0, 'a', null, 66, 0),
+      sample(1, 'b', null, 66, 0),
+      sample(5, 'a', null, 0, 1),
+      sample(10, 'a', null, 2, 2),
+      sample(15, 'b', null, 65, 1), // echo of the old meter, with new spend
+      sample(16, 'b', null, 2, 2),
+      sample(20, 'a', null, 3, 3),
+      sample(30, 'a', null, 30, 4), // real jump: outside usage overnight
+      sample(35, 'a', null, 31, 5), // ...confirmed
+    ])
+    const got = totals(ledger)
+    expect((got.a?.weekly ?? 0) + (got.b?.weekly ?? 0) + (got['(none)']?.weekly ?? 0)).toBeCloseTo(31)
+  })
+
   it('does not spread a long idle gap\'s spend across everyone else\'s movement', () => {
     // `idle` has two samples ten hours apart. `busy` works in between, alone.
     const ledger = buildLimitLedgerBlock([
