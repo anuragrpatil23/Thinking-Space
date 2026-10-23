@@ -107,14 +107,14 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
     const ai = failing.filter(f => aiOnly.has(f.feedId))
     if (mine.length) out.push(`${mine.length} ${mine.length === 1 ? 'source is' : 'sources are'} not loading: ${mine.slice(0, 3).map(f => f.feedTitle).join(', ')}${mine.length > 3 ? '…' : ''}`)
     if (ai.length) out.push(`${ai.length} of the AI's sources ${ai.length === 1 ? 'is' : 'are'} not loading`)
-    if (reader.available && reader.settings.provider === 'off') out.push('The AI reader is off; pick a model in Sources.')
-    if (reader.available && reader.last?.error && reader.settings.provider !== 'off') out.push(`AI reader: ${reader.last.error}`)
+    if (reader.available && !reader.settings.on) out.push('The AI reader is off; turn it on in Sources.')
+    if (reader.available && reader.last?.error && reader.settings.on) out.push(`AI reader: ${reader.last.error}`)
     const library = readLastLibraryPassOrch()
     if (library?.error) out.push(`Library: ${library.error}`)
     const valueLine = readLastValueLinePassOrch()
     if (valueLine?.failed?.length) out.push(`Value Line: ${valueLine.failed.length} ${valueLine.failed.length === 1 ? 'company' : 'companies'} failed`)
     return out
-  }, [feeds, preferences, reader.available, reader.settings.provider, reader.last])
+  }, [feeds, preferences, reader.available, reader.settings.on, reader.last])
 
   const sourcesToday = useMemo(() => {
     const counts = new Map<string, number>()

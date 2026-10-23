@@ -2,9 +2,8 @@
 // summary, written into the article's own file (`aiSummary` in frontmatter),
 // so the phone shows it after sync and the list marks it as read by the AI.
 //
-// The model is the user's choice (Settings for this lives in Feed → Sources):
-// any provider of the intelligence layer — a local model, the Claude CLI, the
-// API — or off. Runs only in the desktop app, while it is open, when asked:
+// The model is the app's: the default provider and model in Settings → AI,
+// like every other AI task. The Feed only switches the reader on or off. Runs only in the desktop app, while it is open, when asked:
 // the Feed opening or new articles arriving. No timers. Requests go through
 // the intelligence job queue one at a time; a summary already written for the
 // current prompt version is never asked for again.
@@ -13,7 +12,7 @@ import { runContract } from '@/services/orchestrators/intelligenceOrch'
 import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
 import { setRssItemAiSummaryOrch } from '@/services/orchestrators/rssFeedOrch'
 import { isElectron } from '@/services/lego_blocks/integrations/fsBlock'
-import { readDefaultProviderBlock } from '@/services/lego_blocks/integrations/intelligence/providerRegistryBlock'
+import { readDefaultProviderBlock, resolveProviderBlock } from '@/services/lego_blocks/integrations/intelligence/providerRegistryBlock'
 import type { ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 import type { RssFeedItemBlock, RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import {
@@ -28,23 +27,30 @@ const LOOKBACK_DAYS = 3
 const MAX_PER_PASS = 120
 
 export interface FeedAiReaderSettingsBlock {
-  /** 'off' reads nothing */
-  provider: ProviderId | 'off'
-  /** Blank uses the provider's default model */
-  model: string
+  on: boolean
 }
 
-export const FEED_AI_PROVIDER_LABELS_BLOCK: Record<ProviderId | 'off', string> = {
-  off: 'Off',
+export const FEED_AI_PROVIDER_LABELS_BLOCK: Record<ProviderId, string> = {
   'openai-compat': 'Local model',
   'claude-cli': 'Claude (CLI)',
   anthropic: 'Claude (API)',
 }
 
-/** Unset: the local model when that is the app's default, otherwise off, so tokens are never spent unasked. */
+/** The provider a pass would use now: Settings → AI's default (or the first one set up). */
+export function feedAiReaderProviderOrch(): ProviderId {
+  return resolveProviderBlock().id
+}
+
+/**
+ * Unset: on when the app's default is the local model, otherwise off, so
+ * tokens are never spent unasked. (Earlier versions stored a provider of their
+ * own; anything but 'off' there means on.)
+ */
 export function readFeedAiReaderOrch(): FeedAiReaderSettingsBlock {
-  const fallback: FeedAiReaderSettingsBlock = { provider: readDefaultProviderBlock() === 'openai-compat' ? 'openai-compat' : 'off', model: '' }
-  return { ...fallback, ...getJsonStorageItem<Partial<FeedAiReaderSettingsBlock>>(STORAGE_KEYS.feedAiReader, {}) }
+  const stored = getJsonStorageItem<{ on?: boolean; provider?: string }>(STORAGE_KEYS.feedAiReader, {})
+  if (typeof stored.on === 'boolean') return { on: stored.on }
+  if (stored.provider) return { on: stored.provider !== 'off' }
+  return { on: readDefaultProviderBlock() === 'openai-compat' }
 }
 
 export function writeFeedAiReaderOrch(next: FeedAiReaderSettingsBlock): void {
@@ -120,11 +126,12 @@ export function runFeedAiReadPassOrch(
   if (running) return running
   const settings = readFeedAiReaderOrch()
   const last = readLastFeedAiReadOrch()
-  if (last?.providerDown && last.provider === settings.provider && last.model === settings.model
+  const provider = feedAiReaderProviderOrch()
+  if (last?.providerDown && last.provider === provider
     && Date.now() - Date.parse(last.at) < PROVIDER_RETRY_MS) return Promise.resolve(last)
   running = (async () => {
-    const pass: FeedAiReadPassBlock = { at: new Date().toISOString(), read: 0, failed: 0, provider: settings.provider, model: settings.model, error: null }
-    if (settings.provider === 'off' || !feedAiReadAvailableOrch()) return pass
+    const pass: FeedAiReadPassBlock = { at: new Date().toISOString(), read: 0, failed: 0, provider, model: '', error: null }
+    if (!settings.on || !feedAiReadAvailableOrch()) return pass
     const work = feedAiUnreadItemsBlock(feeds).slice(0, MAX_PER_PASS)
     if (work.length === 0) return pass
     progress = { done: 0, total: work.length }
@@ -135,7 +142,7 @@ export function runFeedAiReadPassOrch(
         title: item.title,
         source,
         text: plainArticleTextBlock(item.description).slice(0, ARTICLE_SUMMARY_TEXT_CHARS_BLOCK),
-      }, { provider: settings.provider, model: settings.model || undefined })
+      }, { provider })
       if (result.ok && result.value) {
         const aiSummary = { text: String(result.value), model: result.model, version: articleSummaryContract.promptVersion, at: new Date().toISOString() }
         await setRssItemAiSummaryOrch(item.id, aiSummary)
