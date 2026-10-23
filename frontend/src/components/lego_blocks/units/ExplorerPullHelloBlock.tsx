@@ -4,20 +4,24 @@ import MoonPixelBubbleBlock from '@/components/lego_blocks/units/MoonPixelBubble
 import { nextEncouragementBlock } from '@/services/lego_blocks/units/explorerEncouragementBlock'
 import type { MoonSceneAnimationBlock } from '@/services/lego_blocks/units/vaultUiPreferencesBlock'
 
-/* Pull past the top of the file tree and Clawd says hello — pull-to-refresh
-   from the Claude iPhone app, with a hello instead of a refresh.
+/* Pull past the end of the file tree and Clawd says hello — pull-to-refresh
+   from the Claude iPhone app, turned upside down, with a hello instead of a
+   refresh. It used to live at the top; the top is where the greeting and
+   search are, and sliding them away on every overscroll was unsettling, so
+   the top stays put and the hello is for reaching the end. It also suits
+   him better: he climbs up out of the floor instead of hanging from above.
 
    It is a visible pull, not a hidden trigger: as you pull, the whole
-   explorer — greeting, session line, tree — slides down with your fingers,
-   one to one up to a stop, and Clawd's head rises out of the gap it leaves at the top,
-   further the further you pull. Pulling on to the line brings him out right
+   explorer — greeting, session line, tree — slides up with your fingers,
+   one to one up to a stop, and Clawd's head rises out of the gap it leaves
+   at the bottom, further the further you pull. Pulling on to the line brings him out right
    there, fingers still down — he pops up, does one of Home's tricks and says
    something kind in a pixel bubble, and the rest of that pull is ignored.
    Letting go short springs everything back and nothing happens. (It used to
    wait for the release; triggering at the line feels more direct.)
 
    Everything moves by `translate` only: the explorer's children slide and
-   this layer (absolute, its bottom edge riding the header's top) follows, so
+   this layer (absolute, its top edge riding the tree's bottom) follows, so
    nothing reflows per frame. An earlier version grew a space above the
    header instead, and resizing the panel every wheel event made the pull
    feel heavy. For the same reason it is driven straight on the elements
@@ -26,7 +30,7 @@ import type { MoonSceneAnimationBlock } from '@/services/lego_blocks/units/vault
    (docs/contracts/ENERGY.md); reduced motion turns it off. */
 
 export interface ExplorerPullHelloHandle {
-  /** Raw pull distance past the top, px; reaching `threshold` says hello.
+  /** Raw pull distance past the end, px; reaching `threshold` says hello.
       `glide` eases to it instead of jumping (the trackpad's coarse deltas). */
   update: (pull: number, threshold: number, glide?: boolean) => void
   /** Fingers lifted (or still): short of the line, spring back; re-arms. */
@@ -95,15 +99,15 @@ const ExplorerPullHelloBlock = forwardRef<ExplorerPullHelloHandle, ExplorerPullH
     const settleTimerRef = useRef<number | null>(null)
 
     /* Where the explorer is right now, mid-animation included: the layer
-       rides the header's top edge, so its live translate is the offset. */
+       rides the tree's bottom edge, so its live translate is the offset. */
     function liveOffsetBlock(): number {
       const space = spaceRef.current
       if (!space) return 0
       const live = getComputedStyle(space).translate.split(' ')
-      return Math.max(0, (Number.parseFloat(live[1] ?? '') || -OPEN_HEIGHT_PX_BLOCK) + OPEN_HEIGHT_PX_BLOCK)
+      return Math.max(0, OPEN_HEIGHT_PX_BLOCK - (Number.parseFloat(live[1] ?? '') || OPEN_HEIGHT_PX_BLOCK))
     }
 
-    /* Slides the explorer's contents and this layer to `offset` px down,
+    /* Slides the explorer's contents and this layer to `offset` px up,
        springing over `ms` (0 = follow the fingers). */
     function slideBlock(offset: number, ms: number, curve = SPRING_BLOCK) {
       const space = spaceRef.current
@@ -121,7 +125,7 @@ const ExplorerPullHelloBlock = forwardRef<ExplorerPullHelloHandle, ExplorerPullH
         el.style.transition = transition
       }
       for (const el of moving) {
-        el.style.translate = el === space ? `0 ${offset - OPEN_HEIGHT_PX_BLOCK}px` : offset ? `0 ${offset}px` : ''
+        el.style.translate = el === space ? `0 ${OPEN_HEIGHT_PX_BLOCK - offset}px` : offset ? `0 ${-offset}px` : ''
       }
       /* Back at rest: drop the layer hints so nothing stays composited. */
       if (offset === 0) {
@@ -213,8 +217,8 @@ const ExplorerPullHelloBlock = forwardRef<ExplorerPullHelloHandle, ExplorerPullH
       <div
         ref={spaceRef}
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 flex items-end justify-center overflow-hidden"
-        style={{ height: OPEN_HEIGHT_PX_BLOCK, translate: `0 ${-OPEN_HEIGHT_PX_BLOCK}px` }}
+        className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-center overflow-hidden"
+        style={{ height: OPEN_HEIGHT_PX_BLOCK, translate: `0 ${OPEN_HEIGHT_PX_BLOCK}px` }}
       >
         <style>{`
           @keyframes ltm-pull-hello-pop {

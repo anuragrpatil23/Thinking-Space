@@ -79,9 +79,11 @@ Model-agnostic layer for internal AI tasks (session titles, structured extracts,
   AI-session line as quiet text (still the filter toggle), a soft search
   pill, one ＋ that names the folder it creates in, one ⋯ for view options.
   Clawd says hello once per session (beside the greeting), and on a pull past
-  the top (`ExplorerPullHelloBlock`): the whole explorer slides down by
-  `translate` (never resize — that reflowed per wheel event), 1:1 with the
-  fingers then easing into a stop, Clawd rising in the gap; the hello fires
+  the end of the tree (`ExplorerPullHelloBlock`; moved from the top
+  2026-10-23 — the top, where greeting and search live, stays fixed): the
+  whole explorer slides up by `translate` (never resize — that reflowed per
+  wheel event), 1:1 with the fingers then easing into a stop, Clawd rising
+  out of the floor in the gap; the hello fires
   only at the far end of a slow, deliberate pull and the spring-back is a
   fixed-time critically damped `linear()` spring (further pull → faster
   snap). Gesture rules in `pullForHelloBlock` were tuned by hand on a Mac
