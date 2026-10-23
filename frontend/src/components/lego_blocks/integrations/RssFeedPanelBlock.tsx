@@ -8,6 +8,8 @@ import {
   Circle,
   FolderOpen,
   Loader2,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Layers,
   List,
   RefreshCw,
@@ -44,6 +46,7 @@ import {
   buildUnreadInboxItemsBlock,
   collapseDuplicateRssEntriesBlock,
   rssAlsoInLabelBlock,
+  rssItemReadableBlock,
   rssReaderFeedsBlock,
   flattenVisibleRssRowsBlock,
   rssRowIdBlock,
@@ -155,13 +158,44 @@ export default function RssFeedPanelBlock({
   // Feed data, read state and every article mutation live in one module-level
   // store shared by every RSS surface — see useRssFeedsBlock.
   const {
-    feeds, preferences, loading, refreshing, loadingFeedIds, sessionReadIds,
+    feeds: allFeeds, preferences, loading, refreshing, loadingFeedIds, sessionReadIds,
     hasFeedsConfigured, refresh,
   } = useRssFeedsBlock()
+  // Native (F9): the list splits like a mail app's Focused / Other — Readable
+  // (the app can show the article in full) and Other (teasers behind a paywall,
+  // dead links). Every view and count follows the tab. Remembered on this device.
+  const [readableTab, setReadableTab] = useState<'readable' | 'other'>(() => {
+    try { return localStorage.getItem('ltm-rss-readable-tab') === 'other' ? 'other' : 'readable' } catch { return 'readable' }
+  })
+  const chooseReadableTab = useCallback((tab: 'readable' | 'other') => {
+    setReadableTab(tab)
+    try { localStorage.setItem('ltm-rss-readable-tab', tab) } catch { /* storage is optional */ }
+  }, [])
+  // Native: "Unread" keeps the folders and sources but shows only unread
+  // articles (sources with none drop out). Articles read this session stay
+  // until the next refresh, so the list does not shift while reading.
+  const [unreadOnly, setUnreadOnly] = useState<boolean>(() => {
+    try { return localStorage.getItem('ltm-rss-unread-only') === '1' } catch { return false }
+  })
+  const toggleUnreadOnly = useCallback(() => {
+    setUnreadOnly((prev) => {
+      try { localStorage.setItem('ltm-rss-unread-only', prev ? '0' : '1') } catch { /* storage is optional */ }
+      return !prev
+    })
+  }, [])
+  const feeds = useMemo(() => {
+    if (!native) return allFeeds
+    const narrowed = allFeeds.map(feed => ({
+      ...feed,
+      items: feed.items.filter(item => rssItemReadableBlock(item) === (readableTab === 'readable')
+        && (!unreadOnly || !item.read || sessionReadIds.has(item.id))),
+    }))
+    return unreadOnly ? narrowed.filter(feed => feed.items.length > 0) : narrowed
+  }, [allFeeds, native, readableTab, unreadOnly, sessionReadIds])
   // Feeds/groups are collapsed by default; only those explicitly expanded are in these sets.
   // Persisted in localStorage so the state survives navigation.
-  const { expanded: expandedFeedIds, toggle: toggleFeedExpanded } = useExpandedSetBlock('ltm-rss-expanded-feeds')
-  const { expanded: expandedGroupIds, toggle: toggleGroupExpanded } = useExpandedSetBlock('ltm-rss-expanded-groups')
+  const { expanded: expandedFeedIds, toggle: toggleFeedExpanded, setAll: setExpandedFeeds } = useExpandedSetBlock('ltm-rss-expanded-feeds')
+  const { expanded: expandedGroupIds, toggle: toggleGroupExpanded, setAll: setExpandedGroups } = useExpandedSetBlock('ltm-rss-expanded-groups')
   const [focusedFeedId, setFocusedFeedId] = useState<string | null>(null)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   // Delete-preview mode
@@ -300,8 +334,21 @@ export default function RssFeedPanelBlock({
   // Mirrors the two rendering branches below: grouped tree vs. flat/focused list.
   const useGroupedRendering = Boolean(preferences && preferences.groups.length > 0 && !focusedFeedId)
 
+  // One button opens every folder and source, or closes them all
+  const anythingExpanded = expandedFeedIds.size > 0 || expandedGroupIds.size > 0
+  const toggleExpandAll = useCallback(() => {
+    if (anythingExpanded) {
+      setExpandedFeeds([])
+      setExpandedGroups([])
+    } else {
+      setExpandedFeeds(feeds.map(feed => feed.feedId))
+      setExpandedGroups((preferences?.groups ?? []).map(group => group.id))
+    }
+  }, [anythingExpanded, feeds, preferences, setExpandedFeeds, setExpandedGroups])
+
   const visibleRows = useMemo(() => flattenVisibleRssRowsBlock({
-    unreadInbox: showUnreadInbox
+    // Native lists filter by Unread instead of offering the merged row
+    unreadInbox: showUnreadInbox && !native
       ? { expanded: unreadInboxExpanded, itemIds: unreadInboxEntries.map(entry => entry.item.id) }
       : null,
     tree: useGroupedRendering ? groupTree : null,
@@ -309,7 +356,7 @@ export default function RssFeedPanelBlock({
     expandedFeedIds,
     expandedGroupIds,
   }), [
-    showUnreadInbox, unreadInboxExpanded, unreadInboxEntries,
+    native, showUnreadInbox, unreadInboxExpanded, unreadInboxEntries,
     useGroupedRendering, groupTree, feeds, visibleFeeds, expandedFeedIds, expandedGroupIds,
   ])
 
@@ -332,7 +379,11 @@ export default function RssFeedPanelBlock({
     if (currentIndex === -1) return false
     const target = visibleRows[currentIndex + delta]
     if (!target) return false
-    itemButtonRefs.current.get(target.rowId)?.focus()
+    // Keep the selected row mid-list while stepping with the keyboard, so the
+    // next rows are always in view (focus alone scrolls it to the bottom edge)
+    const button = itemButtonRefs.current.get(target.rowId)
+    button?.focus({ preventScroll: true })
+    button?.scrollIntoView({ block: 'center' })
     setSelectedItemId(target.itemId)
     if (openArticle) {
       const item = itemsById.get(target.itemId)
@@ -488,6 +539,12 @@ export default function RssFeedPanelBlock({
         onClearFocus={() => setFocusedFeedId(null)}
         viewMode={viewMode}
         onToggleViewMode={cycleViewMode}
+        readableTab={native ? readableTab : undefined}
+        onChooseReadableTab={native ? chooseReadableTab : undefined}
+        unreadOnly={native ? unreadOnly : undefined}
+        onToggleUnreadOnly={native ? toggleUnreadOnly : undefined}
+        anythingExpanded={anythingExpanded}
+        onToggleExpandAll={native ? toggleExpandAll : undefined}
       />}
 
       {/* Delete-mode hint */}
@@ -528,7 +585,7 @@ export default function RssFeedPanelBlock({
       ) : <div className="min-h-0 flex-1 overflow-y-auto">
         {/* Merged unread inbox — one flat queue across every source, so new
             articles can be read straight through without hunting per feed. */}
-        {showUnreadInbox && (
+        {showUnreadInbox && !native && (
           <div>
             <button
               type="button"
@@ -627,6 +684,12 @@ function PanelHeader({
   onClearFocus,
   viewMode,
   onToggleViewMode,
+  readableTab,
+  onChooseReadableTab,
+  unreadOnly,
+  onToggleUnreadOnly,
+  anythingExpanded,
+  onToggleExpandAll,
 }: {
   title: string
   onClose: () => void
@@ -646,6 +709,14 @@ function PanelHeader({
   onClearFocus?: () => void
   viewMode: RssViewModeBlock
   onToggleViewMode: () => void
+  /** Native only: Readable (in full) or Other (the rest). */
+  readableTab?: 'readable' | 'other'
+  onChooseReadableTab?: (tab: 'readable' | 'other') => void
+  /** Native only: only unread articles, folders kept. */
+  unreadOnly?: boolean
+  onToggleUnreadOnly?: () => void
+  anythingExpanded?: boolean
+  onToggleExpandAll?: () => void
 }) {
   const native = useContext(NativeListContextBlock)
   return (
@@ -665,7 +736,54 @@ function PanelHeader({
         </button>
       )}
       {!native && <Rss className="h-3.5 w-3.5 shrink-0 text-orange-400" />}
-      <span className={cn('min-w-0 flex-1 truncate', native ? 'pl-1.5 text-[13px] font-semibold' : 'text-xs font-medium')}>{title}</span>
+      {/* Native: the page already says Feed, so the bar leads with the Readable / Other tabs;
+          a single source still shows its name */}
+      {!deleteMode && onChooseReadableTab && (
+        <div role="group" aria-label="Readable or other" className="ml-1 inline-flex shrink-0 gap-0.5 rounded-[7px] bg-zinc-200/70 p-0.5 dark:bg-zinc-800">
+          {(['readable', 'other'] as const).map(tab => (
+            <button
+              key={tab}
+              type="button"
+              aria-pressed={readableTab === tab}
+              onClick={() => onChooseReadableTab(tab)}
+              title={tab === 'readable' ? 'Articles the app can show in full' : 'Teasers behind a paywall, and links that do not load'}
+              className={cn(
+                'rounded-[5px] px-2 py-0.5 text-[11px] font-medium transition-colors',
+                readableTab === tab
+                  ? '!bg-white !text-zinc-900 shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.08)] dark:!bg-zinc-600 dark:!text-white'
+                  : '',
+              )}
+            >
+              {tab === 'readable' ? 'Readable' : 'Other'}
+            </button>
+          ))}
+        </div>
+      )}
+      {(!native || focusedFeedId) && (
+        <span className={cn('min-w-0 truncate', native ? 'pl-1.5 text-[13px] font-semibold' : 'flex-1 text-xs font-medium')}>{title}</span>
+      )}
+      {native && <span className="flex-1" />}
+      {!deleteMode && onToggleUnreadOnly && (
+        <button
+          type="button"
+          onClick={onToggleUnreadOnly}
+          aria-pressed={Boolean(unreadOnly)}
+          title={unreadOnly ? 'Showing unread only (click for everything)' : 'Show unread only'}
+          className={cn('shrink-0 rounded-md px-2 py-1 text-[11px] font-medium', unreadOnly && '!bg-zinc-200/80 !text-zinc-900 dark:!bg-zinc-700 dark:!text-white')}
+        >
+          Unread
+        </button>
+      )}
+      {!deleteMode && onToggleExpandAll && (
+        <button
+          type="button"
+          onClick={onToggleExpandAll}
+          title={anythingExpanded ? 'Collapse all' : 'Expand all'}
+          className="shrink-0 rounded-md p-2"
+        >
+          {anythingExpanded ? <ChevronsDownUp className="h-4 w-4" /> : <ChevronsUpDown className="h-4 w-4" />}
+        </button>
+      )}
 
       {!deleteMode && (
         <button
@@ -685,7 +803,7 @@ function PanelHeader({
         </button>
       )}
 
-      {!deleteMode && typeof totalUnread === 'number' && totalUnread > 0 && (
+      {!deleteMode && !native && typeof totalUnread === 'number' && totalUnread > 0 && (
         <span className="shrink-0 text-[10px] text-muted-foreground">{totalUnread} unread</span>
       )}
       {!deleteMode && onMarkAllRead && (
@@ -1080,7 +1198,8 @@ function FeedItemRow({
       onClick={() => handleItemClick(item, rowId)}
       onKeyDown={event => onItemKeyDown(rowId, event)}
       className={cn(
-        'flex w-full items-start gap-2 border-b border-border/40 px-3 py-3 text-left text-xs transition-colors duration-200',
+        // No focus ring: the selection colour already marks the row, and keyboard reading is the main way through
+        'flex w-full items-start gap-2 border-b border-border/40 px-3 py-3 text-left text-xs outline-none transition-colors duration-200 focus-visible:outline-none focus-visible:ring-0',
         deleteMode && isPendingDelete && 'border-destructive/30 bg-destructive/10 hover:bg-destructive/15',
         deleteMode && !isPendingDelete && 'opacity-40',
         !deleteMode && isSelected && 'border-[var(--ltm-explorer-selected-color,#c73773)] bg-[var(--ltm-explorer-selected-color,#c73773)] text-white hover:bg-[var(--ltm-explorer-selected-color,#c73773)]',

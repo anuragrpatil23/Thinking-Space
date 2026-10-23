@@ -9,6 +9,13 @@ import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILay
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { loadRssItemByIdOrch, readRssFeedPreferencesOrch, updateRssFeedOrch } from '@/services/orchestrators/rssFeedOrch'
 import {
+  libraryAvailableOrch,
+  libraryPassDueOrch,
+  readLastLibraryPassOrch,
+  runLibraryPassOrch,
+  type LibraryPassBlock,
+} from '@/services/orchestrators/libraryFullTextOrch'
+import {
   rssDailyVolumeBlock,
   rssFeedHealthBlock,
   type RssArticleNavStateBlock,
@@ -38,6 +45,73 @@ const MODE_OPTIONS_BLOCK: Array<{ value: RssMergedViewsModeBlock; label: string 
   { value: 'readable', label: 'Only readable' },
   { value: 'hidden', label: 'Hide' },
 ]
+
+// The library pass: fills paywalled articles with their text from Gale. Runs
+// when the Feed opens or the app comes back to the front after a while (no
+// timers), and from the button in Sources.
+function useLibraryPassBlock() {
+  const { feeds } = useRssFeedsBlock()
+  const [last, setLast] = useState<LibraryPassBlock | null>(() => readLastLibraryPassOrch())
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const available = libraryAvailableOrch()
+
+  const run = useCallback(async () => {
+    if (!available || feeds.length === 0) return
+    setProgress({ done: 0, total: 0 })
+    try {
+      const pass = await runLibraryPassOrch(feeds, (done, total) => setProgress({ done, total }))
+      setLast(pass)
+      if (pass.filled > 0) await loadRssFeedsBlock(false, false)
+    } finally {
+      setProgress(null)
+    }
+  }, [available, feeds])
+
+  useEffect(() => {
+    if (!available || feeds.length === 0) return
+    if (libraryPassDueOrch()) void run()
+    const onVisible = () => { if (document.visibilityState === 'visible' && libraryPassDueOrch()) void run() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+    // Feeds arriving is what makes a pass possible; run is stable per feeds
+  }, [available, feeds.length > 0]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { available, last, progress, run }
+}
+
+function minutesAgoBlock(iso: string): string {
+  const minutes = Math.round((Date.now() - Date.parse(iso)) / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.round(minutes / 60)
+  return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`
+}
+
+function LibraryStatusBlock({ library }: { library: ReturnType<typeof useLibraryPassBlock> }) {
+  const { available, last, progress, run } = library
+  if (!available) {
+    return <p className="mx-1 text-[12px] text-zinc-500 dark:text-zinc-400">Library full text is filled in from the desktop app.</p>
+  }
+  return (
+    <F9PanelBlock className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-[13px]">
+      <span className="font-semibold">Library</span>
+      <span className="min-w-0 flex-1 text-[12px] text-zinc-500 dark:text-zinc-400">
+        {progress
+          ? `Filling from the library${progress.total ? ` · ${progress.done} of ${progress.total}` : '…'}`
+          : last
+            ? [
+              `${last.filled} ${last.filled === 1 ? 'article' : 'articles'} filled in, ${minutesAgoBlock(last.at)}`,
+              ...last.sources.filter((src) => src.tried > 0).map((src) => `${src.name} ${src.filled} of ${src.tried}${src.citationOnly ? ` (${src.citationOnly} citation only)` : ''}`),
+            ].join(' · ')
+            : 'Not run yet'}
+        {last?.error && !progress && <span className="ml-2 text-red-600 dark:text-red-400">{last.error}</span>}
+      </span>
+      <button type="button" disabled={Boolean(progress)} onClick={() => { void run() }} className="text-[13px] text-sky-600 hover:text-sky-700 disabled:text-zinc-400 dark:text-sky-400">
+        Fill from library
+      </button>
+    </F9PanelBlock>
+  )
+}
 
 // Articles per day over the last 30 days: how much arrives, and how much of it
 // the app can show in full (the rest are teasers behind a paywall).
@@ -147,6 +221,7 @@ export default function WebullFeedBlock() {
   const [article, setArticle] = useState<OpenArticleBlock | null>(null)
   const [nav, setNav] = useState<RssArticleNavStateBlock | null>(null)
   const { feeds } = useRssFeedsBlock()
+  const library = useLibraryPassBlock()
 
   // `?rss=<item id>` (from Reading's "Open in reader", or an old Explorer link) opens that article
   const [searchParams, setSearchParams] = useSearchParams()
@@ -223,6 +298,7 @@ export default function WebullFeedBlock() {
 
       {view === 'sources' ? (
         <div className="space-y-4 pb-12">
+          <LibraryStatusBlock library={library} />
           <VolumeChartBlock />
           <SourcesBlock />
         </div>

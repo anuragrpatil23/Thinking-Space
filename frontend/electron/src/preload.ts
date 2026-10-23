@@ -745,6 +745,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     accessToken?: string
     body?: string
   }) => ipcRenderer.invoke('webull:signedRequest', payload),
+  // Library full text (Gale): the renderer names a publication or a document id, never a URL
+  libraryStatus: () => ipcRenderer.invoke('library:status'),
+  libraryGaleSearch: (payload: { publication: string; words: string[]; day: string; db: string; windowDays: number }) =>
+    ipcRenderer.invoke('library:galeSearch', payload),
+  libraryGaleArticle: (payload: { docId: string; db: string }) =>
+    ipcRenderer.invoke('library:galeArticle', payload),
   webullCredentialStatus: () =>
     ipcRenderer.invoke('webull:credentials:status'),
   webullCredentialSet: (payload: {

@@ -14,6 +14,8 @@ export function useExpandedSetBlock(
   expanded: Set<string>
   isExpanded: (id: string) => boolean
   toggle: (id: string) => void
+  /** Replace the whole set (expand all / collapse all). */
+  setAll: (ids: Iterable<string>) => void
 } {
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     try {
@@ -46,5 +48,7 @@ export function useExpandedSetBlock(
 
   const isExpanded = useCallback((id: string) => expanded.has(id), [expanded])
 
-  return { expanded, isExpanded, toggle }
+  const setAll = useCallback((ids: Iterable<string>) => setExpanded(new Set(ids)), [])
+
+  return { expanded, isExpanded, toggle, setAll }
 }

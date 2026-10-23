@@ -15,7 +15,7 @@ function item(id: string, feedId: string, opts: { full?: boolean; cached?: boole
     id,
     feedId,
     title: id,
-    link: `https://example.com/${id}`,
+    link: `https://www.wsj.com/articles/${id}`,
     description: opts.full ? `<p>${'word '.repeat(400)}</p>` : '<p>A teaser line.</p>',
     pubDate: new Date(NOW.getTime() - (opts.days ?? 1) * 86_400_000).toISOString(),
     imageUrl: null,
@@ -36,6 +36,8 @@ describe('a source in the merged views', () => {
     expect(rssItemReadableBlock(item('a', 'f', { cached: true }))).toBe(true)
     expect(rssItemReadableBlock(item('b', 'f', { full: true }))).toBe(true)
     expect(rssItemReadableBlock(item('c', 'f'))).toBe(false)
+    // A teaser from a site without a paywall opens to the article
+    expect(rssItemReadableBlock({ ...item('d', 'f'), link: 'https://arstechnica.com/x' })).toBe(true)
   })
 
   it('shows, keeps only readable items, or hides a source', () => {

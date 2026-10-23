@@ -36,6 +36,8 @@ export const STORAGE_KEYS = {
   markdownSideSheetWidth: 'ltm-markdown-side-sheet-width',
   /** Prefix: each slide-over keeps its own width under `${prefix}${sheetId}`. */
   sheetWidthPrefix: 'ltm-sheet-width:',
+  /** The last library full-text pass (time and counts), this device only. */
+  libraryFillLast: 'ltm-library-fill-last',
   webullOverallRememberByProjectRoot: 'ltm-webull-overall-remember-by-project-root',
   aiManualCredentials: 'ltm-ai-manual-credentials',
   aiOauthCredentials: 'ltm-ai-oauth-credentials',

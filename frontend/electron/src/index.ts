@@ -44,6 +44,12 @@ import {
   type WebullStoredAccessTokenBlock,
 } from './lego_blocks/webullCredentialStoreBlock';
 import {
+  libraryCredentialStatusBlock,
+  libraryGaleArticleBlock,
+  libraryGaleSearchBlock,
+  type LibraryGaleSearchPayload,
+} from './lego_blocks/libraryGaleBlock';
+import {
   readAiPlanUsageBlock,
   readClaudeUsageLogBlock,
   disposeAiPlanUsageBlock,
@@ -1796,6 +1802,13 @@ ipcMain.handle('extension-runtime:invoke', async (_event, payload: ExtensionRunt
     runCapability: (invokePayload) => runCapabilityRunnerViaViteNode('invoke', invokePayload as ElectronCapabilityInvokePayload),
   });
 });
+
+// -- Library (Gale through the public library's proxy) --
+// No URLs from the renderer: a search in a known publication, or one article
+// by its Gale id. The card and password stay in main (libraryGaleBlock.ts).
+ipcMain.handle('library:status', async () => libraryCredentialStatusBlock());
+ipcMain.handle('library:galeSearch', async (_event, payload: LibraryGaleSearchPayload) => libraryGaleSearchBlock(payload));
+ipcMain.handle('library:galeArticle', async (_event, payload: { docId: string; db: string }) => libraryGaleArticleBlock(payload));
 
 // -- Webull Webull GET bridge (main-process network bridge) --
 ipcMain.handle('webull:get', async (_event, payload: WebullGetPayload) => {

@@ -330,6 +330,36 @@ async function patchRssItemFrontmatterOrch(
   }
 }
 
+/**
+ * Give a cached article its full text (from the library): the body is
+ * replaced and `textInCache: true` set, every other frontmatter field kept.
+ * Returns false when the article is not in the cache.
+ */
+export async function setRssItemFullTextOrch(itemId: string, text: string): Promise<boolean> {
+  const fs = getVaultFS()
+  const feedId = itemId.split('::')[0]
+  const path = `${RSS_ARTICLES_DIR}/${feedId}/${itemFilenameBlock(itemId)}`
+  let content: string
+  try {
+    content = await fs.read(path)
+  } catch {
+    return false
+  }
+  const closeIdx = content.indexOf('\n---', 4)
+  if (!content.startsWith('---') || closeIdx === -1) return false
+  let fm: unknown
+  try {
+    fm = yaml.load(content.slice(4, closeIdx))
+  } catch {
+    return false
+  }
+  if (!fm || typeof fm !== 'object') return false
+  const updated = { ...(fm as Record<string, unknown>), textInCache: true }
+  const newYaml = (yaml.dump(updated, { lineWidth: -1, noRefs: true, sortKeys: false, quotingType: '"' }) as string).trimEnd()
+  await fs.write(path, `---\n${newYaml}\n---\n\n${text.trim()}\n`)
+  return true
+}
+
 /** One cached article by its id, or null when it is not in the cache. */
 export async function loadRssItemByIdOrch(itemId: string): Promise<RssFeedItemBlock | null> {
   const feedId = itemId.split('::')[0]

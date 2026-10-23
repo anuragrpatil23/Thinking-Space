@@ -21,9 +21,29 @@ export type RssMergedViewsModeBlock = 'show' | 'readable' | 'hidden'
 /** Below this much plain text, a feed item is a teaser, not the article. */
 export const RSS_READABLE_MIN_CHARS_BLOCK = 1200
 
-/** The app has the article itself: the full text in the cache, or a feed that ships whole articles. */
-export function rssItemReadableBlock(item: Pick<RssFeedItemBlock, 'textInCache' | 'description'>): boolean {
+/** Sites whose articles stop at a paywall when opened directly. A link
+ *  anywhere else opens to the article, so it counts as readable. */
+export const RSS_PAYWALLED_HOSTS_BLOCK = [
+  'wsj.com', 'dowjones.io', 'barrons.com', 'ft.com', 'bloomberg.com', 'nytimes.com',
+  'economist.com', 'washingtonpost.com', 'wired.com', 'fortune.com', 'forbes.com',
+  'theinformation.com', 'theatlantic.com', 'newyorker.com',
+]
+
+export function rssLinkPaywalledBlock(link: string): boolean {
+  let host = ''
+  try {
+    host = new URL(link).hostname.toLowerCase()
+  } catch {
+    return false
+  }
+  return RSS_PAYWALLED_HOSTS_BLOCK.some(h => host === h || host.endsWith(`.${h}`))
+}
+
+/** The reader can show the article: its full text is in the cache, the feed
+ *  ships whole articles, or the link is on a site without a paywall. */
+export function rssItemReadableBlock(item: Pick<RssFeedItemBlock, 'textInCache' | 'description' | 'link'>): boolean {
   if (item.textInCache) return true
+  if (!rssLinkPaywalledBlock(item.link)) return true
   const text = item.description.replace(/<[^>]*>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim()
   return text.length >= RSS_READABLE_MIN_CHARS_BLOCK
 }
