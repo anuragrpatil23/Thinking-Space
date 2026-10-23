@@ -1,3 +1,4 @@
+import { getSkillFileOrch, getSkillOrch, listSkillsOrch, validateSkillOrch } from '@/services/orchestrators/skillOrch'
 import {
   CAPABILITY_REGISTRY,
   type CapabilityDefinition,
@@ -829,6 +830,32 @@ async function executeCapability<Name extends CapabilityName>(
       assertNonEmptyString(payload.output_name, 'output_name')
       const result = await cleanAndSave({ ...payload, fs })
       return { result } as CapabilityOutputMap[Name]
+    }
+    case 'skill.list': {
+      return { skills: listSkillsOrch() } as CapabilityOutputMap[Name]
+    }
+    case 'skill.get': {
+      const payload = input as CapabilityInputMap['skill.get']
+      assertNonEmptyString(payload.name, 'name')
+      return getSkillOrch(payload.name) as CapabilityOutputMap[Name]
+    }
+    case 'skill.file': {
+      const payload = input as CapabilityInputMap['skill.file']
+      assertNonEmptyString(payload.name, 'name')
+      assertNonEmptyString(payload.path, 'path')
+      return getSkillFileOrch(payload.name, payload.path) as CapabilityOutputMap[Name]
+    }
+    case 'skill.validate': {
+      const payload = input as CapabilityInputMap['skill.validate']
+      assertNonEmptyString(payload.name, 'name')
+      const result = await validateSkillOrch(payload.name, payload.folder)
+      // A folder that fails its contract is an error, so an agent (or a
+      // script) sees a non-zero exit and knows the job is not done
+      if (!result.ok) {
+        const failed = result.checks.filter(c => !c.ok).map(c => `- ${c.label}: ${c.detail}`).join('\n')
+        throw new Error(`${result.folder} does not match the "${result.name}" skill (v${result.version}):\n${failed}`)
+      }
+      return result as CapabilityOutputMap[Name]
     }
     case 'telegram.send_message': {
       const payload = input as CapabilityInputMap['telegram.send_message']

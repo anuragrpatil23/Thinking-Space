@@ -56,6 +56,22 @@ Long values can be loaded from files with `--<flag>-file` (for example `--text-f
 
 Setup: ensure `.env` at repo root has `THINKSPC_VAULT_ROOT=/path/to/your/vault` (or legacy `LTM_VAULT_ROOT`).
 
+## Skills: jobs handed to the user's own coding agent
+
+Some jobs (parsing broker statements, say) are too brittle for the app to own. The app ships a **skill** instead: instructions, reference scripts the agent reads and adapts, and a contract describing the finished folder. The app never runs the scripts; it only checks the result.
+
+```bash
+./thinkspc skill.list                                   # what skills exist
+./thinkspc skill.get --name statements                  # instructions + contract
+./thinkspc skill.file --name statements --path reference/webull_statements_to_csv.py
+./thinkspc skill.validate --name statements             # done when this passes
+```
+
+- Skills live in `frontend/src/skills/<name>/` (public) and `frontend/src/personal_extension/gaps/skills/<name>/` (private), each with `SKILL.md` (standard Agent Skills frontmatter: `name`, `description`), `contract.json` and optional `reference/`. The folder is a valid skill on its own, so a user can copy it into their agent; we never install it. `scripts/bundle-cli.mjs` embeds them in the CLI bundle; rebuild the CLI after editing one.
+- Contract rules (`skillContractBlock.ts`): `onlyFiles`, `files`, `csv` (exact columns, typed values), `monthsContiguous`.
+- **Thinking Space never edits a user's agent configuration** (CLAUDE.md, AGENTS.md, `.claude/`). Agents find skills through `skill.list` or a README in the folder the skill is about.
+- A failed validation comes back as `ok: false` listing each failing check; the exit code stays 0, like every other capability.
+
 ## Browser URLs are not agent targets
 
 Organizer links like `http://localhost:5173/.../thinking-organizer?tab=backlog&projectRoot=...` are human navigation links. Translate them first, then run capability commands:

@@ -1,3 +1,4 @@
+import type { SkillCheckBlock, SkillContractBlock } from '@/services/lego_blocks/units/skillContractBlock'
 import type { NodeRecord } from '@/services/lego_blocks/integrations/dbBlock'
 import type {
   NodePriority,
@@ -68,6 +69,10 @@ export type CapabilityName =
   | 'tools.pdf.convert'
   | 'tools.transcript.preview'
   | 'tools.transcript.clean_save'
+  | 'skill.list'
+  | 'skill.get'
+  | 'skill.file'
+  | 'skill.validate'
   | 'telegram.send_message'
   | 'telegram.open_conversation'
   | 'telegram.close_conversation'
@@ -312,6 +317,19 @@ export interface CapabilityInputMap {
     output_name: string
     base_folder: string | null
     options: TranscriptOptions
+  }
+  'skill.list': Record<string, never>
+  'skill.get': {
+    name: string
+  }
+  'skill.file': {
+    name: string
+    path: string
+  }
+  'skill.validate': {
+    name: string
+    /** Vault-relative folder to check instead of the skill's own */
+    folder?: string
   }
   'telegram.send_message': {
     text: string
@@ -566,6 +584,29 @@ export interface CapabilityOutputMap {
   }
   'tools.transcript.clean_save': {
     result: CleanResult
+  }
+  'skill.list': {
+    skills: Array<{ name: string; title: string; summary: string; version: number; folder: string }>
+  }
+  'skill.get': {
+    name: string
+    title: string
+    version: number
+    folder: string
+    instructions: string
+    files: string[]
+    contract: SkillContractBlock
+  }
+  'skill.file': {
+    path: string
+    content: string
+  }
+  'skill.validate': {
+    name: string
+    folder: string
+    version: number
+    ok: boolean
+    checks: SkillCheckBlock[]
   }
   'telegram.send_message': {
     messageId: number
@@ -852,6 +893,26 @@ export const CAPABILITY_REGISTRY: CapabilityDefinition[] = [
     name: 'tools.transcript.clean_save',
     description: 'Clean a transcript and save markdown output.',
     readOnly: false,
+  },
+  {
+    name: 'skill.list',
+    description: 'List the jobs Thinking Space hands to your coding agent (skills): what each one is about and which folder it covers.',
+    readOnly: true,
+  },
+  {
+    name: 'skill.get',
+    description: 'Read a skill: the job, where things go, the exact format, the steps, and its reference files. Start here.',
+    readOnly: true,
+  },
+  {
+    name: 'skill.file',
+    description: "Print one of a skill's reference files (e.g. a parser to run or adapt).",
+    readOnly: true,
+  },
+  {
+    name: 'skill.validate',
+    description: "Check a skill's folder against its contract. Fails until the folder is right; run it before calling the job done.",
+    readOnly: true,
   },
   {
     name: 'telegram.send_message',

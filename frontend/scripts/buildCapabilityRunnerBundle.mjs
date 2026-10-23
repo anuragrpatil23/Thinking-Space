@@ -19,6 +19,9 @@ await build({
   format: 'cjs',
   target: 'node20',
   tsconfig: path.join(frontendRoot, 'tsconfig.json'),
+  // Shared code reads Vite's build-time env (e.g. staticWebBuildBlock); this
+  // bundle is not a Vite build, so every flag there is simply unset.
+  define: { 'import.meta.env': '{}' },
   logLevel: 'info',
 })
 
