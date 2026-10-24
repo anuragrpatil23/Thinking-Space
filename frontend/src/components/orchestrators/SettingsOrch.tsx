@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FeedAiReaderSettingsRowBlock, FeedAiThinkingSettingsRowBlock } from '@/personal_extension/components/lego_blocks/integrations/FeedAiReaderSettingsRowBlock'
+import { FeedAiReaderSettingsRowBlock } from '@/personal_extension/components/lego_blocks/integrations/FeedAiReaderSettingsRowBlock'
 import { SIM_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
 import { isSettingsTabHiddenInStaticWebBuildBlock } from '@/services/lego_blocks/units/staticWebBuildBlock'
 import { cn } from '@/lib/utils'
@@ -1991,7 +1991,6 @@ export default function SettingsOrch({
 
           <SettingsGroupBlock heading="Feed">
             <FeedAiReaderSettingsRowBlock />
-            <FeedAiThinkingSettingsRowBlock />
           </SettingsGroupBlock>
 
           <SettingsGroupBlock heading="Tab">
