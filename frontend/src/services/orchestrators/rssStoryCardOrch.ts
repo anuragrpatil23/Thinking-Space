@@ -5,6 +5,7 @@
 // was made from, and is written again when another publisher joins the story
 // (more voices make a better card) or the prompt changes. A week is kept.
 
+import { setPassItemBlock, type PassItemBlock, type PassItemStateBlock } from '@/services/lego_blocks/units/passQueueBlock'
 import { runContract } from '@/services/orchestrators/intelligenceOrch'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import type { ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
@@ -104,6 +105,8 @@ export interface StoryCardPassBlock {
   error: string | null
   /** The provider itself failed: stop asking */
   providerDown: boolean
+  /** Each story and what came of it */
+  items?: PassItemBlock[]
 }
 
 /**
@@ -113,14 +116,20 @@ export interface StoryCardPassBlock {
 export async function runStoryCardPassOrch(
   stories: RssStoryBlock[],
   provider: ProviderId,
-  onProgress: (done: number, total: number) => void,
+  onProgress: (done: number, total: number, items: PassItemBlock[]) => void,
   limit = 12,
 ): Promise<StoryCardPassBlock> {
   await loadStoryCardsOrch()
   const pass: StoryCardPassBlock = { made: 0, failed: 0, error: null, providerDown: false }
   const work = stories.filter(story => storyNeedsCardBlock(story) && !failedThisSession.has(story.lead.item.id)).slice(0, limit)
-  onProgress(0, work.length)
+  let items: PassItemBlock[] = work.map(story => ({ ticker: story.lead.item.id, label: `Story: ${story.lead.item.title}`, state: 'waiting' as const }))
+  const mark = (story: RssStoryBlock, state: PassItemStateBlock, detail?: string) => {
+    items = setPassItemBlock(items, story.lead.item.id, state, detail)
+    onProgress(pass.made + pass.failed, work.length, items)
+  }
+  onProgress(0, work.length, items)
   for (const story of work) {
+    mark(story, 'working')
     const publishers = rssStoryPublishersBlock(story).slice(0, STORY_CARD_MAX_SOURCES_BLOCK)
     const result = await runContract(storyCardContract, {
       storyId: storyMemberIdsBlock(story).sort().join(','),
@@ -147,16 +156,18 @@ export async function runStoryCardPassOrch(
       await saveStoryCardsBlock()
       notifyBlock()
       pass.made += 1
+      mark(story, 'fetched', `story card · ${card.publishers.length} sources`)
     } else {
       pass.failed += 1
       failedThisSession.add(story.lead.item.id)
       pass.error = result.ok ? 'The model gave no usable story card.' : result.error.message
+      mark(story, 'failed', pass.error ?? undefined)
       if (!result.ok && /not configured|no model|unavailable|ECONNREFUSED|fetch failed/i.test(result.error.message)) {
         pass.providerDown = true
         break
       }
     }
-    onProgress(pass.made + pass.failed, work.length)
   }
+  pass.items = items
   return pass
 }

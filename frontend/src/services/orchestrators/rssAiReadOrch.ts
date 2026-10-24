@@ -12,6 +12,7 @@
 // the intelligence job queue one at a time; a summary already written for the
 // current prompt version is never asked for again.
 
+import { setPassItemBlock, type PassItemBlock, type PassItemStateBlock } from '@/services/lego_blocks/units/passQueueBlock'
 import { runContract } from '@/services/orchestrators/intelligenceOrch'
 import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
 import { setRssItemAiSummaryOrch } from '@/services/orchestrators/rssFeedOrch'
@@ -78,6 +79,10 @@ export interface FeedAiReadPassBlock {
   error: string | null
   /** The provider itself failed (not running, no model): wait before asking again */
   providerDown?: boolean
+  /** Reading articles, or writing story cards */
+  kind?: 'articles' | 'stories'
+  /** Each article (or story) and what came of it */
+  items?: PassItemBlock[]
 }
 
 /** After the model was not there, how long before trying it again (or until the settings change). */
@@ -88,6 +93,8 @@ export interface FeedAiReadProgressBlock {
   total: number
   /** Reading articles, or writing story cards */
   kind: 'articles' | 'stories'
+  /** Each article (or story): waiting, being read, or what came of it */
+  items: PassItemBlock[]
 }
 
 let progress: FeedAiReadProgressBlock | null = null
@@ -143,9 +150,16 @@ function runFeedAiReadPassOrch(
     const pass: FeedAiReadPassBlock = { at: new Date().toISOString(), read: 0, failed: 0, provider, model: '', error: null }
     const work = feedAiUnreadItemsBlock(feeds).filter(({ item }) => !onlyIds || onlyIds.has(item.id)).slice(0, MAX_PER_PASS)
     if (work.length === 0) return pass
-    progress = { done: 0, total: work.length, kind: 'articles' }
+    let items: PassItemBlock[] = work.map(({ item, source }) => ({ ticker: item.id, label: `${source.split(':')[0]}: ${item.title}`, state: 'waiting' as const }))
+    const mark = (itemId: string, state: PassItemStateBlock, detail?: string) => {
+      items = setPassItemBlock(items, itemId, state, detail)
+      progress = { done: pass.read + pass.failed, total: work.length, kind: 'articles', items }
+      notifyBlock()
+    }
+    progress = { done: 0, total: work.length, kind: 'articles', items }
     notifyBlock()
     for (const { item, source } of work) {
+      mark(item.id, 'working')
       const result = await runContract(articleSummaryContract, {
         itemId: item.id,
         title: item.title,
@@ -166,19 +180,22 @@ function runFeedAiReadPassOrch(
         onRead({ ...item, aiSummary })
         pass.read += 1
         pass.model = result.model
+        const points = value.text.split('\n').filter(Boolean).length
+        mark(item.id, 'fetched', `${points} ${points === 1 ? 'point' : 'points'}`)
       } else {
         pass.failed += 1
         failedThisSession.add(item.id)
         pass.error = result.ok ? 'The model gave no usable summary.' : result.error.message
+        mark(item.id, 'failed', pass.error ?? undefined)
         // A provider that is off or missing fails every article the same way
         if (!result.ok && /not configured|no model|unavailable|ECONNREFUSED|fetch failed/i.test(result.error.message)) {
           pass.providerDown = true
           break
         }
       }
-      progress = { done: pass.read + pass.failed, total: work.length, kind: 'articles' }
-      notifyBlock()
     }
+    pass.items = items
+    pass.kind = 'articles'
     return pass
   })()
 }
@@ -211,12 +228,12 @@ export function runFeedAiNextOrch(
     if (loudUnread.size > 0) {
       pass = await runFeedAiReadPassOrch(feeds, onRead, provider, loudUnread)
     } else if (loud.some(story => storyNeedsCardBlock(story))) {
-      const cards = await runStoryCardPassOrch(loud, provider, (done, total) => {
-        progress = { done, total, kind: 'stories' }
+      const cards = await runStoryCardPassOrch(loud, provider, (done, total, items) => {
+        progress = { done, total, kind: 'stories', items }
         notifyBlock()
       })
       if (cards.made + cards.failed > 0) {
-        pass = { at: new Date().toISOString(), read: 0, failed: cards.failed, provider, model: '', error: cards.error, ...(cards.providerDown ? { providerDown: true } : {}) }
+        pass = { at: new Date().toISOString(), read: 0, failed: cards.failed, provider, model: '', error: cards.error, kind: 'stories', items: cards.items, ...(cards.providerDown ? { providerDown: true } : {}) }
         if (cards.made > 0) pass.read = 0
       }
     } else if (unread.size > 0) {

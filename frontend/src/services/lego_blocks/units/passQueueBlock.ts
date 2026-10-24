@@ -29,7 +29,7 @@ export interface PassItemBlock {
 
 export const PASS_ITEM_LABELS_BLOCK: Record<PassItemStateBlock, string> = {
   waiting: 'Waiting',
-  working: 'Fetching…',
+  working: 'Working…',
   fetched: 'Saved',
   'no-new': 'Nothing new',
   skipped: 'Up to date',

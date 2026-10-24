@@ -30,7 +30,10 @@ export function useFeedAiReadBlock() {
     void runFeedAiNextOrch(feeds, preferences, replaceRssItemBlock)
   }, [available, settings.on, waiting, preferences, progress === null]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { available, settings, progress, waiting, last: readLastFeedAiReadOrch() }
+  // "Check now": the next job, whatever is waiting (a job already running is shared)
+  const runNow = () => runFeedAiNextOrch(feeds, preferences, replaceRssItemBlock)
+
+  return { available, settings, progress, waiting, last: readLastFeedAiReadOrch(), runNow }
 }
 
 /** The story cards the AI has written (loaded from the vault once). */

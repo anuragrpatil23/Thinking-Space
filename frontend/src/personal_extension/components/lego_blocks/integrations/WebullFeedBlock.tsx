@@ -145,7 +145,7 @@ function minutesAgoBlock(iso: string): string {
   return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`
 }
 
-function LibraryStatusBlock({ library }: { library: ReturnType<typeof useLibraryPassBlock> }) {
+function LibraryStatusBlock({ library, reader }: { library: ReturnType<typeof useLibraryPassBlock>; reader: ReturnType<typeof useFeedAiReadBlock> }) {
   const { available, last, progress, run } = library
   const [open, setOpen] = useState(false)
   if (!available) {
@@ -176,6 +176,7 @@ function LibraryStatusBlock({ library }: { library: ReturnType<typeof useLibrary
           void checkValueLineNowOrch()
           void checkEarningsCallsNowOrch()
           void checkPricesNowOrch()
+          void reader.runNow()
         }}
         title="Library articles, Value Line, earnings calls and prices, now"
         className="text-[13px] text-sky-600 hover:text-sky-700 dark:text-sky-400"
@@ -186,6 +187,7 @@ function LibraryStatusBlock({ library }: { library: ReturnType<typeof useLibrary
       <ValueLineStatusBlock />
       <EarningsCallsStatusBlock />
       <PricesStatusBlock />
+      <AiReadsStatusBlock reader={reader} />
     </F9PanelBlock>
   )
 }
@@ -218,6 +220,36 @@ function ValueLineStatusBlock() {
         <button type="button" onClick={() => { void checkValueLineNowOrch() }} className="ml-2 text-[#3b6fb6] hover:underline dark:text-sky-400">Check now</button>
       )}
       {open && <PassQueueListBlock items={running?.items ?? last?.items ?? []} />}
+    </span>
+  )
+}
+
+// The AI reading the feed (switched on in Settings → Webull): each article it
+// distils and each story card it writes, live, and what came of the last job.
+function AiReadsStatusBlock({ reader }: { reader: ReturnType<typeof useFeedAiReadBlock> }) {
+  const [open, setOpen] = useState(false)
+  const { available, settings, progress, waiting, last, runNow } = reader
+  if (!available) return null
+  return (
+    <span className="basis-full text-[12px] text-zinc-500 dark:text-zinc-400">
+      <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} title="Show each article and story card in the job" className="mr-2 inline-flex items-center gap-1 font-semibold text-zinc-900 hover:underline dark:text-zinc-100">
+        <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />AI reads
+      </button>
+      {!settings.on
+        ? 'Off: turn it on in Settings → Webull'
+        : progress
+          ? `${progress.kind === 'stories' ? 'Writing story cards' : 'Reading'} · ${progress.done} of ${progress.total}${waiting > progress.total ? ` · ${waiting} waiting in all` : ''}`
+          : [
+            waiting > 0 ? `${waiting} waiting` : 'Up to date',
+            last?.read ? `${last.read} read last time` : null,
+            last?.model || null,
+            last ? minutesAgoBlock(last.at) : null,
+          ].filter(Boolean).join(' · ')}
+      {!progress && settings.on && last?.error && <span className="ml-2 text-red-600 dark:text-red-400">{last.error}</span>}
+      {!progress && settings.on && (
+        <button type="button" onClick={() => { void runNow() }} className="ml-2 text-[#3b6fb6] hover:underline dark:text-sky-400">Check now</button>
+      )}
+      {open && <PassQueueListBlock items={progress?.items ?? last?.items ?? []} />}
     </span>
   )
 }
@@ -801,7 +833,7 @@ export default function WebullFeedBlock() {
 
       {view === 'sources' ? (
         <div className="space-y-4 pb-12">
-          <LibraryStatusBlock library={library} />
+          <LibraryStatusBlock library={library} reader={aiReader} />
           <SourcesBlock />
         </div>
       ) : phone ? (
