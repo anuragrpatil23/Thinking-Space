@@ -37,6 +37,10 @@ const SCROLL_PAGE_PX = 640
  *  only scrolling it or lingering on it does. */
 const DWELL_TO_MARK_READ_MS = 5000
 
+
+/** Whether the AI's points start open in the reader (this device). */
+const AI_POINTS_OPEN_KEY = 'ltm-reader-ai-points-open'
+
 interface RssArticleViewBlockProps {
   item: RssFeedItemBlock
   onClose: () => void
@@ -116,6 +120,16 @@ export default function RssArticleViewBlock({
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
   const [tags, setTags] = useState<string[]>(item.tags ?? [])
+  // The AI's points: one line until opened; the choice is remembered on this device
+  const [aiOpen, setAiOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem(AI_POINTS_OPEN_KEY) === '1' } catch { return false }
+  })
+  const toggleAiOpen = useCallback(() => {
+    setAiOpen((open) => {
+      try { localStorage.setItem(AI_POINTS_OPEN_KEY, open ? '0' : '1') } catch { /* a convenience only */ }
+      return !open
+    })
+  }, [])
   const [keep, setKeep] = useState(item.keep ?? false)
   const [important, setImportant] = useState(item.important ?? false)
 
@@ -200,6 +214,11 @@ export default function RssArticleViewBlock({
           onClose()
           return
       }
+      if ((event.key === 'a' || event.key === 'A') && item.aiSummary) {
+        event.preventDefault()
+        toggleAiOpen()
+        return
+      }
       if (native && (event.key === 'r' || event.key === 'R') && (item.textInCache || readerViewAvailableOrch(item))) {
         event.preventDefault()
         toggleReader()
@@ -222,7 +241,7 @@ export default function RssArticleViewBlock({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => { window.removeEventListener('keydown', onKeyDown) }
-  }, [nav, showMoveDialog, onClose, markViewed, native, item, toggleReader])
+  }, [nav, showMoveDialog, onClose, markViewed, native, item, toggleReader, toggleAiOpen])
 
   const applyMeta = useCallback((
     nextTags: string[],
@@ -446,21 +465,36 @@ export default function RssArticleViewBlock({
         </button>
       </div>}
 
-      {/* The AI's summary, when it has read the article: the same record either reader leaves */}
-      {item.aiSummary && (
-        <div className="shrink-0 border-b border-border/50 bg-violet-50/60 px-4 py-2.5 text-[12.5px] leading-snug text-zinc-700 dark:bg-violet-500/5 dark:text-zinc-200">
-          <span className="mr-1.5 rounded bg-violet-100 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" title={`Summary by ${item.aiSummary.model || 'AI'}`}>AI read</span>
-          {(() => {
-            const points = articleSummaryPointsBlock(item.aiSummary.text)
-            if (points.length < 2) return points[0]
-            return (
+      {/* The AI's summary, when it has read the article: the same record either reader leaves.
+           One line until opened (A, or the toggle), so the article keeps the room. */}
+      {item.aiSummary && (() => {
+        const points = articleSummaryPointsBlock(item.aiSummary.text)
+        const more = points.length > 1
+        return (
+          <div className="shrink-0 border-b border-border/50 bg-violet-50/60 px-4 py-2 text-[12.5px] leading-snug text-zinc-700 dark:bg-violet-500/5 dark:text-zinc-200">
+            <div className="flex items-start gap-2">
+              <span className="mt-[2px] shrink-0 rounded bg-violet-100 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" title={`Summary by ${item.aiSummary.model || 'AI'}`}>AI read</span>
+              {!(aiOpen && more) && <span className={cn('min-w-0 flex-1', !aiOpen && 'truncate')}>{points[0]}</span>}
+              {aiOpen && more && <span className="min-w-0 flex-1 text-zinc-500 dark:text-zinc-400">{points.length} points</span>}
+              {more && (
+                <button
+                  type="button"
+                  onClick={toggleAiOpen}
+                  title={aiOpen ? 'Hide the points (A)' : `Show all ${points.length} points (A)`}
+                  className="shrink-0 text-[11px] text-violet-700 hover:underline dark:text-violet-300"
+                >
+                  {aiOpen ? 'Hide' : `+${points.length - 1} more`} <kbd className="ml-0.5 rounded border border-violet-200 px-1 text-[10px] dark:border-violet-500/30">A</kbd>
+                </button>
+              )}
+            </div>
+            {aiOpen && more && (
               <ul className="mt-1.5 max-h-[30vh] list-disc space-y-1 overflow-y-auto pl-4 marker:text-violet-400">
                 {points.map(point => <li key={point}>{point}</li>)}
               </ul>
-            )
-          })()}
-        </div>
-      )}
+            )}
+          </div>
+        )
+      })()}
 
       {belowSummary}
 
