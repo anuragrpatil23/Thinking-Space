@@ -182,7 +182,7 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
     const ai = failing.filter(f => aiOnly.has(f.feedId))
     if (mine.length) out.push(`${mine.length} ${mine.length === 1 ? 'source is' : 'sources are'} not loading: ${mine.slice(0, 3).map(f => f.feedTitle).join(', ')}${mine.length > 3 ? '…' : ''}`)
     if (ai.length) out.push(`${ai.length} of the AI's sources ${ai.length === 1 ? 'is' : 'are'} not loading`)
-    if (reader.available && !reader.settings.on) out.push('The AI reader is off; turn it on in Sources.')
+    if (reader.available && !reader.settings.on) out.push('The AI reader is off; turn it on in Settings → Webull.')
     if (reader.available && reader.last?.error && reader.settings.on) out.push(`AI reader: ${reader.last.error}`)
     const library = readLastLibraryPassOrch()
     if (library?.error) out.push(`Library: ${library.error}`)
@@ -212,11 +212,12 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
 
   return (
     <div className="grid gap-5 pb-12 lg:grid-cols-[minmax(0,1fr)_minmax(290px,340px)]">
+      {/* The title spans both columns, so the charts and the side panels start level */}
+      <div className="min-w-0 lg:col-span-2">{header}</div>
       <div className="flex min-w-0 flex-col gap-5">
-        {header}
-        {chart}
-        {history.length > 0 && <DayBarsBlock rows={[...history].reverse()} />}
         {todayStories.length > 0 && <ArrivalsChartBlock rows={arrivals} />}
+        {history.length > 0 && <DayBarsBlock rows={[...history].reverse()} />}
+        {chart}
         {loud.length > 0 && (
           <F9PanelBlock className="overflow-hidden text-[13px]">
             <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pb-2 pt-[18px]">
@@ -257,7 +258,7 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
       </div>
 
       {/* Where things stand, beside the charts */}
-      <div className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1">
+      <div className="flex min-w-0 flex-col gap-5 lg:col-start-2 lg:row-start-2">
         <F9PanelBlock className="px-5 pb-3 pt-[18px] text-[13px]">
           <p className="font-semibold">Today</p>
           <p className="mt-2.5 text-2xl font-semibold tabular-nums">{todayStories.length} {todayStories.length === 1 ? 'story' : 'stories'}</p>
@@ -277,7 +278,7 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
         <FeedReadingNotesPanelBlock feeds={feeds} onOpenItem={onOpenItem} />
 
         {sourcesToday.length > 0 && (
-          <F9PanelBlock className="px-4 py-3.5 text-[13px]">
+          <F9PanelBlock className="px-5 pb-3 pt-[18px] text-[13px]">
             <p className="mb-1 font-semibold">Where it came from today</p>
             {sourcesToday.map(([title, count], index) => (
               <F9FactRowBlock key={title} divided={index > 0} label={title} value={count} />
@@ -286,7 +287,7 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
         )}
 
         {warnings.length > 0 && (
-          <F9PanelBlock className="px-4 py-3.5 text-[13px]">
+          <F9PanelBlock className="px-5 pb-3 pt-[18px] text-[13px]">
             <p className="mb-1.5 font-semibold">Worth a look</p>
             {warnings.map((w, i) => (
               <div key={w} className={cn('flex items-start gap-2.5 py-2 text-zinc-600 dark:text-zinc-300', i > 0 && 'border-t border-zinc-200/80 dark:border-zinc-800')}>

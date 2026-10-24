@@ -94,7 +94,7 @@ export async function listValueLineIssuesOrch(rawTicker: string): Promise<string
   if (cached && Date.now() - Date.parse(cached.at) < ISSUE_LIST_FRESH_MS) return cached.issues
   const api = window.electronAPI
   if (!valueLineAvailableOrch() || !api?.libraryValueLineIssues) return cached?.issues ?? []
-  const { covered, issues } = await api.libraryValueLineIssues({ ticker })
+  const { covered, issues } = await api.libraryValueLineIssues({ ticker, interactive: true })
   if (!covered) writeCheckBlock(ticker, 'not-covered')
   const dates = issues.map(i => i.issueDate)
   writeIssueListBlock(ticker, dates)
@@ -107,7 +107,7 @@ export async function fetchValueLineIssueOrch(executionRoot: string, rawTicker: 
   const api = window.electronAPI
   if (!valueLineAvailableOrch() || !api?.libraryValueLineReport) throw new Error('Value Line is reached from the desktop app only.')
   const path = `${executionRoot.replace(/\/+$/, '')}/${ticker}/${VALUE_LINE_FOLDER_NAME_BLOCK}/${valueLineFileNameBlock(issueDate)}`
-  const { pdfBase64 } = await api.libraryValueLineReport({ ticker, issueDate })
+  const { pdfBase64 } = await api.libraryValueLineReport({ ticker, issueDate, interactive: true })
   await getVaultFS().writeBytes(path, base64ToBytesBlock(pdfBase64))
   return path
 }
@@ -187,6 +187,18 @@ export function subscribeValueLinePassOrch(listener: () => void): () => void {
  * more at the end (a library hiccup, or the session being re-made by another
  * request); a login failure stops the pass. Concurrent calls share it.
  */
+// What the daily pass covers (set by the F9 page), so "Check now" can run it on demand
+let passTarget: { executionRoot: string; tickers: string[] } | null = null
+
+export function setValueLinePassTargetOrch(executionRoot: string, tickers: string[]): void {
+  passTarget = { executionRoot, tickers }
+}
+
+/** Run the pass now, whatever the day's schedule says; null when the F9 page has not said what to cover. */
+export function checkValueLineNowOrch(): Promise<ValueLinePassBlock> | null {
+  return passTarget ? runValueLinePassOrch(passTarget.executionRoot, passTarget.tickers) : null
+}
+
 export function runValueLinePassOrch(executionRoot: string, tickers: string[]): Promise<ValueLinePassBlock> {
   if (running) return running
   running = (async () => {

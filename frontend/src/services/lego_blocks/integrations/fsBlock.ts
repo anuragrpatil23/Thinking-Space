@@ -459,8 +459,8 @@ interface ElectronAPI {
   libraryGaleSearch?(payload: { publication: string; words: string[]; day: string; db: string; windowDays: number }): Promise<Array<{ title: string; docId: string; sourceLine: string }>>
   libraryGaleArticle?(payload: { docId: string; db: string }): Promise<{ text: string; citationOnly: boolean }>
   /** Value Line company reports through the same library session. Desktop only. */
-  libraryValueLineIssues?(payload: { ticker: string }): Promise<{ covered: boolean; issues: Array<{ issueDate: string }> }>
-  libraryValueLineReport?(payload: { ticker: string; issueDate: string }): Promise<{ pdfBase64: string }>
+  libraryValueLineIssues?(payload: { ticker: string; interactive?: boolean }): Promise<{ covered: boolean; issues: Array<{ issueDate: string }> }>
+  libraryValueLineReport?(payload: { ticker: string; issueDate: string; interactive?: boolean }): Promise<{ pdfBase64: string }>
   /** Earnings call transcripts (StockAnalysis public pages). Desktop only. */
   earningsCallsList?(payload: { ticker: string }): Promise<{ covered: boolean; calls: Array<{ slug: string; quarter: number; fiscalYear: number }> }>
   earningsCallGet?(payload: { ticker: string; slug: string }): Promise<{ date: string; text: string }>

@@ -27,8 +27,8 @@ import {
   type RssMergedViewsModeBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
 import { readEarningsCallPassProgressOrch, readLastEarningsCallPassOrch, subscribeEarningsCallPassOrch } from '@/personal_extension/services/orchestrators/webullEarningsCallsOrch'
-import { readLastValueLinePassOrch, readValueLinePassProgressOrch, subscribeValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
-import { FeedAiReaderSettingsBlock, useFeedAiReadBlock } from './FeedAiReaderBlock'
+import { checkValueLineNowOrch, readLastValueLinePassOrch, readValueLinePassProgressOrch, subscribeValueLinePassOrch, valueLineAvailableOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
+import { useFeedAiReadBlock } from './FeedAiReaderBlock'
 import { FeedNoteCaptureBlock } from './FeedNoteCaptureBlock'
 import { nameNoteCompaniesOrch, pickUpTaggedArticlesOrch } from '@/personal_extension/services/orchestrators/feedNotesOrch'
 import { FeedOverviewBlock } from './FeedOverviewBlock'
@@ -191,6 +191,9 @@ function ValueLineStatusBlock() {
         ].filter(Boolean).join(' · ')
         : 'Not run yet; it runs when the F9 page opens'}
       {!running && last?.error && <span className="ml-2 text-red-600 dark:text-red-400">{last.error}</span>}
+      {!running && valueLineAvailableOrch() && (
+        <button type="button" onClick={() => { void checkValueLineNowOrch() }} className="ml-2 text-[#3b6fb6] hover:underline dark:text-sky-400">Check now</button>
+      )}
     </span>
   )
 }
@@ -738,7 +741,6 @@ export default function WebullFeedBlock() {
 
       {view === 'sources' ? (
         <div className="space-y-4 pb-12">
-          <FeedAiReaderSettingsBlock reader={aiReader} />
           <LibraryStatusBlock library={library} />
           <SourcesBlock />
         </div>

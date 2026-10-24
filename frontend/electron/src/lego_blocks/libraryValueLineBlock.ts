@@ -10,7 +10,7 @@
 // and for a report an issue date from that ticker's list. The keys stay in
 // main; every URL is built here, on the proxied Value Line host only.
 
-import { decodeEntitiesBlock, libraryRequestBlock } from './librarySessionBlock';
+import { decodeEntitiesBlock, libraryLogBlock, libraryRequestBlock } from './librarySessionBlock';
 
 const VALUE_LINE = 'https://www3-valueline-com.atxlibrary.idm.oclc.org';
 /** The edition's front page: signing in lands here, which also opens Value Line's own session. */
@@ -63,13 +63,14 @@ function validTickerBlock(ticker: unknown): string {
 // The keys from each ticker's latest listing, so a report request names only a date
 const keysByTicker = new Map<string, Map<string, string>>();
 
-async function listIssuesBlock(ticker: string): Promise<LibraryValueLineIssue[]> {
+async function listIssuesBlock(ticker: string, urgent = false): Promise<LibraryValueLineIssue[]> {
   const params = new URLSearchParams({ ticker, companyName: '', issueDate: '', exactMatch: 'true' });
   const issues = await libraryRequestBlock({
     url: `${VALUE_LINE}/stk5000/HistoricalReportsData?${params.toString()}`,
     method: 'POST',
     headers: AJAX_HEADERS,
     loginUrl: VALUE_LINE_FRONT,
+    urgent,
     read: async (r) => parseValueLineIssuesBlock(await r.text(), ticker),
     expect: (parsed) => parsed !== null,
   });
@@ -82,11 +83,12 @@ async function listIssuesBlock(ticker: string): Promise<LibraryValueLineIssue[]>
 const CONTROL_TICKER = 'AAPL';
 
 /** Every issue of a ticker's report; `covered: false` when Value Line has none. */
-export async function libraryValueLineIssuesBlock(p: { ticker: string }): Promise<LibraryValueLineIssues> {
+export async function libraryValueLineIssuesBlock(p: { ticker: string; interactive?: boolean }): Promise<LibraryValueLineIssues> {
   const ticker = validTickerBlock(p?.ticker);
+  const urgent = p?.interactive === true;
   let issues: LibraryValueLineIssue[];
   try {
-    issues = await listIssuesBlock(ticker);
+    issues = await listIssuesBlock(ticker, urgent);
   } catch (err) {
     if (!/ERR_TOO_MANY_REDIRECTS/.test(String(err)) || ticker === CONTROL_TICKER) throw err;
     // Some tickers (IREN) answer with a redirect loop however fresh the
@@ -95,26 +97,29 @@ export async function libraryValueLineIssuesBlock(p: { ticker: string }): Promis
     // covered, rather than an error on every pass. If it does not, the
     // session is what is broken, and that error is the one to show.
     try {
-      await listIssuesBlock(CONTROL_TICKER);
+      await listIssuesBlock(CONTROL_TICKER, urgent);
     } catch {
+      libraryLogBlock(`value line: ${CONTROL_TICKER} fails too: the session is broken`);
       throw err;
     }
-    console.info(`[library] value line: ${ticker} answers with a redirect loop while ${CONTROL_TICKER} lists; treated as not covered`);
+    libraryLogBlock(`value line: ${ticker} answers with a redirect loop while ${CONTROL_TICKER} lists; treated as not covered`);
     return { covered: false, issues: [] };
   }
   return { covered: issues.length > 0, issues: issues.map(({ issueDate }) => ({ issueDate })) };
 }
 
 /** One issue's report PDF, base64. */
-export async function libraryValueLineReportBlock(p: { ticker: string; issueDate: string }): Promise<{ pdfBase64: string }> {
+export async function libraryValueLineReportBlock(p: { ticker: string; issueDate: string; interactive?: boolean }): Promise<{ pdfBase64: string }> {
+  const urgent = p?.interactive === true;
   const ticker = validTickerBlock(p?.ticker);
   if (typeof p.issueDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(p.issueDate)) throw new Error('value line: issueDate must be YYYY-MM-DD');
-  if (!keysByTicker.get(ticker)?.has(p.issueDate)) await listIssuesBlock(ticker);
+  if (!keysByTicker.get(ticker)?.has(p.issueDate)) await listIssuesBlock(ticker, urgent);
   const key = keysByTicker.get(ticker)?.get(p.issueDate);
   if (!key) throw new Error(`value line: no ${ticker} issue on ${p.issueDate}`);
   const bytes = await libraryRequestBlock({
     url: `${VALUE_LINE}/File/Handler?productCode=investment-survey&key=${key}`,
     loginUrl: VALUE_LINE_FRONT,
+    urgent,
     read: async (r) => Buffer.from(await r.arrayBuffer()),
     expect: (b) => b.subarray(0, 5).toString('latin1') === '%PDF-',
   });

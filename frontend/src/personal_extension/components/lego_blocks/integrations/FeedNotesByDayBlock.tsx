@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronRight, MessageSquareText, X } from 'lucide-react'
+import { ChevronRight, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { rssDayLabelBlock } from '@/services/lego_blocks/units/rssStoryBlock'
-import { removeFeedNoteOrch, removeFeedNotesOrch, setFeedNoteDoneOrch } from '@/personal_extension/services/orchestrators/feedNotesOrch'
+import { removeFeedNotesOrch } from '@/personal_extension/services/orchestrators/feedNotesOrch'
+import { FeedNoteKindBadgeBlock, FeedNoteLineBlock } from '../units/FeedNoteLineBlock'
 import type { FeedNoteArticleBlock } from '@/personal_extension/services/lego_blocks/units/feedNoteBlock'
 
 /**
@@ -59,6 +60,8 @@ export function FeedNotesByDayBlock({ days, openDays = 2, onOpenArticle, article
                         {article.title}
                       </button>
                       <span className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+                        {article.questions.length > 0 && <span className="inline-flex items-center gap-0.5"><FeedNoteKindBadgeBlock kind="question" />{article.questions.length}</span>}
+                        {article.comments.length > 0 && <span className="inline-flex items-center gap-0.5"><FeedNoteKindBadgeBlock kind="comment" />{article.comments.length}</span>}
                         {article.tags.map(tag => (
                           <span key={tag.id} className="rounded bg-zinc-100 px-1 py-px text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{tag.tag}</span>
                         ))}
@@ -80,20 +83,7 @@ export function FeedNotesByDayBlock({ days, openDays = 2, onOpenArticle, article
                     </span>
                   </div>
                   {[...article.questions, ...article.comments].map(note => (
-                    <div key={note.id} className="group/note mt-1.5 flex items-start gap-2 text-[12.5px] leading-snug text-zinc-700 dark:text-zinc-200">
-                      {note.kind === 'question' ? (
-                        <button
-                          type="button"
-                          onClick={() => { void setFeedNoteDoneOrch(note.id, true) }}
-                          title="Mark understood"
-                          className="mt-[2px] h-3.5 w-3.5 shrink-0 rounded-full border border-zinc-400 hover:border-emerald-500 hover:bg-emerald-50"
-                        />
-                      ) : <MessageSquareText className="mt-[2px] h-3.5 w-3.5 shrink-0 text-zinc-400" />}
-                      <span className="min-w-0 flex-1">{note.text}</span>
-                      <button type="button" onClick={() => { void removeFeedNoteOrch(note.id) }} title="Remove" className="opacity-0 transition-opacity group-hover/note:opacity-100">
-                        <X className="h-3.5 w-3.5 text-zinc-400 hover:text-zinc-700" />
-                      </button>
-                    </div>
+                    <FeedNoteLineBlock key={note.id} note={note} className="mt-1.5 text-[12.5px] text-zinc-700 dark:text-zinc-200" />
                   ))}
                 </div>
               )

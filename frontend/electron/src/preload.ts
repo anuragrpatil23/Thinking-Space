@@ -755,11 +755,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('library:galeSearch', payload),
   libraryGaleArticle: (payload: { docId: string; db: string }) =>
     ipcRenderer.invoke('library:galeArticle', payload),
-  libraryValueLineIssues: (payload: { ticker: string }) =>
+  libraryValueLineIssues: (payload: { ticker: string; interactive?: boolean }) =>
     ipcRenderer.invoke('library:valueLineIssues', payload),
   earningsCallsList: (payload: { ticker: string }) => ipcRenderer.invoke('earningsCalls:list', payload),
   earningsCallGet: (payload: { ticker: string; slug: string }) => ipcRenderer.invoke('earningsCalls:get', payload),
-  libraryValueLineReport: (payload: { ticker: string; issueDate: string }) =>
+  libraryValueLineReport: (payload: { ticker: string; issueDate: string; interactive?: boolean }) =>
     ipcRenderer.invoke('library:valueLineReport', payload),
   webullCredentialStatus: () =>
     ipcRenderer.invoke('webull:credentials:status'),

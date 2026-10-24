@@ -32,6 +32,48 @@ const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 
 export class LibraryLoginErrorBlock extends Error {}
 
+// A plain log of library requests (~/.thinking-space/logs/library.log), so a
+// failing session can be read after the fact: what was asked, what came back,
+// where the redirects landed. Never the login form or anything in it: a URL is
+// logged as host, path and the names of its query parameters.
+const LOG_MAX_BYTES = 1_000_000;
+
+function logPathBlock(): string {
+  return `${app.getPath('home')}/.thinking-space/logs/library.log`;
+}
+
+function urlForLogBlock(raw: string): string {
+  try {
+    const url = new URL(raw);
+    const keys = [...url.searchParams.keys()];
+    return `${url.host}${url.pathname}${keys.length ? `?${keys.join('&')}` : ''}`;
+  } catch {
+    return '(bad url)';
+  }
+}
+
+export function libraryLogBlock(line: string): void {
+  try {
+    const path = logPathBlock();
+    fs.mkdirSync(path.replace(/\/[^/]+$/, ''), { recursive: true });
+    if (fs.existsSync(path) && fs.statSync(path).size > LOG_MAX_BYTES) fs.renameSync(path, `${path}.1`);
+    fs.appendFileSync(path, `${new Date().toISOString()} ${line}\n`);
+  } catch { /* logging never breaks a request */ }
+}
+
+/** A session fetch that leaves a line in the log: status and landing, or the error. */
+async function loggedFetchBlock(label: string, url: string, init: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+  try {
+    const response = await librarySessionBlock().fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    const landed = response.url && response.url !== url ? ` landed ${urlForLogBlock(response.url)}` : '';
+    libraryLogBlock(`${label} ${init.method ?? 'GET'} ${urlForLogBlock(url)} -> ${response.status}${landed}`);
+    return response;
+  } catch (err) {
+    libraryLogBlock(`${label} ${init.method ?? 'GET'} ${urlForLogBlock(url)} -> ${String(err).slice(0, 200)}`);
+    throw err;
+  }
+}
+
 function childCwdBlock(): string {
   const vaultRoot = readPersistedVaultRootBlock();
   return vaultRoot && fs.existsSync(vaultRoot) ? vaultRoot : app.getPath('userData');
@@ -93,22 +135,62 @@ export async function clearLibraryCardBlock(): Promise<LibraryCredentialStatusBl
 }
 
 // One request at a time, paced, so the library sees a reader, not a crawler.
-let queue: Promise<unknown> = Promise.resolve();
+// A request the user is waiting on (a click on a company page) goes ahead of
+// background work (filling articles, the daily pass), and every request has a
+// time limit, so one that hangs fails instead of holding up all the others.
 let lastRequestAt = 0;
 let loggedIn = false;
+const REQUEST_TIMEOUT_MS = 30_000;
+const LOGIN_TIMEOUT_MS = 45_000;
+const JOB_TIMEOUT_MS = 90_000;
 
-function pacedBlock<T>(work: () => Promise<T>): Promise<T> {
-  const run = queue.then(async () => {
-    const wait = lastRequestAt + PACE_MS - Date.now();
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    try {
-      return await work();
-    } finally {
-      lastRequestAt = Date.now();
+interface LibraryJobBlock {
+  run: () => Promise<unknown>
+  resolve: (value: unknown) => void
+  reject: (reason: unknown) => void
+  urgent: boolean
+}
+const jobs: LibraryJobBlock[] = [];
+let working = false;
+
+async function pumpBlock(): Promise<void> {
+  if (working) return;
+  working = true;
+  try {
+    for (let job = jobs.shift(); job; job = jobs.shift()) {
+      const wait = lastRequestAt + PACE_MS - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      try {
+        // A job (sign-in and a retry included) never holds the queue longer than this
+        job.resolve(await Promise.race([
+          job.run(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('The library did not answer in time.')), JOB_TIMEOUT_MS)),
+        ]));
+      } catch (err) {
+        if (err instanceof Error && /did not answer in time|aborted|timeout/i.test(err.message)) libraryLogBlock(`gave up waiting: ${err.message}`);
+        job.reject(err);
+      } finally {
+        lastRequestAt = Date.now();
+      }
     }
+  } finally {
+    working = false;
+  }
+}
+
+function pacedBlock<T>(work: () => Promise<T>, urgent = false): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const job: LibraryJobBlock = { run: work, resolve: resolve as (v: unknown) => void, reject, urgent };
+    if (urgent) {
+      // After any other waiting urgent requests, ahead of the background ones
+      const at = jobs.findIndex((j) => !j.urgent);
+      if (at === -1) jobs.push(job);
+      else jobs.splice(at, 0, job);
+    } else {
+      jobs.push(job);
+    }
+    void pumpBlock();
   });
-  queue = run.catch(() => undefined);
-  return run;
 }
 
 function librarySessionBlock() {
@@ -119,11 +201,11 @@ function librarySessionBlock() {
 async function loginBlock(firstUrl: string): Promise<Response> {
   const { card, password } = await libraryCredentialBlock();
   const body = new URLSearchParams({ user: card, pass: password, url: firstUrl }).toString();
-  return librarySessionBlock().fetch(PROXY_LOGIN, {
+  return loggedFetchBlock(`login(${urlForLogBlock(firstUrl)})`, PROXY_LOGIN, {
     method: 'POST',
     body,
     headers: { 'User-Agent': BROWSER_UA, 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
+  }, LOGIN_TIMEOUT_MS);
 }
 
 export interface LibraryRequestBlock<T> {
@@ -140,12 +222,14 @@ export interface LibraryRequestBlock<T> {
    * on its front page, signs in there and asks again.
    */
   loginUrl?: string
+  /** The user is waiting on it: goes ahead of background requests */
+  urgent?: boolean
 }
 
 /** One library request; signs in first, or again when the session has lapsed. */
 export function libraryRequestBlock<T>(request: LibraryRequestBlock<T>): Promise<T> {
   return pacedBlock(async () => {
-    const ask = async () => request.read(await librarySessionBlock().fetch(request.url, {
+    const ask = async () => request.read(await loggedFetchBlock('ask', request.url, {
       method: request.method ?? 'GET',
       body: request.method === 'POST' ? '' : undefined,
       headers: { 'User-Agent': BROWSER_UA, ...request.headers },
@@ -172,16 +256,18 @@ export function libraryRequestBlock<T>(request: LibraryRequestBlock<T>): Promise
       if (!/ERR_TOO_MANY_REDIRECTS/.test(String(err))) throw err;
       // Stale cookies can keep the proxy and the database bouncing between
       // each other; start from a clean session and sign in once more.
+      libraryLogBlock('redirect loop after signing in: clearing cookies, signing in again');
       await librarySessionBlock().clearStorageData({ storages: ['cookies'] });
       value = await signInAndAsk();
     }
     if (!request.expect(value)) {
+      libraryLogBlock(`not the page asked for: ${urlForLogBlock(request.url)}`);
       loggedIn = false;
       throw new LibraryLoginErrorBlock('The library login did not return the page asked for (check the card, or the proxy is down).');
     }
     loggedIn = true;
     return value;
-  });
+  }, request.urgent === true);
 }
 
 export function decodeEntitiesBlock(value: string): string {

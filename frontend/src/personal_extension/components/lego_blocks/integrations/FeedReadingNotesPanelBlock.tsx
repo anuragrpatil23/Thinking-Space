@@ -19,7 +19,7 @@ export function FeedReadingNotesPanelBlock({ feeds, onOpenItem }: { feeds: RssFe
   if (days.length === 0) return null
 
   return (
-    <F9PanelBlock className="px-4 pb-1.5 pt-3.5 text-[13px]">
+    <F9PanelBlock className="px-5 pb-2 pt-[18px] text-[13px]">
       <p className="font-semibold">From your reading</p>
       <p className="mb-1 text-[11px] text-zinc-500 dark:text-zinc-400">Press Q or C while reading to add one</p>
       <FeedNotesByDayBlock

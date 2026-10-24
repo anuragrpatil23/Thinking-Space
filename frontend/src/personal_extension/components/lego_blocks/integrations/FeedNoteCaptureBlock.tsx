@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { MessageSquareText, X } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import type { RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
-import { addFeedNoteOrch, removeFeedNoteOrch, setFeedNoteDoneOrch } from '@/personal_extension/services/orchestrators/feedNotesOrch'
+import { addFeedNoteOrch } from '@/personal_extension/services/orchestrators/feedNotesOrch'
+import { FeedNoteKindBadgeBlock, FeedNoteLineBlock } from '../units/FeedNoteLineBlock'
 import type { FeedNoteKindBlock } from '@/personal_extension/services/lego_blocks/units/feedNoteBlock'
 import { useFeedNotesBlock } from '../hooks/useFeedNotesBlock'
 
@@ -60,26 +59,11 @@ export function FeedNoteCaptureBlock({ item, feedTitle }: { item: RssFeedItemBlo
   return (
     <div className="shrink-0 border-b border-border/50 px-4 py-2 text-[12.5px]">
       {notes.map(note => (
-        <div key={note.id} className="group flex items-start gap-2 py-0.5 text-zinc-700 dark:text-zinc-200">
-          {note.kind === 'question' ? (
-            <button
-              type="button"
-              onClick={() => { void setFeedNoteDoneOrch(note.id, !note.done) }}
-              title={note.done ? 'Understood; click to reopen' : 'Mark understood'}
-              className={cn('mt-[3px] h-3.5 w-3.5 shrink-0 rounded-full border text-[9px] leading-[12px]', note.done ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-zinc-400 text-transparent hover:border-zinc-600')}
-            >✓</button>
-          ) : (
-            <MessageSquareText className="mt-[3px] h-3.5 w-3.5 shrink-0 text-zinc-400" />
-          )}
-          <span className={cn('min-w-0 flex-1', note.done && 'text-zinc-400 line-through')}>{note.text}</span>
-          <button type="button" onClick={() => { void removeFeedNoteOrch(note.id) }} title="Remove" className="opacity-0 transition-opacity group-hover:opacity-100">
-            <X className="h-3.5 w-3.5 text-zinc-400 hover:text-zinc-700" />
-          </button>
-        </div>
+        <FeedNoteLineBlock key={note.id} note={note} className="py-0.5 text-zinc-700 dark:text-zinc-200" />
       ))}
       {kind && (
         <div className="flex items-center gap-2 py-1">
-          <span className="w-4 shrink-0 text-center text-[11px] font-semibold text-violet-600 dark:text-violet-300">{kind === 'question' ? 'Q' : 'C'}</span>
+          <FeedNoteKindBadgeBlock kind={kind} />
           <input
             ref={inputRef}
             value={text}

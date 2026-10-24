@@ -1820,13 +1820,13 @@ ipcMain.handle('library:saveCard', async (_event, payload: { card: unknown; pin:
 ipcMain.handle('library:clearCard', async () => clearLibraryCardBlock());
 ipcMain.handle('library:galeSearch', async (_event, payload: LibraryGaleSearchPayload) => libraryGaleSearchBlock(payload));
 ipcMain.handle('library:galeArticle', async (_event, payload: { docId: string; db: string }) => libraryGaleArticleBlock(payload));
-ipcMain.handle('library:valueLineIssues', async (_event, payload: { ticker: string }) => libraryValueLineIssuesBlock(payload));
+ipcMain.handle('library:valueLineIssues', async (_event, payload: { ticker: string; interactive?: boolean }) => libraryValueLineIssuesBlock({ ticker: payload?.ticker, interactive: payload?.interactive === true }));
 // -- Earnings call transcripts (StockAnalysis public pages) --
 // A ticker, or a ticker and a call id from its list; main builds the URLs, on
 // stockanalysis.com only (earningsCallsBlock.ts).
 ipcMain.handle('earningsCalls:list', async (_event, payload: { ticker: string }) => earningsCallsListBlock(payload));
 ipcMain.handle('earningsCalls:get', async (_event, payload: { ticker: string; slug: string }) => earningsCallGetBlock(payload));
-ipcMain.handle('library:valueLineReport', async (_event, payload: { ticker: string; issueDate: string }) => libraryValueLineReportBlock(payload));
+ipcMain.handle('library:valueLineReport', async (_event, payload: { ticker: string; issueDate: string; interactive?: boolean }) => libraryValueLineReportBlock({ ticker: payload?.ticker, issueDate: payload?.issueDate, interactive: payload?.interactive === true }));
 
 // -- Webull Webull GET bridge (main-process network bridge) --
 ipcMain.handle('webull:get', async (_event, payload: WebullGetPayload) => {

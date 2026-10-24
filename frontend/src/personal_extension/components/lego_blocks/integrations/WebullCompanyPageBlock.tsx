@@ -1,4 +1,5 @@
 import { Suspense, useMemo, useState, type ReactNode } from 'react'
+import FileCopyMenuHostBlock, { openFileCopyMenuBlock } from '@/components/lego_blocks/integrations/FileCopyMenuBlock'
 import { ChevronRight, Download, Loader2 } from 'lucide-react'
 import { Area, AreaChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
@@ -78,6 +79,9 @@ type ValueLinePanelStateBlock = ReturnType<typeof useValueLineCompanyBlock>
 // Value Line in the research panel: the newest issue on the row; opening it
 // lists every issue — saved ones open, and on the desktop the library's older
 // ones download on click (one at a time, so the library sees a reader).
+/** The folder a file sits in, for "Copy folder path". */
+const folderOfBlock = (path: string) => path.replace(/\/[^/]+$/, '')
+
 function ValueLineRowBlock({ reports, valueLine, expanded, onToggle, onOpenFile }: {
   reports: WebullResearchFileBlock[]
   valueLine: ValueLinePanelStateBlock
@@ -113,6 +117,10 @@ function ValueLineRowBlock({ reports, valueLine, expanded, onToggle, onOpenFile 
         type="button"
         aria-expanded={opensDirectly ? undefined : expanded}
         onClick={() => (opensDirectly ? onOpenFile(rows[0].path!) : toggle())}
+        onContextMenu={(event) => {
+          const saved = rows.find(row => row.path)?.path
+          if (saved) openFileCopyMenuBlock(event, opensDirectly ? { kind: 'file', path: saved } : { kind: 'folder', path: folderOfBlock(saved) })
+        }}
         className="ltm-motion-fast flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
       >
         <span className="truncate">Value Line</span>
@@ -152,6 +160,13 @@ function ValueLineRowBlock({ reports, valueLine, expanded, onToggle, onOpenFile 
                   <button
                     type="button"
                     onClick={() => { void open(row) }}
+                    onContextMenu={(event) => {
+                      if (row.path) openFileCopyMenuBlock(event, { kind: 'file', path: row.path })
+                      else if (row.issueDate && !valueLine.fetchingIssue) {
+                        const issueDate = row.issueDate
+                        openFileCopyMenuBlock(event, { kind: 'fetch', label: 'Download, then copy file path', fetch: () => valueLine.fetchIssue(issueDate) })
+                      }
+                    }}
                     disabled={!row.path && Boolean(valueLine.fetchingIssue)}
                     title={row.path ? 'Open' : 'Download from the library and open'}
                     className={cn(
@@ -199,6 +214,7 @@ function EarningsCallsRowBlock({ calls, sync, expanded, onToggle, onOpenFile }: 
         type="button"
         aria-expanded={calls.length > 1 ? expanded : undefined}
         onClick={() => (calls.length === 1 ? onOpenFile(calls[0].path) : onToggle())}
+        onContextMenu={(event) => openFileCopyMenuBlock(event, calls.length === 1 ? { kind: 'file', path: calls[0].path } : { kind: 'folder', path: folderOfBlock(calls[0].path) })}
         className="ltm-motion-fast flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
       >
         <span className="truncate">Earnings calls</span>
@@ -215,6 +231,7 @@ function EarningsCallsRowBlock({ calls, sync, expanded, onToggle, onOpenFile }: 
               <button
                 type="button"
                 onClick={() => onOpenFile(call.path)}
+                onContextMenu={(event) => openFileCopyMenuBlock(event, { kind: 'file', path: call.path })}
                 className="block w-full truncate px-4 py-1.5 pl-7 text-left text-xs text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
               >
                 {valueLineIssueLabelBlock(call)}
@@ -263,6 +280,7 @@ function ResearchPanelBlock({ reports, calls, callsSync, groups, valueLine, onOp
               type="button"
               aria-expanded={expanded}
               onClick={() => toggle(group.label)}
+              onContextMenu={(event) => { if (group.files[0]) openFileCopyMenuBlock(event, { kind: 'folder', path: folderOfBlock(group.files[0].path) }) }}
               className="ltm-motion-fast flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
             >
               <span className="truncate">{group.label}</span>
@@ -278,6 +296,7 @@ function ResearchPanelBlock({ reports, calls, callsSync, groups, valueLine, onOp
                     <button
                       type="button"
                       onClick={() => onOpenFile(file.path)}
+                      onContextMenu={(event) => openFileCopyMenuBlock(event, { kind: 'file', path: file.path })}
                       className="block w-full truncate px-4 py-1.5 pl-7 text-left text-xs text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
                     >
                       {file.name}
@@ -397,6 +416,7 @@ export default function WebullCompanyPageBlock({
 
   return (
     <div className="grid gap-5 pb-12 lg:grid-cols-[minmax(0,1fr)_minmax(290px,340px)]">
+      <FileCopyMenuHostBlock />
       <div className="flex min-w-0 flex-col gap-5">
       <header id="webull-company-overview" className="scroll-mt-4 flex flex-wrap items-end justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3.5">
