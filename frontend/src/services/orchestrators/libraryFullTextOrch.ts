@@ -20,7 +20,10 @@ import {
   bestLibraryHitBlock,
   librarySourceForLinkBlock,
   normTitleBlock,
-  queryWordsBlock,
+  LIBRARY_CONFIRM_FLOOR_BLOCK,
+  LIBRARY_TEASER_SUPPORT_BLOCK,
+  librarySearchPairsBlock,
+  teaserSupportBlock,
   type LibrarySourceBlock,
 } from '@/services/lego_blocks/units/libraryMatchBlock'
 
@@ -94,7 +97,7 @@ async function runPassBlock(
   // Recent items without text, on a library source, newest first; one per headline
   const since = now.getTime() - LOOKBACK_DAYS * 86_400_000
   const seen = new Set<string>()
-  const queue: Array<{ itemIds: string[]; title: string; day: string; source: LibrarySourceBlock }> = []
+  const queue: Array<{ itemIds: string[]; title: string; teaser: string; day: string; source: LibrarySourceBlock }> = []
   const byTitle = new Map<string, (typeof queue)[number]>()
   const candidates = feeds.flatMap((f) => f.items)
     .filter((item) => !item.textInCache && item.pubDate && Date.parse(item.pubDate) >= since)
@@ -107,7 +110,8 @@ async function runPassBlock(
     const existing = byTitle.get(key)
     // The same story often sits in two feeds of the same paper: search once, fill both
     if (existing) { existing.itemIds.push(item.id); continue }
-    const entry = { itemIds: [item.id], title: item.title, day: localDayBlock(new Date(item.pubDate as string)), source }
+    const teaser = (item.description ?? '').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim()
+    const entry = { itemIds: [item.id], title: item.title, teaser, day: localDayBlock(new Date(item.pubDate as string)), source }
     byTitle.set(key, entry)
     queue.push(entry)
   }
@@ -127,21 +131,30 @@ async function runPassBlock(
       mark(entry, 'working')
       const result = results.get(entry.source.name)!
       result.tried += 1
-      const words = queryWordsBlock(entry.title, 4)
       let best: ReturnType<typeof bestLibraryHitBlock<{ title: string; docId: string }>> = null
-      // Two words first; if Gale finds nothing close, the next two
-      for (const pair of [words.slice(0, 2), words.slice(2, 4)]) {
-        if (pair.length === 0) continue
+      // The headline's subject first (it survives rewrites), then its longest words
+      for (const pair of librarySearchPairsBlock(entry.title)) {
         const hits = await api.libraryGaleSearch({ publication: entry.source.publication, words: pair, day: entry.day, db: entry.source.db, windowDays: entry.source.windowDays })
         const candidate = bestLibraryHitBlock(entry.title, hits)
         if (candidate && (!best || candidate.score > best.score)) best = candidate
         if (best && best.score >= LIBRARY_MATCH_THRESHOLD_BLOCK) break
       }
-      if (!best || best.score < LIBRARY_MATCH_THRESHOLD_BLOCK) { result.notFound += 1; mark(entry, 'no-new', 'Not found in the library'); continue }
+      // A rewritten headline (the paper changed it during the day) matches only
+      // in part: take it when the article's text carries the feed's own teaser
+      const confident = Boolean(best && best.score >= LIBRARY_MATCH_THRESHOLD_BLOCK)
+      if (!best || (!confident && best.score < LIBRARY_CONFIRM_FLOOR_BLOCK)) { result.notFound += 1; mark(entry, 'no-new', 'Not found in the library'); continue }
       let article = textByDoc.get(best.hit.docId)
       if (!article) {
         article = await api.libraryGaleArticle({ docId: best.hit.docId, db: entry.source.db })
         textByDoc.set(best.hit.docId, article)
+      }
+      if (!confident) {
+        const support = teaserSupportBlock(entry.teaser, article.text)
+        if (support === null || support < LIBRARY_TEASER_SUPPORT_BLOCK) {
+          result.notFound += 1
+          mark(entry, 'no-new', `Not found (closest: "${best.hit.title.slice(0, 60)}")`)
+          continue
+        }
       }
       if (article.citationOnly || article.text.length < LIBRARY_MIN_TEXT_CHARS_BLOCK) { result.citationOnly += 1; mark(entry, 'not-covered', 'Citation only'); continue }
       for (const itemId of entry.itemIds) {

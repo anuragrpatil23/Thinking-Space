@@ -91,6 +91,47 @@ export function queryWordsBlock(title: string, n = 4): string[] {
   return [...new Set(words)].sort((x, y) => y.length - x.length).slice(0, n)
 }
 
+/**
+ * The headline's first meaningful words: its subject ("Tesla Profit"), which
+ * a rewritten headline usually keeps when the rest changes.
+ */
+export function leadWordsBlock(title: string, n = 2): string[] {
+  const words = normTitleBlock(title).split(' ')
+    .filter((w) => w.length >= 3 && !STOP_WORDS_BLOCK.has(w) && /^[a-z0-9]+$/.test(w))
+  return [...new Set(words)].slice(0, n)
+}
+
+/** The searches to try, in order: the subject, then the longest words, two at a time; no pair twice. */
+export function librarySearchPairsBlock(title: string): string[][] {
+  const longest = queryWordsBlock(title, 4)
+  const pairs = [leadWordsBlock(title, 2), longest.slice(0, 2), longest.slice(2, 4)].filter((pair) => pair.length > 0)
+  const seen = new Set<string>()
+  return pairs.filter((pair) => {
+    const key = [...pair].sort().join(' ')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+/** A headline match this good is the same story only if the article's text backs it up. */
+export const LIBRARY_CONFIRM_FLOOR_BLOCK = 0.35
+/** Share of the feed teaser's distinctive words that must appear in the article to confirm it. */
+export const LIBRARY_TEASER_SUPPORT_BLOCK = 0.6
+
+/**
+ * How much of the feed's own teaser the article's text contains (0..1): the
+ * share of the teaser's distinctive words found in the article's opening.
+ * Null when the teaser is too short to say.
+ */
+export function teaserSupportBlock(teaser: string, articleText: string): number | null {
+  const words = [...new Set(normTitleBlock(teaser).split(' ')
+    .filter((w) => w.length >= 4 && !STOP_WORDS_BLOCK.has(w) && /^[a-z0-9]+$/.test(w)))]
+  if (words.length < 4) return null
+  const body = ` ${normTitleBlock(articleText.slice(0, 4000))} `
+  return words.filter((w) => body.includes(` ${w} `)).length / words.length
+}
+
 /** The best hit and its score, or null when nothing came back. */
 export function bestLibraryHitBlock<T extends { title: string }>(title: string, hits: T[]): { hit: T; score: number } | null {
   let best: { hit: T; score: number } | null = null
