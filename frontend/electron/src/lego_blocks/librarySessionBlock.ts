@@ -61,6 +61,45 @@ export function libraryLogBlock(line: string): void {
   } catch { /* logging never breaks a request */ }
 }
 
+/** A database's address as the proxy serves it: research.valueline.com → research-valueline-com.<proxy>. */
+export function proxiedUrlBlock(raw: string): string {
+  const url = new URL(raw);
+  const proxy = new URL(PROXY_LOGIN).hostname;
+  if (url.hostname.endsWith(proxy)) return url.toString();
+  url.hostname = `${url.hostname.replace(/\./g, '-')}.${proxy}`;
+  url.protocol = 'https:';
+  return url.toString();
+}
+
+/** The target of a page's <meta http-equiv="refresh">, when it has one. */
+export function metaRefreshTargetBlock(html: string, base: string): string | null {
+  const m = /<meta[^>]+http-equiv=["']?refresh["']?[^>]*content=["'][^"']*url=([^"'>]+)["']/i.exec(html);
+  if (!m) return null;
+  try {
+    return new URL(decodeEntitiesBlock(m[1].trim()), base).toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What a page is, for the log, without its contents: its type, title, any
+ * refresh target and whether it is a login form. Never cookies or form values.
+ */
+function pageSummaryBlock(text: string, contentType: string | null, base: string): string {
+  const title = /<title[^>]*>([^<]{0,120})/i.exec(text)?.[1]?.replace(/\s+/g, ' ').trim();
+  const refresh = metaRefreshTargetBlock(text, base);
+  const parts = [
+    contentType ? contentType.split(';')[0] : 'no type',
+    `${text.length} chars`,
+    /^\s*[[{]/.test(text) ? 'JSON' : null,
+    title ? `title "${title}"` : null,
+    refresh ? `refreshes to ${urlForLogBlock(refresh)}` : null,
+    /name=["']pass["']/i.test(text) ? 'a login form' : null,
+  ];
+  return parts.filter(Boolean).join(', ');
+}
+
 /** A session fetch that leaves a line in the log: status and landing, or the error. */
 async function loggedFetchBlock(label: string, url: string, init: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   try {
@@ -233,11 +272,19 @@ export interface LibraryRequestBlock<T> {
 /** One library request; signs in first, or again when the session has lapsed. */
 export function libraryRequestBlock<T>(request: LibraryRequestBlock<T>): Promise<T> {
   return pacedBlock(async () => {
-    const ask = async () => request.read(await loggedFetchBlock('ask', request.url, {
-      method: request.method ?? 'GET',
-      body: request.method === 'POST' ? '' : undefined,
-      headers: { 'User-Agent': BROWSER_UA, ...request.headers },
-    }));
+    // What the last answer was, when it was not what was asked for (for the log)
+    let mismatch: string | null = null;
+    const ask = async () => {
+      const response = await loggedFetchBlock('ask', request.url, {
+        method: request.method ?? 'GET',
+        body: request.method === 'POST' ? '' : undefined,
+        headers: { 'User-Agent': BROWSER_UA, ...request.headers },
+      });
+      const copy = response.clone();
+      const value = await request.read(response);
+      if (!request.expect(value)) mismatch = pageSummaryBlock(await copy.text().catch(() => ''), copy.headers.get('content-type'), request.url);
+      return value;
+    };
     if (loggedIn) {
       try {
         const value = await ask();
@@ -252,8 +299,25 @@ export function libraryRequestBlock<T>(request: LibraryRequestBlock<T>): Promise
     const ordered = preferred && candidates.includes(preferred) ? [preferred, ...candidates.filter(c => c !== preferred)] : candidates;
     const signInAndAsk = async (loginUrl: string): Promise<T> => {
       const landed = await loginBlock(loginUrl);
-      if (loginUrl === request.url && (request.method ?? 'GET') === 'GET') return request.read(landed);
-      await landed.arrayBuffer();
+      const proxyHost = new URL(PROXY_LOGIN).hostname;
+      let stayed = true;
+      try {
+        const at = new URL(landed.url || PROXY_LOGIN);
+        stayed = at.hostname.endsWith(proxyHost) && !at.hostname.includes('-') && /\/login/i.test(at.pathname);
+      } catch { /* keep: treat as not redirected */ }
+      if (!stayed && loginUrl === request.url && (request.method ?? 'GET') === 'GET') return request.read(landed);
+      const page = await landed.text().catch(() => '');
+      if (stayed) {
+        // The proxy answered without sending us on: a refresh page, or the
+        // login form again. Finish the hop the way a browser would.
+        libraryLogBlock(`after signing in, still at the proxy: ${pageSummaryBlock(page, landed.headers.get('content-type'), PROXY_LOGIN)}`);
+        if (/name=["']pass["']/i.test(page)) {
+          throw new LibraryLoginErrorBlock('The library did not accept the login (check Settings → Webull → Library login).');
+        }
+        const refresh = metaRefreshTargetBlock(page, landed.url || PROXY_LOGIN);
+        if (refresh) await (await loggedFetchBlock('refresh', refresh, { headers: { 'User-Agent': BROWSER_UA } })).arrayBuffer();
+        await (await loggedFetchBlock('start', proxiedUrlBlock(loginUrl), { headers: { 'User-Agent': BROWSER_UA } })).arrayBuffer();
+      }
       return ask();
     };
     const loops = (err: unknown) => /ERR_TOO_MANY_REDIRECTS/.test(String(err));
@@ -286,7 +350,7 @@ export function libraryRequestBlock<T>(request: LibraryRequestBlock<T>): Promise
       throw new LibraryLoginErrorBlock(`The library sign-in loops (${String(lastLoop).slice(0, 80)}). The database may have moved its page; try the library's own link in a browser.`);
     }
     if (!request.expect(value)) {
-      libraryLogBlock(`not the page asked for: ${urlForLogBlock(request.url)}`);
+      libraryLogBlock(`not the page asked for: ${urlForLogBlock(request.url)}${mismatch ? ` (got ${mismatch})` : ''}`);
       loggedIn = false;
       throw new LibraryLoginErrorBlock('The library login did not return the page asked for (check the card, or the proxy is down).');
     }

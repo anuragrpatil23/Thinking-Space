@@ -33,8 +33,9 @@ import { GAPS_TAB_AVAILABLE, NOTICED_TAB_AVAILABLE, SIM_TAB_AVAILABLE, STUDY_TAB
 
 type WebullSubtabId = 'overall' | 'study' | 'sim' | 'noticed' | 'gaps' | 'feed'
 
-// In the order of the mission (maximize the number of things noticed and
-// understood): notice, understand, then what falls out of it. Noticed and Gaps
+// In the order of the mission (maximize the number of things noticed, studied
+// and understood in the world around us and developments in technology):
+// notice, study, then what falls out of it. Noticed and Gaps
 // are private: shown only when their folder is present (see privateGapsBlock).
 const Webull_BASE_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
   // The front of the loop: where things are first seen
