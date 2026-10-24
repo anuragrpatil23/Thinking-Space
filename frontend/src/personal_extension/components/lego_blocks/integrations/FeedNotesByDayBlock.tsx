@@ -62,7 +62,7 @@ export function FeedNotesByDayBlock({ days, openDays = 2, onOpenArticle, article
                         {article.tags.map(tag => (
                           <span key={tag.id} className="rounded bg-zinc-100 px-1 py-px text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{tag.tag}</span>
                         ))}
-                        <span className="min-w-0 truncate">{article.ticker ? `${article.ticker} · ` : ''}{article.source}</span>
+                        <span className="min-w-0 truncate">{article.companies.length ? `${article.companies.slice(0, 3).map(c => c.ticker ?? c.name).join(' · ')} · ` : ''}{article.source.split(':')[0]}</span>
                       </span>
                     </span>
                     <span className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">

@@ -30,7 +30,7 @@ import { readEarningsCallPassProgressOrch, readLastEarningsCallPassOrch, subscri
 import { readLastValueLinePassOrch, readValueLinePassProgressOrch, subscribeValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { FeedAiReaderSettingsBlock, useFeedAiReadBlock } from './FeedAiReaderBlock'
 import { FeedNoteCaptureBlock } from './FeedNoteCaptureBlock'
-import { pickUpTaggedArticlesOrch } from '@/personal_extension/services/orchestrators/feedNotesOrch'
+import { nameNoteCompaniesOrch, pickUpTaggedArticlesOrch } from '@/personal_extension/services/orchestrators/feedNotesOrch'
 import { FeedOverviewBlock } from './FeedOverviewBlock'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK } from './WebullSidebarBlock'
@@ -640,7 +640,9 @@ export default function WebullFeedBlock() {
   // Articles tagged to come back to (new company, understand more, …) land in
   // the reading notes, and from there in the Overview and Noticed
   useEffect(() => {
-    if (feedsReady) void pickUpTaggedArticlesOrch(feeds)
+    if (!feedsReady) return
+    // Then the AI names the companies each kept article is about
+    void pickUpTaggedArticlesOrch(feeds).then(() => nameNoteCompaniesOrch(feeds))
   }, [feeds, feedsReady])
 
   // From Overview: open the story in Reading

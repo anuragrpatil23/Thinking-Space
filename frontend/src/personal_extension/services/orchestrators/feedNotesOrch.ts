@@ -17,6 +17,14 @@ import {
   type FeedNoteKindBlock,
 } from '../lego_blocks/units/feedNoteBlock'
 import { readWebullExecutionSettingsOrch } from './webullExecutionSettingsOrch'
+import { runContract } from '@/services/orchestrators/intelligenceOrch'
+import { feedAiReadAvailableOrch, feedAiReaderProviderOrch, readFeedAiReaderOrch } from '@/services/orchestrators/rssAiReadOrch'
+import { plainArticleTextBlock } from '@/services/lego_blocks/units/intelligence/contracts/articleSummaryContractBlock'
+import {
+  ARTICLE_COMPANIES_TEXT_CHARS_BLOCK,
+  articleCompaniesContract,
+  type ArticleCompanyBlock,
+} from '@/services/lego_blocks/units/intelligence/contracts/articleCompaniesContractBlock'
 
 let notes: FeedNoteBlock[] = []
 let loading: Promise<void> | null = null
@@ -189,4 +197,54 @@ export async function pickUpTaggedArticlesOrch(feeds: RssFeedResultBlock[]): Pro
     return next
   })
   return added
+}
+
+/** Articles whose companies could not be named this session; not asked again until the app restarts. */
+const companiesFailed = new Set<string>()
+let naming: Promise<number> | null = null
+
+/**
+ * Have the AI name the companies of each kept article (tagged, or with a
+ * question or comment) that has none yet; every note on the article gets
+ * them. Runs with the AI reader (on, desktop), one article at a time through
+ * the intelligence queue. Returns how many articles were named.
+ */
+export function nameNoteCompaniesOrch(feeds: RssFeedResultBlock[]): Promise<number> {
+  if (naming) return naming
+  if (!feedAiReadAvailableOrch() || !readFeedAiReaderOrch().on) return Promise.resolve(0)
+  naming = (async () => {
+    await loadFeedNotesOrch()
+    const waiting = new Map<string, FeedNoteBlock[]>()
+    for (const note of notes) {
+      if (note.removed || note.companies || !note.itemId || companiesFailed.has(note.itemId)) continue
+      const list = waiting.get(note.itemId)
+      if (list) list.push(note)
+      else waiting.set(note.itemId, [note])
+    }
+    if (waiting.size === 0) return 0
+    const items = new Map(feeds.flatMap(feed => feed.items).filter(item => waiting.has(item.id)).map(item => [item.id, item]))
+    const provider = feedAiReaderProviderOrch()
+    let named = 0
+    for (const [itemId, list] of waiting) {
+      const item = items.get(itemId)
+      const text = item?.aiSummary?.text.replace(/\n/g, ' ') ?? plainArticleTextBlock(item?.description ?? '')
+      const result = await runContract(articleCompaniesContract, {
+        itemId,
+        title: list[0].title,
+        text: text.slice(0, ARTICLE_COMPANIES_TEXT_CHARS_BLOCK),
+      }, { provider })
+      if (!result.ok) {
+        companiesFailed.add(itemId)
+        // The provider itself is down: stop, the reader shows why
+        if (/not configured|no model|unavailable|ECONNREFUSED|fetch failed/i.test(result.error.message)) break
+        continue
+      }
+      // runContract types the value from the schema (a string); finalize made it this
+      const companies = result.value as unknown as ArticleCompanyBlock[]
+      await updateNotesBlock(list.map(n => n.id), note => ({ ...note, companies }))
+      named += 1
+    }
+    return named
+  })().finally(() => { naming = null })
+  return naming
 }

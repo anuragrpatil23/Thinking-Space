@@ -80,3 +80,15 @@ describe('arrivals by hour', () => {
     expect(rows[11].today).toBeNull()
   })
 })
+
+describe('companies an article is about', () => {
+  it('reads "Name (TICKER)" lines, private companies and none', async () => {
+    const { parseArticleCompaniesBlock } = await import('@/services/lego_blocks/units/intelligence/contracts/articleCompaniesContractBlock')
+    expect(parseArticleCompaniesBlock('- Lumentum (LITE)\n2. Nvidia (NASDAQ: NVDA)\nResolight (private)\nLumentum (LITE)')).toEqual([
+      { name: 'Lumentum', ticker: 'LITE' },
+      { name: 'Nvidia', ticker: 'NVDA' },
+      { name: 'Resolight', ticker: null },
+    ])
+    expect(parseArticleCompaniesBlock('none')).toEqual([])
+  })
+})

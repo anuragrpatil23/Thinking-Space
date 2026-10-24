@@ -78,10 +78,30 @@ async function listIssuesBlock(ticker: string): Promise<LibraryValueLineIssue[]>
   return list;
 }
 
+/** A ticker Value Line has always covered: asked only to tell a broken session from one odd ticker. */
+const CONTROL_TICKER = 'AAPL';
+
 /** Every issue of a ticker's report; `covered: false` when Value Line has none. */
 export async function libraryValueLineIssuesBlock(p: { ticker: string }): Promise<LibraryValueLineIssues> {
   const ticker = validTickerBlock(p?.ticker);
-  const issues = await listIssuesBlock(ticker);
+  let issues: LibraryValueLineIssue[];
+  try {
+    issues = await listIssuesBlock(ticker);
+  } catch (err) {
+    if (!/ERR_TOO_MANY_REDIRECTS/.test(String(err)) || ticker === CONTROL_TICKER) throw err;
+    // Some tickers (IREN) answer with a redirect loop however fresh the
+    // session, while every other company lists. If a covered ticker still
+    // lists, the session is fine and this one has nothing to give: not
+    // covered, rather than an error on every pass. If it does not, the
+    // session is what is broken, and that error is the one to show.
+    try {
+      await listIssuesBlock(CONTROL_TICKER);
+    } catch {
+      throw err;
+    }
+    console.info(`[library] value line: ${ticker} answers with a redirect loop while ${CONTROL_TICKER} lists; treated as not covered`);
+    return { covered: false, issues: [] };
+  }
   return { covered: issues.length > 0, issues: issues.map(({ issueDate }) => ({ issueDate })) };
 }
 

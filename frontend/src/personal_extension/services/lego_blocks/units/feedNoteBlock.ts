@@ -41,6 +41,8 @@ export interface FeedNoteBlock {
   at: string
   /** When the article was published (ISO), so a tag picked up later still dates by the article */
   published?: string
+  /** The companies the article is about, named by the AI; [] when it is about none, absent until asked */
+  companies?: Array<{ name: string; ticker: string | null }>
 }
 
 const HEADER = [
@@ -88,6 +90,7 @@ export function parseFeedNotesBlock(content: string): FeedNoteBlock[] {
         ticker: meta.ticker ?? null,
         at: meta.at ?? '',
         ...(meta.published ? { published: meta.published } : {}),
+        ...(Array.isArray(meta.companies) ? { companies: meta.companies } : {}),
       })
     } catch { /* a hand-edited line that no longer parses is left alone */ }
   }
@@ -137,6 +140,10 @@ export interface FeedNoteArticleBlock {
   link: string
   source: string
   ticker: string | null
+  /** The companies it is about: the feed's own first, then the AI's */
+  companies: Array<{ name: string; ticker: string | null }>
+  /** Whether the AI has named them yet (an empty list then means: about no company) */
+  companiesNamed: boolean
   /** YYYY-MM-DD, local: the day it belongs under */
   day: string
   tags: FeedNoteBlock[]
@@ -173,6 +180,12 @@ export function groupFeedNotesByDayBlock(notes: FeedNoteBlock[]): Array<{ day: s
   const articles = [...byItem.values()].map((list) => {
     const latest = Math.max(...list.map(noteTimeBlock))
     const first = list[0]
+    const feedTicker = list.find(n => n.ticker)?.ticker ?? null
+    const named = list.find(n => n.companies)?.companies ?? []
+    const companies = [
+      ...(feedTicker && !named.some(c => c.ticker === feedTicker) ? [{ name: feedTicker, ticker: feedTicker }] : []),
+      ...named,
+    ]
     const byTime = (a: FeedNoteBlock, b: FeedNoteBlock) => Date.parse(a.at) - Date.parse(b.at)
     return {
       article: {
@@ -180,7 +193,9 @@ export function groupFeedNotesByDayBlock(notes: FeedNoteBlock[]): Array<{ day: s
         title: first.title,
         link: first.link,
         source: first.source,
-        ticker: list.find(n => n.ticker)?.ticker ?? null,
+        ticker: feedTicker ?? companies.find(c => c.ticker)?.ticker ?? null,
+        companies,
+        companiesNamed: list.some(n => n.companies !== undefined),
         day: latest ? localDayBlock(latest) : 'undated',
         tags: list.filter(n => n.kind === 'tagged').sort(byTime),
         questions: list.filter(n => n.kind === 'question').sort(byTime),
