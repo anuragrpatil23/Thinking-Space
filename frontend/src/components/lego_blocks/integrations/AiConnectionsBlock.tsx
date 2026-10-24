@@ -118,17 +118,19 @@ export default function AiConnectionsBlock({ snapshot, refreshing, onRefresh, on
       {open === id ? 'Close' : configured ? 'Edit' : 'Add'}
     </Button>
   )
+  // Save shows once something was changed; Remove only for what is saved
+  const dirty = (JSON.stringify(draft) !== JSON.stringify(login))
   const saveRow = (onSave: () => void, onRemove: (() => void) | null) => (
     <div className="flex flex-wrap gap-2">
-      <Button size="sm" onClick={onSave}>Save</Button>
-      {onRemove && <Button size="sm" variant="outline" onClick={onRemove}>Remove</Button>}
+      {dirty && <Button size="sm" onClick={onSave}>Save</Button>}
+      {onRemove && <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 dark:text-red-400" onClick={onRemove}>Remove</Button>}
     </div>
   )
   // The header keeps its status and buttons; an open connection's fields sit underneath
   const row = (id: ConnectionIdBlock, label: string, description: ReactNode, control: ReactNode, editor?: ReactNode) => (
     <div key={id}>
       <SettingsRowBlock label={label} description={description} control={control} />
-      {open === id && editor && <div className="space-y-3 px-3.5 pb-3.5">{editor}</div>}
+      {open === id && editor && <div className="space-y-3 border-t border-border/40 bg-muted/20 px-3.5 py-3.5">{editor}</div>}
     </div>
   )
 

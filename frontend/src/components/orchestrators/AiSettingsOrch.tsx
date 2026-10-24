@@ -15,9 +15,10 @@ import AiConnectionsBlock from '@/components/lego_blocks/integrations/AiConnecti
 import AiPerAreaBlock from '@/components/lego_blocks/integrations/AiPerAreaBlock'
 import IntelligenceRecentRequestsBlock from '@/components/lego_blocks/integrations/IntelligenceRecentRequestsBlock'
 import IntelligenceTuningBlock from '@/components/lego_blocks/integrations/IntelligenceTuningBlock'
-import { listProvidersOrch, type AiProvider, type AiProviderStatus } from '@/services/orchestrators/chatOrch'
+import { listProvidersOrch, sendChatWithTelemetryOrch, type AiProvider, type AiProviderStatus } from '@/services/orchestrators/chatOrch'
 import { isCapacitorNative, isElectron } from '@/services/orchestrators/runtimeOrch'
-import { availability, diagnose, type DiagnosticsSnapshot } from '@/services/orchestrators/intelligenceOrch'
+import { availability, diagnose, runContract, type DiagnosticsSnapshot } from '@/services/orchestrators/intelligenceOrch'
+import { settingsPingContract } from '@/services/lego_blocks/units/intelligence/contracts/settingsPingContractBlock'
 import {
   readDefaultProviderBlock,
   writeDefaultProviderBlock,
@@ -56,6 +57,38 @@ const BACKGROUND_PROVIDER_LABELS: Record<ProviderId, string> = {
   'claude-cli': 'Claude Code CLI',
 }
 
+/** What a Test button found: the reply, the model and the time, or what went wrong. */
+interface TestResultBlock {
+  ok: boolean
+  text: string
+}
+
+function StatusPillBlock({ ok, label, title }: { ok: boolean; label: string; title?: string }) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px]',
+        ok ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/10 text-red-600 dark:text-red-400',
+      )}
+    >
+      <span className={cn('h-1.5 w-1.5 rounded-full', ok ? 'bg-emerald-500' : 'bg-red-500')} />
+      {label}
+    </span>
+  )
+}
+
+function TestLineBlock({ result }: { result: TestResultBlock | 'running' | null }) {
+  if (!result) return null
+  return (
+    <div className={cn('px-3.5 pb-3 text-[12px]', result === 'running' ? 'text-muted-foreground' : result.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
+      {result === 'running' ? <span className="inline-flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" />Sending a test request…</span> : result.text}
+    </div>
+  )
+}
+
+const secondsBlock = (ms: number) => `${(ms / 1000).toFixed(1)} s`
+
 function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error && value.message) return value.message
   if (typeof value === 'string' && value.trim()) return value
@@ -78,12 +111,20 @@ export default function AiSettingsOrch() {
   const [telemetryEvents, setTelemetryEvents] = useState<AiTelemetryEvent[]>([])
   const [loadingTelemetry, setLoadingTelemetry] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [chatTest, setChatTest] = useState<TestResultBlock | 'running' | null>(null)
+  const [backgroundTest, setBackgroundTest] = useState<TestResultBlock | 'running' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
   const say = useCallback((text: string, isError = false) => {
     if (isError) { setError(text); setMessage(null) } else { setMessage(text); setError(null) }
   }, [])
+  // A confirmation fades on its own; an error stays until the next change
+  useEffect(() => {
+    if (!message) return
+    const t = window.setTimeout(() => setMessage(null), 4000)
+    return () => window.clearTimeout(t)
+  }, [message])
 
   const loadProviders = useCallback(async (options?: { forceBackendRefresh?: boolean }): Promise<boolean> => {
     setLoadingProviders(true)
@@ -93,6 +134,7 @@ export default function AiSettingsOrch() {
       const selection = resolveAiSelectionFromProvidersOrch(items)
       setSelectedProvider(selection?.provider ?? null)
       setModelInput(selection?.model ?? '')
+      setSavedModel(selection?.model ?? '')
       setError(null)
       return true
     } catch (err) {
@@ -134,6 +176,9 @@ export default function AiSettingsOrch() {
   useVisibleIntervalBlock(loadTelemetry, advancedOpen ? 3000 : null)
 
   const knownModels = selectedProvider ? listAiModelOptionsOrch(selectedProvider) : []
+  const selectedProviderStatus = providers.find(p => p.provider === selectedProvider) ?? null
+  const [savedModel, setSavedModel] = useState('')
+  const modelDirty = Boolean(selectedProvider) && modelInput.trim() !== savedModel
   const backgroundStatus = useMemo(() => snapshot?.providers.find(p => p.id === backgroundProvider) ?? null, [snapshot, backgroundProvider])
   const labelOf = (provider: AiProvider | null) => providers.find(p => p.provider === provider)?.label ?? provider ?? '—'
 
@@ -141,6 +186,7 @@ export default function AiSettingsOrch() {
     setAiSelectedProviderOrch(provider)
     setSelectedProvider(provider)
     setModelInput(resolveAiModelForProviderOrch(provider))
+    setSavedModel(resolveAiModelForProviderOrch(provider))
     say(`Chat & writing now use ${labelOf(provider)}.`)
   }
 
@@ -151,10 +197,40 @@ export default function AiSettingsOrch() {
     try {
       setAiProviderModelOrch(selectedProvider, normalized)
       setModelInput(resolveAiModelForProviderOrch(selectedProvider))
+      setSavedModel(resolveAiModelForProviderOrch(selectedProvider))
       say(`Default model for ${labelOf(selectedProvider)} set to ${normalized}.`)
     } catch (err) {
       say(errorMessage(err, 'Failed to save the model'), true)
     }
+  }
+
+  // A real request, as small as it gets: proof that this AI answers, and how fast
+  const onTestChat = async () => {
+    if (!selectedProvider) return
+    setChatTest('running')
+    const started = performance.now()
+    try {
+      const { response } = await sendChatWithTelemetryOrch(
+        selectedProvider,
+        [{ role: 'user', content: 'Reply with: ready' }],
+        { model: savedModel || undefined },
+        { useCase: 'settings-test' },
+      )
+      const reply = (response.content ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
+      setChatTest({ ok: Boolean(reply), text: `${reply ? `Answered "${reply}"` : 'Answered with nothing'} · ${response.model || savedModel} · ${secondsBlock(performance.now() - started)}` })
+    } catch (err) {
+      setChatTest({ ok: false, text: `Failed: ${errorMessage(err, 'no answer')}` })
+    }
+  }
+
+  const onTestBackground = async () => {
+    setBackgroundTest('running')
+    const started = performance.now()
+    const result = await runContract(settingsPingContract, { at: new Date().toISOString() }, { provider: backgroundProvider, refresh: true, timeoutMs: 120_000 })
+    const took = secondsBlock(performance.now() - started)
+    setBackgroundTest(result.ok
+      ? { ok: true, text: `Answered "${String(result.value)}" · ${result.model} · ${took}` }
+      : { ok: false, text: `Failed: ${result.error.message} · ${took}` })
   }
 
   const onConnectionsChanged = async () => {
@@ -212,66 +288,93 @@ export default function AiSettingsOrch() {
         description="Which AI does the work, and how the app reaches it."
       />
 
-      {message && <p className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'text-[13px] text-emerald-700 dark:text-emerald-300')}>{message}</p>}
+      {message && (
+        <p className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'flex items-center gap-1.5 text-[12px] text-emerald-700 dark:text-emerald-400')}>
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{message}
+        </p>
+      )}
       {error && <p className={cn(SETTINGS_PANE_WIDTH_BLOCK, 'text-[13px] text-destructive')}>{error}</p>}
 
-      <SettingsGroupBlock
-        heading="Which AI"
-        description="The app has two kinds of AI work, each with its own default. Areas below can override either."
-      >
-        {loadingProviders ? (
+      {loadingProviders ? (
+        <SettingsGroupBlock heading="Chat & writing">
           <SettingsRowBlock label={<span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Detecting providers…</span>} />
-        ) : providers.length === 0 ? (
+        </SettingsGroupBlock>
+      ) : providers.length === 0 ? (
+        <SettingsGroupBlock heading="Chat & writing">
           <SettingsRowBlock label="No providers detected." description="Set one up under Connections." />
-        ) : (
-          <>
+        </SettingsGroupBlock>
+      ) : (
+        <SettingsGroupBlock
+          heading="Chat & writing"
+          description="What you ask for: the Chat tab, inline assist in the editor, New Note."
+        >
+            <div>
             <SettingsRowBlock
-              label="Chat, editor & writing"
-              description="The Chat tab, inline assist in the editor, New Note."
-              stacked
-              className="gap-2"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={selectedProvider ?? ''}
-                  onChange={(event) => onProviderChange(event.target.value as AiProvider)}
-                  aria-label="Chat and writing provider"
-                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-[12rem]')}
-                >
-                  {providers.map(p => (
-                    <option key={p.provider} value={p.provider} disabled={!p.available}>{p.label}{p.available ? '' : ' (unavailable)'}</option>
-                  ))}
-                </select>
-                <input
-                  value={modelInput}
-                  onChange={(event) => setModelInput(event.target.value)}
-                  disabled={!selectedProvider}
-                  list="ai-default-models"
-                  aria-label="Chat and writing model"
-                  placeholder={selectedProvider === 'opensource-ai' ? 'Model id, e.g. qwen/qwen3.5-35b-a3b' : 'Model'}
-                  className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-[16rem] flex-1')}
-                />
-                <datalist id="ai-default-models">{knownModels.map(m => <option key={m} value={m} />)}</datalist>
-                <Button size="sm" onClick={onSaveModel} disabled={!selectedProvider || !modelInput.trim()}>Save model</Button>
-              </div>
-            </SettingsRowBlock>
+              label="Default"
+              description="Every area below, unless it says otherwise."
+              control={(
+                <span className="flex items-center gap-2">
+                  {selectedProviderStatus && (
+                    <StatusPillBlock ok={selectedProviderStatus.available} label={selectedProviderStatus.available ? 'Ready' : 'Unavailable'} />
+                  )}
+                  <Button size="sm" variant="outline" disabled={!selectedProvider || chatTest === 'running'} onClick={() => { void onTestChat() }}>Test</Button>
+                  {modelDirty && (
+                    <Button size="sm" onClick={onSaveModel} disabled={!modelInput.trim()}>Save</Button>
+                  )}
+                  <select
+                    value={selectedProvider ?? ''}
+                    onChange={(event) => onProviderChange(event.target.value as AiProvider)}
+                    aria-label="Chat and writing provider"
+                    className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-40')}
+                  >
+                    {providers.map(p => (
+                      <option key={p.provider} value={p.provider} disabled={!p.available}>{p.label}{p.available ? '' : ' (unavailable)'}</option>
+                    ))}
+                  </select>
+                  <input
+                    value={modelInput}
+                    onChange={(event) => setModelInput(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === 'Enter' && modelDirty) onSaveModel() }}
+                    disabled={!selectedProvider}
+                    list="ai-default-models"
+                    aria-label="Chat and writing model"
+                    placeholder={selectedProvider === 'opensource-ai' ? 'Model id' : 'Model'}
+                    className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-64', modelDirty && 'border-sky-500/70')}
+                  />
+                  <datalist id="ai-default-models">{knownModels.map(m => <option key={m} value={m} />)}</datalist>
+                </span>
+              )}
+            />
+            <TestLineBlock result={chatTest} />
+            </div>
 
-            {nativeRuntime && (
+          <AiPerAreaBlock
+            providers={providers}
+            onMessage={say}
+            scopes={['chat', 'markdown_editor', 'new_thought', 'todos', 'steward_metadata']}
+          />
+        </SettingsGroupBlock>
+      )}
+
+      {nativeRuntime && (
+        <SettingsGroupBlock
+          heading="Background tasks"
+          description="What the app does on its own: session titles, digests, the Feed's AI reader."
+        >
+              <div>
               <SettingsRowBlock
-                label="Background tasks"
-                description={(
-                  <>
-                    Session titles, digests, the Feed&apos;s AI reader.
-                    {backgroundStatus && (
-                      <span className={cn('block', backgroundStatus.available ? '' : 'text-red-600 dark:text-red-400')}>
-                        {backgroundStatus.available
-                          ? `Ready${backgroundStatus.defaultModel ? ` · ${backgroundStatus.defaultModel}` : ''}`
-                          : backgroundStatus.reason ?? (backgroundStatus.configured ? 'Not reachable' : 'Not set up: see Connections')}
-                      </span>
-                    )}
-                  </>
-                )}
+                label="Default"
+                description="Every background task. The model comes from the provider."
                 control={(
+                  <span className="flex items-center gap-2">
+                  {backgroundStatus && (
+                    <StatusPillBlock
+                      ok={backgroundStatus.available}
+                      label={backgroundStatus.available ? 'Ready' : backgroundStatus.configured ? 'Unreachable' : 'Not set up'}
+                      title={backgroundStatus.available ? undefined : backgroundStatus.reason ?? undefined}
+                    />
+                  )}
+                  <Button size="sm" variant="outline" disabled={backgroundTest === 'running'} onClick={() => { void onTestBackground() }}>Test</Button>
                   <select
                     value={backgroundProvider}
                     onChange={(event) => {
@@ -281,39 +384,45 @@ export default function AiSettingsOrch() {
                       say(`Background tasks now use ${BACKGROUND_PROVIDER_LABELS[id]}.`)
                     }}
                     aria-label="Background tasks provider"
-                    className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'min-w-[12rem]')}
+                    className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'w-40')}
                   >
                     {(Object.keys(BACKGROUND_PROVIDER_LABELS) as ProviderId[]).map(id => (
                       <option key={id} value={id}>{BACKGROUND_PROVIDER_LABELS[id]}</option>
                     ))}
                   </select>
+                  <span className={cn(SETTINGS_CONTROL_CLASS_BLOCK, 'inline-flex w-64 items-center truncate text-muted-foreground')} title="The model comes from the provider (for the local server: Connections)">
+                    {backgroundStatus?.defaultModel ?? '—'}
+                  </span>
+                  </span>
                 )}
               />
-            )}
-
+              <TestLineBlock result={backgroundTest} />
+              </div>
+          {backgroundProvider === 'openai-compat' && (
             <SettingsRowBlock
               as="label"
-              label="Thinking (local model)"
-              description="Whether the local model reasons before it answers, for both kinds of work. Off is faster; areas below can override it."
+              label="Thinking"
+              description="Whether the local model reasons first. The default for every background task; each one below can turn it on or off. Off is faster."
               control={(
                 <Switch
                   checked={thinkingOn}
                   onCheckedChange={(checked) => {
                     setAiProviderThinkingOrch('opensource-ai', checked)
                     setThinkingOn(checked)
-                    say(`Local model thinking ${checked ? 'on' : 'off'} by default.`)
+                    say(`Background thinking ${checked ? 'on' : 'off'} by default.`)
                   }}
-                  aria-label="Thinking for the local model"
+                  aria-label="Thinking for background tasks"
                 />
               )}
             />
-          </>
-        )}
-      </SettingsGroupBlock>
-
-      {!loadingProviders && providers.length > 0 && (
-        <SettingsGroupBlock heading="Per area" description="Each area follows the defaults above unless you change it here.">
-          <AiPerAreaBlock providers={providers} onMessage={say} />
+          )}
+          <AiPerAreaBlock
+            providers={providers}
+            onMessage={say}
+            scopes={['ai_activity', 'feed']}
+            mode="background"
+            localBackground={backgroundProvider === 'openai-compat'}
+          />
         </SettingsGroupBlock>
       )}
 
