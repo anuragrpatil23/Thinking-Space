@@ -39,6 +39,8 @@ export interface FeedNoteBlock {
   ticker: string | null
   /** ISO time it was made */
   at: string
+  /** When the article was published (ISO), so a tag picked up later still dates by the article */
+  published?: string
 }
 
 const HEADER = [
@@ -85,6 +87,7 @@ export function parseFeedNotesBlock(content: string): FeedNoteBlock[] {
         source: meta.source ?? '',
         ticker: meta.ticker ?? null,
         at: meta.at ?? '',
+        ...(meta.published ? { published: meta.published } : {}),
       })
     } catch { /* a hand-edited line that no longer parses is left alone */ }
   }
@@ -125,4 +128,75 @@ export function replaceFeedNoteBlock(content: string, id: string, next: FeedNote
 
 export function feedNotesPathBlock(executionRoot: string): string {
   return `${executionRoot.replace(/\/+$/, '')}/feed/${FEED_NOTES_FILE_BLOCK}`
+}
+
+/** One article and everything reading left on it: its tags, questions and comments. */
+export interface FeedNoteArticleBlock {
+  itemId: string
+  title: string
+  link: string
+  source: string
+  ticker: string | null
+  /** YYYY-MM-DD, local: the day it belongs under */
+  day: string
+  tags: FeedNoteBlock[]
+  questions: FeedNoteBlock[]
+  comments: FeedNoteBlock[]
+  /** Every live note on it */
+  notes: FeedNoteBlock[]
+}
+
+function localDayBlock(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** A tag dates by the article (picking up can happen days later); a question or comment by when it was written. */
+function noteTimeBlock(note: FeedNoteBlock): number {
+  const t = Date.parse(note.kind === 'tagged' && note.published ? note.published : note.at)
+  return Number.isNaN(t) ? 0 : t
+}
+
+/**
+ * Live notes (not removed, not done), one entry per article, grouped by day,
+ * newest first. An article sits under the day of its latest note.
+ */
+export function groupFeedNotesByDayBlock(notes: FeedNoteBlock[]): Array<{ day: string; articles: FeedNoteArticleBlock[] }> {
+  const byItem = new Map<string, FeedNoteBlock[]>()
+  for (const note of notes) {
+    if (note.removed || note.done) continue
+    const key = note.itemId || note.id
+    const list = byItem.get(key)
+    if (list) list.push(note)
+    else byItem.set(key, [note])
+  }
+  const articles = [...byItem.values()].map((list) => {
+    const latest = Math.max(...list.map(noteTimeBlock))
+    const first = list[0]
+    const byTime = (a: FeedNoteBlock, b: FeedNoteBlock) => Date.parse(a.at) - Date.parse(b.at)
+    return {
+      article: {
+        itemId: first.itemId,
+        title: first.title,
+        link: first.link,
+        source: first.source,
+        ticker: list.find(n => n.ticker)?.ticker ?? null,
+        day: latest ? localDayBlock(latest) : 'undated',
+        tags: list.filter(n => n.kind === 'tagged').sort(byTime),
+        questions: list.filter(n => n.kind === 'question').sort(byTime),
+        comments: list.filter(n => n.kind === 'comment').sort(byTime),
+        notes: list,
+      } satisfies FeedNoteArticleBlock,
+      latest,
+    }
+  })
+  const days = new Map<string, Array<{ article: FeedNoteArticleBlock; latest: number }>>()
+  for (const entry of articles) {
+    const list = days.get(entry.article.day)
+    if (list) list.push(entry)
+    else days.set(entry.article.day, [entry])
+  }
+  return [...days.entries()]
+    .sort(([a], [b]) => (a === 'undated' ? 1 : b === 'undated' ? -1 : b.localeCompare(a)))
+    .map(([day, list]) => ({ day, articles: list.sort((a, b) => b.latest - a.latest).map(e => e.article) }))
 }

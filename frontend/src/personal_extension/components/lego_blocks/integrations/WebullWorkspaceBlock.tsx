@@ -7,7 +7,6 @@ import {
 import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListBlock'
 import { chipColorClassBlock, type ChipColorBlock } from '@/services/lego_blocks/units/chipColorBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
-import WebullStudyBlock from './WebullStudyBlock'
 import WebullCompanyPageBlock, { type WebullCompanyHoldingBlock } from './WebullCompanyPageBlock'
 import WebullOverallPageBlock from './WebullOverallPageBlock'
 import WebullSidebarBlock from './WebullSidebarBlock'
@@ -17,10 +16,8 @@ import type { WebullUniverseCompanyBlock } from '@/personal_extension/services/l
 import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
-import WebullF9SimCanvasOrch from '@/personal_extension/components/orchestrators/WebullF9SimCanvasOrch'
-import WebullSimBoardBlock from './WebullSimBoardBlock'
 import WebullFeedBlock from './WebullFeedBlock'
-import { PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock } from '../units/privateGapsBlock'
+import { PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock, PrivateStudyBlock } from '../units/privateGapsBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -1088,7 +1085,6 @@ export default function WebullWorkspaceBlock({
 }: WebullWorkspaceBlockProps) {
   const { layout } = useUILayoutBlock()
   const isIos = layout.surface === 'capacitor-ios'
-  const isElectron = layout.surface === 'electron'
   const isIPhoneIosSurface = isIos && layout.mode === 'phone'
 
   // iPhone list/detail: Webull sidebar (subtabs + companies + add) is the
@@ -2466,15 +2462,6 @@ export default function WebullWorkspaceBlock({
         </aside>
       )}
 
-      {/* Without the private Sim view, the desktop app keeps the public Sim canvas. */}
-      {simTabActive && isElectron && !PrivateSimBlock && !showCompanyView ? (
-        <div className={cn(
-          'min-w-0 overflow-hidden',
-          phoneListMode ? 'hidden' : 'flex-1',
-        )}>
-          <WebullF9SimCanvasOrch />
-        </div>
-      ) : (
       <div className={cn(
         'min-w-0 overflow-auto px-6 py-5',
         // The company page is the first F9 view on the native ground: grey,
@@ -2537,17 +2524,14 @@ export default function WebullWorkspaceBlock({
             <WebullFeedBlock />
           )}
 
-          {studyTabActive && (
-            <WebullStudyBlock />
+          {studyTabActive && PrivateStudyBlock && (
+            <Suspense fallback={null}><PrivateStudyBlock /></Suspense>
           )}
 
           {simTabActive && PrivateSimBlock && (
             <Suspense fallback={null}><PrivateSimBlock /></Suspense>
           )}
 
-          {simTabActive && !PrivateSimBlock && !isElectron && (
-            <WebullSimBoardBlock />
-          )}
 
           {noticedTabActive && PrivateNoticedBlock && (
             <Suspense fallback={null}><PrivateNoticedBlock /></Suspense>
@@ -3096,7 +3080,6 @@ export default function WebullWorkspaceBlock({
         />
       )}
       </div>
-      )}
     </div>
   )
 }

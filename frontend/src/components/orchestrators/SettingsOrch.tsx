@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { SIM_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
 import { isSettingsTabHiddenInStaticWebBuildBlock } from '@/services/lego_blocks/units/staticWebBuildBlock'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/lego_blocks/units/ui/button'
@@ -1988,18 +1989,21 @@ export default function SettingsOrch({
           </SettingsGroupBlock>
 
           <SettingsGroupBlock heading="Tab">
-            <SettingsRowBlock
-              as="label"
-              label="Sim subtab"
-              description="Replays of a company through a market era, beside Study."
-              control={(
-                <Switch
-                  checked={webullSimTabEnabled}
-                  onCheckedChange={updateWebullSimTabEnabled}
-                  aria-label="Show the Sim subtab"
-                />
-              )}
-            />
+            {/* Sim is private (personal_extension/gaps): no tab to switch on without it */}
+            {SIM_TAB_AVAILABLE && (
+              <SettingsRowBlock
+                as="label"
+                label="Sim subtab"
+                description="Replays of a company through a market era, beside Study."
+                control={(
+                  <Switch
+                    checked={webullSimTabEnabled}
+                    onCheckedChange={updateWebullSimTabEnabled}
+                    aria-label="Show the Sim subtab"
+                  />
+                )}
+              />
+            )}
             <SettingsRowBlock
               as="label"
               htmlFor="ltm-settings-webull-tab-label"

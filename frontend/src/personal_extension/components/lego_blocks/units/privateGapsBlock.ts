@@ -34,7 +34,16 @@ const loadCompanyNoticed = Object.values(COMPANY_NOTICED_MODULES)[0]
 export const PrivateCompanyNoticedBlock = loadCompanyNoticed ? lazy(loadCompanyNoticed) : null
 
 // Sim (replays: the loop at a moment in history) lives in the same private
-// folder; without it, the Sim tab shows the public era timeline only.
+// folder, all of it; without it there is no Sim tab.
 const SIM_MODULES = import.meta.glob<{ default: ComponentType }>('../../../gaps/sim.tsx')
 const loadSim = Object.values(SIM_MODULES)[0]
 export const PrivateSimBlock = loadSim ? lazy(loadSim) : null
+
+export const SIM_TAB_AVAILABLE = Boolean(loadSim)
+
+// Study (every company studied: its table and timeline) is private too. The
+// study records it reads stay public, for the sidebar and the company page.
+const STUDY_MODULES = import.meta.glob<{ default: ComponentType }>('../../../gaps/study.tsx')
+const loadStudy = Object.values(STUDY_MODULES)[0]
+export const STUDY_TAB_AVAILABLE = Boolean(loadStudy)
+export const PrivateStudyBlock = loadStudy ? lazy(loadStudy) : null

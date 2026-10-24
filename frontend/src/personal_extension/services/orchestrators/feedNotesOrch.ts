@@ -108,7 +108,45 @@ export function setFeedNoteDoneOrch(id: string, done: boolean): Promise<void> {
 
 /** Take a note away. A picked-up one is kept, marked removed, so it is not picked up again. */
 export function removeFeedNoteOrch(id: string): Promise<void> {
-  return updateNoteBlock(id, note => (note.kind === 'tagged' ? { ...note, removed: true } : null))
+  return removeFeedNotesOrch([id])
+}
+
+function updateNotesBlock(ids: string[], change: (note: FeedNoteBlock) => FeedNoteBlock | null): Promise<void> {
+  const wanted = new Set(ids)
+  return editBlock((content) => {
+    if (!content) return null
+    let next = content
+    for (const note of parseFeedNotesBlock(content)) {
+      if (wanted.has(note.id)) next = replaceFeedNoteBlock(next, note.id, change(note))
+    }
+    return next
+  })
+}
+
+/** Take several notes away in one write (an article's tags, say); picked-up ones are kept marked removed. */
+export function removeFeedNotesOrch(ids: string[]): Promise<void> {
+  return updateNotesBlock(ids, note => (note.kind === 'tagged' ? { ...note, removed: true } : null))
+}
+
+/** Mark several notes done in one write (an article written down as a Noticed record). */
+export function setFeedNotesDoneOrch(ids: string[]): Promise<void> {
+  return updateNotesBlock(ids, note => ({ ...note, done: true }))
+}
+
+/** Tagged notes picked up before they carried the article's date get it, while the article is still cached. */
+async function backfillPublishedBlock(feeds: RssFeedResultBlock[]): Promise<void> {
+  const missing = notes.filter(n => n.kind === 'tagged' && !n.published)
+  if (missing.length === 0) return
+  const published = new Map<string, string>()
+  for (const feed of feeds) {
+    for (const item of feed.items) {
+      const t = item.pubDate ? Date.parse(item.pubDate) : NaN
+      if (!Number.isNaN(t)) published.set(item.id, new Date(t).toISOString())
+    }
+  }
+  const ids = missing.filter(n => published.has(n.itemId)).map(n => n.id)
+  if (ids.length === 0) return
+  await updateNotesBlock(ids, note => ({ ...note, published: published.get(note.itemId) }))
 }
 
 /**
@@ -122,6 +160,7 @@ export async function pickUpTaggedArticlesOrch(feeds: RssFeedResultBlock[]): Pro
   const found = feeds.flatMap(feed => feed.items.flatMap(item => (item.tags ?? [])
     .filter(tag => wanted.has(tag))
     .map(tag => ({ item, tag, feedTitle: feed.feedTitle }))))
+  await backfillPublishedBlock(feeds)
   const noted = new Set(notes.filter(n => n.kind === 'tagged').map(n => `${n.itemId}|${n.tag}`))
   if (!found.some(({ item, tag }) => !noted.has(`${item.id}|${tag}`))) return 0
   let added = 0
@@ -143,6 +182,7 @@ export async function pickUpTaggedArticlesOrch(feeds: RssFeedResultBlock[]): Pro
         source: feedTitle,
         ticker: feedTickerBlock(feedTitle),
         at: new Date().toISOString(),
+        ...(item.pubDate && !Number.isNaN(Date.parse(item.pubDate)) ? { published: new Date(item.pubDate).toISOString() } : {}),
       })
       added += 1
     }

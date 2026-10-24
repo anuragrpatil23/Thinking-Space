@@ -29,7 +29,7 @@ import { readWebullCredentialStatusBlock } from '../../services/lego_blocks/unit
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
-import { GAPS_TAB_AVAILABLE, NOTICED_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
+import { GAPS_TAB_AVAILABLE, NOTICED_TAB_AVAILABLE, SIM_TAB_AVAILABLE, STUDY_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
 
 type WebullSubtabId = 'overall' | 'study' | 'sim' | 'noticed' | 'gaps' | 'feed'
 
@@ -40,7 +40,7 @@ const Webull_BASE_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
   // The front of the loop: where things are first seen
   { id: 'feed', label: 'Feed' },
   ...(NOTICED_TAB_AVAILABLE ? [{ id: 'noticed' as const, label: 'Noticed' }] : []),
-  { id: 'study', label: 'Study' },
+  ...(STUDY_TAB_AVAILABLE ? [{ id: 'study' as const, label: 'Study' }] : []),
   ...(GAPS_TAB_AVAILABLE ? [{ id: 'gaps' as const, label: 'Gaps' }] : []),
   { id: 'overall', label: 'Overall Positions' },
 ]
@@ -48,6 +48,9 @@ const Webull_BASE_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
 // The Sim subtab is gated behind a Settings → Webull toggle. Practice comes
 // last, after the real record, when enabled.
 const Webull_SIM_SUBTAB: { id: WebullSubtabId; label: string } = { id: 'sim', label: 'Sim' }
+
+/** Where F9 opens: Study when it is there, else the Feed. */
+const DEFAULT_SUBTAB_BLOCK: WebullSubtabId = STUDY_TAB_AVAILABLE ? 'study' : 'feed'
 
 const WEBULL_AUTO_REFRESH_STALENESS_MS = 60_000
 
@@ -181,7 +184,7 @@ interface WebullOrchProps {
 
 export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
   const { openFile } = useMarkdownViewer()
-  const [activeSubtabId, setActiveSubtabId] = useState<WebullSubtabId>('study')
+  const [activeSubtabId, setActiveSubtabId] = useState<WebullSubtabId>(DEFAULT_SUBTAB_BLOCK)
   const [simTabEnabled, setSimTabEnabled] = useState(false)
   const [snapshot, setSnapshot] = useState<WebullOverallSnapshotOrch | null>(null)
   const [executionOverview, setExecutionOverview] = useState<WebullExecutionOverviewBlock | null>(null)
@@ -206,7 +209,7 @@ export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
   const subtabFromRoute = searchParams.get('subtab')
   useEffect(() => {
     if (!subtabFromRoute) return
-    const known = Webull_BASE_SUBTABS.some((t) => t.id === subtabFromRoute) || subtabFromRoute === 'sim'
+    const known = Webull_BASE_SUBTABS.some((t) => t.id === subtabFromRoute) || (subtabFromRoute === 'sim' && SIM_TAB_AVAILABLE)
     if (known) setActiveSubtabId(subtabFromRoute as WebullSubtabId)
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
@@ -216,13 +219,13 @@ export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
   }, [setSearchParams, subtabFromRoute])
 
   const subtabs = useMemo(() => (
-    simTabEnabled
+    simTabEnabled && SIM_TAB_AVAILABLE
       ? [...Webull_BASE_SUBTABS, Webull_SIM_SUBTAB]
       : Webull_BASE_SUBTABS
   ), [simTabEnabled])
 
   // Read the Sim-subtab gate from vault UI preferences. When it flips off while
-  // Sim is active, fall back to Study so the workspace never shows a dead tab.
+  // Sim is active, fall back to the opening tab so the workspace never shows a dead tab.
   useEffect(() => {
     let cancelled = false
     void readVaultUiPreferencesOrch()
@@ -230,7 +233,7 @@ export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
         if (cancelled) return
         setSimTabEnabled(prefs.webullSimTabEnabled)
         if (!prefs.webullSimTabEnabled) {
-          setActiveSubtabId((current) => (current === 'sim' ? 'study' : current))
+          setActiveSubtabId((current) => (current === 'sim' ? DEFAULT_SUBTAB_BLOCK : current))
         }
       })
       .catch(() => { /* leave default (disabled) */ })

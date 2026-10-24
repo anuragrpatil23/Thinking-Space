@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   appendFeedNoteBlock,
   feedTickerBlock,
+  groupFeedNotesByDayBlock,
   parseFeedNotesBlock,
   replaceFeedNoteBlock,
   type FeedNoteBlock,
 } from '@/personal_extension/services/lego_blocks/units/feedNoteBlock'
 import { cleanArticleSummaryBlock, articleSummaryPointsBlock } from '@/services/lego_blocks/units/intelligence/contracts/articleSummaryContractBlock'
 import { feedArrivalsByHourBlock } from '@/personal_extension/components/lego_blocks/integrations/FeedOverviewBlock'
-import { feedNotesToShowBlock } from '@/personal_extension/components/lego_blocks/integrations/FeedReadingNotesPanelBlock'
 
 const note = (over: Partial<FeedNoteBlock>): FeedNoteBlock => ({
   id: 'n-1', kind: 'question', text: 'How does OCS fit with CPO?', done: false,
@@ -44,15 +44,20 @@ describe('reading notes file', () => {
     expect(feedTickerBlock('The Next Platform')).toBeNull()
   })
 
-  it('shows open questions first, hides removed and done', () => {
-    const now = Date.parse('2026-10-24T00:00:00Z')
-    const shown = feedNotesToShowBlock([
-      note({ id: 'c', kind: 'comment', at: '2026-10-23T13:00:00Z' }),
-      note({ id: 'q', at: '2026-10-01T00:00:00Z' }),
-      note({ id: 'd', done: true }),
-      note({ id: 't', kind: 'tagged', removed: true }),
-    ], now)
-    expect(shown.map(n => n.id)).toEqual(['q', 'c'])
+  it('groups by day, one row per article, tags dated by the article', () => {
+    const local = (d: number, h: number) => new Date(2026, 9, d, h).toISOString()
+    const days = groupFeedNotesByDayBlock([
+      note({ id: 't1', kind: 'tagged', tag: 'interesting', itemId: 'a', at: local(23, 18), published: local(21, 9) }),
+      note({ id: 't2', kind: 'tagged', tag: 'new company', itemId: 'a', at: local(23, 18), published: local(21, 9) }),
+      note({ id: 'q', itemId: 'b', at: local(23, 10) }),
+      note({ id: 'c', kind: 'comment', itemId: 'b', at: local(23, 11) }),
+      note({ id: 'gone', kind: 'tagged', itemId: 'x', removed: true }),
+      note({ id: 'done', itemId: 'y', done: true }),
+    ])
+    expect(days.map(d => [d.day, d.articles.map(a => a.itemId)])).toEqual([['2026-10-23', ['b']], ['2026-10-21', ['a']]])
+    expect(days[1].articles[0].tags.map(t => t.tag)).toEqual(['interesting', 'new company'])
+    expect(days[0].articles[0].questions.map(n => n.id)).toEqual(['q'])
+    expect(days[0].articles[0].comments.map(n => n.id)).toEqual(['c'])
   })
 })
 
