@@ -82,22 +82,100 @@ export function metaRefreshTargetBlock(html: string, base: string): string | nul
   }
 }
 
+/** A page that moves a browser on by itself: a self-submitting form, a script redirect, a refresh. */
+export type PageHopBlock =
+  | { kind: 'form'; action: string; method: 'GET' | 'POST'; fields: Array<[string, string]> }
+  | { kind: 'script' | 'refresh'; url: string }
+
+function attrBlock(tag: string, name: string): string | null {
+  const m = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(tag);
+  return m ? decodeEntitiesBlock(m[1] ?? m[2] ?? m[3] ?? '') : null;
+}
+
+/** How this page would move a browser on, if it would (only ever within the library's proxy). */
+export function pageHopBlock(html: string, base: string): PageHopBlock | null {
+  const proxySuffix = new URL(PROXY_LOGIN).hostname;
+  const inProxy = (url: string) => {
+    try {
+      const host = new URL(url).hostname;
+      return host === proxySuffix || host.endsWith(`.${proxySuffix}`);
+    } catch {
+      return false;
+    }
+  };
+  const resolve = (raw: string) => {
+    try { return new URL(raw, base).toString(); } catch { return null; }
+  };
+  const refresh = metaRefreshTargetBlock(html, base);
+  if (refresh && inProxy(refresh)) return { kind: 'refresh', url: refresh };
+  const formTag = /<form\b[^>]*>/i.exec(html)?.[0];
+  if (formTag) {
+    const body = html.slice(html.indexOf(formTag), html.search(/<\/form>/i) > 0 ? html.search(/<\/form>/i) : undefined);
+    const inputs = [...body.matchAll(/<input\b[^>]*>/gi)].map(m => m[0]);
+    const visible = inputs.some(tag => /type\s*=\s*["']?(text|password|email)/i.test(tag) || !/type\s*=/i.test(tag));
+    const autoSubmits = /\.submit\s*\(\s*\)/.test(html) || /onload\s*=\s*["'][^"']*submit/i.test(html);
+    const action = resolve(attrBlock(formTag, 'action') ?? base);
+    if (action && inProxy(action) && !visible && (autoSubmits || inputs.length > 0)) {
+      const fields = inputs.flatMap((tag): Array<[string, string]> => {
+        const name = attrBlock(tag, 'name');
+        return name ? [[name, attrBlock(tag, 'value') ?? '']] : [];
+      });
+      return { kind: 'form', action, method: (attrBlock(formTag, 'method') ?? 'GET').toUpperCase() === 'POST' ? 'POST' : 'GET', fields };
+    }
+  }
+  const script = /(?:window\.|document\.|top\.|self\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']|location\.(?:replace|assign)\(\s*["']([^"']+)["']\s*\)/.exec(html);
+  const target = script ? resolve(decodeEntitiesBlock(script[1] ?? script[2])) : null;
+  if (target && inProxy(target)) return { kind: 'script', url: target };
+  return null;
+}
+
 /**
- * What a page is, for the log, without its contents: its type, title, any
- * refresh target and whether it is a login form. Never cookies or form values.
+ * What a page is, for the log, without what it holds: its type, size, title,
+ * how it would move on (form target and field names, never values; a script
+ * or refresh target), whether it is a login form, and its first visible words.
  */
 function pageSummaryBlock(text: string, contentType: string | null, base: string): string {
   const title = /<title[^>]*>([^<]{0,120})/i.exec(text)?.[1]?.replace(/\s+/g, ' ').trim();
-  const refresh = metaRefreshTargetBlock(text, base);
+  const hop = pageHopBlock(text, base);
+  const formTag = /<form\b[^>]*>/i.exec(text)?.[0];
+  const formNames = formTag ? [...text.matchAll(/<input\b[^>]*\bname\s*=\s*["']?([\w.-]+)/gi)].map(m => m[1]).slice(0, 8) : [];
+  const words = text
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
   const parts = [
     contentType ? contentType.split(';')[0] : 'no type',
     `${text.length} chars`,
     /^\s*[[{]/.test(text) ? 'JSON' : null,
     title ? `title "${title}"` : null,
-    refresh ? `refreshes to ${urlForLogBlock(refresh)}` : null,
+    hop ? (hop.kind === 'form' ? `a ${hop.method} form to ${urlForLogBlock(hop.action)}` : `${hop.kind === 'script' ? 'a script redirect' : 'a refresh'} to ${urlForLogBlock(hop.url)}`) : null,
+    formTag && !hop ? `a form to ${urlForLogBlock(attrBlock(formTag, 'action') ?? '')}` : null,
+    formNames.length ? `fields ${formNames.join(',')}` : null,
+    /<script\b/i.test(text) ? 'scripts' : null,
     /name=["']pass["']/i.test(text) ? 'a login form' : null,
+    words ? `text "${words}"` : null,
   ];
   return parts.filter(Boolean).join(', ');
+}
+
+/** Follow a page's own hops (at most a few), the way a browser would; the last page reached. */
+async function followHopsBlock(page: string, url: string): Promise<{ page: string; url: string }> {
+  let current = { page, url };
+  for (let hop = 0; hop < 4; hop += 1) {
+    const next = pageHopBlock(current.page, current.url);
+    if (!next) break;
+    const init: RequestInit = next.kind === 'form' && next.method === 'POST'
+      ? { method: 'POST', body: new URLSearchParams(next.fields).toString(), headers: { 'User-Agent': BROWSER_UA, 'Content-Type': 'application/x-www-form-urlencoded' } }
+      : { headers: { 'User-Agent': BROWSER_UA } };
+    const target = next.kind === 'form' && next.method === 'GET'
+      ? `${next.action}${next.action.includes('?') ? '&' : '?'}${new URLSearchParams(next.fields).toString()}`
+      : next.kind === 'form' ? next.action : next.url;
+    const response = await loggedFetchBlock(`hop(${next.kind})`, target, init);
+    current = { page: await response.text().catch(() => ''), url: response.url || target };
+  }
+  return current;
 }
 
 /** A session fetch that leaves a line in the log: status and landing, or the error. */
@@ -274,7 +352,7 @@ export function libraryRequestBlock<T>(request: LibraryRequestBlock<T>): Promise
   return pacedBlock(async () => {
     // What the last answer was, when it was not what was asked for (for the log)
     let mismatch: string | null = null;
-    const ask = async () => {
+    const askOnce = async () => {
       const response = await loggedFetchBlock('ask', request.url, {
         method: request.method ?? 'GET',
         body: request.method === 'POST' ? '' : undefined,
@@ -282,8 +360,19 @@ export function libraryRequestBlock<T>(request: LibraryRequestBlock<T>): Promise
       });
       const copy = response.clone();
       const value = await request.read(response);
-      if (!request.expect(value)) mismatch = pageSummaryBlock(await copy.text().catch(() => ''), copy.headers.get('content-type'), request.url);
-      return value;
+      if (request.expect(value)) return { value, page: null as string | null, at: request.url };
+      const page = await copy.text().catch(() => '');
+      mismatch = pageSummaryBlock(page, copy.headers.get('content-type'), copy.url || request.url);
+      return { value, page, at: copy.url || request.url };
+    };
+    const ask = async () => {
+      const first = await askOnce();
+      // The answer was a page that moves on by itself: follow it, then ask again
+      if (first.page !== null && pageHopBlock(first.page, first.at)) {
+        await followHopsBlock(first.page, first.at);
+        return (await askOnce()).value;
+      }
+      return first.value;
     };
     if (loggedIn) {
       try {
@@ -314,9 +403,11 @@ export function libraryRequestBlock<T>(request: LibraryRequestBlock<T>): Promise
         if (/name=["']pass["']/i.test(page)) {
           throw new LibraryLoginErrorBlock('The library did not accept the login (check Settings → Webull → Library login).');
         }
-        const refresh = metaRefreshTargetBlock(page, landed.url || PROXY_LOGIN);
-        if (refresh) await (await loggedFetchBlock('refresh', refresh, { headers: { 'User-Agent': BROWSER_UA } })).arrayBuffer();
-        await (await loggedFetchBlock('start', proxiedUrlBlock(loginUrl), { headers: { 'User-Agent': BROWSER_UA } })).arrayBuffer();
+        await followHopsBlock(page, landed.url || PROXY_LOGIN);
+        const start = await loggedFetchBlock('start', proxiedUrlBlock(loginUrl), { headers: { 'User-Agent': BROWSER_UA } });
+        const startPage = await start.text().catch(() => '');
+        const reached = await followHopsBlock(startPage, start.url || proxiedUrlBlock(loginUrl));
+        libraryLogBlock(`start page: ${pageSummaryBlock(reached.page, null, reached.url)}`);
       }
       return ask();
     };
