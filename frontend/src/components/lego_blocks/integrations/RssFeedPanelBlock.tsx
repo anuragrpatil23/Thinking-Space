@@ -321,7 +321,11 @@ export default function RssFeedPanelBlock({
   // Feeds in groups marked excludeFromAllUnread stay in their own group but
   // are left out of every merged view (inbox, timeline, reels) and the header
   // count.
-  const inboxFeeds = useMemo(() => rssReaderFeedsBlock(feeds, preferences), [feeds, preferences])
+  // Other is where the teasers go that "Only readable" keeps out of the main list
+  const inboxFeeds = useMemo(
+    () => rssReaderFeedsBlock(feeds, preferences, { keepTeasers: native && readableTab === 'other' }),
+    [feeds, preferences, native, readableTab],
+  )
 
   // Native: the list is an inbox by day across every source (the merged-view
   // rules apply), sources inside each day, one row per story. Days fold;
@@ -351,6 +355,18 @@ export default function RssFeedPanelBlock({
       : []),
     [dayMode, deferredInboxFeeds, filteredInboxFeeds, allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter],
   )
+  // Each day's whole count, whatever Unread hides: the filter chooses the rows,
+  // not the day's size. Grouped once per feed snapshot (only with Unread on).
+  const dayTotals = useMemo(() => {
+    if (!dayMode || !unreadOnly) return null
+    return identityMemoBlock('rss-day-totals', [allFeeds, preferences, readableTab, sourceFilter.join(',')], () => {
+      const tabFeeds = allFeeds.map(feed => ({ ...feed, items: feed.items.filter(item => rssItemReadableBlock(item) === (readableTab === 'readable')) }))
+      let base = rssReaderFeedsBlock(tabFeeds, preferences, { keepTeasers: readableTab === 'other' })
+      const chosen = new Set(sourceFilter)
+      if (chosen.size > 0 && base.some(feed => chosen.has(feed.feedId))) base = base.filter(feed => chosen.has(feed.feedId))
+      return new Map(buildRssDayInboxBlock({ feeds: base, configs: preferences?.feeds ?? [] }).map(day => [day.day, { stories: day.storyCount, unread: day.unreadCount }]))
+    })
+  }, [dayMode, unreadOnly, allFeeds, preferences, readableTab, sourceFilter])
   const { expanded: foldedSources, toggle: toggleSourceFolded } = useExpandedSetBlock('ltm-rss-folded-sources')
   useEffect(() => {
     const map = new Map<string, RssFeedItemBlock[]>()
@@ -688,6 +704,7 @@ export default function RssFeedPanelBlock({
         {dayMode && (
           <DayInboxRenderer
             days={dayInbox}
+            dayTotals={dayTotals}
             foldedDays={foldedDays}
             toggleDayFolded={toggleDayFolded}
             foldedSources={foldedSources}
@@ -1300,6 +1317,7 @@ function SourceFilterBlock({ options, chosen, onChange }: {
 
 function DayInboxRenderer({
   days,
+  dayTotals,
   foldedDays,
   toggleDayFolded,
   foldedSources,
@@ -1312,6 +1330,8 @@ function DayInboxRenderer({
   tagColors,
 }: {
   days: RssDayInboxBlock[]
+  /** The day's whole counts when Unread hides some rows */
+  dayTotals: Map<string, { stories: number; unread: number }> | null
   foldedDays: Set<string>
   toggleDayFolded: (day: string) => void
   foldedSources: Set<string>
@@ -1343,7 +1363,12 @@ function DayInboxRenderer({
               <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform', !folded && 'rotate-90')} />
               <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{rssDayLabelBlock(day.day, now)}</span>
               <span className="shrink-0 text-[11px] tabular-nums text-zinc-500 dark:text-zinc-400">
-                {day.unreadCount > 0 ? `${day.unreadCount} unread · ` : ''}{day.storyCount} {day.storyCount === 1 ? 'story' : 'stories'}
+                {(() => {
+                  const total = dayTotals?.get(day.day)
+                  const stories = total?.stories ?? day.storyCount
+                  const unread = total?.unread ?? day.unreadCount
+                  return `${unread > 0 ? `${unread} unread · ` : ''}${stories} ${stories === 1 ? 'story' : 'stories'}`
+                })()}
               </span>
             </button>
             {!folded && day.sources.map(source => {

@@ -232,7 +232,7 @@ export function nameNoteCompaniesOrch(feeds: RssFeedResultBlock[]): Promise<numb
         itemId,
         title: list[0].title,
         text: text.slice(0, ARTICLE_COMPANIES_TEXT_CHARS_BLOCK),
-      }, { provider })
+      }, { provider, scope: 'feed' })
       if (!result.ok) {
         companiesFailed.add(itemId)
         // The provider itself is down: stop, the reader shows why

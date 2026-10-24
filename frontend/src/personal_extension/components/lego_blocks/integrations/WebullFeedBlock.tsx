@@ -238,7 +238,11 @@ function AiReadsStatusBlock({ reader }: { reader: ReturnType<typeof useFeedAiRea
       {!settings.on
         ? 'Off: turn it on in Settings → Webull'
         : progress
-          ? `${progress.kind === 'stories' ? 'Writing story cards' : 'Reading'} · ${progress.done} of ${progress.total}${waiting > progress.total ? ` · ${waiting} waiting in all` : ''}`
+          ? (() => {
+            // `waiting` is every article not yet read, this batch's unfinished ones included
+            const after = progress.kind === 'articles' ? waiting - (progress.total - progress.done) : waiting
+            return `${progress.kind === 'stories' ? 'Writing story cards' : 'Reading'} · ${progress.done} of ${progress.total} in this batch${after > 0 ? ` · ${after} more after it` : ''}`
+          })()
           : [
             waiting > 0 ? `${waiting} waiting` : 'Up to date',
             last?.read ? `${last.read} read last time` : null,

@@ -706,13 +706,15 @@ export function rssDuplicateItemsBlock(
 export function rssReaderFeedsBlock(
   feeds: RssFeedResultBlock[],
   preferences: Pick<RssFeedPreferencesBlock, 'groups' | 'feeds'> | null,
+  /** Keep the teasers "Only readable" leaves out: the native list's Other tab is where they go */
+  options: { keepTeasers?: boolean } = {},
 ): RssFeedResultBlock[] {
   if (!preferences) return feeds
   const excluded = rssFeedIdsExcludedFromAllUnreadBlock(preferences.groups, preferences.feeds)
   const modeById = new Map(preferences.feeds.map(f => [f.id, rssMergedViewsModeBlock(f)]))
   return feeds
     .filter(feed => !excluded.has(feed.feedId) && modeById.get(feed.feedId) !== 'hidden')
-    .map(feed => (modeById.get(feed.feedId) === 'readable'
+    .map(feed => (modeById.get(feed.feedId) === 'readable' && !options.keepTeasers
       ? { ...feed, items: feed.items.filter(rssItemReadableBlock) }
       : feed))
 }

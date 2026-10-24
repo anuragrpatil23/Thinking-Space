@@ -472,18 +472,21 @@ export default function RssArticleViewBlock({
         const more = points.length > 1
         return (
           <div className="shrink-0 border-b border-border/50 bg-violet-50/60 px-4 py-2 text-[12.5px] leading-snug text-zinc-700 dark:bg-violet-500/5 dark:text-zinc-200">
-            <div className="flex items-start gap-2">
-              <span className="mt-[2px] shrink-0 rounded bg-violet-100 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" title={`Summary by ${item.aiSummary.model || 'AI'}`}>AI read</span>
+            <div className={cn('flex gap-2', aiOpen && more ? 'items-start' : 'items-center')}>
+              <span className="shrink-0 rounded bg-violet-100 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" title={`Summary by ${item.aiSummary.model || 'AI'}`}>AI read</span>
               {!(aiOpen && more) && <span className={cn('min-w-0 flex-1', !aiOpen && 'truncate')}>{points[0]}</span>}
               {aiOpen && more && <span className="min-w-0 flex-1 text-zinc-500 dark:text-zinc-400">{points.length} points</span>}
               {more && (
                 <button
                   type="button"
+                  // A click leaves the focus with the article (no outline on the toggle)
+                  onMouseDown={(event) => event.preventDefault()}
                   onClick={toggleAiOpen}
                   title={aiOpen ? 'Hide the points (A)' : `Show all ${points.length} points (A)`}
-                  className="shrink-0 text-[11px] text-violet-700 hover:underline dark:text-violet-300"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] leading-none text-violet-700 outline-none hover:bg-violet-100 focus-visible:ring-1 focus-visible:ring-violet-400 dark:text-violet-300 dark:hover:bg-violet-500/15"
                 >
-                  {aiOpen ? 'Hide' : `+${points.length - 1} more`} <kbd className="ml-0.5 rounded border border-violet-200 px-1 text-[10px] dark:border-violet-500/30">A</kbd>
+                  <span>{aiOpen ? 'Hide' : `+${points.length - 1} more`}</span>
+                  <kbd className="inline-flex h-4 min-w-4 items-center justify-center rounded border border-violet-200 px-1 font-sans text-[10px] leading-none dark:border-violet-500/30">A</kbd>
                 </button>
               )}
             </div>

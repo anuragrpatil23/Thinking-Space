@@ -12,6 +12,8 @@ export type AiSettingsScope =
   | 'todos'
   | 'steward_metadata'
   | 'ai_activity'
+  /** The Feed's AI reader: article points, story cards, the companies of kept articles */
+  | 'feed'
 
 export const AI_SETTINGS_SCOPE_ORDER: AiSettingsScope[] = [
   'chat',
@@ -20,6 +22,7 @@ export const AI_SETTINGS_SCOPE_ORDER: AiSettingsScope[] = [
   'todos',
   'steward_metadata',
   'ai_activity',
+  'feed',
 ]
 
 export interface AiSettings {
@@ -92,6 +95,7 @@ export function isAiSettingsScope(value: unknown): value is AiSettingsScope {
     || value === 'todos'
     || value === 'steward_metadata'
     || value === 'ai_activity'
+    || value === 'feed'
 }
 
 function scopeProviderKey(scope: AiSettingsScope, provider: AiProvider): string {

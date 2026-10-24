@@ -165,7 +165,7 @@ function runFeedAiReadPassOrch(
         title: item.title,
         source,
         text: plainArticleTextBlock(item.description).slice(0, ARTICLE_SUMMARY_TEXT_CHARS_BLOCK),
-      }, { provider })
+      }, { provider, scope: 'feed' })
       if (result.ok && result.value) {
         // runContract types the value from the schema (a string); finalize made it this
         const value = result.value as unknown as ArticleSummaryOutputBlock

@@ -106,6 +106,7 @@ export default function AiSettingsOrch() {
     todos: 'New Note todo mode',
     steward_metadata: 'Steward metadata',
     ai_activity: 'AI activity',
+    feed: 'Feed (AI reads)',
   }
 
   const scopeDescriptions: Record<AiSettingsScope, string> = {
@@ -115,6 +116,7 @@ export default function AiSettingsOrch() {
     todos: 'AI assist for todo text cleanup and clarity.',
     steward_metadata: 'Steward metadata proposal generation.',
     ai_activity: 'Undertaking suggestions in the assignment queue.',
+    feed: 'Article points, story cards and the companies of kept articles.',
   }
 
   const hydrateScopeInputs = useCallback((items: AiProviderStatus[]) => {

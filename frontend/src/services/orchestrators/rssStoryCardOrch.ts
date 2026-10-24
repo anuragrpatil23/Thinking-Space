@@ -138,7 +138,7 @@ export async function runStoryCardPassOrch(
         title: member.item.title,
         text: (member.item.aiSummary?.text.replace(/\n/g, ' ') ?? plainArticleTextBlock(member.item.description ?? '')).slice(0, STORY_CARD_SOURCE_CHARS_BLOCK),
       })),
-    }, { provider })
+    }, { provider, scope: 'feed' })
     if (result.ok && result.value) {
       // runContract types the value from the schema (a string); finalize made it this
       const value = result.value as unknown as StoryCardOutputBlock
