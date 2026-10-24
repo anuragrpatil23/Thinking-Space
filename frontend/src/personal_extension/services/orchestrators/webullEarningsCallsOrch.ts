@@ -175,6 +175,18 @@ export function subscribeEarningsCallPassOrch(listener: () => void): () => void 
   return () => { listeners.delete(listener) }
 }
 
+// What the daily pass covers (set by the F9 page), so "Check now" can run it on demand
+let passTarget: { executionRoot: string; tickers: string[] } | null = null
+
+export function setEarningsCallPassTargetOrch(executionRoot: string, tickers: string[]): void {
+  passTarget = { executionRoot, tickers }
+}
+
+/** Run the pass now, whatever the day's schedule says; null before the F9 page has said what to cover. */
+export function checkEarningsCallsNowOrch(): Promise<EarningsCallPassBlock> | null {
+  return passTarget ? runEarningsCallPassOrch(passTarget.executionRoot, passTarget.tickers) : null
+}
+
 let running: Promise<EarningsCallPassBlock> | null = null
 
 /** One pass over the tracked companies; a company that fails is tried once more at the end. */

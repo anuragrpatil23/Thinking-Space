@@ -29,7 +29,7 @@ import {
   type RssFeedItemBlock,
   type RssMergedViewsModeBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
-import { readEarningsCallPassProgressOrch, readLastEarningsCallPassOrch, subscribeEarningsCallPassOrch } from '@/personal_extension/services/orchestrators/webullEarningsCallsOrch'
+import { checkEarningsCallsNowOrch, earningsCallsAvailableOrch, readEarningsCallPassProgressOrch, readLastEarningsCallPassOrch, subscribeEarningsCallPassOrch } from '@/personal_extension/services/orchestrators/webullEarningsCallsOrch'
 import { checkValueLineNowOrch, readLastValueLinePassOrch, readValueLinePassProgressOrch, subscribeValueLinePassOrch, valueLineAvailableOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { useFeedAiReadBlock } from './FeedAiReaderBlock'
 import { FeedNoteCaptureBlock } from './FeedNoteCaptureBlock'
@@ -166,9 +166,21 @@ function LibraryStatusBlock({ library }: { library: ReturnType<typeof useLibrary
             ].join(' · ')
             : 'Not run yet'}
         {last?.error && !progress && <span className="ml-2 text-red-600 dark:text-red-400">{last.error}</span>}
+        {!progress && <button type="button" onClick={() => { void run() }} className="ml-2 text-[#3b6fb6] hover:underline dark:text-sky-400">Check now</button>}
       </span>
-      <button type="button" disabled={Boolean(progress)} onClick={() => { void run() }} className="text-[13px] text-sky-600 hover:text-sky-700 disabled:text-zinc-400 dark:text-sky-400">
-        Fill from library
+      <button
+        type="button"
+        onClick={() => {
+          // Different sources, own queues: they run side by side
+          if (!progress) void run()
+          void checkValueLineNowOrch()
+          void checkEarningsCallsNowOrch()
+          void checkPricesNowOrch()
+        }}
+        title="Library articles, Value Line, earnings calls and prices, now"
+        className="text-[13px] text-sky-600 hover:text-sky-700 dark:text-sky-400"
+      >
+        Check all
       </button>
       {open && <div className="basis-full"><PassQueueListBlock items={progress?.items ?? last?.items ?? []} /></div>}
       <ValueLineStatusBlock />
@@ -261,6 +273,9 @@ function EarningsCallsStatusBlock() {
           ].filter(Boolean).join(' · ')
           : 'Not run yet; it runs when the F9 page opens'}
       {!running && last?.error && <span className="ml-2 text-red-600 dark:text-red-400">{last.error}</span>}
+      {!running && earningsCallsAvailableOrch() && (
+        <button type="button" onClick={() => { void checkEarningsCallsNowOrch() }} className="ml-2 text-[#3b6fb6] hover:underline dark:text-sky-400">Check now</button>
+      )}
       {open && <PassQueueListBlock items={running?.items ?? last?.items ?? []} />}
     </span>
   )

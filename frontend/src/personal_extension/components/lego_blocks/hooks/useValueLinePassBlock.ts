@@ -3,6 +3,7 @@ import {
   earningsCallPassDueOrch,
   earningsCallsAvailableOrch,
   runEarningsCallPassOrch,
+  setEarningsCallPassTargetOrch,
 } from '@/personal_extension/services/orchestrators/webullEarningsCallsOrch'
 import {
   runValueLinePassOrch,
@@ -33,6 +34,7 @@ export function useValueLinePassBlock(executionRoot: string | null, tickers: Arr
     if (!executionRoot || list.length === 0) return
     setValueLinePassTargetOrch(executionRoot, list)
     setPricesPassTargetOrch(executionRoot, list)
+    setEarningsCallPassTargetOrch(executionRoot, list)
     const run = () => {
       if (valueLineAvailableOrch() && valueLinePassDueOrch()) void runValueLinePassOrch(executionRoot, list)
       if (earningsCallsAvailableOrch() && earningsCallPassDueOrch()) void runEarningsCallPassOrch(executionRoot, list)
