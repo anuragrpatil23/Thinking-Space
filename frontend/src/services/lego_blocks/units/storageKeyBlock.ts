@@ -46,6 +46,8 @@ export const STORAGE_KEYS = {
   valueLineIssueLists: 'ltm-value-line-issue-lists',
   earningsCallChecks: 'ltm-earnings-call-checks',
   earningsCallPassLast: 'ltm-earnings-call-pass-last',
+  pricesPassLast: 'ltm-prices-pass-last',
+  pricesChecks: 'ltm-prices-checks',
   webullOverallRememberByProjectRoot: 'ltm-webull-overall-remember-by-project-root',
   aiManualCredentials: 'ltm-ai-manual-credentials',
   aiOauthCredentials: 'ltm-ai-oauth-credentials',

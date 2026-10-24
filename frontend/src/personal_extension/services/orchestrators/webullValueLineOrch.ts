@@ -7,6 +7,7 @@
 // time through main's paced library session. The PDF lands in the vault, so
 // the phone gets it through sync.
 
+import { issueDetailBlock, setPassItemBlock, type PassItemBlock, type PassItemStateBlock } from '@/services/lego_blocks/units/passQueueBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { base64ToBytesBlock } from '@/services/lego_blocks/units/byteEncodingBlock'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
@@ -40,6 +41,8 @@ export interface ValueLinePassBlock {
   /** Companies that failed twice; the next pass or opening the company tries again. */
   failed: string[]
   error: string | null
+  /** Each company and what came of it */
+  items?: PassItemBlock[]
 }
 
 export function valueLineAvailableOrch(): boolean {
@@ -163,6 +166,8 @@ export interface ValueLinePassProgressBlock {
   done: number
   total: number
   fetched: number
+  /** Each company: waiting, being fetched, or what came of it */
+  items: PassItemBlock[]
 }
 let progress: ValueLinePassProgressBlock | null = null
 const listeners = new Set<() => void>()
@@ -207,31 +212,46 @@ export function runValueLinePassOrch(executionRoot: string, tickers: string[]): 
     const failed: string[] = []
     let done = 0
     const total = unique.length
+    let items: PassItemBlock[] = unique.map(ticker => ({ ticker, state: 'waiting' as const }))
+    const mark = (ticker: string, state: PassItemStateBlock, detail?: string) => {
+      items = setPassItemBlock(items, ticker, state, detail)
+      setProgressBlock({ done, total, fetched: pass.fetched.length, items })
+    }
     const record = (ticker: string, result: ValueLineSyncResultBlock, last: boolean): boolean => {
       if (result.outcome === 'fetched') pass.fetched.push(ticker)
       if (result.outcome === 'not-covered') pass.notCovered.push(ticker)
+      if (result.outcome === 'fetched') mark(ticker, 'fetched', issueDetailBlock(result.issueDate))
+      else if (result.outcome === 'not-covered') mark(ticker, 'not-covered')
+      else if (result.outcome === 'no-new') mark(ticker, 'no-new')
+      else if (result.outcome === 'current') mark(ticker, 'skipped')
       if (result.outcome !== 'error') return true
+      mark(ticker, last ? 'failed' : 'retrying', result.error)
       if (last) pass.failed.push(ticker)
       else failed.push(ticker)
       pass.error = `${ticker}: ${result.error}`
-      return !/Keychain|login saved|desktop app/i.test(result.error ?? '')
+      // A sign-in problem fails every company the same way: stop at the first
+      return !/Keychain|login saved|desktop app|sign-in loops|library login did not/i.test(result.error ?? '')
     }
-    setProgressBlock({ done, total, fetched: 0 })
+    setProgressBlock({ done, total, fetched: 0, items })
     let carryOn = true
     for (const ticker of unique) {
+      mark(ticker, 'working')
       carryOn = record(ticker, await syncValueLineOrch(executionRoot, ticker), false)
       done += 1
-      setProgressBlock({ done, total, fetched: pass.fetched.length })
+      setProgressBlock({ done, total, fetched: pass.fetched.length, items })
       if (!carryOn) break
     }
     if (carryOn) {
       for (const ticker of failed) {
+        mark(ticker, 'working')
         if (!record(ticker, await syncValueLineOrch(executionRoot, ticker), true)) break
       }
       if (pass.failed.length === 0) pass.error = null
     } else {
       pass.failed.push(...failed)
     }
+    // A pass stopped early (a sign-in problem) leaves the rest as they were: not asked
+    pass.items = items.map(item => (item.state === 'retrying' ? { ...item, state: 'failed' as const } : item))
     setJsonStorageItem(STORAGE_KEYS.valueLinePassLast, pass)
     return pass
   })().finally(() => {

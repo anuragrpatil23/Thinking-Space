@@ -11,33 +11,29 @@ import {
   valueLinePlanBlock,
 } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
 
-// The shape of the library's Historical Reports answer (2026-10-23), trimmed
-const row = (ticker: string, label: string, key: string) => `
-  <tr>
-    <td class="text-start"><a class="text-success" href="?IssueDate=x">Micron Technology</a></td>
-    <td class="text-center"><a class="text-success" href="?IssueDate=x">${label}</a></td>
-    <td class="text-center">
-      <a href='/File/Handler?productCode=investment-survey&amp;key=reports\\${key}' target='_blank'>
-        <i class="bi bi-file-earmark-pdf-fill text-danger" title='Report of ${ticker} for ${label}'></i>
-      </a>
-    </td>
-    <td class="text-center pdf-list"><a href='/File/Handler?productCode=investment-survey&key=so\\OTHER'>x</a></td>
-  </tr>`
-const listing = (rows: string) => `<table id="tableDataList"><tbody><tr><td>MU</td></tr></tbody></table>
-  <table id="tableSearchedByTicker" class="table"><thead><tr><th>Company Name</th></tr></thead><tbody>${rows}</tbody></table>`
+// The shape of the Research Center's PDF reports module (2026-10-23), trimmed:
+// JSON around an HTML table, each issue linked twice (desktop and phone lists)
+const row = (ticker: string, label: string, id: string) => `<tr><td class="alignLeft"><span class="icon-pdf-state"></span>`
+  + `<a href="/secure/api/report?documentID=${id}&amp;format=PDF&amp;symbol=${ticker}" target="_blank">${label}</a></td>`
+  + `<td class="alignLeft"><a href="/secure/api/report?documentID=${id}&amp;format=PDF&amp;symbol=${ticker}" target="_blank">Company</a></td></tr>`
+const listing = (rows: string) => JSON.stringify({
+  apps: [{ id: 'com_13_4', status: 'SUCCESS', data: {}, html: `<table><thead><tr><th>Date</th></tr></thead><tbody>${rows}${rows}</tbody></table>` }],
+  inlineScripts: [],
+})
 
 describe('reading the Value Line issue list', () => {
-  it('lists each issue newest first with its report key', () => {
-    const issues = parseValueLineIssuesBlock(listing(row('MU', 'Jun 19, 2026', 'B%2Fb') + row('MU', 'Sep 18, 2026', 'A%2Ba')), 'MU')
+  it('lists each issue once, newest first, with its document id', () => {
+    const issues = parseValueLineIssuesBlock(listing(row('MU', 'Jun 19, 2026', '2185-B') + row('MU', 'Sep 18, 2026', '2185-A%2Ba')), 'MU')
     expect(issues).toEqual([
-      { issueDate: '2026-09-18', key: 'reports\\A%2Ba' },
-      { issueDate: '2026-06-19', key: 'reports\\B%2Fb' },
+      { issueDate: '2026-09-18', key: '2185-A+a' },
+      { issueDate: '2026-06-19', key: '2185-B' },
     ])
   })
 
-  it('answers empty for a ticker Value Line does not cover, and null for any other page', () => {
-    expect(parseValueLineIssuesBlock('<p>Sorry! Report not found for the ticker (TQQQ). Please try again.</p>', 'TQQQ')).toEqual([])
+  it('answers empty for a ticker with no reports, and null for any page that is not the module', () => {
+    expect(parseValueLineIssuesBlock(listing(''), 'TQQQ')).toEqual([])
     expect(parseValueLineIssuesBlock('<html><form action="/login">', 'MU')).toBeNull()
+    expect(parseValueLineIssuesBlock('{"apps":[]}', 'MU')).toBeNull()
   })
 
   it('ignores rows for another ticker', () => {

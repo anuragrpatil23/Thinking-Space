@@ -12,6 +12,7 @@
 // its newest call is recent. A file is never overwritten: the vault's copy may
 // be a longer transcript.
 
+import { setPassItemBlock, type PassItemBlock, type PassItemStateBlock } from '@/services/lego_blocks/units/passQueueBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
 import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
@@ -51,6 +52,8 @@ export interface EarningsCallPassBlock {
   notCovered: string[]
   failed: string[]
   error: string | null
+  /** Each company and what came of it */
+  items?: PassItemBlock[]
 }
 
 export function earningsCallsAvailableOrch(): boolean {
@@ -153,6 +156,8 @@ export interface EarningsCallPassProgressBlock {
   done: number
   total: number
   fetched: number
+  /** Each company: waiting, being fetched, or what came of it */
+  items: PassItemBlock[]
 }
 let progress: EarningsCallPassProgressBlock | null = null
 const listeners = new Set<() => void>()
@@ -179,22 +184,40 @@ export function runEarningsCallPassOrch(executionRoot: string, tickers: string[]
     const pass: EarningsCallPassBlock = { at: new Date().toISOString(), fetched: [], notCovered: [], failed: [], error: null }
     const unique = [...new Set(tickers.map(t => t.toUpperCase()))]
     const retry: string[] = []
-    setProgressBlock({ done: 0, total: unique.length, fetched: 0 })
-    for (const [index, ticker] of unique.entries()) {
+    let items: PassItemBlock[] = unique.map(ticker => ({ ticker, state: 'waiting' as const }))
+    let done = 0
+    const mark = (ticker: string, state: PassItemStateBlock, detail?: string) => {
+      items = setPassItemBlock(items, ticker, state, detail)
+      setProgressBlock({ done, total: unique.length, fetched: pass.fetched.length, items })
+    }
+    const describe = (ticker: string, result: EarningsCallSyncResultBlock, last: boolean) => {
+      if (result.outcome === 'fetched') mark(ticker, 'fetched', `${result.written?.length ?? 0} ${result.written?.length === 1 ? 'call' : 'calls'}`)
+      else if (result.outcome === 'not-covered') mark(ticker, 'not-covered')
+      else if (result.outcome === 'no-new') mark(ticker, 'no-new')
+      else if (result.outcome === 'current') mark(ticker, 'skipped')
+      else mark(ticker, last ? 'failed' : 'retrying', result.error)
+    }
+    setProgressBlock({ done, total: unique.length, fetched: 0, items })
+    for (const ticker of unique) {
+      mark(ticker, 'working')
       const result = await syncEarningsCallsOrch(executionRoot, ticker)
       if (result.outcome === 'fetched') pass.fetched.push(ticker)
       if (result.outcome === 'not-covered') pass.notCovered.push(ticker)
       if (result.outcome === 'error') retry.push(ticker)
-      setProgressBlock({ done: index + 1, total: unique.length, fetched: pass.fetched.length })
+      done += 1
+      describe(ticker, result, false)
     }
     for (const ticker of retry) {
+      mark(ticker, 'working')
       const result = await syncEarningsCallsOrch(executionRoot, ticker)
       if (result.outcome === 'fetched') pass.fetched.push(ticker)
       if (result.outcome === 'error') {
         pass.failed.push(ticker)
         pass.error = `${ticker}: ${result.error}`
       }
+      describe(ticker, result, true)
     }
+    pass.items = items
     setJsonStorageItem(STORAGE_KEYS.earningsCallPassLast, pass)
     return pass
   })().finally(() => {

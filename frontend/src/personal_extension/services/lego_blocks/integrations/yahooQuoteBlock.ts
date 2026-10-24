@@ -182,3 +182,52 @@ export async function fetchYahooDailyClosesBlock(
   }
   return parseYahooDailyClosesBlock(response.body)
 }
+
+export interface YahooDailyBarBlock {
+  /** YYYY-MM-DD, the exchange's trading day */
+  date: string
+  open: number | null
+  close: number
+}
+
+/** Daily bars (open and close) from a chart answer, dated in the exchange's own time zone. */
+export function parseYahooDailyBarsBlock(body: string): YahooDailyBarBlock[] {
+  let data: unknown
+  try {
+    data = JSON.parse(body)
+  } catch {
+    return []
+  }
+  const result = (data as { chart?: { result?: unknown } } | null)?.chart?.result
+  if (!Array.isArray(result) || result.length === 0) return []
+  const first = result[0] as {
+    timestamp?: unknown
+    meta?: { exchangeTimezoneName?: unknown }
+    indicators?: { quote?: Array<{ close?: unknown; open?: unknown }> }
+  }
+  const timestamps = Array.isArray(first.timestamp) ? first.timestamp : []
+  const quote = first.indicators?.quote?.[0]
+  if (!Array.isArray(quote?.close)) return []
+  const zone = typeof first.meta?.exchangeTimezoneName === 'string' ? first.meta.exchangeTimezoneName : 'America/New_York'
+  const dayOf = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' })
+  const out: YahooDailyBarBlock[] = []
+  timestamps.forEach((ts, i) => {
+    const close = asNumberOrNullBlock((quote.close as unknown[])[i])
+    if (typeof ts !== 'number' || close === null) return
+    out.push({ date: dayOf.format(new Date(ts * 1000)), open: asNumberOrNullBlock((quote.open as unknown[] | undefined)?.[i]), close })
+  })
+  return out
+}
+
+/** Daily bars for [fromDay, toDay] (YYYY-MM-DD). Electron-only, like the quote fetch. */
+export async function fetchYahooDailyBarsBlock(symbol: string, fromDay: string, toDay: string): Promise<YahooDailyBarBlock[]> {
+  const normalized = symbol.trim().toUpperCase()
+  if (!normalized) return []
+  const period1 = Math.floor(Date.parse(`${fromDay}T00:00:00Z`) / 1000)
+  const period2 = Math.floor(Date.parse(`${toDay}T23:59:59Z`) / 1000)
+  const url = `${YAHOO_CHART_BASE_BLOCK}/${encodeURIComponent(normalized)}?interval=1d&period1=${period1}&period2=${period2}`
+  const response = await fetchTextThroughElectronBlock(url)
+  if (response.status === 404) return []
+  if (response.status < 200 || response.status >= 300) throw new Error(`Yahoo chart HTTP ${response.status} for ${normalized}`)
+  return parseYahooDailyBarsBlock(response.body)
+}

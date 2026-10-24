@@ -10,11 +10,17 @@ import {
   valueLineAvailableOrch,
   valueLinePassDueOrch,
 } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
+import {
+  pricesAvailableOrch,
+  pricesPassDueOrch,
+  runPricesPassOrch,
+  setPricesPassTargetOrch,
+} from '@/personal_extension/services/orchestrators/webullPricesOrch'
 
 /**
  * Once a day, when the F9 page is open or comes back to the front, bring every
- * tracked company's Value Line report and earnings calls up to date (desktop
- * only; no timers). The two run side by side: different sources, own queues.
+ * tracked company's Value Line report, earnings calls and prices up to date
+ * (desktop only; no timers). They run side by side: different sources, own queues.
  */
 export function useValueLinePassBlock(executionRoot: string | null, tickers: Array<string | null>) {
   const list = useMemo(
@@ -26,9 +32,11 @@ export function useValueLinePassBlock(executionRoot: string | null, tickers: Arr
   useEffect(() => {
     if (!executionRoot || list.length === 0) return
     setValueLinePassTargetOrch(executionRoot, list)
+    setPricesPassTargetOrch(executionRoot, list)
     const run = () => {
       if (valueLineAvailableOrch() && valueLinePassDueOrch()) void runValueLinePassOrch(executionRoot, list)
       if (earningsCallsAvailableOrch() && earningsCallPassDueOrch()) void runEarningsCallPassOrch(executionRoot, list)
+      if (pricesAvailableOrch() && pricesPassDueOrch()) void runPricesPassOrch(executionRoot, list)
     }
     run()
     const onVisible = () => { if (document.visibilityState === 'visible') run() }

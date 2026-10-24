@@ -140,6 +140,8 @@ export async function clearLibraryCardBlock(): Promise<LibraryCredentialStatusBl
 // time limit, so one that hangs fails instead of holding up all the others.
 let lastRequestAt = 0;
 let loggedIn = false;
+/** For a set of start pages, the one that last signed in without looping. */
+const workingLoginUrls = new Map<string, string>();
 const REQUEST_TIMEOUT_MS = 30_000;
 const LOGIN_TIMEOUT_MS = 45_000;
 const JOB_TIMEOUT_MS = 90_000;
@@ -219,9 +221,11 @@ export interface LibraryRequestBlock<T> {
   /**
    * Where signing in should land. Defaults to `url`, whose page the proxy
    * then returns directly; a POST, or a database that sets up its own session
-   * on its front page, signs in there and asks again.
+   * on its front page, signs in there and asks again. Several are tried in
+   * order when one loops (a database that moved its front page); the one
+   * that worked is tried first next time.
    */
-  loginUrl?: string
+  loginUrl?: string | string[]
   /** The user is waiting on it: goes ahead of background requests */
   urgent?: boolean
 }
@@ -242,23 +246,44 @@ export function libraryRequestBlock<T>(request: LibraryRequestBlock<T>): Promise
         // A lapsed session can answer with a redirect loop instead of a login page
       }
     }
-    const loginUrl = request.loginUrl ?? request.url;
-    const signInAndAsk = async (): Promise<T> => {
+    const candidates = Array.isArray(request.loginUrl) ? request.loginUrl : [request.loginUrl ?? request.url];
+    const groupKey = candidates.join(' ');
+    const preferred = workingLoginUrls.get(groupKey);
+    const ordered = preferred && candidates.includes(preferred) ? [preferred, ...candidates.filter(c => c !== preferred)] : candidates;
+    const signInAndAsk = async (loginUrl: string): Promise<T> => {
       const landed = await loginBlock(loginUrl);
       if (loginUrl === request.url && (request.method ?? 'GET') === 'GET') return request.read(landed);
       await landed.arrayBuffer();
       return ask();
     };
-    let value: T;
-    try {
-      value = await signInAndAsk();
-    } catch (err) {
-      if (!/ERR_TOO_MANY_REDIRECTS/.test(String(err))) throw err;
-      // Stale cookies can keep the proxy and the database bouncing between
-      // each other; start from a clean session and sign in once more.
-      libraryLogBlock('redirect loop after signing in: clearing cookies, signing in again');
-      await librarySessionBlock().clearStorageData({ storages: ['cookies'] });
-      value = await signInAndAsk();
+    const loops = (err: unknown) => /ERR_TOO_MANY_REDIRECTS/.test(String(err));
+    let value: T | undefined;
+    let lastLoop: unknown = null;
+    for (const [index, loginUrl] of ordered.entries()) {
+      try {
+        value = await signInAndAsk(loginUrl);
+      } catch (err) {
+        if (!loops(err)) throw err;
+        // Stale cookies can keep the proxy and the database bouncing between
+        // each other; start from a clean session and sign in once more.
+        libraryLogBlock(`redirect loop signing in at ${urlForLogBlock(loginUrl)}: clearing cookies, signing in again`);
+        await librarySessionBlock().clearStorageData({ storages: ['cookies'] });
+        try {
+          value = await signInAndAsk(loginUrl);
+        } catch (again) {
+          if (!loops(again)) throw again;
+          lastLoop = again;
+          if (index < ordered.length - 1) libraryLogBlock(`still looping at ${urlForLogBlock(loginUrl)}: trying the next start page`);
+          continue;
+        }
+      }
+      if (ordered.length > 1) workingLoginUrls.set(groupKey, loginUrl);
+      break;
+    }
+    if (value === undefined) {
+      libraryLogBlock(`every start page loops: ${ordered.map(urlForLogBlock).join(', ')}`);
+      loggedIn = false;
+      throw new LibraryLoginErrorBlock(`The library sign-in loops (${String(lastLoop).slice(0, 80)}). The database may have moved its page; try the library's own link in a browser.`);
     }
     if (!request.expect(value)) {
       libraryLogBlock(`not the page asked for: ${urlForLogBlock(request.url)}`);

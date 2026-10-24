@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
-import {
-  bytesToPngObjectUrlBlock,
-  loadTickerChartBlock,
-} from '../../../services/lego_blocks/units/tickerChartBlock'
+import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { parseWebullPriceSeriesBlock, type WebullPricePointBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
+import { parsePriceBandsBlock, type PriceBandBlock } from '@/personal_extension/services/lego_blocks/units/priceBandsBlock'
+import { F9PriceChartBlock } from './F9PriceChartBlock'
+
+/** Trading days shown: about the last four months, as the bands are drawn on. */
+const TRADING_DAYS_SHOWN = 90
 
 interface TickerChartBlockProps {
   ticker: string
@@ -11,72 +14,34 @@ interface TickerChartBlockProps {
   className?: string
 }
 
-export default function TickerChartBlock({
-  ticker,
-  executionRoot,
-  className,
-}: TickerChartBlockProps) {
-  const [url, setUrl] = useState<string | null>(null)
-  const [missing, setMissing] = useState(false)
+/**
+ * A company's recent price with its bands, live from prices.csv and
+ * bands.yaml (it used to be a picture, bands.png, rendered by a script).
+ * Shows nothing when the company has no prices yet.
+ */
+export default function TickerChartBlock({ ticker, executionRoot, className }: TickerChartBlockProps) {
+  const [data, setData] = useState<{ points: WebullPricePointBlock[]; bands: PriceBandBlock[] } | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    let createdUrl: string | null = null
-    setUrl(null)
-    setMissing(false)
-
-    if (!executionRoot) {
-      setMissing(true)
-      return
-    }
-
-    void loadTickerChartBlock(executionRoot, ticker).then((bytes) => {
+    setData(null)
+    if (!executionRoot || !ticker) return
+    const folder = `${executionRoot.replace(/\/+$/, '')}/${ticker.toUpperCase()}`
+    const fs = getVaultFS()
+    void Promise.all([fs.read(`${folder}/prices.csv`).catch(() => null), fs.read(`${folder}/bands.yaml`).catch(() => null)]).then(([prices, bands]) => {
       if (cancelled) return
-      if (!bytes) {
-        setMissing(true)
-        return
-      }
-      createdUrl = bytesToPngObjectUrlBlock(bytes)
-      setUrl(createdUrl)
+      setData({
+        points: prices ? parseWebullPriceSeriesBlock(prices).slice(-TRADING_DAYS_SHOWN) : [],
+        bands: parsePriceBandsBlock(bands)?.bands ?? [],
+      })
     })
+    return () => { cancelled = true }
+  }, [executionRoot, ticker])
 
-    return () => {
-      cancelled = true
-      if (createdUrl) URL.revokeObjectURL(createdUrl)
-    }
-  }, [ticker, executionRoot])
-
-  if (missing) {
-    return (
-      <div
-        className={cn(
-          'rounded-md border border-dashed bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground',
-          className,
-        )}
-      >
-        No <code>bands.png</code> chart for {ticker} yet.
-      </div>
-    )
-  }
-
-  if (!url) {
-    return (
-      <div
-        className={cn(
-          'h-40 w-full animate-pulse rounded-md bg-muted/40',
-          className,
-        )}
-        aria-hidden="true"
-      />
-    )
-  }
-
+  if (!data || data.points.length < 2) return null
   return (
-    <img
-      src={url}
-      alt={`${ticker} bands chart`}
-      className={cn('w-full rounded-md border bg-white object-contain', className)}
-      onError={() => setMissing(true)}
-    />
+    <div className={cn('flex h-[220px] w-full', className)}>
+      <F9PriceChartBlock points={data.points} bands={data.bands} idKey={`study-${ticker}`} className="h-full w-full" />
+    </div>
   )
 }

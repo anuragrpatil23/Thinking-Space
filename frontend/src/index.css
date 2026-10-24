@@ -599,6 +599,26 @@
     scrollbar-color: hsl(var(--muted-foreground) / 0.5) transparent;
   }
 
+  /* The whole F9 tab scrolls quietly, like the explorer: every scroller in
+     it (sidebar, pages, tables, the month timelines) is thin, hidden at
+     rest, faint while the pointer is inside it, clearer while scrolling.
+     `*:hover` here only lights the scrollers the pointer is in. */
+  .ltm-app-shell .ltm-webull-shell,
+  .ltm-app-shell .ltm-webull-shell * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .ltm-app-shell .ltm-webull-shell:hover,
+  .ltm-app-shell .ltm-webull-shell *:hover {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.28) transparent;
+  }
+
+  .ltm-app-shell.ltm-scrollbar-scrolling .ltm-webull-shell,
+  .ltm-app-shell.ltm-scrollbar-scrolling .ltm-webull-shell * {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.5) transparent;
+  }
+
   .ltm-app-shell[data-ltm-surface='electron'][data-ltm-mode='desktop'] {
     --ltm-shell-surface-radius: calc(var(--radius) + 0.72rem);
     --ltm-shell-main-panel-radius: calc(var(--radius) + 0.72rem);

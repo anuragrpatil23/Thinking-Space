@@ -1,7 +1,7 @@
 import { Suspense, useMemo, useState, type ReactNode } from 'react'
+import { F9PriceChartBlock } from '../units/F9PriceChartBlock'
 import FileCopyMenuHostBlock, { openFileCopyMenuBlock } from '@/components/lego_blocks/integrations/FileCopyMenuBlock'
 import { ChevronRight, Download, Loader2 } from 'lucide-react'
-import { Area, AreaChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import { useWebullCompanyDossierBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullCompanyDossierBlock'
 import { useValueLineCompanyBlock } from '@/personal_extension/components/lego_blocks/hooks/useValueLineCompanyBlock'
@@ -14,8 +14,6 @@ import {
   F9PanelBlock,
   F9SectionLabelBlock,
   F9SegmentedBlock,
-  F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK,
-  F9_CHART_TOOLTIP_STYLE_BLOCK,
 } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
 import { valueLineDueBlock, valueLineIssueLabelBlock, valueLineIssueRowsBlock, type ValueLineIssueRowBlock, type WebullResearchFileBlock, type WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
@@ -395,15 +393,6 @@ export default function WebullCompanyPageBlock({
     const cutoff = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
     return prices.filter(point => point.date >= cutoff)
   }, [priceWindow, prices])
-  const chartDomain = useMemo((): [number, number] | null => {
-    if (chartPoints.length === 0) return null
-    const values = chartPoints.map(point => point.price)
-    if (range) values.push(range.low, range.high)
-    const min = Math.min(...values)
-    const max = Math.max(...values)
-    const pad = (max - min) * 0.06
-    return [Math.max(0, Math.floor(min - pad)), Math.ceil(max + pad)]
-  }, [chartPoints, range])
 
   const reports = dossier?.valueLineReports ?? []
   const observations = dossier?.observations ?? []
@@ -457,31 +446,15 @@ export default function WebullCompanyPageBlock({
             options={[{ value: '1m', label: '1M' }, { value: '1y', label: '1Y' }, { value: '2y', label: '2Y' }, { value: 'all', label: 'All' }]}
           />
         </div>
-        {chartPoints.length > 1 && chartDomain ? (
-          <div className="min-h-[260px] flex-1 text-sky-500">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartPoints} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id={`webull-price-fill-${ticker}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="currentColor" stopOpacity={0.22} />
-                    <stop offset="100%" stopColor="currentColor" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                {range && <ReferenceArea y1={range.low} y2={range.high} fill="#34C759" fillOpacity={0.09} />}
-                <XAxis dataKey="date" tickFormatter={(value: string) => formatDateBlock(value).replace(/ \d+,/, '')} minTickGap={56} tick={{ fontSize: 11, fill: '#8E8E93' }} axisLine={false} tickLine={false} />
-                <YAxis domain={chartDomain} width={48} tick={{ fontSize: 11, fill: '#8E8E93' }} tickFormatter={(value: number) => `$${value}`} axisLine={false} tickLine={false} />
-                <Tooltip
-                  formatter={(value) => [formatPriceBlock(Number(value)), 'Price']}
-                  labelFormatter={(label) => formatDateBlock(String(label))}
-                  contentStyle={F9_CHART_TOOLTIP_STYLE_BLOCK}
-                  labelStyle={F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK}
-                />
-                <Area type="monotone" dataKey="price" stroke="currentColor" strokeWidth={2} fill={`url(#webull-price-fill-${ticker})`} isAnimationActive={false} />
-              </AreaChart>
-            </ResponsiveContainer>
+        {chartPoints.length > 1 ? (
+          <div
+            className="flex min-h-[260px] flex-1"
+            onContextMenu={(event) => { if (executionRoot && ticker) openFileCopyMenuBlock(event, { kind: 'file', path: `${executionRoot.replace(/\/+$/, '')}/${ticker}/prices.csv` }) }}
+          >
+            <F9PriceChartBlock points={chartPoints} range={range} bands={dossier?.bands?.bands ?? []} idKey={ticker || 'company'} />
           </div>
         ) : (
-          <p className="py-10 text-center text-sm text-zinc-500">{dossier ? 'No price history (prices.csv) for this company.' : 'Loading…'}</p>
+          <p className="py-10 text-center text-sm text-zinc-500">{dossier ? 'No prices yet: they fill in with the next daily pass (Feed → Sources → Prices).' : 'Loading…'}</p>
         )}
       </F9PanelBlock>
 

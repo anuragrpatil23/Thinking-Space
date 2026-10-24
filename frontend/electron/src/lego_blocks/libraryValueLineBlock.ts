@@ -1,21 +1,25 @@
 // Value Line company reports, through the library session
-// (librarySessionBlock.ts): the library's Investment Survey Plus edition.
+// (librarySessionBlock.ts): Value Line's Research Center
+// (research.valueline.com), where the library's subscription lives since
+// Value Line retired the old Investment Survey pages in October 2026 (their
+// front page now loops through the proxy).
 //
-// Its Historical Reports page answers a ticker with every issue of that
-// company's report (quarterly, back to the 1990s), each a PDF behind an
-// encrypted File/Handler key; a ticker Value Line doesn't cover answers
-// "Report not found". Checked 2026-10-23.
+// A company's PDF reports module (app com_13_4) answers JSON wrapping an HTML
+// table: one row per issue, a link to /secure/api/report?documentID=…&
+// format=PDF&symbol=… dated "Sep 18, 2026". About the last 18 months are
+// listed (MU: 7 issues). A ticker it does not cover lists none. Checked
+// 2026-10-23 in the browser.
 //
 // Trust boundary (docs/contracts/SECURITY.md): the renderer names a ticker,
-// and for a report an issue date from that ticker's list. The keys stay in
-// main; every URL is built here, on the proxied Value Line host only.
+// and for a report an issue date from that ticker's list. The document ids
+// stay in main; every URL is built here, on the proxied Research Center only.
 
-import { decodeEntitiesBlock, libraryLogBlock, libraryRequestBlock } from './librarySessionBlock';
+import { decodeEntitiesBlock, libraryRequestBlock } from './librarySessionBlock';
 
-const VALUE_LINE = 'https://www3-valueline-com.atxlibrary.idm.oclc.org';
-/** The edition's front page: signing in lands here, which also opens Value Line's own session. */
-const VALUE_LINE_FRONT = 'http://www3.valueline.com/secure/vlispdf/stk5000/index.aspx';
-const AJAX_HEADERS = { 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/html; charset=utf-8' };
+const VALUE_LINE = 'https://research-valueline-com.atxlibrary.idm.oclc.org';
+/** Where the library signs in to the Research Center (its own link's target). */
+const VALUE_LINE_FRONT = 'https://research.valueline.com/secure/research';
+const AJAX_HEADERS = { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json, text/javascript, */*; q=0.01' };
 
 export interface LibraryValueLineIssue {
   /** YYYY-MM-DD */
@@ -38,21 +42,30 @@ function isoFromIssueLabelBlock(label: string): string | null {
   return `${m[3]}-${String(month).padStart(2, '0')}-${m[2].padStart(2, '0')}`;
 }
 
-/** The issues listed for a ticker, newest first; null when the answer is not a listing at all. */
+/**
+ * The issues listed for a ticker, newest first; null when the answer is not
+ * the reports module at all (a login page, an error page).
+ */
 export function parseValueLineIssuesBlock(body: string, ticker: string): LibraryValueLineIssue[] | null {
-  if (/Report not found for the ticker/i.test(body)) return [];
-  const table = body.indexOf('tableSearchedByTicker');
-  if (table === -1) return null;
-  const issues: LibraryValueLineIssue[] = [];
-  for (const row of body.slice(table).split(/<tr[\s>]/).slice(1)) {
-    const title = /title=['"]Report of ([^'"]+?) for ([^'"]+)['"]/.exec(row);
-    const href = /href=['"](\/File\/Handler\?productCode=investment-survey&(?:amp;)?key=reports[^'"]+)['"]/.exec(row);
-    if (!title || !href || title[1].toUpperCase() !== ticker) continue;
-    const issueDate = isoFromIssueLabelBlock(decodeEntitiesBlock(title[2]));
-    const key = /key=(reports[^&'"]+)/.exec(decodeEntitiesBlock(href[1]))?.[1];
-    if (issueDate && key) issues.push({ issueDate, key });
+  let html: unknown;
+  try {
+    html = (JSON.parse(body) as { apps?: Array<{ html?: unknown }> })?.apps?.[0]?.html;
+  } catch {
+    return null;
   }
-  return issues.sort((a, b) => b.issueDate.localeCompare(a.issueDate));
+  if (typeof html !== 'string') return null;
+  const byDate = new Map<string, string>();
+  const link = /<a\b[^>]*\bhref=["']\/secure\/api\/report\?([^"']+)["'][^>]*>\s*([^<]+?)\s*<\/a>/gi;
+  for (let m = link.exec(html); m; m = link.exec(html)) {
+    const params = new URLSearchParams(decodeEntitiesBlock(m[1]));
+    const key = params.get('documentID');
+    const symbol = (params.get('symbol') ?? '').toUpperCase();
+    const issueDate = isoFromIssueLabelBlock(decodeEntitiesBlock(m[2]));
+    if (!key || !issueDate || (params.get('format') ?? 'PDF').toUpperCase() !== 'PDF') continue;
+    if (symbol && symbol !== ticker) continue;
+    if (!byDate.has(issueDate)) byDate.set(issueDate, key);
+  }
+  return [...byDate.entries()].map(([issueDate, key]) => ({ issueDate, key })).sort((a, b) => b.issueDate.localeCompare(a.issueDate));
 }
 
 function validTickerBlock(ticker: unknown): string {
@@ -64,10 +77,12 @@ function validTickerBlock(ticker: unknown): string {
 const keysByTicker = new Map<string, Map<string, string>>();
 
 async function listIssuesBlock(ticker: string, urgent = false): Promise<LibraryValueLineIssue[]> {
-  const params = new URLSearchParams({ ticker, companyName: '', issueDate: '', exactMatch: 'true' });
+  const params = JSON.stringify([{
+    appId: 'com_13_4',
+    context: { Symbol: ticker, ListId: 'recent', ReportType: 'Company', StartMonth: '1', EndMonth: '12', SelectedYear: '' },
+  }]);
   const issues = await libraryRequestBlock({
-    url: `${VALUE_LINE}/stk5000/HistoricalReportsData?${params.toString()}`,
-    method: 'POST',
+    url: `${VALUE_LINE}/secure/f2/apps/json?params=${encodeURIComponent(params)}`,
     headers: AJAX_HEADERS,
     loginUrl: VALUE_LINE_FRONT,
     urgent,
@@ -79,32 +94,10 @@ async function listIssuesBlock(ticker: string, urgent = false): Promise<LibraryV
   return list;
 }
 
-/** A ticker Value Line has always covered: asked only to tell a broken session from one odd ticker. */
-const CONTROL_TICKER = 'AAPL';
-
 /** Every issue of a ticker's report; `covered: false` when Value Line has none. */
 export async function libraryValueLineIssuesBlock(p: { ticker: string; interactive?: boolean }): Promise<LibraryValueLineIssues> {
   const ticker = validTickerBlock(p?.ticker);
-  const urgent = p?.interactive === true;
-  let issues: LibraryValueLineIssue[];
-  try {
-    issues = await listIssuesBlock(ticker, urgent);
-  } catch (err) {
-    if (!/ERR_TOO_MANY_REDIRECTS/.test(String(err)) || ticker === CONTROL_TICKER) throw err;
-    // Some tickers (IREN) answer with a redirect loop however fresh the
-    // session, while every other company lists. If a covered ticker still
-    // lists, the session is fine and this one has nothing to give: not
-    // covered, rather than an error on every pass. If it does not, the
-    // session is what is broken, and that error is the one to show.
-    try {
-      await listIssuesBlock(CONTROL_TICKER, urgent);
-    } catch {
-      libraryLogBlock(`value line: ${CONTROL_TICKER} fails too: the session is broken`);
-      throw err;
-    }
-    libraryLogBlock(`value line: ${ticker} answers with a redirect loop while ${CONTROL_TICKER} lists; treated as not covered`);
-    return { covered: false, issues: [] };
-  }
+  const issues = await listIssuesBlock(ticker, p?.interactive === true);
   return { covered: issues.length > 0, issues: issues.map(({ issueDate }) => ({ issueDate })) };
 }
 
@@ -117,7 +110,7 @@ export async function libraryValueLineReportBlock(p: { ticker: string; issueDate
   const key = keysByTicker.get(ticker)?.get(p.issueDate);
   if (!key) throw new Error(`value line: no ${ticker} issue on ${p.issueDate}`);
   const bytes = await libraryRequestBlock({
-    url: `${VALUE_LINE}/File/Handler?productCode=investment-survey&key=${key}`,
+    url: `${VALUE_LINE}/secure/api/report?${new URLSearchParams({ documentID: key, format: 'PDF', symbol: ticker }).toString()}`,
     loginUrl: VALUE_LINE_FRONT,
     urgent,
     read: async (r) => Buffer.from(await r.arrayBuffer()),

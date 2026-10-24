@@ -3,6 +3,7 @@
 // (ValueLine reports, earnings calls, launches, thoughts) under
 // "Thoughts, Predictions, launches and Postmortem". Read-only.
 
+import { parsePriceBandsBlock, type PriceBandsBlock } from '../units/priceBandsBlock'
 import { getFileContent, listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
 import { parseWebullStudyRecordBlock, type WebullStudyRecordBlock } from '../units/webullStudyRecordBlock'
 import {
@@ -32,6 +33,8 @@ export interface WebullCompanyDossierBlock {
   observationsPath: string | null
   observations: WebullObservationEntryBlock[]
   prices: WebullPricePointBlock[]
+  /** The hand-drawn price bands (bands.yaml), when there are any */
+  bands: PriceBandsBlock | null
   researchFolderPath: string | null
   valueLineReports: WebullResearchFileBlock[]
   /** Earnings call transcripts, newest first */
@@ -124,15 +127,16 @@ export async function loadWebullCompanyDossierBlock(params: {
   const warnings: string[] = []
 
   // Without a ticker (a research-only company) there is no company folder to read.
-  const [study, observationsText, pricesText, valueLineFiles, callFiles] = ticker
+  const [study, observationsText, pricesText, valueLineFiles, callFiles, bandsText] = ticker
     ? await Promise.all([
         findStudyRecordBlock(executionRoot, ticker),
         readTextBlock(`${companyFolder}/observations.md`),
         readTextBlock(`${companyFolder}/prices.csv`),
         listFolderEntries(`${companyFolder}/${VALUE_LINE_FOLDER_NAME_BLOCK}`).then(e => e.files).catch(() => [] as string[]),
         listFolderEntries(`${companyFolder}/${EARNINGS_CALLS_FOLDER_NAME_BLOCK}`).then(e => e.files).catch(() => [] as string[]),
+        readTextBlock(`${companyFolder}/bands.yaml`),
       ])
-    : [null, null, null, [] as string[], [] as string[]]
+    : [null, null, null, [] as string[], [] as string[], null]
   const companyName = study?.company ?? params.companyName
   const researchFolderPath = await findResearchFolderBlock(researchRoot, ticker, companyName)
   const research = researchFolderPath
@@ -146,6 +150,7 @@ export async function loadWebullCompanyDossierBlock(params: {
     observationsPath: observationsText === null ? null : `${companyFolder}/observations.md`,
     observations: observationsText ? parseWebullObservationsBlock(observationsText) : [],
     prices: pricesText ? parseWebullPriceSeriesBlock(pricesText) : [],
+    bands: parsePriceBandsBlock(bandsText),
     researchFolderPath,
     // Issues in F9-execution/<TICKER>/valueline/ first; any still in an old research folder too
     valueLineReports: sortResearchFilesBlock([
