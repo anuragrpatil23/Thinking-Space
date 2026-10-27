@@ -42,6 +42,8 @@ export interface YahooOptionChain {
   marketCap: number | null
   trailingPe: number | null
   forwardPe: number | null
+  /** When the quote's price was set, seconds since 1970: tells the trading day it belongs to */
+  marketTime: number | null
   /** Every listed expiry, seconds since 1970 */
   expirations: number[]
   /** The expiry these calls are for */
@@ -100,7 +102,7 @@ const num = (value: unknown): number | null => (typeof value === 'number' && Num
 
 /** The compact chain from Yahoo's JSON; exported for tests. */
 export function parseYahooOptionsBlock(body: string): YahooOptionChain {
-  const empty: YahooOptionChain = { covered: false, price: null, marketCap: null, trailingPe: null, forwardPe: null, expirations: [], expiry: null, calls: [] };
+  const empty: YahooOptionChain = { covered: false, price: null, marketCap: null, trailingPe: null, forwardPe: null, marketTime: null, expirations: [], expiry: null, calls: [] };
   let data: unknown;
   try {
     data = JSON.parse(body);
@@ -108,7 +110,7 @@ export function parseYahooOptionsBlock(body: string): YahooOptionChain {
     return empty;
   }
   const result = (data as { optionChain?: { result?: unknown[] } })?.optionChain?.result?.[0] as
-    | { quote?: { regularMarketPrice?: unknown; marketCap?: unknown; trailingPE?: unknown; forwardPE?: unknown }; expirationDates?: unknown[]; options?: Array<{ expirationDate?: unknown; calls?: unknown[] }> }
+    | { quote?: { regularMarketPrice?: unknown; regularMarketTime?: unknown; marketCap?: unknown; trailingPE?: unknown; forwardPE?: unknown }; expirationDates?: unknown[]; options?: Array<{ expirationDate?: unknown; calls?: unknown[] }> }
     | undefined;
   if (!result) return empty;
   const expirations = (result.expirationDates ?? []).map(num).filter((x): x is number => x !== null);
@@ -134,6 +136,7 @@ export function parseYahooOptionsBlock(body: string): YahooOptionChain {
     marketCap: num(q?.marketCap),
     trailingPe: num(q?.trailingPE),
     forwardPe: num(q?.forwardPE),
+    marketTime: num(q?.regularMarketTime),
     expirations,
     expiry: num(block?.expirationDate),
     calls,
@@ -147,7 +150,7 @@ export async function yahooOptionsChainBlock(payload: { ticker: unknown; expiry?
     const url = (c: string) => `${OPTIONS_URL}/${encodeURIComponent(symbol)}?crumb=${encodeURIComponent(c)}${expiry ? `&date=${expiry}` : ''}`;
     let response = await getBlock(url(crumb ?? (await freshCrumbBlock())));
     if (response.status === 401 || response.status === 403) response = await getBlock(url(await freshCrumbBlock()));
-    if (response.status === 404) return { covered: false, price: null, marketCap: null, trailingPe: null, forwardPe: null, expirations: [], expiry: null, calls: [] };
+    if (response.status === 404) return { covered: false, price: null, marketCap: null, trailingPe: null, forwardPe: null, marketTime: null, expirations: [], expiry: null, calls: [] };
     if (response.status !== 200) throw new Error(`yahoo options: HTTP ${response.status}`);
     return parseYahooOptionsBlock(response.body);
   });
