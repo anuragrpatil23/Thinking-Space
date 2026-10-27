@@ -37,6 +37,7 @@ import { nameNoteCompaniesOrch, pickUpTaggedArticlesOrch } from '@/personal_exte
 import { FeedOverviewBlock } from './FeedOverviewBlock'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK } from './WebullSidebarBlock'
+import type { WebullUniverseCompanyBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
 import { FEED_DROPS_AVAILABLE, PrivateFeedDropsBlock } from '../units/privatePersonalBlock'
 import { writeFeedReadLogsOrch } from '@/personal_extension/services/orchestrators/feedReadLogOrch'
 import { readWebullExecutionSettingsOrch } from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
@@ -687,7 +688,8 @@ function AiReadsPanelBlock({ groups, healthById, errorById, lastItemById }: {
   )
 }
 
-export default function WebullFeedBlock() {
+export default function WebullFeedBlock({ companies = [] }: { companies?: WebullUniverseCompanyBlock[] }) {
+  const dropGroups = useMemo(() => Object.fromEntries(companies.flatMap(c => (c.ticker ? [[c.ticker, c.group] as const] : []))), [companies])
   const { layout } = useUILayoutBlock()
   const { openFile } = useMarkdownViewer()
   const phone = layout.mode === 'phone'
@@ -837,7 +839,7 @@ export default function WebullFeedBlock() {
     return (
       <div className="flex flex-col gap-4">
         {header}
-        <Suspense fallback={null}><PrivateFeedDropsBlock /></Suspense>
+        <Suspense fallback={null}><PrivateFeedDropsBlock groups={dropGroups} /></Suspense>
       </div>
     )
   }

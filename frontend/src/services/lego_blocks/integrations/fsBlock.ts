@@ -467,6 +467,9 @@ interface ElectronAPI {
   marketOptionChain?(payload: { ticker: string; expiry?: number }): Promise<{
     covered: boolean
     price: number | null
+    marketCap: number | null
+    trailingPe: number | null
+    forwardPe: number | null
     expirations: number[]
     expiry: number | null
     calls: Array<{ strike: number; bid: number | null; ask: number | null; last: number | null; iv: number | null; openInterest: number | null; volume: number | null }>

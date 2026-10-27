@@ -1,4 +1,5 @@
 import { lazy, type ComponentType } from 'react'
+import type { WebullUniverseGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
 
 // The Gaps tab lives in a private folder (personal_extension/thinkingspace-personal) that is not
 // part of the public repo. When the folder is present the tab is shown; when it
@@ -50,7 +51,11 @@ export const PrivateStudyBlock = loadStudy ? lazy(loadStudy) : null
 
 // The Feed's Drops view and its daily market pass live in the same private
 // folder; without them the Feed has no Drops view and the pass does not run.
-const FEED_DROPS_MODULES = import.meta.glob<{ default: ComponentType }>('../../../thinkingspace-personal/feedDrops.tsx')
+export interface PrivateFeedDropsPropsBlock {
+  /** Ticker → the sidebar's group (held / watchlist / researched), so Drops can put yours first */
+  groups: Record<string, WebullUniverseGroupBlock>
+}
+const FEED_DROPS_MODULES = import.meta.glob<{ default: ComponentType<PrivateFeedDropsPropsBlock> }>('../../../thinkingspace-personal/feedDrops.tsx')
 const loadFeedDrops = Object.values(FEED_DROPS_MODULES)[0]
 export const FEED_DROPS_AVAILABLE = Boolean(loadFeedDrops)
 export const PrivateFeedDropsBlock = loadFeedDrops ? lazy(loadFeedDrops) : null

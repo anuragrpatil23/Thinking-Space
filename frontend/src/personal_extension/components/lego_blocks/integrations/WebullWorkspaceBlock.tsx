@@ -2521,7 +2521,7 @@ export default function WebullWorkspaceBlock({
           )}
 
           {feedTabActive && (
-            <WebullFeedBlock />
+            <WebullFeedBlock companies={companyUniverse} />
           )}
 
           {studyTabActive && PrivateStudyBlock && (
