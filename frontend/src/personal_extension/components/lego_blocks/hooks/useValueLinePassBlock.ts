@@ -17,11 +17,12 @@ import {
   runPricesPassOrch,
   setPricesPassTargetOrch,
 } from '@/personal_extension/services/orchestrators/webullPricesOrch'
+import { runPrivateMarketPassIfDueBlock } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
 
 /**
  * Once a day, when the F9 page is open or comes back to the front, bring every
- * tracked company's Value Line report, earnings calls and prices up to date
- * (desktop only; no timers). They run side by side: different sources, own queues.
+ * tracked company's Value Line report, earnings calls and prices up to date,
+ * and the private market pass when present (desktop only; no timers). They run side by side: different sources, own queues.
  */
 export function useValueLinePassBlock(executionRoot: string | null, tickers: Array<string | null>) {
   const list = useMemo(
@@ -39,6 +40,7 @@ export function useValueLinePassBlock(executionRoot: string | null, tickers: Arr
       if (valueLineAvailableOrch() && valueLinePassDueOrch()) void runValueLinePassOrch(executionRoot, list)
       if (earningsCallsAvailableOrch() && earningsCallPassDueOrch()) void runEarningsCallPassOrch(executionRoot, list)
       if (pricesAvailableOrch() && pricesPassDueOrch()) void runPricesPassOrch(executionRoot, list)
+      runPrivateMarketPassIfDueBlock()
     }
     run()
     const onVisible = () => { if (document.visibilityState === 'visible') run() }

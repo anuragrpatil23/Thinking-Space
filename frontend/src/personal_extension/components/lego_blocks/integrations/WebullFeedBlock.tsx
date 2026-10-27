@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { checkPricesNowOrch, pricesAvailableOrch, readLastPricesPassOrch, readPricesPassProgressOrch, subscribePricesPassOrch } from '@/personal_extension/services/orchestrators/webullPricesOrch'
 import { PassQueueListBlock } from '@/components/lego_blocks/units/PassQueueListBlock'
 import type { PassItemBlock } from '@/services/lego_blocks/units/passQueueBlock'
@@ -37,6 +37,7 @@ import { nameNoteCompaniesOrch, pickUpTaggedArticlesOrch } from '@/personal_exte
 import { FeedOverviewBlock } from './FeedOverviewBlock'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK } from './WebullSidebarBlock'
+import { FEED_DROPS_AVAILABLE, PrivateFeedDropsBlock } from '../units/privateGapsBlock'
 import { writeFeedReadLogsOrch } from '@/personal_extension/services/orchestrators/feedReadLogOrch'
 import { readWebullExecutionSettingsOrch } from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
 import { feedReadLogPathBlock } from '@/personal_extension/services/lego_blocks/units/feedReadLogBlock'
@@ -51,7 +52,7 @@ import { F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK, F9_CHART_TOOLTIP_STYLE_BLOCK, F9Pan
 // and the sources only the AI reads). The reader itself is the app's RSS
 // reader (shared code).
 
-type FeedViewBlock = 'overview' | 'reading' | 'sources'
+type FeedViewBlock = 'overview' | 'reading' | 'drops' | 'sources'
 
 const TRUST_OPTIONS_BLOCK: Array<{ value: 'high' | 'normal' | 'low'; label: string }> = [
   { value: 'high', label: 'Trusted' },
@@ -823,9 +824,23 @@ export default function WebullFeedBlock() {
           <h1 className={cn('font-bold leading-tight tracking-tight', compactHeader ? 'text-[20px]' : 'text-[26px]')}>Feed</h1>
           {!compactHeader && <p className="mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">Where things are first seen. Write down what you notice.</p>}
         </div>
-        <F9SegmentedBlock ariaLabel="Feed view" value={view} onChange={setView} options={[{ value: 'overview', label: 'Overview' }, { value: 'reading', label: 'Reading' }, { value: 'sources', label: 'Sources' }]} />
+        <F9SegmentedBlock ariaLabel="Feed view" value={view} onChange={setView} options={[
+          { value: 'overview', label: 'Overview' },
+          { value: 'reading', label: 'Reading' },
+          ...(FEED_DROPS_AVAILABLE ? [{ value: 'drops' as const, label: 'Drops' }] : []),
+          { value: 'sources', label: 'Sources' },
+        ]} />
       </header>
   )
+
+  if (view === 'drops' && PrivateFeedDropsBlock) {
+    return (
+      <div className="flex flex-col gap-4">
+        {header}
+        <Suspense fallback={null}><PrivateFeedDropsBlock /></Suspense>
+      </div>
+    )
+  }
 
   if (view === 'overview') {
     return <FeedOverviewBlock reader={aiReader} onOpenItem={openFromOverview} chart={<VolumeChartBlock />} header={header} />

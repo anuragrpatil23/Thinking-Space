@@ -47,3 +47,19 @@ const STUDY_MODULES = import.meta.glob<{ default: ComponentType }>('../../../gap
 const loadStudy = Object.values(STUDY_MODULES)[0]
 export const STUDY_TAB_AVAILABLE = Boolean(loadStudy)
 export const PrivateStudyBlock = loadStudy ? lazy(loadStudy) : null
+
+// The Feed's Drops view and its daily market pass live in the same private
+// folder; without them the Feed has no Drops view and the pass does not run.
+const FEED_DROPS_MODULES = import.meta.glob<{ default: ComponentType }>('../../../gaps/feedDrops.tsx')
+const loadFeedDrops = Object.values(FEED_DROPS_MODULES)[0]
+export const FEED_DROPS_AVAILABLE = Boolean(loadFeedDrops)
+export const PrivateFeedDropsBlock = loadFeedDrops ? lazy(loadFeedDrops) : null
+
+const MARKET_PASS_MODULES = import.meta.glob<{ runPrivateMarketPassIfDue: () => Promise<void> }>('../../../gaps/marketPass.ts')
+const loadMarketPass = Object.values(MARKET_PASS_MODULES)[0]
+
+/** Runs the private market pass if it is present and due; a no-op otherwise. */
+export function runPrivateMarketPassIfDueBlock(): void {
+  if (!loadMarketPass) return
+  void loadMarketPass().then(m => m.runPrivateMarketPassIfDue()).catch(() => undefined)
+}

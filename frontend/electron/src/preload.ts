@@ -758,6 +758,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   libraryValueLineIssues: (payload: { ticker: string; interactive?: boolean }) =>
     ipcRenderer.invoke('library:valueLineIssues', payload),
   earningsCallsList: (payload: { ticker: string }) => ipcRenderer.invoke('earningsCalls:list', payload),
+  marketOptionChain: (payload: { ticker: string; expiry?: number }) => ipcRenderer.invoke('market:optionChain', payload),
   earningsCallGet: (payload: { ticker: string; slug: string }) => ipcRenderer.invoke('earningsCalls:get', payload),
   libraryValueLineReport: (payload: { ticker: string; issueDate: string; interactive?: boolean }) =>
     ipcRenderer.invoke('library:valueLineReport', payload),

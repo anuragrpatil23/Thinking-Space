@@ -464,6 +464,13 @@ interface ElectronAPI {
   /** Earnings call transcripts (StockAnalysis public pages). Desktop only. */
   earningsCallsList?(payload: { ticker: string }): Promise<{ covered: boolean; calls: Array<{ slug: string; quarter: number; fiscalYear: number }> }>
   earningsCallGet?(payload: { ticker: string; slug: string }): Promise<{ date: string; text: string }>
+  marketOptionChain?(payload: { ticker: string; expiry?: number }): Promise<{
+    covered: boolean
+    price: number | null
+    expirations: number[]
+    expiry: number | null
+    calls: Array<{ strike: number; bid: number | null; ask: number | null; last: number | null; iv: number | null; openInterest: number | null; volume: number | null }>
+  }>
   webullCredentialStatus?(): Promise<{
     secureStorageAvailable: boolean
     configured: boolean

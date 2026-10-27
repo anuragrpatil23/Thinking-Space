@@ -52,6 +52,7 @@ import {
 import { libraryValueLineIssuesBlock, libraryValueLineReportBlock } from './lego_blocks/libraryValueLineBlock';
 import { clearLibraryCardBlock, saveLibraryCardBlock } from './lego_blocks/librarySessionBlock';
 import { earningsCallGetBlock, earningsCallsListBlock } from './lego_blocks/earningsCallsBlock';
+import { yahooOptionsChainBlock } from './lego_blocks/yahooOptionsBlock';
 import { installReaderAdblockBlock } from './lego_blocks/readerAdblockBlock';
 import {
   readAiPlanUsageBlock,
@@ -1826,6 +1827,10 @@ ipcMain.handle('library:valueLineIssues', async (_event, payload: { ticker: stri
 // stockanalysis.com only (earningsCallsBlock.ts).
 ipcMain.handle('earningsCalls:list', async (_event, payload: { ticker: string }) => earningsCallsListBlock(payload));
 ipcMain.handle('earningsCalls:get', async (_event, payload: { ticker: string; slug: string }) => earningsCallGetBlock(payload));
+// -- Option chains (Yahoo Finance) --
+// A ticker and optionally an expiry; main builds the URLs, on Yahoo's hosts
+// only, in its own in-memory session (yahooOptionsBlock.ts).
+ipcMain.handle('market:optionChain', async (_event, payload: { ticker: string; expiry?: number }) => yahooOptionsChainBlock(payload));
 ipcMain.handle('library:valueLineReport', async (_event, payload: { ticker: string; issueDate: string; interactive?: boolean }) => libraryValueLineReportBlock({ ticker: payload?.ticker, issueDate: payload?.issueDate, interactive: payload?.interactive === true }));
 
 // -- Webull Webull GET bridge (main-process network bridge) --
