@@ -29,14 +29,14 @@ import { readWebullCredentialStatusBlock } from '../../services/lego_blocks/unit
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { readVaultUiPreferencesOrch } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import type { NodeStatus } from '@/services/lego_blocks/units/yamlNoteBlock'
-import { GAPS_TAB_AVAILABLE, NOTICED_TAB_AVAILABLE, SIM_TAB_AVAILABLE, STUDY_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
+import { GAPS_TAB_AVAILABLE, NOTICED_TAB_AVAILABLE, SIM_TAB_AVAILABLE, STUDY_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 
 type WebullSubtabId = 'overall' | 'study' | 'sim' | 'noticed' | 'gaps' | 'feed'
 
 // In the order of the mission (maximize the number of things noticed, studied
 // and understood in the world around us and developments in technology):
 // notice, study, then what falls out of it. Noticed and Gaps
-// are private: shown only when their folder is present (see privateGapsBlock).
+// are private: shown only when their folder is present (see privatePersonalBlock).
 const Webull_BASE_SUBTABS: Array<{ id: WebullSubtabId; label: string }> = [
   // The front of the loop: where things are first seen
   { id: 'feed', label: 'Feed' },

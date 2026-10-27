@@ -55,4 +55,4 @@ frontend/electron/src/cli/bin/
 # END Thinking Space managed exclusions
 
 # Private Gaps tab: its own private repo, cloned into this folder.
-frontend/src/personal_extension/gaps/
+frontend/src/personal_extension/thinkingspace-personal/

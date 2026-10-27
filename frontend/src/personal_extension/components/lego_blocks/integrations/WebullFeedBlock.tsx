@@ -37,7 +37,7 @@ import { nameNoteCompaniesOrch, pickUpTaggedArticlesOrch } from '@/personal_exte
 import { FeedOverviewBlock } from './FeedOverviewBlock'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK } from './WebullSidebarBlock'
-import { FEED_DROPS_AVAILABLE, PrivateFeedDropsBlock } from '../units/privateGapsBlock'
+import { FEED_DROPS_AVAILABLE, PrivateFeedDropsBlock } from '../units/privatePersonalBlock'
 import { writeFeedReadLogsOrch } from '@/personal_extension/services/orchestrators/feedReadLogOrch'
 import { readWebullExecutionSettingsOrch } from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
 import { feedReadLogPathBlock } from '@/personal_extension/services/lego_blocks/units/feedReadLogBlock'

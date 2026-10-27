@@ -23,7 +23,7 @@ await mkdir(dirname(OUT), { recursive: true });
 // The private F9 folder is read only when it is present.
 const SKILL_ROOTS = [
   resolve(FRONTEND, 'src/skills'),
-  resolve(FRONTEND, 'src/personal_extension/gaps/skills'),
+  resolve(FRONTEND, 'src/personal_extension/thinkingspace-personal/skills'),
 ];
 
 async function filesUnder(dir) {

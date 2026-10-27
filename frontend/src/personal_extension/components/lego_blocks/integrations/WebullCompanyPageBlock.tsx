@@ -15,7 +15,7 @@ import {
   F9SectionLabelBlock,
   F9SegmentedBlock,
 } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
-import { PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
+import { PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 import { valueLineDueBlock, valueLineIssueLabelBlock, valueLineIssueRowsBlock, type ValueLineIssueRowBlock, type WebullResearchFileBlock, type WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
 import { cn } from '@/lib/utils'
 

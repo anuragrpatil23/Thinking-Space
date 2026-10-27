@@ -67,7 +67,7 @@ Some jobs (parsing broker statements, say) are too brittle for the app to own. T
 ./thinkspc skill.validate --name statements             # done when this passes
 ```
 
-- Skills live in `frontend/src/skills/<name>/` (public) and `frontend/src/personal_extension/gaps/skills/<name>/` (private), each with `SKILL.md` (standard Agent Skills frontmatter: `name`, `description`), `contract.json` and optional `reference/`. The folder is a valid skill on its own, so a user can copy it into their agent; we never install it. `scripts/bundle-cli.mjs` embeds them in the CLI bundle; rebuild the CLI after editing one.
+- Skills live in `frontend/src/skills/<name>/` (public) and `frontend/src/personal_extension/thinkingspace-personal/skills/<name>/` (private), each with `SKILL.md` (standard Agent Skills frontmatter: `name`, `description`), `contract.json` and optional `reference/`. The folder is a valid skill on its own, so a user can copy it into their agent; we never install it. `scripts/bundle-cli.mjs` embeds them in the CLI bundle; rebuild the CLI after editing one.
 - Contract rules (`skillContractBlock.ts`): `onlyFiles`, `files`, `csv` (exact columns, typed values), `monthsContiguous`.
 - **Thinking Space never edits a user's agent configuration** (CLAUDE.md, AGENTS.md, `.claude/`). Agents find skills through `skill.list` or a README in the folder the skill is about.
 - A failed validation comes back as `ok: false` listing each failing check; the exit code stays 0, like every other capability.

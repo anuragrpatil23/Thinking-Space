@@ -17,7 +17,7 @@ import {
   runPricesPassOrch,
   setPricesPassTargetOrch,
 } from '@/personal_extension/services/orchestrators/webullPricesOrch'
-import { runPrivateMarketPassIfDueBlock } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
+import { runPrivateMarketPassIfDueBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 
 /**
  * Once a day, when the F9 page is open or comes back to the front, bring every

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FeedAiReaderSettingsRowBlock } from '@/personal_extension/components/lego_blocks/integrations/FeedAiReaderSettingsRowBlock'
-import { SIM_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privateGapsBlock'
+import { SIM_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 import { isSettingsTabHiddenInStaticWebBuildBlock } from '@/services/lego_blocks/units/staticWebBuildBlock'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/lego_blocks/units/ui/button'
@@ -1994,7 +1994,7 @@ export default function SettingsOrch({
           </SettingsGroupBlock>
 
           <SettingsGroupBlock heading="Tab">
-            {/* Sim is private (personal_extension/gaps): no tab to switch on without it */}
+            {/* Sim is private (personal_extension/thinkingspace-personal): no tab to switch on without it */}
             {SIM_TAB_AVAILABLE && (
               <SettingsRowBlock
                 as="label"
