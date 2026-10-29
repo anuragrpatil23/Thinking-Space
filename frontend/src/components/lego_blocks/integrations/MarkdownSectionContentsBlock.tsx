@@ -139,6 +139,10 @@ export default function MarkdownSectionContentsBlock({
   const sectionRows = stackRows.filter((row) => !row.isTitle)
   const baseLevel = sectionRows.length > 0 ? Math.min(...sectionRows.map((row) => row.level)) : 1
 
+  // A note with no headings has no contents: "Contents 0" was a button that
+  // did nothing.
+  if (rows.length === 0) return null
+
   return (
     <div className="flex min-w-0 items-center">
       <button
@@ -148,7 +152,6 @@ export default function MarkdownSectionContentsBlock({
         className={cn(
           'inline-flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground',
           showStack && 'bg-muted text-foreground',
-          rows.length === 0 && 'opacity-55',
         )}
         title={`${hasSection ? `${pathText} — ` : ''}${showStack ? 'hide' : 'pin'} contents`}
       >

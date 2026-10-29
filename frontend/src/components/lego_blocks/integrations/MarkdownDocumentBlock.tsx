@@ -396,6 +396,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const [findFocusKey, setFindFocusKey] = useState(0)
   const searchWords = useSyncExternalStore(onSearchHighlightWordsBlock, getSearchHighlightWordsBlock)
   const lastScrollTopRef = useRef(0)
+  const scrollRunRef = useRef(0)
   const [isHeaderHidden, setIsHeaderHidden] = useState(false)
   const [headerHeight, setHeaderHeight] = useState(0)
   const headerRenameInputRef = useRef<HTMLInputElement | null>(null)
@@ -2058,14 +2059,22 @@ function MarkdownTextDocumentRuntimeBlock({
         <div
           ref={contentScrollRef}
           onScroll={(e) => {
+            // Direction with hysteresis, as the PDF reader does it: hide after a
+            // deliberate 24px run down, reveal after 12px up. A per-event flip
+            // toggled on trackpad jitter and momentum tails.
             const top = (e.target as HTMLDivElement).scrollTop
-            const prev = lastScrollTopRef.current
-            const delta = top - prev
-            if (Math.abs(delta) < 4) return
-            if (top <= 4) setIsHeaderHidden(false)
-            else if (delta > 0) setIsHeaderHidden(true)
-            else setIsHeaderHidden(false)
+            const delta = top - lastScrollTopRef.current
             lastScrollTopRef.current = top
+            if (delta === 0) return
+            if (top <= 4) {
+              scrollRunRef.current = 0
+              setIsHeaderHidden(false)
+              return
+            }
+            const run = scrollRunRef.current
+            scrollRunRef.current = Math.sign(delta) === Math.sign(run) ? run + delta : delta
+            if (scrollRunRef.current >= 24) setIsHeaderHidden(true)
+            else if (scrollRunRef.current <= -12) setIsHeaderHidden(false)
           }}
           className={cn(
             'relative h-full min-h-0 p-0',
@@ -2094,11 +2103,15 @@ function MarkdownTextDocumentRuntimeBlock({
               // the webview and re-lays-out the whole page mid-scroll. The
               // page keeps its content still across the one resize instead
               // (htmlPageGuestBlock).
-              htmlHeaderCollapses ? 'relative shrink-0' : 'sticky top-0 transition-transform duration-200 ease-out',
+              htmlHeaderCollapses
+                ? 'relative shrink-0'
+                // The PDF reader's motion: iOS's sheet curve, and the title fades
+                // as it slides, rather than a 200ms ease-out shove.
+                : 'sticky top-0 transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
               // Top inset only: the header's rule must span the pane like the
               // strip under it, so the side inset moves inside the header.
               htmlRunsToEdges && 'pt-2',
-              isHeaderHidden && !htmlHeaderCollapses && '-translate-y-full',
+              isHeaderHidden && !htmlHeaderCollapses && '-translate-y-full opacity-0',
               // Hidden header: out of the layout (zero height), but still
               // mounted so a hover at the top edge can slide it back in over
               // the content — see useHeaderPeekBlock.
@@ -2502,36 +2515,53 @@ function MarkdownTextDocumentRuntimeBlock({
           {!loading && !error && content !== null && !isEditing && !isExcalidrawDoc && !isHtmlDoc && !isCodeDoc && viewSurface === 'doc' && (
             <div>
               <div
-                // Card-white like the header above and the note below: the
-                // document is one sheet from the top edge down, and shell grey
-                // here read as a band cut across it. The rule under it is what
-                // separates it from text scrolling beneath.
+                // The PDF reader's controls row, left-aligned (centred read as
+                // lost on a wide pane with one or two buttons), under the title on a
+                // card-white strip with a rule. Reading never slides the title
+                // away; when the header is hidden from the nav toggle the strip
+                // becomes the floating pill in place — the
+                // strip's surface and rule fade out, the controls take on the
+                // pill's. The strip stays the positioned box, so the pinned
+                // contents still drop full-width beneath it.
                 ref={viewerStripRef}
-                className="sticky z-30 flex items-center gap-1 border-b border-border/50 bg-card p-2"
-                style={{ top: isHeaderHidden ? 0 : headerHeight }}
-              >
-                {/* Mindmap first: the Contents button grows and shrinks with the
-                    section being read, and would push anything after it around. */}
-                {supportsMindmap && (
-                  <button
-                    type="button"
-                    onClick={() => setViewMindmapPanelOpen(prev => !prev)}
-                    className={cn(
-                      'inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground',
-                      viewMindmapPanelOpen && 'bg-muted text-foreground',
-                    )}
-                    title={viewMindmapPanelOpen ? 'Hide mindmap preview' : 'Show mindmap preview'}
-                  >
-                    <Workflow className="h-3.5 w-3.5" />
-                    Mindmap
-                  </button>
+                className={cn(
+                  'sticky z-30 flex border-b px-2 py-2',
+                  'transition-[transform,background-color,border-color] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+                  '[&>div]:pointer-events-auto [&>div]:rounded-full [&>div]:border [&>div]:px-1.5 [&>div]:py-1',
+                  '[&>div]:transition-[background-color,border-color,box-shadow] [&>div]:duration-300 [&>div]:ease-[cubic-bezier(0.32,0.72,0,1)]',
+                  hideTopBarInView || isHeaderHidden
+                    ? 'pointer-events-none border-transparent bg-transparent [&>div]:border-border/60 [&>div]:bg-background/95 [&>div]:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.18)] [&>div]:backdrop-blur-xl dark:[&>div]:bg-[#2a2a2d]/85'
+                    : 'border-border/50 bg-card [&>div]:border-transparent [&>div]:bg-transparent [&>div]:shadow-none',
                 )}
-                <MarkdownSectionContentsBlock
-                  content={displayContent}
-                  container={contentScrollRef.current}
-                  stripRef={viewerStripRef}
-                  onSelectHeading={scrollViewToHeading}
-                />
+                style={{
+                  top: headerHeight,
+                  transform: isHeaderHidden ? `translateY(-${headerHeight}px)` : undefined,
+                }}
+              >
+                <div className="flex min-w-0 items-center gap-0.5 [&>button]:rounded-full [&>div>button]:rounded-full">
+                  {/* Mindmap first: the Contents button grows and shrinks with the
+                      section being read, and would push anything after it around. */}
+                  {supportsMindmap && (
+                    <button
+                      type="button"
+                      onClick={() => setViewMindmapPanelOpen(prev => !prev)}
+                      className={cn(
+                        'inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground',
+                        viewMindmapPanelOpen && 'bg-muted text-foreground',
+                      )}
+                      title={viewMindmapPanelOpen ? 'Hide mindmap preview' : 'Show mindmap preview'}
+                    >
+                      <Workflow className="h-3.5 w-3.5" />
+                      Mindmap
+                    </button>
+                  )}
+                  <MarkdownSectionContentsBlock
+                    content={displayContent}
+                    container={contentScrollRef.current}
+                    stripRef={viewerStripRef}
+                    onSelectHeading={scrollViewToHeading}
+                  />
+                </div>
               </div>
               <MarkdownMindmapPanelBlock
                 inputPath={path}
