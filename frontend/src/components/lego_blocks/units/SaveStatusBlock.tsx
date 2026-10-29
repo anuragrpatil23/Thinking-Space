@@ -162,8 +162,11 @@ export function SaveStatusBlock({
       aria-label={label ? (clickable ? `${label} — save now` : label) : undefined}
       title={title ? (clickable ? `${title}\nClick to save now (⌘S)` : title) : undefined}
       className={cn(
-        'grid select-none justify-items-end whitespace-nowrap px-1 text-xs transition-colors duration-300',
-        clickable && 'ltm-motion-fast cursor-pointer rounded-md px-1.5 py-1 hover:bg-muted hover:text-foreground',
+        'grid select-none justify-items-end whitespace-nowrap text-xs transition-colors duration-300',
+        // The box reserves the widest label, so tinting *it* lit up empty
+        // space beside short labels; the tint and the focus ring live on the
+        // visible row instead (below), and the browser's own ring is off.
+        clickable && 'group cursor-pointer outline-none hover:text-foreground',
         status === 'failed'
           ? 'font-medium text-amber-600 dark:text-amber-400'
           : confirming && status === 'saved'
@@ -176,7 +179,11 @@ export function SaveStatusBlock({
         <span
           key={kind}
           aria-hidden="true"
-          className={cn('col-start-1 row-start-1 inline-flex items-center gap-1.5', kind !== shown && 'invisible')}
+          className={cn(
+            'col-start-1 row-start-1 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-colors',
+            clickable && 'group-hover:bg-muted group-focus-visible:ring-1 group-focus-visible:ring-ring/50',
+            kind !== shown && 'invisible',
+          )}
         >
           {kind === 'saved' && confirming && status === 'saved'
             // Keyed so a second ⌘S mid-animation replays it from the start.
