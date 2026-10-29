@@ -23,5 +23,19 @@ export function vaultNameFromRootBlock(vaultRoot: string): string | null {
 export function configuredVaultNameBlock(): string | null {
   const vaultRoot = getStoredVaultRoot()
   if (!vaultRoot) return null
+  // The web build stores the token `browser-fs`, not a path — its last segment
+  // is not a name, and it was showing in the composer's breadcrumb as if it
+  // were one (2026-10-29). The browser does reveal the opened folder's *name*
+  // (never its path); fsBlock reports it here when the folder connects.
+  if (vaultRoot === BROWSER_VAULT_ROOT) return browserVaultFolderName
   return vaultNameFromRootBlock(vaultRoot)
+}
+
+/** Mirrors `BROWSER_VAULT_ROOT_BLOCK` (fsBlock); a unit can't import an integration. */
+const BROWSER_VAULT_ROOT = 'browser-fs'
+let browserVaultFolderName: string | null = null
+
+/** Called by fsBlock when a browser-opened folder connects. */
+export function setBrowserVaultFolderNameBlock(name: string | null): void {
+  browserVaultFolderName = name?.trim() || null
 }

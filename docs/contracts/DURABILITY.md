@@ -65,6 +65,14 @@ which meant the setting a careful writer is most likely to enable was the one
 that made loss certain. Nothing in the journal path may be gated on
 `autoSaveEnabled`.
 
+**Manual mode was removed 2026-10-28** (composer and Explorer). Nobody types
+text they don't want kept, and the toggle lived on a status chip, so clicking
+"Saved" silently switched saving off — and in the Explorer, ✕ in manual mode
+*discarded* edits. Auto-save is the only mode; ⌘S saves sooner. Save state is
+shown by one shared, non-clickable `SaveStatusBlock` that names the location
+("Saved to iCloud"). In the Explorer, **Done** saves and returns to reading,
+and **✕ always closes** — saving first, and refusing to close if the save fails.
+
 Two tiers, because the two failure modes have different survivors:
 
 | Tier | Store | Cadence | Survives |
@@ -124,6 +132,20 @@ text in the shipped app:
   reliable half; the window events are best-effort, which is precisely why the
   journal exists rather than this being the whole answer.
 
+**FIXED 2026-10-28 — a save landing overwrote typing done during the save.**
+`save()` captured `content`, awaited write + fsync + rename + read-back, then
+`setContent(refreshed.content)`. Every keystroke in that window was replaced by
+the older on-disk text, and `journal.resolve()` then forgot the draft too. Edit
+saves always restamp `updated_at`, so disk never equals what was submitted —
+it happened on *every* save; the fsync added for rule 2 widened the window on
+iCloud vaults. The conflict path was worse: it replaced the buffer with the
+other writer's version outright, and an mtime-only touch (iCloud) counts as a
+conflict. Both now go through `rebaseBufferOntoWriteBlock`, which replays the
+user's edit and the disk's edit onto the submitted text when their spans are
+disjoint, and keeps the user's text when they overlap. The journal is resolved
+only when the buffer equals the disk. Rule: **never assign a read-back to the
+buffer — rebase onto it.** Tests: `tests/noteComposerRebaseOnWriteBlock.test.ts`.
+
 The decision rules live in `noteComposerBlock` (`bufferHasUnsavedTextBlock`,
 `saveRetryDelayBlock`, `shouldFlushOnTeardownBlock`) rather than inline, because
 they are the part worth testing — see `tests/noteComposerDurabilityBlock.test.ts`.
@@ -181,6 +203,10 @@ Reaping rules:
 
 - Delete an empty, generated-frontmatter-only target on transition away, on
   teardown, and when one is encountered during a normal vault walk.
+  **Also as soon as the composer's own note becomes one** (2026-10-29): once
+  typing settles on an empty note this session created, the file goes and the
+  journal is resolved — its last entry is pre-deletion text, and offering it
+  back would undo a deliberate edit. The vault-walk sweep is **still open**.
 - **Never** delete a file carrying anything a human put there — body text,
   canvas tiles, a custom title, emotions, tags, or hand-edited frontmatter.
   An empty file with *hand-written* frontmatter may be a deliberate stub.

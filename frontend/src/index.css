@@ -2740,3 +2740,54 @@ html[data-ltm-ios-phone='true'] [data-ltm-sheet] {
     transform: translate3d(0, calc((1 - var(--p)) * 84px), 0);
   }
 }
+
+/* ⌘S acknowledgement (SaveStatusBlock). Auto-save has usually written
+   already, so the answer to an explicit save is a moment, not a state: the
+   circle draws itself, then the check, with a small spring pop. */
+@keyframes ltm-save-pop {
+  0% { opacity: 0; transform: scale(0.6); }
+  55% { opacity: 1; transform: scale(1.18); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes ltm-save-draw {
+  to { stroke-dashoffset: 0; }
+}
+.ltm-save-confirm {
+  animation: ltm-save-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.ltm-save-confirm circle {
+  stroke-dasharray: 63;
+  stroke-dashoffset: 63;
+  animation: ltm-save-draw 360ms ease-out 40ms forwards;
+}
+.ltm-save-confirm path {
+  stroke-dasharray: 12;
+  stroke-dashoffset: 12;
+  animation: ltm-save-draw 220ms ease-out 320ms forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ltm-save-confirm,
+  .ltm-save-confirm circle,
+  .ltm-save-confirm path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Note settings panel (NoteSettingsPanelBlock): views push and pop like an
+   iOS settings pane. Transform only — no opacity on a surface you click into
+   (see the `ltm-motion-fast:active` note on the panel in NewThought). */
+@keyframes ltm-panel-push {
+  from { transform: translateX(16px); }
+  to { transform: none; }
+}
+@keyframes ltm-panel-pop {
+  from { transform: translateX(-16px); }
+  to { transform: none; }
+}
+.ltm-panel-push { animation: ltm-panel-push 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.ltm-panel-pop { animation: ltm-panel-pop 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .ltm-panel-push,
+  .ltm-panel-pop { animation: none; }
+}

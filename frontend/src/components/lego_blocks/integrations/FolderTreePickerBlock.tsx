@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronRight, Folder, FolderOpen, FolderPlus, Loader2, Search } from 'lucide-react'
+import { Check, ChevronRight, Folder, FolderOpen, FolderPlus, Loader2, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import {
@@ -65,6 +65,13 @@ export interface FolderTreePickerBlockProps {
   /** Rows to render before any scrolling kicks in. */
   maxHeightClassName?: string
   className?: string
+  /** Controlled filter. When given, the tree drops its own search field — the
+   *  host has one search for everything it lists (the note settings panel
+   *  filters its suggestions and this tree from one field). */
+  filter?: string
+  /** Flat, frameless rows with a quiet selection (tint + check), for hosts
+   *  that are already a framed surface. The boxed default stays for the rest. */
+  bare?: boolean
 }
 
 export default function FolderTreePickerBlock({
@@ -72,6 +79,8 @@ export default function FolderTreePickerBlock({
   onChange,
   maxHeightClassName = 'max-h-[46vh]',
   className,
+  filter: controlledFilter,
+  bare = false,
 }: FolderTreePickerBlockProps) {
   const [state, setStateRaw] = useState<TreeState>(() => ({
     expanded: new Set(persistedTreeState.expanded),
@@ -90,7 +99,8 @@ export default function FolderTreePickerBlock({
       return next
     })
   }, [])
-  const [filter, setFilter] = useState('')
+  const [ownFilter, setFilter] = useState('')
+  const filter = controlledFilter ?? ownFilter
   const [creating, setCreating] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [createError, setCreateError] = useState('')
@@ -221,6 +231,7 @@ export default function FolderTreePickerBlock({
 
   return (
     <div className={cn('flex min-h-0 flex-col gap-2', className)}>
+      {controlledFilter === undefined && (
       <div className="relative shrink-0">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
         <input
@@ -231,8 +242,13 @@ export default function FolderTreePickerBlock({
           className="h-9 w-full rounded-lg border border-input bg-background pl-8 pr-2.5 text-sm outline-none transition-colors focus:border-foreground/30"
         />
       </div>
+      )}
 
-      <div className={cn('min-h-0 flex-1 overflow-auto rounded-lg border border-border/60 bg-background p-1', maxHeightClassName)}>
+      <div className={cn(
+        'min-h-0 flex-1 overflow-auto',
+        bare ? '' : 'rounded-lg border border-border/60 bg-background p-1',
+        maxHeightClassName,
+      )}>
         {rootLoading && (
           <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -252,6 +268,48 @@ export default function FolderTreePickerBlock({
           const isExpanded = state.expanded.has(row.path)
           const isLoading = state.loading.has(row.path)
           return (
+            bare ? (
+            // Explorer rows, not a look-alike (2026-10-29): the same classes and
+            // `data-path` the vault explorer uses, so the app-wide folder colour
+            // rules and the filled/outline icon preference (App.tsx,
+            // index.css) apply here untouched, along with its indent, tints and
+            // selection colour.
+            <div
+              key={row.path}
+              data-path={row.path}
+              data-selected={isSelected ? 'true' : undefined}
+              className={cn(
+                'ltm-explorer-row ltm-explorer-folder-row flex w-full items-center gap-1 rounded-md pr-2 text-sm text-foreground/90 transition-colors hover:bg-muted/70',
+                isSelected
+                  ? 'bg-[#e8eaee] text-foreground hover:bg-[#e8eaee] dark:bg-[#2a2d33] dark:hover:bg-[#2a2d33]'
+                  : (isExpanded || isAncestor) && 'bg-muted/50',
+              )}
+              style={{ paddingLeft: `${4 + row.depth * 14}px` }}
+            >
+              <button
+                type="button"
+                onClick={() => toggleExpanded(row.path)}
+                aria-label={isExpanded ? `Collapse ${row.name}` : `Expand ${row.name}`}
+                className="shrink-0 rounded p-1"
+              >
+                {isLoading
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  : <ChevronRight className={cn('h-3.5 w-3.5 text-muted-foreground transition-transform', isExpanded && 'rotate-90')} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelect(row.path)}
+                title={row.path}
+                className="flex min-w-0 flex-1 items-center gap-1.5 py-2 text-left"
+              >
+                {isExpanded
+                  ? <FolderOpen className="ltm-explorer-glyph ltm-explorer-folder-icon h-4 w-4 shrink-0 text-blue-500" />
+                  : <Folder className="ltm-explorer-glyph ltm-explorer-folder-icon h-4 w-4 shrink-0 text-blue-500" />}
+                <span className="truncate pl-0.5">{row.name}</span>
+                {isSelected && <Check className="ml-auto h-4 w-4 shrink-0 text-foreground/80" />}
+              </button>
+            </div>
+            ) : (
             <div
               key={row.path}
               className={cn(
@@ -290,6 +348,7 @@ export default function FolderTreePickerBlock({
               </button>
             </div>
           )
+            )
         })}
       </div>
 

@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Loader2, X, FilePlus, FolderTree, ChevronDown, ChevronRight, Save, Tag, MoreHorizontal, Info } from 'lucide-react'
+import { Loader2, X, ChevronDown, Save, Tag, MoreHorizontal, Info, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -7,8 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/lego_blocks/units/ui/tooltip'
-import { Switch } from '@/components/lego_blocks/units/ui/switch'
-import FolderTreePickerBlock from '@/components/lego_blocks/integrations/FolderTreePickerBlock'
+import { NoteSettingsPanelBlock } from '@/components/lego_blocks/integrations/NoteSettingsPanelBlock'
 import ProjectDestinationListBlock from '@/components/lego_blocks/units/ProjectDestinationListBlock'
 import { configuredVaultNameBlock } from '@/services/lego_blocks/units/vaultNameBlock'
 import DestinationPickerSheetBlock from '@/components/lego_blocks/integrations/DestinationPickerSheetBlock'
@@ -23,14 +22,13 @@ import { openFileInNewTabOrch } from '@/services/orchestrators/fileSystemOrch'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useNativeChromeImmersionBlock } from '@/components/lego_blocks/hooks/shared/useNativeChromeImmersionBlock'
 import { deriveAdaptiveShellStateOrch } from '@/services/orchestrators/uiNavigationOrch'
-import { NOTE_KINDS_BLOCK } from '@/services/lego_blocks/units/noteComposerBlock'
+import { suggestedFoldersBlock } from '@/services/lego_blocks/units/noteComposerBlock'
+import { SaveStatusBlock } from '@/components/lego_blocks/units/SaveStatusBlock'
+import type { SaveStatusKindBlock } from '@/services/lego_blocks/units/saveLocationBlock'
 
 // Settings-panel vocabulary. Kept as constants so every row in the popover is
 // visually identical — the old panel drifted because each row styled itself.
 const PANEL_LABEL_CLASS = 'text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/70'
-const PANEL_INPUT_CLASS = 'h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none transition-colors focus:border-foreground/30'
-const PANEL_CHIP_CLASS = 'group ltm-motion-fast inline-flex items-center gap-0.5 rounded-full border border-border/70 bg-background px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground'
-const PANEL_CHIP_ACTIVE_CLASS = 'border-foreground bg-foreground text-background hover:border-foreground hover:text-background'
 
 /** Title-bar chrome is icon-only, so every control needs a name on hover — and
  *  it is the explorer's tooltip, not the browser's `title=`: native tooltips
@@ -81,7 +79,10 @@ function CreateTab() {
   // the settings panel because it is the one part of the address that changes
   // often enough to deserve a one-click route (2026-08-19).
   const [projectMenuOpen, setProjectMenuOpen] = useState(false)
-  const [destinationBrowserOpen, setDestinationBrowserOpen] = useState(false)
+  // A folder picked in the settings panel is recorded once the composer has
+  // applied it (`rememberBrowsedDestination` reads the applied path), not per
+  // click — see the effect below.
+  const pickedFolderRef = useRef(false)
   // Phone only: destination is its own sheet, pushed on top of Note settings.
   const [destinationSheetOpen, setDestinationSheetOpen] = useState(false)
   // Emotions and tags left the settings panel (2026-07-31). They are not
@@ -211,83 +212,26 @@ function CreateTab() {
     }
   }, [tagsPopoverOpen, showMetaPanel, moodPickerOpen, overflowMenuOpen])
 
-  // One box per job, matching the tree's box. Paths render flat — no emphasis
-  // on the last segment: these are whole paths you jump to, and bolding the
-  // leaf implied a distinction that does not exist here.
-  const jumpListBlock = (title: string, paths: string[]) => (
-    <div className="flex min-h-0 flex-col gap-1.5">
-      <div className={PANEL_LABEL_CLASS}>{title}</div>
-      {/* Capped: stacked in one column, an uncapped list would push its sibling
-          off the bottom of the panel. Tall enough for five rows so the cap
-          rarely bites — the old 15vh sliced the last row in half, which read as
-          broken rather than as "scroll for more". */}
-      <div className="min-h-0 max-h-[22vh] flex-1 space-y-0.5 overflow-auto rounded-lg border border-border/60 bg-background p-1.5">
-        {paths.length === 0 ? (
-          <div className="px-2 py-1.5 text-[11px] text-muted-foreground/60">Nothing yet.</div>
-        ) : paths.map((path) => (
-          <button
-            key={`${title}-${path}`}
-            type="button"
-            onClick={() => composer.applyDestinationPath(path)}
-            title={path}
-            className="ltm-motion-fast block w-full break-all rounded-md px-2 py-1.5 text-left font-mono text-[11px] leading-relaxed text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            {path}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-
   const handleRelatedThoughtOpenPath = (relatedPath: string) => {
     openFileInNewTabOrch(relatedPath)
     composer.setMessage(`Opened ${relatedPath} in a new tab.`)
   }
 
-  // Ambient save state, borrowed from the explorer's editing badge
-  // (MarkdownDocumentBlock): while auto-save is on there is no Save button at
-  // all — the dot tells you where you stand. Clicking it toggles auto-save,
-  // which is also the only way the Save button comes back.
+  // Ambient save state — the shared status line, not a control. Todo mode
+  // has no status: `todos.create` appends, so it submits with a button.
   const isTodoMode = composer.makeThisTodo
-  const saveBadgeLabel = composer.saving
-    ? 'Saving…'
-    : isTodoMode
-      ? 'To do'
-      : !composer.autoSaveEnabled
-        ? (composer.isDirty ? 'Editing · manual' : 'Manual')
-        : composer.isDirty
-          ? 'Editing'
-          : composer.saveState === 'saved' ? 'Saved' : 'Draft'
-
-  const saveBadgeDotClass = composer.saving
-    ? 'animate-pulse bg-amber-500'
-    : !composer.autoSaveEnabled || isTodoMode
-      ? 'bg-muted-foreground/50'
-      : composer.isDirty
-        ? 'bg-amber-500'
-        : composer.saveState === 'saved' ? 'bg-emerald-500' : 'bg-muted-foreground/40'
-
-  // Left as it was, on request (2026-07-31) — the save controls keep their
-  // native `title=`; only mood, tags and the (i) button moved to tooltips.
+  const [saveConfirmToken, setSaveConfirmToken] = useState(0)
+  const saveStatusKind: SaveStatusKindBlock = isTodoMode
+    ? 'idle'
+    : composer.saveState === 'dirty' ? 'pending' : composer.saveState
   const saveStateBadgeBlock = (
-    <button
-      type="button"
-      onClick={() => composer.setAutoSaveEnabled(!composer.autoSaveEnabled)}
-      disabled={isTodoMode}
-      title={isTodoMode
-        ? 'To dos are appended on save — auto-save stays off so items are not duplicated'
-        : composer.autoSaveEnabled
-          ? 'Auto-save is on — click to switch to manual saving'
-          : 'Auto-save is off — click to turn it on'}
-      className={cn(
-        'ltm-motion-fast inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors',
-        !isTodoMode && 'hover:bg-muted hover:text-foreground',
-        isTodoMode && 'cursor-default',
-      )}
-    >
-      <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', saveBadgeDotClass)} />
-      <span className="hidden sm:inline">{saveBadgeLabel}</span>
-    </button>
+    <SaveStatusBlock
+      status={saveStatusKind}
+      savedAt={composer.lastSavedAt}
+      compact={isPhoneSurface}
+      reserveWhenIdle={!isTodoMode}
+      confirmToken={saveConfirmToken}
+    />
   )
 
   // Mood + tags. Both are icon-only, and both carry their own state as a
@@ -532,8 +476,8 @@ function CreateTab() {
     </button>
   ) : null
 
-  // Manual mode only. Auto-save is the normal path, and it needs no button.
-  const manualSaveButtonBlock = (!composer.autoSaveEnabled || isTodoMode) ? (
+  // To dos only: they append items, so they are submitted, not saved.
+  const manualSaveButtonBlock = isTodoMode ? (
     <button
       type="button"
       onClick={composer.save}
@@ -583,7 +527,9 @@ function CreateTab() {
     <MarkdownRichEditorBlock
       value={composer.editorBody}
       onChange={composer.setEditorBody}
-      onSaveRequest={() => { void composer.requestSave() }}
+      onSaveRequest={() => {
+        void composer.requestSave().then(() => setSaveConfirmToken(Date.now()))
+      }}
       currentPath={composer.targetPath ?? ''}
       placeholder={composer.makeThisTodo ? 'One task per line...' : "What's on your mind?"}
       toolbarAlwaysVisible={viewSurface === 'canvas'}
@@ -617,76 +563,6 @@ function CreateTab() {
   // browser is open. It has to outlive scrolling: the tree is taller than the
   // panel, so by the time you are deep enough to click something the path had
   // scrolled out of sight — which is exactly when you need to watch it change.
-  // Always on, always pinned: the full path including the filename. This is the
-  // panel's answer to "where does this note go", so the line that used to
-  // repeat it under File name is gone — one place, not two.
-  const stickyDestinationBlock = (
-    <div className="sticky top-0 z-20 flex items-baseline gap-2 border-b border-border/60 bg-background/95 px-4 py-2.5 backdrop-blur">
-      {/* Label and path share one line — the stacked version cost a whole row of
-          panel height to say two words. */}
-      {/* Sentence case, not the panel's uppercase label style. This one sits
-          inline with the path and reads as the start of a sentence, not as a
-          section header for the rows below.
-          The dot is a resolved/unresolved tell: green once there is a real file
-          to write to, dim while the path is still missing a piece. */}
-      <div className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground/70">
-        <span
-          className={cn(
-            'ltm-motion-fast h-1.5 w-1.5 rounded-full transition-colors',
-            composer.targetPath ? 'bg-emerald-500' : 'bg-muted-foreground/30',
-          )}
-        />
-        Saving to
-      </div>
-      {composer.targetPath ? (
-        <button
-          type="button"
-          onClick={() => openFileInNewTabOrch(composer.targetPath!)}
-          title={composer.targetPath}
-          // One line, never wrapped. `break-all` split the path mid-word and
-          // left the filename orphaned on a second line reading `d` — the
-          // folder gives way instead: it truncates, the filename never does,
-          // because the filename is the part you are checking.
-          className="flex min-w-0 flex-1 items-baseline text-left font-mono text-xs leading-snug transition-colors hover:text-primary"
-        >
-          <span className="truncate text-muted-foreground">{composer.destinationPath}/</span>
-          <span className="shrink-0 font-semibold text-foreground">{composer.targetPath.split('/').pop()}</span>
-        </button>
-      ) : (
-        <div className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground/60">
-          {composer.makeThisTodo ? 'Pick a destination and date' : 'Pick a destination and file name'}
-        </div>
-      )}
-      {/* Sits on the line it acts on: this strip names the file being written,
-          and the button is "not that one, a new one". It keeps the folder — and
-          therefore the project — and only moves the file name, to today's date
-          or the first free `-2`, `-3` past it. Without the disk check it would
-          silently open the note already there, which is what the composer does
-          by design and the opposite of what a New note button promises.
-          Hidden in todo mode: there the file name *is* the date field, and a
-          second one would be a second answer to the same question. */}
-      {!composer.makeThisTodo && (
-        <button
-          type="button"
-          onClick={() => { void composer.startNewNote() }}
-          disabled={composer.startingNewNote || !composer.destinationPath}
-          title="Start a blank note in this folder"
-          className="ltm-motion-fast inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
-        >
-          <FilePlus className="h-3 w-3" />
-          New note
-        </button>
-      )}
-    </div>
-  )
-
-  // The sheet is content-sized, so "make it taller" is a question of how much
-  // room each section takes, not of the `max-h` cap — that cap was never being
-  // reached (2026-08-01). Phone sections breathe more and every toggle row is a
-  // 44pt target, which grows the sheet and makes it easier to hit at once.
-  const panelSectionPadClass = isPhoneSurface ? 'px-4 py-5' : 'p-4'
-  const switchSize = isPhoneSurface ? 'touch' : 'default'
-
   // The floating bottom dock used to sit on top of this sheet — its last two
   // rows were behind it, unreadable and untappable — so the sheet reserved the
   // dock's whole height. Now the sheet takes an immersion lease and the dock
@@ -696,228 +572,42 @@ function CreateTab() {
   // so pad to the safe area only (2026-08-01).
   useNativeChromeImmersionBlock(isPhoneSurface && composerPanelOpen)
   const sheetBottomPadPx = Math.max(shell.bottomInset, 12)
-  const panelToggleRowClass = cn(
-    'flex items-center justify-between gap-3',
-    isPhoneSurface && 'min-h-[44px]',
-  )
+
+  useEffect(() => {
+    if (!pickedFolderRef.current) return
+    pickedFolderRef.current = false
+    composer.rememberBrowsedDestination()
+    // Keyed on the applied path only: the callback identity changes with it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composer.destinationPath])
+
+  const suggestedFolders = suggestedFoldersBlock({
+    current: composer.destinationPath,
+    recent: composer.recentDestinations,
+    mostUsed: composer.mostUsedDestinations.map(entry => entry.path),
+    browsed: composer.browsedDestinations,
+  })
 
   const noteConfigBlock = (
-    <div className="divide-y divide-border/40 text-sm">
-      {stickyDestinationBlock}
-      {/* --- identity --- */}
-      <div className={cn('space-y-2', panelSectionPadClass)}>
-        <div className={PANEL_LABEL_CLASS}>{composer.makeThisTodo ? 'Todo date' : 'File name'}</div>
-        {composer.makeThisTodo ? (
-          <input
-            type="date"
-            value={composer.todoDateStr}
-            onChange={(event) => composer.setTodoDateStr(event.target.value)}
-            aria-label="Todo date"
-            className={PANEL_INPUT_CLASS}
-          />
-        ) : (
-          <input
-            value={composer.filename}
-            onChange={(event) => composer.setFilename(event.target.value)}
-            placeholder="2026-02-26.md"
-            aria-label="File name"
-            className={PANEL_INPUT_CLASS}
-          />
-        )}
-        {/* The resolved path used to be repeated here. It lives in the sticky
-            "Saving to" strip at the top of the panel now. */}
-        {composer.loadingTargetContent && (
-          <div className="text-[11px] text-muted-foreground">Loading destination note…</div>
-        )}
-      </div>
-
-      {/* --- note type ---
-          Ahead of the destination on purpose: it routes to a different
-          capability and changes what saving means, so it is the first decision
-          about the note, not a switch tucked in with the cosmetic ones. */}
-      <div className={cn('space-y-1.5', panelSectionPadClass)}>
-        <div className={PANEL_LABEL_CLASS}>Note type</div>
-        {/* Chips, same as Destination below. The segmented full-width control
-            this used to be was the only widget in the panel shaped like that,
-            and it stretched four short words across the whole row. */}
-        <div className={cn('flex flex-wrap', isPhoneSurface ? 'gap-2' : 'gap-1.5')}>
-          {NOTE_KINDS_BLOCK.map((kind) => (
-            <button
-              key={kind.id}
-              type="button"
-              onClick={() => composer.setNoteKind(kind.id)}
-              className={cn(
-                PANEL_CHIP_CLASS,
-                'px-2.5',
-                // PANEL_CHIP_CLASS is shared with the desktop quick-destination
-                // chips, so the finger-sized version is layered on here rather
-                // than in the constant.
-                isPhoneSurface && 'h-9 px-3.5 text-sm',
-                composer.noteKind === kind.id && PANEL_CHIP_ACTIVE_CLASS,
-              )}
-            >
-              {kind.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* --- destination ---
-          Phone gets a disclosure row that pushes the picker sheet; everything
-          below is the desktop layout, which has the width for a tree beside two
-          jump lists and stays as it was. */}
-      {isPhoneSurface ? (
-        <button
-          type="button"
-          onClick={() => setDestinationSheetOpen(true)}
-          className="ltm-motion-fast flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-muted/50"
-        >
-          <div className="min-w-0 flex-1">
-            <div className={PANEL_LABEL_CLASS}>Destination</div>
-            <div className="truncate pt-1 font-mono text-[13px] text-foreground">
-              {composer.destinationPath || 'Choose a folder…'}
-            </div>
-          </div>
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-        </button>
-      ) : (
-      <div className={cn('space-y-2.5', panelSectionPadClass)}>
-        <div className="flex items-center justify-between gap-2">
-          <div className={PANEL_LABEL_CLASS}>Recent</div>
-          <button
-            type="button"
-            // Closing the browser is what records the pick — see
-            // `rememberBrowsedDestination`. Every click inside the tree commits,
-            // so recording per click would list the folders you passed through.
-            onClick={() => setDestinationBrowserOpen((open) => {
-              if (open) composer.rememberBrowsedDestination()
-              return !open
-            })}
-            className={cn(
-              'ltm-motion-fast inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors hover:bg-muted hover:text-foreground',
-              destinationBrowserOpen ? 'bg-muted text-foreground' : 'text-muted-foreground',
-            )}
-          >
-            <FolderTree className="h-3 w-3" />
-            Browse
-          </button>
-        </div>
-
-        {/* Recent whole paths, not the project list (2026-08-19). The project
-            is now picked from the path in the title bar, where it is already
-            written — repeating the picker here asked the same question twice,
-            one line below the answer. What the panel is left holding is the
-            case project + note type cannot express: a sub-area inside a project
-            (`operations/sfw/airms/meetings`), reached once through Browse and
-            cheap ever after. Clicking one sets the whole path, suffix and all. */}
-        {composer.browsedDestinations.length === 0 ? (
-          <div className="rounded-lg border border-border/60 bg-background px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground/70">
-            Folders you pick in Browse show up here. Nothing yet.
-          </div>
-        ) : (
-          <div className="max-h-[11rem] space-y-0.5 overflow-auto rounded-lg border border-border/60 bg-background p-1.5">
-            {composer.browsedDestinations.map(path => {
-              const active = path === composer.destinationPath
-              return (
-                <button
-                  key={`recent-${path}`}
-                  type="button"
-                  onClick={() => composer.applyDestinationPath(path)}
-                  title={path}
-                  className={cn(
-                    'ltm-motion-fast block w-full break-all rounded-md px-2 py-1.5 text-left font-mono text-[11px] leading-relaxed transition-colors',
-                    active
-                      ? 'bg-foreground text-background'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                  )}
-                >
-                  {path}
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {/* The browser unfolds in place rather than in a modal (2026-07-31).
-            A modal put a `fixed` scrim over a popover that lives inside the
-            title bar's stacking context, so the scrim painted *on top of* the
-            panel and the whole thing went translucent. Inline also means
-            picking a folder is one click, not click-then-confirm. */}
-        {destinationBrowserOpen && (
-          <div className="space-y-2.5">
-            {/* Three peers, each in its own box: explorer, most used, recent.
-                The single outer container that used to wrap them added a frame
-                around a frame and made the group read as one widget. */}
-            {/* 1.15fr, not 1.6fr — full vault paths were wrapping onto three
-                lines in the jump column while the tree sat on empty space. */}
-            <div className="grid gap-2.5 sm:grid-cols-[1.15fr_1fr]">
-              <div className="flex min-h-0 flex-col gap-1.5">
-                <div className={PANEL_LABEL_CLASS}>Explorer</div>
-                <FolderTreePickerBlock
-                  value={composer.destinationPath}
-                  onChange={composer.applyDestinationPath}
-                  maxHeightClassName="max-h-[34vh]"
-                />
-              </div>
-              {/* The two jump lists stack in one column beside the tree — side by
-                  side they were each too narrow for a nested path. */}
-              <div className="flex min-h-0 flex-col gap-2.5">
-                {jumpListBlock('Most used', composer.mostUsedDestinations.map(entry => entry.path))}
-                {jumpListBlock('Recent', composer.recentDestinations)}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-      )}
-
-      {/* --- options --- */}
-      <div className={cn('space-y-3', panelSectionPadClass)}>
-        {composer.makeThisTodo ? (
-          <p className="text-xs text-muted-foreground">
-            Each non-empty line becomes a checklist item — {composer.todoItemCount} detected.
-            Items are appended, so to dos always save manually.
-          </p>
-        ) : (
-          <>
-            <div className={panelToggleRowClass}>
-              <label htmlFor="auto-save" className="cursor-pointer text-sm">Auto-save</label>
-              <Switch
-                id="auto-save"
-                size={switchSize}
-                checked={composer.autoSaveEnabled}
-                onCheckedChange={composer.setAutoSaveEnabled}
-              />
-            </div>
-            <div className={panelToggleRowClass}>
-              <label htmlFor="date-header" className="cursor-pointer text-sm">Add date header</label>
-              <Switch id="date-header" size={switchSize} checked={composer.dateHeader} onCheckedChange={composer.setDateHeader} />
-            </div>
-            <div className={panelToggleRowClass}>
-              <label htmlFor="custom-title" className="cursor-pointer text-sm">Use custom title</label>
-              <Switch id="custom-title" size={switchSize} checked={composer.useCustomTitle} onCheckedChange={composer.setUseCustomTitle} />
-            </div>
-            {composer.useCustomTitle && (
-              <input
-                value={composer.title}
-                onChange={(event) => composer.setTitle(event.target.value)}
-                placeholder="Becomes the note title + heading"
-                aria-label="Custom title"
-                className={PANEL_INPUT_CLASS}
-              />
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Emotions used to live here as a panel section. They are a title-bar
-          button now — see `moodButtonBlock`. */}
-
-      {/* Metadata used to render here, gated on `showMetaPanel` — but this
-          whole block only exists while the *settings panel* is open, so the
-          title-bar (i) button toggled something nothing was showing and read as
-          dead (2026-07-31). It is its own popover now, like Mood and Tags. */}
-    </div>
+    <NoteSettingsPanelBlock
+      isTodo={composer.makeThisTodo}
+      filename={composer.filename}
+      onFilenameChange={composer.setFilename}
+      todoDate={composer.todoDateStr}
+      onTodoDateChange={composer.setTodoDateStr}
+      todoItemCount={composer.todoItemCount}
+      noteKind={composer.noteKind}
+      onNoteKindChange={composer.setNoteKind}
+      folder={composer.destinationPath}
+      suggestedFolders={suggestedFolders}
+      onPickFolder={(path) => {
+        pickedFolderRef.current = true
+        void composer.applyDestinationPath(path)
+      }}
+      loadingTarget={composer.loadingTargetContent}
+      touch={isPhoneSurface}
+      onOpenFolderSheet={isPhoneSurface ? () => setDestinationSheetOpen(true) : undefined}
+    />
   )
 
   // iA-Writer layout (2026-07-31): New Note is one full-bleed writing surface.
@@ -964,6 +654,31 @@ function CreateTab() {
   // No bottom border either. Once the bar is the same colour as the paper the
   // rule was the only thing left drawing a box around the writing area, and the
   // controls read as chrome floating on the page without it.
+  // New note (2026-10-29): an action, not a property of this note, so it
+  // left the settings panel for the bar. Desktop: the far right, after the
+  // other controls. Phone: the empty left flank — the right is full.
+  const newNoteButtonBlock = !isTodoMode ? (
+    // Styled exactly like the editor's AI / Mindmap controls in the same
+    // cluster (MarkdownRichEditorBlock's header control row): icon + word,
+    // muted, a tint only on hover. Phone keeps the
+    // bare + at tap size — its bar has no room for the word.
+    <TitleBarTipBlock label="New note in this folder">
+      <button
+        type="button"
+        onClick={() => { void composer.startNewNote() }}
+        disabled={composer.startingNewNote || !composer.destinationPath}
+        aria-label="New note in this folder"
+        className={cn(
+          'ltm-motion-fast inline-flex items-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40',
+          isPhoneSurface ? titleBarIconButtonClass : 'gap-1 rounded-md px-1.5 py-1 text-xs font-semibold',
+        )}
+      >
+        <Plus className={isPhoneSurface ? titleBarIconSizeClass : 'h-3.5 w-3.5 shrink-0'} />
+        {!isPhoneSurface && 'New Note'}
+      </button>
+    </TitleBarTipBlock>
+  ) : null
+
   const titleBarBlock = (
     // One provider for the whole bar — the popovers anchored inside it (mood,
     // tags, metadata) render within this tree, so their own tooltips inherit it.
@@ -989,7 +704,9 @@ function CreateTab() {
           : 'h-11',
       )}
     >
-      <div />
+      <div className="flex items-center justify-self-start">
+        {isPhoneSurface && newNoteButtonBlock}
+      </div>
 
       <div className="relative flex min-w-0 items-center justify-center">
         {/* The project segment is its own control (desktop only — the phone bar
@@ -1114,15 +831,14 @@ function CreateTab() {
               // targets only; a container that wraps buttons must never wear it.
               // No entry animation either, for the same reason: opacity on a
               // panel you interact with has no upside worth the risk.
-              'absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2 overflow-hidden rounded-xl border border-border/70 bg-background shadow-2xl transition-[width] duration-150 ease-out',
-              // Wide while browsing: the tree carries deeply nested names next
-              // to a jump-target column, and at 34rem both were wrapping.
-              destinationBrowserOpen
-                ? 'w-[min(54rem,calc(100vw-2rem))]'
-                : 'w-[min(30rem,calc(100vw-2rem))]',
+              // One width for both views, so pushing to the folder picker
+              // slides rather than resizes. Scales with the window — a fixed
+              // 34rem read as a chip in a full-screen app — inside a floor and
+              // a ceiling, and never wider than the window allows.
+              'absolute left-1/2 top-full z-50 mt-2 w-[min(clamp(24rem,40vw,46rem),calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-border/60 bg-background shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)]',
             )}
           >
-            <div className="max-h-[70vh] overflow-auto">{noteConfigBlock}</div>
+            {noteConfigBlock}
           </div>
         )}
       </div>
@@ -1148,13 +864,26 @@ function CreateTab() {
       >
         {/* Desktop keeps the editor's controls inline on the bar; on phone they
             are portalled into the … menu, whose slot lives there instead. */}
+        {/* First, so its reserved width opens into the empty bar on its left
+            (see SaveStatusBlock) instead of between the controls. */}
+        {saveStateBadgeBlock}
         {!isPhoneSurface && <div ref={setEditorControlsSlot} className="flex items-center" />}
+        {/* Three groups, not seven controls in a row (2026-10-29): work on the
+            text (AI, Mindmap, outline) · about this note (mood, tags, info) ·
+            leave it (New Note). A gap between the first two; a hairline
+            before the last, because it is a different *kind* of action. */}
+        {!isPhoneSurface && <span aria-hidden="true" className="w-2 shrink-0" />}
         {moodButtonBlock}
         {tagsButtonBlock}
-        {saveStateBadgeBlock}
         {manualSaveButtonBlock}
         {metaPanelBlock}
         {overflowButtonBlock}
+        {!isPhoneSurface && newNoteButtonBlock && (
+          <>
+            <span aria-hidden="true" className="mx-2 h-4 w-px shrink-0 bg-border" />
+            {newNoteButtonBlock}
+          </>
+        )}
       </div>
       {overflowMenuBlock}
     </div>
@@ -1216,68 +945,6 @@ function CreateTab() {
       // one control that has to move out of the keyboard's way itself.
       bottomInsetPx={Math.max(sheetBottomPadPx, layout.keyboardInset)}
     />
-  ) : null
-
-  // The one question the composer cannot answer for you: picking a destination
-  // with text on screen means either "this note belongs there" or "give me a
-  // fresh note there", and nothing in the gesture distinguishes them. Asked at
-  // most once per note, at the moment you have stopped writing and reached for
-  // a picker. See docs/contracts/DURABILITY.md.
-  //
-  // In manual mode the buttons say "Save and ..." because that is literally
-  // what they do — the click *is* the manual save, so nothing happens behind
-  // the user's back.
-  const pendingDestinationBlock = composer.pendingDestination ? (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Choose what happens to this note"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={composer.cancelPendingDestination}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') composer.cancelPendingDestination()
-      }}
-    >
-      <div
-        className="w-full max-w-sm rounded-lg border border-border bg-background p-4 shadow-lg"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="text-sm font-medium">
-          Move this note to {composer.pendingDestination.label}?
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          You have a note in progress. It can move with you, or stay where it is
-          while you start a fresh one here.
-        </p>
-        <div className="mt-4 flex flex-col gap-2">
-          <button
-            type="button"
-            autoFocus
-            disabled={composer.movingNote}
-            onClick={() => { void composer.moveNoteToPendingDestination() }}
-            className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-          >
-            {composer.autoSaveEnabled ? 'Move this note here' : 'Save and move here'}
-          </button>
-          <button
-            type="button"
-            disabled={composer.movingNote}
-            onClick={() => { void composer.startNewNoteAtPendingDestination() }}
-            className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60"
-          >
-            {composer.autoSaveEnabled ? 'Start a new note here' : 'Save and start new here'}
-          </button>
-          <button
-            type="button"
-            disabled={composer.movingNote}
-            onClick={composer.cancelPendingDestination}
-            className="rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-60"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
   ) : null
 
   // Recovered text from a session that ended badly. Deliberately rendered with
@@ -1348,7 +1015,6 @@ function CreateTab() {
     // `ltm-page-flush-top`: this page paints its own status-bar strip (the
     // title bar's top padding), so the shell must not reserve one above it.
     <div className="ltm-newthought-shell ltm-page-flush-top flex h-full min-h-0 w-full">
-      {pendingDestinationBlock}
       <div className="relative min-w-0 flex-1 overflow-hidden">
         {titleBarBlock}
         {viewSurface === 'canvas' ? (

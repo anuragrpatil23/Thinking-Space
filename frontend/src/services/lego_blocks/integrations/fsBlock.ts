@@ -20,6 +20,7 @@ import {
   utf8ToBytesBlock,
   bytesToUtf8Block,
 } from '@/services/lego_blocks/units/byteEncodingBlock'
+import { setBrowserVaultFolderNameBlock } from '@/services/lego_blocks/units/vaultNameBlock'
 
 // ── Types ──
 
@@ -1425,6 +1426,7 @@ export async function initBrowserVaultFS(options: { prompt?: boolean } = {}): Pr
   if (perm !== 'granted') return null
 
   _browserInstance = new BrowserVaultFS(handle)
+  setBrowserVaultFolderNameBlock(handle.name)
   return _browserInstance
 }
 
@@ -1437,6 +1439,7 @@ export async function pickAndInitBrowserVaultFS(): Promise<BrowserVaultFS> {
   const handle = await window.showDirectoryPicker({ mode: 'readwrite' })
   await persistDirectoryHandle(handle)
   _browserInstance = new BrowserVaultFS(handle)
+  setBrowserVaultFolderNameBlock(handle.name)
   return _browserInstance
 }
 

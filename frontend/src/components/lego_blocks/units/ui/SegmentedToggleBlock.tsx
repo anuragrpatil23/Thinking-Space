@@ -14,6 +14,9 @@ interface SegmentedToggleBlockProps<TValue extends string> {
   options: SegmentedToggleOption<TValue>[]
   ariaLabel?: string
   className?: string
+  /** `sm` is the toolbar size; `md` and `lg` are the same control at form-row
+   *  and touch scale (the note settings panel, desktop and phone). */
+  size?: 'sm' | 'md' | 'lg'
 }
 
 // Segmented pill toggle used for value-based view switches (e.g. Doc/Canvas,
@@ -24,13 +27,15 @@ export default function SegmentedToggleBlock<TValue extends string>({
   options,
   ariaLabel,
   className,
+  size = 'sm',
 }: SegmentedToggleBlockProps<TValue>) {
   return (
     <div
       role="tablist"
       aria-label={ariaLabel}
       className={cn(
-        'inline-flex h-7 shrink-0 items-center rounded-md border border-border/70 bg-background/80 p-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/60',
+        'inline-flex shrink-0 items-center rounded-md border border-border/70 bg-background/80 p-0.5 backdrop-blur supports-[backdrop-filter]:bg-background/60',
+        size === 'sm' ? 'h-7' : size === 'md' ? 'h-9 rounded-lg' : 'h-11 rounded-lg',
         className,
       )}
     >
@@ -46,7 +51,8 @@ export default function SegmentedToggleBlock<TValue extends string>({
             onClick={() => onChange(option.value)}
             title={option.title ?? option.label}
             className={cn(
-              'inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors',
+              'inline-flex items-center gap-1 rounded-md font-medium transition-colors',
+              size === 'sm' ? 'h-6 px-2 text-[11px]' : size === 'md' ? 'h-7 px-3 text-[13px]' : 'h-9 px-4 text-[15px]',
               isActive
                 ? 'bg-foreground text-background'
                 : 'text-muted-foreground hover:text-foreground',

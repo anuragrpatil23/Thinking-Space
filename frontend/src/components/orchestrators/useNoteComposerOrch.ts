@@ -30,7 +30,7 @@ import { useNoteDraftRecoveryBlock } from '@/components/lego_blocks/hooks/shared
 import type { NoteDraftEntryBlock } from '@/services/lego_blocks/units/noteDraftJournalBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { findFreeNoteFilenameBlock } from '@/services/lego_blocks/integrations/freeNoteFilenameBlock'
-import { isReapableNoteHuskBlock } from '@/services/lego_blocks/units/noteHuskBlock'
+import { isNoteEmptyBlock, isReapableNoteHuskBlock } from '@/services/lego_blocks/units/noteHuskBlock'
 import { createNoteFenceCanvasStorage } from '@/services/lego_blocks/integrations/noteFenceCanvasStorageBlock'
 import { applyNoteCanvasToContent, parseNoteCanvasBlock } from '@/services/lego_blocks/units/noteCanvasBlock'
 import { invokeCapabilityOrThrow } from '@/services/orchestrators/capabilityRouterOrch'
@@ -44,7 +44,6 @@ import {
   setNewThoughtQuickDestinationsPreferenceOrch,
 } from '@/services/orchestrators/vaultUiPreferencesOrch'
 import {
-  AUTO_SAVE_PREF_KEY_BLOCK,
   BROWSED_DESTINATIONS_KEY_BLOCK,
   BROWSED_DESTINATIONS_LIMIT_BLOCK,
   NOTE_KIND_PREF_KEY_BLOCK,
@@ -60,6 +59,8 @@ import {
   ensureMarkdownFilenameBlock,
   filenameFromTitleBlock,
   mergeDraftBlock,
+  normalizePickableNoteKindBlock,
+  rebaseBufferOntoWriteBlock,
   noteKindShortcutIdBlock,
   normalizeSegmentsBlock,
   projectDestinationsBlock,
@@ -180,7 +181,8 @@ export interface NoteComposerOrch {
   isDirty: boolean
   /** Drives the ambient editing badge in place of a Save button. */
   saveState: NoteSaveStateBlock
-  autoSaveEnabled: boolean
+  /** Epoch ms of the last successful note write, for the status hover. */
+  lastSavedAt: number | null
 
   // --- actions ---
   setFilename: (value: string) => void
@@ -207,7 +209,6 @@ export interface NoteComposerOrch {
   /** Record the current destination as an Explorer pick. Called when the browser
    *  closes, not on every click inside it. */
   rememberBrowsedDestination: () => void
-  setAutoSaveEnabled: (enabled: boolean) => void
   /** Start a blank note in the *current* folder, on a filename nothing occupies. */
   startNewNote: () => Promise<void>
   /** False while `startNewNote` is looking for a free filename. */
@@ -217,17 +218,8 @@ export interface NoteComposerOrch {
    *  write; guarded against duplicating an appended todo list. */
   requestSave: () => Promise<void>
 
-  /** A destination the user picked while text was on screen, held until they
-   *  say whether the note moves there or a new one starts there. */
-  pendingDestination: PendingDestinationBlock | null
   /** True while a move is in flight. */
   movingNote: boolean
-  /** Move the note in the buffer to the pending destination. Never appends. */
-  moveNoteToPendingDestination: () => Promise<void>
-  /** Keep the current note where it is; open a blank one at the destination. */
-  startNewNoteAtPendingDestination: () => Promise<void>
-  /** Abandon the destination change entirely. */
-  cancelPendingDestination: () => void
 
   /** Text from an earlier session that never reached a file. Empty in the
    *  normal case; non-empty means something crashed. */
@@ -238,12 +230,11 @@ export interface NoteComposerOrch {
   discardDraft: (id: string) => Promise<void>
 }
 
-/** A destination change the composer is holding until the user says what
- *  should happen to the note already in the buffer. */
+/** Where a note is being moved to. */
 export interface PendingDestinationBlock {
   /** Vault-relative base segments the user picked. */
   segments: string[]
-  /** Human-readable name of where they picked, for the prompt. */
+  /** Human-readable name of where they picked. */
   label: string
 }
 
@@ -284,7 +275,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   // as a derived value because a dozen branches below (and the whole todo save
   // path) read it, and rewriting them all would bury the actual change.
   const [noteKind, setNoteKindState] = useState<NoteKindBlock>(
-    () => readJsonStorageBlock<NoteKindBlock>(NOTE_KIND_PREF_KEY_BLOCK, 'thought'),
+    () => normalizePickableNoteKindBlock(readJsonStorageBlock<NoteKindBlock>(NOTE_KIND_PREF_KEY_BLOCK, 'thought')),
   )
   const makeThisTodo = noteKind === 'todo'
   const [todoDateStr, setTodoDateStr] = useState(todayDateStrBlock())
@@ -296,9 +287,6 @@ export function useNoteComposerOrch(): NoteComposerOrch {
 
   // --- status ---
   const [saving, setSaving] = useState(false)
-  const [autoSaveEnabled, setAutoSaveEnabledState] = useState<boolean>(
-    () => readJsonStorageBlock(AUTO_SAVE_PREF_KEY_BLOCK, true),
-  )
   const [loadingTargetContent, setLoadingTargetContent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -369,6 +357,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   // Count of consecutive failed saves, driving the retry backoff below. State
   // rather than a ref because the retry effect has to re-run when it changes.
   const [saveFailureCount, setSaveFailureCount] = useState(0)
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
 
   /** A destination change waiting on the question only a person can answer:
    *  does this note belong there, or do you want a fresh one there?
@@ -378,8 +367,10 @@ export function useNoteComposerOrch(): NoteComposerOrch {
    *  and reached for a picker. Without it the ordering ("new note first, then
    *  pick the project") is a rule nothing on screen teaches, and getting it
    *  backwards silently misfiles a note. */
-  const [pendingDestination, setPendingDestination] = useState<PendingDestinationBlock | null>(null)
   const [movingNote, setMovingNote] = useState(false)
+  // Defined further down (it needs the save machinery); the destination
+  // actions above it reach it through this ref.
+  const moveNoteToRef = useRef<(destination: PendingDestinationBlock) => Promise<void>>(async () => {})
 
   // Refs let the canvas adapter (created once) always see the latest content
   // without remounting CanvasSurfaceOrch (which would reset pan/zoom).
@@ -804,10 +795,13 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     const normalized = normalizeSegmentsBlock(segments)
     if (normalized.length === 0) return
     if (!(await ensureBufferDurable())) return
-    // A destination change with text on screen is ambiguous, so ask.
+    // Text on screen: changing the folder moves *this* note (2026-10-29).
+    // It used to ask "move it, or start a new one there?" — and the second
+    // answer, one click from the first, is what people kept getting when they
+    // wrote first and filed after. Starting fresh is the compose button's job.
     if (normalized.join('/') !== folderBaseSegments.join('/')
       && contentRef.current.trim().length > 0) {
-      setPendingDestination({ segments: normalized, label: normalized.join('/') })
+      await moveNoteToRef.current({ segments: normalized, label: normalized.join('/') })
       return
     }
     applyBaseSegments(normalized, true)
@@ -866,7 +860,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     const segments = project ? project.segments : []
     if (segments.join('/') !== folderBaseSegments.join('/')
       && contentRef.current.trim().length > 0) {
-      setPendingDestination({ segments, label: project ? project.name : 'the vault root' })
+      await moveNoteToRef.current({ segments, label: project ? project.name : 'the vault root' })
       return
     }
     // Unlike `applyDestinationSegments` this does NOT force the `none`
@@ -875,12 +869,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     applyBaseSegments(segments, false)
   }, [applyBaseSegments, ensureBufferDurable, folderBaseSegments, projectDestinations])
 
-  const cancelPendingDestination = useCallback(() => {
-    // A real third answer — "wrong project, my mistake" — not a dismissal.
-    setPendingDestination(null)
-  }, [])
-
-  /** Move the note in the buffer to the pending destination.
+  /** Move the note in the buffer to `pending`.
    *
    *  Ordered so no failure can destroy: journal, write the new file, verify it
    *  by read-back, and only then touch the origin. A failure before the last
@@ -889,14 +878,12 @@ export function useNoteComposerOrch(): NoteComposerOrch {
    *
    *  Never appends. A destination that already holds today's note gets a
    *  `-2` beside it, so one move is always one file. */
-  const moveNoteToPendingDestination = useCallback(async () => {
-    const pending = pendingDestination
-    if (!pending || movingNote) return
+  const moveNoteTo = useCallback(async (pending: PendingDestinationBlock) => {
+    if (movingNote) return
     // Todo mode has no note to move — `todos.create` appends into a list, so
     // there is no single file that is "this note".
     if (makeThisTodo) {
       applyBaseSegments(pending.segments, false)
-      setPendingDestination(null)
       return
     }
     setMovingNote(true)
@@ -985,7 +972,6 @@ export function useNoteComposerOrch(): NoteComposerOrch {
       setSaveFailureCount(0)
       journal.resolve()
       rememberDestinationUsage(destinationSegmentsNext)
-      setPendingDestination(null)
       setMessage(`Moved to ${created.output_path}.${originNote}`)
       triggerSaveFeedback()
     } catch (err) {
@@ -1004,7 +990,6 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     movingNote,
     noteKind,
     normalizedFilename,
-    pendingDestination,
     rememberDestinationUsage,
     tags,
     targetPath,
@@ -1013,55 +998,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     useCustomTitle,
   ])
 
-  /** Leave the current note where it is and open a blank one at the pending
-   *  destination. Saves first, and refuses to clear if that save fails. */
-  const startNewNoteAtPendingDestination = useCallback(async () => {
-    const pending = pendingDestination
-    if (!pending || movingNote) return
-    setMovingNote(true)
-    setError(null)
-    try {
-      if (bufferHasUnsavedTextBlock(contentRef.current, loadedBaseContentRef.current)) {
-        await saveRef.current()
-        if (bufferHasUnsavedTextBlock(contentRef.current, loadedBaseContentRef.current)) {
-          setError(current => current
-            ? `${current} — nothing was moved or cleared.`
-            : 'Could not save the current note, so nothing was moved or cleared.')
-          return
-        }
-      }
-      const destinationSegmentsNext = withSuffixBlock(pending.segments, activeShortcut.pathSegments)
-      const chosen = await findFreeFilename(destinationSegmentsNext.join('/'), todayFilenameBlock())
-      if (!chosen) {
-        setError(`Could not find a free file name in ${destinationSegmentsNext.join('/')}.`)
-        return
-      }
-      // Cleared before the path moves, so the destination-load effect finds no
-      // draft to carry across into the new note.
-      contentRef.current = ''
-      loadedBaseContentRef.current = ''
-      sessionOriginContentRef.current = ''
-      setContent('')
-      setUseCustomTitleState(false)
-      setTitle('')
-      setEmotions([])
-      setTags([])
-      setFilenameState(chosen)
-      setFilenameTouched(true)
-      setSavedPath(null)
-      setItemsAdded(0)
-      applyBaseSegments(pending.segments, false)
-      setPendingDestination(null)
-    } finally {
-      setMovingNote(false)
-    }
-  }, [
-    activeShortcut.pathSegments,
-    applyBaseSegments,
-    findFreeFilename,
-    movingNote,
-    pendingDestination,
-  ])
+  moveNoteToRef.current = moveNoteTo
 
   // --- destination note load -------------------------------------------------
 
@@ -1196,7 +1133,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   const saveState: NoteSaveStateBlock = saving
     ? 'saving'
     : isDirty
-      ? 'dirty'
+      ? (saveFailureCount > 0 ? 'failed' : 'dirty')
       : (savedPath || loadedBaseContentRef.current) ? 'saved' : 'idle'
 
   // --- save ------------------------------------------------------------------
@@ -1270,9 +1207,17 @@ export function useNoteComposerOrch(): NoteComposerOrch {
 
       // Re-read so the editor holds exactly what is on disk (frontmatter is
       // generated on save) and the next conflict check has a fresh baseline.
+      // Typing doesn't pause for the write, so the buffer may have moved on
+      // since `content` was submitted — keep those keystrokes.
       const refreshed = await getThoughtForEdit(outputPath)
+      const nextBuffer = rebaseBufferOntoWriteBlock({
+        submitted: content,
+        onDisk: refreshed.content,
+        current: contentRef.current,
+      })
       loadedBaseContentRef.current = refreshed.content
-      setContent(refreshed.content)
+      contentRef.current = nextBuffer
+      setContent(nextBuffer)
       setLoadedTargetPath(outputPath)
       setTargetFileState({
         path: outputPath,
@@ -1282,9 +1227,15 @@ export function useNoteComposerOrch(): NoteComposerOrch {
       })
       setSavedPath(outputPath)
       setSaveFailureCount(0)
+      setLastSavedAt(Date.now())
       // The read-back above confirms the text is at its target, which is the
-      // only condition under which a draft may be forgotten.
-      journal.resolve()
+      // only condition under which a draft may be forgotten. Text typed during
+      // the write isn't there yet, so it stays journaled.
+      if (nextBuffer === refreshed.content) {
+        journal.resolve()
+      } else {
+        journal.record({ content: nextBuffer, targetPath: outputPath, createdTarget: createdTargetRef.current })
+      }
       rememberDestinationUsage(destinationSegments)
       // Deliberately no success message: auto-save fires while you type, and a
       // banner announcing each write would shove the writing surface down every
@@ -1293,11 +1244,19 @@ export function useNoteComposerOrch(): NoteComposerOrch {
       // get from the badge — and errors always surface.)
       triggerSaveFeedback()
     } catch (err) {
-      // A conflict means someone else wrote the file — adopt their content as
-      // the new baseline so the user can merge instead of losing the save.
+      // A conflict means someone else wrote the file (or only touched its
+      // mtime — iCloud does). Adopt their content as the new baseline and
+      // replay the user's edits onto it; replacing the buffer outright threw
+      // away everything typed since the last save.
       if (!makeThisTodo && err instanceof ThoughtConflictError && targetPath) {
+        const nextBuffer = rebaseBufferOntoWriteBlock({
+          submitted: loadedBaseContentRef.current,
+          onDisk: err.currentContent,
+          current: contentRef.current,
+        })
         loadedBaseContentRef.current = err.currentContent
-        setContent(err.currentContent)
+        contentRef.current = nextBuffer
+        setContent(nextBuffer)
         setLoadedTargetPath(targetPath)
         setTargetFileState({
           path: targetPath,
@@ -1361,20 +1320,20 @@ export function useNoteComposerOrch(): NoteComposerOrch {
 
   // --- auto-save -------------------------------------------------------------
   //
-  // Mirrors the explorer's editing badge: the save state is ambient, so there
-  // is no Save button in the normal path. Turning auto-save off brings one
-  // back (see `saveState`/`autoSaveEnabled` consumers).
+  // Auto-save is the only mode (manual mode removed 2026-10-28: nobody types
+  // text they don't want kept). The save state is ambient — see
+  // `SaveStatusBlock`; ⌘S just saves sooner.
   //
   // Never runs in todo mode: `todos.create` *appends* the parsed items, so a
   // debounced re-fire would duplicate every task on each keystroke pause.
   saveRef.current = save
 
   useEffect(() => {
-    if (!autoSaveEnabled || makeThisTodo) return
+    if (makeThisTodo) return
     if (!isDirty || !canSave) return
     const timer = window.setTimeout(() => { void saveRef.current() }, AUTO_SAVE_DEBOUNCE_MS)
     return () => window.clearTimeout(timer)
-  }, [autoSaveEnabled, canSave, isDirty, makeThisTodo, content])
+  }, [canSave, isDirty, makeThisTodo, content])
 
   // Journal every keystroke that isn't on disk yet.
   //
@@ -1426,6 +1385,39 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     void reapHuskAtPath(previous)
   }, [reapHuskAtPath, targetPath])
 
+  // Reap it as soon as it *becomes* a husk, not only on the way out
+  // (2026-10-29). Leaving was the only trigger, so a note you emptied and then
+  // simply left open — or a browser tab you closed, where teardown can't finish
+  // async work — kept a frontmatter-only file in the vault. Only a file this
+  // session created, only once typing has settled, and `reapHuskAtPath`
+  // re-reads the file and refuses anything with content in it.
+  //
+  // The journal is resolved with it: its last entry is the text from before
+  // you deleted it, and offering that back as "recovered" would undo a
+  // deliberate edit.
+  useEffect(() => {
+    if (makeThisTodo || saving || !targetPath || !createdTargetRef.current) return
+    if (!targetFileState?.exists || targetFileState.path !== targetPath) return
+    if (!isNoteEmptyBlock(content)) return
+    const path = targetPath
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        await reapHuskAtPath(path)
+        if (await getVaultFS().exists(path).catch(() => true)) return
+        if (!isNoteEmptyBlock(contentRef.current)) return
+        journal.resolve()
+        // Back to a note that was never written: the next keystroke creates
+        // the file again, with fresh generated frontmatter.
+        loadedBaseContentRef.current = ''
+        contentRef.current = ''
+        setContent('')
+        setTargetFileState({ path, exists: false, baseMtime: null, baseHash: null })
+        setSavedPath(null)
+      })()
+    }, AUTO_SAVE_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+  }, [content, journal, makeThisTodo, reapHuskAtPath, saving, targetFileState, targetPath])
+
   // Flush on the way out.
   //
   // Nothing here listened for teardown before, so the 1200ms auto-save debounce
@@ -1456,11 +1448,6 @@ export function useNoteComposerOrch(): NoteComposerOrch {
       void reapHuskAtPath(previousTargetRef.current)
     }
   }, [reapHuskAtPath])
-
-  const setAutoSaveEnabled = useCallback((enabled: boolean) => {
-    setAutoSaveEnabledState(enabled)
-    writeJsonStorageBlock(AUTO_SAVE_PREF_KEY_BLOCK, enabled)
-  }, [])
 
   return {
     pickerDefaultPath,
@@ -1497,6 +1484,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     saving,
     loadingTargetContent,
     error,
+    lastSavedAt,
     message,
     savedPath,
     itemsAdded,
@@ -1504,7 +1492,6 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     saveFeedbackVisible,
     isDirty,
     saveState,
-    autoSaveEnabled,
 
     setFilename,
     setTitle,
@@ -1526,17 +1513,12 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     deleteCustomShortcut,
     selectProject,
     rememberBrowsedDestination,
-    setAutoSaveEnabled,
     startNewNote,
     startingNewNote,
     save,
     requestSave,
 
-    pendingDestination,
     movingNote,
-    moveNoteToPendingDestination,
-    startNewNoteAtPendingDestination,
-    cancelPendingDestination,
 
     recoverableDrafts: recovery.recoverableDrafts,
     recoverDraft,

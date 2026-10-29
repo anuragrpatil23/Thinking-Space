@@ -25,7 +25,7 @@ export interface QuickDestinationBlock {
 
 /** Ambient save state for the editing badge — mirrors the explorer's pattern,
  *  which is why New Note needs no Save button while auto-save is on. */
-export type NoteSaveStateBlock = 'idle' | 'dirty' | 'saving' | 'saved'
+export type NoteSaveStateBlock = 'idle' | 'dirty' | 'saving' | 'saved' | 'failed'
 
 /** What kind of note this is. Replaces the old "Make this a to do" switch
  *  (2026-07-31): the choice routes to a different capability and changes what
@@ -45,9 +45,16 @@ export const NOTE_KIND_PREF_KEY_BLOCK = 'ltm-new-note-kind'
 export const NOTE_KINDS_BLOCK: Array<{ id: NoteKindBlock; label: string }> = [
   { id: 'thought', label: 'Thought' },
   { id: 'meeting', label: 'Meeting' },
-  { id: 'todo', label: 'To Do' },
-  { id: 'none', label: 'None' },
+  { id: 'todo', label: 'To do' },
 ]
+
+/** `none` left the picker 2026-10-29: an untagged note, indistinguishable on
+ *  screen from Thought, so the choice meant nothing to anyone making it. The
+ *  kind stays in the union for files that already carry it; a remembered
+ *  `none` preference resumes as Thought. */
+export function normalizePickableNoteKindBlock(kind: NoteKindBlock): NoteKindBlock {
+  return kind === 'none' ? 'thought' : kind
+}
 
 /** Kind tag written alongside the emotion tags, or `null` for an untagged
  *  note. `todo` never reaches this — it takes the todos capability instead. */
@@ -86,7 +93,6 @@ export const DESTINATION_USAGE_COUNTS_KEY_BLOCK = 'ltm-new-note-destination-usag
  *  hardcoded into shipped source, which on any other vault names a folder that
  *  does not exist. Empty is the honest default: no project chosen yet. */
 export const DEFAULT_BASE_PATH_BLOCK: string[] = []
-export const AUTO_SAVE_PREF_KEY_BLOCK = 'ltm-new-note-auto-save'
 
 export const BUILT_IN_SHORTCUTS_BLOCK: DestinationShortcutBlock[] = [
   { id: 'thoughts', label: 'Thoughts', pathSegments: ['thoughts'], builtIn: true },
@@ -714,4 +720,83 @@ export function mergeDraftBlock(base: string, draft: string): string {
   if (!draft) return base
   if (!base) return draft
   return base.endsWith('\n') || draft.startsWith('\n') ? base + draft : `${base}\n${draft}`
+}
+
+/** The one changed span between two strings: `from[start, end)` became `text`.
+ *  Common prefix, then common suffix bounded so the two never overlap. */
+function changedSpan(from: string, to: string): { start: number; end: number; text: string } {
+  const max = Math.min(from.length, to.length)
+  let prefix = 0
+  while (prefix < max && from[prefix] === to[prefix]) prefix++
+  let suffix = 0
+  while (
+    suffix < max - prefix
+    && from[from.length - 1 - suffix] === to[to.length - 1 - suffix]
+  ) suffix++
+  return { start: prefix, end: from.length - suffix, text: to.slice(prefix, to.length - suffix) }
+}
+
+/** What the buffer should hold once a write of `submitted` lands as `onDisk`,
+ *  given the buffer has meanwhile become `current`.
+ *
+ *  A save is async: write, fsync, rename, read back. The user keeps typing
+ *  through all of it. Adopting `onDisk` wholesale (what the composer did) threw
+ *  away every keystroke made in that window — and since an edit save always
+ *  stamps `updated_at`, `onDisk` never equals `submitted`, so it happened on
+ *  every save, not just slow ones. Same shape for a conflict: `submitted` is
+ *  the last-known base, `onDisk` is what another writer left.
+ *
+ *  Both edits are replayed onto `submitted` when they touch disjoint spans
+ *  (frontmatter/date header up top vs. typing in the body — the normal case).
+ *  When they overlap, the user's text wins: the overwritten disk version is
+ *  kept as a revision by the next save, the typed text is kept nowhere else. */
+export function rebaseBufferOntoWriteBlock(options: {
+  submitted: string
+  onDisk: string
+  current: string
+}): string {
+  const { submitted, onDisk, current } = options
+  if (current === submitted) return onDisk
+  if (onDisk === submitted || onDisk === current) return current
+  const disk = changedSpan(submitted, onDisk)
+  const user = changedSpan(submitted, current)
+  if (disk.end <= user.start) {
+    return submitted.slice(0, disk.start) + disk.text
+      + submitted.slice(disk.end, user.start) + user.text + submitted.slice(user.end)
+  }
+  if (user.end <= disk.start) {
+    return submitted.slice(0, user.start) + user.text
+      + submitted.slice(user.end, disk.start) + disk.text + submitted.slice(disk.end)
+  }
+  return current
+}
+
+/** The folder picker's one list of shortcuts. It replaced three (Recent, Most
+ *  used, and a second Recent) that overlapped four rows in five (2026-10-29).
+ *  The current folder leads — it is where you are — then everything else by
+ *  recency and frequency together, so a folder that is both outranks one that
+ *  is only either. */
+export function suggestedFoldersBlock(options: {
+  current: string
+  recent: string[]
+  mostUsed: string[]
+  browsed: string[]
+  limit?: number
+}): string[] {
+  const limit = options.limit ?? 5
+  const scores = new Map<string, number>()
+  const add = (paths: string[], weight: number) => {
+    paths.forEach((path, index) => {
+      if (!path) return
+      scores.set(path, (scores.get(path) ?? 0) + weight * (paths.length - index) / paths.length)
+    })
+  }
+  add(options.recent, 1)
+  add(options.mostUsed, 1)
+  add(options.browsed, 0.5)
+  const ranked = [...scores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([path]) => path)
+    .filter(path => path !== options.current)
+  return (options.current ? [options.current, ...ranked] : ranked).slice(0, limit)
 }

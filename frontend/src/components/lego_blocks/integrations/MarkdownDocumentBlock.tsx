@@ -20,7 +20,9 @@ import {
 } from '@/services/lego_blocks/integrations/markdownMathPluginsBlock'
 import { markdownCodeHighlightRehypePluginsBlock } from '@/services/lego_blocks/integrations/markdownCodeHighlightPluginBlock'
 import TikzDiagramBlock from '@/components/lego_blocks/units/TikzDiagramBlock'
-import { X, FileText, ExternalLink, Pencil, Save, FolderOpen, Workflow, List, LayoutDashboard, BookOpenText, Minimize2, Maximize2 } from 'lucide-react'
+import { X, FileText, ExternalLink, Pencil, FolderOpen, Workflow, List, LayoutDashboard, BookOpenText, Minimize2, Maximize2 } from 'lucide-react'
+import { SaveStatusBlock } from '@/components/lego_blocks/units/SaveStatusBlock'
+import type { SaveStatusKindBlock } from '@/services/lego_blocks/units/saveLocationBlock'
 import {
   MarkdownDocumentConflictError,
   readMarkdownDocument,
@@ -370,7 +372,11 @@ function MarkdownTextDocumentRuntimeBlock({
   const [editorSettings] = useState<MarkdownEditorSettingsBlock>(
     () => readMarkdownEditorSettingsOrch(),
   )
-  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true)
+  // Auto-save is the only mode (manual removed 2026-10-28). This is just the
+  // hover time for the status line.
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
+  const [saveConfirmToken, setSaveConfirmToken] = useState(0)
+  const excalidrawSaveOkRef = useRef(false)
   const [meta, setMeta] = useState<MarkdownMeta | null>(null)
   const [viewMarkdown, setViewMarkdown] = useState('')
   const [pendingFullRender, setPendingFullRender] = useState(false)
@@ -444,7 +450,7 @@ function MarkdownTextDocumentRuntimeBlock({
   const excalidrawBaselineTextCharsRef = useRef<number | null>(null)
 
   // Annotations are never only in the canvas. See docs/contracts/DURABILITY.md.
-  // Runs regardless of `autoSaveEnabled` — that setting decides when the *file*
+  // Independent of auto-save, which decides when the *file*
   // is written, not whether a second copy of the work exists.
   const excalidrawJournal = useExcalidrawDraftJournalBlock(useCallback(() => {
     const api = excalidrawApiRef.current
@@ -915,14 +921,13 @@ function MarkdownTextDocumentRuntimeBlock({
     hasConflict: conflict !== null,
     isExcalidrawDoc,
   }
-  const saveButtonLabel = saving ? 'Saving...' : manualSaveFeedbackVisible ? 'Saved' : 'Save'
-  const saveButtonClassName = cn(
-    'inline-flex items-center gap-1 border border-border/70 font-medium text-foreground transition-colors duration-200 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50',
-    isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2.5 py-1 text-xs',
-    manualSaveFeedbackVisible && !saving
-      ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-600'
-      : 'bg-transparent',
-  )
+  const saveStatus: SaveStatusKindBlock = !isEditing
+    ? 'idle'
+    : (saving || autoSaving)
+      ? 'saving'
+      : saveError
+        ? 'failed'
+        : hasChanges ? 'pending' : 'saved'
   const shouldPadViewerContent = !isEditing && !isExcalidrawDoc && !isHtmlDoc
   const htmlHeaderCollapses = isHtmlDoc && !isEditing
   const htmlRunsToEdges = htmlHeaderCollapses && !loading && !error && content !== null
@@ -1655,6 +1660,7 @@ function MarkdownTextDocumentRuntimeBlock({
         setSizeBytes(result.size)
         // Keep cancel baseline aligned with the latest persisted draft, including auto-saves.
         markdownEditBaselineRef.current = { content: draftToSave }
+        setLastSavedAt(Date.now())
         onSaved?.(result)
         return true
       } catch (err) {
@@ -1675,13 +1681,36 @@ function MarkdownTextDocumentRuntimeBlock({
     return savePromise
   }, [baseHash, baseMtime, content, draft, isExcalidrawDoc, onSaved, path])
 
-  // Done = flush the draft (no-op when clean) and return to the document.
-  const finishEditing = async () => {
-    if (baseMtime === null) return
+  // Write whatever is unsaved now, text or drawing. False means it is still
+  // only in memory (and the journal), so nothing may leave editing.
+  const flushEdits = async (): Promise<boolean> => {
+    if (baseMtime === null) return false
+    if (isExcalidrawDoc) {
+      if (!hasExcalidrawChanges) return true
+      excalidrawSaveOkRef.current = false
+      await handleSaveRef.current('explicit')
+      return excalidrawSaveOkRef.current
+    }
     setSaving(true)
-    const didSave = await saveMarkdownDraft('manual')
-    setSaving(false)
-    if (didSave) cancelEditing()
+    try {
+      return await saveMarkdownDraft('manual')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Done = save, then back to the reading view. (`cancelEditing` after a
+  // successful flush only switches the mode — the baseline is the saved text.)
+  const finishEditing = async () => {
+    if (await flushEdits()) cancelEditing()
+  }
+
+  // ✕ always closes the note, from either view. It used to mean "leave
+  // editing" while editing and "close" otherwise — two clicks, two meanings,
+  // and in manual mode a silent discard (2026-10-28).
+  const closeDocument = async () => {
+    if (isEditing && baseMtime !== null && !(await flushEdits())) return
+    onClose?.()
   }
 
   // Escape leaves editing (flushes the draft first, so no work is lost). We
@@ -1770,6 +1799,7 @@ function MarkdownTextDocumentRuntimeBlock({
       const contentToSave = serializeExcalidrawSceneOrch(content, sceneForSave)
       if (contentToSave === content) {
         setHasExcalidrawChanges(false)
+        excalidrawSaveOkRef.current = true
         return
       }
 
@@ -1797,6 +1827,7 @@ function MarkdownTextDocumentRuntimeBlock({
       clearExcalidrawCrashMarkerBlock()
       ignoreInitialExcalidrawChangeRef.current = true
       onSaved?.(result)
+      setLastSavedAt(Date.now())
       didSave = true
     } catch (err) {
       if (err instanceof MarkdownDocumentConflictError) {
@@ -1808,7 +1839,10 @@ function MarkdownTextDocumentRuntimeBlock({
     } finally {
       setSaving(false)
     }
-    if (didSave) triggerManualSaveFeedback()
+    if (didSave) {
+      excalidrawSaveOkRef.current = true
+      triggerManualSaveFeedback()
+    }
   }
   handleSaveRef.current = handleSave
 
@@ -1869,7 +1903,6 @@ function MarkdownTextDocumentRuntimeBlock({
   }, [canRenameInHeader, filename, isEditing, renaming])
 
   useEffect(() => {
-    if (!autoSaveEnabled) return
     if (!isEditing || isExcalidrawDoc || loading || error || baseMtime === null) return
     if (!hasTextChanges || saving || autoSaving || conflict) return
 
@@ -1884,7 +1917,6 @@ function MarkdownTextDocumentRuntimeBlock({
       window.clearTimeout(timeoutId)
     }
   }, [
-    autoSaveEnabled,
     baseMtime,
     conflict,
     error,
@@ -1898,7 +1930,6 @@ function MarkdownTextDocumentRuntimeBlock({
   ])
 
   useEffect(() => {
-    if (!autoSaveEnabled) return
     if (!isEditing || !isExcalidrawDoc || loading || error || baseMtime === null) return
     if (!hasExcalidrawChanges || saving || conflict) return
     if (excalidrawAutoSaveBlocked) return
@@ -1911,7 +1942,6 @@ function MarkdownTextDocumentRuntimeBlock({
       window.clearTimeout(timeoutId)
     }
   }, [
-    autoSaveEnabled,
     baseMtime,
     conflict,
     error,
@@ -2162,6 +2192,9 @@ function MarkdownTextDocumentRuntimeBlock({
                 isIosPhone && 'w-full min-w-0 flex-wrap justify-start gap-1.5',
               )}>
                 <TooltipProvider delayDuration={200}>
+                {/* First, so its reserved width opens into the empty space on
+                    its left (see SaveStatusBlock) instead of between controls. */}
+                {isEditing && <SaveStatusBlock status={saveStatus} savedAt={lastSavedAt} compact={isIosPhone} confirmToken={saveConfirmToken} />}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="inline-flex">
@@ -2240,77 +2273,35 @@ function MarkdownTextDocumentRuntimeBlock({
 
                 {isEditing && !isExcalidrawDoc && (
                   <>
-                    {/* Editing badge — live save state; click toggles auto-save. */}
                     <button
                       type="button"
-                      onClick={() => setAutoSaveEnabled(v => !v)}
+                      onClick={() => { void finishEditing() }}
+                      disabled={saving}
+                      title="Back to reading (Esc)"
                       className={cn(
-                        'inline-flex items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground',
-                        isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2 py-1 text-xs',
+                        'inline-flex items-center font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50',
+                        isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2.5 py-1 text-xs',
                       )}
-                      title={autoSaveEnabled ? 'Auto-save is on — click to switch to manual saving' : 'Auto-save is off — click to turn it on'}
                     >
-                      <span
-                        className={cn(
-                          'h-1.5 w-1.5 rounded-full',
-                          (saving || autoSaving)
-                            ? 'animate-pulse bg-amber-500'
-                            : autoSaveEnabled
-                              ? 'bg-emerald-500'
-                              : 'bg-muted-foreground/50',
-                        )}
-                      />
-                      {(saving || autoSaving) ? 'Saving…' : autoSaveEnabled ? 'Editing' : 'Editing · manual'}
+                      Done
                     </button>
-                    {!autoSaveEnabled && (
-                      <button
-                        type="button"
-                        onClick={() => { void handleSave() }}
-                        disabled={saving || baseMtime === null}
-                        className={saveButtonClassName}
-                      >
-                        <Save className="h-3.5 w-3.5" />
-                        {saveButtonLabel}
-                      </button>
-                    )}
                   </>
                 )}
 
                 {isEditing && isExcalidrawDoc && (
                   <>
-                    {/* Editing badge — same live save state the text editor shows. */}
                     <button
                       type="button"
-                      onClick={() => setAutoSaveEnabled(v => !v)}
+                      onClick={() => { void finishEditing() }}
+                      disabled={saving}
+                      title="Back to reading (Esc)"
                       className={cn(
-                        'inline-flex items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground',
-                        isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2 py-1 text-xs',
+                        'inline-flex items-center font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50',
+                        isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2.5 py-1 text-xs',
                       )}
-                      title={autoSaveEnabled ? 'Auto-save is on — click to switch to manual saving' : 'Auto-save is off — click to turn it on'}
                     >
-                      <span
-                        className={cn(
-                          'h-1.5 w-1.5 rounded-full',
-                          (saving || autoSaving)
-                            ? 'animate-pulse bg-amber-500'
-                            : autoSaveEnabled
-                              ? 'bg-emerald-500'
-                              : 'bg-muted-foreground/50',
-                        )}
-                      />
-                      {(saving || autoSaving) ? 'Saving…' : autoSaveEnabled ? 'Editing' : 'Editing · manual'}
+                      Done
                     </button>
-                    {!autoSaveEnabled && (
-                      <button
-                        type="button"
-                        onClick={() => { void handleSave() }}
-                        disabled={saving || baseMtime === null}
-                        className={saveButtonClassName}
-                      >
-                        <Save className="h-3.5 w-3.5" />
-                        {saveButtonLabel}
-                      </button>
-                    )}
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
@@ -2333,30 +2324,17 @@ function MarkdownTextDocumentRuntimeBlock({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
-                        onClick={() => {
-                          // While editing, ✕ means "leave editing", not "close the
-                          // document" — one exit affordance instead of a separate
-                          // Cancel button.
-                          if (isEditing) {
-                            if (autoSaveEnabled && !isExcalidrawDoc) {
-                              void finishEditing()
-                            } else {
-                              cancelEditing()
-                            }
-                            return
-                          }
-                          onClose()
-                        }}
+                        onClick={() => { void closeDocument() }}
                         className={cn(
                           'transition-colors hover:bg-muted',
                           isIosPhone ? 'rounded-md p-1.5' : 'rounded-lg p-1.5',
                         )}
-                        aria-label={isEditing ? 'Stop editing' : 'Close'}
+                        aria-label="Close"
                       >
                         <X className="h-4 w-4" />
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">{isEditing ? 'Stop editing' : 'Close'}</TooltipContent>
+                    <TooltipContent side="bottom">Close</TooltipContent>
                   </Tooltip>
                 )}
                 </TooltipProvider>
@@ -2645,46 +2623,7 @@ function MarkdownTextDocumentRuntimeBlock({
               </div>
               <TooltipProvider delayDuration={200}>
                 <div className="flex shrink-0 items-center gap-1" style={isElectronSurface ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
-                  {/* Save state — same dot badge the inline editor uses; click toggles auto-save. */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={() => setAutoSaveEnabled(v => !v)}
-                        className={cn(
-                          'inline-flex items-center gap-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground',
-                          isIosPhone ? 'h-7 rounded-md px-2 text-[11px]' : 'rounded-lg px-2 py-1 text-xs',
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            'h-1.5 w-1.5 rounded-full',
-                            (saving || autoSaving)
-                              ? 'animate-pulse bg-amber-500'
-                              : autoSaveEnabled
-                                ? 'bg-emerald-500'
-                                : 'bg-muted-foreground/50',
-                          )}
-                        />
-                        {(saving || autoSaving) ? 'Saving…' : autoSaveEnabled ? 'Editing' : 'Editing · manual'}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      {autoSaveEnabled ? 'Auto-save is on — click to switch to manual saving' : 'Auto-save is off — click to turn it on'}
-                    </TooltipContent>
-                  </Tooltip>
-
-                  {!autoSaveEnabled && (
-                    <button
-                      type="button"
-                      onClick={() => { void handleSave() }}
-                      disabled={saving || baseMtime === null}
-                      className={saveButtonClassName}
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                      {saveButtonLabel}
-                    </button>
-                  )}
+                  <SaveStatusBlock status={saveStatus} savedAt={lastSavedAt} />
 
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -2704,14 +2643,14 @@ function MarkdownTextDocumentRuntimeBlock({
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={cancelEditing}
-                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                        aria-label="Close editor"
+                        onClick={() => { void finishEditing() }}
+                        disabled={saving}
+                        className="rounded-lg px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-50"
                       >
-                        <X className="h-4 w-4" />
+                        Done
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent side="bottom">Close editor</TooltipContent>
+                    <TooltipContent side="bottom">Save and stop editing</TooltipContent>
                   </Tooltip>
                 </div>
               </TooltipProvider>
@@ -2739,6 +2678,7 @@ function MarkdownTextDocumentRuntimeBlock({
             <div data-ltm-edge-swipe-ignore="true">
               <MarkdownRichEditorBlock
                 ref={bodyEditorRef}
+                onSaveRequest={() => { void handleSave().then(() => setSaveConfirmToken(Date.now())) }}
                 findQuery={findCapable ? findQuery : undefined}
                 onFindMatches={reportEditFindMatches}
                 onFindRequest={openFind}
