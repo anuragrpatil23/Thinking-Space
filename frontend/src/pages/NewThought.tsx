@@ -229,6 +229,7 @@ function CreateTab() {
       status={saveStatusKind}
       savedAt={composer.lastSavedAt}
       failureReason={composer.saveError}
+      onSaveNow={() => { void composer.requestSave().then(() => setSaveConfirmToken(Date.now())) }}
       compact={isPhoneSurface}
       reserveWhenIdle={!isTodoMode}
       confirmToken={saveConfirmToken}

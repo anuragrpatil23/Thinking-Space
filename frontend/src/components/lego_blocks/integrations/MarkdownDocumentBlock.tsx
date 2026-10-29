@@ -2194,7 +2194,7 @@ function MarkdownTextDocumentRuntimeBlock({
                 <TooltipProvider delayDuration={200}>
                 {/* First, so its reserved width opens into the empty space on
                     its left (see SaveStatusBlock) instead of between controls. */}
-                {isEditing && <SaveStatusBlock status={saveStatus} savedAt={lastSavedAt} compact={isIosPhone} confirmToken={saveConfirmToken} />}
+                {isEditing && <SaveStatusBlock status={saveStatus} savedAt={lastSavedAt} compact={isIosPhone} confirmToken={saveConfirmToken} onSaveNow={() => { void handleSave().then(() => setSaveConfirmToken(Date.now())) }} />}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="inline-flex">

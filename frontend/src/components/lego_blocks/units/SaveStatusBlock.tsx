@@ -10,18 +10,36 @@ import {
 } from '@/services/lego_blocks/units/saveLocationBlock'
 
 // The one save indicator, shared by the New-note composer and the Explorer
-// editor. Status, not a control: it is never clickable (it used to toggle
-// manual saving, which nobody expected a status to do). Grey in every normal
+// editor. It never changes a setting (it used to toggle manual saving, which
+// nobody expected); clicking it does what ⌘S does — save now. Grey in every normal
 // state — the icon changes shape, not colour, so it can flip between
 // "Saving…" and "Saved" every sentence without pulling the eye. Only a failure
 // gets colour. Auto-save is the only mode; ⌘S just saves sooner.
 
-/** Lucide's cloud with a check. Not shipped in the pinned lucide-react. */
-function CloudCheckIcon({ className }: { className?: string }) {
+/** Lucide's cloud at full size with the same solid check badge as the drive
+ *  (below): same widened viewBox, same sizing and nudge, so the two "saved"
+ *  icons are one family. The badge sits clear of the cloud's top-right lobe. */
+function CloudCheckIcon() {
+  const badgeMask = `${useId()}-badge`
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 -5 31.5 29"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-[16.9px] w-[18.4px] shrink-0 -translate-y-[1.45px]"
+      aria-hidden="true"
+    >
+      <defs>
+        <mask id={badgeMask}>
+          <rect x="0" y="-5" width="31.5" height="29" fill="white" />
+          <path d="m20.5 4.1 1.75 1.75 3.25-3.35" stroke="black" strokeWidth={1.9} fill="none" />
+        </mask>
+      </defs>
       <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
-      <path d="m9.5 13.5 2 2 3.5-3.5" />
+      <circle cx="23" cy="4" r="5.5" fill="currentColor" stroke="none" mask={`url(#${badgeMask})`} />
     </svg>
   )
 }
@@ -80,6 +98,7 @@ export function SaveStatusBlock({
   reserveWhenIdle = false,
   confirmToken,
   failureReason,
+  onSaveNow,
   className,
 }: {
   status: SaveStatusKindBlock
@@ -96,6 +115,11 @@ export function SaveStatusBlock({
   confirmToken?: number
   /** Why saving failed, shown on hover instead of in a banner. */
   failureReason?: string | null
+  /** Click = ⌘S: save now, then the check plays (the caller bumps
+   *  `confirmToken`). Asked for as reassurance (2026-10-29) — the line used
+   *  to *toggle a setting* on click, which nobody expected; saving is what a
+   *  click on "Saved" should mean if it means anything. */
+  onSaveNow?: () => void
   className?: string
 }) {
   const [confirming, setConfirming] = useState(false)
@@ -113,13 +137,14 @@ export function SaveStatusBlock({
   const iconFor = (kind: SaveStatusKindBlock) => kind === 'failed'
     ? <TriangleAlert className={iconClass} />
     : kind === 'saved'
-      ? (location.synced ? <CloudCheckIcon className={iconClass} /> : <HardDriveCheckIcon />)
+      ? (location.synced ? <CloudCheckIcon /> : <HardDriveCheckIcon />)
       : <RefreshCw className={cn(iconClass, 'animate-spin [animation-duration:2s]')} />
   const title = status === 'saved' && savedAt
     ? `${label} at ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
     : status === 'failed'
       ? `${failureReason ? `${failureReason}\n\n` : ''}Your text is kept safe on this device and will be written as soon as saving works again.`
       : label
+  const clickable = Boolean(onSaveNow) && status !== 'idle'
   const shown: SaveStatusKindBlock = status === 'pending' ? 'saving' : status
 
   // Every state (icon + words) stacked in one grid cell, so the cell is as wide
@@ -127,14 +152,17 @@ export function SaveStatusBlock({
   // width opens on the *left*, which is why callers put this first in their
   // cluster — the slack lands in the empty bar beside the title, and nothing
   // to its right ever moves.
+  const Root = clickable ? 'button' : 'span'
   return (
-    <span
-      role={status === 'idle' ? undefined : 'status'}
+    <Root
+      {...(clickable ? { type: 'button' as const, onClick: onSaveNow } : {})}
+      role={clickable ? undefined : status === 'idle' ? undefined : 'status'}
       aria-live="polite"
-      aria-label={label || undefined}
-      title={title || undefined}
+      aria-label={label ? (clickable ? `${label} — save now` : label) : undefined}
+      title={title ? (clickable ? `${title}\nClick to save now (⌘S)` : title) : undefined}
       className={cn(
         'grid select-none justify-items-end whitespace-nowrap px-1 text-xs transition-colors duration-300',
+        clickable && 'ltm-motion-fast cursor-pointer rounded-md px-1.5 py-1 hover:bg-muted hover:text-foreground',
         status === 'failed'
           ? 'font-medium text-amber-600 dark:text-amber-400'
           : confirming && status === 'saved'
@@ -156,6 +184,6 @@ export function SaveStatusBlock({
           {!compact && saveStatusLabelBlock(kind, location)}
         </span>
       ))}
-    </span>
+    </Root>
   )
 }
