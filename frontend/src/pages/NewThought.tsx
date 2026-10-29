@@ -875,11 +875,10 @@ function CreateTab() {
             line would fence it in as one more group of buttons. */}
         {!isPhoneSurface && <span aria-hidden="true" className="w-3 shrink-0" />}
         {!isPhoneSurface && <div ref={setEditorControlsSlot} className="flex items-center" />}
-        {/* Three groups, not seven controls in a row (2026-10-29): work on the
-            text (AI, Mindmap, outline) · about this note (mood, tags, info) ·
-            leave it (New Note). A gap between the first two; a hairline
-            before the last, because it is a different *kind* of action. */}
-        {!isPhoneSurface && <span aria-hidden="true" className="w-2 shrink-0" />}
+        {/* One run of controls, then a hairline before New Note — a different
+            *kind* of action. A gap between the text tools and the note's own
+            controls was tried and read as a layout bug once Mindmap left the
+            bar and only two tools remained (2026-10-29). */}
         {moodButtonBlock}
         {tagsButtonBlock}
         {manualSaveButtonBlock}
