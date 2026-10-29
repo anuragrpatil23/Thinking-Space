@@ -619,6 +619,27 @@
     scrollbar-color: hsl(var(--muted-foreground) / 0.5) transparent;
   }
 
+  /* New Note scrolls the same quiet way (2026-10-29). Under the shell rule
+     its writing area lit a bright 10px bar whenever the pointer was anywhere
+     over the app *or* focus was inside it — and while you type, focus is
+     always inside it, so the bar never left. Thin, hidden at rest, faint while
+     the pointer is over the page, clearer only while actually scrolling. */
+  .ltm-app-shell .ltm-newthought-shell,
+  .ltm-app-shell .ltm-newthought-shell * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .ltm-app-shell .ltm-newthought-shell:hover,
+  .ltm-app-shell .ltm-newthought-shell *:hover {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.22) transparent;
+  }
+
+  .ltm-app-shell.ltm-scrollbar-scrolling .ltm-newthought-shell,
+  .ltm-app-shell.ltm-scrollbar-scrolling .ltm-newthought-shell * {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.5) transparent;
+  }
+
   .ltm-app-shell[data-ltm-surface='electron'][data-ltm-mode='desktop'] {
     --ltm-shell-surface-radius: calc(var(--radius) + 0.72rem);
     --ltm-shell-main-panel-radius: calc(var(--radius) + 0.72rem);
