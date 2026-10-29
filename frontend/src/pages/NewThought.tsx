@@ -670,7 +670,7 @@ function CreateTab() {
         aria-label="New note in this folder"
         className={cn(
           'ltm-motion-fast inline-flex items-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40',
-          isPhoneSurface ? titleBarIconButtonClass : 'gap-1 rounded-md px-1.5 py-1 text-xs font-semibold',
+          isPhoneSurface ? titleBarIconButtonClass : 'shrink-0 gap-1 whitespace-nowrap rounded-md px-1.5 py-1 text-xs font-semibold',
         )}
       >
         <Plus className={isPhoneSurface ? titleBarIconSizeClass : 'h-3.5 w-3.5 shrink-0'} />
