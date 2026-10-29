@@ -16,9 +16,10 @@ import {
 // "Saving…" and "Saved" every sentence without pulling the eye. Only a failure
 // gets colour. Auto-save is the only mode; ⌘S just saves sooner.
 
-/** Lucide's cloud at full size with the same solid check badge as the drive
- *  (below): same widened viewBox, same sizing and nudge, so the two "saved"
- *  icons are one family. The badge sits clear of the cloud's top-right lobe. */
+/** A balanced cloud — flat base, small left bump, big crown — rather than
+ *  Lucide's lopsided one, which read off beside the drive (2026-10-29). Same
+ *  solid check badge, widened viewBox, sizing and nudge as the drive (below),
+ *  so the two "saved" icons are one family. The badge sits clear of the crown. */
 function CloudCheckIcon() {
   const badgeMask = `${useId()}-badge`
   return (
@@ -35,11 +36,11 @@ function CloudCheckIcon() {
       <defs>
         <mask id={badgeMask}>
           <rect x="0" y="-5" width="31.5" height="29" fill="white" />
-          <path d="m20.5 4.1 1.75 1.75 3.25-3.35" stroke="black" strokeWidth={1.9} fill="none" />
+          <path d="m21.5 3.1 1.75 1.75 3.25-3.35" stroke="black" strokeWidth={1.9} fill="none" />
         </mask>
       </defs>
-      <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
-      <circle cx="23" cy="4" r="5.5" fill="currentColor" stroke="none" mask={`url(#${badgeMask})`} />
+      <path d="M6.5 19h11.5a4.5 4.5 0 0 0 .5-8.97A6.5 6.5 0 0 0 6.1 10.3 4.4 4.4 0 0 0 6.5 19Z" />
+      <circle cx="24" cy="3" r="5.5" fill="currentColor" stroke="none" mask={`url(#${badgeMask})`} />
     </svg>
   )
 }
