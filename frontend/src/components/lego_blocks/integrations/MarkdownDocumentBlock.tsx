@@ -121,6 +121,7 @@ import {
   isBlankLineMarkerText,
   parseFrontmatterObject,
   preserveExtraBlankLinesInMarkdown,
+  rehypeTrimBlockWhitespaceBlock,
   scheduleDeferredWork,
   splitFrontmatter,
   stripFrontmatter,
@@ -1095,11 +1096,14 @@ function MarkdownTextDocumentRuntimeBlock({
     applyStewardSuggestionToDraft(suggestion)
   }, [applyStewardSuggestionToDraft, frontmatterMeta.parseError])
   const markdownRemarkPlugins = useMemo(
-    () => [remarkGfm, ...markdownMathRemarkPluginsBlock, remarkObsidianWikilinksOrch],
+    () => [
+      // Single ~ is "approximately" in notes (~$224B), not strikethrough.
+      [remarkGfm, { singleTilde: false }] as [typeof remarkGfm, { singleTilde: boolean }],
+      ...markdownMathRemarkPluginsBlock, remarkObsidianWikilinksOrch],
     [],
   )
   const markdownRehypePlugins = useMemo(
-    () => [...markdownMathRehypePluginsBlock, ...markdownCodeHighlightRehypePluginsBlock],
+    () => [rehypeTrimBlockWhitespaceBlock, ...markdownMathRehypePluginsBlock, ...markdownCodeHighlightRehypePluginsBlock],
     [],
   )
   const renderedViewMarkdown = useMemo(

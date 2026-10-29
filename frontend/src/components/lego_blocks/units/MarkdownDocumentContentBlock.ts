@@ -105,9 +105,13 @@ export function preserveExtraBlankLinesInMarkdown(content: string): string {
       if (runLength <= 2) {
         for (let i = 0; i < runLength; i += 1) output.push('')
       } else {
+        // A marker at column 0 ends any open list, so indented text after the
+        // gap (still part of the item in plain markdown) turned into a code
+        // block. Inside a list, indent the marker to stay in the item.
+        const indent = markerIndentInList(lines, index, runEnd)
         output.push('', '')
         for (let i = 0; i < runLength - 2; i += 1) {
-          output.push(MARKDOWN_BLANK_LINE_MARKER, '')
+          output.push(`${indent}${MARKDOWN_BLANK_LINE_MARKER}`, '')
         }
       }
 
@@ -119,6 +123,50 @@ export function preserveExtraBlankLinesInMarkdown(content: string): string {
   }
 
   return output.join('\n')
+}
+
+const LIST_ITEM_LINE = /^\s*(?:[-*+]|\d+[.)])(?:\s|$)/
+const leadingSpaces = (line: string): number => line.length - line.trimStart().length
+
+/** Indent for blank-line markers in the run `[start, end)`: none outside a
+ *  list; inside one, the shallower of the lines around the gap, so the marker
+ *  joins the item the following text belongs to. */
+function markerIndentInList(lines: string[], start: number, end: number): string {
+  const next = lines.slice(end).find(line => line.trim() !== '')
+  if (next === undefined || leadingSpaces(next) === 0) return ''
+  let prevIndex = start - 1
+  while (prevIndex >= 0 && lines[prevIndex].trim() === '') prevIndex -= 1
+  if (prevIndex < 0) return ''
+  // The block the gap sits in starts at the nearest unindented line above it.
+  let rootIndex = prevIndex
+  while (rootIndex > 0 && (lines[rootIndex].trim() === '' || leadingSpaces(lines[rootIndex]) > 0)) rootIndex -= 1
+  if (!LIST_ITEM_LINE.test(lines[rootIndex])) return ''
+  return ' '.repeat(Math.min(leadingSpaces(lines[prevIndex]), leadingSpaces(next)))
+}
+
+type HastNodeBlock = { type: string; tagName?: string; value?: string; children?: HastNodeBlock[] }
+const BLOCK_TAGS = new Set(['p', 'ul', 'ol', 'pre', 'blockquote', 'table', 'div', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+const isBlockNode = (node: HastNodeBlock | undefined) => node?.type === 'element' && BLOCK_TAGS.has(node.tagName ?? '')
+
+/** Rehype plugin: drop whitespace-only text that only separates block children
+ *  of a list item or quote. Invisible normally, but with "preserve newlines"
+ *  (`white-space: pre-wrap` on `li`) the "\n" before a loose item's `<p>` put
+ *  the bullet on a line of its own, text below. Inline soft breaks (between
+ *  two inline nodes) are left alone. */
+export function rehypeTrimBlockWhitespaceBlock() {
+  const visit = (node: HastNodeBlock) => {
+    if (!node.children) return
+    if (node.type === 'element' && (node.tagName === 'li' || node.tagName === 'blockquote')) {
+      const kids = node.children
+      node.children = kids.filter((child, i) => !(
+        child.type === 'text'
+        && !(child.value ?? '').trim()
+        && (isBlockNode(kids[i - 1]) || isBlockNode(kids[i + 1]))
+      ))
+    }
+    node.children.forEach(visit)
+  }
+  return (tree: HastNodeBlock) => visit(tree)
 }
 
 export function formatBytes(bytes: number): string {
