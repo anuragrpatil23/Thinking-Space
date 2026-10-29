@@ -183,6 +183,8 @@ export interface NoteComposerOrch {
   saveState: NoteSaveStateBlock
   /** Epoch ms of the last successful note write, for the status hover. */
   lastSavedAt: number | null
+  /** Why the last note save failed, for the status hover. */
+  saveError: string | null
 
   // --- actions ---
   setFilename: (value: string) => void
@@ -358,6 +360,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
   // rather than a ref because the retry effect has to re-run when it changes.
   const [saveFailureCount, setSaveFailureCount] = useState(0)
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   /** A destination change waiting on the question only a person can answer:
    *  does this note belong there, or do you want a fresh one there?
@@ -1227,6 +1230,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
       })
       setSavedPath(outputPath)
       setSaveFailureCount(0)
+      setSaveError(null)
       setLastSavedAt(Date.now())
       // The read-back above confirms the text is at its target, which is the
       // only condition under which a draft may be forgotten. Text typed during
@@ -1244,6 +1248,27 @@ export function useNoteComposerOrch(): NoteComposerOrch {
       // get from the badge — and errors always surface.)
       triggerSaveFeedback()
     } catch (err) {
+      // The name was taken while this page was still unwritten — another
+      // window on the same vault, another device via iCloud, or a file made by
+      // hand. Nothing else can produce it: the composer opens today's note
+      // whenever it already exists at load. The create can never succeed, so
+      // retrying it looped forever (2026-10-29). Neither page ever saw the
+      // other, so they are different notes: this one takes the next free name
+      // (`-2`, `-3`…), the rule New Note and moving use, and auto-save writes
+      // it there. Never merged into the other file, which may still be open.
+      const failure = err instanceof Error ? err.message : ''
+      if (!makeThisTodo && targetPath && !targetFileState?.exists && failure.startsWith('File already exists')) {
+        const taken = normalizedFilename
+        const chosen = await findFreeFilename(destinationPath, taken).catch(() => null)
+        if (chosen && chosen !== taken) {
+          setFilenameState(chosen)
+          setFilenameTouched(true)
+          setSaveError(null)
+          setSaveFailureCount(0)
+          setMessage(`${taken} was already taken, so this note is ${chosen}.`)
+          return
+        }
+      }
       // A conflict means someone else wrote the file (or only touched its
       // mtime — iCloud does). Adopt their content as the new baseline and
       // replay the user's edits onto it; replacing the buffer outright threw
@@ -1265,7 +1290,12 @@ export function useNoteComposerOrch(): NoteComposerOrch {
           baseHash: err.currentHash,
         })
       }
-      setError(err instanceof Error ? err.message : 'Unknown error')
+      // Note saves report in the status line (its hover carries the reason),
+      // not a banner — the line already says "Not saved — retrying". To dos
+      // have no status line, so theirs still surface as a banner.
+      const reason = err instanceof Error ? err.message : 'Unknown error'
+      if (makeThisTodo) setError(reason)
+      else setSaveError(reason)
       // Drives the retry below. Without it a failed save simply sat there: the
       // auto-save effect only re-fires on a `content` change, so stopping
       // typing after a failure left the text unsaved indefinitely, with an
@@ -1485,6 +1515,7 @@ export function useNoteComposerOrch(): NoteComposerOrch {
     loadingTargetContent,
     error,
     lastSavedAt,
+    saveError,
     message,
     savedPath,
     itemsAdded,

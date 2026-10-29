@@ -123,6 +123,10 @@ interface MarkdownRichEditorBlockProps {
    *  full-width rows for an overflow menu — which is where a phone puts them,
    *  since a 390px bar cannot hold them next to a filename. */
   headerControlsLayout?: 'bar' | 'menu'
+  /** Whether Mindmap also sits among the header controls while the
+   *  formatting toolbar is closed. The toolbar always carries it; a host whose
+   *  title bar is crowded (New Note on desktop) can leave it there alone. */
+  headerMindmap?: boolean
   /** Rendered-text snippets around a view-mode click; used to place the caret
    *  at the clicked spot when the editor mounts (best-effort text search). */
   initialCursorHint?: { before: string; after: string } | null
@@ -511,6 +515,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
   toolbarAlwaysVisible = false,
   headerControlsContainer = null,
   headerControlsLayout = 'bar',
+  headerMindmap = true,
   initialCursorHint = null,
   onOpenWikilink,
   enableFormattingToolbar = true,
@@ -1587,7 +1592,7 @@ const MarkdownRichEditorBlockInner = forwardRef<MarkdownRichEditorBlockHandle, M
               {(headerControlsMenuLayout || !compactMobile) && 'AI'}
             </button>
           )}
-          {supportsMindmap && !showToolbar && (
+          {supportsMindmap && headerMindmap && !showToolbar && (
             <button
               type="button"
               onClick={toggleMindmapPanel}

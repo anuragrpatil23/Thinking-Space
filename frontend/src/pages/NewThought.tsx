@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Loader2, X, ChevronDown, Save, Tag, MoreHorizontal, Info, Plus } from 'lucide-react'
+import { Loader2, X, ChevronDown, Save, Tag, MoreHorizontal, Info, Plus, TriangleAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -228,6 +228,7 @@ function CreateTab() {
     <SaveStatusBlock
       status={saveStatusKind}
       savedAt={composer.lastSavedAt}
+      failureReason={composer.saveError}
       compact={isPhoneSurface}
       reserveWhenIdle={!isTodoMode}
       confirmToken={saveConfirmToken}
@@ -535,6 +536,9 @@ function CreateTab() {
       toolbarAlwaysVisible={viewSurface === 'canvas'}
       headerControlsContainer={viewSurface === 'doc' ? editorControlsSlot : null}
       headerControlsLayout={isPhoneSurface ? 'menu' : 'bar'}
+      // Desktop: Mindmap lives in the formatting toolbar only — the bar keeps
+      // AI and the toolbar toggle (2026-10-29). The phone's ⋯ menu keeps it.
+      headerMindmap={isPhoneSurface}
       aiPanelOpen={showAiAssist}
       onAiPanelOpenChange={setShowAiAssist}
       aiAssistScope="new_thought"
@@ -867,6 +871,9 @@ function CreateTab() {
         {/* First, so its reserved width opens into the empty bar on its left
             (see SaveStatusBlock) instead of between the controls. */}
         {saveStateBadgeBlock}
+        {/* A gap, not a hairline: the status is text, not a control, and a
+            line would fence it in as one more group of buttons. */}
+        {!isPhoneSurface && <span aria-hidden="true" className="w-3 shrink-0" />}
         {!isPhoneSurface && <div ref={setEditorControlsSlot} className="flex items-center" />}
         {/* Three groups, not seven controls in a row (2026-10-29): work on the
             text (AI, Mindmap, outline) · about this note (mood, tags, info) ·
@@ -985,17 +992,38 @@ function CreateTab() {
     </div>
   ) : null
 
+  useEffect(() => {
+    if (!composer.message) return
+    const timer = window.setTimeout(() => composer.setMessage(null), 6000)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composer.message])
+
   const statusMessagesBlock = (composer.message || composer.error || draftRecoveryBlock) ? (
     <div className="space-y-2">
       {draftRecoveryBlock}
+      {/* Notices, not alarms (2026-10-29): a slim line centred under the bar,
+          sized to its words. Note *save* failures never come here — the
+          status line owns those. Information fades on its own; an error
+          stays until the next action clears it. */}
       {composer.message && (
-        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/20 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
-          {composer.message}
+        <div className="ltm-animate-fade-in mx-auto flex w-fit max-w-2xl items-center gap-2 rounded-lg border border-border/60 bg-muted/40 py-1.5 pl-3 pr-1.5 text-[13px] text-muted-foreground">
+          <Info className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0">{composer.message}</span>
+          <button
+            type="button"
+            onClick={() => composer.setMessage(null)}
+            aria-label="Dismiss"
+            className="ltm-motion-fast shrink-0 rounded p-1 transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-3 w-3" />
+          </button>
         </div>
       )}
       {composer.error && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {composer.error}
+        <div className="mx-auto flex w-fit max-w-2xl items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-[13px] text-destructive">
+          <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0">{composer.error}</span>
         </div>
       )}
     </div>

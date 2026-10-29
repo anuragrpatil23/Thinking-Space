@@ -79,6 +79,7 @@ export function SaveStatusBlock({
   compact = false,
   reserveWhenIdle = false,
   confirmToken,
+  failureReason,
   className,
 }: {
   status: SaveStatusKindBlock
@@ -93,6 +94,8 @@ export function SaveStatusBlock({
    *  line would read "Saved" before and after — a keypress with no visible
    *  answer feels broken. A changed token plays the check animation. */
   confirmToken?: number
+  /** Why saving failed, shown on hover instead of in a banner. */
+  failureReason?: string | null
   className?: string
 }) {
   const [confirming, setConfirming] = useState(false)
@@ -115,7 +118,7 @@ export function SaveStatusBlock({
   const title = status === 'saved' && savedAt
     ? `${label} at ${new Date(savedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
     : status === 'failed'
-      ? 'Your text is kept safe on this device and will be written as soon as saving works again.'
+      ? `${failureReason ? `${failureReason}\n\n` : ''}Your text is kept safe on this device and will be written as soon as saving works again.`
       : label
   const shown: SaveStatusKindBlock = status === 'pending' ? 'saving' : status
 
