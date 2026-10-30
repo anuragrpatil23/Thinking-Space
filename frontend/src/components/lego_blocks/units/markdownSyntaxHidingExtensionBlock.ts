@@ -62,6 +62,13 @@ export const markdownSyntaxHidingThemeBlock: Extension = EditorView.baseTheme({
   },
   '.ltm-cm-quote-mark': { opacity: '0.4' },
   '.ltm-cm-syntax-mark': { opacity: '0.35' },
+  // A line being underlined by a lone `-` the cursor is on: the start of a
+  // list item, not a heading yet. The line class is outside every highlight
+  // span, so it can undo their heading look.
+  '.cm-line.ltm-cm-setext-pending, .cm-line.ltm-cm-setext-pending *': {
+    fontWeight: 'inherit !important',
+    textDecoration: 'none !important',
+  },
 })
 
 /** How markdown syntax markers are treated on lines the cursor isn't touching.
@@ -127,6 +134,18 @@ export function createMarkdownSyntaxHidingExtensionBlock(
                 return
               }
               switch (node.name) {
+                case 'SetextHeading2': {
+                  // Markdown reads a paragraph line over a lone `-` as a heading, so
+                  // typing "- " under a line flashes it into one until the item has
+                  // text. While the cursor is on that `-`, leave the lines as text;
+                  // the file is untouched, and a `-` left there still reads as Markdown says.
+                  const underline = view.state.doc.lineAt(node.to)
+                  if (underline.text.trim() !== '-' || !cursorLines.has(underline.number)) return
+                  for (let n = view.state.doc.lineAt(node.from).number; n <= underline.number; n++) {
+                    lineDecos.push({ at: view.state.doc.line(n).from, cls: 'ltm-cm-setext-pending' })
+                  }
+                  return
+                }
                 case 'StrongEmphasis':
                   marks.push({ from: node.from, to: node.to, deco: boldMarkBlock })
                   return
