@@ -17,6 +17,8 @@ import {
 } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 import { valueLineDueBlock, valueLineIssueLabelBlock, valueLineIssueRowsBlock, type ValueLineIssueRowBlock, type WebullResearchFileBlock, type WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
+import type { WebullClosedPositionBlock } from '@/personal_extension/services/lego_blocks/units/webullClosedPositionsBlock'
+import { useWebullClosedPositionsBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullClosedPositionsBlock'
 import { cn } from '@/lib/utils'
 
 const OBSERVATION_PREVIEW_BLOCK = 1
@@ -56,6 +58,8 @@ interface WebullCompanyPageBlockProps {
   /** The positions table and its controls, owned by the workspace; none for a company you don't hold. */
   positionsSlot?: ReactNode
   positionsActions?: ReactNode
+  /** The name an account goes by, for the closed positions table under the open ones. */
+  accountLabel?: (accountId: string | null, accountNumber: string | null) => string | null
   /** The quiet status line under the side panel: sync time, warnings, tags, diagnostics. */
   footer?: ReactNode
   onOpenFile: (path: string) => void
@@ -70,6 +74,80 @@ function formatDateBlock(iso: string | null): string {
   const date = new Date(`${iso.slice(0, 10)}T12:00:00`)
   if (Number.isNaN(date.getTime())) return iso
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function moneyBlock(value: number | null): string {
+  if (value === null) return '—'
+  return `$${Math.round(value).toLocaleString('en-US')}`
+}
+
+/**
+ * Closed positions, latest first: what each cost and what it was worth the
+ * last time a sync saw it open. That is the last value before it closed, not
+ * the sale price; the track record has what the statements say it came back with.
+ */
+function ClosedPositionsTableBlock({ rows, accountLabel, filePath, onOpenFile }: {
+  rows: WebullClosedPositionBlock[]
+  accountLabel?: (accountId: string | null, accountNumber: string | null) => string | null
+  filePath: ((row: WebullClosedPositionBlock) => string) | null
+  onOpenFile: (path: string) => void
+}) {
+  const total = rows.reduce((sum, row) => sum + (row.result ?? 0), 0)
+  const counted = rows.filter(row => row.result !== null).length
+  return (
+    <F9PanelBlock className="overflow-x-auto">
+      <table className="w-full min-w-[640px] border-collapse text-left text-[13px] tabular-nums">
+        <thead className="[&_th]:whitespace-nowrap [&_th]:border-b-[0.5px] [&_th]:border-[#E5E5EA] [&_th]:px-3 [&_th]:py-2 [&_th]:text-[11px] [&_th]:font-medium [&_th]:text-zinc-500 dark:[&_th]:border-zinc-800">
+          <tr>
+            <th className="!pl-4">Position</th>
+            <th>Account</th>
+            <th className="text-right">Qty</th>
+            <th className="text-right">Cost</th>
+            <th className="text-right" title="Its value the last time a sync saw it open">Last value</th>
+            <th className="text-right">Result</th>
+            <th className="!pr-4 text-right" title="About when it closed: the last time a sync saw it">Closed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(row => (
+            <tr
+              key={row.fileName}
+              onClick={filePath ? () => onOpenFile(filePath(row)) : undefined}
+              className={cn('[&>td]:border-b-[0.5px] [&>td]:border-[#EFEFF2] [&>td]:px-3 [&>td]:py-2 last:[&>td]:border-b-0 dark:[&>td]:border-zinc-800/70', filePath && 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50')}
+            >
+              <td className="!pl-4">
+                <div className="font-medium text-zinc-900 dark:text-zinc-100">
+                  {row.kind === 'stock' ? row.symbol : `${row.symbol} ${row.strike ?? ''} ${row.kind}`}
+                </div>
+                <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                  {row.kind === 'stock' ? 'Stock' : `Expires ${formatDateBlock(row.expiry)}`}
+                </div>
+              </td>
+              <td className="text-zinc-500 dark:text-zinc-400">{accountLabel?.(row.accountId, row.accountNumber) ?? '—'}</td>
+              <td className="text-right">{row.quantity ?? '—'}</td>
+              <td className="text-right">{moneyBlock(row.cost)}</td>
+              <td className="text-right">{moneyBlock(row.lastValue)}</td>
+              <td className={cn('text-right', row.result !== null && (row.result >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'))}>
+                {row.result === null ? '—' : `${row.result >= 0 ? '+' : '−'}${moneyBlock(Math.abs(row.result))}`}
+              </td>
+              <td className="!pr-4 text-right text-zinc-500 dark:text-zinc-400">{formatDateBlock(row.closedOn)}</td>
+            </tr>
+          ))}
+        </tbody>
+        {counted > 1 && (
+          <tfoot>
+            <tr className="[&>td]:border-t-[0.5px] [&>td]:border-[#E5E5EA] [&>td]:px-3 [&>td]:py-2 dark:[&>td]:border-zinc-800">
+              <td colSpan={5} className="!pl-4 text-[12px] text-zinc-500 dark:text-zinc-400">Together, {counted} with a known cost</td>
+              <td className={cn('text-right font-medium', total >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
+                {`${total >= 0 ? '+' : '−'}${moneyBlock(Math.abs(total))}`}
+              </td>
+              <td />
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </F9PanelBlock>
+  )
 }
 
 type ValueLinePanelStateBlock = ReturnType<typeof useValueLineCompanyBlock>
@@ -361,6 +439,7 @@ export default function WebullCompanyPageBlock({
   positionCount,
   positionsSlot,
   positionsActions,
+  accountLabel,
   footer,
   onOpenFile,
 }: WebullCompanyPageBlockProps) {
@@ -368,6 +447,7 @@ export default function WebullCompanyPageBlock({
   const callsSync = useEarningsCallsCompanyBlock(executionRoot, ticker)
   const { dossier, loading, error } = useWebullCompanyDossierBlock(executionRoot, ticker, companyName, valueLine.fetchedCount + callsSync.fetchedCount)
   const { record: trackRecord, reportPath } = useWebullTrackRecordBlock(executionRoot, ticker)
+  const closedPositions = useWebullClosedPositionsBlock(executionRoot, ticker)
   const [priceWindow, setPriceWindow] = useState<PriceWindowBlock>('2y')
   const [observationsExpanded, setObservationsExpanded] = useState(false)
 
@@ -496,6 +576,18 @@ export default function WebullCompanyPageBlock({
         <section id="webull-company-positions" className="scroll-mt-4">
           <F9SectionLabelBlock trailing={positionsActions}>Positions · {positionCount}</F9SectionLabelBlock>
           {positionsSlot}
+        </section>
+      )}
+
+      {closedPositions.length > 0 && (
+        <section id="webull-company-closed-positions" className="scroll-mt-4">
+          <F9SectionLabelBlock>Closed · {closedPositions.length}</F9SectionLabelBlock>
+          <ClosedPositionsTableBlock
+            rows={closedPositions}
+            accountLabel={accountLabel}
+            filePath={executionRoot ? (row) => `${executionRoot}/${ticker.toUpperCase()}/archived_positions/${row.fileName}` : null}
+            onOpenFile={onOpenFile}
+          />
         </section>
       )}
 

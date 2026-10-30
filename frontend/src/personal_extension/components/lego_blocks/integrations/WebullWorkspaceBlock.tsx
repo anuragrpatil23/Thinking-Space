@@ -758,6 +758,8 @@ function buildFallbackCompaniesFromOverallRowsBlock(rows: Array<Record<string, u
       lastPrice: firstStringBlock(row.last_price) || null,
       unrealizedProfitLoss: firstStringBlock(row.unrealized_profit_loss) || null,
       dayProfitLoss: firstStringBlock(row.day_profit_loss) || null,
+      marketValue: firstStringBlock(row.market_value) || null,
+      updatedAt: null,
       linkedIdeaId: null,
       relatedNodes: [],
       tags: [],
@@ -2694,6 +2696,7 @@ export default function WebullWorkspaceBlock({
               holding={selectedCompanyHolding}
               positionsActions={nativePositionsActions}
               positionCount={selectedCompany.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length}
+              accountLabel={(accountId, accountNumber) => resolveAccountLabelBlock(accountLabelEntries, accountId, accountNumber)}
               onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
               positionsSlot={(
                 <div className="space-y-3">

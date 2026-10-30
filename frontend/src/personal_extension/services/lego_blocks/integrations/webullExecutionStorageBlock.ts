@@ -74,6 +74,10 @@ export interface WebullPositionSummaryBlock {
   lastPrice: string | null
   unrealizedProfitLoss: string | null
   dayProfitLoss: string | null
+  /** Its value at the last sync that saw it; for a closed position, the last value before it closed. */
+  marketValue: string | null
+  /** When the file was last written; for a closed position, about when it closed. */
+  updatedAt: string | null
   linkedIdeaId: string | null
   relatedNodes: string[]
   tags: string[]
@@ -564,6 +568,23 @@ export async function readWebullOverallCacheBlock(
     assetsPositions: parsed.assets_positions ?? null,
     source,
   }
+}
+
+/** Every file in a company's archived_positions folder, read whole: the index keeps no last value or closing day for them. */
+export async function readWebullArchivedPositionsBlock(executionRoot: string, companyTicker: string, fsParam?: VaultFS): Promise<WebullPositionSummaryBlock[]> {
+  const fs = fsParam ?? getVaultFS()
+  const ticker = normalizeTickerBlock(companyTicker)
+  if (!ticker) return []
+  const dir = joinPathBlock(executionRoot, ticker, ARCHIVED_POSITIONS_DIR_NAME_BLOCK)
+  if (!(await fs.exists(dir))) return []
+  const listed = await fs.list(dir)
+  const out: WebullPositionSummaryBlock[] = []
+  for (const fileName of listed.files) {
+    if (!fileName.toLowerCase().endsWith('.md')) continue
+    const parsed = parseMarkdownFrontmatterBlock(await fs.read(joinPathBlock(dir, fileName)))
+    out.push(buildPositionSummaryFromFrontmatterBlock(parsed.frontmatter, fileName, ticker))
+  }
+  return out
 }
 
 export async function readWebullPositionDetailBlock(
@@ -1290,6 +1311,8 @@ function buildPositionSummaryFromFrontmatterBlock(
     lastPrice: readNullableStringFieldBlock(frontmatter.last_price),
     unrealizedProfitLoss: readNullableStringFieldBlock(frontmatter.unrealized_profit_loss),
     dayProfitLoss: readNullableStringFieldBlock(frontmatter.day_profit_loss),
+    marketValue: readNullableStringFieldBlock(frontmatter.market_value),
+    updatedAt: readNullableStringFieldBlock(frontmatter.updated_at),
     linkedIdeaId: readNullableStringFieldBlock(frontmatter.linked_idea_id),
     relatedNodes: readStringArrayFieldBlock(frontmatter.related_nodes)
       .map(path => normalizeSlashPathBlock(path).replace(/^\/+|\/+$/g, ''))
@@ -1325,6 +1348,8 @@ function asPositionSummaryListBlock(value: unknown): WebullPositionSummaryBlock[
       lastPrice: readNullableStringFieldBlock(record.last_price),
       unrealizedProfitLoss: readNullableStringFieldBlock(record.unrealized_profit_loss),
       dayProfitLoss: readNullableStringFieldBlock(record.day_profit_loss),
+    marketValue: readNullableStringFieldBlock(record.market_value),
+    updatedAt: readNullableStringFieldBlock(record.updated_at),
       linkedIdeaId: readNullableStringFieldBlock(record.linked_idea_id),
       relatedNodes: readStringArrayFieldBlock(record.related_nodes)
         .map(path => normalizeSlashPathBlock(path).replace(/^\/+|\/+$/g, ''))
