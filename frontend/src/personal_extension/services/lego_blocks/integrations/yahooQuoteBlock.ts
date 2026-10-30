@@ -24,6 +24,15 @@ export interface YahooQuoteBatchResultBlock {
 const YAHOO_CHART_BASE_BLOCK = 'https://query1.finance.yahoo.com/v8/finance/chart'
 const YAHOO_FETCH_TIMEOUT_MS_BLOCK = 8_000
 
+// Webull writes a share class without its separator (BRKB); Yahoo wants BRK-B.
+const YAHOO_CLASS_SYMBOLS_BLOCK: Record<string, string> = { BRKA: 'BRK-A', BRKB: 'BRK-B', BFA: 'BF-A', BFB: 'BF-B' }
+
+/** The symbol Yahoo knows a ticker by: BRKB and BRK.B are both BRK-B. */
+export function yahooSymbolBlock(ticker: string): string {
+  const t = ticker.trim().toUpperCase()
+  return YAHOO_CLASS_SYMBOLS_BLOCK[t] ?? t.replace(/\./g, '-')
+}
+
 function raceTimeoutBlock<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const handle = window.setTimeout(() => reject(new Error(message)), ms)
@@ -91,7 +100,7 @@ function parseChartResponseBlock(symbol: string, body: string): YahooStockQuoteB
 async function fetchOneYahooStockQuoteBlock(symbol: string): Promise<YahooStockQuoteBlock | null> {
   const normalized = symbol.trim().toUpperCase()
   if (!normalized) return null
-  const url = `${YAHOO_CHART_BASE_BLOCK}/${encodeURIComponent(normalized)}?interval=1d&range=1d`
+  const url = `${YAHOO_CHART_BASE_BLOCK}/${encodeURIComponent(yahooSymbolBlock(normalized))}?interval=1d&range=1d`
   const response = await fetchTextThroughElectronBlock(url)
   if (response.status < 200 || response.status >= 300) {
     throw new Error(`Yahoo chart HTTP ${response.status} for ${normalized}`)
@@ -175,7 +184,7 @@ export async function fetchYahooDailyClosesBlock(
   if (!normalized) return []
   const period1 = Math.floor(Date.parse(`${fromDay}T00:00:00Z`) / 1000)
   const period2 = Math.floor(Date.parse(`${toDay}T23:59:59Z`) / 1000)
-  const url = `${YAHOO_CHART_BASE_BLOCK}/${encodeURIComponent(normalized)}?interval=1d&period1=${period1}&period2=${period2}`
+  const url = `${YAHOO_CHART_BASE_BLOCK}/${encodeURIComponent(yahooSymbolBlock(normalized))}?interval=1d&period1=${period1}&period2=${period2}`
   const response = await fetchTextThroughElectronBlock(url)
   if (response.status < 200 || response.status >= 300) {
     throw new Error(`Yahoo chart HTTP ${response.status} for ${normalized}`)
@@ -225,9 +234,16 @@ export async function fetchYahooDailyBarsBlock(symbol: string, fromDay: string, 
   if (!normalized) return []
   const period1 = Math.floor(Date.parse(`${fromDay}T00:00:00Z`) / 1000)
   const period2 = Math.floor(Date.parse(`${toDay}T23:59:59Z`) / 1000)
-  const url = `${YAHOO_CHART_BASE_BLOCK}/${encodeURIComponent(normalized)}?interval=1d&period1=${period1}&period2=${period2}`
-  const response = await fetchTextThroughElectronBlock(url)
+  const url = `${YAHOO_CHART_BASE_BLOCK}/${encodeURIComponent(yahooSymbolBlock(normalized))}?interval=1d&period1=${period1}&period2=${period2}`
+  let response = await fetchTextThroughElectronBlock(url)
+  // Yahoo limits how fast it is asked: wait and ask again before giving up.
+  for (const wait of [4_000, 15_000]) {
+    if (response.status !== 429) break
+    await new Promise(r => window.setTimeout(r, wait))
+    response = await fetchTextThroughElectronBlock(url)
+  }
   if (response.status === 404) return []
+  if (response.status === 429) throw new Error(`Yahoo is limiting requests (HTTP 429) for ${normalized}`)
   if (response.status < 200 || response.status >= 300) throw new Error(`Yahoo chart HTTP ${response.status} for ${normalized}`)
   return parseYahooDailyBarsBlock(response.body)
 }

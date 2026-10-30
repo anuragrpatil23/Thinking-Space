@@ -17,6 +17,8 @@ const COOKIE_URL = 'https://fc.yahoo.com';
 const CRUMB_URL = 'https://query1.finance.yahoo.com/v1/test/getcrumb';
 const OPTIONS_URL = 'https://query1.finance.yahoo.com/v7/finance/options';
 const PACE_MS = 800;
+const LIMITED_WAITS_MS = [4_000, 15_000];
+const CLASS_SYMBOLS: Record<string, string> = { BRKA: 'BRK-A', BRKB: 'BRK-B', BFA: 'BF-A', BFB: 'BF-B' };
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
   Accept: 'application/json,text/plain,*/*',
@@ -89,7 +91,8 @@ async function freshCrumbBlock(): Promise<string> {
 
 function validTickerBlock(ticker: unknown): string {
   if (typeof ticker !== 'string' || !/^[A-Z][A-Z0-9.-]{0,9}$/.test(ticker)) throw new Error('yahoo options: bad ticker');
-  return ticker.replace(/\./g, '-');
+  // Webull writes a share class without its separator (BRKB); Yahoo wants BRK-B.
+  return CLASS_SYMBOLS[ticker] ?? ticker.replace(/\./g, '-');
 }
 
 function validExpiryBlock(expiry: unknown): number | null {
@@ -150,6 +153,13 @@ export async function yahooOptionsChainBlock(payload: { ticker: unknown; expiry?
     const url = (c: string) => `${OPTIONS_URL}/${encodeURIComponent(symbol)}?crumb=${encodeURIComponent(c)}${expiry ? `&date=${expiry}` : ''}`;
     let response = await getBlock(url(crumb ?? (await freshCrumbBlock())));
     if (response.status === 401 || response.status === 403) response = await getBlock(url(await freshCrumbBlock()));
+    // Yahoo limits how fast it is asked: wait and ask again (the queue waits too).
+    for (const wait of LIMITED_WAITS_MS) {
+      if (response.status !== 429) break;
+      await new Promise((r) => setTimeout(r, wait));
+      response = await getBlock(url(crumb ?? (await freshCrumbBlock())));
+    }
+    if (response.status === 429) throw new Error('yahoo options: rate limited (HTTP 429)');
     if (response.status === 404) return { covered: false, price: null, marketCap: null, trailingPe: null, forwardPe: null, marketTime: null, expirations: [], expiry: null, calls: [] };
     if (response.status !== 200) throw new Error(`yahoo options: HTTP ${response.status}`);
     return parseYahooOptionsBlock(response.body);
