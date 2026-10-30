@@ -243,7 +243,7 @@ function AiReadsStatusBlock({ reader }: { reader: ReturnType<typeof useFeedAiRea
           ? (() => {
             // `waiting` is every article not yet read, this batch's unfinished ones included
             const after = progress.kind === 'articles' ? waiting - (progress.total - progress.done) : waiting
-            return `${progress.kind === 'stories' ? 'Writing story cards' : 'Reading'} · ${progress.done} of ${progress.total} in this batch${after > 0 ? ` · ${after} more after it` : ''}`
+            return `${progress.kind === 'topics' ? 'Sorting today into topics' : progress.kind === 'stories' ? 'Writing story cards' : 'Reading'} · ${progress.done} of ${progress.total} in this batch${after > 0 ? ` · ${after} more after it` : ''}`
           })()
           : [
             waiting > 0 ? `${waiting} waiting` : 'Up to date',

@@ -1,5 +1,6 @@
 import { lazy, type ComponentType } from 'react'
 import type { WebullUniverseGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
+import type { GapPositionLinkBlock } from '@/personal_extension/services/lego_blocks/units/webullGapLinkMatchBlock'
 
 // The Gaps tab lives in a private folder (personal_extension/thinkingspace-personal) that is not
 // part of the public repo. When the folder is present the tab is shown; when it
@@ -59,6 +60,16 @@ const FEED_DROPS_MODULES = import.meta.glob<{ default: ComponentType<PrivateFeed
 const loadFeedDrops = Object.values(FEED_DROPS_MODULES)[0]
 export const FEED_DROPS_AVAILABLE = Boolean(loadFeedDrops)
 export const PrivateFeedDropsBlock = loadFeedDrops ? lazy(loadFeedDrops) : null
+
+// Which gap holds which position, read from the gaps' positions logs; without
+// the private folder there are no gaps, so every position shows none.
+const GAP_LINKS_MODULES = import.meta.glob<{ loadPrivateGapPositionLinks: (executionRoot: string) => Promise<GapPositionLinkBlock[]> }>('../../../thinkingspace-personal/gapLinks.ts')
+const loadGapLinks = Object.values(GAP_LINKS_MODULES)[0]
+
+export async function loadPrivateGapPositionLinksBlock(executionRoot: string): Promise<GapPositionLinkBlock[]> {
+  if (!loadGapLinks) return []
+  return loadGapLinks().then(m => m.loadPrivateGapPositionLinks(executionRoot)).catch(() => [])
+}
 
 const MARKET_PASS_MODULES = import.meta.glob<{ runPrivateMarketPassIfDue: () => Promise<void> }>('../../../thinkingspace-personal/marketPass.ts')
 const loadMarketPass = Object.values(MARKET_PASS_MODULES)[0]

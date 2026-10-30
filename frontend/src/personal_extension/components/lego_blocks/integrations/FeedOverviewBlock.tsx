@@ -1,15 +1,15 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useRssFeedsBlock } from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
 import { rssFeedIdsExcludedFromAllUnreadBlock, rssReaderFeedsBlock, type RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
-import { buildRssDayInboxBlock, recentRssFeedsBlock, rssDayLabelBlock, rssLoudStoriesBlock, rssStoryPublishersBlock, type RssStoryBlock } from '@/services/lego_blocks/units/rssStoryBlock'
-import { storyCardForBlock } from '@/services/orchestrators/rssStoryCardOrch'
+import { buildRssDayInboxBlock, recentRssFeedsBlock, rssDayLabelBlock, type RssStoryBlock } from '@/services/lego_blocks/units/rssStoryBlock'
+import { localDayBlock, rssTopicItemsBlock, rssTopicsShownBlock, type RssTopicBlock } from '@/services/lego_blocks/units/rssTopicBlock'
 import { readLastLibraryPassOrch } from '@/services/orchestrators/libraryFullTextOrch'
 import { readLastValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { cn } from '@/lib/utils'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { Bar, BarChart, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { FEED_PASTELS_BLOCK, F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK, F9_CHART_TOOLTIP_STYLE_BLOCK, F9FactRowBlock, F9PanelBlock } from '../units/F9NativeBlock'
-import { useStoryCardsBlock, type useFeedAiReadBlock } from './FeedAiReaderBlock'
+import { useRssTopicsBlock, type useFeedAiReadBlock } from './FeedAiReaderBlock'
 import { FeedReadingNotesPanelBlock } from './FeedReadingNotesPanelBlock'
 
 const LAST_SEEN_KEY_BLOCK = 'ltm-feed-overview-last-seen'
@@ -137,6 +137,82 @@ function ArrivalsChartBlock({ rows }: { rows: ReturnType<typeof feedArrivalsByHo
  * attention, and how the last days went. Nothing here ranks articles by
  * importance; "loud" is only how many sources carry a story.
  */
+type FeedTopicEntryBlock = { topic: RssTopicBlock; items: RssFeedItemBlock[] }
+
+const publisherNameBlock = (title: string) => title.split(/\s[|:–—-]\s/)[0].replace(/^Latest from\s+/i, '').trim()
+
+/** One topic: its name, key details and how many articles; open it for the articles, from every outlet. */
+function FeedTopicRowBlock({ entry, sourceOf, onOpenItem, mood }: { entry: FeedTopicEntryBlock; sourceOf: (item: RssFeedItemBlock) => string; onOpenItem: (item: RssFeedItemBlock) => void; mood?: boolean }) {
+  const [open, setOpen] = useState(false)
+  const { topic, items } = entry
+  const outlets = [...new Set(items.map(item => publisherNameBlock(sourceOf(item))).filter(Boolean))]
+  const lead = topic.detail ?? items[0]?.aiSummary?.text.split('\n').find(Boolean)?.replace(/^-\s*/, '') ?? null
+  return (
+    <div className={cn('border-t-[0.5px] border-[#EFEFF2] dark:border-zinc-800', mood && 'bg-amber-50/40 dark:bg-amber-500/5')}>
+      <button type="button" onClick={() => setOpen(o => !o)} className="flex w-full items-start gap-4 px-5 py-3.5 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+        <span className="min-w-0 flex-1">
+          <span className="block font-medium leading-snug text-zinc-900 dark:text-zinc-100">{topic.name}</span>
+          {lead && <span className={cn('mt-1 block text-[12.5px] leading-snug text-zinc-600 dark:text-zinc-300', !open && 'line-clamp-3')}>{lead}</span>}
+        </span>
+        <span className="w-[120px] shrink-0 pt-px text-right text-[12px] text-zinc-500 dark:text-zinc-400" title={outlets.join(', ')}>
+          <span className="block font-medium tabular-nums text-zinc-700 dark:text-zinc-200">{items.length} {items.length === 1 ? 'article' : 'articles'}</span>
+          <span className="mt-0.5 block tabular-nums">{outlets.length} {outlets.length === 1 ? 'outlet' : 'outlets'}</span>
+        </span>
+      </button>
+      {open && (
+        <div className="pb-2.5 pl-5 pr-5">
+          {items.map(item => (
+            <button key={item.id} type="button" onClick={() => onOpenItem(item)} className="flex w-full items-baseline gap-3 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-zinc-100 dark:hover:bg-zinc-800">
+              <span className="min-w-0 flex-1 truncate text-zinc-800 dark:text-zinc-200">{item.title}</span>
+              <span className="shrink-0 text-[11.5px] text-zinc-500 dark:text-zinc-400">
+                {publisherNameBlock(sourceOf(item))}{item.pubDate ? ` · ${new Date(item.pubDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Today's news by what is happening, not who published it: the market's mood
+ * on its own strip, then each subject with its key details, the most articles
+ * first. Topics of one article sit folded at the end.
+ */
+function FeedTopicsPanelBlock({ topics, sourceOf, onOpenItem }: { topics: FeedTopicEntryBlock[]; sourceOf: (item: RssFeedItemBlock) => string; onOpenItem: (item: RssFeedItemBlock) => void }) {
+  const [showSingles, setShowSingles] = useState(false)
+  const mood = topics.filter(t => t.topic.kind === 'mood')
+  const subjects = topics.filter(t => t.topic.kind !== 'mood')
+  const many = subjects.filter(t => t.items.length > 1)
+  const singles = subjects.filter(t => t.items.length === 1)
+  const articles = topics.reduce((n, t) => n + t.items.length, 0)
+  return (
+    <F9PanelBlock className="overflow-hidden text-[13px]">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pb-2 pt-[18px]">
+        <p className="font-semibold">What's happening today</p>
+        <span className="text-[12px] text-zinc-500 dark:text-zinc-400">{subjects.length} {subjects.length === 1 ? 'topic' : 'topics'} · {articles} articles, sorted by the AI</span>
+      </div>
+      {mood.length > 0 && (
+        <>
+          <p className="border-t-[0.5px] border-[#EFEFF2] bg-amber-50/70 px-5 py-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-amber-800 dark:border-zinc-800 dark:bg-amber-500/10 dark:text-amber-300">Market mood</p>
+          {mood.map(entry => <FeedTopicRowBlock key={entry.topic.id} entry={entry} sourceOf={sourceOf} onOpenItem={onOpenItem} mood />)}
+        </>
+      )}
+      {many.map(entry => <FeedTopicRowBlock key={entry.topic.id} entry={entry} sourceOf={sourceOf} onOpenItem={onOpenItem} />)}
+      {singles.length > 0 && (
+        showSingles
+          ? singles.map(entry => <FeedTopicRowBlock key={entry.topic.id} entry={entry} sourceOf={sourceOf} onOpenItem={onOpenItem} />)
+          : (
+            <button type="button" onClick={() => setShowSingles(true)} className="block w-full border-t-[0.5px] border-[#EFEFF2] px-5 py-2.5 text-left text-[12px] text-[#3b6fb6] hover:bg-zinc-50 dark:border-zinc-800 dark:text-sky-400 dark:hover:bg-zinc-800/50">
+              {singles.length} more {singles.length === 1 ? 'topic' : 'topics'} with one article each
+            </button>
+          )
+      )}
+    </F9PanelBlock>
+  )
+}
+
 export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
   reader: ReturnType<typeof useFeedAiReadBlock>
   onOpenItem: (item: RssFeedItemBlock) => void
@@ -169,10 +245,17 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
     () => (lastSeen ? days.flatMap(d => d.sources.flatMap(s => s.stories)).filter(story => Date.parse(story.lead.item.pubDate ?? '') > lastSeen).length : null),
     [days, lastSeen],
   )
-  const storyCards = useStoryCardsBlock()
-  const loud = useMemo(() => rssLoudStoriesBlock(days, preferences?.feeds ?? []).slice(0, 10)
-    .map(({ story, publishers }) => ({ story, publishers, names: rssStoryPublishersBlock(story).map(p => p.name), card: storyCardForBlock(story, storyCards) })),
-  [days, preferences, storyCards])
+  // Today's news by what is happening, as the AI sorted it
+  const topicState = useRssTopicsBlock()
+  const { topics, sourceOf } = useMemo(() => {
+    const readerFeeds = rssReaderFeedsBlock(deferredFeeds, preferences)
+    const source = new Map<string, string>()
+    for (const feed of readerFeeds) for (const item of feed.items) source.set(item.id, feed.feedTitle)
+    return {
+      topics: rssTopicsShownBlock(topicState, rssTopicItemsBlock(readerFeeds.flatMap(feed => feed.items), localDayBlock(new Date()))),
+      sourceOf: (item: RssFeedItemBlock) => source.get(item.id) ?? '',
+    }
+  }, [deferredFeeds, preferences, topicState])
 
   const warnings = useMemo(() => {
     const out: string[] = []
@@ -218,43 +301,7 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
         {todayStories.length > 0 && <ArrivalsChartBlock rows={arrivals} />}
         {history.length > 0 && <DayBarsBlock rows={[...history].reverse()} />}
         {chart}
-        {loud.length > 0 && (
-          <F9PanelBlock className="overflow-hidden text-[13px]">
-            <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pb-2 pt-[18px]">
-              <p className="font-semibold">Stories many are telling</p>
-              <span className="text-[12px] text-zinc-500 dark:text-zinc-400">carried by several publishers, today and yesterday; most first</span>
-            </div>
-            {loud.map(({ story, publishers, names, card }) => (
-              <button
-                key={story.lead.item.id}
-                type="button"
-                onClick={() => onOpenItem(story.lead.item)}
-                className="flex w-full items-start gap-4 border-t-[0.5px] border-[#EFEFF2] px-5 py-3.5 text-left transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className={cn('block leading-snug', story.read ? 'text-zinc-500 dark:text-zinc-400' : 'text-zinc-900 dark:text-zinc-100')}>{story.lead.item.title}</span>
-                  {card ? (
-                    <>
-                      <span className="mt-1.5 block text-[12.5px] leading-snug text-zinc-600 dark:text-zinc-300">{card.common}</span>
-                      {card.differ && (
-                        <span className="mt-1.5 block text-[12px] leading-snug text-zinc-500 dark:text-zinc-400">
-                          <span className="mr-1.5 rounded bg-violet-100 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">Differs</span>
-                          {card.differ}
-                        </span>
-                      )}
-                    </>
-                  ) : story.lead.item.aiSummary && (
-                    <span className="mt-1 line-clamp-2 block text-[12px] leading-snug text-zinc-500 dark:text-zinc-400">{story.lead.item.aiSummary.text.replace(/\n/g, ' ')}</span>
-                  )}
-                </span>
-                <span className="w-[150px] shrink-0 pt-px text-right text-[12px] text-zinc-500 dark:text-zinc-400" title={names.join(', ')}>
-                  <span className="block font-medium tabular-nums text-zinc-700 dark:text-zinc-200">{publishers} sources</span>
-                  <span className="mt-0.5 block leading-snug">{names.slice(0, 4).join(', ')}{names.length > 4 ? ` +${names.length - 4}` : ''}</span>
-                </span>
-              </button>
-            ))}
-          </F9PanelBlock>
-        )}
+        {topics.length > 0 && <FeedTopicsPanelBlock topics={topics} sourceOf={sourceOf} onOpenItem={onOpenItem} />}
       </div>
 
       {/* Where things stand, beside the charts */}
@@ -264,8 +311,8 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
           <p className="mt-2.5 text-2xl font-semibold tabular-nums">{todayStories.length} {todayStories.length === 1 ? 'story' : 'stories'}</p>
           <p className="mb-1.5 mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
             {reader.progress
-              ? reader.progress.kind === 'stories'
-                ? `The AI is writing story cards · ${reader.progress.done} of ${reader.progress.total}`
+              ? reader.progress.kind === 'topics'
+                ? `The AI is sorting today's news · ${reader.progress.done} of ${reader.progress.total}`
                 : `The AI is reading · ${reader.progress.done} of ${reader.progress.total}`
               : latest ? `Latest: ${latest.lead.feedTitle}, ${new Date(latest.lead.item.pubDate ?? '').toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : 'Nothing yet today'}
           </p>

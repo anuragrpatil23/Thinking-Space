@@ -9,6 +9,8 @@ import type { WebullPositionSummaryBlock } from '../integrations/webullExecution
 
 export interface WebullClosedPositionBlock {
   fileName: string
+  /** The id Webull gave the position, without the account prefix */
+  webullId: string | null
   symbol: string
   /** 'stock', or the option's type in lower case ('call', 'put') */
   kind: string
@@ -49,6 +51,7 @@ export function closedPositionsBlock(positions: WebullPositionSummaryBlock[]): W
     const optionType = (newest.optionType ?? '').toLowerCase()
     return {
       fileName: newest.fileName,
+      webullId: bareIdBlock(newest),
       symbol: newest.symbol,
       kind: optionType || 'stock',
       strike: num(newest.optionExercisePrice),

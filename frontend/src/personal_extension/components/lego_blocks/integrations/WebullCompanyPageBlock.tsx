@@ -19,6 +19,9 @@ import { PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock } from '@/personal_
 import { valueLineDueBlock, valueLineIssueLabelBlock, valueLineIssueRowsBlock, type ValueLineIssueRowBlock, type WebullResearchFileBlock, type WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
 import type { WebullClosedPositionBlock } from '@/personal_extension/services/lego_blocks/units/webullClosedPositionsBlock'
 import { useWebullClosedPositionsBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullClosedPositionsBlock'
+import { useGapPositionLinksBlock } from '@/personal_extension/components/lego_blocks/hooks/useGapPositionLinksBlock'
+import { gapsForPositionBlock, type GapPositionLinkBlock } from '@/personal_extension/services/lego_blocks/units/webullGapLinkMatchBlock'
+import { GapChipsBlock } from '@/personal_extension/components/lego_blocks/units/GapChipsBlock'
 import { cn } from '@/lib/utils'
 
 const OBSERVATION_PREVIEW_BLOCK = 1
@@ -86,8 +89,9 @@ function moneyBlock(value: number | null): string {
  * last time a sync saw it open. That is the last value before it closed, not
  * the sale price; the track record has what the statements say it came back with.
  */
-function ClosedPositionsTableBlock({ rows, accountLabel, filePath, onOpenFile }: {
+function ClosedPositionsTableBlock({ rows, gapLinks, accountLabel, filePath, onOpenFile }: {
   rows: WebullClosedPositionBlock[]
+  gapLinks: GapPositionLinkBlock[]
   accountLabel?: (accountId: string | null, accountNumber: string | null) => string | null
   filePath: ((row: WebullClosedPositionBlock) => string) | null
   onOpenFile: (path: string) => void
@@ -101,6 +105,7 @@ function ClosedPositionsTableBlock({ rows, accountLabel, filePath, onOpenFile }:
           <tr>
             <th className="!pl-4">Position</th>
             <th>Account</th>
+            <th>Gap</th>
             <th className="text-right">Qty</th>
             <th className="text-right">Cost</th>
             <th className="text-right" title="Its value the last time a sync saw it open">Last value</th>
@@ -124,6 +129,19 @@ function ClosedPositionsTableBlock({ rows, accountLabel, filePath, onOpenFile }:
                 </div>
               </td>
               <td className="text-zinc-500 dark:text-zinc-400">{accountLabel?.(row.accountId, row.accountNumber) ?? '—'}</td>
+              <td>
+                <GapChipsBlock
+                  onOpen={onOpenFile}
+                  gaps={gapsForPositionBlock(gapLinks, {
+                    id: row.webullId,
+                    symbol: row.symbol,
+                    instrumentType: row.kind === 'stock' ? 'STOCK' : 'OPTION',
+                    optionType: row.kind === 'stock' ? null : row.kind,
+                    optionExpireDate: row.expiry,
+                    optionExercisePrice: row.strike,
+                  })}
+                />
+              </td>
               <td className="text-right">{row.quantity ?? '—'}</td>
               <td className="text-right">{moneyBlock(row.cost)}</td>
               <td className="text-right">{moneyBlock(row.lastValue)}</td>
@@ -137,7 +155,7 @@ function ClosedPositionsTableBlock({ rows, accountLabel, filePath, onOpenFile }:
         {counted > 1 && (
           <tfoot>
             <tr className="[&>td]:border-t-[0.5px] [&>td]:border-[#E5E5EA] [&>td]:px-3 [&>td]:py-2 dark:[&>td]:border-zinc-800">
-              <td colSpan={5} className="!pl-4 text-[12px] text-zinc-500 dark:text-zinc-400">Together, {counted} with a known cost</td>
+              <td colSpan={6} className="!pl-4 text-[12px] text-zinc-500 dark:text-zinc-400">Together, {counted} with a known cost</td>
               <td className={cn('text-right font-medium', total >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
                 {`${total >= 0 ? '+' : '−'}${moneyBlock(Math.abs(total))}`}
               </td>
@@ -448,6 +466,7 @@ export default function WebullCompanyPageBlock({
   const { dossier, loading, error } = useWebullCompanyDossierBlock(executionRoot, ticker, companyName, valueLine.fetchedCount + callsSync.fetchedCount)
   const { record: trackRecord, reportPath } = useWebullTrackRecordBlock(executionRoot, ticker)
   const closedPositions = useWebullClosedPositionsBlock(executionRoot, ticker)
+  const gapLinks = useGapPositionLinksBlock(executionRoot)
   const [priceWindow, setPriceWindow] = useState<PriceWindowBlock>('2y')
   const [observationsExpanded, setObservationsExpanded] = useState(false)
 
@@ -584,6 +603,7 @@ export default function WebullCompanyPageBlock({
           <F9SectionLabelBlock>Closed · {closedPositions.length}</F9SectionLabelBlock>
           <ClosedPositionsTableBlock
             rows={closedPositions}
+            gapLinks={gapLinks}
             accountLabel={accountLabel}
             filePath={executionRoot ? (row) => `${executionRoot}/${ticker.toUpperCase()}/archived_positions/${row.fileName}` : null}
             onOpenFile={onOpenFile}

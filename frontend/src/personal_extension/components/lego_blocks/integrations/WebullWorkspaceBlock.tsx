@@ -8,6 +8,9 @@ import BacklogListBlock from '@/components/lego_blocks/integrations/BacklogListB
 import { chipColorClassBlock, type ChipColorBlock } from '@/services/lego_blocks/units/chipColorBlock'
 import NodeDetailPanelBlock from '@/components/lego_blocks/integrations/NodeDetailPanelBlock'
 import WebullCompanyPageBlock, { type WebullCompanyHoldingBlock } from './WebullCompanyPageBlock'
+import { useGapPositionLinksBlock } from '@/personal_extension/components/lego_blocks/hooks/useGapPositionLinksBlock'
+import { gapsForPositionBlock } from '@/personal_extension/services/lego_blocks/units/webullGapLinkMatchBlock'
+import { GapChipsBlock } from '@/personal_extension/components/lego_blocks/units/GapChipsBlock'
 import WebullOverallPageBlock from './WebullOverallPageBlock'
 import WebullSidebarBlock from './WebullSidebarBlock'
 import { useWebullCompanyUniverseBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullCompanyUniverseBlock'
@@ -1808,6 +1811,9 @@ export default function WebullWorkspaceBlock({
     )
   }, [])
 
+  // Which gap holds each position, from the gaps' positions logs
+  const gapLinks = useGapPositionLinksBlock(executionRoot)
+  const openGapFile = onOpenFileForReading ?? onOpenNodeFile
   const webullRowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
     return [
       {
@@ -1827,6 +1833,26 @@ export default function WebullWorkspaceBlock({
           return accountLabel ? (
             <span className="text-xs text-zinc-500 dark:text-zinc-400">{accountLabel}</span>
           ) : null
+        },
+      },
+      {
+        id: 'gap',
+        label: 'Gap',
+        widthClassName: 'w-[8rem]',
+        align: 'left',
+        render: (node) => {
+          if (node.type !== 'epic') return null
+          const payload = asMetadataRecordBlock(node).webull_position_payload as Record<string, unknown> | undefined
+          if (!payload) return null
+          const gaps = gapsForPositionBlock(gapLinks, {
+            id: firstStringBlock(payload.id) || null,
+            symbol: firstStringBlock(payload.symbol) || null,
+            instrumentType: firstStringBlock(payload.instrument_type) || null,
+            optionType: firstStringBlock(payload.option_type) || null,
+            optionExpireDate: firstStringBlock(payload.option_expire_date) || null,
+            optionExercisePrice: firstStringBlock(payload.option_exercise_price) || null,
+          })
+          return <GapChipsBlock gaps={gaps} onOpen={openGapFile} />
         },
       },
       {
@@ -1929,7 +1955,7 @@ export default function WebullWorkspaceBlock({
         },
       },
     ]
-  }, [accountLabelEntries])
+  }, [accountLabelEntries, gapLinks, openGapFile])
 
   const linkOptionsByPath = useMemo(() => {
     const map = new Map<string, WebullLinkOptionBlock>()

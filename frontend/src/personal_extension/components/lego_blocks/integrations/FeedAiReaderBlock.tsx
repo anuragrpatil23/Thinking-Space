@@ -10,6 +10,7 @@ import {
   subscribeFeedAiReadOrch,
 } from '@/services/orchestrators/rssAiReadOrch'
 import { loadStoryCardsOrch, readStoryCardsOrch, subscribeStoryCardsOrch } from '@/services/orchestrators/rssStoryCardOrch'
+import { loadRssTopicsOrch, readRssTopicsOrch, subscribeRssTopicsOrch } from '@/services/orchestrators/rssTopicOrch'
 
 /**
  * The AI reads the feed while the Feed is open on the desktop: a job starts
@@ -34,6 +35,12 @@ export function useFeedAiReadBlock() {
   const runNow = () => runFeedAiNextOrch(feeds, preferences, replaceRssItemBlock)
 
   return { available, settings, progress, waiting, last: readLastFeedAiReadOrch(), runNow }
+}
+
+/** Today's topics the AI has sorted the news into (loaded from the vault once). */
+export function useRssTopicsBlock() {
+  useEffect(() => { void loadRssTopicsOrch() }, [])
+  return useSyncExternalStore(subscribeRssTopicsOrch, readRssTopicsOrch)
 }
 
 /** The story cards the AI has written (loaded from the vault once). */
