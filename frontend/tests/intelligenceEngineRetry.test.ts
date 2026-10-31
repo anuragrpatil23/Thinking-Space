@@ -53,7 +53,8 @@ vi.mock('@/services/lego_blocks/integrations/intelligence/engineMonitorBlock', (
     source: 'supervisor',
     checkedAt: Date.now(),
     lastFailure: {
-      at: `death-${deaths}`,
+      id: `failure-${deaths}`,
+      at: '2026-10-31T00:00:00Z',
       reason: 'thread_exception',
       inFlight: implicate(seen[seen.length - 1].requestId!, deaths).map(requestId => ({ requestId })),
     },

@@ -493,7 +493,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
           // in-flight requests; recycles and unsupervised engines name none,
           // and an already-counted record is not a new death.
           const failure = engine.lastFailure
-          const failureId = failure ? `${failure.at ?? ''}|${failure.reason ?? ''}` : ''
+          const failureId = failure ? failure.id ?? `${failure.at ?? ''}|${failure.reason ?? ''}` : ''
           if (failure && !implicatedFailures.has(failureId)
             && failure.inFlight.some(f => f.requestId === request.requestId)) {
             implicatedFailures.add(failureId)

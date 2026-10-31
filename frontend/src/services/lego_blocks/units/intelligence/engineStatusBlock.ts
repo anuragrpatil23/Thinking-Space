@@ -47,6 +47,9 @@ export interface EngineInFlightBlock {
 /** The supervisor's record of the last engine death. Recycles (memory hygiene)
  *  are not failures and never appear here. */
 export interface EngineFailureBlock {
+  /** Unique per failure. `at` has one-second resolution, so two deaths in the
+   *  same second would otherwise read as one. */
+  id?: string
   at?: string
   reason?: string
   detail?: string
@@ -111,7 +114,7 @@ export function parseEngineFailureBlock(raw: unknown): EngineFailureBlock | null
       return requestId ? [{ requestId, job: asString(i.job), ageS: asNumber(i.age_s) }] : []
     })
     : []
-  return { at: asString(r.at), reason: asString(r.reason), detail: asString(r.detail), inFlight }
+  return { id: asString(r.id), at: asString(r.at), reason: asString(r.reason), detail: asString(r.detail), inFlight }
 }
 
 const SUPERVISOR_KINDS: Record<string, EngineStateKind> = {

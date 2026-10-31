@@ -17,11 +17,12 @@ describe('supervisor status parsing', () => {
       retry_after_s: 5,
       engine: { url: 'http://127.0.0.1:1234', model: 'qwen' },
       failures_last_hour: 2,
-      last_failure: { at: '2026-10-30T20:21:00Z', reason: 'thread_exception', in_flight: [{ request_id: 'r1', job: 'session-digest', age_s: 40 }] },
+      last_failure: { id: 'f-1', at: '2026-10-30T20:21:00Z', reason: 'thread_exception', in_flight: [{ request_id: 'r1', job: 'session-digest', age_s: 40 }] },
     }, ENGINE, 1000)
     expect(s?.kind).toBe('restarting')
     expect(s?.model).toBe('qwen')
     expect(s?.retryAfterS).toBe(5)
+    expect(s?.lastFailure?.id).toBe('f-1')
     expect(s?.lastFailure?.inFlight).toEqual([{ requestId: 'r1', job: 'session-digest', ageS: 40 }])
   })
 

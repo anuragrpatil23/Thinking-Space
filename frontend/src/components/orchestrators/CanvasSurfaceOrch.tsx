@@ -409,6 +409,10 @@ export default function CanvasSurfaceOrch({
         height: '100%',
         minHeight: 0,
         overflow: 'hidden',
+        // Its own stacking context: the minimap (90), toolbars (100-110) and
+        // search bar (200) are z-ordered against each other, not against the
+        // app — without this they drew over the right-hand sheets (89).
+        isolation: 'isolate',
         background: theme.outerBg,
         ['--canvas-edge-blend' as string]: theme.edgeBlend,
       }}

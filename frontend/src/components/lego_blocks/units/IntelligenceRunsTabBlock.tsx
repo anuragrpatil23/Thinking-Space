@@ -12,11 +12,13 @@
 // is not a reason to write your notes to a second place on disk.
 
 import { useEffect, useState } from 'react'
-import { Loader2, RotateCw, X } from 'lucide-react'
+import { RotateCw, X } from 'lucide-react'
 import { useAiEngineStatusBlock } from '@/components/lego_blocks/hooks/shared/useAiEngineStatusBlock'
 import {
   describeEngineStateBlock,
+  ENGINE_DOT_CLASS,
   formatSecondsBlock,
+  type EngineStateBlock,
   type EngineToneBlock,
 } from '@/services/lego_blocks/units/intelligence/engineStatusBlock'
 import { cn } from '@/lib/utils'
@@ -67,21 +69,61 @@ function fmtSubjectDate(dateIso?: string): string | null {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-/** Subject first, job type second: "Thinking-Space · Oct 30" is what you are
- *  waiting for; "session-digest" is how it gets made. Jobs with no subject keep
- *  their type as the title. */
-function RunTitle({ taskId, project, dateIso, muted }: { taskId: string; project?: string; dateIso?: string; muted?: boolean }) {
-  const date = fmtSubjectDate(dateIso)
-  const subject = [project, date].filter(Boolean).join(' · ')
+/** Subject first: "Thinking-Space · Oct 30" is what you are waiting for. Jobs
+ *  with no subject fall back to their type. */
+function subjectBlock(taskId: string, project?: string, dateIso?: string): string {
+  return [project, fmtSubjectDate(dateIso)].filter(Boolean).join(' · ') || taskLabelBlock(taskId)
+}
+
+/** "range-summary-label" → "range label", "session-digest" → "session digest". */
+function taskLabelBlock(taskId: string): string {
+  return taskId.replace(/^range-summary-(?=.)/, 'range ').replace(/-/g, ' ')
+}
+
+/** "mlx-community/Qwen3.8-27B-4bit" → "Qwen3.8-27B · 4-bit". */
+function shortModelBlock(model: string): string {
+  return model.split('/').pop()!.replace(/-(\d+)bit$/i, ' · $1-bit')
+}
+
+function fmtTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n)
+}
+
+function fmtTps(tps: number): string {
+  return tps < 10 ? tps.toFixed(1) : String(Math.round(tps))
+}
+
+function fmtClock(ts: number): string {
+  return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+/** Section heading — the same quiet small caps as the rest of the app. */
+function SectionLabel({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span className={cn('truncate font-medium', muted ? 'text-foreground/70' : 'text-foreground/90')}>
-        {subject || taskId}
-      </span>
-      {subject && <span className="shrink-0 text-[10px] text-muted-foreground/80">{taskId}</span>}
-    </span>
+    <div className="mb-1 flex items-center gap-2 px-1">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{children}</span>
+      {right}
+    </div>
   )
 }
+
+/** Cancel affordance: present but quiet until the row is hovered. */
+function CancelButton({ onClick, title }: { onClick: () => void; title: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className="shrink-0 rounded p-0.5 text-muted-foreground opacity-40 transition hover:bg-muted/60 hover:text-foreground group-hover:opacity-100"
+    >
+      <X className="h-3 w-3" />
+    </button>
+  )
+}
+
+/** How many waiting jobs get a full row before the rest fold into one line. */
+const QUEUE_VISIBLE = 3
 
 const BANNER_TONE: Record<EngineToneBlock, string> = {
   ok: '',
@@ -94,8 +136,7 @@ const BANNER_TONE: Record<EngineToneBlock, string> = {
 /** Shown only while the engine is not taking work, so its presence alone says
  *  something is wrong. Says why, when it comes back, and that nothing waiting
  *  was lost — jobs pause while the engine is away, they do not fail. */
-function EngineBannerBlock({ now, waiting }: { now: number; waiting: number }) {
-  const { engine } = useAiEngineStatusBlock(true)
+function EngineBannerBlock({ engine, now, waiting }: { engine: EngineStateBlock; now: number; waiting: number }) {
   const [open, setOpen] = useState(false)
   const view = describeEngineStateBlock(engine, now)
   if (view.tone === 'ok' || engine.kind === 'unknown') return null
@@ -167,12 +208,6 @@ function mainModelBlock(models: Array<string | undefined>): string | null {
   return best
 }
 
-const STATUS_TONE: Record<TelemetryEntry['status'], string> = {
-  ok: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-  'cache-hit': 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
-  error: 'bg-red-500/15 text-red-600 dark:text-red-400',
-}
-
 /** One labelled block of the exchange. Collapsed by default for everything but
  *  the output: the prompt is usually long and usually not why you opened this. */
 function PayloadSection({
@@ -213,6 +248,8 @@ export default function IntelligenceRunsTabBlock() {
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [expandedCache, setExpandedCache] = useState<number | null>(null)
+  const [queueOpen, setQueueOpen] = useState(false)
+  const { engine, recentTokensPerSecond } = useAiEngineStatusBlock(true)
   // Drives the elapsed counters. Only ticks while something is in flight, so an
   // idle panel costs nothing — see the energy contract.
   const [now, setNow] = useState(() => Date.now())
@@ -233,66 +270,73 @@ export default function IntelligenceRunsTabBlock() {
   const mainModel = mainModelBlock([...running.map(j => j.model), ...queued.map(j => j.model), ...entries.map(e => e.model)])
   const otherModel = (m?: string) => (m && m !== mainModel ? m : null)
   const finishedRows = groupFinishedBlock(entries)
+  const engineView = describeEngineStateBlock(engine, now)
+  const visibleQueue = queueOpen ? queued : queued.slice(0, QUEUE_VISIBLE)
+  const foldedQueue = queueOpen ? [] : queued.slice(QUEUE_VISIBLE)
 
   return (
-    <div className="space-y-4 p-3 text-xs">
-      <EngineBannerBlock now={now} waiting={queued.length + running.filter(j => j.waitingForEngine).length} />
-      {mainModel && (
-        <div className="truncate text-[10px] text-muted-foreground/80">{mainModel}</div>
-      )}
-      <section>
-        <div className="mb-1.5 flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-            In flight
-          </span>
-          <span className="text-[10px] tabular-nums text-muted-foreground/70">
-            {running.length} running · {queued.length} queued
-          </span>
+    <div className="space-y-5 p-3 text-xs">
+      <EngineBannerBlock engine={engine} now={now} waiting={queued.length + running.filter(j => j.waitingForEngine).length} />
+
+      {/* One quiet status line: which engine, how fast lately, how busy. */}
+      <div className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
+        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', ENGINE_DOT_CLASS[engineView.tone])} />
+        <span className="min-w-0 truncate text-foreground/80">{mainModel ? shortModelBlock(mainModel) : 'No runs yet'}</span>
+        <span className="ml-auto shrink-0 tabular-nums">
+          {recentTokensPerSecond != null && <>{fmtTps(recentTokensPerSecond)} tok/s avg · </>}
+          {running.length} ▸ {queued.length}
+        </span>
+      </div>
+
+      {!busy && (
+        <div className="px-1 text-[11px] text-muted-foreground/70">
+          Nothing running. Two run at a time; the rest wait in line.
         </div>
-        {!busy ? (
-          <div className="rounded-md border border-dashed border-border/50 px-3 py-2 text-[11px] text-muted-foreground/70">
-            Nothing running. Two run at a time; the rest wait here.
-          </div>
-        ) : (
-          <div className="space-y-1">
+      )}
+
+      {running.length > 0 && (
+        <section>
+          <SectionLabel>Running</SectionLabel>
+          <div className="divide-y divide-border/40">
             {running.map(job => {
               const open = expandedKey === `run-${job.id}`
+              const meta = [
+                taskLabelBlock(job.taskId),
+                otherModel(job.model),
+                job.attempt != null ? `retrying (${job.attempt} of 2)` : null,
+              ].filter(Boolean).join(' · ')
               return (
-                <div
-                  key={`run-${job.id}`}
-                  className="rounded-md border border-border/40 bg-card/40"
-                >
-                  <div className="flex items-center gap-2 px-2.5 py-1.5">
+                <div key={`run-${job.id}`} className="group">
+                  <div className="flex items-stretch gap-2.5 px-1 py-2">
+                    {/* The accent bar is the "it's alive" signal: it breathes
+                        while generating and holds still, amber, while the job
+                        waits for the engine to come back. */}
+                    <span
+                      className={cn(
+                        'w-0.5 shrink-0 rounded-full',
+                        job.waitingForEngine ? 'bg-amber-500/70' : 'animate-pulse bg-sky-500/80',
+                      )}
+                    />
                     <button
                       type="button"
                       onClick={() => setExpandedKey(open ? null : `run-${job.id}`)}
-                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                      className="min-w-0 flex-1 text-left"
                     >
-                      {job.waitingForEngine
-                        ? <RotateCw className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-500" />
-                        : <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />}
-                      <RunTitle taskId={job.taskId} project={job.project} dateIso={job.dateIso} />
-                      {otherModel(job.model) && <span className="truncate text-muted-foreground/70">{job.model}</span>}
-                      {job.attempt != null && (
-                        <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-500">
-                          retry {job.attempt}/2{job.waitingForEngine ? ' · waiting for engine' : ''}
+                      <div className="flex items-baseline gap-2">
+                        <span className="min-w-0 truncate font-medium text-foreground">
+                          {subjectBlock(job.taskId, job.project, job.dateIso)}
                         </span>
-                      )}
-                      <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
-                        {fmtAgo(job.startedAt, now)}
-                      </span>
+                        <span className="ml-auto shrink-0 tabular-nums text-foreground/80">{fmtAgo(job.startedAt, now)}</span>
+                      </div>
+                      <div className={cn('mt-0.5 flex items-center gap-1.5 text-[10px]', job.waitingForEngine ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground')}>
+                        {job.waitingForEngine && <RotateCw className="h-2.5 w-2.5 shrink-0" />}
+                        <span className="truncate">{meta}{job.waitingForEngine ? ' · waiting for engine' : ''}</span>
+                      </div>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => cancelRunningJobBlock(job.id)}
-                      title="Cancel this run"
-                      className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+                    <CancelButton onClick={() => cancelRunningJobBlock(job.id)} title="Cancel this run" />
                   </div>
                   {open && (
-                    <div className="space-y-2 px-2.5 pb-2.5">
+                    <div className="space-y-2 px-1 pb-2.5 pl-4">
                       {/* Empty only for the instant between the job registering
                           and its request being built — the row exists first so a
                           request that hangs during construction is still
@@ -312,45 +356,44 @@ export default function IntelligenceRunsTabBlock() {
                 </div>
               )
             })}
-            {queued.map((job, i) => {
+          </div>
+        </section>
+      )}
+
+      {queued.length > 0 && (
+        <section>
+          <SectionLabel>Up next</SectionLabel>
+          <div className="divide-y divide-border/40">
+            {visibleQueue.map((job, i) => {
               const open = expandedKey === job.key
               return (
-                <div
-                  key={`q-${job.key}`}
-                  className="rounded-md border border-dashed border-border/40 text-muted-foreground"
-                >
-                  <div className="flex items-center gap-2 px-2.5 py-1.5">
+                <div key={`q-${job.key}`} className="group">
+                  <div className="flex items-center gap-2.5 px-1 py-1.5">
+                    <span className="w-3 shrink-0 text-center text-[10px] tabular-nums text-muted-foreground/60">{i + 1}</span>
                     <button
                       type="button"
                       onClick={() => setExpandedKey(open ? null : job.key)}
-                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                      className="min-w-0 flex-1 text-left"
                     >
-                      <span className="w-3 shrink-0 text-center tabular-nums opacity-60">{i + 1}</span>
-                      <RunTitle taskId={job.taskId} project={job.project} dateIso={job.dateIso} muted />
-                      {job.priority === 'interactive' && (
-                        <span className="shrink-0 rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-600 dark:text-sky-400">
-                          next
+                      <div className="flex items-baseline gap-2">
+                        <span className="min-w-0 truncate text-foreground/80">
+                          {subjectBlock(job.taskId, job.project, job.dateIso)}
                         </span>
-                      )}
-                      {otherModel(job.model) && <span className="truncate opacity-70">{job.model}</span>}
-                      <span className="ml-auto shrink-0 tabular-nums">
-                        waiting {fmtAgo(job.queuedAt, now)}
-                      </span>
+                        {job.priority === 'interactive' && (
+                          <span className="shrink-0 text-[10px] text-sky-600 dark:text-sky-400">next</span>
+                        )}
+                        <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">{fmtAgo(job.queuedAt, now)}</span>
+                      </div>
+                      <div className="mt-0.5 truncate text-[10px] text-muted-foreground/80">
+                        {[taskLabelBlock(job.taskId), otherModel(job.model)].filter(Boolean).join(' · ')}
+                      </div>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => cancelQueuedIntelligenceJobBlock(job.key)}
-                      title="Drop this job from the queue"
-                      className="shrink-0 rounded p-0.5 transition-colors hover:bg-muted/60 hover:text-foreground"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+                    <CancelButton onClick={() => cancelQueuedIntelligenceJobBlock(job.key)} title="Drop this job from the queue" />
                   </div>
                   {open && (
-                    <div className="space-y-2 px-2.5 pb-2.5">
+                    <div className="space-y-2 px-1 pb-2.5 pl-6">
                       <div className="text-[10px] text-muted-foreground/70">
-                        {job.providerId ?? 'provider unknown'} · queued{' '}
-                        {new Date(job.queuedAt).toLocaleTimeString()}
+                        {job.providerId ?? 'provider unknown'} · queued {fmtClock(job.queuedAt)}
                       </div>
                       <div className="break-all font-mono text-[10px] text-muted-foreground/60">
                         {job.key}
@@ -364,56 +407,62 @@ export default function IntelligenceRunsTabBlock() {
                 </div>
               )
             })}
+            {foldedQueue.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setQueueOpen(true)}
+                className="block w-full truncate px-1 py-1.5 pl-6 text-left text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                +{foldedQueue.length} more · {foldedQueue.map(j => subjectBlock(j.taskId, j.project, j.dateIso)).join(' · ')}
+              </button>
+            )}
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
       <section>
-        <div className="mb-1.5 flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-            Finished
-          </span>
-          {entries.length > 0 && (
+        <SectionLabel
+          right={entries.length > 0 && (
             <button
               type="button"
               onClick={() => { clearTelemetryBlock(); setEntries([]) }}
-              className="ml-auto rounded border border-border/40 px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-border/70 hover:text-foreground"
+              className="ml-auto text-[10px] text-muted-foreground transition-colors hover:text-foreground"
             >
               Clear
             </button>
           )}
-        </div>
+        >
+          Finished
+        </SectionLabel>
         {entries.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border/50 px-3 py-2 text-[11px] text-muted-foreground/70">
+          <div className="px-1 text-[11px] text-muted-foreground/70">
             No runs yet. Session digests, titles and summaries land here as they run.
           </div>
         ) : (
-          <div className="space-y-1">
+          <div className="divide-y divide-border/40">
             {finishedRows.map(row => {
               if (row.kind === 'cache') {
                 const first = row.entries[0]
                 const groupOpen = expandedCache === first.id
                 return (
-                  <div key={`cache-${first.id}`} className="rounded-md border border-border/40">
+                  <div key={`cache-${first.id}`}>
                     <button
                       type="button"
                       onClick={() => setExpandedCache(groupOpen ? null : first.id)}
-                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
+                      className="flex w-full items-center gap-2 px-1 py-1.5 text-left text-muted-foreground"
                     >
-                      <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[10px]', STATUS_TONE['cache-hit'])}>
-                        {row.entries.length === 1 ? 'cache-hit' : `${row.entries.length} cache hits`}
+                      <span className="w-3 shrink-0 text-center">↺</span>
+                      <span className="min-w-0 truncate">
+                        {taskLabelBlock(row.taskId)} · {row.entries.length === 1 ? 'cache hit' : `${row.entries.length} cache hits`}
                       </span>
-                      <span className="truncate font-medium text-foreground/90">{row.taskId}</span>
-                      <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                        {new Date(first.ts).toLocaleTimeString()}
-                      </span>
+                      <span className="ml-auto shrink-0 text-[10px] tabular-nums">{fmtClock(first.ts)}</span>
                     </button>
                     {groupOpen && (
-                      <div className="space-y-0.5 px-2.5 pb-2 text-[10px] text-muted-foreground">
+                      <div className="space-y-0.5 px-1 pb-2 pl-6 text-[10px] text-muted-foreground">
                         {row.entries.map(e => (
                           <div key={e.id} className="flex gap-2">
-                            <RunTitle taskId={e.taskId} project={e.project} dateIso={e.dateIso} muted />
-                            <span className="ml-auto shrink-0 tabular-nums">{new Date(e.ts).toLocaleTimeString()}</span>
+                            <span className="min-w-0 truncate">{subjectBlock(e.taskId, e.project, e.dateIso)}</span>
+                            <span className="ml-auto shrink-0 tabular-nums">{fmtClock(e.ts)}</span>
                           </div>
                         ))}
                         <div className="opacity-70">Served from cache — no prompt was sent.</div>
@@ -425,34 +474,45 @@ export default function IntelligenceRunsTabBlock() {
               const entry = row.entry
               const open = expandedId === entry.id
               const tps = tokensPerSecondBlock(entry)
+              const failed = entry.status === 'error'
+              const meta = [
+                taskLabelBlock(entry.taskId),
+                otherModel(entry.model),
+                entry.usage ? `${fmtTokens(entry.usage.promptTokens)} → ${fmtTokens(entry.usage.completionTokens)} tok` : null,
+                entry.reasoning === 'on' ? 'thinking' : null,
+              ].filter(Boolean).join(' · ')
               return (
-                <div key={entry.id} className="rounded-md border border-border/40">
+                <div key={entry.id}>
                   <button
                     type="button"
                     onClick={() => setExpandedId(open ? null : entry.id)}
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
+                    className="w-full px-1 py-1.5 text-left"
                   >
-                    <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[10px]', STATUS_TONE[entry.status])}>
-                      {entry.status}
-                    </span>
-                    <RunTitle taskId={entry.taskId} project={entry.project} dateIso={entry.dateIso} />
-                    {otherModel(entry.model) && <span className="truncate text-muted-foreground/70">{entry.model}</span>}
-                    <span className="ml-auto flex shrink-0 items-center gap-2 text-[10px] tabular-nums text-muted-foreground">
-                      {entry.reasoning === 'on' && (
-                        <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-amber-600 dark:text-amber-500">
-                          thinking
-                        </span>
-                      )}
-                      {entry.usage && (
-                        <span>{entry.usage.promptTokens}→{entry.usage.completionTokens}</span>
-                      )}
-                      {tps != null && <span>{tps < 10 ? tps.toFixed(1) : Math.round(tps)} tok/s</span>}
-                      {entry.latencyMs > 0 && <span>{fmtMs(entry.latencyMs)}</span>}
-                      <span>{new Date(entry.ts).toLocaleTimeString()}</span>
-                    </span>
+                    <div className="flex items-baseline gap-2">
+                      <span className={cn('w-3 shrink-0 text-center', failed ? 'text-red-500' : 'text-transparent')}>
+                        {failed ? '✕' : '·'}
+                      </span>
+                      <span className={cn('min-w-0 truncate', failed ? 'text-red-600 dark:text-red-400' : 'text-foreground/90')}>
+                        {subjectBlock(entry.taskId, entry.project, entry.dateIso)}
+                      </span>
+                      <span className="ml-auto flex shrink-0 items-baseline tabular-nums text-foreground/70">
+                        {failed ? (
+                          <span className="text-[10px] text-red-600 dark:text-red-400">failed · {entry.error?.kind ?? 'error'}</span>
+                        ) : (
+                          <>
+                            <span className="w-16 text-right">{tps != null ? `${fmtTps(tps)} tok/s` : ''}</span>
+                            <span className="w-12 text-right">{entry.latencyMs > 0 ? fmtMs(entry.latencyMs) : ''}</span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 flex items-baseline gap-2 pl-5 text-[10px] text-muted-foreground/80">
+                      <span className="min-w-0 truncate">{meta}</span>
+                      <span className="ml-auto shrink-0 tabular-nums">{fmtClock(entry.ts)}</span>
+                    </div>
                   </button>
                   {open && (
-                    <div className="space-y-2 px-2.5 pb-2.5">
+                    <div className="space-y-2 px-1 pb-2.5 pl-6">
                       {entry.error && (
                         <div className="rounded border border-red-500/30 bg-red-500/5 p-2 text-[10px] text-red-600 dark:text-red-400">
                           <span className="font-mono uppercase">{entry.error.kind}</span>
