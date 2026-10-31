@@ -346,3 +346,29 @@ export function setRssThemeNoteBlock(state: RssTopicsDayBlock, note: RssThemeNot
   const notes = (state.notes ?? []).filter(n => !(n.theme === note.theme && n.elsewhere === note.elsewhere))
   return { ...state, notes: [...notes, note] }
 }
+
+export interface RssOutsideCountBlock {
+  articles: number
+  outlets: number
+}
+
+/**
+ * How much the other sources carried, apart from the reading list: per topic
+ * (the articles citing it) and per theme (its topics' citations and the
+ * articles placed under it), headline-only articles included. Themes are keyed
+ * as the list labels them, a market theme as "Market · Chips".
+ */
+export function rssOutsideCountsBlock(state: RssTopicsDayBlock): { byTheme: Map<string, RssOutsideCountBlock>; byTopic: Map<string, RssOutsideCountBlock> } {
+  const { themes } = rssThemeDigestsBlock(state)
+  const byTheme = new Map([...themes.entries()].map(([name, d]) => [name, { articles: d.itemIds.length, outlets: d.sources.length }]))
+  const topicSources = new Map<string, { articles: number; outlets: Set<string> }>()
+  for (const place of Object.values(state.outside ?? {})) {
+    if (place.kind !== 'topic') continue
+    const t = topicSources.get(place.name) ?? { articles: 0, outlets: new Set<string>() }
+    t.articles += 1
+    t.outlets.add(place.source)
+    topicSources.set(place.name, t)
+  }
+  const byTopic = new Map([...topicSources.entries()].map(([name, t]) => [name, { articles: t.articles, outlets: t.outlets.size }]))
+  return { byTheme, byTopic }
+}

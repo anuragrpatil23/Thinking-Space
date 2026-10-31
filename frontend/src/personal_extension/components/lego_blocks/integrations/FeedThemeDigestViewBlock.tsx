@@ -41,7 +41,7 @@ export function FeedThemeDigestViewBlock({ entry, feeds, onOpenItem, onClose }: 
         <div className="min-w-0 flex-1">
           <h2 className="text-[17px] font-semibold leading-snug">{theme}</h2>
           <p className="mt-0.5 text-[12px] text-zinc-500 dark:text-zinc-400">
-            From {digest.sources.length} {digest.sources.length === 1 ? 'outlet' : 'outlets'} the AI read beyond your reading list
+            {digest.itemIds.length} {digest.itemIds.length === 1 ? 'article' : 'articles'} from {digest.sources.length} {digest.sources.length === 1 ? 'outlet' : 'outlets'} the AI read beyond your reading list
           </p>
         </div>
         <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800">

@@ -1,10 +1,10 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { FEED_OTHER_THEME_BLOCK } from '@/services/lego_blocks/units/intelligence/contracts/feedTopicThemesContractBlock'
 import { useRssFeedsBlock } from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
 import { rssFeedIdsExcludedFromAllUnreadBlock, rssReaderFeedsBlock, type RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { buildRssDayInboxBlock, recentRssFeedsBlock, rssDayLabelBlock, type RssStoryBlock } from '@/services/lego_blocks/units/rssStoryBlock'
-import { localDayBlock, rssTopicItemsBlock, rssTopicsShownBlock, type RssTopicBlock } from '@/services/lego_blocks/units/rssTopicBlock'
+import { localDayBlock, rssOutsideCountsBlock, rssTopicItemsBlock, rssTopicsShownBlock, type RssTopicBlock } from '@/services/lego_blocks/units/rssTopicBlock'
 import { readLastLibraryPassOrch } from '@/services/orchestrators/libraryFullTextOrch'
 import { readLastValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { cn } from '@/lib/utils'
@@ -154,9 +154,45 @@ type FeedTopicEntryBlock = { topic: RssTopicBlock; items: RssFeedItemBlock[] }
 const publisherNameBlock = (title: string) => title.split(/\s[|:–—-]\s/)[0].replace(/^Latest from\s+/i, '').trim()
 
 /** One topic: its name, key details and how many articles; open it for the articles, from every outlet. */
+/** What the other sources carried, per theme and topic: read where the rows draw their counts. */
+const OutsideCountsContextBlock = createContext<ReturnType<typeof rssOutsideCountsBlock> | null>(null)
+
+/**
+ * A row's size: the total articles, a small bar split in two greys (the darker
+ * share your reading list, the lighter the other sources the AI read), then its
+ * topics and outlets. The split is spelled out on hover.
+ */
+function RowCountsBlock({ own, other, ownOutlets, otherOutlets, topics }: { own: number; other: number; ownOutlets: number; otherOutlets: number; topics?: number }) {
+  const total = own + other
+  const outlets = ownOutlets + otherOutlets
+  const title = other > 0
+    ? `${own} ${own === 1 ? 'article' : 'articles'} from ${ownOutlets} in your reading list, ${other} from ${otherOutlets} other ${otherOutlets === 1 ? 'outlet' : 'outlets'} the AI read`
+    : undefined
+  const articles = `${total} ${total === 1 ? 'article' : 'articles'}`
+  const outletsLabel = `${outlets} ${outlets === 1 ? 'outlet' : 'outlets'}`
+  // A theme leads with its topics, then its articles and outlets; a topic (no topics count) with its articles
+  const lead = topics !== undefined ? `${topics} ${topics === 1 ? 'topic' : 'topics'}` : articles
+  const rest = topics !== undefined ? `${articles} · ${outletsLabel}` : outletsLabel
+  return (
+    <span className="block" title={title}>
+      <span className="block font-medium tabular-nums text-zinc-700 dark:text-zinc-200">{lead}</span>
+      <span className="mt-1 block tabular-nums">{rest}</span>
+      {other > 0 && (
+        // Small and in two greys: your reading list the darker share, the other sources the lighter
+        <span className="ml-auto mt-1.5 flex h-[3px] w-14 overflow-hidden rounded-full" aria-hidden>
+          <span className="h-full bg-zinc-500 dark:bg-zinc-300" style={{ width: `${(own / total) * 100}%` }} />
+          <span className="h-full bg-zinc-200 dark:bg-zinc-600" style={{ width: `${(other / total) * 100}%` }} />
+        </span>
+      )}
+    </span>
+  )
+}
+
 function FeedTopicRowBlock({ entry, sourceOf, onOpenItem, mood }: { entry: FeedTopicEntryBlock; sourceOf: (item: RssFeedItemBlock) => string; onOpenItem: (item: RssFeedItemBlock) => void; mood?: boolean }) {
   const [open, setOpen] = useState(false)
+  const outsideCounts = useContext(OutsideCountsContextBlock)
   const { topic, items } = entry
+  const outside = outsideCounts?.byTopic.get(topic.name)
   const outlets = [...new Set(items.map(item => publisherNameBlock(sourceOf(item))).filter(Boolean))]
   const lead = topic.detail ?? items[0]?.aiSummary?.text.split('\n').find(Boolean)?.replace(/^-\s*/, '') ?? null
   return (
@@ -166,9 +202,8 @@ function FeedTopicRowBlock({ entry, sourceOf, onOpenItem, mood }: { entry: FeedT
           <span className="block font-medium leading-snug text-zinc-900 dark:text-zinc-100">{topic.name}</span>
           {lead && <span className={cn('mt-1 block text-[12.5px] leading-snug text-zinc-600 dark:text-zinc-300', !open && 'line-clamp-3')}>{lead}</span>}
         </span>
-        <span className="w-[120px] shrink-0 pt-px text-right text-[12px] text-zinc-500 dark:text-zinc-400" title={outlets.join(', ')}>
-          <span className="block font-medium tabular-nums text-zinc-700 dark:text-zinc-200">{items.length} {items.length === 1 ? 'article' : 'articles'}</span>
-          <span className="mt-0.5 block tabular-nums">{outlets.length} {outlets.length === 1 ? 'outlet' : 'outlets'}</span>
+        <span className="w-[140px] shrink-0 pt-px text-right text-[12px] text-zinc-500 dark:text-zinc-400" title={outlets.join(', ')}>
+          <RowCountsBlock own={items.length} other={outside?.articles ?? 0} ownOutlets={outlets.length} otherOutlets={outside?.outlets ?? 0} />
         </span>
       </button>
       {open && (
@@ -206,6 +241,8 @@ const UNPLACED_THEME_BLOCK = 'Not grouped yet'
  */
 function FeedThemeRowBlock({ theme, entries, sourceOf, onOpenItem, mood, defaultOpen = false }: { theme: string; entries: FeedTopicEntryBlock[]; sourceOf: (item: RssFeedItemBlock) => string; onOpenItem: (item: RssFeedItemBlock) => void; mood?: boolean; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen)
+  const outsideCounts = useContext(OutsideCountsContextBlock)
+  const outside = outsideCounts?.byTheme.get(mood ? `Market · ${theme}` : theme)
   const articles = entries.reduce((n, e) => n + e.items.length, 0)
   const outlets = new Set(entries.flatMap(e => e.items.map(item => publisherNameBlock(sourceOf(item))).filter(Boolean)))
   return (
@@ -222,9 +259,8 @@ function FeedThemeRowBlock({ theme, entries, sourceOf, onOpenItem, mood, default
             </span>
           )}
         </span>
-        <span className="w-[120px] shrink-0 pt-px text-right text-[12px] text-zinc-500 dark:text-zinc-400" title={[...outlets].join(', ')}>
-          <span className="block font-medium tabular-nums text-zinc-700 dark:text-zinc-200">{articles} {articles === 1 ? 'article' : 'articles'}</span>
-          <span className="mt-0.5 block tabular-nums">{entries.length} {entries.length === 1 ? 'topic' : 'topics'} · {outlets.size} {outlets.size === 1 ? 'outlet' : 'outlets'}</span>
+        <span className="w-[140px] shrink-0 pt-px text-right text-[12px] text-zinc-500 dark:text-zinc-400" title={[...outlets].join(', ')}>
+          <RowCountsBlock own={articles} other={outside?.articles ?? 0} ownOutlets={outlets.size} otherOutlets={outside?.outlets ?? 0} topics={entries.length} />
         </span>
       </button>
       {open && (
@@ -344,6 +380,7 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header, day, onPi
   )
   // The day's news by what is happening, as the AI sorted it
   const topicState = useRssTopicsBlock(day)
+  const outsideCounts = useMemo(() => rssOutsideCountsBlock(topicState), [topicState])
   const { topics, sourceOf } = useMemo(() => {
     const readerFeeds = rssReaderFeedsBlock(deferredFeeds, preferences)
     const source = new Map<string, string>()
@@ -400,7 +437,11 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header, day, onPi
         <DayBarsBlock rows={[...history].reverse()} day={day} onPickDay={onPickDay} />
         {chart}
         {topics.length > 0
-          ? <FeedTopicsPanelBlock topics={topics} sourceOf={sourceOf} onOpenItem={onOpenItem} dayLabel={dayLabel} />
+          ? (
+            <OutsideCountsContextBlock.Provider value={outsideCounts}>
+              <FeedTopicsPanelBlock topics={topics} sourceOf={sourceOf} onOpenItem={onOpenItem} dayLabel={dayLabel} />
+            </OutsideCountsContextBlock.Provider>
+          )
           : !isToday && todayStories.length > 0 && (
             <F9PanelBlock className="px-5 py-4 text-[13px] text-zinc-500 dark:text-zinc-400">
               {reader.progress?.kind === 'topics'

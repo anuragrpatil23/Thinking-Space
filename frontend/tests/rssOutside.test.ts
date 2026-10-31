@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeRssOutsideBlock, rssNoteSlotBlock, rssThemeDigestsBlock, rssThemeNotesNeededBlock, setRssThemeNoteBlock, type RssTopicBlock, type RssTopicsDayBlock } from '@/services/lego_blocks/units/rssTopicBlock'
+import { mergeRssOutsideBlock, rssNoteSlotBlock, rssOutsideCountsBlock, rssThemeDigestsBlock, rssThemeNotesNeededBlock, setRssThemeNoteBlock, type RssTopicBlock, type RssTopicsDayBlock } from '@/services/lego_blocks/units/rssTopicBlock'
 import { parseFeedOutsideMatchBlock } from '@/services/lego_blocks/units/intelligence/contracts/feedOutsideMatchContractBlock'
 import { cleanFeedThemeNoteBlock } from '@/services/lego_blocks/units/intelligence/contracts/feedThemeNoteContractBlock'
 
@@ -79,5 +79,22 @@ describe('theme digests', () => {
     expect(themes.get('Intel')).toEqual({ note: null, cited: [{ topic: 'Intel Q3 earnings', sources: ['Bloomberg', 'FT'] }], sources: ['Bloomberg', 'FT'], itemIds: ['a', 'b', 'c'] })
     expect(themes.get('Market · Chips')?.cited).toEqual([{ topic: 'Nvidia falls', sources: ['CNBC'] }])
     expect([...elsewhere.keys()]).toEqual(['Space'])
+  })
+})
+
+describe('other-source counts', () => {
+  it('counts articles and outlets per topic and per theme, headlines included', () => {
+    const state = mergeRssOutsideBlock(day(), [out('a', 'Bloomberg', true), out('b', 'FT'), out('c', 'FT'), out('d', 'CNBC'), out('e', 'AP')], [
+      { n: 1, kind: 'topic', name: 'Intel Q3 earnings' },
+      { n: 2, kind: 'topic', name: 'Intel Q3 earnings' },
+      { n: 3, kind: 'theme', name: 'Intel' },
+      { n: 4, kind: 'topic', name: 'Nvidia falls' },
+      { n: 5, kind: 'elsewhere', name: 'Space' },
+    ])
+    const { byTheme, byTopic } = rssOutsideCountsBlock(state)
+    expect(byTopic.get('Intel Q3 earnings')).toEqual({ articles: 2, outlets: 2 })
+    expect(byTheme.get('Intel')).toEqual({ articles: 3, outlets: 2 })
+    expect(byTheme.get('Market · Chips')).toEqual({ articles: 1, outlets: 1 })
+    expect(byTheme.has('Space')).toBe(false)
   })
 })
