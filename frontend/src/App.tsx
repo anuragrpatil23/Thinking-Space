@@ -75,6 +75,10 @@ import { Button } from './components/lego_blocks/units/ui/button'
 import RuntimeErrorBoundaryBlock from './components/lego_blocks/integrations/RuntimeErrorBoundaryBlock'
 import RuntimeErrorSurfaceBlock from './components/lego_blocks/integrations/RuntimeErrorSurfaceBlock'
 import DebugPanelBlock from './components/lego_blocks/integrations/DebugPanelBlock'
+import AiRunsPanelBlock from './components/lego_blocks/integrations/AiRunsPanelBlock'
+import AiEngineStatusCardBlock from './components/lego_blocks/units/AiEngineStatusCardBlock'
+import { useAiEngineStatusBlock } from './components/lego_blocks/hooks/shared/useAiEngineStatusBlock'
+import { describeEngineStateBlock, ENGINE_DOT_CLASS } from './services/lego_blocks/units/intelligence/engineStatusBlock'
 import BackgroundActivityBannerBlock from './components/lego_blocks/integrations/BackgroundActivityBannerBlock'
 import SyncRefreshButtonBlock from './components/lego_blocks/units/SyncRefreshButtonBlock'
 import { useAmbientSyncActivityBlock } from './components/lego_blocks/hooks/useAmbientSyncActivityBlock'
@@ -700,6 +704,14 @@ function App() {
   const [runtimeErrorReports, setRuntimeErrorReports] = useState<RuntimeErrorReportBlock[]>([])
   const [runtimeErrorCopiedToken, setRuntimeErrorCopiedToken] = useState<string | null>(null)
   const [debugPanelOpen, setDebugPanelOpen] = useState(false)
+  const [aiRunsOpen, setAiRunsOpen] = useState(false)
+  // Probed once each time the ⋯ menu opens; otherwise only listening.
+  const aiEngineStatus = useAiEngineStatusBlock(syncPanelOpen)
+  const aiEngineTone = describeEngineStateBlock(aiEngineStatus.engine).tone
+  // The ⋯ dot: only when the engine is not taking work and that matters —
+  // something is waiting on it, or a supervisor says it should be up.
+  const aiEngineNeedsAttention = (aiEngineTone === 'waiting' || aiEngineTone === 'paused' || aiEngineTone === 'down')
+    && (aiEngineStatus.running + aiEngineStatus.queued > 0 || aiEngineStatus.supervised)
   const [debugLogEntries, setDebugLogEntries] = useState<DebugLogEntryBlock[]>([])
   const [debugToast, setDebugToast] = useState<DebugLogEntryBlock | null>(null)
   const [debugUnreadCount, setDebugUnreadCount] = useState(0)
@@ -2843,6 +2855,12 @@ function App() {
                   {debugUnreadCount > 0 && (
                     <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500" />
                   )}
+                  {aiEngineNeedsAttention && (
+                    <span
+                      className={`absolute -left-0.5 -top-0.5 h-2 w-2 rounded-full ${ENGINE_DOT_CLASS[aiEngineTone]}`}
+                      title={`AI engine: ${describeEngineStateBlock(aiEngineStatus.engine).label}`}
+                    />
+                  )}
                 </button>
               </div>
             </div>
@@ -3530,6 +3548,31 @@ function App() {
             <div className="my-1 h-px bg-border" />
 
             <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">AI</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full justify-start border-transparent bg-card text-foreground hover:bg-muted"
+                onClick={() => {
+                  setSyncPanelOpen(false)
+                  setAiRunsOpen(true)
+                }}
+              >
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                AI Runs
+                {aiEngineStatus.running + aiEngineStatus.queued > 0 && (
+                  <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
+                    {aiEngineStatus.running} ▸ {aiEngineStatus.queued}
+                  </span>
+                )}
+              </Button>
+              <AiEngineStatusCardBlock status={aiEngineStatus} />
+            </div>
+
+            <div className="my-1 h-px bg-border" />
+
+            <div className="space-y-2">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Developer</p>
               <Button
                 type="button"
@@ -3776,6 +3819,7 @@ function App() {
           onClose={() => setDebugPanelOpen(false)}
           onClear={() => { setDebugLogEntries([]); setDebugUnreadCount(0) }}
         />
+        <AiRunsPanelBlock isOpen={aiRunsOpen} onClose={() => setAiRunsOpen(false)} />
         {debugToast && (
           <div
             className="pointer-events-none fixed right-4 z-[100]"

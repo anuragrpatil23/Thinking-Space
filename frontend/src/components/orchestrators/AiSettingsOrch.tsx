@@ -226,7 +226,7 @@ export default function AiSettingsOrch() {
   const onTestBackground = async () => {
     setBackgroundTest('running')
     const started = performance.now()
-    const result = await runContract(settingsPingContract, { at: new Date().toISOString() }, { provider: backgroundProvider, refresh: true, timeoutMs: 120_000 })
+    const result = await runContract(settingsPingContract, { at: new Date().toISOString() }, { provider: backgroundProvider, refresh: true, timeoutMs: 120_000, priority: 'interactive' })
     const took = secondsBlock(performance.now() - started)
     setBackgroundTest(result.ok
       ? { ok: true, text: `Answered "${String(result.value)}" · ${result.model} · ${took}` }

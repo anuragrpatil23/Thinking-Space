@@ -52,6 +52,12 @@ export interface IntelligenceRequest {
    *  pick the right transport (top-level chat_template_kwargs, /no_think prefix,
    *  Anthropic thinking config disabled, etc.). */
   disableReasoning?: boolean
+  /** Sent as `X-Request-Id` / `X-Job` where the provider supports it, so an
+   *  engine's failure record can name the jobs it was running when it died.
+   *  The id stays the same across retries of one job — that is what lets two
+   *  deaths be pinned on the same input. */
+  requestId?: string
+  jobId?: string
 }
 
 export type IntelligenceFinishReason =

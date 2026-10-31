@@ -17,6 +17,10 @@ import {
   type ServerProfile,
 } from '@/services/lego_blocks/units/intelligence/serverProfileBlock'
 import { toJsonSchemaBlock } from '@/services/lego_blocks/units/intelligence/schemaBlock'
+import {
+  getEngineStateBlock,
+  isEngineSupervisedBlock,
+} from '@/services/lego_blocks/integrations/intelligence/engineMonitorBlock'
 import type {
   IntelligenceRequest,
   IntelligenceResponse,
@@ -167,6 +171,19 @@ export class OpenaiCompatProviderBlock implements IntelligenceProvider {
     const baseUrl = normalizeBaseUrlBlock(cfg.baseUrl)
     const profile = await probeServerProfileBlock(baseUrl, cfg.apiKey, force)
     if (!profile) {
+      // A supervised engine that is down is coming back: report available so
+      // work still queues — the dispatch gate holds it until the engine is
+      // ready — instead of every caller skipping its job for the restart window.
+      const engine = getEngineStateBlock()
+      const model = cfg.model?.trim() || engine.model || null
+      if (isEngineSupervisedBlock() && model) {
+        return {
+          available: true,
+          defaultModel: model,
+          details: { baseUrl, engineState: engine.kind },
+          reason: engine.reason ?? `Engine ${engine.kind}`,
+        }
+      }
       return { available: false, defaultModel: null, details: { baseUrl }, reason: 'Server unreachable' }
     }
     const defaultModel = cfg.model?.trim() || profile.models[0] || null
@@ -224,6 +241,8 @@ export class OpenaiCompatProviderBlock implements IntelligenceProvider {
       headers: {
         'Content-Type': 'application/json',
         ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
+        ...(request.requestId ? { 'X-Request-Id': request.requestId } : {}),
+        ...(request.jobId ? { 'X-Job': request.jobId } : {}),
       },
       body: JSON.stringify(body),
       signal,

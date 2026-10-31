@@ -30,6 +30,10 @@ export interface RunningJob {
    * asked, and waiting for it to finish to find out is the wrong order.
    */
   request?: { system?: string; user?: string }
+  /** Retry state after the engine died under this job: which retry it is on,
+   *  and whether it is waiting for the engine to come back before sending. */
+  attempt?: number
+  waitingForEngine?: boolean
 }
 
 const running = new Map<number, RunningJob>()
@@ -51,7 +55,11 @@ function emit(): void {
  *  the prompt once it has been built. */
 export function registerRunningJobBlock(
   job: Omit<RunningJob, 'id' | 'startedAt' | 'request'>,
-): { dispose: () => void; setRequest: (request: RunningJob['request']) => void } {
+): {
+  dispose: () => void
+  setRequest: (request: RunningJob['request']) => void
+  setRetry: (retry: Pick<RunningJob, 'attempt' | 'waitingForEngine'>) => void
+} {
   const id = nextId
   nextId += 1
   running.set(id, { ...job, id, startedAt: Date.now() })
@@ -67,6 +75,12 @@ export function registerRunningJobBlock(
       // worth resurrecting a row for.
       if (!current) return
       running.set(id, { ...current, request })
+      emit()
+    },
+    setRetry: retry => {
+      const current = running.get(id)
+      if (!current) return
+      running.set(id, { ...current, ...retry })
       emit()
     },
   }

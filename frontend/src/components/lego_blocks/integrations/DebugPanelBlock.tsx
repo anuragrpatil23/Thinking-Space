@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { X, Trash2, Copy, Check, ChevronDown, ChevronRight, AlertCircle, AlertTriangle, Info, Bug, Cpu, Sparkles } from 'lucide-react'
+import { X, Trash2, Copy, Check, ChevronDown, ChevronRight, AlertCircle, AlertTriangle, Info, Bug, Cpu } from 'lucide-react'
 import {
   readReadingTraceBlock,
   readReadingLiveStateBlock,
 } from '@/services/lego_blocks/units/readingTraceBlock'
-import IntelligenceRunsTabBlock from '@/components/lego_blocks/units/IntelligenceRunsTabBlock'
 import type { DebugLogEntryBlock, DebugLogLevel } from '@/services/lego_blocks/units/debugLogBlock'
 import { useVisibleIntervalBlock } from '../hooks/shared/useVisibleIntervalBlock'
 import {
@@ -25,7 +24,7 @@ interface DebugPanelBlockProps {
   onClear: () => void
 }
 
-type TabFilter = 'all' | 'error' | 'warn' | 'info' | 'debug' | 'performance' | 'ai' | 'reading'
+type TabFilter = 'all' | 'error' | 'warn' | 'info' | 'debug' | 'performance' | 'reading'
 
 interface DebugHostProcessMetricBlock {
   pid: number
@@ -271,7 +270,6 @@ const TABS: { id: TabFilter; label: string }[] = [
   { id: 'info', label: 'Info' },
   { id: 'debug', label: 'Debug' },
   { id: 'performance', label: 'Performance' },
-  { id: 'ai', label: 'AI runs' },
   { id: 'reading', label: 'Reading' },
 ]
 
@@ -629,11 +627,11 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
   const listRef = useRef<HTMLDivElement | null>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   // Both tabs render their own surface rather than the log list, and neither
-  // has anything for the copy/clear buttons in the header to act on.
+  // has anything for the copy/clear buttons in the header to act on. (AI runs
+  // moved out to their own sheet — AiRunsPanelBlock, opened from the ⋯ menu.)
   const isPerfTab = activeTab === 'performance'
-  const isAiTab = activeTab === 'ai'
   const isReadingTab = activeTab === 'reading'
-  const isOwnSurface = isPerfTab || isAiTab || isReadingTab
+  const isOwnSurface = isPerfTab || isReadingTab
 
   // Auto-scroll to bottom when new entries arrive
   useEffect(() => {
@@ -652,7 +650,7 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
     : entries.filter(e => e.level === activeTab)
 
   const countFor = (tab: TabFilter) => {
-    if (tab === 'performance' || tab === 'ai' || tab === 'reading') return 0
+    if (tab === 'performance' || tab === 'reading') return 0
     return tab === 'all' ? entries.length : entries.filter(e => e.level === tab).length
   }
 
@@ -759,7 +757,6 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
                 }`}
               >
                 {tab.id === 'performance' && <Cpu className="h-3 w-3 shrink-0" />}
-                {tab.id === 'ai' && <Sparkles className="h-3 w-3 shrink-0" />}
                 {tab.label}
                 {count > 0 && (
                   <span className={`rounded px-1 py-px text-[10px] tabular-nums font-semibold ${
@@ -782,9 +779,7 @@ export default function DebugPanelBlock({ entries, isOpen, onClose, onClear }: D
           <div ref={listRef} className="ltm-nav-scroll min-h-0 flex-1 overflow-y-auto">
             {isPerfTab
               ? <PerformanceTab />
-              : isReadingTab
-                ? <ReadingTraceTabBlock trace={readingTrace} live={readingLive} />
-                : <IntelligenceRunsTabBlock />}
+              : <ReadingTraceTabBlock trace={readingTrace} live={readingLive} />}
           </div>
         ) : (
           <>

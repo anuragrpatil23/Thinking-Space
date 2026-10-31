@@ -12,7 +12,13 @@
 // is not a reason to write your notes to a second place on disk.
 
 import { useEffect, useState } from 'react'
-import { Loader2, X } from 'lucide-react'
+import { Loader2, RotateCw, X } from 'lucide-react'
+import { useAiEngineStatusBlock } from '@/components/lego_blocks/hooks/shared/useAiEngineStatusBlock'
+import {
+  describeEngineStateBlock,
+  formatSecondsBlock,
+  type EngineToneBlock,
+} from '@/services/lego_blocks/units/intelligence/engineStatusBlock'
 import { cn } from '@/lib/utils'
 import {
   clearTelemetryBlock,
@@ -35,7 +41,16 @@ import {
 
 function fmtMs(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`
-  return `${(ms / 1000).toFixed(1)}s`
+  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`
+  return formatSecondsBlock(ms / 1000)
+}
+
+/** Output tokens per second over the whole run. Includes prompt processing, so
+ *  it reads a little under the model's pure decode speed. */
+function tokensPerSecondBlock(entry: TelemetryEntry): number | null {
+  const out = entry.usage?.completionTokens ?? 0
+  if (entry.status !== 'ok' || out <= 0 || entry.latencyMs <= 0) return null
+  return out / (entry.latencyMs / 1000)
 }
 
 function fmtAgo(since: number, now: number): string {
@@ -52,17 +67,104 @@ function fmtSubjectDate(dateIso?: string): string | null {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-/** The "what is this about" line shared by queued and running rows. */
-function SubjectTag({ project, dateIso }: { project?: string; dateIso?: string }) {
+/** Subject first, job type second: "Thinking-Space · Oct 30" is what you are
+ *  waiting for; "session-digest" is how it gets made. Jobs with no subject keep
+ *  their type as the title. */
+function RunTitle({ taskId, project, dateIso, muted }: { taskId: string; project?: string; dateIso?: string; muted?: boolean }) {
   const date = fmtSubjectDate(dateIso)
-  if (!project && !date) return null
+  const subject = [project, date].filter(Boolean).join(' · ')
   return (
-    <span className="shrink-0 truncate text-[10px] text-muted-foreground/80">
-      {project}
-      {project && date ? ' · ' : ''}
-      {date}
+    <span className="flex min-w-0 items-baseline gap-2">
+      <span className={cn('truncate font-medium', muted ? 'text-foreground/70' : 'text-foreground/90')}>
+        {subject || taskId}
+      </span>
+      {subject && <span className="shrink-0 text-[10px] text-muted-foreground/80">{taskId}</span>}
     </span>
   )
+}
+
+const BANNER_TONE: Record<EngineToneBlock, string> = {
+  ok: '',
+  unknown: 'border-border/50 bg-muted/30 text-muted-foreground',
+  waiting: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+  paused: 'border-border/60 bg-muted/40 text-muted-foreground',
+  down: 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400',
+}
+
+/** Shown only while the engine is not taking work, so its presence alone says
+ *  something is wrong. Says why, when it comes back, and that nothing waiting
+ *  was lost — jobs pause while the engine is away, they do not fail. */
+function EngineBannerBlock({ now, waiting }: { now: number; waiting: number }) {
+  const { engine } = useAiEngineStatusBlock(true)
+  const [open, setOpen] = useState(false)
+  const view = describeEngineStateBlock(engine, now)
+  if (view.tone === 'ok' || engine.kind === 'unknown') return null
+  const failure = engine.lastFailure
+  return (
+    <div className={cn('rounded-md border px-2.5 py-2', BANNER_TONE[view.tone])}>
+      <div className="flex items-center gap-2">
+        <span className="font-medium">{view.label}</span>
+        {view.detail && <span className="min-w-0 truncate opacity-90">{view.detail}</span>}
+        {failure && (
+          <button
+            type="button"
+            onClick={() => setOpen(o => !o)}
+            className="ml-auto shrink-0 text-[10px] underline-offset-2 opacity-80 hover:underline"
+          >
+            {open ? 'hide' : 'why'}
+          </button>
+        )}
+      </div>
+      {waiting > 0 && (
+        <div className="mt-0.5 text-[10px] opacity-80">
+          {waiting} {waiting === 1 ? 'job' : 'jobs'} paused, none lost. They resume when the engine is back.
+        </div>
+      )}
+      {open && failure && (
+        <div className="mt-1.5 space-y-0.5 border-t border-current/20 pt-1.5 text-[10px] opacity-90">
+          <div>
+            Last failure{failure.at ? ` at ${new Date(failure.at).toLocaleTimeString()}` : ''}: {failure.reason ?? 'unknown'}
+          </div>
+          {failure.detail && <div className="break-words font-mono">{failure.detail}</div>}
+          {failure.inFlight.length > 0 && (
+            <div>Running at the time: {failure.inFlight.map(f => f.job ?? f.requestId.slice(0, 8)).join(', ')}</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Finished runs as displayed: errors pinned first (they are why you opened
+ *  this), then everything in order, with runs of consecutive cache hits for the
+ *  same task folded into one line — fourteen identical "cache-hit chain-stitch"
+ *  rows say one thing fourteen times. */
+type FinishedRowBlock =
+  | { kind: 'run'; entry: TelemetryEntry }
+  | { kind: 'cache'; taskId: string; entries: TelemetryEntry[] }
+
+function groupFinishedBlock(entries: TelemetryEntry[]): FinishedRowBlock[] {
+  const rows: FinishedRowBlock[] = entries.filter(e => e.status === 'error').map(entry => ({ kind: 'run', entry }))
+  for (const entry of entries) {
+    if (entry.status === 'error') continue
+    const last = rows[rows.length - 1]
+    if (entry.status === 'cache-hit') {
+      if (last?.kind === 'cache' && last.taskId === entry.taskId) last.entries.push(entry)
+      else rows.push({ kind: 'cache', taskId: entry.taskId, entries: [entry] })
+    } else {
+      rows.push({ kind: 'run', entry })
+    }
+  }
+  return rows
+}
+
+/** The model most runs used, named once in the header instead of on every row. */
+function mainModelBlock(models: Array<string | undefined>): string | null {
+  const counts = new Map<string, number>()
+  for (const m of models) if (m) counts.set(m, (counts.get(m) ?? 0) + 1)
+  let best: string | null = null
+  for (const [m, n] of counts) if (!best || n > (counts.get(best) ?? 0)) best = m
+  return best
 }
 
 const STATUS_TONE: Record<TelemetryEntry['status'], string> = {
@@ -110,6 +212,7 @@ export default function IntelligenceRunsTabBlock() {
   const [entries, setEntries] = useState<TelemetryEntry[]>(() => readTelemetryBlock())
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const [expandedCache, setExpandedCache] = useState<number | null>(null)
   // Drives the elapsed counters. Only ticks while something is in flight, so an
   // idle panel costs nothing — see the energy contract.
   const [now, setNow] = useState(() => Date.now())
@@ -127,8 +230,16 @@ export default function IntelligenceRunsTabBlock() {
     return () => window.clearInterval(t)
   }, [busy])
 
+  const mainModel = mainModelBlock([...running.map(j => j.model), ...queued.map(j => j.model), ...entries.map(e => e.model)])
+  const otherModel = (m?: string) => (m && m !== mainModel ? m : null)
+  const finishedRows = groupFinishedBlock(entries)
+
   return (
     <div className="space-y-4 p-3 text-xs">
+      <EngineBannerBlock now={now} waiting={queued.length + running.filter(j => j.waitingForEngine).length} />
+      {mainModel && (
+        <div className="truncate text-[10px] text-muted-foreground/80">{mainModel}</div>
+      )}
       <section>
         <div className="mb-1.5 flex items-center gap-2">
           <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
@@ -157,10 +268,16 @@ export default function IntelligenceRunsTabBlock() {
                       onClick={() => setExpandedKey(open ? null : `run-${job.id}`)}
                       className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     >
-                      <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />
-                      <span className="font-medium text-foreground/90">{job.taskId}</span>
-                      <SubjectTag project={job.project} dateIso={job.dateIso} />
-                      <span className="truncate text-muted-foreground/70">{job.model}</span>
+                      {job.waitingForEngine
+                        ? <RotateCw className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-500" />
+                        : <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />}
+                      <RunTitle taskId={job.taskId} project={job.project} dateIso={job.dateIso} />
+                      {otherModel(job.model) && <span className="truncate text-muted-foreground/70">{job.model}</span>}
+                      {job.attempt != null && (
+                        <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-500">
+                          retry {job.attempt}/2{job.waitingForEngine ? ' · waiting for engine' : ''}
+                        </span>
+                      )}
                       <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
                         {fmtAgo(job.startedAt, now)}
                       </span>
@@ -209,9 +326,13 @@ export default function IntelligenceRunsTabBlock() {
                       className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     >
                       <span className="w-3 shrink-0 text-center tabular-nums opacity-60">{i + 1}</span>
-                      <span className="font-medium text-foreground/70">{job.taskId}</span>
-                      <SubjectTag project={job.project} dateIso={job.dateIso} />
-                      <span className="truncate opacity-70">{job.model ?? ''}</span>
+                      <RunTitle taskId={job.taskId} project={job.project} dateIso={job.dateIso} muted />
+                      {job.priority === 'interactive' && (
+                        <span className="shrink-0 rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-600 dark:text-sky-400">
+                          next
+                        </span>
+                      )}
+                      {otherModel(job.model) && <span className="truncate opacity-70">{job.model}</span>}
                       <span className="ml-auto shrink-0 tabular-nums">
                         waiting {fmtAgo(job.queuedAt, now)}
                       </span>
@@ -268,8 +389,42 @@ export default function IntelligenceRunsTabBlock() {
           </div>
         ) : (
           <div className="space-y-1">
-            {entries.map(entry => {
+            {finishedRows.map(row => {
+              if (row.kind === 'cache') {
+                const first = row.entries[0]
+                const groupOpen = expandedCache === first.id
+                return (
+                  <div key={`cache-${first.id}`} className="rounded-md border border-border/40">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedCache(groupOpen ? null : first.id)}
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
+                    >
+                      <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[10px]', STATUS_TONE['cache-hit'])}>
+                        {row.entries.length === 1 ? 'cache-hit' : `${row.entries.length} cache hits`}
+                      </span>
+                      <span className="truncate font-medium text-foreground/90">{row.taskId}</span>
+                      <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                        {new Date(first.ts).toLocaleTimeString()}
+                      </span>
+                    </button>
+                    {groupOpen && (
+                      <div className="space-y-0.5 px-2.5 pb-2 text-[10px] text-muted-foreground">
+                        {row.entries.map(e => (
+                          <div key={e.id} className="flex gap-2">
+                            <RunTitle taskId={e.taskId} project={e.project} dateIso={e.dateIso} muted />
+                            <span className="ml-auto shrink-0 tabular-nums">{new Date(e.ts).toLocaleTimeString()}</span>
+                          </div>
+                        ))}
+                        <div className="opacity-70">Served from cache — no prompt was sent.</div>
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+              const entry = row.entry
               const open = expandedId === entry.id
+              const tps = tokensPerSecondBlock(entry)
               return (
                 <div key={entry.id} className="rounded-md border border-border/40">
                   <button
@@ -280,9 +435,8 @@ export default function IntelligenceRunsTabBlock() {
                     <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[10px]', STATUS_TONE[entry.status])}>
                       {entry.status}
                     </span>
-                    <span className="truncate font-medium text-foreground/90">{entry.taskId}</span>
-                    <SubjectTag project={entry.project} dateIso={entry.dateIso} />
-                    <span className="truncate text-muted-foreground/70">{entry.model || entry.providerId}</span>
+                    <RunTitle taskId={entry.taskId} project={entry.project} dateIso={entry.dateIso} />
+                    {otherModel(entry.model) && <span className="truncate text-muted-foreground/70">{entry.model}</span>}
                     <span className="ml-auto flex shrink-0 items-center gap-2 text-[10px] tabular-nums text-muted-foreground">
                       {entry.reasoning === 'on' && (
                         <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-amber-600 dark:text-amber-500">
@@ -292,6 +446,7 @@ export default function IntelligenceRunsTabBlock() {
                       {entry.usage && (
                         <span>{entry.usage.promptTokens}→{entry.usage.completionTokens}</span>
                       )}
+                      {tps != null && <span>{tps < 10 ? tps.toFixed(1) : Math.round(tps)} tok/s</span>}
                       {entry.latencyMs > 0 && <span>{fmtMs(entry.latencyMs)}</span>}
                       <span>{new Date(entry.ts).toLocaleTimeString()}</span>
                     </span>
@@ -302,6 +457,11 @@ export default function IntelligenceRunsTabBlock() {
                         <div className="rounded border border-red-500/30 bg-red-500/5 p-2 text-[10px] text-red-600 dark:text-red-400">
                           <span className="font-mono uppercase">{entry.error.kind}</span>
                           <div className="mt-0.5 opacity-90">{entry.error.message}</div>
+                          {entry.error.details && (
+                            <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[10px] opacity-80">
+                              {JSON.stringify(entry.error.details, null, 2)}
+                            </pre>
+                          )}
                         </div>
                       )}
                       {entry.status === 'cache-hit' && (

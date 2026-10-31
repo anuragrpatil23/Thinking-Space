@@ -18,6 +18,9 @@ export type IntelligenceErrorKind =
                                // fragment, never a legitimately short answer
   | 'context-overflow'         // Prompt + reserved output exceeds the context
   | 'tool-loop-exceeded'       // Too many tool-call round trips
+  | 'engine-crashed'           // Engine died under the request and retries ran
+                               // out, or the same job was in flight for two
+                               // deaths in a row (poison input)
   | 'internal'                 // Bug in our code
 
 export interface IntelligenceError {

@@ -10,7 +10,12 @@
 //   - `availability` and `diagnose` power the Settings → AI → Diagnostics panel.
 
 import { runToolLoopBlock, type ToolResolver } from '@/services/lego_blocks/integrations/intelligence/toolLoopBlock'
-import { enqueueIntelligenceJobBlock } from '@/services/lego_blocks/integrations/intelligence/jobQueueBlock'
+import { enqueueIntelligenceJobBlock, type JobPriorityBlock } from '@/services/lego_blocks/integrations/intelligence/jobQueueBlock'
+import {
+  ensureEngineMonitorBlock,
+  isEngineSupervisedBlock,
+  waitForEngineReadyBlock,
+} from '@/services/lego_blocks/integrations/intelligence/engineMonitorBlock'
 import {
   readIntelligenceCacheBlock,
   writeIntelligenceCacheBlock,
@@ -48,6 +53,23 @@ import { registerRunningJobBlock } from '@/services/lego_blocks/units/intelligen
  *  Note this is the only governor on how long a model may think, so it also
  *  bounds how long a job holds one of the queue's concurrency slots. */
 const REQUEST_TIMEOUT_MS = 30 * 60_000
+/** Retries after the engine dies under a request, each sent only once the
+ *  engine reports ready again. */
+const MAX_ENGINE_RETRIES = 2
+
+/** The connection dropped or the server failed mid-request — the engine died
+ *  or is restarting — as opposed to the request itself being wrong. Only the
+ *  local engine is retried: it is the one with a supervisor bringing it back. */
+function isEngineDeathBlock(err: unknown, providerId: string): boolean {
+  if (providerId !== 'openai-compat') return false
+  if (err instanceof DOMException) return false
+  const status = err && typeof err === 'object' && 'httpStatus' in err
+    ? (err as { httpStatus?: number }).httpStatus
+    : undefined
+  if (typeof status === 'number') return status >= 500
+  // fetch rejects with TypeError on refused/reset connections.
+  return err instanceof TypeError
+}
 
 export interface RunContractOptions {
   provider?: ProviderId
@@ -63,6 +85,9 @@ export interface RunContractOptions {
    *  thinking preference decides reasoning for local models. Omit to keep the
    *  reasoning-off default. */
   scope?: AiSettingsScope
+  /** `interactive` when a person is on screen waiting for this result; it then
+   *  takes the next free slot ahead of background work. Defaults to background. */
+  priority?: JobPriorityBlock
 }
 
 export interface RunContractSuccess<T> {
@@ -352,6 +377,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
     }
   }
 
+  ensureEngineMonitorBlock()
   return enqueueIntelligenceJobBlock(`${contract.id}:${cacheKey}`, async () => {
     // (queue metadata is passed at the end of this call — see the third arg)
     const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS
@@ -362,7 +388,9 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       if (options.signal.aborted) userCancel.abort(options.signal.reason)
       else options.signal.addEventListener('abort', () => userCancel.abort(options.signal!.reason), { once: true })
     }
-    const { signal, cancel } = makeTimeoutSignalBlock(userCancel.signal, timeoutMs)
+    const runStartedAt = performance.now()
+    // Hoisted so a thrown failure can still report the prompt it was given.
+    let sentPayload: { system?: string; user?: string } | undefined
     const job = registerRunningJobBlock({
       taskId: contract.id,
       model,
@@ -411,6 +439,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
       // Attach it to the in-flight row too, so a run you are watching can be
       // inspected while it runs rather than only after it lands.
       job.setRequest(requestPayload)
+      sentPayload = requestPayload
       const overflow = checkContextFitBlock(profile, promptText, request.maxTokens ?? 0)
       if (overflow) {
         const overflowError = makeIntelligenceErrorBlock('context-overflow', overflow, {
@@ -435,7 +464,53 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
         return failure(overflowError) as RunContractResult<Value>
       }
 
-      const response = await provider.chat(request, signal)
+      // One id for every attempt of this job, so the engine's failure record
+      // can pin consecutive deaths on the same input.
+      request.requestId = crypto.randomUUID()
+      request.jobId = contract.id
+      const implicatedFailures = new Set<string>()
+      let consecutiveDeaths = 0
+      let response!: Awaited<ReturnType<typeof provider.chat>>
+      for (let attempt = 0; ; attempt += 1) {
+        // A fresh timeout per attempt: time spent waiting for a restart is not
+        // time the request spent running.
+        const { signal, cancel } = makeTimeoutSignalBlock(userCancel.signal, timeoutMs)
+        try {
+          response = await provider.chat(request, signal)
+          break
+        } catch (err) {
+          // Unsupervised servers have nothing bringing them back, so waiting on
+          // them could be forever; they fail as they always did.
+          if (userCancel.signal.aborted || !isEngineDeathBlock(err, provider.id) || !isEngineSupervisedBlock()) throw err
+          if (attempt >= MAX_ENGINE_RETRIES) {
+            throw Object.assign(new Error(`Engine failed ${attempt + 1} times under this job`), {
+              engineCrash: { attempts: attempt + 1, poison: false },
+            })
+          }
+          job.setRetry({ attempt: attempt + 1, waitingForEngine: true })
+          const engine = await waitForEngineReadyBlock(userCancel.signal)
+          // Was this job running when the engine died? A death names its
+          // in-flight requests; recycles and unsupervised engines name none,
+          // and an already-counted record is not a new death.
+          const failure = engine.lastFailure
+          const failureId = failure ? `${failure.at ?? ''}|${failure.reason ?? ''}` : ''
+          if (failure && !implicatedFailures.has(failureId)
+            && failure.inFlight.some(f => f.requestId === request.requestId)) {
+            implicatedFailures.add(failureId)
+            consecutiveDeaths += 1
+          } else {
+            consecutiveDeaths = 0
+          }
+          if (consecutiveDeaths >= 2) {
+            throw Object.assign(new Error('Engine died twice while running this job — not retrying it'), {
+              engineCrash: { attempts: attempt + 1, poison: true, lastFailure: failure },
+            })
+          }
+          job.setRetry({ attempt: attempt + 1, waitingForEngine: false })
+        } finally {
+          cancel()
+        }
+      }
 
       // A `length` finish means generation hit the stop-limit, which is set
       // far above any legitimate answer — so the output is a mid-sentence
@@ -565,9 +640,25 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
         cacheHit: false,
       } satisfies RunContractSuccess<Value>
     } catch (err) {
-      return failure(mapErrorBlock(err, provider.id, contract.id, model))
+      const error = mapErrorBlock(err, provider.id, contract.id, model)
+      // A run that died by throwing — dropped connection, timeout, an engine
+      // that kept crashing — is exactly the run you open the panel to find.
+      // Cancels are deliberate and stay out of the record.
+      if (error.kind !== 'aborted') {
+        recordTelemetryBlock({
+          taskId: contract.id,
+          ...subject,
+          providerId: provider.id,
+          model,
+          latencyMs: performance.now() - runStartedAt,
+          status: 'error',
+          reasoning: reasoningLabelBlock(disableReasoning),
+          error,
+          payload: sentPayload,
+        })
+      }
+      return failure(error)
     } finally {
-      cancel()
       job.dispose()
     }
   }, {
@@ -577,6 +668,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
     // The input, not the prompt — the prompt does not exist until the job runs.
     inputPreview: previewInputBlock(input),
     ...subject,
+    priority: options.priority,
     // Cancelling a queued job settles as an ordinary aborted failure, so call
     // sites that only check `ok` do not see a thrown error.
     onCancel: () => failure(makeIntelligenceErrorBlock('aborted', 'Cancelled while queued', {
@@ -699,6 +791,14 @@ function mapErrorBlock(err: unknown, providerId: string, taskId: string, model: 
     if (err.name === 'TimeoutError') {
       return makeIntelligenceErrorBlock('timeout', 'Request timed out', { providerId, taskId, model })
     }
+  }
+  if (err && typeof err === 'object' && 'engineCrash' in err) {
+    return makeIntelligenceErrorBlock('engine-crashed', err instanceof Error ? err.message : String(err), {
+      providerId,
+      taskId,
+      model,
+      details: (err as { engineCrash: Record<string, unknown> }).engineCrash,
+    })
   }
   if (err && typeof err === 'object' && 'httpStatus' in err) {
     return makeIntelligenceErrorBlock('http-error', err instanceof Error ? err.message : String(err), {

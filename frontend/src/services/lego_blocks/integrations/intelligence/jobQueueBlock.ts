@@ -17,8 +17,20 @@
 // Jobs with no subject date (chain stitches, range narrations) sort last. That
 // is also their dependency order — they compose the digests ahead of them in the
 // queue — so waiting is correct rather than merely tolerable.
+//
+// Lanes come before dates: an interactive job (someone is looking at the screen
+// waiting for it) takes the next free slot ahead of all background work. Without
+// this the Settings "Test" button sat 12 minutes behind a backlog of digests.
+//
+// Dispatch is gated per provider. A job whose provider's engine is not ready
+// stays queued — paused, not failed — and the gate's owner calls
+// `pumpIntelligenceQueueBlock` when it opens. The queue knows nothing about
+// engines; engineMonitorBlock installs the gate.
 
 const MAX_CONCURRENT = 2
+
+/** `interactive`: a person is waiting on screen. `background`: everything else. */
+export type JobPriorityBlock = 'interactive' | 'background'
 
 /** What a waiting job can say about itself. Without it the queue holds only an
  *  opaque key, so "three things are queued" was the most any UI could report —
@@ -43,6 +55,7 @@ export interface QueuedJobBlock {
    *  noise; twelve rows naming a project and a date are a work list. */
   project?: string
   dateIso?: string
+  priority: JobPriorityBlock
 }
 
 /** Options a caller can attach when enqueuing. */
@@ -53,6 +66,10 @@ export interface EnqueueOptionsBlock<T> {
   inputPreview?: string
   project?: string
   dateIso?: string
+  /** Defaults to `background`. Re-enqueueing a waiting key as `interactive`
+   *  promotes it — the dedup that hands back the existing promise would
+   *  otherwise leave the job wherever it first landed. */
+  priority?: JobPriorityBlock
   /**
    * Value to settle with if the job is cancelled while still waiting.
    *
@@ -76,6 +93,17 @@ interface QueueEntry<T> {
 let inFlight = 0
 const pending: QueueEntry<unknown>[] = []
 const dedup = new Map<string, Promise<unknown>>()
+/** Providers of the jobs running now, so a monitor can tell whether any work
+ *  depends on its engine without seeing the jobs themselves. */
+const runningProviders: Array<string | undefined> = []
+
+/** Whether a job for this provider may start now. Open by default. */
+let dispatchGate: (providerId: string | undefined) => boolean = () => true
+
+export function setIntelligenceDispatchGateBlock(gate: (providerId: string | undefined) => boolean): void {
+  dispatchGate = gate
+  pump()
+}
 
 const EVENT_NAME = 'intelligence:queue'
 
@@ -91,6 +119,7 @@ function emit(): void {
 /** Newest subject date first; undated last; ties broken by arrival so equal work
  *  still runs in the order it was asked for. */
 function comparePriorityBlock(a: QueueEntry<unknown>, b: QueueEntry<unknown>): number {
+  if (a.meta.priority !== b.meta.priority) return a.meta.priority === 'interactive' ? -1 : 1
   const da = a.meta.dateIso ? Date.parse(a.meta.dateIso) : NaN
   const db = b.meta.dateIso ? Date.parse(b.meta.dateIso) : NaN
   const aHas = Number.isFinite(da)
@@ -104,23 +133,28 @@ function comparePriorityBlock(a: QueueEntry<unknown>, b: QueueEntry<unknown>): n
  *  array sorted, so a job enqueued mid-drain is considered on its merits instead
  *  of inheriting a position from when it happened to arrive. */
 function nextIndexBlock(): number {
-  let best = 0
-  for (let i = 1; i < pending.length; i++) {
-    if (comparePriorityBlock(pending[i], pending[best]) < 0) best = i
+  let best = -1
+  for (let i = 0; i < pending.length; i++) {
+    if (!dispatchGate(pending[i].meta.providerId)) continue
+    if (best < 0 || comparePriorityBlock(pending[i], pending[best]) < 0) best = i
   }
   return best
 }
 
 function pump(): void {
   while (inFlight < MAX_CONCURRENT && pending.length > 0) {
-    const next = pending.splice(nextIndexBlock(), 1)[0]
+    const index = nextIndexBlock()
+    if (index < 0) break
+    const next = pending.splice(index, 1)[0]
     inFlight += 1
+    runningProviders.push(next.meta.providerId)
     next
       .run()
       .then(v => next.resolve(v))
       .catch(e => next.reject(e))
       .finally(() => {
         inFlight -= 1
+        runningProviders.splice(runningProviders.indexOf(next.meta.providerId), 1)
         dedup.delete(next.key)
         emit()
         pump()
@@ -129,13 +163,32 @@ function pump(): void {
   emit()
 }
 
+/** Re-check the gate — called by the gate's owner when it opens. */
+export function pumpIntelligenceQueueBlock(): void {
+  pump()
+}
+
+/** Whether any queued or running job targets this provider. */
+export function hasIntelligenceWorkForProviderBlock(providerId: string): boolean {
+  return runningProviders.includes(providerId) || pending.some(e => e.meta.providerId === providerId)
+}
+
 export function enqueueIntelligenceJobBlock<T>(
   key: string,
   run: () => Promise<T>,
   options?: EnqueueOptionsBlock<T>,
 ): Promise<T> {
   const existing = dedup.get(key) as Promise<T> | undefined
-  if (existing) return existing
+  if (existing) {
+    if (options?.priority === 'interactive') {
+      const waiting = pending.find(e => e.key === key)
+      if (waiting && waiting.meta.priority !== 'interactive') {
+        waiting.meta = { ...waiting.meta, priority: 'interactive' }
+        pump()
+      }
+    }
+    return existing
+  }
   const p = new Promise<T>((resolve, reject) => {
     pending.push({
       key,
@@ -147,6 +200,7 @@ export function enqueueIntelligenceJobBlock<T>(
         inputPreview: options?.inputPreview,
         project: options?.project,
         dateIso: options?.dateIso,
+        priority: options?.priority ?? 'background',
         queuedAt: Date.now(),
       },
       run,
