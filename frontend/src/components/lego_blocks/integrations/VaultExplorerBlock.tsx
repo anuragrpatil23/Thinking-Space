@@ -84,7 +84,7 @@ import CursorTooltipBlock from '@/components/lego_blocks/units/CursorTooltipBloc
 import type { SessionTelemetry } from '@/services/orchestrators/sessionTelemetryOrch'
 import SessionTelemetryStripBlock from '@/components/lego_blocks/units/SessionTelemetryStripBlock'
 import ExplorerGreetingBlock from '@/components/lego_blocks/units/ExplorerGreetingBlock'
-import ExplorerPullHelloBlock, { type ExplorerPullHelloHandle } from '@/components/lego_blocks/units/ExplorerPullHelloBlock'
+import { createTopNudgeCounterBlock } from '@/services/lego_blocks/units/topNudgeCounterBlock'
 import OverflowMenuButtonBlock from '@/components/lego_blocks/units/ui/OverflowMenuButtonBlock'
 import { useUserProfileBlock } from '@/components/lego_blocks/hooks/shared/useUserProfileBlock'
 import { useTimeOfDayBlock } from '@/components/lego_blocks/hooks/shared/useTimeOfDayBlock'
@@ -104,14 +104,6 @@ const COMPACT_NUMBERING_TOGGLE_ENABLED = false
 // Internal drop targets read the explicit application/x-ltm-path types; text/plain
 // and text/uri-list carry the absolute path so dragging out of the app (Terminal,
 // editors, chat inputs) drops the full filesystem path, like dragging from Finder.
-/* Scrolled to the end of the tree (or it fits without scrolling). The 2px
-   slack absorbs fractional scroll positions at non-100% zoom (scrollTop is
-   fractional, the heights are rounded); iOS's own bounce past the end
-   overshoots, which still counts. */
-function atTreeEndBlock(el: HTMLElement): boolean {
-  return el.scrollTop + el.clientHeight >= el.scrollHeight - 2
-}
-
 function setPathDragDataBlock(event: ReactDragEvent, path: string, kind: 'file' | 'folder'): void {
   event.dataTransfer.setData('application/x-ltm-path', `ltm-path:${path}`)
   event.dataTransfer.setData('application/x-ltm-path-kind', kind)
@@ -752,35 +744,14 @@ function VaultExplorerBlockInner({
   const { profile } = useUserProfileBlock()
   /* Re-renders the greeting as the day moves on (visibility-aware, 60s). */
   useTimeOfDayBlock()
-  /* Pull past the end of the tree to have Clawd say hello — pull-to-refresh
-     upside down, with a hello instead of a refresh (ExplorerPullHelloBlock
-     draws it). The top stays fixed: no pull there. Below, "the edge" is the
-     end of the tree; the rules are direction-free (`atEdge` + a signed
-     amount, positive = further past the edge).
-     One gesture, visible as it happens:
-     - A gesture that starts at the edge always pulls, one to one with the
-       fingers — no speed filter, caps or resistance (each was tried and made
-       the pull feel ignored or fighting back).
-     - A scroll arriving from above carries on into the pull only if it
-       reaches the end slowly with the fingers on. A fast scroll, or momentum
-       coasting after the fingers lifted, just gets you to the end.
-     - The line is crossed only by a slow pull: a gesture that went fast
-       can bring the pull up to it but not over, so a flick never says
-       hello; its momentum is caught there and springs it back.
-     - The trackpad moves the explorer at 0.6 of the fingers, gliding to
-       each delta rather than jumping.
-     - The pull feeds the visible pull only; the greeting keeps its size
-       (growing it first, then Clawd, made two things happen in a row).
-     - Release is the fingers lifting: on the trackpad, the moment the deltas
-       turn into the lift's coast (see `decay`, `smooth`, `crawl`), the
-       empty wheel event Chromium sends on lift, or the fingers stopping
-       (300ms quiet — a hold looks the same, and resuming catches the
-       spring back mid-way); on touch, touchend.
-       Reaching the line says hello at once; release only springs a short
-       pull back and re-arms it.
-     A gesture is a run of wheel events with no gap over 300ms. */
-  const pullHelloRef = useRef<ExplorerPullHelloHandle | null>(null)
-  const explorerRootRef = useRef<HTMLDivElement | null>(null)
+  /* Easter egg: already at the top of the tree, keep scrolling up — three
+     separate scrolls, each within 2s of the last — and Clawd comes back to
+     the greeting row to say hello (ExplorerGreetingBlock draws it). The
+     scroll that brings you to the top doesn't count, scrolling down starts
+     over, and the explorer itself never moves: a visible pull (the whole
+     explorer sliding with the fingers) was here before, and plain scrolling
+     felt smoother without it. Telling one scroll from the next is
+     topNudgeCounterBlock's job. */
   const treeScrollRef = useRef<HTMLDivElement | null>(null)
   const [helloNonce, setHelloNonce] = useState(0)
   /* iOS-style large title: big at rest at the top, small once the tree
@@ -789,178 +760,9 @@ function VaultExplorerBlockInner({
   const [largeGreeting, setLargeGreeting] = useState(true)
   const largeGreetingRef = useRef(true)
   largeGreetingRef.current = largeGreeting
-  const overscrollRef = useRef({
-    pull: 0,
-    lastAt: 0,
-    startedAtEdge: false,
-    active: false,
-    lastDelta: 0,
-    /* Momentum, read off a logged flick: Chromium's coast neither shrinks
-       every tick nor arrives one value at a time — it repeats (36, 36, 34,
-       34) and interleaves (3, 1, 3, 1). "Six shrinking in a row" never
-       happened, so a coast kept feeding the pull until it died out: the
-       explorer drifted down, hung near the line, and the coast's tail
-       even crossed it into a hello. Summing each delta with the one
-       before smooths both quirks; `decay` counts ticks that sum has not
-       grown (by more than 1) since `peak`. */
-    lastPair: 0,
-    peak: 0,
-    decay: 0,
-    /* Ticks in a row that changed by little: momentum is smooth (36, 36,
-       34; 3, 1, 3), fingers easing off are not (5, 8, 4, 7) — reading
-       those as momentum let go of a pull still under the fingers. */
-    smooth: 0,
-    /* 1px deltas in a row. A slow pull's lift leaves no real momentum,
-       only a floor of 1s, further and further apart (8, 17, 34, 66ms) —
-       it kept the pull up through that and the 450ms quiet after, which
-       read as a pause. Fingers on the pad do not crawl at 1px for long. */
-    crawl: 0,
-    /* Highest pair this gesture. */
-    top: 0,
-    growing: 0,
-    /* This gesture has turned into momentum; sticky until fingers are back. */
-    coasting: false,
-    /* Sprang back on the fingers stopping; the gesture may still be going. */
-    settled: false,
-    steady: 0,
-    releaseTimer: null as number | null,
-    touchY: null as number | null,
-  })
-  const releasePullBlock = useCallback(() => {
-    const state = overscrollRef.current
-    if (state.releaseTimer !== null) window.clearTimeout(state.releaseTimer)
-    state.releaseTimer = null
-    if (!state.active) return
-    state.active = false
-    state.settled = true
-    state.steady = 0
-    state.pull = 0
-    pullHelloRef.current?.release()
-  }, [])
-  const pullForHelloBlock = useCallback((atEdge: boolean, amount: number, threshold: number, wheel: boolean) => {
-    const state = overscrollRef.current
-    const now = performance.now()
-    /* A pause mid-pull is the fingers holding still, not a new gesture. */
-    if (!state.active && now - state.lastAt > 300) {
-      state.startedAtEdge = atEdge
-      state.pull = 0
-      state.active = false
-      state.lastPair = 0
-      state.peak = 0
-      state.decay = 0
-      state.smooth = 0
-      state.crawl = 0
-      state.top = 0
-      state.growing = 0
-      state.lastDelta = 0
-      state.settled = false
-      state.coasting = false
-    }
-    state.lastAt = now
-    let decaying = false
-    let gliding = false
-    if (wheel) {
-      const size = Math.abs(amount)
-      const pair = size + state.lastDelta
-      if (pair > state.lastPair + 1) {
-        state.peak = pair
-        state.decay = 0
-      } else state.decay += 1
-      state.lastPair = pair
-      state.crawl = size <= 1 ? state.crawl + 1 : 0
-      state.top = Math.max(state.top, pair)
-      state.smooth = Math.abs(size - state.lastDelta) <= Math.max(1, state.lastDelta * 0.15) ? state.smooth + 1 : 0
-      /* Growing and not tiny: a coast's last ticks wobble (1, 2, 2, 3), and
-         reading that as fingers back stalled the spring-back mid-way. */
-      state.growing = size > state.lastDelta && size >= 4 ? state.growing + 1 : 0
-      state.lastDelta = size
-      /* A fast coast: six ticks without growing, smooth, down a quarter
-         from a real speed (a slow pull's 1–9px deltas are always smooth,
-         and read as momentum they let go of every slow pull). Or a slow
-         lift's floor of 1px ticks. */
-      decaying = (state.peak >= 20 && state.decay >= 6 && pair <= state.peak * 0.75 && state.smooth >= 4)
-        || state.crawl >= 6
-      /* Fingers on the pad zig-zag (12, 1, 14, 2); after a slow pull's lift
-         the coast glides (4, 3, 3, 3, 2, 2) for half a second and carried
-         the explorer up to twice as far as the fingers went. Letting go
-         there also let go of fingers slowing down, so a slow pull never
-         got anywhere: a glide just adds nothing — the pull stays where the
-         fingers left it, and zig-zag (fingers moving again) resumes it. */
-      gliding = state.smooth >= 5 && state.top >= 8 && pair <= state.top * 0.75
-      /* Fingers do not glide for long; ten smooth ticks (~80ms) is the
-         lift's coast, and waiting it out read as a pause. */
-      if (gliding && state.smooth >= 10) decaying = true
-      if (decaying && !state.active) state.coasting = true
-      /* Deltas growing again: fingers are back on. */
-      if (state.growing >= 2) state.coasting = false
-    }
-    if (state.coasting) return
-    if (!state.startedAtEdge) {
-      /* Arrived at the end mid-gesture: it carries on into the pull only if
-         it got here slowly with the fingers on — a fast scroll, or momentum
-         coasting after the fingers lifted, just stops at the end. */
-      if (atEdge && amount > 0 && (!wheel || amount <= 16)) state.startedAtEdge = true
-      else return
-    }
-    if (!atEdge && !state.active) return
-    /* After springing back, what follows in the same gesture is either the
-       lift's momentum or the fingers pulling again (back-to-back pulls run
-       together as one gesture). Momentum decays every tick, so the next two
-       deltas decide: one shrinks → coasting, ignored (picking the pull up on
-       it made the explorer go up, down and up again); two that hold or grow
-       → fingers, resume at once. Demanding clearly growing deltas instead
-       left quick repeat pulls ignored, which felt slow. */
-    if (state.settled) {
-      if (!wheel) state.settled = false
-      else if (state.decay > 0) {
-        state.coasting = true
-        return
-      } else if (++state.steady >= 2) state.settled = false
-      else return
-    }
-    /* Chromium on macOS ends a trackpad gesture with an empty wheel event
-       when the fingers lift — the one direct "let go" signal there is. */
-    if (wheel && state.active && amount === 0) {
-      state.startedAtEdge = false
-      releasePullBlock()
-      return
-    }
-    if (wheel && state.active && decaying) {
-      /* Fingers lifted; the rest of this momentum belongs to no pull. */
-      state.startedAtEdge = false
-      releasePullBlock()
-      state.coasting = true
-      return
-    }
-    /* Starting (or resuming mid spring-back): pick up from where the
-       explorer is, so there is never a jump. */
-    if (!state.active) state.pull = pullHelloRef.current?.currentPull() ?? 0
-    /* The trackpad moves the explorer at a steady 0.6 of the fingers: 1:1
-       read as twitchy (tried twice). A constant gain, not resistance — it
-       never stiffens as the pull grows. Touch stays 1:1, under the finger. */
-    if (!gliding) state.pull = Math.max(0, state.pull + (wheel ? amount * 0.6 : amount))
-    /* Only a slow pull crosses the line. A gesture that has gone fast at
-       any point (pairs over 40 — a flick's burst) is held just short, and
-       its momentum then springs it back. Gating on the current delta let
-       a fast swipe's slower tail cross into a hello. */
-    if (wheel && state.top > 40 && state.pull >= threshold) state.pull = threshold - 1
-    if (state.pull > 0 && !state.active) state.active = true
-    if (state.active) pullHelloRef.current?.update(state.pull, threshold, wheel)
-    if (wheel) {
-      if (state.releaseTimer !== null) window.clearTimeout(state.releaseTimer)
-      /* The trackpad is silent both when the fingers lift and when they
-         hold, so there is no telling them apart. A lift that moves leaves
-         momentum, caught above; silence is a hold, or a lift from still.
-         160ms let go of every hold; 450ms read as a pause after a still
-         lift; 300ms keeps a short hold and lets go soon after a lift. */
-      state.releaseTimer = window.setTimeout(releasePullBlock, 300)
-    }
-  }, [releasePullBlock])
-  useEffect(() => () => {
-    const timer = overscrollRef.current.releaseTimer
-    if (timer !== null) window.clearTimeout(timer)
-  }, [])
-  const onHelloBlock = useCallback(() => setHelloNonce((count) => count + 1), [])
+  const topNudgeRef = useRef(createTopNudgeCounterBlock())
+  const topTouchRef = useRef({ y: null as number | null, counted: false })
+  const sayTopHelloBlock = useCallback(() => setHelloNonce((count) => count + 1), [])
   const largeTitle = phoneLargeTitle.trim()
   const hasLargeTitle = largeTitle.length > 0
   const calmHeader = calmHeaderProp && !collapseSearchToButton && !hasLargeTitle
@@ -2054,31 +1856,14 @@ function VaultExplorerBlockInner({
 
   return (
     <div
-      ref={explorerRootRef}
-      /* The pull's wheel is read here, not on the tree: as the tree slides up
-         it leaves the pointer over the gap (pointer-events: none, so the
-         events land on this root), and listening on the tree alone starved
-         the pull just short of the line — it read the silence as a lift and
-         sprang back. Wheels over the header still don't pull. */
-      onWheel={calmHeader ? (event) => {
-        const tree = treeScrollRef.current
-        if (!tree || !(event.target === event.currentTarget || tree.contains(event.target as Node))) return
-        /* Sideways-only movement is not a lift (see the empty-event rule). */
-        if (event.deltaY === 0 && event.deltaX !== 0) return
-        pullForHelloBlock(atTreeEndBlock(tree), event.deltaY, 160, true)
-      } : undefined}
       className={cn(
       'flex h-full min-h-0 flex-col',
-      // The pull hello slides everything in here up by `translate`; the
-      // gap it opens at the bottom must clip, not spill.
-      calmHeader && 'relative overflow-hidden',
       // Large-title mode makes THIS the scroller (see `phoneLargeTitle`):
       // `position: sticky` is confined to its parent's box, so the bar only
       // pins if its parent is the element that scrolls.
       hasLargeTitle && 'overflow-auto',
       className,
     )}>
-      {calmHeader && <ExplorerPullHelloBlock ref={pullHelloRef} containerRef={explorerRootRef} onHello={onHelloBlock} />}
       {hasLargeTitle && <PhoneLargeTitleBlock title={largeTitle} />}
       <div className={cn(
         'ltm-vault-explorer-search-wrap px-3',
@@ -2152,7 +1937,7 @@ function VaultExplorerBlockInner({
                 <ExplorerGreetingBlock
                   name={profile.name}
                   large={largeGreeting}
-                  dismissNonce={helloNonce}
+                  helloNonce={helloNonce}
                   className="flex-1 pl-1"
                 />
                 {calmSessionLine && (
@@ -2475,21 +2260,24 @@ function VaultExplorerBlockInner({
             setLargeGreeting(false)
           }
         } : undefined}
+        onWheel={calmHeader ? (event) => {
+          const tree = event.currentTarget
+          if (topNudgeRef.current.wheel(event.deltaY, tree.scrollTop <= 0, performance.now())) sayTopHelloBlock()
+        } : undefined}
         onTouchStart={calmHeader ? (event) => {
-          const atEnd = atTreeEndBlock(event.currentTarget)
-          overscrollRef.current.touchY = event.touches[0]?.clientY ?? null
-          overscrollRef.current.lastAt = 0
-          pullForHelloBlock(atEnd, 0, 360, false)
+          topTouchRef.current = { y: event.touches[0]?.clientY ?? null, counted: false }
         } : undefined}
         onTouchMove={calmHeader ? (event) => {
-          const startY = overscrollRef.current.touchY
+          const state = topTouchRef.current
           const y = event.touches[0]?.clientY
-          if (startY === null || y === undefined) return
-          overscrollRef.current.touchY = y
-          pullForHelloBlock(atTreeEndBlock(event.currentTarget), startY - y, 360, false)
+          if (state.y === null || y === undefined || state.counted) return
+          /* A finger moving down is a scroll up; 24px so a tap isn't one. */
+          const moved = y - state.y
+          if (Math.abs(moved) < 24) return
+          state.counted = true
+          const tree = event.currentTarget
+          if (topNudgeRef.current.touch(moved > 0, tree.scrollTop <= 0, performance.now())) sayTopHelloBlock()
         } : undefined}
-        onTouchEnd={calmHeader ? releasePullBlock : undefined}
-        onTouchCancel={calmHeader ? releasePullBlock : undefined}
 
         onDragOver={canDropOnRows ? (event) => {
           void handleDragOverTarget(event, '')

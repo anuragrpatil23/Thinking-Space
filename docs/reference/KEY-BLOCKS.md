@@ -78,17 +78,16 @@ Model-agnostic layer for internal AI tasks (session titles, structured extracts,
   large at rest, small once the tree scrolls, never grows back), the
   AI-session line as quiet text (still the filter toggle), a soft search
   pill, one ＋ that names the folder it creates in, one ⋯ for view options.
-  Clawd says hello once per session (beside the greeting), and on a pull past
-  the end of the tree (`ExplorerPullHelloBlock`; moved from the top
-  2026-10-23 — the top, where greeting and search live, stays fixed): the
-  whole explorer slides up by `translate` (never resize — that reflowed per
-  wheel event), 1:1 with the fingers then easing into a stop, Clawd rising
-  out of the floor in the gap; the hello fires
-  only at the far end of a slow, deliberate pull and the spring-back is a
-  fixed-time critically damped `linear()` spring (further pull → faster
-  snap). Gesture rules in `pullForHelloBlock` were tuned by hand on a Mac
-  trackpad — each comment records a rejected variant (rubber band, caps,
-  speed filters, silence waits); read them before changing anything. Lines
+  Clawd says hello once per session (beside the greeting), and as an easter
+  egg (`ExplorerGreetingBlock` `helloNonce`, counted by `topNudgeCounterBlock`): already at the
+  top of the tree, three separate upward scrolls (each within 2s; a gesture
+  is wheel events with no gap over 250ms, so momentum is not more taps; the
+  scroll that reaches the top doesn't count, scrolling down resets) bring
+  him back to the hi's spot in the greeting row, doing a trick with a line
+  in a pixel bubble to his left. Nothing in the explorer moves —
+  it replaced (2026-10-30) a visible pull that slid the whole explorer with
+  the fingers (first at the top, then at the end of the tree); plain
+  scrolling felt smoother without it. Lines
   come from `explorerEncouragementBlock` (never "take a break"-style advice).
   One Clawd on screen at a time. Nothing idles or loops (ENERGY.md).
 - Moon characters are shared: sprites and pixel data
