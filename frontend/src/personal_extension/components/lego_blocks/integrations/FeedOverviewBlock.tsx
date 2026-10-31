@@ -374,8 +374,6 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header, day, onPi
           <F9FactRowBlock divided={newStories === null} label={isToday ? 'This week' : `The week to ${dayLabel}`} value={weekStories} sub={(() => { const read = history.reduce((n, d) => n + d.read, 0); return `${read} read by you${weekStories ? ` · ${Math.round((read / weekStories) * 100)}%` : ''}` })()} />
         </F9PanelBlock>
 
-        <FeedReadingNotesPanelBlock feeds={feeds} onOpenItem={onOpenItem} />
-
         {sourcesToday.length > 0 && (
           <F9PanelBlock className="px-5 pb-3 pt-[18px] text-[13px]">
             <p className="mb-1 font-semibold">{isToday ? 'Where it came from today' : `Where it came from on ${dayLabel}`}</p>
@@ -384,6 +382,8 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header, day, onPi
             ))}
           </F9PanelBlock>
         )}
+
+        <FeedReadingNotesPanelBlock feeds={feeds} onOpenItem={onOpenItem} />
 
         {warnings.length > 0 && (
           <F9PanelBlock className="px-5 pb-3 pt-[18px] text-[13px]">

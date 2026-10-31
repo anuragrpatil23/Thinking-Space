@@ -3,10 +3,11 @@ import { checkPricesNowOrch, pricesAvailableOrch, readLastPricesPassOrch, readPr
 import { PassQueueListBlock } from '@/components/lego_blocks/units/PassQueueListBlock'
 import type { PassItemBlock } from '@/services/lego_blocks/units/passQueueBlock'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { fmtDayMonthBlock } from '@/services/lego_blocks/units/aiActivityStripBlock'
 import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { askRssTopicsForDayOrch } from '@/services/orchestrators/rssTopicOrch'
-import { feedDayKeyBlock, feedDayShortLabelBlock, parseFeedDayBlock, shiftFeedDayBlock } from '@/personal_extension/services/lego_blocks/units/feedDayBlock'
+import { feedDayKeyBlock, parseFeedDayBlock } from '@/personal_extension/services/lego_blocks/units/feedDayBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { cn } from '@/lib/utils'
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
@@ -431,38 +432,43 @@ function VolumeChartBlock({ day, onPickDay }: { day: string; onPickDay: (day: st
   )
 }
 
-// The Feed's day: back and forward a day, and back to today. Every view but
-// Sources shows this day.
-function FeedDayPickerBlock({ day, today, onPick }: { day: string; today: string; onPick: (day: string) => void }) {
-  const isToday = day === today
-  const yesterday = shiftFeedDayBlock(today, -1)
-  const label = isToday ? 'Today' : day === yesterday ? 'Yesterday' : feedDayShortLabelBlock(day)
-  const step = 'flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-200/70 hover:text-zinc-900 disabled:opacity-30 disabled:hover:bg-transparent dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-zinc-100'
+// The Feed's day, read as part of the title ("Feed for 31st Oct ⌄"), written
+// the way AI activity writes its day. A click opens the calendar, which also
+// has its own Today. Every view but Sources shows this day.
+function FeedDayTitleBlock({ day, today, onPick }: { day: string; today: string; onPick: (day: string) => void }) {
+  const pickerRef = useRef<HTMLInputElement>(null)
+  const { day: dayNumber, ordinal, month } = fmtDayMonthBlock(day)
+  const openCalendar = () => {
+    const input = pickerRef.current
+    if (!input) return
+    // A click on a date input opens its calendar only on its own icon; ask for it directly
+    try { input.showPicker() } catch { input.focus(); input.click() }
+  }
   return (
-    <div className="flex items-center gap-0.5 rounded-lg bg-zinc-100 p-0.5 text-[13px] dark:bg-zinc-800/80">
-      <button type="button" onClick={() => onPick(shiftFeedDayBlock(day, -1))} className={step} aria-label="The day before" title="The day before">
-        <ChevronLeft className="h-4 w-4" />
+    // The same gap after "Feed" as between the words of the date
+    <span className="relative ml-[0.4em]">
+      {/* AI activity's date, scaled to the title: one line box (leading-none),
+          words on the baseline, the suffix at the top of the numeral beside it */}
+      <button type="button" onClick={openCalendar} title="Pick a day" className="group inline-flex items-baseline gap-[0.3em] whitespace-nowrap leading-none">
+        <span className="font-normal text-foreground/40">for</span>
+        <span className="flex items-start">
+          <span className="tabular-nums">{dayNumber}</span>
+          <span className="ml-[0.05em] text-[0.42em] font-medium leading-none tracking-tight text-foreground/60">{ordinal}</span>
+        </span>
+        <span className="font-normal text-foreground/40">{month}</span>
+        <ChevronDown className="h-[0.55em] w-[0.55em] self-center text-foreground/40 group-hover:text-foreground/80" />
       </button>
-      <label className="relative cursor-pointer px-1.5 font-medium tabular-nums text-zinc-900 dark:text-zinc-100" title="Pick a day">
-        {label}
-        <input
-          type="date"
-          value={day}
-          max={today}
-          onChange={(e) => { if (e.target.value) onPick(e.target.value) }}
-          className="absolute inset-0 cursor-pointer opacity-0"
-          aria-label="Feed day"
-        />
-      </label>
-      <button type="button" onClick={() => onPick(shiftFeedDayBlock(day, 1))} disabled={isToday} className={step} aria-label="The day after" title="The day after">
-        <ChevronRight className="h-4 w-4" />
-      </button>
-      {!isToday && (
-        <button type="button" onClick={() => onPick(today)} className="ml-0.5 rounded-md px-2 py-1 text-[12px] font-medium text-[#3b6fb6] hover:bg-zinc-200/70 dark:text-sky-400 dark:hover:bg-zinc-700/60">
-          Today
-        </button>
-      )}
-    </div>
+      <input
+        ref={pickerRef}
+        type="date"
+        value={day}
+        max={today}
+        onChange={(e) => onPick(e.target.value || today)}
+        tabIndex={-1}
+        className="pointer-events-none absolute bottom-0 left-0 h-0 w-full opacity-0"
+        aria-label="Feed day"
+      />
+    </span>
   )
 }
 
@@ -919,7 +925,7 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
       articleOpen={article !== null}
       onClose={() => setArticle(null)}
       className="h-full"
-      day={pickedDay}
+      day={feedDay}
     />
   )
 
@@ -928,18 +934,18 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
   const header = (
       <header className={cn('flex flex-wrap justify-between gap-4', compactHeader ? 'items-center' : 'items-start')}>
         <div className="min-w-0">
-          <h1 className={cn('font-bold leading-tight tracking-tight', compactHeader ? 'text-[20px]' : 'text-[26px]')}>Feed</h1>
+          {/* "Feed" and the day it shows, as one title */}
+          <h1 className={cn('font-bold leading-tight tracking-tight', compactHeader ? 'text-[20px]' : 'text-[26px]')}>
+            Feed{view !== 'sources' && <FeedDayTitleBlock day={feedDay} today={todayKey} onPick={pickDay} />}
+          </h1>
           {!compactHeader && <p className="mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">Where things are first seen. Write down what you notice.</p>}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {view !== 'sources' && <FeedDayPickerBlock day={feedDay} today={todayKey} onPick={pickDay} />}
-          <F9SegmentedBlock ariaLabel="Feed view" value={view} onChange={setView} options={[
-            { value: 'overview', label: 'Overview' },
-            { value: 'reading', label: 'Reading' },
-            ...(FEED_DROPS_AVAILABLE ? [{ value: 'drops' as const, label: 'Drops' }] : []),
-            { value: 'sources', label: 'Sources' },
-          ]} />
-        </div>
+        <F9SegmentedBlock ariaLabel="Feed view" value={view} onChange={setView} options={[
+          { value: 'overview', label: 'Overview' },
+          { value: 'reading', label: 'Reading' },
+          ...(FEED_DROPS_AVAILABLE ? [{ value: 'drops' as const, label: 'Drops' }] : []),
+          { value: 'sources', label: 'Sources' },
+        ]} />
       </header>
   )
 
