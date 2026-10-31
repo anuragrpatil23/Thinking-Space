@@ -21,7 +21,7 @@ import { readDefaultProviderBlock, resolveProviderBlock } from '@/services/lego_
 import type { ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 import { rssReaderFeedsBlock, type RssFeedItemBlock, type RssFeedPreferencesBlock, type RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { localDayBlock, rssTopicItemsBlock } from '@/services/lego_blocks/units/rssTopicBlock'
-import { loadRssTopicsOrch, readAskedRssTopicsDayOrch, rssTopicsWorkOrch, runRssTopicCardPassOrch, runRssTopicSortPassOrch } from '@/services/orchestrators/rssTopicOrch'
+import { loadRssTopicsOrch, readAskedRssTopicsDayOrch, rssTopicsWorkOrch, runRssTopicCardPassOrch, runRssTopicSortPassOrch, runRssTopicThemePassOrch } from '@/services/orchestrators/rssTopicOrch'
 import {
   ARTICLE_SUMMARY_TEXT_CHARS_BLOCK,
   articleSummaryContract,
@@ -232,7 +232,7 @@ export function runFeedAiNextOrch(
     const askedDay = readAskedRssTopicsDayOrch()
     if (askedDay) await loadRssTopicsOrch(askedDay)
     const askedItems = askedDay ? rssTopicItemsBlock(readerItems, askedDay) : []
-    const askedWork = askedDay ? rssTopicsWorkOrch(askedItems, askedDay) : { unsorted: [], cards: [] }
+    const askedWork = askedDay ? rssTopicsWorkOrch(askedItems, askedDay) : { unsorted: [], themes: [], cards: [] }
     const onTopics = (done: number, total: number, items: PassItemBlock[]) => {
       progress = { done, total, kind: 'topics', items }
       notifyBlock()
@@ -246,10 +246,15 @@ export function runFeedAiNextOrch(
       pass = await runFeedAiReadPassOrch(feeds, onRead, provider, todayUnread)
     } else if (topicWork.unsorted.length > 0) {
       pass = topicPassBlock(await runRssTopicSortPassOrch(topicItems, provider, onTopics))
+    } else if (topicWork.themes.length > 0) {
+      // One call gathers the topics under themes: before the key details, which take one call a topic
+      pass = topicPassBlock(await runRssTopicThemePassOrch(provider, onTopics))
     } else if (topicWork.cards.length > 0) {
       pass = topicPassBlock(await runRssTopicCardPassOrch(topicItems, provider, onTopics))
     } else if (askedDay && askedWork.unsorted.length > 0) {
       pass = topicPassBlock(await runRssTopicSortPassOrch(askedItems, provider, onTopics, askedDay))
+    } else if (askedDay && askedWork.themes.length > 0) {
+      pass = topicPassBlock(await runRssTopicThemePassOrch(provider, onTopics, askedDay))
     } else if (askedDay && askedWork.cards.length > 0) {
       pass = topicPassBlock(await runRssTopicCardPassOrch(askedItems, provider, onTopics, askedDay))
     } else if (unread.size > 0) {

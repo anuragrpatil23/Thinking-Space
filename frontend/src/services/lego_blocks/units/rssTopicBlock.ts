@@ -6,6 +6,7 @@
 
 import type { RssFeedItemBlock } from './rssFeedBlock'
 import type { FeedTopicKindBlock, FeedTopicsOutputBlock } from './intelligence/contracts/feedTopicsContractBlock'
+import { FEED_OTHER_THEME_BLOCK, type FeedTopicThemesOutputBlock } from './intelligence/contracts/feedTopicThemesContractBlock'
 
 export interface RssTopicBlock {
   id: string
@@ -18,6 +19,10 @@ export interface RssTopicBlock {
   /** The members the detail was written from */
   detailMembers: string[]
   detailVersion: number
+  /** The broader theme it is part of ("Intel", "Q3 earnings"), once placed: a
+   *  normalized label across story-sized topics. Subjects only; mood has its own strip. */
+  theme?: string | null
+  themeVersion?: number
 }
 
 export interface RssTopicsDayBlock {
@@ -92,4 +97,38 @@ export function rssTopicsShownBlock(state: RssTopicsDayBlock, items: RssFeedItem
     .map(topic => ({ topic, items: topic.members.map(id => byId.get(id)).filter((x): x is RssFeedItemBlock => Boolean(x)) }))
     .filter(entry => entry.items.length > 0)
     .sort((a, b) => b.items.length - a.items.length || a.topic.name.localeCompare(b.topic.name))
+}
+
+/** Subject topics not yet under a theme, or placed by an older prompt; the biggest first. */
+export function rssTopicsNeedingThemeBlock(state: RssTopicsDayBlock, version: number): RssTopicBlock[] {
+  return state.topics
+    .filter(t => t.kind !== 'mood' && (!t.theme || (t.themeVersion ?? 0) < version))
+    .sort((a, b) => b.members.length - a.members.length)
+}
+
+/** The day's theme names so far, the most used first: what the next batch reuses. */
+export function rssThemeNamesBlock(state: RssTopicsDayBlock): string[] {
+  const counts = new Map<string, number>()
+  for (const t of state.topics) if (t.theme) counts.set(t.theme, (counts.get(t.theme) ?? 0) + 1)
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name)
+}
+
+/** Put a batch's themes on its topics. A theme named like one already used (any case) takes that spelling. */
+export function mergeRssThemesBlock(state: RssTopicsDayBlock, batch: RssTopicBlock[], answers: FeedTopicThemesOutputBlock, version: number, known: string[] = []): RssTopicsDayBlock {
+  const spelling = new Map([...known, ...rssThemeNamesBlock(state)].map(name => [nameKeyBlock(name), name]))
+  const themeById = new Map<string, string>()
+  for (const { n, theme } of answers) {
+    const topic = batch[n - 1]
+    if (!topic) continue
+    const key = nameKeyBlock(theme)
+    const name = spelling.get(key) ?? theme
+    spelling.set(key, name)
+    themeById.set(topic.id, name)
+  }
+  // A topic the model left out goes under Other news, so it is not asked about again and again
+  for (const topic of batch) if (!themeById.has(topic.id)) themeById.set(topic.id, FEED_OTHER_THEME_BLOCK)
+  return {
+    ...state,
+    topics: state.topics.map(t => (themeById.has(t.id) ? { ...t, theme: themeById.get(t.id) ?? null, themeVersion: version } : t)),
+  }
 }

@@ -3,11 +3,11 @@ import { checkPricesNowOrch, pricesAvailableOrch, readLastPricesPassOrch, readPr
 import { PassQueueListBlock } from '@/components/lego_blocks/units/PassQueueListBlock'
 import type { PassItemBlock } from '@/services/lego_blocks/units/passQueueBlock'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { fmtDayMonthBlock } from '@/services/lego_blocks/units/aiActivityStripBlock'
 import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { askRssTopicsForDayOrch } from '@/services/orchestrators/rssTopicOrch'
-import { feedDayKeyBlock, parseFeedDayBlock } from '@/personal_extension/services/lego_blocks/units/feedDayBlock'
+import { askRssTopicsForDayOrch, setRssThemeListPathOrch } from '@/services/orchestrators/rssTopicOrch'
+import { feedDayKeyBlock, parseFeedDayBlock, shiftFeedDayBlock } from '@/personal_extension/services/lego_blocks/units/feedDayBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { cn } from '@/lib/utils'
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
@@ -44,7 +44,7 @@ import type { WebullUniverseCompanyBlock } from '@/personal_extension/services/l
 import { FEED_DROPS_AVAILABLE, PrivateFeedDropsBlock } from '../units/privatePersonalBlock'
 import { writeFeedReadLogsOrch } from '@/personal_extension/services/orchestrators/feedReadLogOrch'
 import { readWebullExecutionSettingsOrch } from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
-import { feedReadLogPathBlock } from '@/personal_extension/services/lego_blocks/units/feedReadLogBlock'
+import { feedReadLogPathBlock, feedThemeListPathBlock } from '@/personal_extension/services/lego_blocks/units/feedReadLogBlock'
 import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
 import { F9_CHART_TOOLTIP_STYLE_BLOCK, F9PanelBlock, F9SegmentedBlock } from '../units/F9NativeBlock'
 
@@ -432,9 +432,12 @@ function VolumeChartBlock({ day, onPickDay }: { day: string; onPickDay: (day: st
   )
 }
 
-// The Feed's day, read as part of the title ("Feed for 31st Oct ⌄"), written
-// the way AI activity writes its day. A click opens the calendar, which also
-// has its own Today. Every view but Sources shows this day.
+// The Feed's day, read as part of the title ("Feed for 31st Oct ‹ ›"), written
+// the way AI activity writes its day. A click on the date opens the calendar,
+// which also has its own Today; the arrows step a day. Every view but Sources
+// shows this day.
+const FEED_DAY_STEP_CLASS_BLOCK = 'flex items-center justify-center rounded-md p-[0.1em] text-foreground/40 hover:bg-zinc-200/70 hover:text-foreground/80 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-zinc-800'
+
 function FeedDayTitleBlock({ day, today, onPick }: { day: string; today: string; onPick: (day: string) => void }) {
   const pickerRef = useRef<HTMLInputElement>(null)
   const { day: dayNumber, ordinal, month } = fmtDayMonthBlock(day)
@@ -446,18 +449,26 @@ function FeedDayTitleBlock({ day, today, onPick }: { day: string; today: string;
   }
   return (
     // The same gap after "Feed" as between the words of the date
-    <span className="relative ml-[0.4em]">
+    <span className="relative ml-[0.4em] inline-flex items-baseline gap-[0.3em]">
       {/* AI activity's date, scaled to the title: one line box (leading-none),
           words on the baseline, the suffix at the top of the numeral beside it */}
-      <button type="button" onClick={openCalendar} title="Pick a day" className="group inline-flex items-baseline gap-[0.3em] whitespace-nowrap leading-none">
+      <button type="button" onClick={openCalendar} title="Pick a day" className="inline-flex items-baseline gap-[0.3em] whitespace-nowrap leading-none">
         <span className="font-normal text-foreground/40">for</span>
         <span className="flex items-start">
           <span className="tabular-nums">{dayNumber}</span>
           <span className="ml-[0.05em] text-[0.42em] font-medium leading-none tracking-tight text-foreground/60">{ordinal}</span>
         </span>
         <span className="font-normal text-foreground/40">{month}</span>
-        <ChevronDown className="h-[0.55em] w-[0.55em] self-center text-foreground/40 group-hover:text-foreground/80" />
       </button>
+      {/* A day back and a day on; the date itself opens the calendar */}
+      <span className="inline-flex items-center gap-0.5 self-center">
+        <button type="button" onClick={() => onPick(shiftFeedDayBlock(day, -1))} className={FEED_DAY_STEP_CLASS_BLOCK} aria-label="The day before" title="The day before">
+          <ChevronLeft className="h-[0.6em] w-[0.6em]" />
+        </button>
+        <button type="button" onClick={() => onPick(shiftFeedDayBlock(day, 1))} disabled={day >= today} className={FEED_DAY_STEP_CLASS_BLOCK} aria-label="The day after" title="The day after">
+          <ChevronRight className="h-[0.6em] w-[0.6em]" />
+        </button>
+      </span>
       <input
         ref={pickerRef}
         type="date"
@@ -803,6 +814,10 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
   useEffect(() => {
     void readWebullExecutionSettingsOrch().then(s => setFeedLogRoot(s.executionFolderPath || null)).catch(() => setFeedLogRoot(null))
   }, [])
+  // The AI's theme list is an F9 record: beside the day logs, F9-execution/feed/themes.md
+  useEffect(() => {
+    setRssThemeListPathOrch(feedLogRoot ? feedThemeListPathBlock(feedLogRoot) : null)
+  }, [feedLogRoot])
   const today = new Date()
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   useReadingAttentionBlock(view === 'reading' && feedLogRoot ? feedReadLogPathBlock(feedLogRoot, todayKey) : null, view === 'reading', {

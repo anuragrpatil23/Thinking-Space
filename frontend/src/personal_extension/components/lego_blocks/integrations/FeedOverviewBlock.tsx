@@ -1,4 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { ChevronRight } from 'lucide-react'
+import { FEED_OTHER_THEME_BLOCK } from '@/services/lego_blocks/units/intelligence/contracts/feedTopicThemesContractBlock'
 import { useRssFeedsBlock } from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
 import { rssFeedIdsExcludedFromAllUnreadBlock, rssReaderFeedsBlock, type RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { buildRssDayInboxBlock, recentRssFeedsBlock, rssDayLabelBlock, type RssStoryBlock } from '@/services/lego_blocks/units/rssStoryBlock'
@@ -192,6 +194,39 @@ function FeedTopicRowBlock({ entry, sourceOf, onOpenItem, mood }: { entry: FeedT
  */
 const STRIP_CLASS_BLOCK = 'border-t-[0.5px] border-[#EFEFF2] px-5 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.04em] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400'
 
+/** Themes from the AI's list, then Other news, then topics it has not placed yet. */
+const UNPLACED_THEME_BLOCK = 'Not grouped yet'
+
+/**
+ * One theme ("Intel", "Q3 earnings"): its name, how much is under it, and its
+ * biggest topics by name; open it for each topic, which opens for its articles.
+ */
+function FeedThemeRowBlock({ theme, entries, sourceOf, onOpenItem }: { theme: string; entries: FeedTopicEntryBlock[]; sourceOf: (item: RssFeedItemBlock) => string; onOpenItem: (item: RssFeedItemBlock) => void }) {
+  const [open, setOpen] = useState(false)
+  const articles = entries.reduce((n, e) => n + e.items.length, 0)
+  const outlets = new Set(entries.flatMap(e => e.items.map(item => publisherNameBlock(sourceOf(item))).filter(Boolean)))
+  return (
+    <div className="border-t-[0.5px] border-[#EFEFF2] dark:border-zinc-800">
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} className="flex w-full items-start gap-4 px-5 py-3.5 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+        <ChevronRight className={cn('mt-[3px] h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform', open && 'rotate-90')} />
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold leading-snug text-zinc-900 dark:text-zinc-100">{theme}</span>
+          {!open && <span className="mt-1 block text-[12.5px] leading-snug text-zinc-500 line-clamp-2 dark:text-zinc-400">{entries.map(e => e.topic.name).join(' · ')}</span>}
+        </span>
+        <span className="w-[120px] shrink-0 pt-px text-right text-[12px] text-zinc-500 dark:text-zinc-400" title={[...outlets].join(', ')}>
+          <span className="block font-medium tabular-nums text-zinc-700 dark:text-zinc-200">{articles} {articles === 1 ? 'article' : 'articles'}</span>
+          <span className="mt-0.5 block tabular-nums">{entries.length} {entries.length === 1 ? 'topic' : 'topics'} · {outlets.size} {outlets.size === 1 ? 'outlet' : 'outlets'}</span>
+        </span>
+      </button>
+      {open && (
+        <div className="ml-[38px] border-l border-zinc-200 dark:border-zinc-800">
+          {entries.map(entry => <FeedTopicRowBlock key={entry.topic.id} entry={entry} sourceOf={sourceOf} onOpenItem={onOpenItem} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FeedTopicsPanelBlock({ topics, sourceOf, onOpenItem, dayLabel }: { topics: FeedTopicEntryBlock[]; sourceOf: (item: RssFeedItemBlock) => string; onOpenItem: (item: RssFeedItemBlock) => void; dayLabel: string | null }) {
   const [showSingles, setShowSingles] = useState(false)
   const mood = topics.filter(t => t.topic.kind === 'mood')
@@ -199,12 +234,30 @@ function FeedTopicsPanelBlock({ topics, sourceOf, onOpenItem, dayLabel }: { topi
   const many = subjects.filter(t => t.items.length > 1)
   const singles = subjects.filter(t => t.items.length === 1)
   const articles = topics.reduce((n, t) => n + t.items.length, 0)
+  // Once the AI has placed topics under themes, the subjects read by theme:
+  // the most articles first, Other news and anything not placed yet last.
+  const themes = useMemo(() => {
+    if (!subjects.some(t => t.topic.theme)) return null
+    const byTheme = new Map<string, FeedTopicEntryBlock[]>()
+    for (const entry of subjects) {
+      const name = entry.topic.theme || UNPLACED_THEME_BLOCK
+      byTheme.set(name, [...(byTheme.get(name) ?? []), entry])
+    }
+    const last = (name: string) => (name === UNPLACED_THEME_BLOCK ? 2 : name === FEED_OTHER_THEME_BLOCK ? 1 : 0)
+    const size = (entries: FeedTopicEntryBlock[]) => entries.reduce((n, e) => n + e.items.length, 0)
+    return [...byTheme.entries()].sort((a, b) => last(a[0]) - last(b[0]) || size(b[1]) - size(a[1]) || a[0].localeCompare(b[0]))
+  }, [subjects])
   return (
     <F9PanelBlock className="overflow-hidden text-[13px]">
       <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pb-2 pt-[18px]">
         <p className="font-semibold">{dayLabel ? `What happened on ${dayLabel}` : "What's happening today"}</p>
         <span className="text-[12px] text-zinc-500 dark:text-zinc-400">
-          {[mood.length > 0 ? `${mood.length} on the market` : null, `${subjects.length} ${subjects.length === 1 ? 'topic' : 'topics'}`, `${articles} ${articles === 1 ? 'article' : 'articles'}`].filter(Boolean).join(' · ')}, sorted by the AI
+          {[
+            mood.length > 0 ? `${mood.length} on the market` : null,
+            themes ? `${themes.length} ${themes.length === 1 ? 'theme' : 'themes'}` : null,
+            `${subjects.length} ${subjects.length === 1 ? 'topic' : 'topics'}`,
+            `${articles} ${articles === 1 ? 'article' : 'articles'}`,
+          ].filter(Boolean).join(' · ')}, sorted by the AI
         </span>
       </div>
       {mood.length > 0 && (
@@ -212,11 +265,12 @@ function FeedTopicsPanelBlock({ topics, sourceOf, onOpenItem, dayLabel }: { topi
           <p className={STRIP_CLASS_BLOCK}>Market mood</p>
           {mood.map(entry => <FeedTopicRowBlock key={entry.topic.id} entry={entry} sourceOf={sourceOf} onOpenItem={onOpenItem} mood />)}
           {/* With a mood strip above, the subjects get their own label, so the two read apart */}
-          {subjects.length > 0 && <p className={STRIP_CLASS_BLOCK}>Topics</p>}
+          {subjects.length > 0 && <p className={STRIP_CLASS_BLOCK}>{themes ? 'Themes' : 'Topics'}</p>}
         </>
       )}
-      {many.map(entry => <FeedTopicRowBlock key={entry.topic.id} entry={entry} sourceOf={sourceOf} onOpenItem={onOpenItem} />)}
-      {singles.length > 0 && (
+      {themes && themes.map(([name, entries]) => <FeedThemeRowBlock key={name} theme={name} entries={entries} sourceOf={sourceOf} onOpenItem={onOpenItem} />)}
+      {!themes && many.map(entry => <FeedTopicRowBlock key={entry.topic.id} entry={entry} sourceOf={sourceOf} onOpenItem={onOpenItem} />)}
+      {!themes && singles.length > 0 && (
         showSingles
           ? singles.map(entry => <FeedTopicRowBlock key={entry.topic.id} entry={entry} sourceOf={sourceOf} onOpenItem={onOpenItem} />)
           : (

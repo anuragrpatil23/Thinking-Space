@@ -14,10 +14,15 @@ import type { RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock
 import { plainArticleTextBlock } from '@/services/lego_blocks/units/intelligence/contracts/articleSummaryContractBlock'
 import { FEED_TOPICS_BATCH_BLOCK, feedTopicsContract, type FeedTopicsOutputBlock } from '@/services/lego_blocks/units/intelligence/contracts/feedTopicsContractBlock'
 import { FEED_TOPIC_CARD_MAX_ARTICLES_BLOCK, FEED_TOPIC_CARD_TEXT_CHARS_BLOCK, feedTopicCardContract } from '@/services/lego_blocks/units/intelligence/contracts/feedTopicCardContractBlock'
+import { FEED_TOPIC_THEMES_BATCH_BLOCK, feedTopicThemesContract, type FeedTopicThemesOutputBlock } from '@/services/lego_blocks/units/intelligence/contracts/feedTopicThemesContractBlock'
+import { addToRssThemeListBlock, parseRssThemeListBlock, serializeRssThemeListBlock, sortRssThemeListBlock, type RssThemeListEntryBlock } from '@/services/lego_blocks/units/rssThemeListBlock'
 import {
   emptyRssTopicsDayBlock,
   localDayBlock,
+  mergeRssThemesBlock,
   mergeRssTopicsBlock,
+  rssThemeNamesBlock,
+  rssTopicsNeedingThemeBlock,
   rssTopicsNeedingCardBlock,
   rssTopicsUnsortedBlock,
   type RssTopicBlock,
@@ -119,10 +124,113 @@ export interface RssTopicPassBlock {
 
 const providerDownBlock = (message: string) => /not configured|no model|unavailable|ECONNREFUSED|fetch failed/i.test(message)
 
-/** Whether a day's read articles hold any no topic has yet, or a topic needs its key details. */
-export function rssTopicsWorkOrch(items: RssFeedItemBlock[], day: string = todayBlock()): { unsorted: RssFeedItemBlock[]; cards: RssTopicBlock[] } {
+/** Whether a day's read articles hold any no topic has yet, a topic needs its theme, or its key details. */
+export function rssTopicsWorkOrch(items: RssFeedItemBlock[], day: string = todayBlock()): { unsorted: RssFeedItemBlock[]; themes: RssTopicBlock[]; cards: RssTopicBlock[] } {
   const state = readRssTopicsOrch(day)
-  return { unsorted: rssTopicsUnsortedBlock(state, items), cards: rssTopicsNeedingCardBlock(state, feedTopicCardContract.promptVersion) }
+  return {
+    unsorted: rssTopicsUnsortedBlock(state, items),
+    themes: rssTopicsNeedingThemeBlock(state, feedTopicThemesContract.promptVersion),
+    cards: rssTopicsNeedingCardBlock(state, feedTopicCardContract.promptVersion),
+  }
+}
+
+// The theme list (rssThemeListBlock) lives where the page that owns the Feed
+// keeps its records — F9 puts it beside the day logs, `F9-execution/feed/themes.md`
+// — and is given to the model each time. Without a place for it, each day's own
+// themes are all that is reused. Derived: missing, it is rebuilt from the days.
+let themeListPath: string | null = null
+let themeList: RssThemeListEntryBlock[] | null = null
+
+/** Where the theme list is kept (vault-relative), or null to keep none. */
+export function setRssThemeListPathOrch(path: string | null): void {
+  if (path === themeListPath) return
+  themeListPath = path
+  themeList = null
+}
+
+/** Themes offered per request, the most recently used first. */
+const THEMES_OFFERED = 200
+
+async function loadThemeListBlock(): Promise<RssThemeListEntryBlock[]> {
+  if (!themeListPath) return []
+  if (themeList) return themeList
+  const fs = getVaultFS()
+  let text: string | null = null
+  try { text = await fs.read(themeListPath) } catch { /* none yet */ }
+  if (text !== null) {
+    themeList = parseRssThemeListBlock(text)
+    return themeList
+  }
+  const listed = await fs.list(TOPICS_DIR).catch(() => ({ files: [] as string[] }))
+  const days = listed.files.map(f => /(\d{4}-\d{2}-\d{2})\.json$/.exec(f)?.[1]).filter((d): d is string => Boolean(d)).sort()
+  await Promise.all(days.map(d => loadRssTopicsOrch(d)))
+  let rebuilt: RssThemeListEntryBlock[] = []
+  for (const d of days) rebuilt = addToRssThemeListBlock(rebuilt, d, readRssTopicsOrch(d).topics)
+  themeList = rebuilt
+  if (rebuilt.length > 0) await saveThemeListBlock()
+  return themeList
+}
+
+async function saveThemeListBlock(): Promise<void> {
+  if (!themeListPath || !themeList) return
+  await getVaultFS().write(themeListPath, serializeRssThemeListBlock(themeList))
+}
+
+/** Gather a day's topics under broader themes, the day's and the theme list's names reused. */
+export async function runRssTopicThemePassOrch(
+  provider: ProviderId,
+  onProgress: (done: number, total: number, items: PassItemBlock[]) => void,
+  day: string = todayBlock(),
+): Promise<RssTopicPassBlock> {
+  await loadRssTopicsOrch(day)
+  const earlier = sortRssThemeListBlock(await loadThemeListBlock()).slice(0, THEMES_OFFERED).map(t => t.name)
+  const work = rssTopicsNeedingThemeBlock(readRssTopicsOrch(day), feedTopicThemesContract.promptVersion)
+  const batches: RssTopicBlock[][] = []
+  for (let i = 0; i < work.length; i += FEED_TOPIC_THEMES_BATCH_BLOCK) batches.push(work.slice(i, i + FEED_TOPIC_THEMES_BATCH_BLOCK))
+  const pass: RssTopicPassBlock = { done: 0, failed: 0, error: null, providerDown: false, items: [], model: '' }
+  pass.items = batches.map((batch, i) => ({ ticker: `themes-${i}`, label: `Gathering ${batch.length} topics under themes`, state: 'waiting' as const }))
+  const mark = (i: number, s: PassItemStateBlock, detail?: string) => {
+    pass.items = setPassItemBlock(pass.items, `themes-${i}`, s, detail)
+    onProgress(pass.done + pass.failed, batches.length, pass.items)
+  }
+  onProgress(0, batches.length, pass.items)
+  for (const [i, batch] of batches.entries()) {
+    mark(i, 'working')
+    const today = rssThemeNamesBlock(readRssTopicsOrch(day))
+    const offered = [...new Set([...today, ...earlier])]
+    const result = await runContract(feedTopicThemesContract, {
+      batchId: batch.map(t => `${t.id}:${t.members.length}`).join(','),
+      themes: offered,
+      topics: batch.map(t => ({ name: t.name, articles: t.members.length })),
+    }, { provider, scope: 'feed' })
+    if (result.ok && result.value) {
+      // runContract types the value from the schema (a string); finalize made it this
+      const answers = result.value as unknown as FeedTopicThemesOutputBlock
+      const placed = mergeRssThemesBlock(readRssTopicsOrch(day), batch, answers, feedTopicThemesContract.promptVersion, earlier)
+      setTopicsBlock(placed)
+      await saveRssTopicsBlock(day)
+      // The list learns this batch's themes, counted once per topic placed
+      if (themeList && themeListPath) {
+        const ids = new Set(batch.map(t => t.id))
+        themeList = addToRssThemeListBlock(themeList, day, placed.topics.filter(t => ids.has(t.id)))
+        await saveThemeListBlock()
+      }
+      notifyBlock()
+      pass.done += 1
+      pass.model = result.model
+      mark(i, 'fetched', `${answers.length} of ${batch.length} placed`)
+    } else {
+      pass.failed += 1
+      pass.error = result.ok ? 'The model gave no usable themes.' : result.error.message
+      mark(i, 'failed', pass.error ?? undefined)
+      if (!result.ok && providerDownBlock(result.error.message)) { pass.providerDown = true; break }
+      // A batch the model cannot place goes under Other news, so it is not asked again and again
+      setTopicsBlock(mergeRssThemesBlock(readRssTopicsOrch(day), batch, [], feedTopicThemesContract.promptVersion, earlier))
+      await saveRssTopicsBlock(day)
+      notifyBlock()
+    }
+  }
+  return pass
 }
 
 /** Sort a day's unsorted articles into topics, a batch at a time. */

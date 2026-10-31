@@ -13,6 +13,11 @@ export function feedReadLogPathBlock(executionRoot: string, day: string): string
   return `${executionRoot.replace(/\/+$/, '')}/${FEED_LOG_FOLDER_BLOCK}/${day}.md`
 }
 
+/** The AI's theme list for the Feed's topics, beside the day logs. */
+export function feedThemeListPathBlock(executionRoot: string): string {
+  return `${executionRoot.replace(/\/+$/, '')}/${FEED_LOG_FOLDER_BLOCK}/themes.md`
+}
+
 function oneLineBlock(text: string): string {
   return text.replace(/\s+/g, ' ').trim()
 }
