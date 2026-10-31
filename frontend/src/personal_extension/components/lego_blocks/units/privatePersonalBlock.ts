@@ -55,6 +55,8 @@ export const PrivateStudyBlock = loadStudy ? lazy(loadStudy) : null
 export interface PrivateFeedDropsPropsBlock {
   /** Ticker → the sidebar's group (held / watchlist / researched), so Drops can put yours first */
   groups: Record<string, WebullUniverseGroupBlock>
+  /** A past day the Feed is showing (YYYY-MM-DD), or null for today */
+  day?: string | null
 }
 const FEED_DROPS_MODULES = import.meta.glob<{ default: ComponentType<PrivateFeedDropsPropsBlock> }>('../../../thinkingspace-personal/feedDrops.tsx')
 const loadFeedDrops = Object.values(FEED_DROPS_MODULES)[0]

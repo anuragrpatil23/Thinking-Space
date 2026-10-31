@@ -3,8 +3,10 @@ import { checkPricesNowOrch, pricesAvailableOrch, readLastPricesPassOrch, readPr
 import { PassQueueListBlock } from '@/components/lego_blocks/units/PassQueueListBlock'
 import type { PassItemBlock } from '@/services/lego_blocks/units/passQueueBlock'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronRight } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { askRssTopicsForDayOrch } from '@/services/orchestrators/rssTopicOrch'
+import { feedDayKeyBlock, feedDayShortLabelBlock, parseFeedDayBlock, shiftFeedDayBlock } from '@/personal_extension/services/lego_blocks/units/feedDayBlock'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { cn } from '@/lib/utils'
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
@@ -355,7 +357,7 @@ function VolumeTooltipBlock({ active, payload, colors }: {
   )
 }
 
-function VolumeChartBlock() {
+function VolumeChartBlock({ day, onPickDay }: { day: string; onPickDay: (day: string) => void }) {
   const { feeds } = useRssFeedsBlock()
   const { hostRef, isDark } = useDarkModeClassBlock()
   const colors = isDark ? VOLUME_COLORS_BLOCK.dark : VOLUME_COLORS_BLOCK.light
@@ -396,7 +398,13 @@ function VolumeChartBlock() {
       </div>
       <div className="h-[150px]">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barCategoryGap="22%">
+          <BarChart
+            data={data}
+            margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+            barCategoryGap="22%"
+            className="cursor-pointer"
+            onClick={(state) => { const d = data[Number(state?.activeTooltipIndex)]; if (d) onPickDay(d.day) }}
+          >
             <CartesianGrid vertical={false} stroke={colors.grid} />
             <XAxis dataKey="label" tick={tick} axisLine={false} tickLine={false} interval={6} />
             <YAxis width={30} tick={tick} axisLine={false} tickLine={false} allowDecimals={false} tickCount={3} />
@@ -409,12 +417,52 @@ function VolumeChartBlock() {
                 label={{ value: `avg ${average}`, position: 'insideTopRight', fontSize: 10, fill: tick.fill }}
               />
             )}
-            <Bar dataKey="readable" stackId="v" fill={colors.full} radius={[0, 0, 2, 2]} isAnimationActive={false} />
-            <Bar dataKey="teaser" stackId="v" fill={colors.teaser} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+            {/* The Feed's day at full strength, so the bar for the day shown stands out */}
+            <Bar dataKey="readable" stackId="v" fill={colors.full} radius={[0, 0, 2, 2]} isAnimationActive={false}>
+              {data.map(d => <Cell key={d.day} fillOpacity={d.day === day ? 1 : 0.55} />)}
+            </Bar>
+            <Bar dataKey="teaser" stackId="v" fill={colors.teaser} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+              {data.map(d => <Cell key={d.day} fillOpacity={d.day === day ? 1 : 0.55} />)}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
     </F9PanelBlock>
+  )
+}
+
+// The Feed's day: back and forward a day, and back to today. Every view but
+// Sources shows this day.
+function FeedDayPickerBlock({ day, today, onPick }: { day: string; today: string; onPick: (day: string) => void }) {
+  const isToday = day === today
+  const yesterday = shiftFeedDayBlock(today, -1)
+  const label = isToday ? 'Today' : day === yesterday ? 'Yesterday' : feedDayShortLabelBlock(day)
+  const step = 'flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-200/70 hover:text-zinc-900 disabled:opacity-30 disabled:hover:bg-transparent dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-zinc-100'
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg bg-zinc-100 p-0.5 text-[13px] dark:bg-zinc-800/80">
+      <button type="button" onClick={() => onPick(shiftFeedDayBlock(day, -1))} className={step} aria-label="The day before" title="The day before">
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <label className="relative cursor-pointer px-1.5 font-medium tabular-nums text-zinc-900 dark:text-zinc-100" title="Pick a day">
+        {label}
+        <input
+          type="date"
+          value={day}
+          max={today}
+          onChange={(e) => { if (e.target.value) onPick(e.target.value) }}
+          className="absolute inset-0 cursor-pointer opacity-0"
+          aria-label="Feed day"
+        />
+      </label>
+      <button type="button" onClick={() => onPick(shiftFeedDayBlock(day, 1))} disabled={isToday} className={step} aria-label="The day after" title="The day after">
+        <ChevronRight className="h-4 w-4" />
+      </button>
+      {!isToday && (
+        <button type="button" onClick={() => onPick(today)} className="ml-0.5 rounded-md px-2 py-1 text-[12px] font-medium text-[#3b6fb6] hover:bg-zinc-200/70 dark:text-sky-400 dark:hover:bg-zinc-700/60">
+          Today
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -794,6 +842,24 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
   // `?rss=<item id>` (from Reading's "Open in reader", or an old Explorer link) opens that article
   const [searchParams, setSearchParams] = useSearchParams()
   const itemFromRoute = searchParams.get('rss')
+
+  // The Feed's day, kept in the address as `?day=YYYY-MM-DD` so every view
+  // shows the same one; no `day` is today.
+  const pickedDay = parseFeedDayBlock(searchParams.get('day'), todayKey)
+  const feedDay = pickedDay ?? todayKey
+  const pickDay = useCallback((next: string) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev)
+      if (next >= feedDayKeyBlock(new Date())) params.delete('day')
+      else params.set('day', next)
+      return params
+    }, { replace: true })
+  }, [setSearchParams])
+  // A past day's topics are sorted while it is open, after today's
+  useEffect(() => {
+    askRssTopicsForDayOrch(pickedDay)
+  }, [pickedDay])
+  useEffect(() => () => askRssTopicsForDayOrch(null), [])
   useEffect(() => {
     if (!itemFromRoute) return
     let cancelled = false
@@ -853,6 +919,7 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
       articleOpen={article !== null}
       onClose={() => setArticle(null)}
       className="h-full"
+      day={pickedDay}
     />
   )
 
@@ -864,12 +931,15 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
           <h1 className={cn('font-bold leading-tight tracking-tight', compactHeader ? 'text-[20px]' : 'text-[26px]')}>Feed</h1>
           {!compactHeader && <p className="mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">Where things are first seen. Write down what you notice.</p>}
         </div>
-        <F9SegmentedBlock ariaLabel="Feed view" value={view} onChange={setView} options={[
-          { value: 'overview', label: 'Overview' },
-          { value: 'reading', label: 'Reading' },
-          ...(FEED_DROPS_AVAILABLE ? [{ value: 'drops' as const, label: 'Drops' }] : []),
-          { value: 'sources', label: 'Sources' },
-        ]} />
+        <div className="flex flex-wrap items-center gap-2">
+          {view !== 'sources' && <FeedDayPickerBlock day={feedDay} today={todayKey} onPick={pickDay} />}
+          <F9SegmentedBlock ariaLabel="Feed view" value={view} onChange={setView} options={[
+            { value: 'overview', label: 'Overview' },
+            { value: 'reading', label: 'Reading' },
+            ...(FEED_DROPS_AVAILABLE ? [{ value: 'drops' as const, label: 'Drops' }] : []),
+            { value: 'sources', label: 'Sources' },
+          ]} />
+        </div>
       </header>
   )
 
@@ -877,13 +947,13 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
     return (
       <div className="flex flex-col gap-4">
         {header}
-        <Suspense fallback={null}><PrivateFeedDropsBlock groups={dropGroups} /></Suspense>
+        <Suspense fallback={null}><PrivateFeedDropsBlock groups={dropGroups} day={pickedDay} /></Suspense>
       </div>
     )
   }
 
   if (view === 'overview') {
-    return <FeedOverviewBlock reader={aiReader} onOpenItem={openFromOverview} chart={<VolumeChartBlock />} header={header} />
+    return <FeedOverviewBlock reader={aiReader} onOpenItem={openFromOverview} chart={<VolumeChartBlock day={feedDay} onPickDay={pickDay} />} header={header} day={feedDay} onPickDay={pickDay} />
   }
 
   return (

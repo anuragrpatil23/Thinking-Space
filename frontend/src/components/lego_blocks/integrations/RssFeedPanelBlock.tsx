@@ -65,6 +65,7 @@ import {
 import { cn } from '@/lib/utils'
 import RssItemAnnotationMarksBlock from '@/components/lego_blocks/units/RssItemAnnotationMarksBlock'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
+import { localDayBlock } from '@/services/lego_blocks/units/rssTopicBlock'
 import {
   buildRssDayInboxBlock,
   rssDayLabelBlock,
@@ -95,6 +96,8 @@ interface RssFeedPanelBlockProps {
    *  owner of the reader knows when it closed, so this can't be derived here. */
   articleOpen?: boolean
   className?: string
+  /** Native: only the articles that arrived on this day (YYYY-MM-DD, local). */
+  day?: string | null
 }
 
 function formatRelativeDate(dateStr: string | null): string {
@@ -145,6 +148,7 @@ export default function RssFeedPanelBlock({
   articleOpen,
   className,
   appearance = 'default',
+  day = null,
 }: RssFeedPanelBlockProps) {
   const native = appearance === 'native'
   const { layout } = useUILayoutBlock()
@@ -195,10 +199,11 @@ export default function RssFeedPanelBlock({
     const narrowed = allFeeds.map(feed => ({
       ...feed,
       items: feed.items.filter(item => rssItemReadableBlock(item) === (readableTab === 'readable')
-        && (!unreadOnly || !item.read || sessionReadIds.has(item.id))),
+        && (!unreadOnly || !item.read || sessionReadIds.has(item.id))
+        && (!day || (Boolean(item.pubDate) && localDayBlock(new Date(item.pubDate as string)) === day))),
     }))
-    return unreadOnly ? narrowed.filter(feed => feed.items.length > 0) : narrowed
-  }, [allFeeds, native, readableTab, unreadOnly, sessionReadIds])
+    return unreadOnly || day ? narrowed.filter(feed => feed.items.length > 0) : narrowed
+  }, [allFeeds, native, readableTab, unreadOnly, sessionReadIds, day])
   // Feeds/groups are collapsed by default; only those explicitly expanded are in these sets.
   // Persisted in localStorage so the state survives navigation.
   const { expanded: expandedFeedIds, toggle: toggleFeedExpanded, setAll: setExpandedFeeds } = useExpandedSetBlock('ltm-rss-expanded-feeds')

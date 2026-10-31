@@ -10,7 +10,7 @@ import {
   subscribeFeedAiReadOrch,
 } from '@/services/orchestrators/rssAiReadOrch'
 import { loadStoryCardsOrch, readStoryCardsOrch, subscribeStoryCardsOrch } from '@/services/orchestrators/rssStoryCardOrch'
-import { loadRssTopicsOrch, readRssTopicsOrch, subscribeRssTopicsOrch } from '@/services/orchestrators/rssTopicOrch'
+import { loadRssTopicsOrch, readAskedRssTopicsDayOrch, readRssTopicsOrch, subscribeRssTopicsOrch } from '@/services/orchestrators/rssTopicOrch'
 
 /**
  * The AI reads the feed while the Feed is open on the desktop: a job starts
@@ -25,22 +25,27 @@ export function useFeedAiReadBlock() {
   const settings = useMemo(() => readFeedAiReaderOrch(), [progress]) // eslint-disable-line react-hooks/exhaustive-deps
   const waiting = useMemo(() => feedAiUnreadItemsBlock(feeds).length, [feeds])
   const available = feedAiReadAvailableOrch()
+  // Opening a past day asks for its topics: that is something to do
+  const askedDay = useSyncExternalStore(subscribeRssTopicsOrch, readAskedRssTopicsDayOrch)
 
   useEffect(() => {
     if (!available || !settings.on || progress) return
     void runFeedAiNextOrch(feeds, preferences, replaceRssItemBlock)
-  }, [available, settings.on, waiting, preferences, progress === null]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [available, settings.on, waiting, preferences, progress === null, askedDay]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // "Check now": the next job, whatever is waiting (a job already running is shared)
-  const runNow = () => runFeedAiNextOrch(feeds, preferences, replaceRssItemBlock)
+  // "Check now" / "Run the AI now": the next job, whatever is waiting, even
+  // within the wait after the provider was down (a job already running is
+  // shared). When it ends the effect above starts the next, so one press runs
+  // until nothing is left.
+  const runNow = () => runFeedAiNextOrch(feeds, preferences, replaceRssItemBlock, true)
 
   return { available, settings, progress, waiting, last: readLastFeedAiReadOrch(), runNow }
 }
 
-/** Today's topics the AI has sorted the news into (loaded from the vault once). */
-export function useRssTopicsBlock() {
-  useEffect(() => { void loadRssTopicsOrch() }, [])
-  return useSyncExternalStore(subscribeRssTopicsOrch, readRssTopicsOrch)
+/** A day's topics the AI has sorted the news into, today by default (loaded from the vault once). */
+export function useRssTopicsBlock(day?: string) {
+  useEffect(() => { void loadRssTopicsOrch(day) }, [day])
+  return useSyncExternalStore(subscribeRssTopicsOrch, () => readRssTopicsOrch(day))
 }
 
 /** The story cards the AI has written (loaded from the vault once). */

@@ -7,7 +7,8 @@ import { readLastLibraryPassOrch } from '@/services/orchestrators/libraryFullTex
 import { readLastValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { cn } from '@/lib/utils'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
-import { Bar, BarChart, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { feedDayNowBlock, feedDayShortLabelBlock, feedDaysAgoBlock, feedDaysEndingBlock } from '@/personal_extension/services/lego_blocks/units/feedDayBlock'
 import { FEED_PASTELS_BLOCK, F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK, F9_CHART_TOOLTIP_STYLE_BLOCK, F9FactRowBlock, F9PanelBlock } from '../units/F9NativeBlock'
 import { useRssTopicsBlock, type useFeedAiReadBlock } from './FeedAiReaderBlock'
 import { FeedReadingNotesPanelBlock } from './FeedReadingNotesPanelBlock'
@@ -20,16 +21,18 @@ function readLastSeenBlock(): number {
 
 const storyReadByAiBlock = (story: RssStoryBlock) => [story.lead, ...story.others].some(m => m.item.aiSummary)
 
-// The last days as soft bars: stories, and how many each reader got through
-function DayBarsBlock({ rows }: { rows: Array<{ day: string; stories: number; read: number; ai: number }> }) {
+// The week up to the Feed's day as soft bars: stories, and how many each
+// reader got through. The day shown is full strength; a click on another goes there.
+function DayBarsBlock({ rows, day, onPickDay }: { rows: Array<{ day: string; stories: number; read: number; ai: number }>; day: string; onPickDay: (day: string) => void }) {
   const data = rows.map(r => ({ ...r, label: rssDayLabelBlock(r.day).replace(/^(\w+), /, '').replace('Yesterday', 'Yest.') }))
+  const cells = (fill: string) => data.map(r => <Cell key={r.day} fill={fill} fillOpacity={r.day === day ? 1 : 0.45} />)
   const key = (color: string, label: string) => (
     <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-[3px]" style={{ background: color }} />{label}</span>
   )
   return (
     <F9PanelBlock className="px-5 pb-3 pt-[18px] text-[13px]">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-semibold">The last week</p>
+        <p className="font-semibold">{rows.length > 0 && rows[rows.length - 1].day !== localDayBlock(new Date()) ? `The week to ${feedDayShortLabelBlock(rows[rows.length - 1].day)}` : 'The last week'}</p>
         <span className="flex items-center gap-3 text-[12px] text-zinc-500 dark:text-zinc-400">
           {key(FEED_PASTELS_BLOCK.lavender.fill, 'Stories')}
           {key(FEED_PASTELS_BLOCK.mint.fill, 'Read by you')}
@@ -38,7 +41,14 @@ function DayBarsBlock({ rows }: { rows: Array<{ day: string; stories: number; re
       </div>
         <div className="h-[170px]">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barGap={2} barCategoryGap="22%">
+            <BarChart
+              data={data}
+              margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+              barGap={2}
+              barCategoryGap="22%"
+              className="cursor-pointer"
+              onClick={(state) => { const r = data[Number(state?.activeTooltipIndex)]; if (r) onPickDay(r.day) }}
+            >
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#8E8E93' }} axisLine={false} tickLine={false} />
               <YAxis width={30} tick={{ fontSize: 10, fill: '#8E8E93' }} axisLine={false} tickLine={false} allowDecimals={false} tickCount={3} />
               <Tooltip
@@ -47,9 +57,9 @@ function DayBarsBlock({ rows }: { rows: Array<{ day: string; stories: number; re
                 labelStyle={F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK}
                 formatter={(value, name) => [value, name === 'stories' ? 'Stories' : name === 'read' ? 'Read by you' : 'Read by the AI']}
               />
-              <Bar dataKey="stories" fill={FEED_PASTELS_BLOCK.lavender.fill} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false} />
-              <Bar dataKey="read" fill={FEED_PASTELS_BLOCK.mint.fill} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false} />
-              <Bar dataKey="ai" fill={FEED_PASTELS_BLOCK.peach.fill} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+              <Bar dataKey="stories" fill={FEED_PASTELS_BLOCK.lavender.fill} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false}>{cells(FEED_PASTELS_BLOCK.lavender.fill)}</Bar>
+              <Bar dataKey="read" fill={FEED_PASTELS_BLOCK.mint.fill} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false}>{cells(FEED_PASTELS_BLOCK.mint.fill)}</Bar>
+              <Bar dataKey="ai" fill={FEED_PASTELS_BLOCK.peach.fill} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false}>{cells(FEED_PASTELS_BLOCK.peach.fill)}</Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -98,14 +108,14 @@ function hourLabelBlock(hour: number): string {
   return hour === 0 ? '12a' : hour < 12 ? `${hour}a` : hour === 12 ? '12p' : `${hour - 12}p`
 }
 
-function ArrivalsChartBlock({ rows }: { rows: ReturnType<typeof feedArrivalsByHourBlock> }) {
+function ArrivalsChartBlock({ rows, dayLabel }: { rows: ReturnType<typeof feedArrivalsByHourBlock>; dayLabel: string | null }) {
   const key = (color: string, label: string, line?: boolean) => (
     <span className="inline-flex items-center gap-1.5"><span className={line ? 'h-0.5 w-3 rounded-full' : 'h-2 w-2 rounded-[3px]'} style={{ background: color }} />{label}</span>
   )
   return (
     <F9PanelBlock className="px-5 pb-3 pt-[18px] text-[13px]">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-semibold">When it landed today</p>
+        <p className="font-semibold">{dayLabel ? `When it landed on ${dayLabel}` : 'When it landed today'}</p>
         <span className="flex items-center gap-3 text-[12px] text-zinc-500 dark:text-zinc-400">
           {key(FEED_PASTELS_BLOCK.lavender.fill, 'Articles this hour')}
           {key(FEED_PASTELS_BLOCK.peach.line, 'A usual day (last 7)', true)}
@@ -121,7 +131,7 @@ function ArrivalsChartBlock({ rows }: { rows: ReturnType<typeof feedArrivalsByHo
               contentStyle={F9_CHART_TOOLTIP_STYLE_BLOCK}
               labelStyle={F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK}
               labelFormatter={(hour) => `${hourLabelBlock(Number(hour))}–${hourLabelBlock((Number(hour) + 1) % 24)}`}
-              formatter={(value, name) => [value ?? '–', name === 'today' ? 'Today' : 'A usual day']}
+              formatter={(value, name) => [value ?? '–', name === 'today' ? (dayLabel ?? 'Today') : 'A usual day']}
             />
             <Bar dataKey="today" fill={FEED_PASTELS_BLOCK.lavender.fill} radius={[4, 4, 0, 0]} maxBarSize={14} isAnimationActive={false} />
             <Line dataKey="usual" type="monotone" stroke={FEED_PASTELS_BLOCK.peach.line} strokeWidth={2} dot={false} isAnimationActive={false} />
@@ -148,7 +158,7 @@ function FeedTopicRowBlock({ entry, sourceOf, onOpenItem, mood }: { entry: FeedT
   const outlets = [...new Set(items.map(item => publisherNameBlock(sourceOf(item))).filter(Boolean))]
   const lead = topic.detail ?? items[0]?.aiSummary?.text.split('\n').find(Boolean)?.replace(/^-\s*/, '') ?? null
   return (
-    <div className={cn('border-t-[0.5px] border-[#EFEFF2] dark:border-zinc-800', mood && 'bg-amber-50/40 dark:bg-amber-500/5')}>
+    <div className={cn('border-t-[0.5px] border-[#EFEFF2] dark:border-zinc-800', mood && 'border-l-2 border-l-amber-300 dark:border-l-amber-500/60')}>
       <button type="button" onClick={() => setOpen(o => !o)} className="flex w-full items-start gap-4 px-5 py-3.5 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
         <span className="min-w-0 flex-1">
           <span className="block font-medium leading-snug text-zinc-900 dark:text-zinc-100">{topic.name}</span>
@@ -180,7 +190,9 @@ function FeedTopicRowBlock({ entry, sourceOf, onOpenItem, mood }: { entry: FeedT
  * on its own strip, then each subject with its key details, the most articles
  * first. Topics of one article sit folded at the end.
  */
-function FeedTopicsPanelBlock({ topics, sourceOf, onOpenItem }: { topics: FeedTopicEntryBlock[]; sourceOf: (item: RssFeedItemBlock) => string; onOpenItem: (item: RssFeedItemBlock) => void }) {
+const STRIP_CLASS_BLOCK = 'border-t-[0.5px] border-[#EFEFF2] px-5 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.04em] text-zinc-500 dark:border-zinc-800 dark:text-zinc-400'
+
+function FeedTopicsPanelBlock({ topics, sourceOf, onOpenItem, dayLabel }: { topics: FeedTopicEntryBlock[]; sourceOf: (item: RssFeedItemBlock) => string; onOpenItem: (item: RssFeedItemBlock) => void; dayLabel: string | null }) {
   const [showSingles, setShowSingles] = useState(false)
   const mood = topics.filter(t => t.topic.kind === 'mood')
   const subjects = topics.filter(t => t.topic.kind !== 'mood')
@@ -190,13 +202,17 @@ function FeedTopicsPanelBlock({ topics, sourceOf, onOpenItem }: { topics: FeedTo
   return (
     <F9PanelBlock className="overflow-hidden text-[13px]">
       <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pb-2 pt-[18px]">
-        <p className="font-semibold">What's happening today</p>
-        <span className="text-[12px] text-zinc-500 dark:text-zinc-400">{subjects.length} {subjects.length === 1 ? 'topic' : 'topics'} · {articles} articles, sorted by the AI</span>
+        <p className="font-semibold">{dayLabel ? `What happened on ${dayLabel}` : "What's happening today"}</p>
+        <span className="text-[12px] text-zinc-500 dark:text-zinc-400">
+          {[mood.length > 0 ? `${mood.length} on the market` : null, `${subjects.length} ${subjects.length === 1 ? 'topic' : 'topics'}`, `${articles} ${articles === 1 ? 'article' : 'articles'}`].filter(Boolean).join(' · ')}, sorted by the AI
+        </span>
       </div>
       {mood.length > 0 && (
         <>
-          <p className="border-t-[0.5px] border-[#EFEFF2] bg-amber-50/70 px-5 py-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-amber-800 dark:border-zinc-800 dark:bg-amber-500/10 dark:text-amber-300">Market mood</p>
+          <p className={STRIP_CLASS_BLOCK}>Market mood</p>
           {mood.map(entry => <FeedTopicRowBlock key={entry.topic.id} entry={entry} sourceOf={sourceOf} onOpenItem={onOpenItem} mood />)}
+          {/* With a mood strip above, the subjects get their own label, so the two read apart */}
+          {subjects.length > 0 && <p className={STRIP_CLASS_BLOCK}>Topics</p>}
         </>
       )}
       {many.map(entry => <FeedTopicRowBlock key={entry.topic.id} entry={entry} sourceOf={sourceOf} onOpenItem={onOpenItem} />)}
@@ -213,8 +229,11 @@ function FeedTopicsPanelBlock({ topics, sourceOf, onOpenItem }: { topics: FeedTo
   )
 }
 
-export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
+export function FeedOverviewBlock({ reader, onOpenItem, chart, header, day, onPickDay }: {
   reader: ReturnType<typeof useFeedAiReadBlock>
+  /** The Feed's day, YYYY-MM-DD: today unless another was picked */
+  day: string
+  onPickDay: (day: string) => void
   onOpenItem: (item: RssFeedItemBlock) => void
   /** The page's title and view switch, at the top of the main column */
   header: React.ReactNode
@@ -228,34 +247,39 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
     try { localStorage.setItem(LAST_SEEN_KEY_BLOCK, String(Date.now())) } catch { /* optional */ }
   }, [])
 
-  // Today, yesterday and the week are all this page shows: group only those
-  // days, at low priority, so arriving feeds never hold up the page.
+  // The day and the week before it are all this page shows: group only from
+  // that week to now, at low priority, so arriving feeds never hold up the page.
   const deferredFeeds = useDeferredValue(feeds)
+  const today = localDayBlock(new Date())
+  const isToday = day === today
+  const dayLabel = isToday ? null : feedDayShortLabelBlock(day)
+  const span = feedDaysAgoBlock(day, today) + 8
   // Remembered across visits: the same feed snapshot never regroups
   const days = useMemo(
-    () => identityMemoBlock('feed-overview-days', [deferredFeeds, preferences], () =>
-      buildRssDayInboxBlock({ feeds: recentRssFeedsBlock(rssReaderFeedsBlock(deferredFeeds, preferences), 8), configs: preferences?.feeds ?? [] })),
-    [deferredFeeds, preferences],
+    () => identityMemoBlock('feed-overview-days', [deferredFeeds, preferences, span], () =>
+      buildRssDayInboxBlock({ feeds: recentRssFeedsBlock(rssReaderFeedsBlock(deferredFeeds, preferences), span), configs: preferences?.feeds ?? [] })),
+    [deferredFeeds, preferences, span],
   )
+  // Named todayStories from when the page only showed today: the Feed's day's stories
   const todayStories = useMemo(
-    () => (days[0] && rssDayLabelBlock(days[0].day) === 'Today' ? days[0].sources.flatMap(s => s.stories) : []),
-    [days],
+    () => days.find(d => d.day === day)?.sources.flatMap(s => s.stories) ?? [],
+    [days, day],
   )
   const newStories = useMemo(
-    () => (lastSeen ? days.flatMap(d => d.sources.flatMap(s => s.stories)).filter(story => Date.parse(story.lead.item.pubDate ?? '') > lastSeen).length : null),
-    [days, lastSeen],
+    () => (lastSeen && isToday ? days.flatMap(d => d.sources.flatMap(s => s.stories)).filter(story => Date.parse(story.lead.item.pubDate ?? '') > lastSeen).length : null),
+    [days, lastSeen, isToday],
   )
-  // Today's news by what is happening, as the AI sorted it
-  const topicState = useRssTopicsBlock()
+  // The day's news by what is happening, as the AI sorted it
+  const topicState = useRssTopicsBlock(day)
   const { topics, sourceOf } = useMemo(() => {
     const readerFeeds = rssReaderFeedsBlock(deferredFeeds, preferences)
     const source = new Map<string, string>()
     for (const feed of readerFeeds) for (const item of feed.items) source.set(item.id, feed.feedTitle)
     return {
-      topics: rssTopicsShownBlock(topicState, rssTopicItemsBlock(readerFeeds.flatMap(feed => feed.items), localDayBlock(new Date()))),
+      topics: rssTopicsShownBlock(topicState, rssTopicItemsBlock(readerFeeds.flatMap(feed => feed.items), day)),
       sourceOf: (item: RssFeedItemBlock) => source.get(item.id) ?? '',
     }
-  }, [deferredFeeds, preferences, topicState])
+  }, [deferredFeeds, preferences, topicState, day])
 
   const warnings = useMemo(() => {
     const out: string[] = []
@@ -281,16 +305,17 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
   }, [todayStories])
   const latest = todayStories.reduce<RssStoryBlock | null>((best, story) => (!best || Date.parse(story.lead.item.pubDate ?? '') > Date.parse(best.lead.item.pubDate ?? '') ? story : best), null)
 
-  const history = days.filter(d => d.day !== 'undated').slice(0, 7).map(d => {
-    const stories = d.sources.flatMap(s => s.stories)
-    return { day: d.day, stories: stories.length, read: stories.filter(s => s.read).length, ai: stories.filter(storyReadByAiBlock).length }
+  // The seven days ending with the Feed's day, newest first
+  const history = feedDaysEndingBlock(day, 7).reverse().map(key => {
+    const stories = days.find(d => d.day === key)?.sources.flatMap(s => s.stories) ?? []
+    return { day: key, stories: stories.length, read: stories.filter(s => s.read).length, ai: stories.filter(storyReadByAiBlock).length }
   })
 
   const weekStories = history.reduce((n, d) => n + d.stories, 0)
   const arrivals = useMemo(
-    () => identityMemoBlock('feed-overview-arrivals', [deferredFeeds, preferences], () =>
-      feedArrivalsByHourBlock(recentRssFeedsBlock(rssReaderFeedsBlock(deferredFeeds, preferences), 8).flatMap(f => f.items))),
-    [deferredFeeds, preferences],
+    () => identityMemoBlock('feed-overview-arrivals', [deferredFeeds, preferences, day], () =>
+      feedArrivalsByHourBlock(recentRssFeedsBlock(rssReaderFeedsBlock(deferredFeeds, preferences), span).flatMap(f => f.items), feedDayNowBlock(day))),
+    [deferredFeeds, preferences, day, span],
   )
 
   return (
@@ -298,35 +323,62 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header }: {
       {/* The title spans both columns, so the charts and the side panels start level */}
       <div className="min-w-0 lg:col-span-2">{header}</div>
       <div className="flex min-w-0 flex-col gap-5">
-        {todayStories.length > 0 && <ArrivalsChartBlock rows={arrivals} />}
-        {history.length > 0 && <DayBarsBlock rows={[...history].reverse()} />}
+        {todayStories.length > 0 && <ArrivalsChartBlock rows={arrivals} dayLabel={dayLabel} />}
+        <DayBarsBlock rows={[...history].reverse()} day={day} onPickDay={onPickDay} />
         {chart}
-        {topics.length > 0 && <FeedTopicsPanelBlock topics={topics} sourceOf={sourceOf} onOpenItem={onOpenItem} />}
+        {topics.length > 0
+          ? <FeedTopicsPanelBlock topics={topics} sourceOf={sourceOf} onOpenItem={onOpenItem} dayLabel={dayLabel} />
+          : !isToday && todayStories.length > 0 && (
+            <F9PanelBlock className="px-5 py-4 text-[13px] text-zinc-500 dark:text-zinc-400">
+              {reader.progress?.kind === 'topics'
+                ? `The AI is sorting the news · ${reader.progress.done} of ${reader.progress.total}`
+                : reader.available && reader.settings.on
+                  ? `The AI sorts ${dayLabel}'s news into topics once today's reading is done.`
+                  : `${dayLabel}'s news was never sorted into topics; turn the AI reader on in Settings → Webull to sort it.`}
+            </F9PanelBlock>
+          )}
       </div>
 
       {/* Where things stand, beside the charts */}
       <div className="flex min-w-0 flex-col gap-5 lg:col-start-2 lg:row-start-2">
         <F9PanelBlock className="px-5 pb-3 pt-[18px] text-[13px]">
-          <p className="font-semibold">Today</p>
+          <p className="font-semibold">{isToday ? 'Today' : rssDayLabelBlock(day)}</p>
           <p className="mt-2.5 text-2xl font-semibold tabular-nums">{todayStories.length} {todayStories.length === 1 ? 'story' : 'stories'}</p>
           <p className="mb-1.5 mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
             {reader.progress
               ? reader.progress.kind === 'topics'
                 ? `The AI is sorting today's news · ${reader.progress.done} of ${reader.progress.total}`
                 : `The AI is reading · ${reader.progress.done} of ${reader.progress.total}`
-              : latest ? `Latest: ${latest.lead.feedTitle}, ${new Date(latest.lead.item.pubDate ?? '').toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : 'Nothing yet today'}
+              : latest ? `${isToday ? 'Latest' : 'Last'}: ${latest.lead.feedTitle}, ${new Date(latest.lead.item.pubDate ?? '').toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : isToday ? 'Nothing yet today' : 'Nothing that day'}
           </p>
+          {reader.available && !reader.progress && (
+            reader.settings.on
+              ? (
+                <button
+                  type="button"
+                  onClick={() => { void reader.runNow() }}
+                  title="Read what is waiting, sort the news into topics and write their key details, one job after another until nothing is left"
+                  className="mb-1.5 text-[12px] font-medium text-[#3b6fb6] hover:underline dark:text-sky-400"
+                >
+                  Run the AI now{reader.waiting > 0 ? ` · ${reader.waiting} waiting` : ''}
+                </button>
+              )
+              : <p className="mb-1.5 text-[12px] text-zinc-500 dark:text-zinc-400">The AI reader is off (Settings → Webull)</p>
+          )}
+          {reader.available && !reader.progress && reader.settings.on && reader.last?.error && (
+            <p className="mb-1.5 text-[12px] text-red-600 dark:text-red-400">Last run: {reader.last.error}</p>
+          )}
           <ShareRowBlock divided label="Read by you" count={todayStories.filter(s => s.read).length} total={todayStories.length} color={FEED_PASTELS_BLOCK.mint.line} />
           <ShareRowBlock label="Read by the AI" count={todayStories.filter(storyReadByAiBlock).length} total={todayStories.length} color={FEED_PASTELS_BLOCK.peach.line} />
           {newStories !== null && <F9FactRowBlock divided label="New since your last visit" value={newStories} />}
-          <F9FactRowBlock divided={newStories === null} label="This week" value={weekStories} sub={(() => { const read = history.reduce((n, d) => n + d.read, 0); return `${read} read by you${weekStories ? ` · ${Math.round((read / weekStories) * 100)}%` : ''}` })()} />
+          <F9FactRowBlock divided={newStories === null} label={isToday ? 'This week' : `The week to ${dayLabel}`} value={weekStories} sub={(() => { const read = history.reduce((n, d) => n + d.read, 0); return `${read} read by you${weekStories ? ` · ${Math.round((read / weekStories) * 100)}%` : ''}` })()} />
         </F9PanelBlock>
 
         <FeedReadingNotesPanelBlock feeds={feeds} onOpenItem={onOpenItem} />
 
         {sourcesToday.length > 0 && (
           <F9PanelBlock className="px-5 pb-3 pt-[18px] text-[13px]">
-            <p className="mb-1 font-semibold">Where it came from today</p>
+            <p className="mb-1 font-semibold">{isToday ? 'Where it came from today' : `Where it came from on ${dayLabel}`}</p>
             {sourcesToday.map(([title, count], index) => (
               <F9FactRowBlock key={title} divided={index > 0} label={title} value={count} />
             ))}

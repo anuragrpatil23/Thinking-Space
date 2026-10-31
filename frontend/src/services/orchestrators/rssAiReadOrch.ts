@@ -21,7 +21,7 @@ import { readDefaultProviderBlock, resolveProviderBlock } from '@/services/lego_
 import type { ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 import { rssReaderFeedsBlock, type RssFeedItemBlock, type RssFeedPreferencesBlock, type RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { localDayBlock, rssTopicItemsBlock } from '@/services/lego_blocks/units/rssTopicBlock'
-import { loadRssTopicsOrch, rssTopicsWorkOrch, runRssTopicCardPassOrch, runRssTopicSortPassOrch } from '@/services/orchestrators/rssTopicOrch'
+import { loadRssTopicsOrch, readAskedRssTopicsDayOrch, rssTopicsWorkOrch, runRssTopicCardPassOrch, runRssTopicSortPassOrch } from '@/services/orchestrators/rssTopicOrch'
 import {
   ARTICLE_SUMMARY_TEXT_CHARS_BLOCK,
   articleSummaryContract,
@@ -210,12 +210,14 @@ export function runFeedAiNextOrch(
   feeds: RssFeedResultBlock[],
   preferences: RssFeedPreferencesBlock | null,
   onRead: (item: RssFeedItemBlock) => void,
+  /** Asked for by hand: try the provider again even within the wait after it was down */
+  force = false,
 ): Promise<FeedAiReadPassBlock | null> {
   if (running) return running
   if (!readFeedAiReaderOrch().on || !feedAiReadAvailableOrch() || !preferences) return Promise.resolve(null)
   const provider = feedAiReaderProviderOrch()
   const last = readLastFeedAiReadOrch()
-  if (last?.providerDown && last.provider === provider
+  if (!force && last?.providerDown && last.provider === provider
     && Date.now() - Date.parse(last.at) < PROVIDER_RETRY_MS) return Promise.resolve(null)
   running = (async () => {
     await loadRssTopicsOrch()
@@ -226,6 +228,11 @@ export function runFeedAiNextOrch(
     const todayUnread = new Set(unreadList.filter(({ item }) => item.pubDate && localDayBlock(new Date(item.pubDate)) === today).map(({ item }) => item.id))
     const topicItems = rssTopicItemsBlock(readerItems, today)
     const topicWork = rssTopicsWorkOrch(topicItems)
+    // A past day that is open in the Feed: its topics, once today's are done
+    const askedDay = readAskedRssTopicsDayOrch()
+    if (askedDay) await loadRssTopicsOrch(askedDay)
+    const askedItems = askedDay ? rssTopicItemsBlock(readerItems, askedDay) : []
+    const askedWork = askedDay ? rssTopicsWorkOrch(askedItems, askedDay) : { unsorted: [], cards: [] }
     const onTopics = (done: number, total: number, items: PassItemBlock[]) => {
       progress = { done, total, kind: 'topics', items }
       notifyBlock()
@@ -241,6 +248,10 @@ export function runFeedAiNextOrch(
       pass = topicPassBlock(await runRssTopicSortPassOrch(topicItems, provider, onTopics))
     } else if (topicWork.cards.length > 0) {
       pass = topicPassBlock(await runRssTopicCardPassOrch(topicItems, provider, onTopics))
+    } else if (askedDay && askedWork.unsorted.length > 0) {
+      pass = topicPassBlock(await runRssTopicSortPassOrch(askedItems, provider, onTopics, askedDay))
+    } else if (askedDay && askedWork.cards.length > 0) {
+      pass = topicPassBlock(await runRssTopicCardPassOrch(askedItems, provider, onTopics, askedDay))
     } else if (unread.size > 0) {
       pass = await runFeedAiReadPassOrch(feeds, onRead, provider)
     }
