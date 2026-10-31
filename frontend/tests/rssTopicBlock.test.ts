@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseFeedTopicsBlock } from '@/services/lego_blocks/units/intelligence/contracts/feedTopicsContractBlock'
-import { emptyRssTopicsDayBlock, mergeRssTopicsBlock, rssTopicItemsBlock, rssTopicsNeedingCardBlock, rssTopicsShownBlock, rssTopicsUnsortedBlock } from '@/services/lego_blocks/units/rssTopicBlock'
+import { emptyRssTopicsDayBlock, rssDistinctHeadlinesBlock, mergeRssTopicsBlock, rssTopicItemsBlock, rssTopicsNeedingCardBlock, rssTopicsShownBlock, rssTopicsUnsortedBlock } from '@/services/lego_blocks/units/rssTopicBlock'
 import type { RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 
 const item = (id: string, pubDate = '2026-10-30T15:00:00', summarized = true): RssFeedItemBlock => ({
@@ -40,5 +40,18 @@ describe("today's topics", () => {
     day = mergeRssTopicsBlock(day, [item('d')], [{ n: 1, kind: 'subject', name: 'Memory Supply Build-Out' }])
     expect(rssTopicsNeedingCardBlock(day, 1)).toHaveLength(1)
     expect(rssTopicsShownBlock(day, [...batch, item('d')])[0].items.map(i => i.id)).toEqual(['a', 'b', 'd'])
+  })
+})
+
+describe('rssDistinctHeadlinesBlock', () => {
+  it('folds a wire piece re-published through the day into one row, keeping the latest', () => {
+    const wrap = 'Stocks Fall Sharply on Intel and Amazon Sell-offs and Crypto Weakness'
+    const rows = rssDistinctHeadlinesBlock([
+      { id: 'a', title: wrap, pubDate: '2026-10-30T17:52:00Z' },
+      { id: 'b', title: 'Nvidia beats', pubDate: '2026-10-30T12:00:00Z' },
+      { id: 'c', title: `${wrap}!`, pubDate: '2026-10-30T22:50:00Z' },
+      { id: 'd', title: wrap.toUpperCase(), pubDate: '2026-10-30T21:12:00Z' },
+    ])
+    expect(rows.map(r => [r.item.id, r.copies])).toEqual([['c', 3], ['b', 1]])
   })
 })

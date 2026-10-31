@@ -1,10 +1,11 @@
 import { createContext, useContext, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronRight } from 'lucide-react'
 import { FEED_OTHER_THEME_BLOCK } from '@/services/lego_blocks/units/intelligence/contracts/feedTopicThemesContractBlock'
 import { useRssFeedsBlock } from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
 import { rssFeedIdsExcludedFromAllUnreadBlock, rssReaderFeedsBlock, type RssFeedItemBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { buildRssDayInboxBlock, recentRssFeedsBlock, rssDayLabelBlock, type RssStoryBlock } from '@/services/lego_blocks/units/rssStoryBlock'
-import { localDayBlock, rssOutsideCountsBlock, rssTopicItemsBlock, rssTopicsShownBlock, type RssTopicBlock } from '@/services/lego_blocks/units/rssTopicBlock'
+import { localDayBlock, rssDistinctHeadlinesBlock, rssOutsideCountsBlock, rssTopicItemsBlock, rssTopicsShownBlock, type RssTopicBlock } from '@/services/lego_blocks/units/rssTopicBlock'
 import { readLastLibraryPassOrch } from '@/services/orchestrators/libraryFullTextOrch'
 import { readLastValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { cn } from '@/lib/utils'
@@ -162,19 +163,49 @@ const OutsideCountsContextBlock = createContext<ReturnType<typeof rssOutsideCoun
  * share your reading list, the lighter the other sources the AI read), then its
  * topics and outlets. The split is spelled out on hover.
  */
-function RowCountsBlock({ own, other, ownOutlets, otherOutlets, topics }: { own: number; other: number; ownOutlets: number; otherOutlets: number; topics?: number }) {
+/** About the split card's width, to decide whether it fits right of the counts. */
+const SPLIT_CARD_WIDTH_BLOCK = 380
+
+function CountsSplitLineBlock({ swatch, label, articles, outlets }: { swatch: string; label: string; articles: number; outlets: number }) {
+  return (
+    <span className="flex items-center gap-2 py-0.5">
+      <span className={cn('h-2 w-2 shrink-0 rounded-sm', swatch)} aria-hidden />
+      <span className="flex-1 whitespace-nowrap pr-4">{label}</span>
+      <span className="whitespace-nowrap tabular-nums text-zinc-800 dark:text-zinc-100">{articles} {articles === 1 ? 'article' : 'articles'} · {outlets} {outlets === 1 ? 'outlet' : 'outlets'}</span>
+    </span>
+  )
+}
+
+/** A split line's outlets under it, wrapping to a few lines; a long list ends in "and N more". */
+function CountsOutletNamesBlock({ names }: { names: string[] }) {
+  const shown = names.slice(0, OUTLET_NAMES_SHOWN_BLOCK)
+  const more = names.length - shown.length
+  return (
+    <span className="mb-1.5 block max-w-[340px] whitespace-normal pl-4 text-[11.5px] leading-snug text-zinc-500 dark:text-zinc-400">
+      {shown.join(', ')}{more > 0 ? ` and ${more} more` : ''}
+    </span>
+  )
+}
+
+const OUTLET_NAMES_SHOWN_BLOCK = 15
+
+function RowCountsBlock({ own, other, ownOutlets, otherOutlets, topics, outletNames, otherOutletNames }: { own: number; other: number; ownOutlets: number; otherOutlets: number; topics?: number; outletNames: string[]; otherOutletNames: string[] }) {
   const total = own + other
   const outlets = ownOutlets + otherOutlets
-  const title = other > 0
-    ? `${own} ${own === 1 ? 'article' : 'articles'} from ${ownOutlets} in your reading list, ${other} from ${otherOutlets} other ${otherOutlets === 1 ? 'outlet' : 'outlets'} the AI read`
-    : undefined
   const articles = `${total} ${total === 1 ? 'article' : 'articles'}`
   const outletsLabel = `${outlets} ${outlets === 1 ? 'outlet' : 'outlets'}`
   // A theme leads with its topics, then its articles and outlets; a topic (no topics count) with its articles
   const lead = topics !== undefined ? `${topics} ${topics === 1 ? 'topic' : 'topics'}` : articles
   const rest = topics !== undefined ? `${articles} · ${outletsLabel}` : outletsLabel
+  const [at, setAt] = useState<DOMRect | null>(null)
   return (
-    <span className="block" title={title}>
+    // With other sources, hovering shows the split at once; without, the outlet names (native, as before)
+    <span
+      className="block"
+      title={other > 0 ? undefined : outletNames.join(', ')}
+      onMouseEnter={other > 0 ? e => setAt(e.currentTarget.getBoundingClientRect()) : undefined}
+      onMouseLeave={() => setAt(null)}
+    >
       <span className="block font-medium tabular-nums text-zinc-700 dark:text-zinc-200">{lead}</span>
       <span className="mt-1 block tabular-nums">{rest}</span>
       {other > 0 && (
@@ -183,6 +214,22 @@ function RowCountsBlock({ own, other, ownOutlets, otherOutlets, topics }: { own:
           <span className="h-full bg-zinc-500 dark:bg-zinc-300" style={{ width: `${(own / total) * 100}%` }} />
           <span className="h-full bg-zinc-200 dark:bg-zinc-600" style={{ width: `${(other / total) * 100}%` }} />
         </span>
+      )}
+      {at && createPortal(
+        // On the page, not in the panel (which clips its edges): to the right of the counts, or left when the window has no room
+        <span
+          className="pointer-events-none fixed z-50 w-max rounded-lg border-[0.5px] border-zinc-200 bg-white px-3 py-2 text-left text-[12px] text-zinc-600 shadow-md dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+          style={window.innerWidth - at.right > SPLIT_CARD_WIDTH_BLOCK + 24
+            ? { left: at.right + 12, top: at.top }
+            : { right: window.innerWidth - at.left + 12, top: at.top }}
+          role="tooltip"
+        >
+          <CountsSplitLineBlock swatch="bg-zinc-500 dark:bg-zinc-300" label="Your reading list" articles={own} outlets={ownOutlets} />
+          {outletNames.length > 0 && <CountsOutletNamesBlock names={outletNames} />}
+          <CountsSplitLineBlock swatch="bg-zinc-200 dark:bg-zinc-600" label="Other sources the AI read" articles={other} outlets={otherOutlets} />
+          {otherOutletNames.length > 0 && <CountsOutletNamesBlock names={otherOutletNames} />}
+        </span>,
+        document.body,
       )}
     </span>
   )
@@ -194,6 +241,8 @@ function FeedTopicRowBlock({ entry, sourceOf, onOpenItem, mood }: { entry: FeedT
   const { topic, items } = entry
   const outside = outsideCounts?.byTopic.get(topic.name)
   const outlets = [...new Set(items.map(item => publisherNameBlock(sourceOf(item))).filter(Boolean))]
+  // A wire piece re-published through the day (and through several feeds) is one row, with its copies counted
+  const distinct = useMemo(() => rssDistinctHeadlinesBlock(items), [items])
   const lead = topic.detail ?? items[0]?.aiSummary?.text.split('\n').find(Boolean)?.replace(/^-\s*/, '') ?? null
   return (
     <div className={cn('border-t-[0.5px] border-[#EFEFF2] dark:border-zinc-800', mood && 'border-l-2 border-l-amber-300 dark:border-l-amber-500/60')}>
@@ -202,16 +251,17 @@ function FeedTopicRowBlock({ entry, sourceOf, onOpenItem, mood }: { entry: FeedT
           <span className="block font-medium leading-snug text-zinc-900 dark:text-zinc-100">{topic.name}</span>
           {lead && <span className={cn('mt-1 block text-[12.5px] leading-snug text-zinc-600 dark:text-zinc-300', !open && 'line-clamp-3')}>{lead}</span>}
         </span>
-        <span className="w-[140px] shrink-0 pt-px text-right text-[12px] text-zinc-500 dark:text-zinc-400" title={outlets.join(', ')}>
-          <RowCountsBlock own={items.length} other={outside?.articles ?? 0} ownOutlets={outlets.length} otherOutlets={outside?.outlets ?? 0} />
+        <span className="w-[140px] shrink-0 pt-px text-right text-[12px] text-zinc-500 dark:text-zinc-400">
+          <RowCountsBlock own={distinct.length} other={outside?.articles ?? 0} ownOutlets={outlets.length} otherOutlets={outside?.outlets ?? 0} outletNames={outlets} otherOutletNames={outside?.outletNames ?? []} />
         </span>
       </button>
       {open && (
         <div className="pb-2.5 pl-5 pr-5">
-          {items.map(item => (
+          {distinct.map(({ item, copies }) => (
             <button key={item.id} type="button" onClick={() => onOpenItem(item)} className="flex w-full items-baseline gap-3 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-zinc-100 dark:hover:bg-zinc-800">
               <span className="min-w-0 flex-1 truncate text-zinc-800 dark:text-zinc-200">{item.title}</span>
               <span className="shrink-0 text-[11.5px] text-zinc-500 dark:text-zinc-400">
+                {copies > 1 && <span className="mr-1.5 tabular-nums" title={`Published ${copies} times; the latest opens`}>×{copies}</span>}
                 {publisherNameBlock(sourceOf(item))}{item.pubDate ? ` · ${new Date(item.pubDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}
               </span>
             </button>
@@ -243,7 +293,8 @@ function FeedThemeRowBlock({ theme, entries, sourceOf, onOpenItem, mood, default
   const [open, setOpen] = useState(defaultOpen)
   const outsideCounts = useContext(OutsideCountsContextBlock)
   const outside = outsideCounts?.byTheme.get(mood ? `Market · ${theme}` : theme)
-  const articles = entries.reduce((n, e) => n + e.items.length, 0)
+  // Copies of one headline count once, as in each topic
+  const articles = useMemo(() => rssDistinctHeadlinesBlock(entries.flatMap(e => e.items)).length, [entries])
   const outlets = new Set(entries.flatMap(e => e.items.map(item => publisherNameBlock(sourceOf(item))).filter(Boolean)))
   return (
     <div className={cn('border-t-[0.5px] border-[#EFEFF2] dark:border-zinc-800', mood && 'border-l-2 border-l-amber-300 dark:border-l-amber-500/60')}>
@@ -259,8 +310,8 @@ function FeedThemeRowBlock({ theme, entries, sourceOf, onOpenItem, mood, default
             </span>
           )}
         </span>
-        <span className="w-[140px] shrink-0 pt-px text-right text-[12px] text-zinc-500 dark:text-zinc-400" title={[...outlets].join(', ')}>
-          <RowCountsBlock own={articles} other={outside?.articles ?? 0} ownOutlets={outlets.size} otherOutlets={outside?.outlets ?? 0} topics={entries.length} />
+        <span className="w-[140px] shrink-0 pt-px text-right text-[12px] text-zinc-500 dark:text-zinc-400">
+          <RowCountsBlock own={articles} other={outside?.articles ?? 0} ownOutlets={outlets.size} otherOutlets={outside?.outlets ?? 0} topics={entries.length} outletNames={[...outlets]} otherOutletNames={outside?.outletNames ?? []} />
         </span>
       </button>
       {open && (
@@ -284,7 +335,7 @@ function topicsByThemeBlock(entries: FeedTopicEntryBlock[]): Array<[string, Feed
     byTheme.set(name, [...(byTheme.get(name) ?? []), entry])
   }
   const last = (name: string) => (name === UNPLACED_THEME_BLOCK ? 2 : name === FEED_OTHER_THEME_BLOCK ? 1 : 0)
-  const size = (list: FeedTopicEntryBlock[]) => list.reduce((n, e) => n + e.items.length, 0)
+  const size = (list: FeedTopicEntryBlock[]) => rssDistinctHeadlinesBlock(list.flatMap(e => e.items)).length
   return [...byTheme.entries()].sort((a, b) => last(a[0]) - last(b[0]) || size(b[1]) - size(a[1]) || a[0].localeCompare(b[0]))
 }
 
@@ -292,9 +343,11 @@ function FeedTopicsPanelBlock({ topics, sourceOf, onOpenItem, dayLabel }: { topi
   const [showSingles, setShowSingles] = useState(false)
   const mood = topics.filter(t => t.topic.kind === 'mood')
   const subjects = topics.filter(t => t.topic.kind !== 'mood')
-  const many = subjects.filter(t => t.items.length > 1)
-  const singles = subjects.filter(t => t.items.length === 1)
-  const articles = topics.reduce((n, t) => n + t.items.length, 0)
+  // Copies of one headline count once: a topic of one re-published wire piece is a single
+  const distinctOf = (t: FeedTopicEntryBlock) => rssDistinctHeadlinesBlock(t.items).length
+  const many = subjects.filter(t => distinctOf(t) > 1)
+  const singles = subjects.filter(t => distinctOf(t) === 1)
+  const articles = rssDistinctHeadlinesBlock(topics.flatMap(t => t.items)).length
   // Once the AI has placed topics under themes, both read by theme: the
   // market by what moved ("Whole market", "Chips"), the rest by subject
   const themes = topicsByThemeBlock(subjects)

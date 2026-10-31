@@ -92,9 +92,9 @@ describe('other-source counts', () => {
       { n: 5, kind: 'elsewhere', name: 'Space' },
     ])
     const { byTheme, byTopic } = rssOutsideCountsBlock(state)
-    expect(byTopic.get('Intel Q3 earnings')).toEqual({ articles: 2, outlets: 2 })
-    expect(byTheme.get('Intel')).toEqual({ articles: 3, outlets: 2 })
-    expect(byTheme.get('Market · Chips')).toEqual({ articles: 1, outlets: 1 })
+    expect(byTopic.get('Intel Q3 earnings')).toEqual({ articles: 2, outlets: 2, outletNames: ['Bloomberg', 'FT'] })
+    expect(byTheme.get('Intel')).toMatchObject({ articles: 3, outlets: 2 })
+    expect(byTheme.get('Market · Chips')).toMatchObject({ articles: 1, outlets: 1 })
     expect(byTheme.has('Space')).toBe(false)
   })
 })

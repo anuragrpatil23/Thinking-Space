@@ -350,6 +350,8 @@ export function setRssThemeNoteBlock(state: RssTopicsDayBlock, note: RssThemeNot
 export interface RssOutsideCountBlock {
   articles: number
   outlets: number
+  /** The outlets themselves, by name */
+  outletNames: string[]
 }
 
 /**
@@ -360,7 +362,7 @@ export interface RssOutsideCountBlock {
  */
 export function rssOutsideCountsBlock(state: RssTopicsDayBlock): { byTheme: Map<string, RssOutsideCountBlock>; byTopic: Map<string, RssOutsideCountBlock> } {
   const { themes } = rssThemeDigestsBlock(state)
-  const byTheme = new Map([...themes.entries()].map(([name, d]) => [name, { articles: d.itemIds.length, outlets: d.sources.length }]))
+  const byTheme = new Map([...themes.entries()].map(([name, d]) => [name, { articles: d.itemIds.length, outlets: d.sources.length, outletNames: [...d.sources] }]))
   const topicSources = new Map<string, { articles: number; outlets: Set<string> }>()
   for (const place of Object.values(state.outside ?? {})) {
     if (place.kind !== 'topic') continue
@@ -369,6 +371,31 @@ export function rssOutsideCountsBlock(state: RssTopicsDayBlock): { byTheme: Map<
     t.outlets.add(place.source)
     topicSources.set(place.name, t)
   }
-  const byTopic = new Map([...topicSources.entries()].map(([name, t]) => [name, { articles: t.articles, outlets: t.outlets.size }]))
+  const byTopic = new Map([...topicSources.entries()].map(([name, t]) => [name, { articles: t.articles, outlets: t.outlets.size, outletNames: [...t.outlets] }]))
   return { byTheme, byTopic }
+}
+
+/**
+ * A headline's identity for spotting re-publications: lower case, letters and
+ * digits only, its first 60. A wire piece updated through the day comes back
+ * as a new article each time (a new link), often through several company
+ * feeds, with the same headline or one trimmed differently at the end.
+ */
+export function rssHeadlineKeyBlock(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 60)
+}
+
+/** Articles with copies of one headline folded together: the latest of each, and how many there were; newest first. */
+export function rssDistinctHeadlinesBlock<T extends { title: string; pubDate?: string | null }>(items: T[]): Array<{ item: T; copies: number }> {
+  const byKey = new Map<string, { item: T; copies: number }>()
+  for (const item of items) {
+    const key = rssHeadlineKeyBlock(item.title) || String(byKey.size)
+    const seen = byKey.get(key)
+    if (!seen) byKey.set(key, { item, copies: 1 })
+    else {
+      seen.copies += 1
+      if (Date.parse(item.pubDate ?? '') > Date.parse(seen.item.pubDate ?? '')) seen.item = item
+    }
+  }
+  return [...byKey.values()].sort((a, b) => Date.parse(b.item.pubDate ?? '') - Date.parse(a.item.pubDate ?? ''))
 }
