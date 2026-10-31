@@ -84,6 +84,7 @@ const SUPPORTED_SOURCES: ReadonlySet<ActivitySource> = new Set<ActivitySource>([
   'reading-md',
   'reading-draw',
   'reading-pdf',
+  'working-app',
 ])
 
 export function isReadingSessionEditableBlock(source: ActivitySource): boolean {

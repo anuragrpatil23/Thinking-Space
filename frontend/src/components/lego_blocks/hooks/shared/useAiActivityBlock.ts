@@ -80,6 +80,7 @@ export type ReadingSourceFilter =
   | 'reading-md'
   | 'reading-draw'
   | 'reading-pdf'
+  | 'working-app'
 
 /** Per-reading-source counts for the sub-source pill labels. */
 export interface ReadingCounts {
@@ -88,6 +89,7 @@ export interface ReadingCounts {
   readingMd: number
   readingDraw: number
   readingPdf: number
+  workingApp: number
 }
 
 /** A named calendar range used as a whole-panel data filter. */
@@ -200,6 +202,7 @@ const VALID_READING_SOURCES: ReadonlySet<ReadingSourceFilter> = new Set([
   'reading-md',
   'reading-draw',
   'reading-pdf',
+  'working-app',
 ])
 
 function readStoredSourceFilter(): AiSourceFilter | null {
@@ -451,6 +454,7 @@ export function useAiActivityBlock(
     let readingMd = 0
     let readingDraw = 0
     let readingPdf = 0
+    let workingApp = 0
     for (const s of enrichedSessions) {
       const sStart = Date.parse(s.startedIso)
       const sEnd = Date.parse(s.endedIso ?? s.startedIso)
@@ -463,12 +467,13 @@ export function useAiActivityBlock(
       else if (src === 'reading-md') readingMd += 1
       else if (src === 'reading-draw') readingDraw += 1
       else if (src === 'reading-pdf') readingPdf += 1
+      else if (src === 'working-app') workingApp += 1
       else if (src === 'claude-code') claudeCode += 1
     }
-    const reading = memorized + readingMd + readingDraw + readingPdf
+    const reading = memorized + readingMd + readingDraw + readingPdf + workingApp
     return {
       sourceCounts: { claudeCode, codex, chatgpt, grok, reading },
-      readingCounts: { all: reading, memorized, readingMd, readingDraw, readingPdf },
+      readingCounts: { all: reading, memorized, readingMd, readingDraw, readingPdf, workingApp },
     }
   }, [enrichedSessions, startIso, endIso])
 

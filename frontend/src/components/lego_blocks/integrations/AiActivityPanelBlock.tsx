@@ -921,6 +921,7 @@ function SourceMenu({
     { id: 'reading-md', label: 'Markdown', count: readingCounts.readingMd },
     { id: 'reading-draw', label: 'Drawing', count: readingCounts.readingDraw },
     { id: 'reading-pdf', label: 'PDF', count: readingCounts.readingPdf },
+    { id: 'working-app', label: 'In the app', count: readingCounts.workingApp },
   ]
   const readingLabel =
     value === 'reading' && readingValue !== 'all'

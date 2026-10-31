@@ -122,6 +122,9 @@ export interface ReadingAttentionOptions {
   /** The record's title, when the file name is not one (a feed article's
    *  cached file is named by its id; its headline is the title). */
   title?: string
+  /** Set by a surface that is not a document (see useAppWorkAttentionBlock);
+   *  otherwise the source follows the file type. */
+  source?: ThinkingspaceReadingSource
 }
 
 function sourceForPath(path: string): ThinkingspaceReadingSource {
@@ -213,7 +216,7 @@ export function useReadingAttentionBlock(
       return
     }
 
-    const source = sourceForPath(path)
+    const source = optionsRef.current.source ?? sourceForPath(path)
     const isCanvas = source === 'reading-draw'
     const isPdf = source === 'reading-pdf'
 

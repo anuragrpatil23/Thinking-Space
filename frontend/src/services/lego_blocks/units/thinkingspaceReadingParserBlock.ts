@@ -6,7 +6,7 @@
 // *measured attention* (`activeMs`) rather than how long the document was
 // open — see readingAttentionBlock for how that is accounted. The document
 // title is the bucket so the panel groups by what was read/drawn; the record's
-// `source` ('reading-md' | 'reading-draw' | 'reading-pdf') drives the
+// `source` ('reading-md' | 'reading-draw' | 'reading-pdf' | 'working-app') drives the
 // sub-source pill.
 
 import type {
@@ -20,7 +20,7 @@ import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock
 import type { PdfPageDwellBlock } from '@/services/lego_blocks/units/pdfAttentionBlock'
 
 export type ThinkingspaceReadingSource =
-  Extract<ActivitySource, 'reading-md' | 'reading-draw' | 'reading-pdf'>
+  Extract<ActivitySource, 'reading-md' | 'reading-draw' | 'reading-pdf' | 'working-app'>
 
 /** How a span's duration came to be known. The distinction is the point of the
  *  record: a number the app observed and a number a person asserted must never

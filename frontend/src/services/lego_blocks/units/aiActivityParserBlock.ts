@@ -15,6 +15,9 @@ export type ActivitySource =
   | 'reading-md'
   | 'reading-draw'
   | 'reading-pdf'
+  /** Measured attention on an app surface that is not a document — a gap
+   *  page, the Drops list. Thinking done in the app, filed like reading. */
+  | 'working-app'
   /** User-authored time blocks logged by hand ("painting 4h") — not AI, not
    *  reading. Durable in ai-activity/manual-sessions.jsonl. */
   | 'manual'
@@ -31,6 +34,7 @@ export const READING_SOURCES: ReadonlySet<ActivitySource> = new Set<ActivitySour
   'reading-md',
   'reading-draw',
   'reading-pdf',
+  'working-app',
 ])
 
 export function isReadingSource(source: ActivitySource): boolean {

@@ -1,3 +1,4 @@
+import { useAppWorkAttentionBlock } from '@/components/lego_blocks/hooks/shared/useAppWorkAttentionBlock'
 import { Suspense, useMemo, useState, type ReactNode } from 'react'
 import { F9PriceChartBlock } from '../units/F9PriceChartBlock'
 import FileCopyMenuHostBlock, { openFileCopyMenuBlock } from '@/components/lego_blocks/integrations/FileCopyMenuBlock'
@@ -466,6 +467,8 @@ export default function WebullCompanyPageBlock({
   const { dossier, loading, error } = useWebullCompanyDossierBlock(executionRoot, ticker, companyName, valueLine.fetchedCount + callsSync.fetchedCount)
   const { record: trackRecord, reportPath } = useWebullTrackRecordBlock(executionRoot, ticker)
   const closedPositions = useWebullClosedPositionsBlock(executionRoot, ticker)
+  // Time studying the company is filed in its folder.
+  const workRef = useAppWorkAttentionBlock(executionRoot ? `${executionRoot}/${ticker.toUpperCase()}/company` : null, `${ticker.toUpperCase()} company page`)
   const gapLinks = useGapPositionLinksBlock(executionRoot)
   const [priceWindow, setPriceWindow] = useState<PriceWindowBlock>('2y')
   const [observationsExpanded, setObservationsExpanded] = useState(false)
@@ -503,7 +506,7 @@ export default function WebullCompanyPageBlock({
   ].filter(Boolean)
 
   return (
-    <div className="grid gap-5 pb-12 lg:grid-cols-[minmax(0,1fr)_minmax(290px,340px)]">
+    <div ref={workRef} className="grid gap-5 pb-12 lg:grid-cols-[minmax(0,1fr)_minmax(290px,340px)]">
       <FileCopyMenuHostBlock />
       <div className="flex min-w-0 flex-col gap-5">
       <header id="webull-company-overview" className="scroll-mt-4 flex flex-wrap items-end justify-between gap-4">

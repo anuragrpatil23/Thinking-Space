@@ -4,7 +4,7 @@ import { PassQueueListBlock } from '@/components/lego_blocks/units/PassQueueList
 import type { PassItemBlock } from '@/services/lego_blocks/units/passQueueBlock'
 import { useSearchParams } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { cn } from '@/lib/utils'
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
@@ -43,7 +43,7 @@ import { writeFeedReadLogsOrch } from '@/personal_extension/services/orchestrato
 import { readWebullExecutionSettingsOrch } from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
 import { feedReadLogPathBlock } from '@/personal_extension/services/lego_blocks/units/feedReadLogBlock'
 import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/useReadingAttentionBlock'
-import { F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK, F9_CHART_TOOLTIP_STYLE_BLOCK, F9PanelBlock, F9SegmentedBlock, FEED_PASTELS_BLOCK } from '../units/F9NativeBlock'
+import { F9_CHART_TOOLTIP_STYLE_BLOCK, F9PanelBlock, F9SegmentedBlock } from '../units/F9NativeBlock'
 
 // F9's Feed: the front of the loop, where things are first seen. One product
 // in three views: Overview (where things stand, what is loud, what needs
@@ -319,63 +319,101 @@ function EarningsCallsStatusBlock() {
   )
 }
 
-// Articles per day over the last 30 days, as two calm pastel lines:
-// everything that arrived, and how much the app can show in full.
+// Articles per day over the last 30 days, one bar a day: the part the app can
+// show in full at the bottom, headline-only on top, so the bar's height is
+// everything that arrived. In full is part of all, so two overlapping smoothed
+// areas drew one number twice and curved through days that never happened.
+const VOLUME_COLORS_BLOCK = {
+  // Two steps of one lavender, checked with the dataviz palette validator in each mode.
+  light: { full: '#5B52C9', teaser: '#A29BEC', grid: '#EFEFF2', cursor: 'rgba(0,0,0,0.04)' },
+  dark: { full: '#8C85E3', teaser: '#5B52C9', grid: '#27272a', cursor: 'rgba(255,255,255,0.05)' },
+}
+
+function VolumeTooltipBlock({ active, payload, colors }: {
+  active?: boolean
+  payload?: Array<{ payload: { label: string; all: number; readable: number; teaser: number; today: boolean } }>
+  colors: { full: string; teaser: string }
+}) {
+  const d = active ? payload?.[0]?.payload : undefined
+  if (!d) return null
+  const row = (color: string, name: string, value: number) => (
+    <div className="flex items-center gap-2">
+      <span className="h-2 w-2 rounded-[2px]" style={{ background: color }} />
+      <span className="text-zinc-500 dark:text-zinc-400">{name}</span>
+      <span className="ml-auto pl-4 font-medium tabular-nums text-zinc-900 dark:text-zinc-100">{value.toLocaleString()}</span>
+    </div>
+  )
+  return (
+    <div style={F9_CHART_TOOLTIP_STYLE_BLOCK} className="min-w-[150px] space-y-1 px-3 py-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-zinc-500 dark:text-zinc-400">{d.label}{d.today ? ', so far' : ''}</span>
+        <span className="font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{d.all.toLocaleString()}</span>
+      </div>
+      {row(colors.full, 'In full', d.readable)}
+      {row(colors.teaser, 'Headline only', d.teaser)}
+    </div>
+  )
+}
+
 function VolumeChartBlock() {
   const { feeds } = useRssFeedsBlock()
   const { hostRef, isDark } = useDarkModeClassBlock()
-  const colors = { all: FEED_PASTELS_BLOCK.lavender.line, readable: FEED_PASTELS_BLOCK.mint.line }
-  const fills = { all: FEED_PASTELS_BLOCK.lavender.fill, readable: FEED_PASTELS_BLOCK.mint.fill }
-  const data = useMemo(() => identityMemoBlock('feed-volume', [feeds, new Date().toDateString()], () => rssDailyVolumeBlock(feeds, new Date(), 30)).map((d) => ({
-    day: d.day,
-    all: d.readable + d.teaser,
-    readable: d.readable,
-    label: new Date(`${d.day}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-  })), [feeds])
+  const colors = isDark ? VOLUME_COLORS_BLOCK.dark : VOLUME_COLORS_BLOCK.light
+  const data = useMemo(() => {
+    const days = identityMemoBlock('feed-volume', [feeds, new Date().toDateString()], () => rssDailyVolumeBlock(feeds, new Date(), 30))
+    return days.map((d, i) => ({
+      day: d.day,
+      all: d.readable + d.teaser,
+      readable: d.readable,
+      teaser: d.teaser,
+      today: i === days.length - 1,
+      label: new Date(`${d.day}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    }))
+  }, [feeds])
   const total = data.reduce((n, d) => n + d.all, 0)
   const readable = data.reduce((n, d) => n + d.readable, 0)
+  // A day's average over the full days only; today is still arriving.
+  const past = data.slice(0, -1)
+  const average = past.length > 0 ? Math.round(past.reduce((n, d) => n + d.all, 0) / past.length) : 0
   const swatch = (color: string, label: string) => (
     <span className="inline-flex items-center gap-1.5">
-      <span className="h-[2px] w-3 rounded-full" style={{ background: color }} />
+      <span className="h-2 w-2 rounded-[2px]" style={{ background: color }} />
       {label}
     </span>
   )
+  const tick = { fontSize: 10, fill: isDark ? '#71717a' : '#8E8E93' }
   return (
     <F9PanelBlock className="px-5 pb-3 pt-[18px] text-[13px]">
-      <div ref={hostRef} className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-semibold">Articles per day</p>
+      <div ref={hostRef} className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="flex items-baseline gap-2">
+          <p className="font-semibold">Articles per day</p>
+          <span className="text-[12px] text-zinc-500 dark:text-zinc-400">{total.toLocaleString()} in 30 days · {total > 0 ? Math.round((readable / total) * 100) : 0}% in full</span>
+        </div>
         <span className="flex items-center gap-3 text-[12px] text-zinc-500 dark:text-zinc-400">
-          {swatch(colors.all, `All · ${total}`)}
-          {swatch(colors.readable, `In full · ${readable}`)}
-          <span>last 30 days</span>
+          {swatch(colors.full, 'In full')}
+          {swatch(colors.teaser, 'Headline only')}
         </span>
       </div>
-        <div className="h-[150px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="feed-volume-all" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={fills.all} stopOpacity={0.55} />
-                  <stop offset="100%" stopColor={fills.all} stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="feed-volume-readable" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={fills.readable} stopOpacity={0.6} />
-                  <stop offset="100%" stopColor={fills.readable} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#8E8E93' }} axisLine={false} tickLine={false} interval={6} />
-              <YAxis width={30} tick={{ fontSize: 10, fill: '#8E8E93' }} axisLine={false} tickLine={false} allowDecimals={false} tickCount={3} />
-              <Tooltip
-                cursor={{ stroke: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)', strokeWidth: 1 }}
-                contentStyle={F9_CHART_TOOLTIP_STYLE_BLOCK}
-                labelStyle={F9_CHART_TOOLTIP_LABEL_STYLE_BLOCK}
-                formatter={(value, name) => [value, name === 'readable' ? 'In full' : 'All articles']}
+      <div className="h-[150px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barCategoryGap="22%">
+            <CartesianGrid vertical={false} stroke={colors.grid} />
+            <XAxis dataKey="label" tick={tick} axisLine={false} tickLine={false} interval={6} />
+            <YAxis width={30} tick={tick} axisLine={false} tickLine={false} allowDecimals={false} tickCount={3} />
+            <Tooltip cursor={{ fill: colors.cursor }} content={<VolumeTooltipBlock colors={colors} />} isAnimationActive={false} />
+            {average > 0 && (
+              <ReferenceLine
+                y={average}
+                stroke={isDark ? '#52525b' : '#C7C7CC'}
+                strokeDasharray="3 3"
+                label={{ value: `avg ${average}`, position: 'insideTopRight', fontSize: 10, fill: tick.fill }}
               />
-              <Area type="monotone" dataKey="all" stroke={colors.all} strokeWidth={2} fill="url(#feed-volume-all)" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: isDark ? '#18181b' : '#ffffff' }} isAnimationActive={false} />
-              <Area type="monotone" dataKey="readable" stroke={colors.readable} strokeWidth={2} fill="url(#feed-volume-readable)" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: isDark ? '#18181b' : '#ffffff' }} isAnimationActive={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+            )}
+            <Bar dataKey="readable" stackId="v" fill={colors.full} radius={[0, 0, 2, 2]} isAnimationActive={false} />
+            <Bar dataKey="teaser" stackId="v" fill={colors.teaser} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </F9PanelBlock>
   )
 }
