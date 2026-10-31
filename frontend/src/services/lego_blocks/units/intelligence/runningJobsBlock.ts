@@ -18,6 +18,10 @@ export interface RunningJob {
    *  rows carry, so a job reads the same before and after it starts. */
   project?: string
   dateIso?: string
+  /** What the run is about when it is one item rather than a project-day —
+   *  an article's headline. Without it, forty article summaries read as forty
+   *  identical "article summary" rows. */
+  title?: string
   /** Aborts the underlying request; the run resolves as an `aborted` error. */
   cancel: () => void
   /**

@@ -4,8 +4,9 @@ import {
   listQueuedIntelligenceJobsBlock,
 } from '@/services/lego_blocks/integrations/intelligence/jobQueueBlock'
 
-// The queue runs two at a time, so with a gate held shut everything past the
-// first two piles up in `pending` and the ordering is observable.
+// The queue runs up to four small jobs at a time, so with a gate held shut
+// everything past the first four piles up in `pending` and the ordering is
+// observable.
 function gate() {
   let release!: () => void
   const opened = new Promise<void>(res => { release = res })
@@ -23,8 +24,8 @@ describe('intelligence queue orders by subject date', () => {
         { taskId: key, dateIso },
       )
 
-    // Two blockers occupy both concurrency slots so nothing else can start.
-    const blockers = [job('block-a', '2026-08-20'), job('block-b', '2026-08-20')]
+    // Four blockers occupy every concurrency slot so nothing else can start.
+    const blockers = ['a', 'b', 'c', 'd'].map(k => job(`block-${k}`, '2026-08-20'))
 
     // Interleaved arrival, exactly as seven range-summary blocks would produce.
     const rest = [
@@ -41,9 +42,9 @@ describe('intelligence queue orders by subject date', () => {
     g.release()
     await Promise.all([...blockers, ...rest])
 
-    // The two blockers went first (they were already running); everything after
+    // The blockers went first (they were already running); everything after
     // them drained newest-date-first with the undated stitch last.
-    expect(started.slice(2)).toEqual(['aug-12', 'aug-12-later', 'aug-11', 'aug-10', 'stitch'])
+    expect(started.slice(4)).toEqual(['aug-12', 'aug-12-later', 'aug-11', 'aug-10', 'stitch'])
   })
 
   it('dedupes by key, so a repeated enqueue does not double-queue', async () => {

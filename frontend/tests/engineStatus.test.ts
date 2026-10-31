@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  describeEngineSpeedBlock,
   describeEngineStateBlock,
   formatSecondsBlock,
   parseSupervisorStatusBlock,
@@ -31,12 +32,20 @@ describe('supervisor status parsing', () => {
     expect(parseSupervisorStatusBlock({ state: 'paused_on_battery' }, ENGINE)?.reason).toBe('On battery')
   })
 
-  it('does not trust ready when ready:false', () => {
+  it('does not trust ready without ready:true', () => {
     expect(parseSupervisorStatusBlock({ state: 'ready', ready: false }, ENGINE)?.kind).toBe('starting')
+    expect(parseSupervisorStatusBlock({ state: 'ready' }, ENGINE)?.kind).toBe('starting')
+  })
+
+  it('holds maintenance and any state it does not recognise as not ready', () => {
+    const maintenance = parseSupervisorStatusBlock({ state: 'paused_maintenance', ready: false }, ENGINE)
+    expect(maintenance).toMatchObject({ kind: 'paused', reason: 'Maintenance' })
+    const future = parseSupervisorStatusBlock({ state: 'paused_for_reindex', ready: true }, ENGINE)
+    expect(future).toMatchObject({ kind: 'paused', reason: 'Paused for reindex' })
   })
 
   it('ignores a supervisor that is not managing this engine', () => {
-    expect(parseSupervisorStatusBlock({ state: 'external' }, ENGINE)).toBeNull()
+    expect(parseSupervisorStatusBlock({ state: 'external', ready: true }, ENGINE)).toBeNull()
     expect(parseSupervisorStatusBlock({ state: 'ready', ready: true, engine: { url: 'http://127.0.0.1:8080' } }, ENGINE)).toBeNull()
   })
 })
@@ -97,5 +106,27 @@ describe('engine description', () => {
     expect(formatSecondsBlock(45)).toBe('45s')
     expect(formatSecondsBlock(3124.9)).toBe('52m 5s')
     expect(formatSecondsBlock(4517)).toBe('1h 15m')
+  })
+})
+
+describe('engine speed', () => {
+  it('reads the speed block from the supervisor and from /health', async () => {
+    const speed = { window_s: 60, decode_tok_s: 38.4, avg_batch: 2.1, decode_tok_s_per_request: 18.3, prefill_tok_s: 320 }
+    const s = parseSupervisorStatusBlock({ state: 'ready', ready: true, engine: { health: { speed } } }, ENGINE)
+    expect(s?.speed).toEqual({ windowS: 60, decodeTokS: 38.4, avgBatch: 2.1, decodeTokSPerRequest: 18.3, prefillTokS: 320 })
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === 'http://127.0.0.1:1234/health') return new Response(JSON.stringify({ speed }), { status: 200 })
+      throw new TypeError('fetch failed')
+    }))
+    expect((await probeEngineStateBlock('http://127.0.0.1:1234/v1', false)).speed?.decodeTokS).toBe(38.4)
+    vi.unstubAllGlobals()
+  })
+
+  it('prefers the engine figure and labels the fallback as end-to-end', () => {
+    expect(describeEngineSpeedBlock(
+      { windowS: 60, decodeTokS: 38.4, avgBatch: 2.1, decodeTokSPerRequest: 18.3, prefillTokS: 320 }, 13,
+    )).toBe('38 tok/s · 18 per job · prompt 320')
+    expect(describeEngineSpeedBlock(null, 13)).toBe('≈13 tok/s end-to-end')
+    expect(describeEngineSpeedBlock(null, null)).toBeNull()
   })
 })

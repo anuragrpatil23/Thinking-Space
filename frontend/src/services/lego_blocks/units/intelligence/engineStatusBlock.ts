@@ -56,6 +56,20 @@ export interface EngineFailureBlock {
   inFlight: EngineInFlightBlock[]
 }
 
+/** The engine's own speed over its last minute of work, from its step
+ *  timings — so idle time, queueing and prompt reading do not dilute it the
+ *  way a per-request wall-clock figure does. Null when nothing ran lately. */
+export interface EngineSpeedBlock {
+  windowS: number
+  /** All requests combined. */
+  decodeTokS: number
+  /** Requests decoding together, on average — the combined rate splits
+   *  across them. */
+  avgBatch: number
+  decodeTokSPerRequest: number
+  prefillTokS: number
+}
+
 export interface EngineStateBlock {
   kind: EngineStateKind
   source: 'supervisor' | 'health' | 'models' | 'none'
@@ -69,6 +83,7 @@ export interface EngineStateBlock {
   failuresLastHour?: number
   lastFailure?: EngineFailureBlock | null
   memoryPressure?: string
+  speed?: EngineSpeedBlock | null
   checkedAt: number
 }
 
@@ -103,6 +118,20 @@ function asNumber(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined
 }
 
+export function parseEngineSpeedBlock(raw: unknown): EngineSpeedBlock | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const decodeTokS = asNumber(r.decode_tok_s)
+  if (decodeTokS == null) return null
+  return {
+    windowS: asNumber(r.window_s) ?? 60,
+    decodeTokS,
+    avgBatch: asNumber(r.avg_batch) ?? 1,
+    decodeTokSPerRequest: asNumber(r.decode_tok_s_per_request) ?? decodeTokS,
+    prefillTokS: asNumber(r.prefill_tok_s) ?? 0,
+  }
+}
+
 export function parseEngineFailureBlock(raw: unknown): EngineFailureBlock | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
@@ -129,18 +158,27 @@ const SUPERVISOR_KINDS: Record<string, EngineStateKind> = {
 const PAUSE_REASONS: Record<string, string> = {
   paused_on_battery: 'On battery',
   paused_memory_pressure: 'Memory pressure critical',
+  paused_maintenance: 'Maintenance',
 }
 
-/** Parse a supervisor status body. Null when it is not managing this engine
- *  (`external`, an unknown state, or a different port) — the caller then falls
- *  through to asking the engine itself. */
+/** "paused_some_new_thing" → "Paused some new thing". */
+function humanizeStateBlock(state: string): string {
+  const words = state.replace(/_/g, ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/** Parse a supervisor status body. Null only when it is not managing this
+ *  engine (`external`, or a different port) — the caller then asks the engine
+ *  itself. A managing supervisor's word is final: ready means `ready: true` and
+ *  a recognised ready state, and any state this build does not know is held as
+ *  not ready. Falling through on an unknown state once let jobs into an engine
+ *  the supervisor had put in maintenance, because the engine itself was up. */
 export function parseSupervisorStatusBlock(body: unknown, engineUrl: URL, now = Date.now()): EngineStateBlock | null {
   if (!body || typeof body !== 'object') return null
   const b = body as Record<string, unknown>
   const state = asString(b.state)
-  if (!state) return null
-  const kind = SUPERVISOR_KINDS[state]
-  if (!kind) return null
+  if (!state || state === 'external') return null
+  const kind: EngineStateKind = SUPERVISOR_KINDS[state] ?? 'paused'
   const engine = (b.engine && typeof b.engine === 'object' ? b.engine : {}) as Record<string, unknown>
   const managedUrl = asString(engine.url)
   if (managedUrl) {
@@ -151,19 +189,21 @@ export function parseSupervisorStatusBlock(body: unknown, engineUrl: URL, now = 
     }
   }
   const system = (b.system && typeof b.system === 'object' ? b.system : {}) as Record<string, unknown>
-  // `ready` is the supervisor's own verdict; a state string that says ready
-  // with ready:false is not ready.
-  const resolvedKind: EngineStateKind = kind === 'ready' && b.ready === false ? 'starting' : kind
+  const health = (engine.health && typeof engine.health === 'object' ? engine.health : {}) as Record<string, unknown>
+  // `ready` is the supervisor's own verdict; a state that says ready without
+  // ready:true is not ready.
+  const resolvedKind: EngineStateKind = kind === 'ready' && b.ready !== true ? 'starting' : kind
   return {
     kind: resolvedKind,
     source: 'supervisor',
-    reason: PAUSE_REASONS[state] ?? asString(b.reason),
+    reason: PAUSE_REASONS[state] ?? asString(b.reason) ?? (SUPERVISOR_KINDS[state] ? undefined : humanizeStateBlock(state)),
     retryAfterS: asNumber(b.retry_after_s) ?? null,
     since: asString(b.since),
     model: asString(engine.model) ?? null,
     failuresLastHour: asNumber(b.failures_last_hour),
     lastFailure: parseEngineFailureBlock(b.last_failure),
     memoryPressure: asString(system.memory_pressure),
+    speed: parseEngineSpeedBlock(health.speed),
     checkedAt: now,
   }
 }
@@ -200,7 +240,10 @@ export async function probeEngineStateBlock(
 
   try {
     const res = await fetchWithTimeoutBlock(`${engineUrl.origin}/health`, HEALTH_TIMEOUT_MS)
-    if (res.ok) return { kind: 'ready', source: 'health', checkedAt: now }
+    if (res.ok) {
+      const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
+      return { kind: 'ready', source: 'health', speed: parseEngineSpeedBlock(body?.speed), checkedAt: now }
+    }
     if (res.status === 503) {
       const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
       const stalled = body?.stalled === true
@@ -281,4 +324,22 @@ export function formatSecondsBlock(totalS: number): string {
   if (s < 60) return `${s}s`
   if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+}
+
+function fmtRateBlock(n: number): string {
+  return n < 10 ? n.toFixed(1) : String(Math.round(n))
+}
+
+/** The speed line shared by the menu card and the AI Runs status line. The
+ *  engine's own figure when it reports one; otherwise the app's end-to-end
+ *  estimate, labelled as such — it includes prompt reading and waiting, so it
+ *  reads well under what the engine is actually doing. */
+export function describeEngineSpeedBlock(speed: EngineSpeedBlock | null | undefined, endToEndTokS: number | null): string | null {
+  if (speed) {
+    const perJob = speed.avgBatch >= 1.5 ? ` · ${fmtRateBlock(speed.decodeTokSPerRequest)} per job` : ''
+    const prefill = speed.prefillTokS > 0 ? ` · prompt ${fmtRateBlock(speed.prefillTokS)}` : ''
+    return `${fmtRateBlock(speed.decodeTokS)} tok/s${perJob}${prefill}`
+  }
+  if (endToEndTokS != null) return `≈${fmtRateBlock(endToEndTokS)} tok/s end-to-end`
+  return null
 }

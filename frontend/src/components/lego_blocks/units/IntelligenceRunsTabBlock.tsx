@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react'
 import { RotateCw, X } from 'lucide-react'
 import { useAiEngineStatusBlock } from '@/components/lego_blocks/hooks/shared/useAiEngineStatusBlock'
 import {
+  describeEngineSpeedBlock,
   describeEngineStateBlock,
   ENGINE_DOT_CLASS,
   formatSecondsBlock,
@@ -47,8 +48,11 @@ function fmtMs(ms: number): string {
   return formatSecondsBlock(ms / 1000)
 }
 
-/** Output tokens per second over the whole run. Includes prompt processing, so
- *  it reads a little under the model's pure decode speed. */
+/** End-to-end output tokens per second ("e2e/s"): output over the whole run's
+ *  wall time, which includes reading the prompt and sharing the engine with
+ *  other jobs — so it reads well under the engine's own decode speed, which the
+ *  status line shows when the engine reports it. A job-latency figure, not a
+ *  measure of the model. */
 function tokensPerSecondBlock(entry: TelemetryEntry): number | null {
   const out = entry.usage?.completionTokens ?? 0
   if (entry.status !== 'ok' || out <= 0 || entry.latencyMs <= 0) return null
@@ -69,10 +73,12 @@ function fmtSubjectDate(dateIso?: string): string | null {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-/** Subject first: "Thinking-Space · Oct 30" is what you are waiting for. Jobs
- *  with no subject fall back to their type. */
-function subjectBlock(taskId: string, project?: string, dateIso?: string): string {
-  return [project, fmtSubjectDate(dateIso)].filter(Boolean).join(' · ') || taskLabelBlock(taskId)
+/** Subject first: "Thinking-Space · Oct 30" or "Reuters · Fed holds rates" is
+ *  what you are waiting for. An item's headline beats its date; jobs with no
+ *  subject at all fall back to their type. */
+function subjectBlock(run: { taskId: string; project?: string; dateIso?: string; title?: string }): string {
+  const parts = run.title ? [run.project, run.title] : [run.project, fmtSubjectDate(run.dateIso)]
+  return parts.filter(Boolean).join(' · ') || taskLabelBlock(run.taskId)
 }
 
 /** "range-summary-label" → "range label", "session-digest" → "session digest". */
@@ -272,6 +278,65 @@ function groupFinishedBlock(entries: TelemetryEntry[]): FinishedRowBlock[] {
   return rows
 }
 
+/** Where a run came from — the part of the app that asked for it. Read off the
+ *  contract id, which already names its family; anything new lands in Other
+ *  until it is listed here. */
+interface RunOriginBlock { id: string; label: string }
+const RUN_ORIGINS: Array<RunOriginBlock & { match: (taskId: string) => boolean }> = [
+  {
+    id: 'ai-activity',
+    label: 'AI activity',
+    match: t => t === 'session-digest' || t === 'chain-stitch' || t.startsWith('range-summary'),
+  },
+  {
+    id: 'feed',
+    label: 'F9 feed',
+    match: t => t.startsWith('article-') || t.startsWith('feed-') || t === 'story-card',
+  },
+  { id: 'reading', label: 'Reading', match: t => t.startsWith('reading-') },
+  { id: 'settings', label: 'Settings', match: t => t.startsWith('settings-') },
+]
+const OTHER_ORIGIN: RunOriginBlock = { id: 'other', label: 'Other' }
+
+function originOfBlock(taskId: string): RunOriginBlock {
+  return RUN_ORIGINS.find(o => o.match(taskId)) ?? OTHER_ORIGIN
+}
+
+/** How many rows a source's table shows before folding the rest. */
+const GROUP_VISIBLE = 6
+
+/** Finished runs split by source, most recently active source first, each with
+ *  a one-line summary: typical speed and time for its real (non-cache) runs. */
+function groupByOriginBlock(entries: TelemetryEntry[]): Array<{
+  origin: RunOriginBlock
+  entries: TelemetryEntry[]
+  failed: number
+  summary: string | null
+}> {
+  const groups = new Map<string, { origin: RunOriginBlock; entries: TelemetryEntry[] }>()
+  for (const entry of entries) {
+    const origin = originOfBlock(entry.taskId)
+    const group = groups.get(origin.id) ?? { origin, entries: [] }
+    group.entries.push(entry)
+    groups.set(origin.id, group)
+  }
+  return [...groups.values()].map(group => {
+    const real = group.entries.filter(e => e.status === 'ok')
+    const tps = real.map(tokensPerSecondBlock).filter((n): n is number => n != null)
+    const took = real.map(e => e.latencyMs).filter(ms => ms > 0)
+    const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]
+    const summary = [
+      tps.length ? `${fmtTps(median(tps))} e2e/s` : null,
+      took.length ? `~${fmtMs(median(took))} each` : null,
+    ].filter(Boolean).join(' · ')
+    return {
+      ...group,
+      failed: group.entries.filter(e => e.status === 'error').length,
+      summary: summary || null,
+    }
+  })
+}
+
 /** The model most runs used, named once in the header instead of on every row. */
 function mainModelBlock(models: Array<string | undefined>): string | null {
   const counts = new Map<string, number>()
@@ -321,6 +386,8 @@ export default function IntelligenceRunsTabBlock() {
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [expandedCache, setExpandedCache] = useState<number | null>(null)
+  // Origins whose Finished table shows every row rather than the latest few.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set())
   const [queueOpen, setQueueOpen] = useState(false)
   const { engine, recentTokensPerSecond } = useAiEngineStatusBlock(true)
   // Drives the elapsed counters. Only ticks while something is in flight, so an
@@ -341,151 +408,8 @@ export default function IntelligenceRunsTabBlock() {
   }, [busy])
 
   const mainModel = mainModelBlock([...running.map(j => j.model), ...queued.map(j => j.model), ...entries.map(e => e.model)])
-  const finishedRows = groupFinishedBlock(entries)
-  const engineView = describeEngineStateBlock(engine, now)
-  const visibleQueue = queueOpen ? queued : queued.slice(0, QUEUE_VISIBLE)
-  const foldedQueue = queueOpen ? [] : queued.slice(QUEUE_VISIBLE)
-
-  return (
-    <div className="space-y-5 p-3 text-xs">
-      <EngineBannerBlock engine={engine} now={now} waiting={queued.length + running.filter(j => j.waitingForEngine).length} />
-
-      {/* One quiet status line: which engine, how fast lately, how busy. */}
-      <div className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
-        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', ENGINE_DOT_CLASS[engineView.tone])} />
-        <span className="min-w-0 truncate text-foreground/80">{mainModel ? shortModelBlock(mainModel) : 'No runs yet'}</span>
-        <span className="ml-auto shrink-0 tabular-nums">
-          {recentTokensPerSecond != null && <>{fmtTps(recentTokensPerSecond)} tok/s avg · </>}
-          {running.length} ▸ {queued.length}
-        </span>
-      </div>
-
-      {!busy && (
-        <div className="px-1 text-[11px] text-muted-foreground/70">
-          Nothing running. Two run at a time; the rest wait in line.
-        </div>
-      )}
-
-      {running.length > 0 && (
-        <RunTableBlock title="Running" grid={RUNNING_GRID} head={['', 'Subject', 'Job', 'Running', 'Started']}>
-            {running.map(job => {
-              const open = expandedKey === `run-${job.id}`
-              return (
-                <div key={`run-${job.id}`}>
-                  <RunRowBlock
-                    grid={RUNNING_GRID}
-                    cells={[
-                      // The bar is the "it's alive" signal: it breathes while
-                      // generating and holds still, amber, while the job waits
-                      // for the engine to come back.
-                      <span className={cn('h-3.5 w-0.5 rounded-full', job.waitingForEngine ? 'bg-amber-500/70' : 'animate-pulse bg-sky-500/80')} />,
-                      <span className="font-medium text-foreground">{subjectBlock(job.taskId, job.project, job.dateIso)}</span>,
-                      job.attempt != null
-                        ? <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-500">{job.waitingForEngine && <RotateCw className="h-2.5 w-2.5 shrink-0" />}retry {job.attempt}/2</span>
-                        : taskLabelBlock(job.taskId),
-                      <span className="text-foreground/80">{fmtAgo(job.startedAt, now)}</span>,
-                      <span className="text-[10px]">{fmtClock(job.startedAt)}</span>,
-                    ]}
-                    onToggle={() => setExpandedKey(open ? null : `run-${job.id}`)}
-                    onCancel={() => cancelRunningJobBlock(job.id)}
-                    cancelTitle="Cancel this run"
-                  />
-                  {open && (
-                    <div className="space-y-2 px-1 pb-2.5 pl-7">
-                      {/* Empty only for the instant between the job registering
-                          and its request being built — the row exists first so a
-                          request that hangs during construction is still
-                          cancellable. */}
-                      {!job.request ? (
-                        <div className="text-[10px] text-muted-foreground/70">
-                          Building the prompt…
-                        </div>
-                      ) : (
-                        <>
-                          <PayloadSection label="System prompt" text={job.request.system} />
-                          <PayloadSection label="User prompt" text={job.request.user} defaultOpen />
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-        </RunTableBlock>
-      )}
-
-      {queued.length > 0 && (
-        <RunTableBlock title="Up next" grid={QUEUE_GRID} head={['#', 'Subject', 'Job', 'Waiting']}>
-            {visibleQueue.map((job, i) => {
-              const open = expandedKey === job.key
-              return (
-                <div key={`q-${job.key}`}>
-                  <RunRowBlock
-                    grid={QUEUE_GRID}
-                    cells={[
-                      <span className="text-[10px] text-muted-foreground/60">{i + 1}</span>,
-                      <span className="text-foreground/80">{subjectBlock(job.taskId, job.project, job.dateIso)}</span>,
-                      job.priority === 'interactive'
-                        ? <span className="text-sky-600 dark:text-sky-400">runs next</span>
-                        : taskLabelBlock(job.taskId),
-                      fmtAgo(job.queuedAt, now),
-                    ]}
-                    onToggle={() => setExpandedKey(open ? null : job.key)}
-                    onCancel={() => cancelQueuedIntelligenceJobBlock(job.key)}
-                    cancelTitle="Drop this job from the queue"
-                  />
-                  {open && (
-                    <div className="space-y-2 px-1 pb-2.5 pl-6">
-                      <div className="text-[10px] text-muted-foreground/70">
-                        {job.providerId ?? 'provider unknown'} · queued {fmtClock(job.queuedAt)}
-                      </div>
-                      <div className="break-all font-mono text-[10px] text-muted-foreground/60">
-                        {job.key}
-                      </div>
-                      {/* Deliberately labelled input, not prompt: a queued job
-                          has not built its request yet, and calling this "prompt"
-                          would be a claim about text that does not exist. */}
-                      <PayloadSection label="Input (prompt not built yet)" text={job.inputPreview} defaultOpen />
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-            {foldedQueue.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setQueueOpen(true)}
-                className="block w-full truncate px-1 py-1.5 pl-7 text-left text-[10px] text-muted-foreground transition-colors hover:text-foreground"
-              >
-                +{foldedQueue.length} more · {foldedQueue.map(j => subjectBlock(j.taskId, j.project, j.dateIso)).join(' · ')}
-              </button>
-            )}
-        </RunTableBlock>
-      )}
-
-      {entries.length === 0 ? (
-        <section>
-          <SectionLabel>Finished</SectionLabel>
-          <div className="px-1 text-[11px] text-muted-foreground/70">
-            No runs yet. Session digests, titles and summaries land here as they run.
-          </div>
-        </section>
-      ) : (
-        <RunTableBlock
-          title="Finished"
-          grid={FINISHED_GRID}
-          head={['', 'Subject', 'Job', 'Out', 'tok/s', 'Took', 'At']}
-          right={
-            <button
-              type="button"
-              onClick={() => { clearTelemetryBlock(); setEntries([]) }}
-              className="ml-auto text-[10px] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Clear
-            </button>
-          }
-        >
-            {finishedRows.map(row => {
+  const finishedGroups = groupByOriginBlock(entries)
+  const renderFinishedRow = (row: FinishedRowBlock) => {
               if (row.kind === 'cache') {
                 const first = row.entries[0]
                 const groupOpen = expandedCache === first.id
@@ -508,7 +432,7 @@ export default function IntelligenceRunsTabBlock() {
                       <div className="space-y-0.5 px-1 pb-2 pl-7 pr-[5.75rem] text-[10px] text-muted-foreground">
                         {row.entries.map(e => (
                           <div key={e.id} className="flex gap-2">
-                            <span className="min-w-0 truncate">{subjectBlock(e.taskId, e.project, e.dateIso)}</span>
+                            <span className="min-w-0 truncate">{subjectBlock(e)}</span>
                             <span className="ml-auto shrink-0 tabular-nums">{fmtClock(e.ts)}</span>
                           </div>
                         ))}
@@ -530,7 +454,7 @@ export default function IntelligenceRunsTabBlock() {
                       failed
                         ? <span className="text-red-500">✕</span>
                         : entry.reasoning === 'on' ? <span className="text-[10px] text-amber-600 dark:text-amber-500" title="Thinking on">✦</span> : null,
-                      <span className={failed ? 'text-red-600 dark:text-red-400' : 'text-foreground/90'}>{subjectBlock(entry.taskId, entry.project, entry.dateIso)}</span>,
+                      <span className={failed ? 'text-red-600 dark:text-red-400' : 'text-foreground/90'}>{subjectBlock(entry)}</span>,
                       failed
                         ? <span className="text-red-600/80 dark:text-red-400/80">{entry.error?.kind ?? 'error'}</span>
                         : taskLabelBlock(entry.taskId),
@@ -606,8 +530,181 @@ export default function IntelligenceRunsTabBlock() {
                   )}
                 </div>
               )
+  }
+  const engineView = describeEngineStateBlock(engine, now)
+  const visibleQueue = queueOpen ? queued : queued.slice(0, QUEUE_VISIBLE)
+  const foldedQueue = queueOpen ? [] : queued.slice(QUEUE_VISIBLE)
+
+  return (
+    <div className="space-y-5 p-3 text-xs">
+      <EngineBannerBlock engine={engine} now={now} waiting={queued.length + running.filter(j => j.waitingForEngine).length} />
+
+      {/* One quiet status line: which engine, how fast lately, how busy. */}
+      <div className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
+        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', ENGINE_DOT_CLASS[engineView.tone])} />
+        <span className="min-w-0 truncate text-foreground/80">{mainModel ? shortModelBlock(mainModel) : 'No runs yet'}</span>
+        <span className="ml-auto shrink-0 tabular-nums">
+          {(() => {
+            const speed = describeEngineSpeedBlock(engine.speed, recentTokensPerSecond)
+            return speed ? <>{speed} · </> : null
+          })()}
+          {running.length} ▸ {queued.length}
+        </span>
+      </div>
+
+      {!busy && (
+        <div className="px-1 text-[11px] text-muted-foreground/70">
+          Nothing running. Up to four small jobs run at once, two when a big one is involved; the rest wait in line.
+        </div>
+      )}
+
+      {running.length > 0 && (
+        <RunTableBlock title="Running" grid={RUNNING_GRID} head={['', 'Subject', 'Job', 'Running', 'Started']}>
+            {running.map(job => {
+              const open = expandedKey === `run-${job.id}`
+              return (
+                <div key={`run-${job.id}`}>
+                  <RunRowBlock
+                    grid={RUNNING_GRID}
+                    cells={[
+                      // The bar is the "it's alive" signal: it breathes while
+                      // generating and holds still, amber, while the job waits
+                      // for the engine to come back.
+                      <span className={cn('h-3.5 w-0.5 rounded-full', job.waitingForEngine ? 'bg-amber-500/70' : 'animate-pulse bg-sky-500/80')} />,
+                      <span className="font-medium text-foreground">{subjectBlock(job)}</span>,
+                      job.attempt != null
+                        ? <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-500">{job.waitingForEngine && <RotateCw className="h-2.5 w-2.5 shrink-0" />}retry {job.attempt}/2</span>
+                        : taskLabelBlock(job.taskId),
+                      <span className="text-foreground/80">{fmtAgo(job.startedAt, now)}</span>,
+                      <span className="text-[10px]">{fmtClock(job.startedAt)}</span>,
+                    ]}
+                    onToggle={() => setExpandedKey(open ? null : `run-${job.id}`)}
+                    onCancel={() => cancelRunningJobBlock(job.id)}
+                    cancelTitle="Cancel this run"
+                  />
+                  {open && (
+                    <div className="space-y-2 px-1 pb-2.5 pl-7">
+                      {/* Empty only for the instant between the job registering
+                          and its request being built — the row exists first so a
+                          request that hangs during construction is still
+                          cancellable. */}
+                      {!job.request ? (
+                        <div className="text-[10px] text-muted-foreground/70">
+                          Building the prompt…
+                        </div>
+                      ) : (
+                        <>
+                          <PayloadSection label="System prompt" text={job.request.system} />
+                          <PayloadSection label="User prompt" text={job.request.user} defaultOpen />
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
             })}
         </RunTableBlock>
+      )}
+
+      {queued.length > 0 && (
+        <RunTableBlock title="Up next" grid={QUEUE_GRID} head={['#', 'Subject', 'Job', 'Waiting']}>
+            {visibleQueue.map((job, i) => {
+              const open = expandedKey === job.key
+              return (
+                <div key={`q-${job.key}`}>
+                  <RunRowBlock
+                    grid={QUEUE_GRID}
+                    cells={[
+                      <span className="text-[10px] text-muted-foreground/60">{i + 1}</span>,
+                      <span className="text-foreground/80">{subjectBlock(job)}</span>,
+                      job.priority === 'interactive'
+                        ? <span className="text-sky-600 dark:text-sky-400">runs next</span>
+                        : taskLabelBlock(job.taskId),
+                      fmtAgo(job.queuedAt, now),
+                    ]}
+                    onToggle={() => setExpandedKey(open ? null : job.key)}
+                    onCancel={() => cancelQueuedIntelligenceJobBlock(job.key)}
+                    cancelTitle="Drop this job from the queue"
+                  />
+                  {open && (
+                    <div className="space-y-2 px-1 pb-2.5 pl-6">
+                      <div className="text-[10px] text-muted-foreground/70">
+                        {job.providerId ?? 'provider unknown'} · queued {fmtClock(job.queuedAt)}
+                      </div>
+                      <div className="break-all font-mono text-[10px] text-muted-foreground/60">
+                        {job.key}
+                      </div>
+                      {/* Deliberately labelled input, not prompt: a queued job
+                          has not built its request yet, and calling this "prompt"
+                          would be a claim about text that does not exist. */}
+                      <PayloadSection label="Input (prompt not built yet)" text={job.inputPreview} defaultOpen />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            {foldedQueue.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setQueueOpen(true)}
+                className="block w-full truncate px-1 py-1.5 pl-7 text-left text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                +{foldedQueue.length} more · {foldedQueue.map(j => subjectBlock(j)).join(' · ')}
+              </button>
+            )}
+        </RunTableBlock>
+      )}
+
+      {entries.length === 0 ? (
+        <section>
+          <SectionLabel>Finished</SectionLabel>
+          <div className="px-1 text-[11px] text-muted-foreground/70">
+            No runs yet. Session digests, titles and summaries land here as they run.
+          </div>
+        </section>
+      ) : (
+        <section className="space-y-4">
+          <SectionLabel
+            right={
+              <button
+                type="button"
+                onClick={() => { clearTelemetryBlock(); setEntries([]) }}
+                className="ml-auto text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Clear
+              </button>
+            }
+          >
+            Finished
+          </SectionLabel>
+          {finishedGroups.map(group => {
+            const showAll = openGroups.has(group.origin.id)
+            const rows = groupFinishedBlock(group.entries)
+            const visible = showAll ? rows : rows.slice(0, GROUP_VISIBLE)
+            return (
+              <RunTableBlock
+                key={group.origin.id}
+                title={`${group.origin.label} · ${group.entries.length} ${group.entries.length === 1 ? 'run' : 'runs'}${group.failed ? ` · ${group.failed} failed` : ''}`}
+                grid={FINISHED_GRID}
+                head={['', 'Subject', 'Job', 'Out', 'e2e/s', 'Took', 'At']}
+                right={group.summary && (
+                  <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{group.summary}</span>
+                )}
+              >
+                {visible.map(renderFinishedRow)}
+                {rows.length > visible.length && (
+                  <button
+                    type="button"
+                    onClick={() => setOpenGroups(prev => new Set(prev).add(group.origin.id))}
+                    className="block w-full px-1 py-1.5 pl-7 text-left text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    +{rows.length - visible.length} more
+                  </button>
+                )}
+              </RunTableBlock>
+            )
+          })}
+        </section>
       )}
     </div>
   )

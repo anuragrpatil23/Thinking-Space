@@ -275,12 +275,21 @@ function extractJsonFromContent(content: string): unknown {
  * absent. A missing label costs a row some context; requiring every contract to
  * declare one would cost every contract a field it does not need.
  */
-function describeSubjectBlock(input: unknown): { project?: string; dateIso?: string } {
+function describeSubjectBlock(input: unknown): { project?: string; dateIso?: string; title?: string } {
   if (!input || typeof input !== 'object') return {}
   const o = input as Record<string, unknown>
   // Range-summary inputs name it `projectId`; session digests name it `project`.
+  // Feed inputs name the outlet in `source` ("Reuters: Markets"), which stands
+  // in for the project: where the item came from.
   const project =
-    typeof o.project === 'string' ? o.project : typeof o.projectId === 'string' ? o.projectId : undefined
+    typeof o.project === 'string'
+      ? o.project
+      : typeof o.projectId === 'string'
+        ? o.projectId
+        : typeof o.source === 'string' && o.source
+          ? o.source.split(':')[0].trim()
+          : undefined
+  const title = typeof o.title === 'string' && o.title.trim() ? o.title.trim() : undefined
   const dateIso =
     typeof o.startedIso === 'string'
       ? o.startedIso
@@ -289,7 +298,18 @@ function describeSubjectBlock(input: unknown): { project?: string; dateIso?: str
         : typeof o.rangeStartDate === 'string'
           ? o.rangeStartDate
           : undefined
-  return { project, dateIso }
+  return { project, dateIso, title }
+}
+
+/** Rough prompt size from the input alone, before the prompt exists — enough
+ *  for the queue to tell a 20k-token digest from a 500-token label. */
+function estimateInputTokensBlock(input: unknown): number | undefined {
+  try {
+    const text = typeof input === 'string' ? input : JSON.stringify(input)
+    return text ? Math.ceil(text.length / 4) : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** Contract input as readable text for the queue view, capped. Falls back to a
@@ -669,6 +689,7 @@ export async function runContract<TInput, TOutputSchema extends SchemaNode>(
     inputPreview: previewInputBlock(input),
     ...subject,
     priority: options.priority,
+    promptTokens: estimateInputTokensBlock(input),
     // Cancelling a queued job settles as an ordinary aborted failure, so call
     // sites that only check `ok` do not see a thrown error.
     onCancel: () => failure(makeIntelligenceErrorBlock('aborted', 'Cancelled while queued', {

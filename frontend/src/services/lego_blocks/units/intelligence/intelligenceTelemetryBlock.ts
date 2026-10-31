@@ -31,6 +31,10 @@ export interface TelemetryEntry {
    *  instead of losing its identity the moment it finishes. */
   project?: string
   dateIso?: string
+  /** What the run is about when it is one item rather than a project-day —
+   *  an article's headline. Without it, forty article summaries read as forty
+   *  identical "article summary" rows. */
+  title?: string
   /** Kept for the diagnostics "replay" button — trimmed to reasonable size. */
   requestPreview?: string
   responsePreview?: string

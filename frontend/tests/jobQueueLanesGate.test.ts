@@ -20,7 +20,7 @@ describe('intelligence queue lanes', () => {
     const h = hold()
     const job = (key: string, opts: { dateIso?: string; priority?: 'interactive' | 'background' } = {}) =>
       q.enqueueIntelligenceJobBlock(key, async () => { await h.opened; return key }, { taskId: key, ...opts })
-    job('a'); job('b')
+    job('a'); job('b'); job('c'); job('d')
     job('digest-today', { dateIso: '2026-10-30' })
     job('settings-test', { priority: 'interactive' })
     expect(q.listQueuedIntelligenceJobsBlock().map(j => j.key)).toEqual(['settings-test', 'digest-today'])
@@ -31,7 +31,7 @@ describe('intelligence queue lanes', () => {
     const h = hold()
     const job = (key: string, priority?: 'interactive') =>
       q.enqueueIntelligenceJobBlock(key, async () => { await h.opened; return key }, { taskId: key, dateIso: key === 'old' ? '2026-01-01' : '2026-10-30', priority })
-    job('a'); job('b'); job('new'); job('old')
+    job('a'); job('b'); job('c'); job('d'); job('new'); job('old')
     job('old', 'interactive')
     expect(q.listQueuedIntelligenceJobsBlock().map(j => j.key)).toEqual(['old', 'new'])
     h.release()
