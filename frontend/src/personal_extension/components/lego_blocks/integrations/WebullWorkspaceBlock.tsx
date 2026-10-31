@@ -1836,26 +1836,6 @@ export default function WebullWorkspaceBlock({
         },
       },
       {
-        id: 'gap',
-        label: 'Gap',
-        widthClassName: 'w-[8rem]',
-        align: 'left',
-        render: (node) => {
-          if (node.type !== 'epic') return null
-          const payload = asMetadataRecordBlock(node).webull_position_payload as Record<string, unknown> | undefined
-          if (!payload) return null
-          const gaps = gapsForPositionBlock(gapLinks, {
-            id: firstStringBlock(payload.id) || null,
-            symbol: firstStringBlock(payload.symbol) || null,
-            instrumentType: firstStringBlock(payload.instrument_type) || null,
-            optionType: firstStringBlock(payload.option_type) || null,
-            optionExpireDate: firstStringBlock(payload.option_expire_date) || null,
-            optionExercisePrice: firstStringBlock(payload.option_exercise_price) || null,
-          })
-          return <GapChipsBlock gaps={gaps} onOpen={openGapFile} />
-        },
-      },
-      {
         id: 'expiry',
         label: 'Expiry',
         widthClassName: 'w-36',
@@ -1952,6 +1932,27 @@ export default function WebullWorkspaceBlock({
           if (node.type === 'program') return metadata.webull_total_current_price == null ? null : formatCurrencyFromUnknownBlock(metadata.webull_total_current_price)
           const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
           return formatCurrencyFromUnknownBlock(payload?.last_price)
+        },
+      },
+      // Last, beside Status: which gap holds the position
+      {
+        id: 'gap',
+        label: 'Gap',
+        widthClassName: 'w-[8rem]',
+        align: 'left',
+        render: (node) => {
+          if (node.type !== 'epic') return null
+          const payload = asMetadataRecordBlock(node).webull_position_payload as Record<string, unknown> | undefined
+          if (!payload) return null
+          const gaps = gapsForPositionBlock(gapLinks, {
+            id: firstStringBlock(payload.id) || null,
+            symbol: firstStringBlock(payload.symbol) || null,
+            instrumentType: firstStringBlock(payload.instrument_type) || null,
+            optionType: firstStringBlock(payload.option_type) || null,
+            optionExpireDate: firstStringBlock(payload.option_expire_date) || null,
+            optionExercisePrice: firstStringBlock(payload.option_exercise_price) || null,
+          })
+          return <GapChipsBlock gaps={gaps} onOpen={openGapFile} />
         },
       },
     ]

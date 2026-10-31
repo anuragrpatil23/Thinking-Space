@@ -2,7 +2,8 @@ import type { GapOfPositionBlock } from '@/personal_extension/services/lego_bloc
 
 /** The gaps a position belongs to, as small chips; click one to open the gap. At most two, then "+n". */
 export function GapChipsBlock({ gaps, onOpen }: { gaps: GapOfPositionBlock[]; onOpen?: (filePath: string) => void }) {
-  if (gaps.length === 0) return <span className="text-xs text-zinc-300 dark:text-zinc-600">—</span>
+  // No gap is an empty cell, not a dash: most positions have none
+  if (gaps.length === 0) return null
   const shown = gaps.slice(0, 2)
   return (
     <span className="inline-flex flex-wrap items-center gap-1" title={gaps.map(g => `${g.gapId} · ${g.title}`).join('\n')}>
