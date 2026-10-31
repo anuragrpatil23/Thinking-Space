@@ -221,25 +221,28 @@ export function rssThemeDigestsBlock(state: RssTopicsDayBlock): { themes: Map<st
   const elsewhere = new Map<string, RssThemeDigestBlock>()
   const entry = (map: Map<string, RssThemeDigestBlock>, key: string) => {
     let d = map.get(key)
-    if (!d) { d = { note: null, cited: [], sources: [] }; map.set(key, d) }
+    if (!d) { d = { note: null, cited: [], sources: [], itemIds: [] }; map.set(key, d) }
     return d
   }
   const addSource = (list: string[], source: string) => { if (!list.includes(source)) list.push(source) }
-  for (const place of Object.values(state.outside ?? {})) {
+  for (const [id, place] of Object.entries(state.outside ?? {})) {
     if (place.kind === 'skip') continue
     if (place.kind === 'topic') {
       const topic = topicByName.get(place.name)
       const label = topic ? labelOfTopic(topic) : null
       if (!topic || !label) continue
       const d = entry(themes, label)
+      d.itemIds.push(id)
       addSource(d.sources, place.source)
       let cite = d.cited.find(c => c.topic === topic.name)
       if (!cite) { cite = { topic: topic.name, sources: [] }; d.cited.push(cite) }
       addSource(cite.sources, place.source)
-    } else if (place.kind === 'theme') {
-      addSource(entry(themes, moodThemes.has(place.name) ? `Market · ${place.name}` : place.name).sources, place.source)
     } else {
-      addSource(entry(elsewhere, place.name).sources, place.source)
+      const d = place.kind === 'theme'
+        ? entry(themes, moodThemes.has(place.name) ? `Market · ${place.name}` : place.name)
+        : entry(elsewhere, place.name)
+      d.itemIds.push(id)
+      addSource(d.sources, place.source)
     }
   }
   for (const note of state.notes ?? []) {

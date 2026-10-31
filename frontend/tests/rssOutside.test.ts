@@ -59,7 +59,8 @@ describe('theme paragraphs at fixed times', () => {
 
   it('takes NONE as nothing more', () => {
     expect(cleanFeedThemeNoteBlock('NONE')).toBeNull()
-    expect(cleanFeedThemeNoteBlock('Paragraph: Bloomberg reports Intel cut its fab plans by half.')).toBe('Bloomberg reports Intel cut its fab plans by half.')
+    expect(cleanFeedThemeNoteBlock('Points:\n- Intel cut its fab plans by half [Bloomberg]\n* SK Hynix grew HBM sales 40% [FT, WSJ]')).toBe('- Intel cut its fab plans by half [Bloomberg]\n- SK Hynix grew HBM sales 40% [FT, WSJ]')
+    expect(cleanFeedThemeNoteBlock('Bloomberg reports Intel cut its fab plans by half.')).toBe('- Bloomberg reports Intel cut its fab plans by half.')
   })
 })
 
@@ -75,7 +76,7 @@ describe('theme digests', () => {
     ])
     state = setRssThemeNoteBlock(state, { theme: 'Space', elsewhere: true, text: 'AP reports a launch.', members: ['d'], slot: '9', version: 1 })
     const { themes, elsewhere } = rssThemeDigestsBlock(state)
-    expect(themes.get('Intel')).toEqual({ note: null, cited: [{ topic: 'Intel Q3 earnings', sources: ['Bloomberg', 'FT'] }], sources: ['Bloomberg', 'FT'] })
+    expect(themes.get('Intel')).toEqual({ note: null, cited: [{ topic: 'Intel Q3 earnings', sources: ['Bloomberg', 'FT'] }], sources: ['Bloomberg', 'FT'], itemIds: ['a', 'b', 'c'] })
     expect(themes.get('Market · Chips')?.cited).toEqual([{ topic: 'Nvidia falls', sources: ['CNBC'] }])
     expect([...elsewhere.keys()]).toEqual(['Space'])
   })

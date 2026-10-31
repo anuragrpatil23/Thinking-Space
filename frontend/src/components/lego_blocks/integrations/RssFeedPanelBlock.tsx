@@ -72,6 +72,7 @@ import {
   rssDayLabelBlock,
   rssStoryOthersLabelBlock,
   type RssDayInboxBlock,
+  rssOutletNameBlock,
   type RssThemeDigestBlock,
 } from '@/services/lego_blocks/units/rssStoryBlock'
 
@@ -106,6 +107,21 @@ interface RssFeedPanelBlockProps {
    * A new `nonce` asks again for the same article.
    */
   focus?: { itemId: string; nonce: number } | null
+  /**
+   * Native, by theme: a theme's digest from the other sources opens beside the
+   * list like an article (the caller draws it). Without this the digest shows
+   * as a box under the theme's articles.
+   */
+  onOpenDigest?: (entry: RssThemeDigestEntryBlock) => void
+  /** The digest open beside the list, to mark its row */
+  activeDigestKey?: string | null
+}
+
+/** A theme's digest as opened from the list: its key, the label the list shows, the digest. */
+export interface RssThemeDigestEntryBlock {
+  key: string
+  theme: string
+  digest: RssThemeDigestBlock
 }
 
 function formatRelativeDate(dateStr: string | null): string {
@@ -158,6 +174,8 @@ export default function RssFeedPanelBlock({
   appearance = 'default',
   day = null,
   focus = null,
+  onOpenDigest,
+  activeDigestKey = null,
 }: RssFeedPanelBlockProps) {
   const native = appearance === 'native'
   const { layout } = useUILayoutBlock()
@@ -799,6 +817,8 @@ export default function RssFeedPanelBlock({
             onItemKeyDown={handleItemKeyDown}
             registerItemButton={registerItemButton}
             tagColors={tagColors}
+            onOpenDigest={onOpenDigest}
+            activeDigestKey={activeDigestKey}
           />
         )}
         {/* Group tree rendering */}
@@ -1412,6 +1432,8 @@ function DayInboxRenderer({
   onItemKeyDown,
   registerItemButton,
   tagColors,
+  onOpenDigest,
+  activeDigestKey,
 }: {
   days: RssDayInboxBlock[]
   /** The day's whole counts when Unread hides some rows */
@@ -1426,6 +1448,8 @@ function DayInboxRenderer({
   onItemKeyDown: (rowId: string, event: KeyboardEvent<HTMLButtonElement>) => void
   registerItemButton: (rowId: string, node: HTMLButtonElement | null) => void
   tagColors: Record<string, string>
+  onOpenDigest?: (entry: RssThemeDigestEntryBlock) => void
+  activeDigestKey: string | null
 }) {
   const now = new Date()
   if (days.length === 0) {
@@ -1514,7 +1538,9 @@ function DayInboxRenderer({
                   return row
                 })}
                 {/* After the theme's own articles: what the other sources had on it */}
-                {!sourceFolded && source.digest && <ThemeDigestBlock digest={source.digest} />}
+                {!sourceFolded && source.digest && (onOpenDigest
+                  ? <ThemeDigestRowBlock entry={{ key: `${day.day}|${source.feedId}`, theme: source.feedTitle, digest: source.digest }} active={activeDigestKey === `${day.day}|${source.feedId}`} onOpen={onOpenDigest} />
+                  : <ThemeDigestBlock digest={source.digest} />)}
               </div>
               )
             })}
@@ -1525,8 +1551,6 @@ function DayInboxRenderer({
   )
 }
 
-/** An outlet's name as its feed is titled, without the "Latest from" some feeds put first. */
-const outletNameBlock = (title: string) => title.replace(/^Latest from\s+/i, '').trim()
 
 /**
  * A theme's digest from the sources outside the reading list: which of its
@@ -1545,8 +1569,8 @@ function ThemeDigestBlock({ digest }: { digest: RssThemeDigestBlock }) {
           {digest.cited.map(c => (
             <li key={c.topic} className="flex gap-2">
               <span className="min-w-0 flex-1 text-zinc-800 dark:text-zinc-200">{c.topic}</span>
-              <span className="max-w-[55%] shrink-0 truncate text-right text-zinc-500 dark:text-zinc-400" title={c.sources.map(outletNameBlock).join(', ')}>
-                also {c.sources.map(outletNameBlock).join(', ')}
+              <span className="max-w-[55%] shrink-0 truncate text-right text-zinc-500 dark:text-zinc-400" title={c.sources.map(rssOutletNameBlock).join(', ')}>
+                also {c.sources.map(rssOutletNameBlock).join(', ')}
               </span>
             </li>
           ))}
@@ -1554,6 +1578,35 @@ function ThemeDigestBlock({ digest }: { digest: RssThemeDigestBlock }) {
       )}
       {digest.note && <p className="mt-2 leading-relaxed text-zinc-700 dark:text-zinc-300">{digest.note}</p>}
     </div>
+  )
+}
+
+/**
+ * A theme's digest as a row of the list, read last in its theme like one more
+ * article: what the other sources had, opened beside the list in full.
+ */
+function ThemeDigestRowBlock({ entry, active, onOpen }: { entry: RssThemeDigestEntryBlock; active: boolean; onOpen: (entry: RssThemeDigestEntryBlock) => void }) {
+  const { digest } = entry
+  if (!digest.note && digest.cited.length === 0) return null
+  const lead = digest.note ?? `Also covered: ${digest.cited.map(c => `${c.topic} (${c.sources.map(rssOutletNameBlock).join(', ')})`).join('; ')}`
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(entry)}
+      className={cn(
+        'flex w-full items-start gap-2 border-b border-border/40 px-3 py-3 text-left text-xs outline-none',
+        active ? 'border-[var(--ltm-explorer-selected-color,#c73773)] bg-[var(--ltm-explorer-selected-color,#c73773)] text-white' : 'hover:bg-muted/40',
+      )}
+    >
+      <Layers className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', active ? 'text-white/80' : 'text-violet-500 dark:text-violet-400')} />
+      <div className="min-w-0 flex-1">
+        <div className="font-medium leading-snug">From other sources</div>
+        <div className={cn('mt-0.5 line-clamp-3 text-[11px] leading-snug', active ? 'text-white/85' : 'text-zinc-600 dark:text-zinc-300')}>{lead}</div>
+        <div className={cn('mt-1 truncate text-[10px] leading-none', active ? 'text-white/60' : 'text-muted-foreground/70')} title={digest.sources.map(rssOutletNameBlock).join(', ')}>
+          {digest.sources.length} {digest.sources.length === 1 ? 'outlet' : 'outlets'} · {digest.sources.map(rssOutletNameBlock).join(', ')}
+        </div>
+      </div>
+    </button>
   )
 }
 

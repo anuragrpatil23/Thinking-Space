@@ -11,7 +11,8 @@ import { feedDayKeyBlock, parseFeedDayBlock, shiftFeedDayBlock } from '@/persona
 import { useDarkModeClassBlock } from '@/components/lego_blocks/hooks/shared/useDarkModeClassBlock'
 import { cn } from '@/lib/utils'
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
-import RssFeedPanelBlock from '@/components/lego_blocks/integrations/RssFeedPanelBlock'
+import RssFeedPanelBlock, { type RssThemeDigestEntryBlock } from '@/components/lego_blocks/integrations/RssFeedPanelBlock'
+import { FeedThemeDigestViewBlock } from './FeedThemeDigestViewBlock'
 import { loadRssFeedsBlock, replaceRssItemBlock, useRssFeedsBlock } from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
 import { rssReaderFeedsBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
@@ -914,9 +915,23 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
     return () => { cancelled = true }
   }, [itemFromRoute, setSearchParams])
 
+  // A theme's digest from the other sources, opened beside the list like an article
+  const [digestEntry, setDigestEntry] = useState<RssThemeDigestEntryBlock | null>(null)
   const openArticle = useCallback((item: RssFeedItemBlock, onItemUpdate: (u: RssFeedItemBlock) => void, onItemRemove: () => void, presetTags: string[], tagColors: Record<string, string>) => {
+    setDigestEntry(null)
     setArticle({ item, onItemUpdate, onItemRemove, presetTags, tagColors })
   }, [])
+  const openDigest = useCallback((entry: RssThemeDigestEntryBlock) => {
+    setArticle(null)
+    setDigestEntry(entry)
+  }, [])
+  // An article opened from a digest: the digest stays, so closing the article returns to it
+  const openFromDigest = useCallback((item: RssFeedItemBlock) => {
+    setArticle({ item, onItemUpdate: () => {}, onItemRemove: () => {}, presetTags: preferences?.presetTags ?? [], tagColors: preferences?.tagColors ?? {} })
+  }, [preferences])
+  const digestView = digestEntry && (
+    <FeedThemeDigestViewBlock entry={digestEntry} feeds={feeds} onOpenItem={openFromDigest} onClose={() => setDigestEntry(null)} />
+  )
 
   const reader = article && (
     // Not keyed by article: the reader (and its in-app browser) stays mounted and
@@ -942,9 +957,9 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
     />
   )
 
-  // On iPhone an open article is the next screen; the list waits underneath.
-  if (phone && article) {
-    return <div ref={readingSurfaceRef} className="ltm-page-push-in -mx-7 -my-6 h-[calc(100dvh-1rem)] min-h-0">{reader}</div>
+  // On iPhone an open article (or digest) is the next screen; the list waits underneath.
+  if (phone && (article || digestEntry)) {
+    return <div ref={readingSurfaceRef} className="ltm-page-push-in -mx-7 -my-6 h-[calc(100dvh-1rem)] min-h-0">{reader || digestView}</div>
   }
 
   const panel = (
@@ -957,6 +972,8 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
       className="h-full"
       day={feedDay}
       focus={readingFocus}
+      onOpenDigest={openDigest}
+      activeDigestKey={article ? null : digestEntry?.key ?? null}
     />
   )
 
@@ -1013,7 +1030,9 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
             {reader
               // The reader fills its pane, as it does in the Explorer
               ? <div className="h-full min-h-0 flex-1">{reader}</div>
-              : <p className="flex h-full items-center justify-center p-8 text-[13px] text-zinc-500 dark:text-zinc-400">Pick an article on the left.</p>}
+              : digestView
+                ? <div className="h-full min-h-0 flex-1">{digestView}</div>
+                : <p className="flex h-full items-center justify-center p-8 text-[13px] text-zinc-500 dark:text-zinc-400">Pick an article on the left.</p>}
           </F9PanelBlock>
         </div>
       )}
