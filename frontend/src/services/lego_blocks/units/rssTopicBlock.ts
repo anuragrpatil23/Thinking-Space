@@ -5,6 +5,7 @@
 // day starts empty.
 
 import type { RssFeedItemBlock } from './rssFeedBlock'
+import type { RssDayInboxBlock, RssStoryBlock } from './rssStoryBlock'
 import type { FeedTopicKindBlock, FeedTopicsOutputBlock } from './intelligence/contracts/feedTopicsContractBlock'
 import { FEED_OTHER_THEME_BLOCK, type FeedTopicThemesOutputBlock } from './intelligence/contracts/feedTopicThemesContractBlock'
 
@@ -20,7 +21,8 @@ export interface RssTopicBlock {
   detailMembers: string[]
   detailVersion: number
   /** The broader theme it is part of ("Intel", "Q3 earnings"), once placed: a
-   *  normalized label across story-sized topics. Subjects only; mood has its own strip. */
+   *  normalized label across story-sized topics. A mood topic's theme is what
+   *  moved ("Whole market", "Chips"). */
   theme?: string | null
   themeVersion?: number
 }
@@ -99,10 +101,10 @@ export function rssTopicsShownBlock(state: RssTopicsDayBlock, items: RssFeedItem
     .sort((a, b) => b.items.length - a.items.length || a.topic.name.localeCompare(b.topic.name))
 }
 
-/** Subject topics not yet under a theme, or placed by an older prompt; the biggest first. */
+/** Topics not yet under a theme, or placed by an older prompt; the biggest first. */
 export function rssTopicsNeedingThemeBlock(state: RssTopicsDayBlock, version: number): RssTopicBlock[] {
   return state.topics
-    .filter(t => t.kind !== 'mood' && (!t.theme || (t.themeVersion ?? 0) < version))
+    .filter(t => !t.theme || (t.themeVersion ?? 0) < version)
     .sort((a, b) => b.members.length - a.members.length)
 }
 
@@ -131,4 +133,37 @@ export function mergeRssThemesBlock(state: RssTopicsDayBlock, batch: RssTopicBlo
     ...state,
     topics: state.topics.map(t => (themeById.has(t.id) ? { ...t, theme: themeById.get(t.id) ?? null, themeVersion: version } : t)),
   }
+}
+
+/** Stories the AI has not sorted into a topic yet, when the list is grouped by theme. */
+export const RSS_UNSORTED_THEME_BLOCK = 'Not sorted yet'
+
+/**
+ * The day inbox grouped by theme instead of by outlet: each day's stories go
+ * under their topic's theme (a market theme reads "Market · Chips"), the
+ * biggest first, Other news and stories not sorted yet last. A story takes the
+ * theme of the first of its copies a topic holds. The groups stand where the
+ * sources stood, keyed `theme:<name>`, so the list draws them the same way.
+ */
+export function regroupRssDayInboxByThemeBlock(days: RssDayInboxBlock[], topicsFor: (day: string) => RssTopicsDayBlock): RssDayInboxBlock[] {
+  return days.map((day) => {
+    const themeOf = new Map<string, string>()
+    for (const topic of topicsFor(day.day).topics) {
+      if (!topic.theme) continue
+      const label = topic.kind === 'mood' ? `Market · ${topic.theme}` : topic.theme
+      for (const id of topic.members) if (!themeOf.has(id)) themeOf.set(id, label)
+    }
+    const groups = new Map<string, RssStoryBlock[]>()
+    for (const source of day.sources) {
+      for (const story of source.stories) {
+        const label = [story.lead, ...story.others].map(m => themeOf.get(m.item.id)).find(Boolean) ?? RSS_UNSORTED_THEME_BLOCK
+        groups.set(label, [...(groups.get(label) ?? []), story])
+      }
+    }
+    const last = (name: string) => (name === RSS_UNSORTED_THEME_BLOCK ? 3 : name === FEED_OTHER_THEME_BLOCK ? 2 : name.startsWith('Market · ') ? 0 : 1)
+    const sources = [...groups.entries()]
+      .sort((a, b) => last(a[0]) - last(b[0]) || b[1].length - a[1].length || a[0].localeCompare(b[0]))
+      .map(([name, stories]) => ({ feedId: `theme:${name}`, feedTitle: name, stories }))
+    return { ...day, sources }
+  })
 }

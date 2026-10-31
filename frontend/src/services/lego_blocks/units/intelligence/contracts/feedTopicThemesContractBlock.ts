@@ -2,10 +2,13 @@
 // Q3 earnings", "Intel Fab 28 explosion"); a theme is what several of them are
 // part of ("Intel"): a company, an industry, a kind of news, a country, a field.
 // Topics stay as they are; this only says which theme each belongs to, reusing
-// the day's themes so far by name. It groups; it does not judge the news.
+// the day's themes so far by name. Market-mood topics (prices moving) are
+// grouped by what moved — the whole market, a sector, a company — not by what
+// the news was about. It groups; it does not judge the news.
 
 import { defineContractBlock, type ContractOutput } from '../promptContractBlock'
 import { s } from '../schemaBlock'
+import type { FeedTopicKindBlock } from './feedTopicsContractBlock'
 
 export interface FeedTopicThemesInputBlock {
   /** Cache identity: the topics asked about and the themes offered */
@@ -13,7 +16,7 @@ export interface FeedTopicThemesInputBlock {
   /** The day's themes so far, to reuse by name */
   themes: string[]
   /** Numbered from 1 */
-  topics: Array<{ name: string; articles: number }>
+  topics: Array<{ name: string; articles: number; kind: FeedTopicKindBlock }>
 }
 
 /** Each topic's theme, by its number. */
@@ -45,6 +48,15 @@ const SYSTEM_PROMPT = [
   `  - A topic that fits no theme with others goes under "${FEED_OTHER_THEME_BLOCK}".`,
   '  - When one of the day\'s themes listed fits, use its name exactly as written.',
   '',
+  'Topics marked [market] are prices moving. Group those by what moved, not by',
+  'what the news was about:',
+  '  - "Whole market": an index falling or rallying, a valuation warning, a',
+  '    broad sell-off',
+  '  - a sector or group: "Chips", "AI infrastructure", "Banks": several',
+  '    companies of a kind moving, or one of them when the others moved too',
+  '  - a company, only when it has several [market] topics of its own',
+  'A [market] topic never shares a theme with a topic that is not [market].',
+  '',
   'Answer with one line per topic, nothing else:',
   '<number> | <theme>',
   'e.g. "3 | Intel"',
@@ -67,7 +79,10 @@ export function parseFeedTopicThemesBlock(raw: string, count: number): FeedTopic
 
 export const feedTopicThemesContract = defineContractBlock<FeedTopicThemesInputBlock, ReturnType<typeof s.string>, FeedTopicThemesOutputBlock>({
   id: 'feed-topic-themes',
-  // Bump whenever the prompt or the text sent changes.
+  // Bump whenever the prompt or the text sent changes: every topic is then
+  // placed again. Not bumped for the [market] rules (2026-10-31): they only
+  // add to what mood topics, never placed before, are asked; the subject
+  // themes already placed stay as they are.
   promptVersion: 1,
   outputSchema: s.string({ description: 'One line per topic: "<number> | <theme>"' }),
   cacheKey: (input: FeedTopicThemesInputBlock) => `${input.batchId}|${input.themes.join(',')}`,
@@ -79,7 +94,7 @@ export const feedTopicThemesContract = defineContractBlock<FeedTopicThemesInputB
         input.themes.length > 0
           ? `The day's themes so far:\n${input.themes.map(t => `- ${t}`).join('\n')}`
           : 'No themes yet today.',
-        `Topics:\n${input.topics.map((t, i) => `${i + 1}. ${clip(t.name, 80)} (${t.articles} ${t.articles === 1 ? 'article' : 'articles'})`).join('\n')}`,
+        `Topics:\n${input.topics.map((t, i) => `${i + 1}. ${t.kind === 'mood' ? '[market] ' : ''}${clip(t.name, 80)} (${t.articles} ${t.articles === 1 ? 'article' : 'articles'})`).join('\n')}`,
         'Answer:',
       ].join('\n\n'),
     }],

@@ -65,7 +65,8 @@ import {
 import { cn } from '@/lib/utils'
 import RssItemAnnotationMarksBlock from '@/components/lego_blocks/units/RssItemAnnotationMarksBlock'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
-import { localDayBlock } from '@/services/lego_blocks/units/rssTopicBlock'
+import { localDayBlock, regroupRssDayInboxByThemeBlock } from '@/services/lego_blocks/units/rssTopicBlock'
+import { loadRssTopicsOrch, readRssTopicsOrch, subscribeRssTopicsOrch } from '@/services/orchestrators/rssTopicOrch'
 import {
   buildRssDayInboxBlock,
   rssDayLabelBlock,
@@ -353,12 +354,37 @@ export default function RssFeedPanelBlock({
   const deferredInboxFeeds = useDeferredValue(filteredInboxFeeds)
   // Remembered across visits, keyed on the store snapshot and the filters that
   // shape it, so returning to the list does not regroup every story
-  const dayInbox = useMemo<RssDayInboxBlock[]>(
+  const sourceInbox = useMemo<RssDayInboxBlock[]>(
     () => (dayMode
       ? identityMemoBlock('rss-day-inbox', [allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter.join(','), deferredInboxFeeds === filteredInboxFeeds], () =>
         buildRssDayInboxBlock({ feeds: deferredInboxFeeds, configs: preferences?.feeds ?? [], unreadOnly, sessionReadIds }))
       : []),
     [dayMode, deferredInboxFeeds, filteredInboxFeeds, allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter],
+  )
+  // Native: each day by source (as it arrived) or by theme (as the AI sorted
+  // it: the Overview's themes). Remembered on this device.
+  const [groupBy, setGroupBy] = useState<'sources' | 'themes'>(() => {
+    try { return localStorage.getItem('ltm-rss-group-by') === 'themes' ? 'themes' : 'sources' } catch { return 'sources' }
+  })
+  const toggleGroupBy = useCallback(() => {
+    setGroupBy((prev) => {
+      const next = prev === 'themes' ? 'sources' : 'themes'
+      try { localStorage.setItem('ltm-rss-group-by', next) } catch { /* storage is optional */ }
+      return next
+    })
+  }, [])
+  const byTheme = dayMode && groupBy === 'themes'
+  // The days' topics, read from the vault once each; a sorting pass redraws the list
+  const [topicsTick, setTopicsTick] = useState(0)
+  useEffect(() => (byTheme ? subscribeRssTopicsOrch(() => setTopicsTick(t => t + 1)) : undefined), [byTheme])
+  const inboxDaysKey = sourceInbox.map(d => d.day).join(',')
+  useEffect(() => {
+    if (!byTheme) return
+    for (const d of inboxDaysKey.split(',')) if (/^\d{4}-\d{2}-\d{2}$/.test(d)) void loadRssTopicsOrch(d)
+  }, [byTheme, inboxDaysKey])
+  const dayInbox = useMemo<RssDayInboxBlock[]>(
+    () => (byTheme ? regroupRssDayInboxByThemeBlock(sourceInbox, d => readRssTopicsOrch(d)) : sourceInbox),
+    [byTheme, sourceInbox, topicsTick],  // eslint-disable-line react-hooks/exhaustive-deps
   )
   // Each day's whole count, whatever Unread hides: the filter chooses the rows,
   // not the day's size. Grouped once per feed snapshot (only with Unread on).
@@ -627,7 +653,20 @@ export default function RssFeedPanelBlock({
         anythingExpanded={anythingExpanded}
         onToggleExpandAll={native ? toggleExpandAll : undefined}
         sourceFilter={dayMode && viewMode === 'compact'
-          ? <SourceFilterBlock options={inboxFeeds.map(feed => ({ feedId: feed.feedId, title: feed.feedTitle }))} chosen={sourceFilter} onChange={chooseSourceFilter} />
+          ? (
+            <>
+              <button
+                type="button"
+                onClick={toggleGroupBy}
+                aria-pressed={groupBy === 'themes'}
+                title={groupBy === 'themes' ? 'Grouped by theme, as the AI sorted the news (click to group by source)' : 'Group by theme, as the AI sorted the news'}
+                className={cn('shrink-0 rounded-md px-2 py-1 text-[11px] font-medium', groupBy === 'themes' && '!bg-zinc-200/80 !text-zinc-900 dark:!bg-zinc-700 dark:!text-white')}
+              >
+                By theme
+              </button>
+              <SourceFilterBlock options={inboxFeeds.map(feed => ({ feedId: feed.feedId, title: feed.feedTitle }))} chosen={sourceFilter} onChange={chooseSourceFilter} />
+            </>
+          )
           : undefined}
       />}
 
@@ -1363,7 +1402,7 @@ function DayInboxRenderer({
               type="button"
               aria-expanded={!folded}
               onClick={() => toggleDayFolded(day.day)}
-              className="sticky top-0 z-10 flex w-full items-center gap-2 border-b-[0.5px] border-[#EFEFF2] bg-[#F6F6F8]/95 px-3 py-2 text-left backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95"
+              className="sticky top-0 z-10 flex h-9 w-full items-center gap-2 border-b-[0.5px] border-[#EFEFF2] bg-[#F6F6F8]/95 px-3 text-left backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95"
             >
               <ChevronRight className={cn('h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform', !folded && 'rotate-90')} />
               <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{rssDayLabelBlock(day.day, now)}</span>
@@ -1383,7 +1422,9 @@ function DayInboxRenderer({
               if (sourceFolded) idx += source.stories.length
               return (
               <div key={source.feedId}>
-                <div className="group flex items-center gap-1.5 px-3 pb-1 pt-2.5">
+                {/* Stays under the day's header while its stories scroll, until the
+                    next source (or theme) takes its place: it is sticky inside its own block */}
+                <div className="group sticky top-9 z-[9] flex items-center gap-1.5 bg-white/95 px-3 pb-1 pt-2.5 backdrop-blur dark:bg-zinc-900/95">
                   <button
                     type="button"
                     aria-expanded={!sourceFolded}
@@ -1394,14 +1435,15 @@ function DayInboxRenderer({
                     <span className="truncate">{source.feedTitle}</span>
                     <span className="shrink-0 font-normal normal-case tracking-normal text-zinc-400">{unread > 0 ? `${unread} of ${source.stories.length}` : source.stories.length}</span>
                   </button>
-                  <button
+                  {/* A theme is not a source: "only this" filters by outlet */}
+                  {!source.feedId.startsWith('theme:') && <button
                     type="button"
                     onClick={() => onSourceFilter([source.feedId])}
                     className="shrink-0 text-[11px] text-sky-600 opacity-0 transition-opacity hover:text-sky-700 group-hover:opacity-100 dark:text-sky-400"
                     title="Show only this source, on every day"
                   >
                     only this
-                  </button>
+                  </button>}
                 </div>
                 {!sourceFolded && source.stories.map(story => {
                   const rowId = rssRowIdBlock(`day:${day.day}`, story.lead.item.id)

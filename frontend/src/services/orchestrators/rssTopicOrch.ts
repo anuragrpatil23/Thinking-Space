@@ -201,7 +201,7 @@ export async function runRssTopicThemePassOrch(
     const result = await runContract(feedTopicThemesContract, {
       batchId: batch.map(t => `${t.id}:${t.members.length}`).join(','),
       themes: offered,
-      topics: batch.map(t => ({ name: t.name, articles: t.members.length })),
+      topics: batch.map(t => ({ name: t.name, articles: t.members.length, kind: t.kind })),
     }, { provider, scope: 'feed' })
     if (result.ok && result.value) {
       // runContract types the value from the schema (a string); finalize made it this
