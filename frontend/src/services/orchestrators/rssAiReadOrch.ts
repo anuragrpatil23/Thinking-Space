@@ -21,7 +21,7 @@ import { readDefaultProviderBlock, resolveProviderBlock } from '@/services/lego_
 import type { ProviderId } from '@/services/lego_blocks/units/intelligence/modelProfileBlock'
 import { rssReaderFeedsBlock, type RssFeedItemBlock, type RssFeedPreferencesBlock, type RssFeedResultBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { localDayBlock, rssTopicItemsBlock } from '@/services/lego_blocks/units/rssTopicBlock'
-import { loadRssTopicsOrch, readAskedRssTopicsDayOrch, rssTopicsWorkOrch, runRssTopicCardPassOrch, runRssTopicSortPassOrch, runRssTopicThemePassOrch } from '@/services/orchestrators/rssTopicOrch'
+import { loadRssTopicsOrch, readAskedRssTopicsDayOrch, rssOutsideItemsOrch, rssTopicsWorkOrch, runRssOutsidePassOrch, runRssThemeNotePassOrch, runRssTopicCardPassOrch, runRssTopicSortPassOrch, runRssTopicThemePassOrch } from '@/services/orchestrators/rssTopicOrch'
 import {
   ARTICLE_SUMMARY_TEXT_CHARS_BLOCK,
   articleSummaryContract,
@@ -227,12 +227,15 @@ export function runFeedAiNextOrch(
     const unread = new Set(unreadList.map(({ item }) => item.id))
     const todayUnread = new Set(unreadList.filter(({ item }) => item.pubDate && localDayBlock(new Date(item.pubDate)) === today).map(({ item }) => item.id))
     const topicItems = rssTopicItemsBlock(readerItems, today)
-    const topicWork = rssTopicsWorkOrch(topicItems)
+    // What the AI read in the other sources: placed against the reading list's topics, then a paragraph per theme
+    const outsideItems = rssOutsideItemsOrch(feeds, preferences, today)
+    const topicWork = rssTopicsWorkOrch(topicItems, today, outsideItems)
     // A past day that is open in the Feed: its topics, once today's are done
     const askedDay = readAskedRssTopicsDayOrch()
     if (askedDay) await loadRssTopicsOrch(askedDay)
     const askedItems = askedDay ? rssTopicItemsBlock(readerItems, askedDay) : []
-    const askedWork = askedDay ? rssTopicsWorkOrch(askedItems, askedDay) : { unsorted: [], themes: [], cards: [] }
+    const askedOutside = askedDay ? rssOutsideItemsOrch(feeds, preferences, askedDay) : []
+    const askedWork = askedDay ? rssTopicsWorkOrch(askedItems, askedDay, askedOutside) : { unsorted: [], themes: [], outside: [], cards: [], notes: 0 }
     const onTopics = (done: number, total: number, items: PassItemBlock[]) => {
       progress = { done, total, kind: 'topics', items }
       notifyBlock()
@@ -249,14 +252,23 @@ export function runFeedAiNextOrch(
     } else if (topicWork.themes.length > 0) {
       // One call gathers the topics under themes: before the key details, which take one call a topic
       pass = topicPassBlock(await runRssTopicThemePassOrch(provider, onTopics))
+    } else if (topicWork.outside.length > 0) {
+      pass = topicPassBlock(await runRssOutsidePassOrch(outsideItems, provider, onTopics))
     } else if (topicWork.cards.length > 0) {
       pass = topicPassBlock(await runRssTopicCardPassOrch(topicItems, provider, onTopics))
+    } else if (topicWork.notes > 0) {
+      // At fixed times of the day (rssNoteSlotBlock), not each time an article arrives
+      pass = topicPassBlock(await runRssThemeNotePassOrch(outsideItems, provider, onTopics))
     } else if (askedDay && askedWork.unsorted.length > 0) {
       pass = topicPassBlock(await runRssTopicSortPassOrch(askedItems, provider, onTopics, askedDay))
     } else if (askedDay && askedWork.themes.length > 0) {
       pass = topicPassBlock(await runRssTopicThemePassOrch(provider, onTopics, askedDay))
+    } else if (askedDay && askedWork.outside.length > 0) {
+      pass = topicPassBlock(await runRssOutsidePassOrch(askedOutside, provider, onTopics, askedDay))
     } else if (askedDay && askedWork.cards.length > 0) {
       pass = topicPassBlock(await runRssTopicCardPassOrch(askedItems, provider, onTopics, askedDay))
+    } else if (askedDay && askedWork.notes > 0) {
+      pass = topicPassBlock(await runRssThemeNotePassOrch(askedOutside, provider, onTopics, askedDay))
     } else if (unread.size > 0) {
       pass = await runFeedAiReadPassOrch(feeds, onRead, provider)
     }

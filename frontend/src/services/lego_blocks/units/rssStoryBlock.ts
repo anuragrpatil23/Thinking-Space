@@ -209,10 +209,23 @@ export function recentRssFeedsBlock(feeds: RssFeedResultBlock[], days: number, n
   return feeds.map(feed => ({ ...feed, items: feed.items.filter(item => timeOfBlock(item) >= since) }))
 }
 
+/**
+ * When the list is grouped by theme: what the AI read about it in sources
+ * outside the reading list, read after the theme's own articles.
+ */
+export interface RssThemeDigestBlock {
+  /** The theme's paragraph from those sources; null when not written, or nothing more */
+  note: string | null
+  /** The reading list's topics in this theme that other outlets also carried */
+  cited: Array<{ topic: string; sources: string[] }>
+  /** Every outlet the theme's outside articles came from */
+  sources: string[]
+}
+
 export interface RssDayInboxBlock {
   /** YYYY-MM-DD, local */
   day: string
-  sources: Array<{ feedId: string; feedTitle: string; stories: RssStoryBlock[] }>
+  sources: Array<{ feedId: string; feedTitle: string; stories: RssStoryBlock[]; digest?: RssThemeDigestBlock }>
   storyCount: number
   unreadCount: number
 }

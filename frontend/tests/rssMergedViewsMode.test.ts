@@ -78,5 +78,9 @@ describe('a source in the merged views', () => {
     const today = volume[volume.length - 1]
     expect(today.readable + today.teaser).toBe(2)
     expect(volume.reduce((n, d) => n + d.readable + d.teaser, 0)).toBe(2)
+    expect(today.inList).toBe(0)
+    // Given the reading list, the articles in full that are in it
+    const listed = rssDailyVolumeBlock([feed('x', [item('1', 'x', { cached: true, days: 0 }), item('4', 'x', { cached: true, days: 0 })])], NOW, 30, new Set(['1']))
+    expect(listed[listed.length - 1]).toMatchObject({ readable: 2, inList: 1 })
   })
 })

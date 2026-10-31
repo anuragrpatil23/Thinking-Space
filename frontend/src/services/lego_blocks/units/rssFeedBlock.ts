@@ -75,16 +75,22 @@ export interface RssDailyVolumeBlock {
   day: string
   readable: number
   teaser: number
+  /** Of `readable`, the ones in the reading list (`listIds`); 0 without it */
+  inList: number
 }
 
-/** Articles published per day over the last `days` days, split by whether the app has them in full. */
-export function rssDailyVolumeBlock(feeds: RssFeedResultBlock[], now: Date, days = 30): RssDailyVolumeBlock[] {
+/**
+ * Articles published per day over the last `days` days, split by whether the
+ * app has them in full, and (given the reading list's item ids) how many of
+ * those in full are in it.
+ */
+export function rssDailyVolumeBlock(feeds: RssFeedResultBlock[], now: Date, days = 30, listIds?: Set<string>): RssDailyVolumeBlock[] {
   const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const out: RssDailyVolumeBlock[] = []
   const index = new Map<string, RssDailyVolumeBlock>()
   for (let i = days - 1; i >= 0; i -= 1) {
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
-    const row = { day: dayKey(d), readable: 0, teaser: 0 }
+    const row = { day: dayKey(d), readable: 0, teaser: 0, inList: 0 }
     out.push(row)
     index.set(row.day, row)
   }
@@ -93,8 +99,10 @@ export function rssDailyVolumeBlock(feeds: RssFeedResultBlock[], now: Date, days
       const at = item.pubDate ? new Date(item.pubDate) : null
       const row = at && !Number.isNaN(at.getTime()) ? index.get(dayKey(at)) : undefined
       if (!row) continue
-      if (rssItemReadableBlock(item)) row.readable += 1
-      else row.teaser += 1
+      if (rssItemReadableBlock(item)) {
+        row.readable += 1
+        if (listIds?.has(item.id)) row.inList += 1
+      } else row.teaser += 1
     }
   }
   return out

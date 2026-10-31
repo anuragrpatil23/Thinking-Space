@@ -72,6 +72,7 @@ import {
   rssDayLabelBlock,
   rssStoryOthersLabelBlock,
   type RssDayInboxBlock,
+  type RssThemeDigestBlock,
 } from '@/services/lego_blocks/units/rssStoryBlock'
 
 // F9's Feed draws the list in its native look: quiet header, no RSS or folder
@@ -99,6 +100,12 @@ interface RssFeedPanelBlockProps {
   className?: string
   /** Native: only the articles that arrived on this day (YYYY-MM-DD, local). */
   day?: string | null
+  /**
+   * Native: an article opened from elsewhere (the Overview's topics). The list
+   * groups by theme, opens its day and its group, marks it, and scrolls to it.
+   * A new `nonce` asks again for the same article.
+   */
+  focus?: { itemId: string; nonce: number } | null
 }
 
 function formatRelativeDate(dateStr: string | null): string {
@@ -150,6 +157,7 @@ export default function RssFeedPanelBlock({
   className,
   appearance = 'default',
   day = null,
+  focus = null,
 }: RssFeedPanelBlockProps) {
   const native = appearance === 'native'
   const { layout } = useUILayoutBlock()
@@ -466,6 +474,37 @@ export default function RssFeedPanelBlock({
     useGroupedRendering, groupTree, feeds, visibleFeeds, expandedFeedIds, expandedGroupIds,
     dayMode, dayInbox, foldedDays, foldedSources,
   ])
+
+  // An article opened from the Overview: by theme, its day and group open, marked and in view
+  const pendingFocusRef = useRef<{ itemId: string; nonce: number } | null>(null)
+  useEffect(() => {
+    if (!focus || !dayMode) return
+    pendingFocusRef.current = focus
+    if (groupBy !== 'themes') {
+      setGroupBy('themes')
+      try { localStorage.setItem('ltm-rss-group-by', 'themes') } catch { /* storage is optional */ }
+    }
+  }, [focus?.nonce, dayMode]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const pending = pendingFocusRef.current
+    if (!pending || !byTheme) return
+    for (const d of dayInbox) {
+      for (const source of d.sources) {
+        const story = source.stories.find(st => [st.lead, ...st.others].some(m => m.item.id === pending.itemId))
+        if (!story) continue
+        pendingFocusRef.current = null
+        if (foldedDays.has(d.day)) toggleDayFolded(d.day)
+        const key = `${d.day}|${source.feedId}`
+        if (foldedSources.has(key)) toggleSourceFolded(key)
+        const rowId = rssRowIdBlock(`day:${d.day}`, story.lead.item.id)
+        setSelectedItemId(story.lead.item.id)
+        setActiveRowId(rowId)
+        // After the unfolded rows are drawn
+        requestAnimationFrame(() => requestAnimationFrame(() => itemButtonRefs.current.get(rowId)?.scrollIntoView({ block: 'center' })))
+        return
+      }
+    }
+  }, [dayInbox, byTheme, foldedDays, foldedSources, toggleDayFolded, toggleSourceFolded])
 
   const registerItemButton = useCallback((rowId: string, node: HTMLButtonElement | null) => {
     if (node) itemButtonRefs.current.set(rowId, node)
@@ -1433,7 +1472,11 @@ function DayInboxRenderer({
                   >
                     <ChevronRight className={cn('h-3 w-3 shrink-0 transition-transform', !sourceFolded && 'rotate-90')} />
                     <span className="truncate">{source.feedTitle}</span>
-                    <span className="shrink-0 font-normal normal-case tracking-normal text-zinc-400">{unread > 0 ? `${unread} of ${source.stories.length}` : source.stories.length}</span>
+                    <span className="shrink-0 font-normal normal-case tracking-normal text-zinc-400">
+                      {source.stories.length === 0 && source.digest
+                        ? `${source.digest.sources.length} ${source.digest.sources.length === 1 ? 'source' : 'sources'}`
+                        : unread > 0 ? `${unread} of ${source.stories.length}` : source.stories.length}
+                    </span>
                   </button>
                   {/* A theme is not a source: "only this" filters by outlet */}
                   {!source.feedId.startsWith('theme:') && <button
@@ -1469,6 +1512,8 @@ function DayInboxRenderer({
                   idx += 1
                   return row
                 })}
+                {/* After the theme's own articles: what the other sources had on it */}
+                {!sourceFolded && source.digest && <ThemeDigestBlock digest={source.digest} />}
               </div>
               )
             })}
@@ -1476,6 +1521,38 @@ function DayInboxRenderer({
         )
       })}
     </>
+  )
+}
+
+/** An outlet's name as its feed is titled, without the "Latest from" some feeds put first. */
+const outletNameBlock = (title: string) => title.replace(/^Latest from\s+/i, '').trim()
+
+/**
+ * A theme's digest from the sources outside the reading list: which of its
+ * topics other outlets also carried, and the AI's paragraph on what else
+ * happened in the theme. Read after the theme's own articles.
+ */
+function ThemeDigestBlock({ digest }: { digest: RssThemeDigestBlock }) {
+  if (!digest.note && digest.cited.length === 0) return null
+  return (
+    <div className="mx-3 mb-3 mt-1 rounded-lg bg-zinc-50 px-3 py-2.5 text-[12.5px] leading-snug dark:bg-zinc-800/50">
+      <p className="text-[10.5px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        From other sources · {digest.sources.length} {digest.sources.length === 1 ? 'outlet' : 'outlets'}
+      </p>
+      {digest.cited.length > 0 && (
+        <ul className="mt-1.5 space-y-1">
+          {digest.cited.map(c => (
+            <li key={c.topic} className="flex gap-2">
+              <span className="min-w-0 flex-1 text-zinc-800 dark:text-zinc-200">{c.topic}</span>
+              <span className="max-w-[55%] shrink-0 truncate text-right text-zinc-500 dark:text-zinc-400" title={c.sources.map(outletNameBlock).join(', ')}>
+                also {c.sources.map(outletNameBlock).join(', ')}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {digest.note && <p className="mt-2 leading-relaxed text-zinc-700 dark:text-zinc-300">{digest.note}</p>}
+    </div>
   )
 }
 

@@ -15,10 +15,17 @@ interface UseElectronWebviewLoadErrorBlockParams {
   logSource: string
 }
 
+/** How long after a failure the guest's own error page may still be loading. */
+const ERROR_PAGE_GRACE_MS_BLOCK = 1500
+
 function formatWebviewLoadErrorMessageBlock(description: string): string {
   const normalized = description.trim()
   if (normalized === 'ERR_BLOCKED_BY_RESPONSE') {
     return 'This page blocked being displayed inside Thinking Space. Open it in your browser instead.'
+  }
+  // The site broke off the connection; it often does this to apps but not to a browser
+  if (/^ERR_(HTTP2_PROTOCOL_ERROR|CONNECTION_(RESET|CLOSED)|EMPTY_RESPONSE|TIMED_OUT)$/.test(normalized)) {
+    return `The site cut the connection (${normalized}). It may load in your browser.`
   }
   return normalized || 'Failed to load page.'
 }
@@ -44,7 +51,14 @@ export function useElectronWebviewLoadErrorBlock({
     const webview = webviewRef.current
     if (!webview) return
 
+    // A failed load is followed at once by Chromium loading its own error page
+    // into the guest, which fires the same start/finish events as a real load.
+    // Clearing on those wiped the message the moment it was set, leaving a
+    // blank page (seen with ERR_HTTP2_PROTOCOL_ERROR on eetimes.com). A load
+    // that starts more than a moment later is the user's (Try again, a link).
+    let failedAt = 0
     const clearLoadError = () => {
+      if (Date.now() - failedAt < ERROR_PAGE_GRACE_MS_BLOCK) return
       setLoadError(null)
     }
 
@@ -57,6 +71,7 @@ export function useElectronWebviewLoadErrorBlock({
       // the main page itself loaded correctly. Only surface top-level failures.
       if (ev?.isMainFrame === false) return
 
+      failedAt = Date.now()
       const description = String(ev?.errorDescription ?? 'Failed to load page.')
       const failedUrl = ev?.validatedURL ?? resolvedUrl ?? ''
       setLoadError(formatWebviewLoadErrorMessageBlock(description))

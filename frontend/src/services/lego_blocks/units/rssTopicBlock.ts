@@ -5,7 +5,7 @@
 // day starts empty.
 
 import type { RssFeedItemBlock } from './rssFeedBlock'
-import type { RssDayInboxBlock, RssStoryBlock } from './rssStoryBlock'
+import type { RssDayInboxBlock, RssStoryBlock, RssThemeDigestBlock } from './rssStoryBlock'
 import type { FeedTopicKindBlock, FeedTopicsOutputBlock } from './intelligence/contracts/feedTopicsContractBlock'
 import { FEED_OTHER_THEME_BLOCK, type FeedTopicThemesOutputBlock } from './intelligence/contracts/feedTopicThemesContractBlock'
 
@@ -33,6 +33,39 @@ export interface RssTopicsDayBlock {
   topics: RssTopicBlock[]
   /** Items the model was asked about and left out: not asked again today */
   skipped: string[]
+  /**
+   * Articles the AI read from sources outside the reading list, by item id:
+   * where each one went. They never make topics; they cite one, add to a
+   * theme's paragraph, or start an Elsewhere theme.
+   */
+  outside?: Record<string, RssOutsidePlaceBlock>
+  /** The paragraph per theme from those articles, written at fixed times */
+  notes?: RssThemeNoteBlock[]
+}
+
+export type RssOutsideKindBlock = 'topic' | 'theme' | 'elsewhere' | 'skip'
+
+export interface RssOutsidePlaceBlock {
+  kind: RssOutsideKindBlock
+  /** The topic's name, or the theme's; '' for skip */
+  name: string
+  /** The outlet, as its feed is titled */
+  source: string
+  /** Only a headline and a teaser (paywalled): it cites, it does not go into a paragraph */
+  headline: boolean
+}
+
+export interface RssThemeNoteBlock {
+  theme: string
+  /** A theme none of the reading list's topics have: shown under Elsewhere */
+  elsewhere: boolean
+  /** The paragraph; null when the articles add nothing beyond the reading list */
+  text: string | null
+  /** The articles it was written from */
+  members: string[]
+  /** The time slot it was written in (rssNoteSlotBlock) */
+  slot: string
+  version: number
 }
 
 export const emptyRssTopicsDayBlock = (day: string): RssTopicsDayBlock => ({ day, topics: [], skipped: [] })
@@ -147,11 +180,12 @@ export const RSS_UNSORTED_THEME_BLOCK = 'Not sorted yet'
  */
 export function regroupRssDayInboxByThemeBlock(days: RssDayInboxBlock[], topicsFor: (day: string) => RssTopicsDayBlock): RssDayInboxBlock[] {
   return days.map((day) => {
+    const state = topicsFor(day.day)
     const themeOf = new Map<string, string>()
-    for (const topic of topicsFor(day.day).topics) {
+    const labelOf = (topic: RssTopicBlock) => (topic.kind === 'mood' ? `Market · ${topic.theme}` : (topic.theme as string))
+    for (const topic of state.topics) {
       if (!topic.theme) continue
-      const label = topic.kind === 'mood' ? `Market · ${topic.theme}` : topic.theme
-      for (const id of topic.members) if (!themeOf.has(id)) themeOf.set(id, label)
+      for (const id of topic.members) if (!themeOf.has(id)) themeOf.set(id, labelOf(topic))
     }
     const groups = new Map<string, RssStoryBlock[]>()
     for (const source of day.sources) {
@@ -160,10 +194,152 @@ export function regroupRssDayInboxByThemeBlock(days: RssDayInboxBlock[], topicsF
         groups.set(label, [...(groups.get(label) ?? []), story])
       }
     }
+    const digests = rssThemeDigestsBlock(state)
     const last = (name: string) => (name === RSS_UNSORTED_THEME_BLOCK ? 3 : name === FEED_OTHER_THEME_BLOCK ? 2 : name.startsWith('Market · ') ? 0 : 1)
     const sources = [...groups.entries()]
       .sort((a, b) => last(a[0]) - last(b[0]) || b[1].length - a[1].length || a[0].localeCompare(b[0]))
-      .map(([name, stories]) => ({ feedId: `theme:${name}`, feedTitle: name, stories }))
-    return { ...day, sources }
+      .map(([name, stories]) => ({ feedId: `theme:${name}`, feedTitle: name, stories, ...(digests.themes.get(name) ? { digest: digests.themes.get(name) } : {}) }))
+    // Then what the other sources had that the reading list did not, by theme
+    const elsewhere = [...digests.elsewhere.entries()]
+      .sort((a, b) => b[1].sources.length - a[1].sources.length || a[0].localeCompare(b[0]))
+      .map(([name, digest]) => ({ feedId: `elsewhere:${name}`, feedTitle: `Elsewhere · ${name}`, stories: [] as RssStoryBlock[], digest }))
+    return { ...day, sources: [...sources, ...elsewhere] }
   })
+}
+
+/**
+ * Each theme's digest from the articles outside the reading list, keyed the
+ * way the list labels its themes, and the Elsewhere ones (themes the reading
+ * list did not have) apart. An Elsewhere theme with no paragraph is left out:
+ * a list of outlets on its own says nothing to read.
+ */
+export function rssThemeDigestsBlock(state: RssTopicsDayBlock): { themes: Map<string, RssThemeDigestBlock>; elsewhere: Map<string, RssThemeDigestBlock> } {
+  const topicByName = new Map(state.topics.map(t => [t.name, t]))
+  const labelOfTopic = (t: RssTopicBlock) => (t.theme ? (t.kind === 'mood' ? `Market · ${t.theme}` : t.theme) : null)
+  const moodThemes = new Set(state.topics.filter(t => t.kind === 'mood' && t.theme).map(t => t.theme as string))
+  const themes = new Map<string, RssThemeDigestBlock>()
+  const elsewhere = new Map<string, RssThemeDigestBlock>()
+  const entry = (map: Map<string, RssThemeDigestBlock>, key: string) => {
+    let d = map.get(key)
+    if (!d) { d = { note: null, cited: [], sources: [] }; map.set(key, d) }
+    return d
+  }
+  const addSource = (list: string[], source: string) => { if (!list.includes(source)) list.push(source) }
+  for (const place of Object.values(state.outside ?? {})) {
+    if (place.kind === 'skip') continue
+    if (place.kind === 'topic') {
+      const topic = topicByName.get(place.name)
+      const label = topic ? labelOfTopic(topic) : null
+      if (!topic || !label) continue
+      const d = entry(themes, label)
+      addSource(d.sources, place.source)
+      let cite = d.cited.find(c => c.topic === topic.name)
+      if (!cite) { cite = { topic: topic.name, sources: [] }; d.cited.push(cite) }
+      addSource(cite.sources, place.source)
+    } else if (place.kind === 'theme') {
+      addSource(entry(themes, moodThemes.has(place.name) ? `Market · ${place.name}` : place.name).sources, place.source)
+    } else {
+      addSource(entry(elsewhere, place.name).sources, place.source)
+    }
+  }
+  for (const note of state.notes ?? []) {
+    const key = note.elsewhere ? note.theme : (moodThemes.has(note.theme) ? `Market · ${note.theme}` : note.theme)
+    const d = (note.elsewhere ? elsewhere : themes).get(key)
+    if (d) d.note = note.text
+  }
+  for (const d of themes.values()) d.cited.sort((a, b) => b.sources.length - a.sources.length)
+  for (const [name, d] of elsewhere) if (!d.note) elsewhere.delete(name)
+  return { themes, elsewhere }
+}
+
+// -- Articles from outside the reading list ---------------------------------
+
+/** The day's theme names the outside articles may go under: the reading list's, by kind. */
+export function rssDayThemesBlock(state: RssTopicsDayBlock): string[] {
+  return [...new Set(state.topics.map(t => t.theme).filter((t): t is string => Boolean(t)))]
+}
+
+/** Outside articles not placed yet. */
+export function rssOutsideUnplacedBlock<T extends { item: { id: string } }>(state: RssTopicsDayBlock, items: T[]): T[] {
+  const placed = state.outside ?? {}
+  return items.filter(({ item }) => !placed[item.id])
+}
+
+/**
+ * Put a batch's answers on its outside articles. A topic must be one of the
+ * day's, a theme one of the day's (any case; the day's spelling wins); a theme
+ * that is not becomes Elsewhere. Anything left out is skipped, so it is not
+ * asked about again.
+ */
+export function mergeRssOutsideBlock(
+  state: RssTopicsDayBlock,
+  batch: Array<{ item: { id: string }; source: string; headline: boolean }>,
+  answers: Array<{ n: number; kind: RssOutsideKindBlock; name: string }>,
+): RssTopicsDayBlock {
+  const topicByKey = new Map(state.topics.map(t => [nameKeyBlock(t.name), t.name]))
+  const themeByKey = new Map(rssDayThemesBlock(state).map(t => [nameKeyBlock(t), t]))
+  const outside = { ...(state.outside ?? {}) }
+  const answered = new Map(answers.map(a => [a.n, a]))
+  batch.forEach((entry, i) => {
+    const a = answered.get(i + 1)
+    const base = { source: entry.source, headline: entry.headline }
+    if (!a || a.kind === 'skip' || !a.name.trim()) { outside[entry.item.id] = { ...base, kind: 'skip', name: '' }; return }
+    const key = nameKeyBlock(a.name)
+    if (a.kind === 'topic' && topicByKey.has(key)) { outside[entry.item.id] = { ...base, kind: 'topic', name: topicByKey.get(key) as string }; return }
+    const theme = themeByKey.get(key)
+    if (theme && a.kind !== 'elsewhere') { outside[entry.item.id] = { ...base, kind: 'theme', name: theme }; return }
+    // A topic or theme the day does not have: what it is about, under Elsewhere
+    outside[entry.item.id] = { ...base, kind: 'elsewhere', name: theme ?? a.name.trim() }
+  })
+  return { ...state, outside }
+}
+
+/** Paragraphs are written at these hours of the day, and a past day's once. */
+export const RSS_NOTE_HOURS_BLOCK = [0, 9, 13, 18]
+
+/** The time slot `now` falls in for `day`: its latest hour passed today, or final for a day that is over. */
+export function rssNoteSlotBlock(day: string, now: Date): string {
+  if (day < localDayBlock(now)) return 'final'
+  const hour = [...RSS_NOTE_HOURS_BLOCK].reverse().find(h => now.getHours() >= h) ?? 0
+  return String(hour)
+}
+
+export interface RssThemeNoteWorkBlock {
+  theme: string
+  elsewhere: boolean
+  /** Outside articles with full text under this theme (a topic's theme, the theme itself, or Elsewhere) */
+  members: string[]
+}
+
+/**
+ * The paragraphs to write now: a theme whose outside articles (full text only)
+ * changed since its paragraph, once per time slot. Topic citations count toward
+ * the topic's theme, so the paragraph can say what else those outlets added.
+ */
+export function rssThemeNotesNeededBlock(state: RssTopicsDayBlock, slot: string, version: number): RssThemeNoteWorkBlock[] {
+  const themeOfTopic = new Map(state.topics.map(t => [t.name, t.theme ?? null]))
+  const groups = new Map<string, RssThemeNoteWorkBlock>()
+  for (const [id, place] of Object.entries(state.outside ?? {})) {
+    if (place.headline || place.kind === 'skip') continue
+    const theme = place.kind === 'topic' ? themeOfTopic.get(place.name) : place.name
+    if (!theme) continue
+    const elsewhere = place.kind === 'elsewhere'
+    const key = `${elsewhere ? 'e' : 't'}|${theme}`
+    const group = groups.get(key) ?? { theme, elsewhere, members: [] }
+    group.members.push(id)
+    groups.set(key, group)
+  }
+  const notes = state.notes ?? []
+  return [...groups.values()].filter((g) => {
+    const note = notes.find(n => n.theme === g.theme && n.elsewhere === g.elsewhere)
+    if (!note || note.version < version) return true
+    if (note.slot === slot || note.slot === 'final') return false
+    const had = new Set(note.members)
+    return g.members.some(id => !had.has(id))
+  }).sort((a, b) => b.members.length - a.members.length)
+}
+
+export function setRssThemeNoteBlock(state: RssTopicsDayBlock, note: RssThemeNoteBlock): RssTopicsDayBlock {
+  const notes = (state.notes ?? []).filter(n => !(n.theme === note.theme && n.elsewhere === note.elsewhere))
+  return { ...state, notes: [...notes, note] }
 }

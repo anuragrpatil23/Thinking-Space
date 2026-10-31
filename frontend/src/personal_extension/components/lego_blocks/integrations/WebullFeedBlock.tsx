@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import RssArticleViewBlock from '@/components/lego_blocks/integrations/RssArticleViewBlock'
 import RssFeedPanelBlock from '@/components/lego_blocks/integrations/RssFeedPanelBlock'
 import { loadRssFeedsBlock, replaceRssItemBlock, useRssFeedsBlock } from '@/components/lego_blocks/hooks/shared/useRssFeedsBlock'
+import { rssReaderFeedsBlock } from '@/services/lego_blocks/units/rssFeedBlock'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
 import { useMarkdownViewer } from '@/components/orchestrators/MarkdownViewerOrch'
 import { loadRssItemByIdOrch, readRssFeedPreferencesOrch, updateRssFeedOrch } from '@/services/orchestrators/rssFeedOrch'
@@ -327,15 +328,16 @@ function EarningsCallsStatusBlock() {
 // everything that arrived. In full is part of all, so two overlapping smoothed
 // areas drew one number twice and curved through days that never happened.
 const VOLUME_COLORS_BLOCK = {
-  // Two steps of one lavender, checked with the dataviz palette validator in each mode.
-  light: { full: '#5B52C9', teaser: '#A29BEC', grid: '#EFEFF2', cursor: 'rgba(0,0,0,0.04)' },
-  dark: { full: '#8C85E3', teaser: '#5B52C9', grid: '#27272a', cursor: 'rgba(255,255,255,0.05)' },
+  // Your reading list in teal, the rest in two steps of one lavender; checked
+  // with the dataviz palette validator in each mode.
+  light: { list: '#1F9E89', full: '#5B52C9', teaser: '#A29BEC', grid: '#EFEFF2', cursor: 'rgba(0,0,0,0.04)' },
+  dark: { list: '#2BA592', full: '#8C85E3', teaser: '#5B52C9', grid: '#27272a', cursor: 'rgba(255,255,255,0.05)' },
 }
 
 function VolumeTooltipBlock({ active, payload, colors }: {
   active?: boolean
-  payload?: Array<{ payload: { label: string; all: number; readable: number; teaser: number; today: boolean } }>
-  colors: { full: string; teaser: string }
+  payload?: Array<{ payload: { label: string; all: number; inList: number; otherFull: number; teaser: number; today: boolean } }>
+  colors: { list: string; full: string; teaser: string }
 }) {
   const d = active ? payload?.[0]?.payload : undefined
   if (!d) return null
@@ -352,27 +354,34 @@ function VolumeTooltipBlock({ active, payload, colors }: {
         <span className="text-zinc-500 dark:text-zinc-400">{d.label}{d.today ? ', so far' : ''}</span>
         <span className="font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">{d.all.toLocaleString()}</span>
       </div>
-      {row(colors.full, 'In full', d.readable)}
+      {row(colors.list, 'In your reading list', d.inList)}
+      {row(colors.full, 'In full, other sources', d.otherFull)}
       {row(colors.teaser, 'Headline only', d.teaser)}
     </div>
   )
 }
 
 function VolumeChartBlock({ day, onPickDay }: { day: string; onPickDay: (day: string) => void }) {
-  const { feeds } = useRssFeedsBlock()
+  const { feeds, preferences } = useRssFeedsBlock()
   const { hostRef, isDark } = useDarkModeClassBlock()
   const colors = isDark ? VOLUME_COLORS_BLOCK.dark : VOLUME_COLORS_BLOCK.light
   const data = useMemo(() => {
-    const days = identityMemoBlock('feed-volume', [feeds, new Date().toDateString()], () => rssDailyVolumeBlock(feeds, new Date(), 30))
+    const days = identityMemoBlock('feed-volume', [feeds, preferences, new Date().toDateString()], () => {
+      // The reading list's articles: what the Reading tab and the stories count
+      const listIds = new Set(rssReaderFeedsBlock(feeds, preferences).flatMap(f => f.items.map(item => item.id)))
+      return rssDailyVolumeBlock(feeds, new Date(), 30, listIds)
+    })
     return days.map((d, i) => ({
       day: d.day,
       all: d.readable + d.teaser,
       readable: d.readable,
+      inList: d.inList,
+      otherFull: d.readable - d.inList,
       teaser: d.teaser,
       today: i === days.length - 1,
       label: new Date(`${d.day}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     }))
-  }, [feeds])
+  }, [feeds, preferences])
   const total = data.reduce((n, d) => n + d.all, 0)
   const readable = data.reduce((n, d) => n + d.readable, 0)
   // A day's average over the full days only; today is still arriving.
@@ -393,6 +402,7 @@ function VolumeChartBlock({ day, onPickDay }: { day: string; onPickDay: (day: st
           <span className="text-[12px] text-zinc-500 dark:text-zinc-400">{total.toLocaleString()} in 30 days · {total > 0 ? Math.round((readable / total) * 100) : 0}% in full</span>
         </div>
         <span className="flex items-center gap-3 text-[12px] text-zinc-500 dark:text-zinc-400">
+          {swatch(colors.list, 'Your reading list')}
           {swatch(colors.full, 'In full')}
           {swatch(colors.teaser, 'Headline only')}
         </span>
@@ -419,7 +429,10 @@ function VolumeChartBlock({ day, onPickDay }: { day: string; onPickDay: (day: st
               />
             )}
             {/* The Feed's day at full strength, so the bar for the day shown stands out */}
-            <Bar dataKey="readable" stackId="v" fill={colors.full} radius={[0, 0, 2, 2]} isAnimationActive={false}>
+            <Bar dataKey="inList" stackId="v" fill={colors.list} radius={[0, 0, 2, 2]} isAnimationActive={false}>
+              {data.map(d => <Cell key={d.day} fillOpacity={d.day === day ? 1 : 0.55} />)}
+            </Bar>
+            <Bar dataKey="otherFull" stackId="v" fill={colors.full} isAnimationActive={false}>
               {data.map(d => <Cell key={d.day} fillOpacity={d.day === day ? 1 : 0.55} />)}
             </Bar>
             <Bar dataKey="teaser" stackId="v" fill={colors.teaser} radius={[3, 3, 0, 0]} isAnimationActive={false}>
@@ -854,9 +867,11 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
     void pickUpTaggedArticlesOrch(feeds).then(() => nameNoteCompaniesOrch(feeds))
   }, [feeds, feedsReady])
 
-  // From Overview: open the story in Reading
+  // From Overview: open the story in Reading, the list by theme with its theme open and the article in view
+  const [readingFocus, setReadingFocus] = useState<{ itemId: string; nonce: number } | null>(null)
   const openFromOverview = useCallback((item: RssFeedItemBlock) => {
     setView('reading')
+    setReadingFocus(prev => ({ itemId: item.id, nonce: (prev?.nonce ?? 0) + 1 }))
     setArticle({ item, onItemUpdate: () => {}, onItemRemove: () => {}, presetTags: preferences?.presetTags ?? [], tagColors: preferences?.tagColors ?? {} })
   }, [preferences])
 
@@ -941,6 +956,7 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
       onClose={() => setArticle(null)}
       className="h-full"
       day={feedDay}
+      focus={readingFocus}
     />
   )
 
