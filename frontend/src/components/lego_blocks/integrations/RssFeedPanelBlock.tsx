@@ -364,10 +364,11 @@ export default function RssFeedPanelBlock({
   // shape it, so returning to the list does not regroup every story
   const sourceInbox = useMemo<RssDayInboxBlock[]>(
     () => (dayMode
-      ? identityMemoBlock('rss-day-inbox', [allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter.join(','), deferredInboxFeeds === filteredInboxFeeds], () =>
+      // The day is a key too: without it, picking another day kept the last day's list
+      ? identityMemoBlock('rss-day-inbox', [allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter.join(','), day ?? '', deferredInboxFeeds === filteredInboxFeeds], () =>
         buildRssDayInboxBlock({ feeds: deferredInboxFeeds, configs: preferences?.feeds ?? [], unreadOnly, sessionReadIds }))
       : []),
-    [dayMode, deferredInboxFeeds, filteredInboxFeeds, allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter],
+    [dayMode, deferredInboxFeeds, filteredInboxFeeds, allFeeds, preferences, readableTab, unreadOnly, sessionReadIds, sourceFilter, day],
   )
   // Native: each day by source (as it arrived) or by theme (as the AI sorted
   // it: the Overview's themes). Remembered on this device.
