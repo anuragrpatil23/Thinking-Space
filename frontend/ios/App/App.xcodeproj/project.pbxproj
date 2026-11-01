@@ -10,13 +10,13 @@
 		119A5F5C2C20000100C0D001 /* RootShellViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F582C20000100C0D001 /* RootShellViewController.swift */; };
 		119A5F5D2C20000100C0D001 /* TopChromePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F592C20000100C0D001 /* TopChromePlugin.swift */; };
 		119A5F5E2C20000100C0D001 /* TopChromeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F5A2C20000100C0D001 /* TopChromeState.swift */; };
-		11AB0002250718AB00C0D001 /* VaultWalkPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11AB0001250718AB00C0D001 /* VaultWalkPlugin.swift */; };
-		11AB0004250718AB00C0D001 /* IdleTimerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11AB0003250718AB00C0D001 /* IdleTimerPlugin.swift */; };
 		119A5F5F2C20000100C0D001 /* TopChromeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F5B2C20000100C0D001 /* TopChromeView.swift */; };
 		119A5F602C20000100C0D001 /* PhoneShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F612C20000100C0D001 /* PhoneShellView.swift */; };
 		119A5F622C20000100C0D001 /* DrawerHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F632C20000100C0D001 /* DrawerHeaderView.swift */; };
 		119A5F642C20000100C0D001 /* RailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F652C20000100C0D001 /* RailView.swift */; };
 		119A5F662C20000100C0D001 /* PushNavigationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 119A5F672C20000100C0D001 /* PushNavigationCoordinator.swift */; };
+		11AB0002250718AB00C0D001 /* VaultWalkPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11AB0001250718AB00C0D001 /* VaultWalkPlugin.swift */; };
+		11AB0004250718AB00C0D001 /* IdleTimerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11AB0003250718AB00C0D001 /* IdleTimerPlugin.swift */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
@@ -42,13 +42,13 @@
 		119A5F582C20000100C0D001 /* RootShellViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootShellViewController.swift; sourceTree = "<group>"; };
 		119A5F592C20000100C0D001 /* TopChromePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopChromePlugin.swift; sourceTree = "<group>"; };
 		119A5F5A2C20000100C0D001 /* TopChromeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopChromeState.swift; sourceTree = "<group>"; };
-		11AB0001250718AB00C0D001 /* VaultWalkPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultWalkPlugin.swift; sourceTree = "<group>"; };
-		11AB0003250718AB00C0D001 /* IdleTimerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleTimerPlugin.swift; sourceTree = "<group>"; };
 		119A5F5B2C20000100C0D001 /* TopChromeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopChromeView.swift; sourceTree = "<group>"; };
 		119A5F612C20000100C0D001 /* PhoneShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneShellView.swift; sourceTree = "<group>"; };
 		119A5F632C20000100C0D001 /* DrawerHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawerHeaderView.swift; sourceTree = "<group>"; };
 		119A5F652C20000100C0D001 /* RailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RailView.swift; sourceTree = "<group>"; };
 		119A5F672C20000100C0D001 /* PushNavigationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNavigationCoordinator.swift; sourceTree = "<group>"; };
+		11AB0001250718AB00C0D001 /* VaultWalkPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultWalkPlugin.swift; sourceTree = "<group>"; };
+		11AB0003250718AB00C0D001 /* IdleTimerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleTimerPlugin.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -390,7 +390,7 @@
 				);
 				MARKETING_VERSION = 2.10.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
-				PRODUCT_BUNDLE_IDENTIFIER = com.anurag.thinking-space;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.anurag.thinking-space";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -414,7 +414,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.10.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.anurag.thinking-space;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.anurag.thinking-space";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
