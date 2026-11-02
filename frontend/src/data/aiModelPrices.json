@@ -57,7 +57,7 @@
     "  cacheCreation1h cache write, 1-hour TTL (Anthropic: 2.0x input).",
     "                  Equal to the 5m figure where a provider has no TTL split."
   ],
-  "refreshed_at": "2026-10-30",
+  "refreshed_at": "2026-11-02",
   "exact_source": "LiteLLM model_prices_and_context_window.json",
   "overrides": {
     "claude-fable-5-1": {
@@ -1119,6 +1119,13 @@
       "cacheRead": 1.5,
       "cacheCreation5m": 18.75,
       "cacheCreation1h": 15
+    },
+    "gpt-6-astra-law": {
+      "input": 10,
+      "output": 50,
+      "cacheRead": 1,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 10
     }
   },
   "patterns": [
