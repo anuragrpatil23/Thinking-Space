@@ -57,6 +57,8 @@ interface WebullCompanyPageBlockProps {
   costShare: number | null
   /** Last Webull price for the stock; falls back to prices.csv. */
   livePrice: number | null
+  /** When livePrice was fetched (ISO); a price without it is treated as undated. */
+  livePriceAsOf?: string | null
   holding: WebullCompanyHoldingBlock | null
   positionCount: number
   /** The positions table and its controls, owned by the workspace; none for a company you don't hold. */
@@ -454,6 +456,7 @@ export default function WebullCompanyPageBlock({
   executionRoot,
   costShare,
   livePrice,
+  livePriceAsOf = null,
   holding,
   positionCount,
   positionsSlot,
@@ -478,10 +481,20 @@ export default function WebullCompanyPageBlock({
   const range = study?.currentRange ?? null
   const prices = useMemo(() => dossier?.prices ?? [], [dossier?.prices])
   const lastClose = prices.length > 0 ? prices[prices.length - 1] : null
-  const price = livePrice ?? lastClose?.price ?? null
+  // One price for the whole page: the newest dated one. The synced price wins
+  // only when it is at least as new as the latest daily close.
+  const current = useMemo((): { price: number; date: string | null } | null => {
+    const liveDay = livePriceAsOf ? livePriceAsOf.slice(0, 10) : null
+    if (livePrice !== null && (!lastClose || (liveDay !== null && liveDay >= lastClose.date))) return { price: livePrice, date: liveDay }
+    if (lastClose) return { price: lastClose.price, date: lastClose.date }
+    return livePrice !== null ? { price: livePrice, date: liveDay } : null
+  }, [livePrice, livePriceAsOf, lastClose])
+  const price = current?.price ?? null
+  // Older than four days (a weekend plus a holiday): shown, but marked, and no range verdict.
+  const priceStale = current?.date ? Date.now() - Date.parse(`${current.date}T23:59:59`) > 4 * 86_400_000 : current !== null
   const mid = range ? (range.low + range.high) / 2 : null
   const fromMid = price !== null && mid ? price - mid : null
-  const rangeState = price !== null && range
+  const rangeState = price !== null && range && !priceStale
     ? (price < range.low ? 'Below range' : price > range.high ? 'Above range' : 'In range')
     : null
   const rangePosition = price !== null && range && range.high > range.low
@@ -529,7 +542,9 @@ export default function WebullCompanyPageBlock({
                   {fromMid >= 0 ? '+' : '−'}{Math.abs((fromMid / mid) * 100).toFixed(1)}% · {fromMid >= 0 ? '+' : '−'}{formatPriceBlock(Math.abs(fromMid))} from range mid
                 </span>
               ) : null}
-              {livePrice === null && lastClose && <span className="ml-1.5">as of {formatDateBlock(lastClose.date)}</span>}
+              <span className={cn('ml-1.5', priceStale && 'font-medium text-amber-600 dark:text-amber-400')}>
+                {current?.date ? `as of ${formatDateBlock(current.date)}` : 'date unknown'}{priceStale ? ' · stale' : ''}
+              </span>
             </p>
             </>)}
           </div>
@@ -579,22 +594,6 @@ export default function WebullCompanyPageBlock({
       </div>
 
       <div className="min-w-0 space-y-5">
-      {PrivateCompanyGapsBlock && executionRoot && ticker && (
-        <section id="webull-company-gaps" className="scroll-mt-4">
-          <Suspense fallback={null}>
-            <PrivateCompanyGapsBlock ticker={ticker} executionRoot={executionRoot} onOpenFile={onOpenFile} />
-          </Suspense>
-        </section>
-      )}
-
-      {PrivateCompanyNoticedBlock && executionRoot && ticker && (
-        <section id="webull-company-noticed" className="scroll-mt-4">
-          <Suspense fallback={null}>
-            <PrivateCompanyNoticedBlock ticker={ticker} executionRoot={executionRoot} onOpenFile={onOpenFile} />
-          </Suspense>
-        </section>
-      )}
-
       {PrivateCompanyPanelsBlock && executionRoot && ticker && (
         <Suspense fallback={null}>
           <PrivateCompanyPanelsBlock
@@ -602,8 +601,9 @@ export default function WebullCompanyPageBlock({
             ticker={ticker}
             executionRoot={executionRoot}
             prices={prices}
-            livePrice={price !== null ? { price, date: livePrice !== null ? new Date().toISOString().slice(0, 10) : (lastClose?.date ?? new Date().toISOString().slice(0, 10)) } : null}
+            livePrice={current && current.date ? { price: current.price, date: current.date } : null}
             studyFrontmatter={study?.rawFrontmatter ?? null}
+            studyFilePath={study?.filePath ?? null}
             onOpenFile={onOpenFile}
             onChartBands={setPrivateChartBands}
           />
@@ -627,6 +627,22 @@ export default function WebullCompanyPageBlock({
             filePath={executionRoot ? (row) => `${executionRoot}/${ticker.toUpperCase()}/archived_positions/${row.fileName}` : null}
             onOpenFile={onOpenFile}
           />
+        </section>
+      )}
+
+      {PrivateCompanyGapsBlock && executionRoot && ticker && (
+        <section id="webull-company-gaps" className="scroll-mt-4">
+          <Suspense fallback={null}>
+            <PrivateCompanyGapsBlock ticker={ticker} executionRoot={executionRoot} onOpenFile={onOpenFile} />
+          </Suspense>
+        </section>
+      )}
+
+      {PrivateCompanyNoticedBlock && executionRoot && ticker && (
+        <section id="webull-company-noticed" className="scroll-mt-4">
+          <Suspense fallback={null}>
+            <PrivateCompanyNoticedBlock ticker={ticker} executionRoot={executionRoot} onOpenFile={onOpenFile} />
+          </Suspense>
         </section>
       )}
 

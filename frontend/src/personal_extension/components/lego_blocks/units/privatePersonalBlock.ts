@@ -49,6 +49,8 @@ export interface PrivateCompanyPanelsPropsBlock {
   livePrice: { price: number; date: string } | null
   /** The study record's frontmatter, as read; null without a study. */
   studyFrontmatter: Record<string, unknown> | null
+  /** The study record's file; null without a study. */
+  studyFilePath?: string | null
   onOpenFile: (path: string) => void
   /** Bands to draw on the page's price chart. */
   onChartBands?: (bands: TimedPriceBandBlock[]) => void

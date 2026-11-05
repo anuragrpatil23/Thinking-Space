@@ -2719,6 +2719,7 @@ export default function WebullWorkspaceBlock({
               executionRoot={executionRoot}
               costShare={sidebarCompanyGroups.held.find(entry => entry.company.companyTicker === selectedCompany.companyTicker)?.share ?? null}
               livePrice={selectedCompanyLivePrice}
+              livePriceAsOf={fetchedAt}
               footer={nativeFooter}
               holding={selectedCompanyHolding}
               positionsActions={nativePositionsActions}
