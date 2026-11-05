@@ -1,6 +1,6 @@
 import { useAppWorkAttentionBlock } from '@/components/lego_blocks/hooks/shared/useAppWorkAttentionBlock'
 import { Suspense, useMemo, useState, type ReactNode } from 'react'
-import { F9PriceChartBlock } from '../units/F9PriceChartBlock'
+import { F9PriceChartBlock, type TimedPriceBandBlock } from '../units/F9PriceChartBlock'
 import FileCopyMenuHostBlock, { openFileCopyMenuBlock } from '@/components/lego_blocks/integrations/FileCopyMenuBlock'
 import { ChevronRight, Download, Loader2 } from 'lucide-react'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
@@ -16,7 +16,7 @@ import {
   F9SectionLabelBlock,
   F9SegmentedBlock,
 } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
-import { PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
+import { PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock, PrivateCompanyPanelsBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 import { valueLineDueBlock, valueLineIssueLabelBlock, valueLineIssueRowsBlock, type ValueLineIssueRowBlock, type WebullResearchFileBlock, type WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
 import type { WebullClosedPositionBlock } from '@/personal_extension/services/lego_blocks/units/webullClosedPositionsBlock'
 import { useWebullClosedPositionsBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullClosedPositionsBlock'
@@ -470,6 +470,7 @@ export default function WebullCompanyPageBlock({
   // Time studying the company is filed in its folder.
   const workRef = useAppWorkAttentionBlock(executionRoot ? `${executionRoot}/${ticker.toUpperCase()}/company` : null, `${ticker.toUpperCase()} company page`)
   const gapLinks = useGapPositionLinksBlock(executionRoot)
+  const [privateChartBands, setPrivateChartBands] = useState<TimedPriceBandBlock[]>([])
   const [priceWindow, setPriceWindow] = useState<PriceWindowBlock>('2y')
   const [observationsExpanded, setObservationsExpanded] = useState(false)
 
@@ -553,7 +554,7 @@ export default function WebullCompanyPageBlock({
             className="flex min-h-[260px] flex-1"
             onContextMenu={(event) => { if (executionRoot && ticker) openFileCopyMenuBlock(event, { kind: 'file', path: `${executionRoot.replace(/\/+$/, '')}/${ticker}/prices.csv` }) }}
           >
-            <F9PriceChartBlock points={chartPoints} range={range} bands={dossier?.bands?.bands ?? []} idKey={ticker || 'company'} />
+            <F9PriceChartBlock points={chartPoints} range={range} bands={dossier?.bands?.bands ?? []} timedBands={privateChartBands} idKey={ticker || 'company'} />
           </div>
         ) : (
           <p className="py-10 text-center text-sm text-zinc-500">{dossier ? 'No prices yet: they fill in with the next daily pass (Feed → Sources → Prices).' : 'Loading…'}</p>
@@ -592,6 +593,21 @@ export default function WebullCompanyPageBlock({
             <PrivateCompanyNoticedBlock ticker={ticker} executionRoot={executionRoot} onOpenFile={onOpenFile} />
           </Suspense>
         </section>
+      )}
+
+      {PrivateCompanyPanelsBlock && executionRoot && ticker && (
+        <Suspense fallback={null}>
+          <PrivateCompanyPanelsBlock
+            slot="main"
+            ticker={ticker}
+            executionRoot={executionRoot}
+            prices={prices}
+            livePrice={price !== null ? { price, date: livePrice !== null ? new Date().toISOString().slice(0, 10) : (lastClose?.date ?? new Date().toISOString().slice(0, 10)) } : null}
+            studyFrontmatter={study?.rawFrontmatter ?? null}
+            onOpenFile={onOpenFile}
+            onChartBands={setPrivateChartBands}
+          />
+        </Suspense>
       )}
 
       {positionsSlot && (
@@ -651,6 +667,11 @@ export default function WebullCompanyPageBlock({
                 </dd>
                 <dt className="text-zinc-500">Last updated</dt><dd>{formatDateBlock(study.lastUpdated)}</dd>
               </dl>
+              {PrivateCompanyPanelsBlock && executionRoot && ticker && (
+                <Suspense fallback={null}>
+                  <PrivateCompanyPanelsBlock slot="study" ticker={ticker} executionRoot={executionRoot} prices={prices} livePrice={null} studyFrontmatter={study.rawFrontmatter} onOpenFile={onOpenFile} />
+                </Suspense>
+              )}
               <button type="button" onClick={() => onOpenFile(study.filePath)} className="mt-2.5 text-xs text-sky-600 hover:text-sky-700 dark:text-sky-400">Read full study ›</button>
             </>
           ) : (

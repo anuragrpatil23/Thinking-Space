@@ -1,6 +1,7 @@
 import { lazy, type ComponentType } from 'react'
 import type { WebullUniverseGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
 import type { GapPositionLinkBlock } from '@/personal_extension/services/lego_blocks/units/webullGapLinkMatchBlock'
+import type { TimedPriceBandBlock } from './F9PriceChartBlock'
 
 // The Gaps tab lives in a private folder (personal_extension/thinkingspace-personal) that is not
 // part of the public repo. When the folder is present the tab is shown; when it
@@ -34,6 +35,27 @@ export const PrivateNoticedBlock = loadNoticed ? lazy(loadNoticed) : null
 const COMPANY_NOTICED_MODULES = import.meta.glob<{ default: ComponentType<PrivateCompanyGapsPropsBlock> }>('../../../thinkingspace-personal/companyNoticed.tsx')
 const loadCompanyNoticed = Object.values(COMPANY_NOTICED_MODULES)[0]
 export const PrivateCompanyNoticedBlock = loadCompanyNoticed ? lazy(loadCompanyNoticed) : null
+
+// More private company-page panels, from the same folder: one module rendered
+// in two spots (the main column, and inside the study panel). Without the
+// folder the page has neither.
+export interface PrivateCompanyPanelsPropsBlock {
+  ticker: string
+  executionRoot: string
+  slot: 'main' | 'study'
+  /** Daily prices, oldest first. */
+  prices: Array<{ date: string; price: number }>
+  /** The price shown at the top of the page and its day. */
+  livePrice: { price: number; date: string } | null
+  /** The study record's frontmatter, as read; null without a study. */
+  studyFrontmatter: Record<string, unknown> | null
+  onOpenFile: (path: string) => void
+  /** Bands to draw on the page's price chart. */
+  onChartBands?: (bands: TimedPriceBandBlock[]) => void
+}
+const COMPANY_PANELS_MODULES = import.meta.glob<{ default: ComponentType<PrivateCompanyPanelsPropsBlock> }>('../../../thinkingspace-personal/companyPanels.tsx')
+const loadCompanyPanels = Object.values(COMPANY_PANELS_MODULES)[0]
+export const PrivateCompanyPanelsBlock = loadCompanyPanels ? lazy(loadCompanyPanels) : null
 
 // Sim (replays: the loop at a moment in history) lives in the same private
 // folder, all of it; without it there is no Sim tab.
