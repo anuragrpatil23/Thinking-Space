@@ -1,5 +1,6 @@
 import { Suspense, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { PrivateBuysSellsBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
+import WebullStatementsPanelBlock from './WebullStatementsPanelBlock'
 import { Bar, BarChart, Cell, LabelList, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, type LabelProps } from 'recharts'
 import { useWebullOverallTrackRecordBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullTrackRecordBlock'
 import { F9TrackRowBlock, F9TrackShareBlock } from '@/personal_extension/components/lego_blocks/units/F9TrackRecordPartsBlock'
@@ -505,12 +506,18 @@ function TrackBusinessListBlock({ title, entries, total, onSelectTicker }: {
   )
 }
 
-function TrackRecordSectionBlock({ record, reportPath, onOpenFile, onSelectTicker }: {
+function TrackRecordSectionBlock({ record, reportPath, onOpenFile, onSelectTicker, executionRoot }: {
+  executionRoot: string | null
   record: WebullOverallTrackRecordBlock
   reportPath: string | null
   onOpenFile: (path: string) => void
   onSelectTicker: (ticker: string) => void
 }) {
+  // Track record, or the statements it is read from (where a new one is added).
+  const [tab, setTab] = useState<'record' | 'statements'>('record')
+  const tabs = executionRoot ? (
+    <F9SegmentedBlock ariaLabel="Track record or statements" value={tab} onChange={setTab} options={[{ value: 'record' as const, label: 'Results' }, { value: 'statements' as const, label: 'Statements' }]} />
+  ) : null
   // Room under the lowest and above the highest bar so value labels clear the axis.
   const values = record.byYear.flatMap(year => [year.shortDated, year.longerDated])
   const low = Math.min(0, ...values)
@@ -547,15 +554,24 @@ function TrackRecordSectionBlock({ record, reportPath, onOpenFile, onSelectTicke
     )
   }
   const through = new Date(`${record.throughStatement}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  if (tab === 'statements' && executionRoot) {
+    return (
+      <section className="min-w-0 lg:col-span-2">
+        <F9SectionLabelBlock trailing={tabs}>Track record</F9SectionLabelBlock>
+        <WebullStatementsPanelBlock executionRoot={executionRoot} onOpenFile={onOpenFile} />
+      </section>
+    )
+  }
   return (
     <section className="min-w-0 lg:col-span-2">
       <F9SectionLabelBlock
         trailing={(
           <span className="flex items-center gap-3 text-xs">
-            <span className="text-zinc-400" title="From the Webull statements; re-run webull_statements_to_csv.py for newer ones">through {through}</span>
+            <span className="text-zinc-400" title="From the Webull statements; add newer ones under Statements">through {through}</span>
             {reportPath && (
               <button type="button" onClick={() => onOpenFile(reportPath)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">Full history ›</button>
             )}
+            {tabs}
           </span>
         )}
       >
@@ -687,7 +703,7 @@ export default function WebullOverallPageBlock({
         )}
       </div>
 
-      {trackRecord && <TrackRecordSectionBlock record={trackRecord} reportPath={reportPath} onOpenFile={onOpenFile} onSelectTicker={onSelectTicker} />}
+      {trackRecord && <TrackRecordSectionBlock record={trackRecord} reportPath={reportPath} onOpenFile={onOpenFile} onSelectTicker={onSelectTicker} executionRoot={executionRoot} />}
 
       <section className="min-w-0 lg:col-span-2">
         {PrivateBuysSellsBlock && executionRoot ? (
