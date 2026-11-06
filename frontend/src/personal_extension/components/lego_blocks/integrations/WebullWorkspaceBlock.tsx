@@ -20,7 +20,7 @@ import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_block
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import WebullFeedBlock from './WebullFeedBlock'
-import { PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock, PrivateStudyBlock } from '../units/privatePersonalBlock'
+import { PrivatePositionPanelBlock, PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock, PrivateStudyBlock } from '../units/privatePersonalBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -1456,6 +1456,8 @@ export default function WebullWorkspaceBlock({
 
 
   const [detailPanelNodeId, setDetailPanelNodeId] = useState<string | null>(null)
+  // A position opened by its file (a closed row on the company page), when the private position panel is present.
+  const [positionPanelPath, setPositionPanelPath] = useState<string | null>(null)
   const [projectPresetTagsByRoot, setProjectPresetTagsByRoot] = useState<WebullProjectPresetTagsByRootBlock>(
     () => getJsonStorageItem<WebullProjectPresetTagsByRootBlock>(STORAGE_KEYS.webullProjectPresetTags, {}),
   )
@@ -2726,6 +2728,7 @@ export default function WebullWorkspaceBlock({
               positionCount={selectedCompany.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length}
               accountLabel={(accountId, accountNumber) => resolveAccountLabelBlock(accountLabelEntries, accountId, accountNumber)}
               onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
+              onOpenPosition={PrivatePositionPanelBlock ? setPositionPanelPath : undefined}
               positionsSlot={(
                 <div className="space-y-3">
                   <div className={cn(F9_PANEL_CLASS_BLOCK, 'overflow-hidden pt-2')}>
@@ -3045,7 +3048,27 @@ export default function WebullWorkspaceBlock({
         </CardContent>
       </Card>
 
-      {detailPanelNode && (
+      {(() => {
+        const PositionPanel = PrivatePositionPanelBlock
+        const root = executionRoot?.replace(/\/+$/, '')
+        if (!PositionPanel || !root) return null
+        const ref = detailPanelPositionRef
+        const path = positionPanelPath ?? (detailPanelNode && ref ? `${root}/${ref.companyTicker}/positions/${ref.fileName}` : null)
+        if (!path) return null
+        const ticker = path.slice(root.length + 1).split('/')[0]
+        return (
+          <Suspense fallback={null}>
+            <PositionPanel
+              filePath={path}
+              ticker={ticker}
+              executionRoot={root}
+              onClose={() => { setPositionPanelPath(null); setDetailPanelNodeId(null) }}
+              onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
+            />
+          </Suspense>
+        )
+      })()}
+      {detailPanelNode && !(PrivatePositionPanelBlock && executionRoot && detailPanelPositionRef) && (
         <NodeDetailPanelBlock
           node={detailPanelNode}
           frontmatter={detailPanelFrontmatter}

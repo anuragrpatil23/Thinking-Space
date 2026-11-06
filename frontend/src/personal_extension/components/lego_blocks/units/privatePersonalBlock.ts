@@ -42,7 +42,9 @@ export const PrivateCompanyNoticedBlock = loadCompanyNoticed ? lazy(loadCompanyN
 export interface PrivateCompanyPanelsPropsBlock {
   ticker: string
   executionRoot: string
-  slot: 'main' | 'study'
+  slot: 'main' | 'study' | 'closed-row'
+  /** slot 'closed-row' only: the closed position's file; the slot renders that row's two sale cells. */
+  rowFilePath?: string | null
   /** Daily prices, oldest first. */
   prices: Array<{ date: string; price: number }>
   /** The price shown at the top of the page and its day. */
@@ -58,6 +60,20 @@ export interface PrivateCompanyPanelsPropsBlock {
 const COMPANY_PANELS_MODULES = import.meta.glob<{ default: ComponentType<PrivateCompanyPanelsPropsBlock> }>('../../../thinkingspace-personal/companyPanels.tsx')
 const loadCompanyPanels = Object.values(COMPANY_PANELS_MODULES)[0]
 export const PrivateCompanyPanelsBlock = loadCompanyPanels ? lazy(loadCompanyPanels) : null
+
+// A position's detail panel, when the private folder provides one; without it,
+// clicking a position opens the generic node panel as before.
+export interface PrivatePositionPanelPropsBlock {
+  /** The position's file (open or archived). */
+  filePath: string
+  ticker: string
+  executionRoot: string
+  onClose: () => void
+  onOpenFile: (path: string) => void
+}
+const POSITION_PANEL_MODULES = import.meta.glob<{ default: ComponentType<PrivatePositionPanelPropsBlock> }>('../../../thinkingspace-personal/positionPanel.tsx')
+const loadPositionPanel = Object.values(POSITION_PANEL_MODULES)[0]
+export const PrivatePositionPanelBlock = loadPositionPanel ? lazy(loadPositionPanel) : null
 
 // Sim (replays: the loop at a moment in history) lives in the same private
 // folder, all of it; without it there is no Sim tab.

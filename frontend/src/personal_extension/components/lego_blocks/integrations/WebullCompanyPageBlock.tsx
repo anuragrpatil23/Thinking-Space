@@ -69,6 +69,8 @@ interface WebullCompanyPageBlockProps {
   /** The quiet status line under the side panel: sync time, warnings, tags, diagnostics. */
   footer?: ReactNode
   onOpenFile: (path: string) => void
+  /** Opens a position's own panel from its file, when one exists; otherwise rows open the file. */
+  onOpenPosition?: (path: string) => void
 }
 
 function formatPriceBlock(value: number): string {
@@ -92,12 +94,14 @@ function moneyBlock(value: number | null): string {
  * last time a sync saw it open. That is the last value before it closed, not
  * the sale price; the track record has what the statements say it came back with.
  */
-function ClosedPositionsTableBlock({ rows, gapLinks, accountLabel, filePath, onOpenFile }: {
+function ClosedPositionsTableBlock({ rows, gapLinks, accountLabel, filePath, onOpenFile, renderSaleCells }: {
   rows: WebullClosedPositionBlock[]
   gapLinks: GapPositionLinkBlock[]
   accountLabel?: (accountId: string | null, accountNumber: string | null) => string | null
   filePath: ((row: WebullClosedPositionBlock) => string) | null
   onOpenFile: (path: string) => void
+  /** When given, replaces the "Last value" and "Result" cells with two cells of its own (what it sold for). */
+  renderSaleCells?: (row: WebullClosedPositionBlock, path: string | null) => ReactNode
 }) {
   const total = rows.reduce((sum, row) => sum + (row.result ?? 0), 0)
   const counted = rows.filter(row => row.result !== null).length
@@ -111,7 +115,9 @@ function ClosedPositionsTableBlock({ rows, gapLinks, accountLabel, filePath, onO
             <th>Gap</th>
             <th className="text-right">Qty</th>
             <th className="text-right">Cost</th>
-            <th className="text-right" title="Its value the last time a sync saw it open">Last value</th>
+            {renderSaleCells
+              ? <th className="text-right" title="What it sold for: from the statements, or estimated from the last sync until the statement is in">Sold</th>
+              : <th className="text-right" title="Its value the last time a sync saw it open">Last value</th>}
             <th className="text-right">Result</th>
             <th className="!pr-4 text-right" title="About when it closed: the last time a sync saw it">Closed</th>
           </tr>
@@ -147,15 +153,19 @@ function ClosedPositionsTableBlock({ rows, gapLinks, accountLabel, filePath, onO
               </td>
               <td className="text-right">{row.quantity ?? '—'}</td>
               <td className="text-right">{moneyBlock(row.cost)}</td>
-              <td className="text-right">{moneyBlock(row.lastValue)}</td>
-              <td className={cn('text-right', row.result !== null && (row.result >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'))}>
-                {row.result === null ? '—' : `${row.result >= 0 ? '+' : '−'}${moneyBlock(Math.abs(row.result))}`}
-              </td>
+              {renderSaleCells ? renderSaleCells(row, filePath ? filePath(row) : null) : (
+                <>
+                  <td className="text-right">{moneyBlock(row.lastValue)}</td>
+                  <td className={cn('text-right', row.result !== null && (row.result >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'))}>
+                    {row.result === null ? '—' : `${row.result >= 0 ? '+' : '−'}${moneyBlock(Math.abs(row.result))}`}
+                  </td>
+                </>
+              )}
               <td className="!pr-4 text-right text-zinc-500 dark:text-zinc-400">{formatDateBlock(row.closedOn)}</td>
             </tr>
           ))}
         </tbody>
-        {counted > 1 && (
+        {counted > 1 && !renderSaleCells && (
           <tfoot>
             <tr className="[&>td]:border-t-[0.5px] [&>td]:border-[#E5E5EA] [&>td]:px-3 [&>td]:py-2 dark:[&>td]:border-zinc-800">
               <td colSpan={6} className="!pl-4 text-[12px] text-zinc-500 dark:text-zinc-400">Together, {counted} with a known cost</td>
@@ -464,6 +474,7 @@ export default function WebullCompanyPageBlock({
   accountLabel,
   footer,
   onOpenFile,
+  onOpenPosition,
 }: WebullCompanyPageBlockProps) {
   const valueLine = useValueLineCompanyBlock(executionRoot, ticker)
   const callsSync = useEarningsCallsCompanyBlock(executionRoot, ticker)
@@ -474,6 +485,7 @@ export default function WebullCompanyPageBlock({
   const workRef = useAppWorkAttentionBlock(executionRoot ? `${executionRoot}/${ticker.toUpperCase()}/company` : null, `${ticker.toUpperCase()} company page`)
   const gapLinks = useGapPositionLinksBlock(executionRoot)
   const [privateChartBands, setPrivateChartBands] = useState<TimedPriceBandBlock[]>([])
+  const [positionsTab, setPositionsTab] = useState<'open' | 'closed'>('open')
   const [priceWindow, setPriceWindow] = useState<PriceWindowBlock>('2y')
   const [observationsExpanded, setObservationsExpanded] = useState(false)
 
@@ -610,25 +622,36 @@ export default function WebullCompanyPageBlock({
         </Suspense>
       )}
 
-      {positionsSlot && (
-        <section id="webull-company-positions" className="scroll-mt-4">
-          <F9SectionLabelBlock trailing={positionsActions}>Positions · {positionCount}</F9SectionLabelBlock>
-          {positionsSlot}
-        </section>
-      )}
-
-      {closedPositions.length > 0 && (
-        <section id="webull-company-closed-positions" className="scroll-mt-4">
-          <F9SectionLabelBlock>Closed · {closedPositions.length}</F9SectionLabelBlock>
-          <ClosedPositionsTableBlock
-            rows={closedPositions}
-            gapLinks={gapLinks}
-            accountLabel={accountLabel}
-            filePath={executionRoot ? (row) => `${executionRoot}/${ticker.toUpperCase()}/archived_positions/${row.fileName}` : null}
-            onOpenFile={onOpenFile}
-          />
-        </section>
-      )}
+      {(positionsSlot || closedPositions.length > 0) && (() => {
+        // Open and closed positions are one table with two tabs.
+        const tab = positionsSlot ? positionsTab : 'closed'
+        const SaleCells = PrivateCompanyPanelsBlock
+        const tabClass = (on: boolean) => cn('uppercase tracking-wide', on ? 'text-zinc-700 dark:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300')
+        return (
+          <section id="webull-company-positions" className="scroll-mt-4">
+            <F9SectionLabelBlock trailing={tab === 'open' ? positionsActions : undefined}>
+              <span className="inline-flex items-center gap-3">
+                {positionsSlot && <button type="button" onClick={() => setPositionsTab('open')} className={tabClass(tab === 'open')}>Open · {positionCount}</button>}
+                {closedPositions.length > 0 && <button type="button" onClick={() => setPositionsTab('closed')} className={tabClass(tab === 'closed')}>Closed · {closedPositions.length}</button>}
+              </span>
+            </F9SectionLabelBlock>
+            {tab === 'open' ? positionsSlot : (
+              <ClosedPositionsTableBlock
+                rows={closedPositions}
+                gapLinks={gapLinks}
+                accountLabel={accountLabel}
+                filePath={executionRoot ? (row) => `${executionRoot}/${ticker.toUpperCase()}/archived_positions/${row.fileName}` : null}
+                onOpenFile={onOpenPosition ?? onOpenFile}
+                renderSaleCells={SaleCells && executionRoot && ticker ? (_row, path) => (
+                  <Suspense fallback={<><td /><td /></>}>
+                    <SaleCells slot="closed-row" rowFilePath={path} ticker={ticker} executionRoot={executionRoot} prices={prices} livePrice={null} studyFrontmatter={null} onOpenFile={onOpenFile} />
+                  </Suspense>
+                ) : undefined}
+              />
+            )}
+          </section>
+        )
+      })()}
 
       {PrivateCompanyGapsBlock && executionRoot && ticker && (
         <section id="webull-company-gaps" className="scroll-mt-4">
