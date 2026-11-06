@@ -44,6 +44,16 @@ function csvCellBlock(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
 }
 
+/** The marks whose figures differ from their position's last row in `existing` (all of them when it has none). */
+export function changedMarksBlock(existing: string | null, marks: PositionMarkBlock[]): PositionMarkBlock[] {
+  const last = new Map<string, string>()
+  for (const line of (existing ?? '').split('\n').slice(1)) {
+    const cells = line.split(',')
+    if (cells.length > 11) last.set(cells[1], cells.slice(7, 12).join(','))
+  }
+  return marks.filter(m => last.get(m.positionId) !== [m.quantity, m.avgCost, m.lastPrice, m.marketValue, m.unrealizedPl].map(csvCellBlock).join(','))
+}
+
 export function appendPositionMarksBlock(existing: string | null, marks: PositionMarkBlock[]): string {
   const base = existing && existing.trim() ? existing.replace(/\n*$/, '\n') : `${POSITION_MARKS_HEADER_BLOCK}\n`
   const rows = marks.map((m) => [m.at, m.positionId, m.account, m.kind, m.expiry, m.strike, m.right, m.quantity, m.avgCost, m.lastPrice, m.marketValue, m.unrealizedPl]

@@ -3,6 +3,7 @@ import {
   LEGACY_POSITION_MARKS_FILE_BLOCK,
   POSITION_HISTORY_DIR_BLOCK,
   appendPositionMarksBlock,
+  changedMarksBlock,
   legacyPositionMarksBlock,
   webullMarksMonthFileBlock,
   type PositionMarkBlock,
@@ -398,7 +399,13 @@ export async function syncWebullExecutionStorageBlock(
         for (const [file, rows] of legacyPositionMarksBlock(await fs.read(legacyPath))) await appendTo(file, rows)
         await fs.delete(legacyPath)
       }
-      if (marks.length > 0) await appendTo(webullMarksMonthFileBlock(markedAt), marks)
+      if (marks.length > 0) {
+        // Only the positions whose figures moved since their last row
+        const file = webullMarksMonthFileBlock(markedAt)
+        const path = joinPathBlock(companyDir, file)
+        const moved = changedMarksBlock((await fs.exists(path)) ? await fs.read(path) : null, marks)
+        if (moved.length > 0) await appendTo(file, moved)
+      }
     } catch (err) {
       console.warn('[webull] failed to append position marks', ticker, err)
     }
@@ -1063,7 +1070,28 @@ async function upsertCompanyIndexBlock(input: {
   }
 
   const body = existingBody.trim() ? existingBody : DEFAULT_COMPANY_INDEX_BODY_BLOCK
+  // Unchanged apart from the time: leave the file alone
+  const { updated_at: _was, ...before } = existingFrontmatter
+  const { updated_at: _now, ...after } = nextFrontmatter
+  void _was
+  void _now
+  if (body === existingBody && sameValueBlock(before, after)) return
   await fs.write(indexFilePath, stringifyMarkdownFrontmatterBlock(nextFrontmatter, body))
+}
+
+/** Equal once numbers and strings are compared as text, as they come back from frontmatter. */
+function sameValueBlock(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => sameValueBlock(x, b[i]))
+  }
+  const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null
+  if (isObject(a) || isObject(b)) {
+    if (!isObject(a) || !isObject(b)) return false
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+    return [...keys].every(k => sameValueBlock(a[k], b[k]))
+  }
+  const text = (x: unknown) => (x === null || x === undefined ? '' : String(x))
+  return text(a) === text(b)
 }
 
 async function upsertPositionRecordBlock(input: {
@@ -1108,13 +1136,24 @@ async function upsertPositionRecordBlock(input: {
   }
 
   const now = new Date().toISOString()
+  const body = existingBody.trim() ? existingBody : DEFAULT_POSITION_BODY_BLOCK
+  const hadRecord = Object.keys(existingFrontmatter).length > 0
+  // A sync that brings nothing new writes nothing: same figures, already synced today, same file
+  const unchanged = hadRecord
+    && Object.entries(normalizedRow).every(([key, value]) => sameValueBlock(existingFrontmatter[key], value))
+    && readStringFieldBlock(existingFrontmatter.last_synced_at).slice(0, 10) === now.slice(0, 10)
+    && existing?.filePath === filePath
+  if (unchanged && existing) return existing
   const history = asHistoryEntryListBlock(existingFrontmatter.history)
-  history.push({
-    at: now,
-    type: 'sync',
-    source: 'webull-overall',
-    note: 'Synced from Webull overall positions payload.',
-  })
+  // History records what happened to the position (opened, size or cost changed), not every price tick
+  if (!hadRecord || !sameValueBlock(existingFrontmatter.quantity, normalizedRow.quantity) || !sameValueBlock(existingFrontmatter.cost_price, normalizedRow.cost_price)) {
+    history.push({
+      at: now,
+      type: 'sync',
+      source: 'webull-overall',
+      note: 'Synced from Webull overall positions payload.',
+    })
+  }
 
   const nextFrontmatter: Record<string, unknown> = {
     ...existingFrontmatter,
@@ -1145,7 +1184,6 @@ async function upsertPositionRecordBlock(input: {
     history: history.slice(-80),
   }
 
-  const body = existingBody.trim() ? existingBody : DEFAULT_POSITION_BODY_BLOCK
   await fs.write(filePath, stringifyMarkdownFrontmatterBlock(nextFrontmatter, body))
   const summary = buildPositionSummaryFromFrontmatterBlock(nextFrontmatter, fileName, companyTicker)
   return {
