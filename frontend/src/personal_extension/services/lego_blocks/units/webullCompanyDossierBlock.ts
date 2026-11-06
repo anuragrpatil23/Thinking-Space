@@ -2,12 +2,6 @@
 // about one company, read from the files where it already lives — nothing
 // here is picked by hand or stored twice.
 
-export interface WebullObservationEntryBlock {
-  /** YYYY-MM-DD from the `## <date>` heading. */
-  date: string
-  body: string
-}
-
 export interface WebullPricePointBlock {
   date: string
   price: number
@@ -23,19 +17,6 @@ export interface WebullResearchFileBlock {
 export interface WebullResearchGroupBlock {
   label: string
   files: WebullResearchFileBlock[]
-}
-
-/** `observations.md`: one `## YYYY-MM-DD` section per sitting, newest first. */
-export function parseWebullObservationsBlock(content: string): WebullObservationEntryBlock[] {
-  const entries: WebullObservationEntryBlock[] = []
-  for (const section of content.split(/^## /m).slice(1)) {
-    const newline = section.indexOf('\n')
-    const heading = (newline < 0 ? section : section.slice(0, newline)).trim()
-    const date = heading.match(/^(\d{4}-\d{2}-\d{2})/)?.[1]
-    if (!date) continue
-    entries.push({ date, body: newline < 0 ? '' : section.slice(newline + 1).trim() })
-  }
-  return entries.sort((a, b) => b.date.localeCompare(a.date))
 }
 
 /** `prices.csv` (date, midday_price, ...): oldest first, unparseable rows dropped. */

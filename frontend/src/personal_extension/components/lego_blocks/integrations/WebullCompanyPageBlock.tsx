@@ -25,7 +25,6 @@ import { gapsForPositionBlock, type GapPositionLinkBlock } from '@/personal_exte
 import { GapChipsBlock } from '@/personal_extension/components/lego_blocks/units/GapChipsBlock'
 import { cn } from '@/lib/utils'
 
-const OBSERVATION_PREVIEW_BLOCK = 1
 
 type PriceWindowBlock = '1m' | '1y' | '2y' | 'all'
 const PRICE_WINDOW_DAYS_BLOCK: Record<PriceWindowBlock, number> = { '1m': 31, '1y': 365, '2y': 730, all: Number.POSITIVE_INFINITY }
@@ -488,7 +487,6 @@ export default function WebullCompanyPageBlock({
   const [positionsTab, setPositionsTab] = useState<'open' | 'closed'>('open')
   const [priceWindow, setPriceWindow] = useState<PriceWindowBlock>('2y')
   const [priceChart, setPriceChart] = useState<'price' | 'range'>('price')
-  const [observationsExpanded, setObservationsExpanded] = useState(false)
 
   const study = dossier?.study ?? null
   const range = study?.currentRange ?? null
@@ -524,8 +522,6 @@ export default function WebullCompanyPageBlock({
   }, [priceWindow, prices])
 
   const reports = dossier?.valueLineReports ?? []
-  const observations = dossier?.observations ?? []
-  const visibleObservations = observationsExpanded ? observations : observations.slice(0, OBSERVATION_PREVIEW_BLOCK)
   const sublineParts = [
     ticker ? displayName : null,
     costShare !== null ? `Held · ${(costShare * 100).toFixed(costShare >= 0.1 ? 0 : 1)}% of cost` : dossier && !study ? 'Not studied yet' : 'Watchlist',
@@ -727,35 +723,6 @@ export default function WebullCompanyPageBlock({
             </>
           ) : (
             <p className="mt-1 text-zinc-500">{dossier ? `No study record for ${ticker} yet.` : 'Loading…'}</p>
-          )}
-        </F9PanelBlock>
-
-        <F9PanelBlock id="webull-company-observations" className="scroll-mt-4 px-4 py-3.5 text-[13px]">
-          <div className="flex items-center justify-between">
-            <span className="font-semibold">Observations</span>
-            <span className="text-xs text-zinc-500 tabular-nums">{observations.length || ''}</span>
-          </div>
-          {visibleObservations.length > 0 ? (
-            <div className="mt-1.5 space-y-3">
-              {visibleObservations.map(entry => (
-                <div key={entry.date}>
-                  <p className="text-xs text-zinc-500">{formatDateBlock(entry.date)}</p>
-                  <p className={cn('mt-0.5 whitespace-pre-line text-xs leading-relaxed', !observationsExpanded && 'line-clamp-4')}>{entry.body}</p>
-                </div>
-              ))}
-              <div className="flex gap-4 text-xs">
-                {observations.length > OBSERVATION_PREVIEW_BLOCK && (
-                  <button type="button" onClick={() => setObservationsExpanded(prev => !prev)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">
-                    {observationsExpanded ? 'Show latest only' : 'Show all ›'}
-                  </button>
-                )}
-                {dossier?.observationsPath && (
-                  <button type="button" onClick={() => onOpenFile(dossier.observationsPath!)} className="text-sky-600 hover:text-sky-700 dark:text-sky-400">Open file</button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="mt-1 text-zinc-500">{dossier ? 'No observations yet.' : 'Loading…'}</p>
           )}
         </F9PanelBlock>
 

@@ -1,4 +1,4 @@
-// Gather one company's page from the vault: its study record, observations,
+// Gather one company's page from the vault: its study record,
 // price history and Value Line issues (under F9-execution), plus its research folder
 // (ValueLine reports, earnings calls, launches, thoughts) under
 // "Thoughts, Predictions, launches and Postmortem". Read-only.
@@ -11,11 +11,9 @@ import {
   EARNINGS_CALLS_FOLDER_NAME_BLOCK,
   VALUE_LINE_FOLDER_NAME_BLOCK,
   parseResearchDateKeyBlock,
-  parseWebullObservationsBlock,
   parseWebullPriceSeriesBlock,
   researchFolderMatchesBlock,
   sortResearchFilesBlock,
-  type WebullObservationEntryBlock,
   type WebullPricePointBlock,
   type WebullResearchFileBlock,
   type WebullResearchGroupBlock,
@@ -30,8 +28,6 @@ export interface WebullCompanyDossierBlock {
   study: WebullStudyRecordBlock | null
   /** The company's name, from the study record's `company` field. */
   companyName: string | null
-  observationsPath: string | null
-  observations: WebullObservationEntryBlock[]
   prices: WebullPricePointBlock[]
   /** The hand-drawn price bands (bands.yaml), when there are any */
   bands: PriceBandsBlock | null
@@ -127,16 +123,15 @@ export async function loadWebullCompanyDossierBlock(params: {
   const warnings: string[] = []
 
   // Without a ticker (a research-only company) there is no company folder to read.
-  const [study, observationsText, pricesText, valueLineFiles, callFiles, bandsText] = ticker
+  const [study, pricesText, valueLineFiles, callFiles, bandsText] = ticker
     ? await Promise.all([
         findStudyRecordBlock(executionRoot, ticker),
-        readTextBlock(`${companyFolder}/observations.md`),
         readTextBlock(`${companyFolder}/prices.csv`),
         listFolderEntries(`${companyFolder}/${VALUE_LINE_FOLDER_NAME_BLOCK}`).then(e => e.files).catch(() => [] as string[]),
         listFolderEntries(`${companyFolder}/${EARNINGS_CALLS_FOLDER_NAME_BLOCK}`).then(e => e.files).catch(() => [] as string[]),
         readTextBlock(`${companyFolder}/bands.yaml`),
       ])
-    : [null, null, null, [] as string[], [] as string[], null]
+    : [null, null, [] as string[], [] as string[], null]
   const companyName = study?.company ?? params.companyName
   const researchFolderPath = await findResearchFolderBlock(researchRoot, ticker, companyName)
   const research = researchFolderPath
@@ -147,8 +142,6 @@ export async function loadWebullCompanyDossierBlock(params: {
     ticker,
     study,
     companyName,
-    observationsPath: observationsText === null ? null : `${companyFolder}/observations.md`,
-    observations: observationsText ? parseWebullObservationsBlock(observationsText) : [],
     prices: pricesText ? parseWebullPriceSeriesBlock(pricesText) : [],
     bands: parsePriceBandsBlock(bandsText),
     researchFolderPath,
