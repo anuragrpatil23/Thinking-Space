@@ -1221,7 +1221,7 @@ function BacklogListBlockImpl({
           {rowColumns.map(column => (
             <span
               key={`column-header-${column.id}`}
-              className={cn('min-w-0 truncate', headerLabelClassName, column.align === 'center' && 'text-center', column.align === 'right' && 'text-right')}
+              className={cn('min-w-0 truncate', headerLabelClassName, column.align === 'center' && 'text-center', column.align === 'right' && 'text-right', columnLeadClassBlock(rowColumns, column.id))}
             >
               {column.label}
             </span>
