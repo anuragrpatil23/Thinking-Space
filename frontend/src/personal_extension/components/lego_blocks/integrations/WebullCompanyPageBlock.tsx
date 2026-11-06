@@ -492,6 +492,22 @@ export default function WebullCompanyPageBlock({
   const range = study?.currentRange ?? null
   const prices = useMemo(() => dossier?.prices ?? [], [dossier?.prices])
   const lastClose = prices.length > 0 ? prices[prices.length - 1] : null
+  // The 52-week high from the daily closes, as the Drops page shows it: how far
+  // below it the price is, when it was, and how many trading days since.
+  const yearHigh = useMemo(() => {
+    if (prices.length === 0) return null
+    const last = prices[prices.length - 1].date
+    const d = new Date(`${last}T12:00:00`)
+    d.setFullYear(d.getFullYear() - 1)
+    const from = d.toISOString().slice(0, 10)
+    let best: { date: string; price: number; index: number } | null = null
+    prices.forEach((point, index) => {
+      if (point.date >= from && (!best || point.price > best.price)) best = { date: point.date, price: point.price, index }
+    })
+    if (!best) return null
+    const b = best as { date: string; price: number; index: number }
+    return { price: b.price, date: b.date, daysAgo: prices.length - 1 - b.index }
+  }, [prices])
   // One price for the whole page: the newest dated one. The synced price wins
   // only when it is at least as new as the latest daily close.
   const current = useMemo((): { price: number; date: string | null } | null => {
@@ -555,6 +571,13 @@ export default function WebullCompanyPageBlock({
                 {current?.date ? `as of ${formatDateBlock(current.date)}` : 'date unknown'}{priceStale ? ' · stale' : ''}
               </span>
             </p>
+            {yearHigh && yearHigh.price > 0 && price < yearHigh.price && (
+              <p className="text-[13px] text-zinc-500 dark:text-zinc-400">
+                <span className="text-red-600 dark:text-red-400">−{Math.round((1 - price / yearHigh.price) * 100)}% from high</span>
+                {' '}{formatPriceBlock(yearHigh.price)} on {new Date(`${yearHigh.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {yearHigh.daysAgo > 0 ? ` · ${yearHigh.daysAgo} trading ${yearHigh.daysAgo === 1 ? 'day' : 'days'} ago` : ''}
+              </p>
+            )}
             </>)}
           </div>
         )}
