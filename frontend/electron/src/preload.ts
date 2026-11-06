@@ -520,7 +520,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Vault folder picker dialog
   selectVaultFolder: () => ipcRenderer.invoke('vault:selectFolder'),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
-  fetchText: (url: string) => ipcRenderer.invoke('net:fetchText', url) as Promise<{ status: number; body: string }>,
+  fetchText: (url: string, options?: { userAgent?: string }) => ipcRenderer.invoke('net:fetchText', url, options) as Promise<{ status: number; body: string }>,
   fetchBytes: (url: string) => ipcRenderer.invoke('net:fetchBytes', url) as Promise<{ status: number; bytesBase64: string; contentType: string | null }>,
   googleOauthRequest: (payload: {
     method: 'GET' | 'POST' | 'PUT'

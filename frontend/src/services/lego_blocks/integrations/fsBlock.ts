@@ -182,7 +182,7 @@ interface ElectronAPI {
   }): Promise<unknown>
   selectVaultFolder(): Promise<string | null>
   openExternal?(url: string): Promise<void>
-  fetchText?(url: string): Promise<{ status: number; body: string }>
+  fetchText?(url: string, options?: { userAgent?: string }): Promise<{ status: number; body: string }>
   fetchBytes?(url: string): Promise<{ status: number; bytesBase64: string; contentType: string | null }>
   /** Read-only native AI session metadata (locked to ~/.claude/projects + ~/.codex/sessions). */
   nativeAiSessionsList?(): Promise<Array<{

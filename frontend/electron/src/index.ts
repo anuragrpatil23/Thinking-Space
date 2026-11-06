@@ -2239,13 +2239,14 @@ function assertPublicFetchUrlBlock(rawUrl: string): string {
 }
 
 // -- Generic HTTP GET (for renderer-side fetch requests blocked by CSP) --
-ipcMain.handle('net:fetchText', async (_event, url: string): Promise<{ status: number; body: string }> => {
+ipcMain.handle('net:fetchText', async (_event, url: string, options?: { userAgent?: string }): Promise<{ status: number; body: string }> => {
   if (typeof url !== 'string' || !/^https?:\/\//i.test(url.trim())) {
     throw new Error('net:fetchText requires an http/https URL');
   }
   assertPublicFetchUrlBlock(url);
   const defaultHeaders = {
-    'User-Agent': 'Mozilla/5.0 (compatible; ThinkingSpace/1.0)',
+    // Some sites ask callers to say who they are (a name and contact); the caller may pass one
+    'User-Agent': typeof options?.userAgent === 'string' && /^[\x20-\x7E]{1,200}$/.test(options.userAgent) ? options.userAgent : 'Mozilla/5.0 (compatible; ThinkingSpace/1.0)',
     'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
     'Accept-Encoding': 'gzip, deflate, br',
   };
