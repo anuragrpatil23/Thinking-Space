@@ -432,6 +432,35 @@ export async function syncWebullExecutionStorageBlock(
       warnings.push(`Archived ${archivedThisSync.length} position file(s) under ${ticker}: ${names}`)
     }
 
+    // Same-position copies: two files can resolve to one position id (a file
+    // left behind by an older naming scheme, or a collision suffix). The map
+    // above keeps only one of them, so the other was never written, archived
+    // or removed, and sat frozen in positions/. Fold any notes it has that the
+    // current file lacks into the current file, then remove it, so each
+    // position has exactly one file.
+    const sameIdCopiesRemoved: string[] = []
+    for (const record of activeRecords) {
+      if (writtenFilePaths.has(record.filePath)) continue
+      const current = activeById.get(record.id)
+      if (!current || current.filePath === record.filePath || !writtenFilePaths.has(current.filePath)) continue
+      try {
+        const extra = positionBodyNotInBlock(record.body, current.filePath && (await fs.exists(current.filePath))
+          ? parseMarkdownFrontmatterBlock(await fs.read(current.filePath)).body
+          : current.body)
+        if (extra) {
+          const text = await fs.read(current.filePath)
+          await fs.write(current.filePath, `${text.replace(/\s*$/, '')}\n\n## Notes from an older copy (${record.fileName})\n\n${extra}\n`)
+        }
+        if (await fs.exists(record.filePath)) await fs.delete(record.filePath)
+        sameIdCopiesRemoved.push(record.fileName)
+      } catch (err) {
+        console.warn('[webull] failed to remove same-position copy', record.filePath, err)
+      }
+    }
+    if (sameIdCopiesRemoved.length > 0) {
+      warnings.push(`Removed ${sameIdCopiesRemoved.length} duplicate copy file(s) under ${ticker}: ${sameIdCopiesRemoved.join(', ')}`)
+    }
+
     // Cross-folder dedup: if an archived record shares a filename with any
     // active record (broker reissued the position under a new position_id but
     // the canonical filename — derived from option metadata — is identical),
@@ -1580,6 +1609,15 @@ function isCashRowBlock(row: Record<string, unknown>): boolean {
   const instrumentType = readStringFieldBlock(row.instrument_type)?.toUpperCase() ?? ''
   if (instrumentType.includes('CASH')) return true
   return resolveCashCurrencyBlock(row).length > 0 && readStringFieldBlock(row.symbol).toUpperCase() === 'CASH'
+}
+
+/** The text of `copyBody` the current body doesn't already hold, ignoring the default headings and whitespace; '' when nothing would be lost. */
+export function positionBodyNotInBlock(copyBody: string, currentBody: string): string {
+  const strip = (b: string) => b.replace(/^##\s+(Notes|Comments)\s*$/gm, '').trim()
+  const norm = (b: string) => strip(b).replace(/\s+/g, ' ')
+  const extra = strip(copyBody)
+  if (!extra) return ''
+  return norm(currentBody).includes(norm(copyBody)) ? '' : extra
 }
 
 function resolvePositionIdBlock(row: Record<string, unknown>, ticker: string): string {
