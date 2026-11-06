@@ -1,9 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
-import { ChevronDown, X } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useResizableSheetBlock } from '@/components/lego_blocks/hooks/useResizableSheetBlock'
-import SheetResizeHandleBlock from '@/components/lego_blocks/units/SheetResizeHandleBlock'
+import { SheetCloseButtonBlock, SheetFrameBlock } from '@/components/lego_blocks/units/SheetFrameBlock'
 
 // The organizer drawer's shared chrome — the panel, its surfaces, and the small
 // parts every drawer in this tab is built from.
@@ -61,6 +59,8 @@ export function DrawerShellBlock({
   actions,
   onClose,
   children,
+  sheetKey = 'organizer-drawer',
+  defaultWidth = 928,
 }: {
   /** What kind of thing this is — "Undertaking", "Idea", "Question". */
   eyebrow: string
@@ -68,26 +68,14 @@ export function DrawerShellBlock({
   actions?: ReactNode
   onClose: () => void
   children: ReactNode
+  /** Where the dragged width is remembered. A drawer outside the organizer
+   *  passes its own, so resizing it doesn't resize the organizer's. */
+  sheetKey?: string
+  defaultWidth?: number
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  const sheet = useResizableSheetBlock('organizer-drawer', 928)
-
-  return createPortal(
-    <>
-      <div className="fixed inset-0 z-[120] bg-background/60 backdrop-blur-sm" onClick={onClose} />
-      <SheetResizeHandleBlock {...sheet.handle} />
-      {/* `bg-card`, not `bg-background`: the page background is a faint grey
-          that the panel was inheriting, so the drawer read as a dimmer copy of
-          the page instead of a sheet lifted off it. Card is the surface token —
-          white in light, a step above the page in dark. */}
-      <div data-ltm-sheet="" style={{ width: `min(96vw, ${sheet.width}px)` }} className="fixed inset-y-0 right-0 z-[121] overflow-auto border-l border-black/[0.06] bg-card pt-[max(env(safe-area-inset-top),3.5rem)] shadow-[0_8px_40px_rgba(20,20,24,0.14)] animate-slide-in dark:border-white/[0.06] sm:pt-0">
+  return (
+    <SheetFrameBlock sheetKey={sheetKey} defaultWidth={defaultWidth} onClose={onClose} ariaLabel={eyebrow}>
+      <div className="min-h-0 flex-1 overflow-auto">
         <div className="flex flex-col gap-5 p-5 sm:px-8 sm:py-7">
           <div className="flex items-start justify-between gap-3">
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -95,21 +83,13 @@ export function DrawerShellBlock({
             </span>
             <div className="flex items-center gap-1">
               {actions}
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md p-1 text-muted-foreground hover:bg-muted"
-                aria-label="Close"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <SheetCloseButtonBlock onClose={onClose} />
             </div>
           </div>
           {children}
         </div>
       </div>
-    </>,
-    document.body,
+    </SheetFrameBlock>
   )
 }
 

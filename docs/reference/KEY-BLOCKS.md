@@ -281,7 +281,11 @@ Every slide-over in the app is resizable the same way: drag its left edge, doubl
 - The sheet takes the width as `style={{ width: \`min(96vw, ${width}px)\` }}` or, for a `w-full` panel, `style={{ maxWidth: width }}`, instead of a fixed `w-[…]` class.
 - Users: markdown viewer, organizer drawer, node detail, debug console, chain transcript, session graph, path graph, and the private gaps panels (write, grade, position).
 
-A new slide-over uses the hook and the handle; a fixed-width sheet is a regression.
+- `components/lego_blocks/units/SheetFrameBlock.tsx` — **the frame**: portal, scrim (`bg-background/60 backdrop-blur-sm`, z-120), the resizable `bg-card` panel (z-121, safe-area top inset), Esc on `window` (honours `data-prevent-sheet-escape`), and `SheetCloseButtonBlock`. The panel is a non-scrolling flex column: a reading sheet wraps its content in `min-h-0 flex-1 overflow-auto`; a form passes `as="form"` + `onSubmit`, scrolls its body and pins its footer. `DrawerShellBlock` (eyebrow header, one scrolling column) is built on it.
+- On the frame: organizer drawers (task, undertaking), the position panel, and the private gap write / grade / guide / position and noticed-write panels. Still hand-rolled (migrate when touched): markdown viewer (z-50), node detail, debug console, chain transcript, session graph, path graph.
+- Stacking: frame sheets sit at z-121, the markdown viewer at z-50. A frame sheet that opens a file must step aside while it is open (see `positionPanel.tsx`: `useMarkdownViewer().currentPath`).
+
+A new slide-over is built on `SheetFrameBlock` (or `DrawerShellBlock`); copying the scrim/panel/Esc is a regression — the copies drifted (lighter scrims, hard-coded `bg-white`, Esc only with focus inside, z-50 under z-121).
 
 ## F9 Noticed (private, step before a gap)
 
