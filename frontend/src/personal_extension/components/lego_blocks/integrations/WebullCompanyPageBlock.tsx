@@ -633,14 +633,18 @@ export default function WebullCompanyPageBlock({
         // Open and closed positions are one table with two tabs.
         const tab = positionsSlot ? positionsTab : 'closed'
         const SaleCells = PrivateCompanyPanelsBlock
-        const tabClass = (on: boolean) => cn('uppercase tracking-wide', on ? 'text-zinc-700 dark:text-zinc-200' : 'text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300')
         return (
           <section id="webull-company-positions" className="scroll-mt-4">
             <F9SectionLabelBlock trailing={tab === 'open' ? positionsActions : undefined}>
-              <span className="inline-flex items-center gap-3">
-                {positionsSlot && <button type="button" onClick={() => setPositionsTab('open')} className={tabClass(tab === 'open')}>Open · {positionCount}</button>}
-                {closedPositions.length > 0 && <button type="button" onClick={() => setPositionsTab('closed')} className={tabClass(tab === 'closed')}>Closed · {closedPositions.length}</button>}
-              </span>
+              <F9SegmentedBlock
+                ariaLabel="Open or closed positions"
+                value={tab}
+                onChange={setPositionsTab}
+                options={[
+                  ...(positionsSlot ? [{ value: 'open' as const, label: 'Open', count: positionCount }] : []),
+                  ...(closedPositions.length > 0 ? [{ value: 'closed' as const, label: 'Closed', count: closedPositions.length }] : []),
+                ]}
+              />
             </F9SectionLabelBlock>
             {tab === 'open' ? positionsSlot : (
               <ClosedPositionsTableBlock
