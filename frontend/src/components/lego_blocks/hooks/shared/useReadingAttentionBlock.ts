@@ -125,6 +125,9 @@ export interface ReadingAttentionOptions {
   /** Set by a surface that is not a document (see useAppWorkAttentionBlock);
    *  otherwise the source follows the file type. */
   source?: ThinkingspaceReadingSource
+  /** A whole area of the app rather than one page: measured only while no
+   *  page inside it (or anywhere) holds foreground. See readingForegroundBlock. */
+  fallback?: boolean
 }
 
 function sourceForPath(path: string): ThinkingspaceReadingSource {
@@ -164,6 +167,7 @@ export function useReadingAttentionBlock(
   options: ReadingAttentionOptions = {},
 ): void {
   const wants = Boolean(path) && attending
+  const fallback = options.fallback === true
 
   // Foreground is exclusive: two documents cannot both own the same minute,
   // and every mounted reader sees the same document-level events.
@@ -180,13 +184,13 @@ export function useReadingAttentionBlock(
     const unsubscribe = subscribeReadingForegroundBlock(() => {
       setHasForeground(isReadingForegroundBlock(token))
     })
-    const release = claimReadingForegroundBlock(token)
+    const release = claimReadingForegroundBlock(token, { fallback })
     setHasForeground(isReadingForegroundBlock(token))
     return () => {
       unsubscribe()
       release()
     }
-  }, [wants])
+  }, [wants, fallback])
 
   // Everything the emit needs, in refs so cleanup reads the values current
   // when the sitting started rather than a stale closure.
@@ -202,6 +206,10 @@ export function useReadingAttentionBlock(
 
   useEffect(() => {
     if (!path || !attending || !hasForeground) {
+      // A fallback steps aside every time a page inside it opens. Its effect
+      // runs after that page's (parent after child), so publishing here would
+      // overwrite the page's "measuring" line with this one's "not measuring".
+      if (optionsRef.current.fallback && path && attending) return
       // An empty "Measuring now" used to have three possible causes and no way
       // to tell them apart. Name the one that actually applies.
       setReadingLiveStateBlock({

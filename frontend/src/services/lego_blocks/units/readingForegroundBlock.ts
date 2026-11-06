@@ -18,9 +18,22 @@
 // closing the slide-over must hand attention back to the document it covered,
 // not drop it on the floor.
 
+//
+// A *fallback* claim is a whole area of the app (the F9 tab) that counts as
+// work when nothing more specific inside it is open. It always sits beneath
+// every ordinary claim, whatever order they arrive in. Order cannot decide it:
+// React runs a child's effects before its parent's, so an area mounted in the
+// same commit as a page inside it would claim last and take that page's time.
+
 type Listener = () => void
 
+export interface ReadingForegroundClaimOptionsBlock {
+  /** Hold foreground only while no ordinary claim exists. */
+  fallback?: boolean
+}
+
 const stack: symbol[] = []
+const fallbacks = new Set<symbol>()
 const listeners = new Set<Listener>()
 
 function notify(): void {
@@ -39,15 +52,28 @@ function notify(): void {
  * token moves it to the top rather than stacking it, so a re-render cannot
  * inflate the stack.
  */
-export function claimReadingForegroundBlock(token: symbol): () => void {
+export function claimReadingForegroundBlock(
+  token: symbol,
+  options: ReadingForegroundClaimOptionsBlock = {},
+): () => void {
   const existing = stack.indexOf(token)
   if (existing !== -1) stack.splice(existing, 1)
-  stack.push(token)
+  fallbacks.delete(token)
+  if (options.fallback) {
+    // Fallbacks occupy the bottom of the stack, newest on top of them.
+    let at = 0
+    while (at < stack.length && fallbacks.has(stack[at])) at += 1
+    stack.splice(at, 0, token)
+    fallbacks.add(token)
+  } else {
+    stack.push(token)
+  }
   notify()
   return () => {
     const at = stack.indexOf(token)
     if (at === -1) return
     stack.splice(at, 1)
+    fallbacks.delete(token)
     notify()
   }
 }
@@ -65,5 +91,6 @@ export function subscribeReadingForegroundBlock(listener: Listener): () => void 
 /** Test seam — the stack is module state and would otherwise leak between cases. */
 export function resetReadingForegroundBlock(): void {
   stack.length = 0
+  fallbacks.clear()
   listeners.clear()
 }

@@ -94,4 +94,35 @@ describe('readingForegroundBlock', () => {
     claimReadingForegroundBlock(Symbol('a'))
     expect(notifications).toBe(0)
   })
+
+  // The F9 tab is a fallback: it counts only while no page inside it does.
+  // React runs a child's effects before its parent's, so the tab often claims
+  // *after* the page — order must not decide it.
+  it('keeps a fallback beneath a page that claimed before it', () => {
+    const page = Symbol('page')
+    const tab = Symbol('tab')
+    claimReadingForegroundBlock(page)
+    claimReadingForegroundBlock(tab, { fallback: true })
+    expect(isReadingForegroundBlock(page)).toBe(true)
+    expect(isReadingForegroundBlock(tab)).toBe(false)
+  })
+
+  it('hands foreground back to the fallback when the page closes', () => {
+    const tab = Symbol('tab')
+    claimReadingForegroundBlock(tab, { fallback: true })
+    expect(isReadingForegroundBlock(tab)).toBe(true)
+    const releasePage = claimReadingForegroundBlock(Symbol('page'))
+    expect(isReadingForegroundBlock(tab)).toBe(false)
+    releasePage()
+    expect(isReadingForegroundBlock(tab)).toBe(true)
+  })
+
+  it('lets a fallback that reclaims stay a fallback', () => {
+    const page = Symbol('page')
+    const tab = Symbol('tab')
+    claimReadingForegroundBlock(tab, { fallback: true })
+    claimReadingForegroundBlock(page)
+    claimReadingForegroundBlock(tab, { fallback: true })
+    expect(isReadingForegroundBlock(page)).toBe(true)
+  })
 })

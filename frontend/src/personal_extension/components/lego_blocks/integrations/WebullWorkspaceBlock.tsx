@@ -29,6 +29,7 @@ import OverflowMenuButtonBlock from '@/components/lego_blocks/units/ui/OverflowM
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/lego_blocks/units/ui/card'
 import { cn } from '@/lib/utils'
 import { useUILayoutBlock } from '@/components/lego_blocks/hooks/shared/useUILayoutBlock'
+import { useAppWorkAttentionBlock } from '@/components/lego_blocks/hooks/shared/useAppWorkAttentionBlock'
 import { useIosSidebarSwipeBlock } from '@/components/lego_blocks/hooks/shared/useIosSidebarSwipeBlock'
 import { useNativeBackHandlerBlock } from '@/components/lego_blocks/hooks/shared/useNativeBackHandlerBlock'
 import { isCapacitorNative } from '@/services/lego_blocks/integrations/fsBlock'
@@ -58,6 +59,15 @@ import type {
 } from '@/personal_extension/services/orchestrators/webullExecutionOrch'
 
 type WebullSubtabIdBlock = 'overall' | 'study' | 'sim' | 'noticed' | 'gaps' | 'feed'
+
+const WEBULL_SUBTAB_WORK_TITLE_BLOCK: Record<WebullSubtabIdBlock, string> = {
+  overall: 'Overall',
+  study: 'Study',
+  sim: 'Sim',
+  noticed: 'Noticed',
+  gaps: 'Gaps',
+  feed: 'Feed',
+}
 
 interface WebullSubtabBlock {
   id: WebullSubtabIdBlock
@@ -1941,7 +1951,7 @@ export default function WebullWorkspaceBlock({
         id: 'gap',
         label: 'Gap',
         widthClassName: 'w-[8rem]',
-        align: 'left',
+        align: 'right',
         render: (node) => {
           if (node.type !== 'epic') return null
           const payload = asMetadataRecordBlock(node).webull_position_payload as Record<string, unknown> | undefined
@@ -2249,6 +2259,17 @@ export default function WebullWorkspaceBlock({
   const workspaceTitle = showCompanyView && selectedCompany
     ? `${selectedCompany.companyTicker} Positions`
     : (feedTabActive ? 'Feed' : studyTabActive ? 'Study' : simTabActive ? 'Sim' : noticedTabActive ? 'Noticed' : gapsTabActive ? 'Gaps' : 'Overall Positions')
+  // Work anywhere in the tab is F9 work: typing, clicking and scrolling in any
+  // view, the sidebar included. Filed under the view, inside the F9 folder, so
+  // it lands on the project. A page that measures its own time (a company, one
+  // gap, one noticed entry, the feed's reading) takes over while it is open;
+  // this is the fallback for everything else. The company page is left out
+  // outright: it is the whole view when open, and it credits itself.
+  const tabWorkRef = useAppWorkAttentionBlock(
+    executionRoot && !companyPageOpen ? `${executionRoot}/${activeSubtabId}` : null,
+    `F9 · ${WEBULL_SUBTAB_WORK_TITLE_BLOCK[activeSubtabId]}`,
+    { fallback: true },
+  )
   const workspaceDescription = showCompanyView && selectedCompany
     ? 'Company-specific position rows and overlay edits.'
     : (studyTabActive
@@ -2429,7 +2450,7 @@ export default function WebullWorkspaceBlock({
 
 
   return (
-    <div className="ltm-webull-shell flex h-full min-h-0 w-full">
+    <div ref={tabWorkRef} className="ltm-webull-shell flex h-full min-h-0 w-full">
       {/* On iPhone, the desktop collapse state is ignored — list/detail mode
           is the sole authority. Sidebar always shows in list mode. */}
       {!phoneDetailMode && (

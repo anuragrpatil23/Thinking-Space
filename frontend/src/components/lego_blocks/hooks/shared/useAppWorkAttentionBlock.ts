@@ -14,11 +14,23 @@ import { useReadingAttentionBlock } from '@/components/lego_blocks/hooks/shared/
  * Returns the ref callback for the page's root. Nothing is measured until that
  * element is mounted: bound to `document` instead, every click anywhere in the
  * app would count as work on this page.
+ *
+ * `fallback` marks a whole area (the F9 tab) rather than one page: it is
+ * credited only while no page inside it measures its own time.
  */
-export function useAppWorkAttentionBlock(path: string | null, title: string): (el: HTMLElement | null) => void {
+export function useAppWorkAttentionBlock(
+  path: string | null,
+  title: string,
+  options: { fallback?: boolean } = {},
+): (el: HTMLElement | null) => void {
   const [surface, setSurface] = useState<HTMLElement | null>(null)
   const surfaceRef = useMemo(() => ({ current: surface }), [surface])
   const visible = useRouteActivityBlock()
-  useReadingAttentionBlock(surface ? path : null, visible, { surfaceRef, title, source: 'working-app' })
+  useReadingAttentionBlock(surface ? path : null, visible, {
+    surfaceRef,
+    title,
+    source: 'working-app',
+    fallback: options.fallback,
+  })
   return setSurface
 }

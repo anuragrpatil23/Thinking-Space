@@ -436,4 +436,65 @@ describe('useReadingAttentionBlock', () => {
       expect(appended[0]?.activeMs ?? 0).toBeLessThanOrEqual(IDLE_CEILING_MS)
     })
   })
+
+  // The F9 tab: one fallback reader over the whole tab, with pages inside it
+  // that measure their own time.
+  describe('a fallback area', () => {
+    function Area({ withPage }: { withPage: boolean }) {
+      const surfaceRef = useRef<HTMLDivElement | null>(null)
+      useReadingAttentionBlock('F9/noticed', true, { surfaceRef, source: 'working-app', fallback: true })
+      return (
+        <div ref={surfaceRef} data-testid="area">
+          <input data-testid="area-input" />
+          {withPage && <Reader path="F9/noticed/MU.md" attending />}
+        </div>
+      )
+    }
+
+    function typeAt(atMs: number) {
+      vi.setSystemTime(atMs)
+      act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' })) })
+    }
+
+    // Mounted in one commit, the page's effects run before the area's, so the
+    // area claims last. It must still not take the page's time.
+    it('yields to a page inside it mounted in the same commit', () => {
+      const t0 = Date.now()
+      const view = render(<Area withPage />)
+      signal(t0 + 30_000)
+      signal(t0 + 120_000)
+      vi.setSystemTime(t0 + 125_000)
+      act(() => { view.unmount() })
+      expect(appended.map(r => r.filePath)).toEqual(['F9/noticed/MU.md'])
+    })
+
+    it('credits typing in a field inside the area', () => {
+      const t0 = Date.now()
+      const view = render(<Area withPage={false} />)
+      act(() => { (document.querySelector('[data-testid="area-input"]') as HTMLInputElement).focus() })
+      for (let s = 30; s <= 120; s += 30) typeAt(t0 + s * 1_000)
+      vi.setSystemTime(t0 + 125_000)
+      act(() => { view.unmount() })
+      expect(appended).toHaveLength(1)
+      expect(appended[0].filePath).toBe('F9/noticed')
+      expect(appended[0].source).toBe('working-app')
+      expect(appended[0].activeMs).toBe(90_000)
+    })
+
+    it('takes foreground back when the page inside it closes', () => {
+      const t0 = Date.now()
+      const view = render(<Area withPage />)
+      view.rerender(<Area withPage={false} />)
+      vi.setSystemTime(t0 + 30_000)
+      act(() => {
+        document.querySelector('[data-testid="area"]')?.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+      })
+      vi.setSystemTime(t0 + 120_000)
+      act(() => {
+        document.querySelector('[data-testid="area"]')?.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+      })
+      act(() => { view.unmount() })
+      expect(appended.map(r => r.filePath)).toEqual(['F9/noticed'])
+    })
+  })
 })
