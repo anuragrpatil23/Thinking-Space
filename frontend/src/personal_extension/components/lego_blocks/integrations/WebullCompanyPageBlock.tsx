@@ -487,6 +487,7 @@ export default function WebullCompanyPageBlock({
   const [privateChartBands, setPrivateChartBands] = useState<TimedPriceBandBlock[]>([])
   const [positionsTab, setPositionsTab] = useState<'open' | 'closed'>('open')
   const [priceWindow, setPriceWindow] = useState<PriceWindowBlock>('2y')
+  const [priceChart, setPriceChart] = useState<'price' | 'range'>('price')
   const [observationsExpanded, setObservationsExpanded] = useState(false)
 
   const study = dossier?.study ?? null
@@ -568,7 +569,9 @@ export default function WebullCompanyPageBlock({
 
       <F9PanelBlock className="flex flex-1 flex-col p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-[13px] font-semibold">Price</span>
+          {PrivateCompanyPanelsBlock && executionRoot && ticker
+            ? <F9SegmentedBlock ariaLabel="Price chart" value={priceChart} onChange={setPriceChart} options={[{ value: 'price' as const, label: 'Price' }, { value: 'range' as const, label: '365-day range' }]} />
+            : <span className="text-[13px] font-semibold">Price</span>}
           <F9SegmentedBlock
             ariaLabel="Price window"
             value={priceWindow}
@@ -576,7 +579,11 @@ export default function WebullCompanyPageBlock({
             options={[{ value: '1m', label: '1M' }, { value: '1y', label: '1Y' }, { value: '2y', label: '2Y' }, { value: 'all', label: 'All' }]}
           />
         </div>
-        {chartPoints.length > 1 ? (
+        {priceChart === 'range' && PrivateCompanyPanelsBlock && executionRoot && ticker ? (
+          <Suspense fallback={null}>
+            <PrivateCompanyPanelsBlock slot="price-range" windowFrom={chartPoints[0]?.date ?? null} ticker={ticker} executionRoot={executionRoot} prices={prices} livePrice={null} studyFrontmatter={null} onOpenFile={onOpenFile} />
+          </Suspense>
+        ) : chartPoints.length > 1 ? (
           <div
             className="flex min-h-[260px] flex-1"
             onContextMenu={(event) => { if (executionRoot && ticker) openFileCopyMenuBlock(event, { kind: 'file', path: `${executionRoot.replace(/\/+$/, '')}/${ticker}/prices.csv` }) }}
