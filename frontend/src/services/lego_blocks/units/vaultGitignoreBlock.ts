@@ -111,7 +111,13 @@ export async function setManagedVaultGitignorePrefixes(
   fsParam?: VaultFS,
 ): Promise<void> {
   const fs = fsParam ?? getVaultFS()
-  const normalized = dedupePrefixes([...APP_MANAGED_GITIGNORE_BASELINE, ...prefixes])
+  // A folder kept out of search can still be wanted in git. When it carries its own
+  // .gitignore, that file decides what inside it is tracked, so it is not excluded whole here.
+  const own = await Promise.all(prefixes.map(async p => {
+    const n = normalizePrefix(p)
+    try { return n !== null && (await fs.exists(`${n}/.gitignore`)) } catch { return false }
+  }))
+  const normalized = dedupePrefixes([...APP_MANAGED_GITIGNORE_BASELINE, ...prefixes.filter((_, i) => !own[i])])
 
   let existing = ''
   try {

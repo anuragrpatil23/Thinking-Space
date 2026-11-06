@@ -98,4 +98,10 @@ describe('vaultGitignoreBlock', () => {
     expect(result).toContain('!/ai-activity/thinking-organizer/')
     expect(result).toContain('/webull-data/')
   })
+
+  it('leaves a folder with its own .gitignore to that file', async () => {
+    const result = await writeAndRead(['webull-data', 'tracked-data'], { 'tracked-data/.gitignore': 'prices.csv\n' })
+    expect(result).toContain('/webull-data/')
+    expect(result).not.toContain('/tracked-data/')
+  })
 })
