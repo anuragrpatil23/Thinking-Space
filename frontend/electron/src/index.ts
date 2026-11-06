@@ -2693,6 +2693,23 @@ ipcMain.handle('vault:git', async (_event, vaultRoot: string, args: string[]) =>
   });
 });
 
+// -- User hook: after the daily pass --
+// Runs ~/.thinking-space/hooks/after-daily-pass.sh when it exists (e.g. to snapshot
+// data into a git repo of its own). It runs as a child of the app, so it can reach
+// the vault in iCloud Drive, which a launchd job cannot. Fixed path, no arguments.
+ipcMain.handle('hooks:afterDailyPass', async (): Promise<{ ran: boolean; code: number | null; output: string }> => {
+  const script = path.join(app.getPath('home'), '.thinking-space', 'hooks', 'after-daily-pass.sh');
+  if (!fs.existsSync(script)) return { ran: false, code: null, output: '' };
+  return new Promise((resolve) => {
+    const proc = spawn('/bin/bash', [script], { cwd: app.getPath('home') });
+    let output = '';
+    proc.stdout.on('data', (d) => { output += d.toString(); });
+    proc.stderr.on('data', (d) => { output += d.toString(); });
+    proc.on('close', (code) => resolve({ ran: true, code, output: output.slice(-2000) }));
+    proc.on('error', (err) => resolve({ ran: true, code: null, output: String(err) }));
+  });
+});
+
 // -- Excalidraw plugin status --
 ipcMain.handle('plugin:excalidraw:status', async (_event, vaultRoot: string) => {
   return getExcalidrawPluginStatus(vaultRoot);
