@@ -7,6 +7,7 @@
 // account, which month), files it and turns it into the CSVs, from the prompt
 // this panel copies; the table follows along as the files land.
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { useStatementsChangedBlock } from '@/personal_extension/components/lego_blocks/hooks/useStatementsChangedBlock'
@@ -73,10 +74,17 @@ export default function WebullStatementsPanelBlock({ executionRoot, onOpenFile }
     setAccounts(next)
     setRows(statementRowsBlock(next, periods, trades))
     setInbox(inboxFiles)
+    return inboxFiles
   }, [root])
   useEffect(() => { void load().catch(err => setError(err instanceof Error ? err.message : String(err))) }, [load])
   // An agent reading the inbox and filing statements: show it as it lands.
-  useStatementsChangedBlock(executionRoot, () => { void load().catch(() => undefined) }, true)
+  // When the agent takes files out of the inbox, the last drop's notes are history.
+  const inboxCount = useRef(0)
+  inboxCount.current = inbox.length
+  useStatementsChangedBlock(executionRoot, () => {
+    const before = inboxCount.current
+    void load().then(next => { if (next.length < before) setNotes([]) }).catch(() => undefined)
+  }, true)
 
   const take = async (files: FileList | null) => {
     const all = Array.from(files ?? [])
@@ -130,6 +138,18 @@ export default function WebullStatementsPanelBlock({ executionRoot, onOpenFile }
     } finally {
       setSaving(false)
     }
+  }
+
+  // Taking a dropped file back out: only the inbox copy goes, the download stays where it was.
+  const remove = async (names: string[]) => {
+    const fs = getVaultFS()
+    for (const name of names) {
+      const path = `${root}/inbox/${name}`
+      await fs.delete(path).catch(err => setError(err instanceof Error ? err.message : String(err)))
+      hashes.current.delete(path)
+    }
+    setNotes([])
+    await load().catch(() => undefined)
   }
 
   const waiting = (accounts ?? []).flatMap(a => a.waiting)
@@ -189,34 +209,59 @@ export default function WebullStatementsPanelBlock({ executionRoot, onOpenFile }
       </div>
 
       <div className="min-w-0">
-        <button
-          type="button"
-          disabled={saving}
-          onClick={() => input.current?.click()}
+        {/* The drop zone shows what is in it: the files dropped and not read yet, and what the last drop did. */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-disabled={saving}
+          onClick={() => { if (!saving) input.current?.click() }}
+          onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && !saving) { e.preventDefault(); input.current?.click() } }}
           onDragOver={e => { e.preventDefault(); setDragging(true) }}
           onDragLeave={() => setDragging(false)}
           onDrop={e => { e.preventDefault(); setDragging(false); void take(e.dataTransfer.files) }}
           className={cn(
-            'flex h-full min-h-[140px] w-full flex-col items-center justify-center gap-1 rounded-[12px] border border-dashed px-4 text-center transition-colors disabled:opacity-60',
-            dragging ? 'border-sky-500 bg-sky-50/70 dark:bg-sky-500/10' : 'border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800/50',
+            'flex h-full min-h-[140px] w-full cursor-pointer flex-col gap-3 rounded-[12px] border border-dashed p-4 transition-colors',
+            inbox.length ? 'justify-between' : 'items-center justify-center text-center',
+            saving && 'cursor-wait opacity-60',
+            dragging ? 'border-sky-500 bg-sky-50/70 dark:bg-sky-500/10' : 'border-zinc-300 hover:bg-zinc-50/60 dark:border-zinc-700 dark:hover:bg-zinc-800/30',
           )}
         >
-          <span className="font-medium">{saving ? 'Adding…' : 'Drop Webull statements here'}</span>
-          <span className="text-[12px] text-zinc-500 dark:text-zinc-400">as many as you downloaded, or click to choose</span>
-        </button>
-        <input ref={input} type="file" multiple accept="application/pdf,.pdf" className="hidden" onChange={e => { const files = e.target.files; void take(files).finally(() => { e.target.value = '' }) }} />
-        {notes.length > 0 && (
-          <div className="mt-2 space-y-0.5 text-[12px] text-zinc-500 dark:text-zinc-400">
-            {notes.map((m, i) => (
-              <p key={i}>
-                {m.text}
-                {m.dupOf && (
-                  <> <button type="button" onClick={() => onOpenFile(m.dupOf!.path)} className="text-sky-600 hover:underline dark:text-sky-400">{m.dupOf.label}</button></>
-                )}
-              </p>
-            ))}
+          {inbox.length > 0 ? (
+            <div className="min-w-0 space-y-1.5">
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="text-[12px] font-medium text-zinc-500 dark:text-zinc-400">In the inbox · {inbox.length}</p>
+                <button type="button" onClick={e => { e.stopPropagation(); void remove(inbox) }} className="text-[12px] text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">Remove all</button>
+              </div>
+              {inbox.map(name => (
+                <div key={name} className="flex min-w-0 items-center gap-2">
+                  <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-violet-500" />
+                  <button type="button" onClick={e => { e.stopPropagation(); onOpenFile(`${root}/inbox/${name}`) }} className="min-w-0 truncate text-left font-medium hover:underline" title={name}>{name}</button>
+                  <span className="ml-auto shrink-0 text-[12px] text-zinc-400">waiting for an agent</span>
+                  <button type="button" aria-label={`Remove ${name}`} title="Take it out of the inbox (the download stays where it was)" onClick={e => { e.stopPropagation(); void remove([name]) }} className="shrink-0 rounded p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className={cn(inbox.length > 0 && 'border-t border-dashed border-zinc-200 pt-3 dark:border-zinc-800')}>
+            <p className="font-medium">{saving ? 'Adding…' : inbox.length ? 'Drop more statements' : 'Drop Webull statements here'}</p>
+            <p className="text-[12px] text-zinc-500 dark:text-zinc-400">as many as you downloaded, or click to choose</p>
+            {notes.length > 0 && (
+              <div className="mt-2 space-y-0.5 text-[12px] text-zinc-500 dark:text-zinc-400" onClick={e => e.stopPropagation()}>
+                {notes.map((m, i) => (
+                  <p key={i}>
+                    {m.text}
+                    {m.dupOf && (
+                      <> <button type="button" onClick={() => onOpenFile(m.dupOf!.path)} className="text-sky-600 hover:underline dark:text-sky-400">{m.dupOf.label}</button></>
+                    )}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </div>
+        <input ref={input} type="file" multiple accept="application/pdf,.pdf" className="hidden" onChange={e => { const files = e.target.files; void take(files).finally(() => { e.target.value = '' }) }} />
         {error && <p className="mt-2 text-[12px] text-red-600 dark:text-red-400">{error}</p>}
       </div>
     </F9PanelBlock>
