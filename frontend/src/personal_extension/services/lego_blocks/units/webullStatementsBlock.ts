@@ -131,3 +131,40 @@ export function statementRowsBlock(accounts: StatementAccountBlock[], periodsCsv
   }
   return rows.sort((x, y) => y.period.localeCompare(x.period) || x.account.localeCompare(y.account))
 }
+
+/** Where a period would be filed, normalised (tax keeps the year only). */
+export function statementRelBlock(folder: StatementFolderBlock, period: string): string {
+  return `${folder}/${folder === 'tax' ? period.slice(0, 4) : period}.pdf`
+}
+
+/**
+ * A first guess for each file dropped together: IRA when its name says so,
+ * else Individual, at the next month its account has no statement for (one
+ * already filed, or one an earlier file in the batch took). The user corrects
+ * any that are wrong; the app never reads the PDFs.
+ */
+export function suggestStatementBatchBlock(names: string[], accounts: StatementAccountBlock[]): Array<{ folder: StatementFolderBlock; period: string }> {
+  const taken = new Set(accounts.flatMap(a => a.periods.map(p => statementRelBlock(a.folder, p))))
+  return names.map(name => {
+    const folder: StatementFolderBlock = /ira/i.test(name) ? 'ira' : 'individual'
+    let period = nextStatementPeriodBlock(accounts.find(a => a.folder === folder))
+    while (taken.has(statementRelBlock(folder, period))) period = nextMonth(period)
+    taken.add(statementRelBlock(folder, period))
+    return { folder, period }
+  })
+}
+
+/** What stops a batch being filed: a month already in the vault, or two files on one month. */
+export function statementBatchProblemsBlock(items: Array<{ name: string; folder: StatementFolderBlock; period: string }>, accounts: StatementAccountBlock[]): string[] {
+  const filed = new Set(accounts.flatMap(a => a.periods.map(p => statementRelBlock(a.folder, p))))
+  const seen = new Map<string, string>()
+  const out: string[] = []
+  for (const it of items) {
+    if (!it.period) { out.push(`${it.name}: pick its month.`); continue }
+    const rel = statementRelBlock(it.folder, it.period)
+    if (filed.has(rel)) out.push(`${it.name}: webull/${rel} is already there.`)
+    else if (seen.has(rel)) out.push(`${it.name} and ${seen.get(rel)} are both set to webull/${rel}.`)
+    seen.set(rel, it.name)
+  }
+  return out
+}

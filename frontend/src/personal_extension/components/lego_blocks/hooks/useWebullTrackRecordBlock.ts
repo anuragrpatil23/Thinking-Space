@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useStatementsChangedBlock } from './useStatementsChangedBlock'
 import {
-  loadWebullTrackRecordSourceBlock,
+  clearWebullTrackRecordCacheBlock, loadWebullTrackRecordSourceBlock,
   type WebullTrackRecordSourceBlock,
 } from '@/personal_extension/services/lego_blocks/integrations/webullTrackRecordVaultBlock'
 import {
@@ -16,6 +17,9 @@ export function useWebullTrackRecordBlock(executionRoot: string | null, ticker: 
   reportPath: string | null
 } {
   const [source, setSource] = useState<WebullTrackRecordSourceBlock | null>(null)
+  // Re-read when new statements land in the CSVs.
+  const [version, setVersion] = useState(0)
+  useStatementsChangedBlock(executionRoot, () => { clearWebullTrackRecordCacheBlock(); setVersion(v => v + 1) })
 
   useEffect(() => {
     if (!executionRoot) return
@@ -24,7 +28,7 @@ export function useWebullTrackRecordBlock(executionRoot: string | null, ticker: 
     return () => {
       cancelled = true
     }
-  }, [executionRoot])
+  }, [executionRoot, version])
 
   const record = useMemo(
     () => (source && ticker ? companyTrackRecordBlock({ ticker, lots: source.lots, stock: source.stock, lastStatement: source.lastStatement }) : null),
@@ -39,6 +43,9 @@ export function useWebullOverallTrackRecordBlock(executionRoot: string | null): 
   reportPath: string | null
 } {
   const [source, setSource] = useState<WebullTrackRecordSourceBlock | null>(null)
+  // Re-read when new statements land in the CSVs.
+  const [version, setVersion] = useState(0)
+  useStatementsChangedBlock(executionRoot, () => { clearWebullTrackRecordCacheBlock(); setVersion(v => v + 1) })
 
   useEffect(() => {
     if (!executionRoot) return
@@ -47,7 +54,7 @@ export function useWebullOverallTrackRecordBlock(executionRoot: string | null): 
     return () => {
       cancelled = true
     }
-  }, [executionRoot])
+  }, [executionRoot, version])
 
   const record = useMemo(
     () => (source ? overallTrackRecordBlock({ lots: source.lots, stock: source.stock, lastStatement: source.lastStatement }) : null),

@@ -44,3 +44,6 @@ export function loadWebullTrackRecordSourceBlock(executionRoot: string): Promise
   }
   return pending
 }
+
+/** Forget the cached read, e.g. after new statements were read into the CSVs. */
+export function clearWebullTrackRecordCacheBlock(): void { cache.clear() }

@@ -6,12 +6,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { useStatementsChangedBlock } from '@/personal_extension/components/lego_blocks/hooks/useStatementsChangedBlock'
 import { F9PanelBlock } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import {
   STATEMENT_FOLDERS_BLOCK,
-  nextStatementPeriodBlock,
   statementAccountsBlock,
-  statementPathBlock,
+  statementBatchProblemsBlock,
+  statementRelBlock,
+  suggestStatementBatchBlock,
   statementRowsBlock,
   statementsAgentPromptBlock,
   type StatementAccountBlock,
@@ -25,7 +27,7 @@ const FIELD = 'rounded-[8px] border border-black/[0.08] bg-white px-2 py-1 text-
 
 const STATUS_TONE: Record<StatementRowBlock['status'], { label: string; dot: string; tint: string }> = {
   read: { label: 'Read', dot: 'bg-emerald-500', tint: 'bg-emerald-50 dark:bg-emerald-500/10' },
-  waiting: { label: 'Waiting to be read', dot: 'bg-sky-500', tint: 'bg-sky-50 dark:bg-sky-500/10' },
+  waiting: { label: 'Not read yet', dot: 'bg-sky-500', tint: 'bg-sky-50 dark:bg-sky-500/10' },
   missing: { label: 'Missing', dot: 'bg-amber-500', tint: 'bg-amber-50 dark:bg-amber-500/10' },
   filed: { label: 'Filed', dot: 'bg-zinc-400', tint: 'bg-zinc-100 dark:bg-zinc-800' },
 }
@@ -35,7 +37,8 @@ export default function WebullStatementsPanelBlock({ executionRoot, onOpenFile }
   const [accounts, setAccounts] = useState<StatementAccountBlock[] | null>(null)
   const [rows, setRows] = useState<StatementRowBlock[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [pending, setPending] = useState<{ file: File; folder: StatementFolderBlock; period: string } | null>(null)
+  // Files dropped together, each with the account and month it will be filed under.
+  const [pending, setPending] = useState<Array<{ file: File; folder: StatementFolderBlock; period: string }> | null>(null)
   const [saving, setSaving] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -54,35 +57,47 @@ export default function WebullStatementsPanelBlock({ executionRoot, onOpenFile }
     setRows(statementRowsBlock(next, periods, trades))
   }, [root])
   useEffect(() => { void load().catch(err => setError(err instanceof Error ? err.message : String(err))) }, [load])
+  // An agent reading statements into the CSVs: show it as soon as it lands.
+  useStatementsChangedBlock(executionRoot, () => { void load().catch(() => undefined) }, true)
 
   const take = (files: FileList | null) => {
-    const file = files?.[0]
-    if (!file) return
-    if (!/\.pdf$/i.test(file.name)) { setError(`${file.name} is not a PDF.`); return }
-    setError(null)
-    const folder: StatementFolderBlock = /ira/i.test(file.name) ? 'ira' : 'individual'
-    setPending({ file, folder, period: nextStatementPeriodBlock(accounts?.find(a => a.folder === folder)) })
+    const all = Array.from(files ?? [])
+    const pdfs = all.filter(f => /\.pdf$/i.test(f.name))
+    const skipped = all.length - pdfs.length
+    setError(skipped ? `${skipped} ${skipped === 1 ? 'file is' : 'files are'} not a PDF and ${skipped === 1 ? 'was' : 'were'} left out.` : null)
+    if (!pdfs.length) return
+    const guesses = suggestStatementBatchBlock(pdfs.map(f => f.name), accounts ?? [])
+    setPending(pdfs.map((file, i) => ({ file, ...guesses[i] })))
   }
+  const problems = pending ? statementBatchProblemsBlock(pending.map(p => ({ name: p.file.name, folder: p.folder, period: p.period })), accounts ?? []) : []
+  const update = (i: number, patch: Partial<{ folder: StatementFolderBlock; period: string }>) =>
+    setPending(prev => prev && prev.map((p, k) => (k === i ? { ...p, ...patch } : p)))
 
-  const file = async () => {
-    if (!pending) return
-    const rel = statementPathBlock(pending.folder, pending.period)
-    const path = `${root}/${rel}`
+  const fileAll = async () => {
+    if (!pending || problems.length) return
     setSaving(true)
     setError(null)
-    try {
-      const fs = getVaultFS()
-      // Never over a statement already filed: that month is taken.
-      if (await fs.exists(path)) throw new Error(`${rel} is already there. Pick the month printed on the statement.`)
-      await fs.mkdir(path.slice(0, path.lastIndexOf('/'))).catch(() => undefined)
-      await fs.writeBytes(path, new Uint8Array(await pending.file.arrayBuffer()))
-      setPending(null)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
+    const fs = getVaultFS()
+    const failed: typeof pending = []
+    const messages: string[] = []
+    for (const p of pending) {
+      const rel = statementRelBlock(p.folder, p.period)
+      const path = `${root}/webull/${rel}`
+      try {
+        // Never over a statement already filed: that month is taken.
+        if (await fs.exists(path)) throw new Error(`webull/${rel} is already there.`)
+        await fs.mkdir(path.slice(0, path.lastIndexOf('/'))).catch(() => undefined)
+        await fs.writeBytes(path, new Uint8Array(await p.file.arrayBuffer()))
+      } catch (err) {
+        failed.push(p)
+        messages.push(`${p.file.name}: ${err instanceof Error ? err.message : String(err)}`)
+      }
     }
+    // What could not be filed stays for another try; the rest are in.
+    setPending(failed.length ? failed : null)
+    if (messages.length) setError(messages.join(' '))
+    setSaving(false)
+    await load()
   }
 
   const waiting = (accounts ?? []).flatMap(a => a.waiting)
@@ -93,7 +108,7 @@ export default function WebullStatementsPanelBlock({ executionRoot, onOpenFile }
   }
 
   return (
-    <F9PanelBlock className="grid gap-6 p-5 text-[13px] lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+    <F9PanelBlock className="grid gap-6 p-5 text-[13px] lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <div className="min-w-0 space-y-4">
         {accounts === null ? <p className="text-zinc-500">Reading the statements folder…</p>
           : rows.length === 0 ? <p className="text-zinc-500">No statements in {root}/webull yet.</p>
@@ -140,23 +155,32 @@ export default function WebullStatementsPanelBlock({ executionRoot, onOpenFile }
       <div className="min-w-0">
         {pending ? (
           <div className="space-y-3 rounded-[12px] border border-black/[0.06] p-4 dark:border-white/[0.08]">
-            <p className="truncate font-medium" title={pending.file.name}>{pending.file.name}</p>
-            <p className="text-[12px] text-zinc-500 dark:text-zinc-400">Which account, and the month printed on it?</p>
-            <div className="flex flex-wrap gap-2">
-              <select value={pending.folder} onChange={e => { const folder = e.target.value as StatementFolderBlock; setPending({ ...pending, folder, period: nextStatementPeriodBlock(accounts?.find(a => a.folder === folder)) }) }} className={FIELD}>
-                {STATEMENT_FOLDERS_BLOCK.filter(f => f.folder !== 'individual/apex').map(f => <option key={f.folder} value={f.folder}>{f.label}</option>)}
-              </select>
-              <input
-                type={pending.folder === 'tax' ? 'number' : 'month'}
-                value={pending.folder === 'tax' ? pending.period.slice(0, 4) : pending.period}
-                onChange={e => setPending({ ...pending, period: e.target.value })}
-                className={cn(FIELD, 'tabular-nums')}
-              />
+            <p className="text-[12px] text-zinc-500 dark:text-zinc-400">
+              {pending.length === 1 ? 'Which account, and the month printed on it?' : `${pending.length} statements. Which account, and the month printed on each?`}
+            </p>
+            <div className="space-y-2">
+              {pending.map((p, i) => (
+                <div key={`${p.file.name}-${i}`} className="space-y-1">
+                  <p className="truncate text-[12px] font-medium" title={p.file.name}>{p.file.name}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select value={p.folder} onChange={e => update(i, { folder: e.target.value as StatementFolderBlock })} className={FIELD}>
+                      {STATEMENT_FOLDERS_BLOCK.filter(f => f.folder !== 'individual/apex').map(f => <option key={f.folder} value={f.folder}>{f.label}</option>)}
+                    </select>
+                    <input
+                      type={p.folder === 'tax' ? 'number' : 'month'}
+                      value={p.folder === 'tax' ? p.period.slice(0, 4) : p.period}
+                      onChange={e => update(i, { period: e.target.value })}
+                      className={cn(FIELD, 'tabular-nums')}
+                    />
+                    <span className="truncate text-[11px] text-zinc-400">webull/{statementRelBlock(p.folder, p.period)}</span>
+                  </div>
+                </div>
+              ))}
             </div>
-            <p className="text-[12px] text-zinc-500 dark:text-zinc-400">Filed as statements/{statementPathBlock(pending.folder, pending.folder === 'tax' ? pending.period.slice(0, 4) : pending.period)}</p>
+            {problems.length > 0 && <div className="space-y-0.5 text-[12px] text-amber-700 dark:text-amber-400">{problems.map(m => <p key={m}>{m}</p>)}</div>}
             <div className="flex gap-2">
-              <button type="button" disabled={saving || !pending.period} onClick={() => { void file() }} className="rounded-[8px] bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-40 dark:bg-white dark:text-zinc-900">
-                {saving ? 'Filing…' : 'File it'}
+              <button type="button" disabled={saving || problems.length > 0} onClick={() => { void fileAll() }} className="rounded-[8px] bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-40 dark:bg-white dark:text-zinc-900">
+                {saving ? 'Filing…' : pending.length === 1 ? 'File it' : `File all ${pending.length}`}
               </button>
               <button type="button" onClick={() => { setPending(null); setError(null) }} className="rounded-[8px] px-3 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Cancel</button>
             </div>
@@ -173,11 +197,11 @@ export default function WebullStatementsPanelBlock({ executionRoot, onOpenFile }
               dragging ? 'border-sky-500 bg-sky-50/70 dark:bg-sky-500/10' : 'border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800/50',
             )}
           >
-            <span className="font-medium">Drop a Webull statement here</span>
-            <span className="text-[12px] text-zinc-500 dark:text-zinc-400">or click to choose a PDF</span>
+            <span className="font-medium">Drop Webull statements here</span>
+            <span className="text-[12px] text-zinc-500 dark:text-zinc-400">one or several PDFs, or click to choose</span>
           </button>
         )}
-        <input ref={input} type="file" accept="application/pdf,.pdf" className="hidden" onChange={e => { take(e.target.files); e.target.value = '' }} />
+        <input ref={input} type="file" multiple accept="application/pdf,.pdf" className="hidden" onChange={e => { take(e.target.files); e.target.value = '' }} />
         {error && <p className="mt-2 text-[12px] text-red-600 dark:text-red-400">{error}</p>}
       </div>
     </F9PanelBlock>

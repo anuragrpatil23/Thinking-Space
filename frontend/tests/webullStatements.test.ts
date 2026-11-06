@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nextStatementPeriodBlock, statementAccountsBlock, statementPathBlock, statementRowsBlock } from '@/personal_extension/services/lego_blocks/units/webullStatementsBlock'
+import { nextStatementPeriodBlock, statementAccountsBlock, statementBatchProblemsBlock, statementPathBlock, statementRowsBlock, suggestStatementBatchBlock } from '@/personal_extension/services/lego_blocks/units/webullStatementsBlock'
 
 const PERIODS = 'account,period_start,period_end,statement\r\nA1,2026-07-01,2026-07-31,individual/2026-07.pdf\r\nA1,2026-09-01,2026-09-30,individual/2026-09.pdf\nB2,2026-09-01,2026-09-30,ira/2026-09.pdf\n'
 
@@ -33,5 +33,17 @@ describe('webullStatementsBlock', () => {
       ['2026-07', 'Individual', 'read', 2, '2026-07-31'],
       ['2023', 'Tax', 'filed', 0, null],
     ])
+  })
+  it('guesses each file of a batch a free month, and stops a batch with a clash', () => {
+    expect(suggestStatementBatchBlock(['download (1).pdf', 'download (2).pdf', 'ira-oct.pdf'], accounts)).toEqual([
+      { folder: 'individual', period: '2026-11' },
+      { folder: 'individual', period: '2026-12' },
+      { folder: 'ira', period: '2026-10' },
+    ])
+    expect(statementBatchProblemsBlock([
+      { name: 'a.pdf', folder: 'individual', period: '2026-09' },
+      { name: 'b.pdf', folder: 'ira', period: '2026-10' },
+      { name: 'c.pdf', folder: 'ira', period: '2026-10' },
+    ], accounts)).toEqual(['a.pdf: webull/individual/2026-09.pdf is already there.', 'c.pdf and b.pdf are both set to webull/ira/2026-10.pdf.'])
   })
 })
