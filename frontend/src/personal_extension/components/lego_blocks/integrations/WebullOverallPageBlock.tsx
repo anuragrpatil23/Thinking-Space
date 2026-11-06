@@ -373,7 +373,8 @@ function CostViewBlock({ allocation, formatMoney, formatMoneyK, onSelectTicker }
     const { cx, cy, midAngle, outerRadius, payload } = props
     if (cx === undefined || cy === undefined || midAngle === undefined || outerRadius === undefined || !payload || !payload.isFirstForTicker) return null
     const share = shareByTicker.get(payload.ticker) ?? 0
-    if (share < 2.5) return null
+    // The smaller donut has less room around it: only the bigger slices are labelled.
+    if (share < (size === 'medium' ? 4 : 2.5)) return null
     const radians = (-midAngle * Math.PI) / 180
     const x = cx + (outerRadius + 14) * Math.cos(radians)
     const y = cy + (outerRadius + 14) * Math.sin(radians)
@@ -433,9 +434,10 @@ function CostViewBlock({ allocation, formatMoney, formatMoneyK, onSelectTicker }
             </PieChart>
           </ResponsiveContainer>
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="text-[11px] text-zinc-500 dark:text-zinc-400">90% of cost in</span>
-            <span className="text-[15px] font-semibold tabular-nums">{concentration} {concentration === 1 ? 'business' : 'businesses'}</span>
-            <span className="text-[11px] text-zinc-400">of {legend.length}</span>
+            {/* Sized to the hole: the medium donut's is a third smaller */}
+            <span className={cn('text-zinc-500 dark:text-zinc-400', size === 'medium' ? 'text-[10px]' : 'text-[11px]')}>90% of cost in</span>
+            <span className={cn('font-semibold tabular-nums', size === 'medium' ? 'text-[12.5px]' : 'text-[15px]')}>{concentration} {concentration === 1 ? 'business' : 'businesses'}</span>
+            <span className={cn('text-zinc-400', size === 'medium' ? 'text-[10px]' : 'text-[11px]')}>of {legend.length}</span>
           </div>
         </div>
 
