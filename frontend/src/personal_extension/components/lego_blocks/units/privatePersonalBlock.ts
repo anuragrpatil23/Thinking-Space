@@ -113,11 +113,17 @@ export async function loadPrivateGapPositionLinksBlock(executionRoot: string): P
   return loadGapLinks().then(m => m.loadPrivateGapPositionLinks(executionRoot)).catch(() => [])
 }
 
-const MARKET_PASS_MODULES = import.meta.glob<{ runPrivateMarketPassIfDue: () => Promise<void> }>('../../../thinkingspace-personal/marketPass.ts')
+const MARKET_PASS_MODULES = import.meta.glob<{ runPrivateMarketPassIfDue: () => Promise<void>; runPrivateMarketPassNow?: () => Promise<void> }>('../../../thinkingspace-personal/marketPass.ts')
 const loadMarketPass = Object.values(MARKET_PASS_MODULES)[0]
 
 /** Runs the private market pass if it is present and due; a no-op otherwise. */
 export function runPrivateMarketPassIfDueBlock(): void {
   if (!loadMarketPass) return
   void loadMarketPass().then(m => m.runPrivateMarketPassIfDue()).catch(() => undefined)
+}
+
+/** Runs the private market pass now, due or not; a no-op without the private folder. */
+export function runPrivateMarketPassNowBlock(): Promise<void> {
+  if (!loadMarketPass) return Promise.resolve()
+  return loadMarketPass().then(m => (m.runPrivateMarketPassNow ?? m.runPrivateMarketPassIfDue)()).catch(() => undefined)
 }

@@ -17,7 +17,8 @@ import {
   runPricesPassOrch,
   setPricesPassTargetOrch,
 } from '@/personal_extension/services/orchestrators/webullPricesOrch'
-import { runPrivateMarketPassIfDueBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
+import { runPrivateMarketPassIfDueBlock, runPrivateMarketPassNowBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
+import { REFRESH_ALL_EVENT_BLOCK } from '@/services/lego_blocks/units/refreshAllEventBlock'
 
 /**
  * Once a day, when the F9 page is open or comes back to the front, bring every
@@ -44,8 +45,19 @@ export function useValueLinePassBlock(executionRoot: string | null, tickers: Arr
     }
     run()
     const onVisible = () => { if (document.visibilityState === 'visible') run() }
+    // Refresh everything: every pass now, due or not.
+    const onRefreshAll = () => {
+      if (valueLineAvailableOrch()) void runValueLinePassOrch(executionRoot, list)
+      if (earningsCallsAvailableOrch()) void runEarningsCallPassOrch(executionRoot, list)
+      if (pricesAvailableOrch()) void runPricesPassOrch(executionRoot, list)
+      void runPrivateMarketPassNowBlock()
+    }
     document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
+    window.addEventListener(REFRESH_ALL_EVENT_BLOCK, onRefreshAll)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener(REFRESH_ALL_EVENT_BLOCK, onRefreshAll)
+    }
     // The list's contents, not its identity
   }, [executionRoot, listKey]) // eslint-disable-line react-hooks/exhaustive-deps
 }

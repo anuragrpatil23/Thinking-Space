@@ -108,6 +108,7 @@ import {
   setNavRailHomePositionBlock,
   type NavRailPrefsBlock,
 } from './services/lego_blocks/units/navRailPrefsBlock'
+import { REFRESH_ALL_EVENT_BLOCK } from './services/lego_blocks/units/refreshAllEventBlock'
 import { useChromeStateEventBlock } from './components/lego_blocks/hooks/shared/useChromeStateEventBlock'
 import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
 import { useNativePushNavigationBlock } from './components/lego_blocks/hooks/shared/useNativePushNavigationBlock'
@@ -559,6 +560,16 @@ function App() {
   // mode: press-and-hold a rail icon to enter, drag to reorder, x to hide,
   // Escape / click-away to finish.
   const [navRailPrefs, setNavRailPrefs] = useState<NavRailPrefsBlock>(() => getNavRailPrefsBlock())
+  // Right-click menu on a rail icon (today: Refresh everything on the Webull icon).
+  const [railMenu, setRailMenu] = useState<{ x: number; y: number } | null>(null)
+  useEffect(() => {
+    if (!railMenu) return
+    const close = () => setRailMenu(null)
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', onKey) }
+  }, [railMenu])
   const [railEditMode, setRailEditMode] = useState(false)
   const railLongPressTimerRef = useRef<number | null>(null)
   const railDraggedIdRef = useRef<string | null>(null)
@@ -2902,6 +2913,7 @@ function App() {
                               onPointerUp={cancelRailLongPress}
                               onPointerLeave={cancelRailLongPress}
                               onClick={(event) => { if (railEditMode) event.preventDefault() }}
+                              onContextMenu={item.to === '/webull' ? (event) => { event.preventDefault(); setRailMenu({ x: event.clientX, y: event.clientY }) } : undefined}
                               onDragStart={() => { railDraggedIdRef.current = item.to }}
                               onDragEnd={clearRailDraggedId}
                               onDragOver={(event) => { if (railEditMode) event.preventDefault() }}
@@ -3020,6 +3032,23 @@ function App() {
                       <ProfileSwitcherBlock />
                     </div>
                     {navRailPrefs.homePosition === 'bottom' && renderHomeRailItem()}
+                    {railMenu && (
+                      <div
+                        role="menu"
+                        style={{ left: railMenu.x, top: railMenu.y }}
+                        className="fixed z-50 min-w-[180px] rounded-md border border-border bg-popover p-1 text-sm text-popover-foreground shadow-md"
+                        onPointerDown={(event) => event.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="w-full rounded px-2 py-1.5 text-left hover:bg-accent"
+                          onClick={() => { window.dispatchEvent(new CustomEvent(REFRESH_ALL_EVENT_BLOCK)); setRailMenu(null) }}
+                        >
+                          Refresh everything
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
                 </div>
