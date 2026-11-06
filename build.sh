@@ -179,6 +179,11 @@ _build_electron_main() {
 
   do_step "Native rebuild" \
     bash -c "cd '$ELECTRON_DIR' && npx electron-rebuild -f"
+
+  # The thinkspc CLI (and the skills it carries) is a separate bundle the app
+  # ships in resources/cli; without this step every package carried a stale one.
+  do_step "CLI bundle" \
+    bash -c "cd '$ELECTRON_DIR' && node ../scripts/bundle-cli.mjs"
 }
 
 # ─── Commands ─────────────────────────────────────────────────────────────────
