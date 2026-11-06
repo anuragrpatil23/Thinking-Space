@@ -2,19 +2,37 @@
 // under <executionRoot>/statements/webull/: individual/YYYY-MM.pdf (older
 // Apex-era ones in individual/apex/), ira/YYYY-MM.pdf, tax/YYYY.pdf.
 //
-// Thinking Space files a statement and shows what is there; it never reads a
-// PDF. An agent turns them into the webull-*.csv files (`thinkspc skill.get
-// --name statements`), so a PDF the CSVs do not mention yet is "waiting to be
-// read".
+// Thinking Space shows what is there and drops new PDFs into statements/inbox/
+// as they were downloaded; it never reads a PDF. An agent sorts the inbox by the
+// account and period printed inside and turns the statements into the
+// webull-*.csv files (`thinkspc skill.get --name statements`), so a PDF the CSVs
+// do not mention yet is "not read yet".
 
-export type StatementFolderBlock = 'individual' | 'individual/apex' | 'ira' | 'tax'
+/** A folder under webull/: one per account type ("individual", "ira", "roth-ira", …), plus tax. */
+export type StatementFolderBlock = string
 
-export const STATEMENT_FOLDERS_BLOCK: Array<{ folder: StatementFolderBlock; label: string; monthly: boolean }> = [
-  { folder: 'individual', label: 'Individual', monthly: true },
-  { folder: 'ira', label: 'IRA', monthly: true },
-  { folder: 'individual/apex', label: 'Individual (Apex era)', monthly: true },
-  { folder: 'tax', label: 'Tax', monthly: false },
+/** The folders the app knows by name; any other account folder is listed too, named from its folder. */
+export const STATEMENT_FOLDERS_BLOCK: Array<{ folder: string; label: string }> = [
+  { folder: 'individual', label: 'Individual' },
+  { folder: 'ira', label: 'IRA' },
+  { folder: 'roth-ira', label: 'Roth IRA' },
+  { folder: 'individual/apex', label: 'Individual (Apex era)' },
+  { folder: 'tax', label: 'Tax' },
 ]
+
+/** "roth-ira" → "Roth IRA"; a known folder keeps its name. */
+export function statementFolderLabelBlock(folder: string): string {
+  const known = STATEMENT_FOLDERS_BLOCK.find(f => f.folder === folder)
+  if (known) return known.label
+  return folder.split(/[-/]/).map(w => (w.length <= 3 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1))).join(' ')
+}
+
+/** Every folder to read: the known ones, then any other account folder found under webull/ (and its apex/). */
+export function statementFoldersBlock(webullFolders: string[]): string[] {
+  const out = STATEMENT_FOLDERS_BLOCK.map(f => f.folder)
+  for (const f of webullFolders) if (!out.includes(f)) out.splice(out.length - 1, 0, f)
+  return out
+}
 
 export interface StatementAccountBlock {
   folder: StatementFolderBlock
@@ -41,7 +59,11 @@ export function statementAccountsBlock(listing: Record<StatementFolderBlock, str
   const cols = (head ?? '').split(',').map(c => c.trim()) // the CSVs end lines with \r\n
   const s = cols.indexOf('statement'), e = cols.indexOf('period_end')
   for (const r of rows.map(l => l.split(',').map(c => c.trim()))) if (r[s]) read.set(r[s], r[e] ?? '')
-  return STATEMENT_FOLDERS_BLOCK.flatMap(({ folder, label, monthly }) => {
+  // Known folders first, in their order, then any others found.
+  const folders = [...STATEMENT_FOLDERS_BLOCK.map(f => f.folder), ...Object.keys(listing).filter(f => !STATEMENT_FOLDERS_BLOCK.some(k => k.folder === f))]
+  return folders.flatMap((folder) => {
+    const label = statementFolderLabelBlock(folder)
+    const monthly = folder !== 'tax'
     const pattern = monthly ? /^(\d{4}-\d{2})\.pdf$/ : /^(\d{4})\.pdf$/
     const periods = (listing[folder] ?? []).map(f => f.match(pattern)?.[1]).filter((p): p is string => Boolean(p)).sort()
     if (!periods.length) return []
@@ -63,27 +85,13 @@ export function statementAccountsBlock(listing: Record<StatementFolderBlock, str
   })
 }
 
-/** The month a new statement for this folder most likely covers: the one after its latest. */
-export function nextStatementPeriodBlock(account: StatementAccountBlock | undefined, today = new Date()): string {
-  const last = account?.periods[account.periods.length - 1]
-  if (last && account?.folder === 'tax') return String(Number(last) + 1)
-  if (last) return nextMonth(last)
-  const d = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
-
-/** Where the skill expects it, under statements/. */
-export function statementPathBlock(folder: StatementFolderBlock, period: string): string {
-  return `webull/${folder}/${period}.pdf`
-}
-
-/** What to hand an agent so it reads the waiting statements into the CSVs. */
-export function statementsAgentPromptBlock(statementsFolder: string, waiting: string[]): string {
-  return [
-    `New Webull statements are in ${statementsFolder}: ${waiting.length ? waiting.map(w => `webull/${w}`).join(', ') : '(none listed)'}.`,
-    'Read them into the CSVs there: run `thinkspc skill.get --name statements`, follow it (reference scripts come from `thinkspc skill.file --name statements --path <file>`),',
-    'and finish only when `thinkspc skill.validate --name statements` passes.',
-  ].join(' ')
+/** What to hand an agent so it sorts the inbox and reads the new statements into the CSVs. */
+export function statementsAgentPromptBlock(statementsFolder: string, inbox: string[], waiting: string[]): string {
+  const parts: string[] = []
+  if (inbox.length) parts.push(`New statements were dropped into ${statementsFolder}/inbox: ${inbox.join(', ')}. Sort them into place by the account and period printed in each.`)
+  if (waiting.length) parts.push(`Statements filed but not yet in the CSVs: ${waiting.map(w => `webull/${w}`).join(', ')}.`)
+  parts.push('Run `thinkspc skill.get --name statements` and follow it (reference scripts come from `thinkspc skill.file --name statements --path <file>`); finish only when `thinkspc skill.validate --name statements` passes.')
+  return parts.join(' ')
 }
 
 /** One row of the statements table: a statement in the vault, or a month missing between two. */
@@ -130,41 +138,4 @@ export function statementRowsBlock(accounts: StatementAccountBlock[], periodsCsv
     for (const period of a.missing) rows.push({ key: `missing|${a.folder}|${period}`, folder: a.folder, account: a.label, period, path: null, start: null, end: null, trades: 0, status: 'missing' })
   }
   return rows.sort((x, y) => y.period.localeCompare(x.period) || x.account.localeCompare(y.account))
-}
-
-/** Where a period would be filed, normalised (tax keeps the year only). */
-export function statementRelBlock(folder: StatementFolderBlock, period: string): string {
-  return `${folder}/${folder === 'tax' ? period.slice(0, 4) : period}.pdf`
-}
-
-/**
- * A first guess for each file dropped together: IRA when its name says so,
- * else Individual, at the next month its account has no statement for (one
- * already filed, or one an earlier file in the batch took). The user corrects
- * any that are wrong; the app never reads the PDFs.
- */
-export function suggestStatementBatchBlock(names: string[], accounts: StatementAccountBlock[]): Array<{ folder: StatementFolderBlock; period: string }> {
-  const taken = new Set(accounts.flatMap(a => a.periods.map(p => statementRelBlock(a.folder, p))))
-  return names.map(name => {
-    const folder: StatementFolderBlock = /ira/i.test(name) ? 'ira' : 'individual'
-    let period = nextStatementPeriodBlock(accounts.find(a => a.folder === folder))
-    while (taken.has(statementRelBlock(folder, period))) period = nextMonth(period)
-    taken.add(statementRelBlock(folder, period))
-    return { folder, period }
-  })
-}
-
-/** What stops a batch being filed: a month already in the vault, or two files on one month. */
-export function statementBatchProblemsBlock(items: Array<{ name: string; folder: StatementFolderBlock; period: string }>, accounts: StatementAccountBlock[]): string[] {
-  const filed = new Set(accounts.flatMap(a => a.periods.map(p => statementRelBlock(a.folder, p))))
-  const seen = new Map<string, string>()
-  const out: string[] = []
-  for (const it of items) {
-    if (!it.period) { out.push(`${it.name}: pick its month.`); continue }
-    const rel = statementRelBlock(it.folder, it.period)
-    if (filed.has(rel)) out.push(`${it.name}: webull/${rel} is already there.`)
-    else if (seen.has(rel)) out.push(`${it.name} and ${seen.get(rel)} are both set to webull/${rel}.`)
-    seen.set(rel, it.name)
-  }
-  return out
 }
