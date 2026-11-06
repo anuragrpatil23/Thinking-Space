@@ -43,12 +43,28 @@ export interface FeedNoteBlock {
   published?: string
   /** The companies the article is about, named by the AI; [] when it is about none, absent until asked */
   companies?: Array<{ name: string; ticker: string | null }>
+  /** A question's answer, kept when it is marked answered */
+  answer?: string
+  /** The company's price when the note was made (notes made on a company page) */
+  price?: number
+  /** What was on screen where it was made: "Net profit margin · VL 2027", "33.5%", an estimate or not */
+  context?: FeedNoteContextBlock
+}
+
+export interface FeedNoteContextBlock { on: string; value?: string; estimate?: boolean }
+
+/** `source` of a note made on a company page rather than while reading. */
+export const COMPANY_PAGE_NOTE_SOURCE_BLOCK = 'Company page'
+
+/** "Net profit margin · VL 2027: 33.5% (estimate)" */
+export function feedNoteContextLabelBlock(c: FeedNoteContextBlock): string {
+  return `${c.on}${c.value ? `: ${c.value}` : ''}${c.estimate ? ' (estimate)' : ''}`
 }
 
 const HEADER = [
   '# Reading notes',
   '',
-  'Questions and comments made while reading the Feed in Thinking Space, and articles tagged to come back to.',
+  'Questions and comments made while reading the Feed or on a company page in Thinking Space, and articles tagged to come back to.',
   'One note per line; tick a question once it is understood. The comment at the end of each line says where it came from.',
   '',
 ].join('\n')
@@ -91,6 +107,9 @@ export function parseFeedNotesBlock(content: string): FeedNoteBlock[] {
         at: meta.at ?? '',
         ...(meta.published ? { published: meta.published } : {}),
         ...(Array.isArray(meta.companies) ? { companies: meta.companies } : {}),
+        ...(typeof meta.answer === 'string' && meta.answer ? { answer: meta.answer } : {}),
+        ...(typeof meta.price === 'number' && Number.isFinite(meta.price) ? { price: meta.price } : {}),
+        ...(meta.context && typeof meta.context.on === 'string' ? { context: meta.context } : {}),
       })
     } catch { /* a hand-edited line that no longer parses is left alone */ }
   }
@@ -171,8 +190,9 @@ function noteTimeBlock(note: FeedNoteBlock): number {
 export function groupFeedNotesByDayBlock(notes: FeedNoteBlock[]): Array<{ day: string; articles: FeedNoteArticleBlock[] }> {
   const byItem = new Map<string, FeedNoteBlock[]>()
   for (const note of notes) {
-    if (note.removed || note.done) continue
-    const key = note.itemId || note.id
+    // A note made on a company page belongs to no article: it is not reading.
+    if (note.removed || note.done || !note.itemId) continue
+    const key = note.itemId
     const list = byItem.get(key)
     if (list) list.push(note)
     else byItem.set(key, [note])

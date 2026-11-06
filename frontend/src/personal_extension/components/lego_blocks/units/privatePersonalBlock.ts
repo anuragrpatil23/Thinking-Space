@@ -77,6 +77,16 @@ const POSITION_PANEL_MODULES = import.meta.glob<{ default: ComponentType<Private
 const loadPositionPanel = Object.values(POSITION_PANEL_MODULES)[0]
 export const PrivatePositionPanelBlock = loadPositionPanel ? lazy(loadPositionPanel) : null
 
+// Overall Positions → Buys and sells (every trade, linked to the gap behind it),
+// when the private folder provides it; without it the page shows positions only.
+export interface PrivateBuysSellsPropsBlock {
+  executionRoot: string
+  onOpenFile: (path: string) => void
+}
+const BUYS_SELLS_MODULES = import.meta.glob<{ default: ComponentType<PrivateBuysSellsPropsBlock> }>('../../../thinkingspace-personal/buysSells.tsx')
+const loadBuysSells = Object.values(BUYS_SELLS_MODULES)[0]
+export const PrivateBuysSellsBlock = loadBuysSells ? lazy(loadBuysSells) : null
+
 // Sim (replays: the loop at a moment in history) lives in the same private
 // folder, all of it; without it there is no Sim tab.
 const SIM_MODULES = import.meta.glob<{ default: ComponentType }>('../../../thinkingspace-personal/sim.tsx')

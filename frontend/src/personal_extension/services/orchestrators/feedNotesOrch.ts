@@ -13,7 +13,9 @@ import {
   newFeedNoteIdBlock,
   parseFeedNotesBlock,
   replaceFeedNoteBlock,
+  COMPANY_PAGE_NOTE_SOURCE_BLOCK,
   type FeedNoteBlock,
+  type FeedNoteContextBlock,
   type FeedNoteKindBlock,
 } from '../lego_blocks/units/feedNoteBlock'
 import { readWebullExecutionSettingsOrch } from './webullExecutionSettingsOrch'
@@ -100,6 +102,37 @@ export function addFeedNoteOrch(params: { kind: Exclude<FeedNoteKindBlock, 'tagg
     at: new Date().toISOString(),
   }
   return editBlock(content => appendFeedNoteBlock(content, note))
+}
+
+/**
+ * A question or comment made on a company page: the company, its price then,
+ * and what was on screen where it was made, so it can be checked against how
+ * things turned out.
+ */
+export function addCompanyNoteOrch(params: { kind: Exclude<FeedNoteKindBlock, 'tagged'>; text: string; ticker: string; price: number | null; context: FeedNoteContextBlock | null }): Promise<void> {
+  const text = params.text.replace(/\s+/g, ' ').trim()
+  if (!text) return Promise.resolve()
+  const note: FeedNoteBlock = {
+    id: newFeedNoteIdBlock(),
+    kind: params.kind,
+    text,
+    done: false,
+    itemId: '',
+    title: '',
+    link: '',
+    source: COMPANY_PAGE_NOTE_SOURCE_BLOCK,
+    ticker: params.ticker.toUpperCase(),
+    at: new Date().toISOString(),
+    ...(params.price !== null && Number.isFinite(params.price) ? { price: params.price } : {}),
+    ...(params.context ? { context: params.context } : {}),
+  }
+  return editBlock(content => appendFeedNoteBlock(content, note))
+}
+
+/** Mark a question answered and keep the answer with it (an empty answer just ticks it). */
+export function answerFeedNoteOrch(id: string, answer: string): Promise<void> {
+  const text = answer.replace(/\s+/g, ' ').trim()
+  return updateNoteBlock(id, note => ({ ...note, done: true, ...(text ? { answer: text } : {}) }))
 }
 
 function updateNoteBlock(id: string, change: (note: FeedNoteBlock) => FeedNoteBlock | null): Promise<void> {

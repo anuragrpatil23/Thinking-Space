@@ -10,6 +10,17 @@ export interface BacklogRowColumnBlock {
   render: (node: NodeRecord) => ReactNode
 }
 
+/**
+ * Room before a column. A left-aligned column right after a right-aligned one
+ * (Gap after Price) otherwise starts exactly where the numbers end, since the
+ * columns have no gap between them. Header and cells use it alike.
+ */
+export function columnLeadClassBlock(columns: BacklogRowColumnBlock[], id: string): string {
+  const i = columns.findIndex(c => c.id === id)
+  if (i <= 0) return ''
+  return columns[i - 1].align === 'right' && (columns[i].align ?? 'left') !== 'right' ? 'pl-4' : ''
+}
+
 export const BACKLOG_COLUMN_WIDTH_SCALE_CSS_VAR_BLOCK = '--backlog-column-width-scale'
 
 function parseTailwindScaledWidthTokenBlock(raw: string): string | null {

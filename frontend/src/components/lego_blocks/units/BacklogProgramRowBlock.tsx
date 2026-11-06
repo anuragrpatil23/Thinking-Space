@@ -8,7 +8,7 @@ import {
   NodeStatusSelectBlock,
 } from '@/components/lego_blocks/units/NodeStatusBlock'
 import TagChipListBlock from '@/components/lego_blocks/units/TagChipListBlock'
-import { scaledWidthStyleFromClassBlock, type BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
+import { columnLeadClassBlock, scaledWidthStyleFromClassBlock, type BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { cn } from '@/lib/utils'
 
 interface ProgramGroupEntryBlock {
@@ -325,6 +325,7 @@ export function BacklogProgramRowBlock({
                   nativeGridTemplate ? 'min-w-0' : (column.widthClassName ?? 'w-24'),
                   column.align === 'center' && 'text-center',
                   column.align === 'right' && 'text-right',
+                  columnLeadClassBlock(rowColumns, column.id),
                 )}
                 style={nativeGridTemplate ? undefined : scaledWidthStyleFromClassBlock(column.widthClassName ?? 'w-24')}
                 title={typeof content === 'string' ? content : undefined}

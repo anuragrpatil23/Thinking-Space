@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { PrivateBuysSellsBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 import { Bar, BarChart, Cell, LabelList, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, type LabelProps } from 'recharts'
 import { useWebullOverallTrackRecordBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullTrackRecordBlock'
 import { F9TrackRowBlock, F9TrackShareBlock } from '@/personal_extension/components/lego_blocks/units/F9TrackRecordPartsBlock'
@@ -640,6 +641,7 @@ export default function WebullOverallPageBlock({
   footer,
 }: WebullOverallPageBlockProps) {
   const { record: trackRecord, reportPath } = useWebullOverallTrackRecordBlock(executionRoot)
+  const [tab, setTab] = useState<'positions' | 'trades'>('positions')
   const subline = [
     `${accountCount || '—'} ${accountCount === 1 ? 'account' : 'accounts'}`,
     companyCount > 0 ? `${companyCount} ${companyCount === 1 ? 'company' : 'companies'} indexed` : null,
@@ -688,8 +690,32 @@ export default function WebullOverallPageBlock({
       {trackRecord && <TrackRecordSectionBlock record={trackRecord} reportPath={reportPath} onOpenFile={onOpenFile} onSelectTicker={onSelectTicker} />}
 
       <section className="min-w-0 lg:col-span-2">
-        <F9SectionLabelBlock trailing={positionsActions}>Positions · {positionCount}</F9SectionLabelBlock>
-        {positionsSlot}
+        {PrivateBuysSellsBlock && executionRoot ? (
+          <>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <F9SegmentedBlock
+                ariaLabel="Positions or buys and sells"
+                value={tab}
+                onChange={setTab}
+                options={[
+                  { value: 'positions' as const, label: 'Positions', count: positionCount },
+                  { value: 'trades' as const, label: 'Buys and sells' },
+                ]}
+              />
+              {tab === 'positions' && positionsActions}
+            </div>
+            {tab === 'positions' ? positionsSlot : (
+              <Suspense fallback={null}>
+                <PrivateBuysSellsBlock executionRoot={executionRoot} onOpenFile={onOpenFile} />
+              </Suspense>
+            )}
+          </>
+        ) : (
+          <>
+            <F9SectionLabelBlock trailing={positionsActions}>Positions · {positionCount}</F9SectionLabelBlock>
+            {positionsSlot}
+          </>
+        )}
       </section>
     </div>
   )

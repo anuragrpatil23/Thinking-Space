@@ -12,7 +12,7 @@ export function GapChipsBlock({ gaps, onOpen }: { gaps: GapOfPositionBlock[]; on
           key={g.gapId}
           type="button"
           onClick={(e) => { e.stopPropagation(); onOpen?.(g.filePath) }}
-          className="max-w-[9rem] truncate rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 ring-1 ring-violet-200 hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/30"
+          className="max-w-[9rem] truncate rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 hover:bg-violet-100 dark:bg-violet-500/10 dark:text-violet-300"
         >
           {g.gapId}
         </button>

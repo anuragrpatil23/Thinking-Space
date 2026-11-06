@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { Loader2 } from 'lucide-react'
 import { BacklogNodeRowBlock } from '@/components/lego_blocks/units/BacklogNodeRowBlock'
 import { BacklogProgramRowBlock } from '@/components/lego_blocks/units/BacklogProgramRowBlock'
-import { nativeRowGridTemplateBlock, nativeSlotWidthBlock, scaledWidthStyleFromClassBlock, type BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
+import { columnLeadClassBlock, nativeRowGridTemplateBlock, nativeSlotWidthBlock, scaledWidthStyleFromClassBlock, type BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
 import { Button } from '@/components/lego_blocks/units/ui/button'
 import { BacklogInlineCreateBlock } from '@/components/lego_blocks/integrations/BacklogInlineCreateBlock'
 import { BacklogInlineNotesEditorBlock } from '@/components/lego_blocks/integrations/BacklogInlineNotesEditorBlock'
@@ -1254,7 +1254,7 @@ function BacklogListBlockImpl({
               key={`column-header-${column.id}`}
               className={`shrink-0 truncate ${headerLabelClassName} ${column.widthClassName ?? 'w-24'} ${
                 column.align === 'center' ? 'text-center' : column.align === 'right' ? 'text-right' : ''
-              }`}
+              } ${columnLeadClassBlock(rowColumns, column.id)}`}
               style={scaledWidthStyleFromClassBlock(column.widthClassName ?? 'w-24')}
             >
               {column.label}
