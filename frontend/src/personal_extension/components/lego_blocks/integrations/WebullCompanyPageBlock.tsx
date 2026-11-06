@@ -629,6 +629,22 @@ export default function WebullCompanyPageBlock({
         </Suspense>
       )}
 
+      {PrivateCompanyGapsBlock && executionRoot && ticker && (
+        <section id="webull-company-gaps" className="scroll-mt-4">
+          <Suspense fallback={null}>
+            <PrivateCompanyGapsBlock ticker={ticker} executionRoot={executionRoot} onOpenFile={onOpenFile} />
+          </Suspense>
+        </section>
+      )}
+
+      {PrivateCompanyNoticedBlock && executionRoot && ticker && (
+        <section id="webull-company-noticed" className="scroll-mt-4">
+          <Suspense fallback={null}>
+            <PrivateCompanyNoticedBlock ticker={ticker} executionRoot={executionRoot} onOpenFile={onOpenFile} />
+          </Suspense>
+        </section>
+      )}
+
       {(positionsSlot || closedPositions.length > 0) && (() => {
         // Open and closed positions are one table with two tabs.
         const tab = positionsSlot ? positionsTab : 'closed'
@@ -664,21 +680,6 @@ export default function WebullCompanyPageBlock({
         )
       })()}
 
-      {PrivateCompanyGapsBlock && executionRoot && ticker && (
-        <section id="webull-company-gaps" className="scroll-mt-4">
-          <Suspense fallback={null}>
-            <PrivateCompanyGapsBlock ticker={ticker} executionRoot={executionRoot} onOpenFile={onOpenFile} />
-          </Suspense>
-        </section>
-      )}
-
-      {PrivateCompanyNoticedBlock && executionRoot && ticker && (
-        <section id="webull-company-noticed" className="scroll-mt-4">
-          <Suspense fallback={null}>
-            <PrivateCompanyNoticedBlock ticker={ticker} executionRoot={executionRoot} onOpenFile={onOpenFile} />
-          </Suspense>
-        </section>
-      )}
 
 
       </div>
