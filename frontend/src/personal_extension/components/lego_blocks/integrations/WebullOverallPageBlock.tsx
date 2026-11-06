@@ -293,6 +293,25 @@ function CostViewBlock({ allocation, formatMoney, formatMoneyK, onSelectTicker }
   const { slices, total, legend } = allocation
   // The list fills the panel's height; trim it to whole rows so none sits cut in half.
   const listRef = useRef<HTMLOListElement>(null)
+  // The panel's own width, not the window's, decides the layout: the sidebar and
+  // the side column take a varying share of the window. Wide: donut, legend and
+  // the money split in a row. Medium: a smaller donut beside the legend, the split
+  // as three figures underneath. Narrow: stacked. The legend always gets room for
+  // its columns (it still gives way, column by column, if squeezed further).
+  const shellRef = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState<'wide' | 'medium' | 'narrow'>('wide')
+  useLayoutEffect(() => {
+    const shell = shellRef.current
+    if (!shell) return
+    const measure = () => {
+      const w = shell.getBoundingClientRect().width
+      setSize(w >= 1020 ? 'wide' : w >= 700 ? 'medium' : 'narrow')
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(shell)
+    return () => observer.disconnect()
+  }, [])
   const [listHeight, setListHeight] = useState<number | null>(null)
   // How many columns a row has room for. The rows' columns are fixed widths (so
   // they line up), and the list hides what overflows sideways: in a narrow
@@ -367,17 +386,24 @@ function CostViewBlock({ allocation, formatMoney, formatMoneyK, onSelectTicker }
     )
   }
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="flex flex-1 flex-col gap-5 md:flex-row md:items-stretch md:justify-center md:gap-12">
-        <div className="relative mx-auto h-[260px] w-[320px] shrink-0 md:mx-0 md:self-center">
+    <div ref={shellRef} className="flex flex-1 flex-col">
+      <div className={cn(
+        'flex flex-1',
+        size === 'wide' ? 'flex-row items-stretch justify-center gap-12'
+          : size === 'medium' ? 'flex-row flex-wrap items-stretch gap-x-8 gap-y-5' : 'flex-col gap-5',
+      )}>
+        <div className={cn(
+          'relative shrink-0',
+          size === 'wide' ? 'h-[260px] w-[320px] self-center' : size === 'medium' ? 'h-[210px] w-[290px] self-center' : 'mx-auto h-[240px] w-[300px]',
+        )}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
                 data={slices}
                 dataKey="value"
                 nameKey="key"
-                innerRadius={66}
-                outerRadius={100}
+                innerRadius={size === 'medium' ? 50 : 66}
+                outerRadius={size === 'medium' ? 76 : 100}
                 label={renderSliceLabel}
                 labelLine={false}
                 paddingAngle={0}
@@ -415,8 +441,8 @@ function CostViewBlock({ allocation, formatMoney, formatMoneyK, onSelectTicker }
 
         {/* The list fills the panel's height (set by the side column) and scrolls inside it,
             rather than leaving the panel half empty or stretching it. */}
-        <div className="relative min-w-0 md:max-w-[34rem] md:flex-1">
-        <ol ref={listRef} style={listHeight ? { height: listHeight } : undefined} className="max-h-[260px] overflow-y-auto overflow-x-hidden pr-1 [scrollbar-width:thin] md:absolute md:inset-x-0 md:top-0 md:max-h-none">
+        <div className={cn('relative min-w-0', size === 'wide' ? 'max-w-[34rem] flex-1' : size === 'medium' ? 'flex-1 basis-[24rem]' : '')}>
+        <ol ref={listRef} style={size !== 'narrow' && listHeight ? { height: listHeight } : undefined} className={cn('overflow-y-auto overflow-x-hidden pr-1 [scrollbar-width:thin]', size === 'narrow' ? 'max-h-[260px]' : 'absolute inset-x-0 top-0')}>
           {legend.map(entry => (
             <li key={entry.ticker}>
               <button
@@ -453,7 +479,11 @@ function CostViewBlock({ allocation, formatMoney, formatMoneyK, onSelectTicker }
         </ol>
         </div>
         {/* What kind of money the allocation is: shares, and options by time left */}
-        <dl className="w-full shrink-0 space-y-3 border-zinc-200/80 text-[12px] md:w-[12.5rem] md:self-center md:border-l md:pl-6 dark:border-zinc-800">
+        <dl className={cn(
+          'shrink-0 border-zinc-200/80 text-[12px] dark:border-zinc-800',
+          size === 'wide' ? 'w-[12.5rem] space-y-3 self-center border-l pl-6'
+            : size === 'medium' ? 'grid basis-full grid-cols-3 gap-6 border-t pt-4' : 'w-full space-y-3 border-t pt-4',
+        )}>
           {summary.map(item => (
             <div key={item.label}>
               <dt className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
