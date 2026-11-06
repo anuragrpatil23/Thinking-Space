@@ -294,17 +294,25 @@ function CostViewBlock({ allocation, formatMoney, formatMoneyK, onSelectTicker }
   // The list fills the panel's height; trim it to whole rows so none sits cut in half.
   const listRef = useRef<HTMLOListElement>(null)
   const [listHeight, setListHeight] = useState<number | null>(null)
+  // How many columns a row has room for. The rows' columns are fixed widths (so
+  // they line up), and the list hides what overflows sideways: in a narrow
+  // window the bar, then P/L, then the amount give way, rather than all of
+  // them being cut off with only the tickers left.
+  const [fit, setFit] = useState<'full' | 'noBar' | 'share' | 'ticker'>('full')
   useLayoutEffect(() => {
     const list = listRef.current
     const frame = list?.parentElement
     if (!list || !frame) return
-    const fit = () => {
+    const measure = () => {
       const row = list.firstElementChild?.getBoundingClientRect().height ?? 0
-      const available = frame.getBoundingClientRect().height
+      const box = frame.getBoundingClientRect()
+      const available = box.height
       setListHeight(row > 0 && available > 0 ? Math.floor(available / row) * row : null)
+      const w = box.width
+      setFit(w >= 380 ? 'full' : w >= 300 ? 'noBar' : w >= 230 ? 'share' : 'ticker')
     }
-    fit()
-    const observer = new ResizeObserver(fit)
+    measure()
+    const observer = new ResizeObserver(measure)
     observer.observe(frame)
     return () => observer.disconnect()
   }, [legend.length])
@@ -414,7 +422,12 @@ function CostViewBlock({ allocation, formatMoney, formatMoneyK, onSelectTicker }
               <button
                 type="button"
                 onClick={() => onSelectTicker(entry.ticker)}
-                className="ltm-motion-fast grid w-full grid-cols-[4.5rem_minmax(4rem,12rem)_3.25rem_4rem_4rem] items-center gap-3 rounded-md px-2 py-1.5 text-left text-[12px] tabular-nums transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+                className={cn(
+                  'ltm-motion-fast grid w-full items-center gap-3 rounded-md px-2 py-1.5 text-left text-[12px] tabular-nums transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60',
+                  fit === 'full' ? 'grid-cols-[4.5rem_minmax(4rem,12rem)_3.25rem_4rem_4rem]'
+                    : fit === 'noBar' ? 'grid-cols-[4.5rem_3.25rem_4rem_4rem]'
+                      : fit === 'share' ? 'grid-cols-[4.5rem_3.25rem_4rem]' : 'grid-cols-[minmax(0,1fr)_3.25rem]',
+                )}
                 title={entry.option > 0 ? (entry.stock > 0 ? 'Stock and options' : 'Options only') : 'Stock'}
               >
                 <span className="flex min-w-0 items-center gap-2">
@@ -422,18 +435,18 @@ function CostViewBlock({ allocation, formatMoney, formatMoneyK, onSelectTicker }
                   <span className="truncate font-medium">{entry.ticker}</span>
                 </span>
                 {/* Stock part solid, options part lighter, against the largest holding */}
-                <span className="flex h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                {fit === 'full' && <span className="flex h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
                   <span style={{ width: `${largest > 0 ? (entry.stock / entry.total) * (entry.share / largest) * 100 : 0}%`, backgroundColor: entry.color }} />
                   <span style={{ width: `${largest > 0 ? (entry.option / entry.total) * (entry.share / largest) * 100 : 0}%`, backgroundColor: entry.color, opacity: 0.45 }} />
-                </span>
+                </span>}
                 <span className="text-right text-zinc-500 dark:text-zinc-400">{entry.share.toFixed(1)}%</span>
-                <span className="text-right">{formatMoneyK(entry.total)}</span>
-                <span className={cn(
+                {fit !== 'ticker' && <span className="text-right">{formatMoneyK(entry.total)}</span>}
+                {(fit === 'full' || fit === 'noBar') && <span className={cn(
                   'text-right',
                   entry.plPercent === null ? 'text-zinc-400' : entry.plPercent >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400',
                 )}>
                   {entry.plPercent === null ? '—' : `${entry.plPercent >= 0 ? '+' : ''}${entry.plPercent.toFixed(1)}%`}
-                </span>
+                </span>}
               </button>
             </li>
           ))}
