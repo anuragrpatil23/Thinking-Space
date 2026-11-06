@@ -60,14 +60,44 @@ export default function WebullStatementsPanelBlock({ executionRoot, onOpenFile }
   // An agent reading statements into the CSVs: show it as soon as it lands.
   useStatementsChangedBlock(executionRoot, () => { void load().catch(() => undefined) }, true)
 
-  const take = (files: FileList | null) => {
+  // The same statement dropped again (Webull names every download "download (n).pdf")
+  // is caught by its bytes: against what is filed, and against the rest of the drop.
+  const hashes = useRef(new Map<string, string>())
+  const [skipped, setSkipped] = useState<string[]>([])
+  const hashOf = async (data: ArrayBuffer) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', data))).map(b => b.toString(16).padStart(2, '0')).join('')
+  const take = async (files: FileList | null) => {
     const all = Array.from(files ?? [])
     const pdfs = all.filter(f => /\.pdf$/i.test(f.name))
-    const skipped = all.length - pdfs.length
-    setError(skipped ? `${skipped} ${skipped === 1 ? 'file is' : 'files are'} not a PDF and ${skipped === 1 ? 'was' : 'were'} left out.` : null)
+    const notPdf = all.length - pdfs.length
+    setError(notPdf ? `${notPdf} ${notPdf === 1 ? 'file is' : 'files are'} not a PDF and ${notPdf === 1 ? 'was' : 'were'} left out.` : null)
     if (!pdfs.length) return
-    const guesses = suggestStatementBatchBlock(pdfs.map(f => f.name), accounts ?? [])
-    setPending(pdfs.map((file, i) => ({ file, ...guesses[i] })))
+    const fs = getVaultFS()
+    const filed = new Map<string, StatementRowBlock>()
+    await Promise.all(rows.filter(r => r.path).map(async r => {
+      const path = `${root}/${r.path}`
+      let h = hashes.current.get(path)
+      if (!h) {
+        const bytes = await fs.readBytes(path).catch(() => null)
+        if (!bytes) return
+        h = await hashOf(bytes.slice().buffer)
+        hashes.current.set(path, h)
+      }
+      filed.set(h, r)
+    }))
+    const fresh: File[] = []
+    const notes: string[] = []
+    const inDrop = new Map<string, string>()
+    for (const f of pdfs) {
+      const h = await hashOf(await f.arrayBuffer())
+      const r = filed.get(h)
+      if (r) notes.push(`${f.name} is ${monthWord(r.period)} · ${r.account}, already filed${r.status === 'read' ? ' and read' : ''}.`)
+      else if (inDrop.has(h)) notes.push(`${f.name} is the same file as ${inDrop.get(h)}.`)
+      else { inDrop.set(h, f.name); fresh.push(f) }
+    }
+    setSkipped(notes)
+    if (!fresh.length) { setPending(null); return }
+    const guesses = suggestStatementBatchBlock(fresh.map(f => f.name), accounts ?? [])
+    setPending(fresh.map((file, i) => ({ file, ...guesses[i] })))
   }
   const problems = pending ? statementBatchProblemsBlock(pending.map(p => ({ name: p.file.name, folder: p.folder, period: p.period })), accounts ?? []) : []
   const update = (i: number, patch: Partial<{ folder: StatementFolderBlock; period: string }>) =>
@@ -182,7 +212,7 @@ export default function WebullStatementsPanelBlock({ executionRoot, onOpenFile }
               <button type="button" disabled={saving || problems.length > 0} onClick={() => { void fileAll() }} className="rounded-[8px] bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-40 dark:bg-white dark:text-zinc-900">
                 {saving ? 'Filing…' : pending.length === 1 ? 'File it' : `File all ${pending.length}`}
               </button>
-              <button type="button" onClick={() => { setPending(null); setError(null) }} className="rounded-[8px] px-3 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Cancel</button>
+              <button type="button" onClick={() => { setPending(null); setError(null); setSkipped([]) }} className="rounded-[8px] px-3 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800">Cancel</button>
             </div>
           </div>
         ) : (
@@ -191,7 +221,7 @@ export default function WebullStatementsPanelBlock({ executionRoot, onOpenFile }
             onClick={() => input.current?.click()}
             onDragOver={e => { e.preventDefault(); setDragging(true) }}
             onDragLeave={() => setDragging(false)}
-            onDrop={e => { e.preventDefault(); setDragging(false); take(e.dataTransfer.files) }}
+            onDrop={e => { e.preventDefault(); setDragging(false); void take(e.dataTransfer.files) }}
             className={cn(
               'flex h-full min-h-[140px] w-full flex-col items-center justify-center gap-1 rounded-[12px] border border-dashed px-4 text-center transition-colors',
               dragging ? 'border-sky-500 bg-sky-50/70 dark:bg-sky-500/10' : 'border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800/50',
@@ -201,7 +231,13 @@ export default function WebullStatementsPanelBlock({ executionRoot, onOpenFile }
             <span className="text-[12px] text-zinc-500 dark:text-zinc-400">one or several PDFs, or click to choose</span>
           </button>
         )}
-        <input ref={input} type="file" multiple accept="application/pdf,.pdf" className="hidden" onChange={e => { take(e.target.files); e.target.value = '' }} />
+        <input ref={input} type="file" multiple accept="application/pdf,.pdf" className="hidden" onChange={e => { const files = e.target.files; void take(files).finally(() => { e.target.value = '' }) }} />
+        {skipped.length > 0 && (
+          <div className="mt-2 space-y-0.5 text-[12px] text-zinc-500 dark:text-zinc-400">
+            <p className="font-medium text-zinc-700 dark:text-zinc-200">Skipped, already here:</p>
+            {skipped.map(m => <p key={m}>{m}</p>)}
+          </div>
+        )}
         {error && <p className="mt-2 text-[12px] text-red-600 dark:text-red-400">{error}</p>}
       </div>
     </F9PanelBlock>
