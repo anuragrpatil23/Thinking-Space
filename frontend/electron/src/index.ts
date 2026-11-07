@@ -2252,7 +2252,9 @@ ipcMain.handle('net:fetchText', async (_event, url: string, options?: { userAgen
   };
   function fetchTextOnce(targetUrl: string): Promise<{ status: number; body: string }> {
     return new Promise((resolve, reject) => {
-      const req = https.request(targetUrl, { method: 'GET', headers: defaultHeaders }, (res) => {
+      // Some pages (Yahoo Finance) send ~35KB of headers, over Node's 16KB default: the request
+      // then fails with "Header overflow" before any of the body is read.
+      const req = https.request(targetUrl, { method: 'GET', headers: defaultHeaders, maxHeaderSize: 128 * 1024 }, (res) => {
         const status = res.statusCode ?? 0;
         const location = res.headers.location;
         if ([301, 302, 303, 307, 308].includes(status) && location) {
@@ -2302,7 +2304,9 @@ ipcMain.handle('net:fetchBytes', async (_event, url: string): Promise<{ status: 
   };
   function fetchBytesOnce(targetUrl: string): Promise<{ status: number; bytesBase64: string; contentType: string | null }> {
     return new Promise((resolve, reject) => {
-      const req = https.request(targetUrl, { method: 'GET', headers: defaultHeaders }, (res) => {
+      // Some pages (Yahoo Finance) send ~35KB of headers, over Node's 16KB default: the request
+      // then fails with "Header overflow" before any of the body is read.
+      const req = https.request(targetUrl, { method: 'GET', headers: defaultHeaders, maxHeaderSize: 128 * 1024 }, (res) => {
         const status = res.statusCode ?? 0;
         const location = res.headers.location;
         if ([301, 302, 303, 307, 308].includes(status) && location) {
