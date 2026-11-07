@@ -1,3 +1,4 @@
+import CursorTooltipBlock from '@/components/lego_blocks/units/CursorTooltipBlock'
 import { useAppWorkAttentionBlock } from '@/components/lego_blocks/hooks/shared/useAppWorkAttentionBlock'
 import { Suspense, useMemo, useState, type ReactNode } from 'react'
 import { F9PriceChartBlock, type TimedPriceBandBlock } from '../units/F9PriceChartBlock'
@@ -521,9 +522,6 @@ export default function WebullCompanyPageBlock({
   const priceStale = current?.date ? Date.now() - Date.parse(`${current.date}T23:59:59`) > 4 * 86_400_000 : current !== null
   const mid = range ? (range.low + range.high) / 2 : null
   const fromMid = price !== null && mid ? price - mid : null
-  const rangeState = price !== null && range && !priceStale
-    ? (price < range.low ? 'Below range' : price > range.high ? 'Above range' : 'In range')
-    : null
   const rangePosition = price !== null && range && range.high > range.low
     ? Math.min(1, Math.max(0, (price - range.low) / (range.high - range.low)))
     : null
@@ -541,14 +539,16 @@ export default function WebullCompanyPageBlock({
   const sublineParts = [
     ticker ? displayName : null,
     costShare !== null ? `Held · ${(costShare * 100).toFixed(costShare >= 0.1 ? 0 : 1)}% of cost` : dossier && !study ? 'Not studied yet' : 'Watchlist',
-    rangeState,
   ].filter(Boolean)
 
   return (
     <div ref={workRef} className="grid gap-5 pb-12 lg:grid-cols-[minmax(0,1fr)_minmax(290px,340px)]">
       <FileCopyMenuHostBlock />
       <div className="flex min-w-0 flex-col gap-5">
-      <header id="webull-company-overview" className="scroll-mt-4 flex flex-wrap items-end justify-between gap-4">
+      <header id="webull-company-overview" className="scroll-mt-4 flex flex-col gap-3">
+        {/* The update stamp gets its own row, so the name and the price start on the same line beneath it */}
+        {footer && <div className="flex justify-end">{footer}</div>}
+        <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3.5">
           {executionRoot && ticker && <TickerLogoBlock ticker={ticker} executionRoot={executionRoot} className="h-11 w-11 shadow-[0_0_0_0.5px_rgba(0,0,0,0.08)]" />}
           <div className="min-w-0">
@@ -556,31 +556,50 @@ export default function WebullCompanyPageBlock({
             <p className="mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">{sublineParts.join(' · ')}</p>
           </div>
         </div>
-        {(price !== null || footer) && (
+        {price !== null && (
           <div className="flex flex-col items-end text-right tabular-nums">
-            {footer && <div className="mb-1.5">{footer}</div>}
             {price !== null && (<>
             <p className="text-[26px] font-semibold leading-tight">{formatPriceBlock(price)}</p>
-            <p className="text-[13px] text-zinc-500 dark:text-zinc-400">
-              {fromMid !== null && mid ? (
-                <span className={cn(fromMid >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
-                  {fromMid >= 0 ? '+' : '−'}{Math.abs((fromMid / mid) * 100).toFixed(1)}% · {fromMid >= 0 ? '+' : '−'}{formatPriceBlock(Math.abs(fromMid))} from range mid
-                </span>
-              ) : null}
-              <span className={cn('ml-1.5', priceStale && 'font-medium text-amber-600 dark:text-amber-400')}>
-                {current?.date ? `as of ${formatDateBlock(current.date)}` : 'date unknown'}{priceStale ? ' · stale' : ''}
-              </span>
-            </p>
-            {yearHigh && yearHigh.price > 0 && price < yearHigh.price && (
-              <p className="text-[13px] text-zinc-500 dark:text-zinc-400">
-                <span className="text-red-600 dark:text-red-400">−{Math.round((1 - price / yearHigh.price) * 100)}% from high</span>
-                {' '}{formatPriceBlock(yearHigh.price)} on {new Date(`${yearHigh.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                {yearHigh.daysAgo > 0 ? ` · ${yearHigh.daysAgo} trading ${yearHigh.daysAgo === 1 ? 'day' : 'days'} ago` : ''}
+            {/* Two small stacks side by side, as the Drops table sets a row: the figure, then
+                what it is and what it is measured against in grey. Hover either for the dollars. */}
+            {((fromMid !== null && mid && range) || (yearHigh && yearHigh.price > 0 && price < yearHigh.price)) && (
+              <div className="mt-3 flex items-start justify-end gap-7 text-right">
+                {fromMid !== null && mid && range ? (
+                  <CursorTooltipBlock instant content={`${fromMid >= 0 ? '+' : '−'}${formatPriceBlock(Math.abs(fromMid))} from your range mid of ${formatPriceBlock(mid)}`}>
+                    <div className="cursor-default">
+                      <p className={cn('text-[15px] font-medium leading-tight', fromMid >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
+                        {fromMid >= 0 ? '+' : '−'}{Math.abs(Math.round((fromMid / mid) * 100))}%
+                      </p>
+                      <p className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{fromMid >= 0 ? 'above' : 'below'} your range</p>
+                      <p className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{formatPriceBlock(range.low)} to {formatPriceBlock(range.high)}</p>
+                    </div>
+                  </CursorTooltipBlock>
+                ) : null}
+                {yearHigh && yearHigh.price > 0 && price < yearHigh.price && (
+                  <CursorTooltipBlock instant content={`−${formatPriceBlock(yearHigh.price - price)} from the high of ${formatPriceBlock(yearHigh.price)}`}>
+                    <div className="cursor-default">
+                      <p className="text-[15px] font-medium leading-tight text-red-600 dark:text-red-400">−{Math.round((1 - price / yearHigh.price) * 100)}%</p>
+                      <p className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">below its high</p>
+                      <p className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
+                        {formatPriceBlock(yearHigh.price)} on {new Date(`${yearHigh.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </p>
+                      {yearHigh.daysAgo > 0 && (
+                        <p className="text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{yearHigh.daysAgo} trading {yearHigh.daysAgo === 1 ? 'day' : 'days'} ago</p>
+                      )}
+                    </div>
+                  </CursorTooltipBlock>
+                )}
+              </div>
+            )}
+            {(priceStale || !current?.date) && (
+              <p className="text-[13px] font-medium text-amber-600 dark:text-amber-400">
+                {current?.date ? `Price from ${formatDateBlock(current.date)} · stale` : 'Price date unknown'}
               </p>
             )}
             </>)}
           </div>
         )}
+        </div>
       </header>
 
       {error && <p className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
