@@ -82,6 +82,7 @@ import GoogleDocDocumentBlock from '@/components/lego_blocks/integrations/Google
 import ImageDocumentBlock from '@/components/lego_blocks/integrations/ImageDocumentBlock'
 import HtmlDocumentBlock from '@/components/lego_blocks/integrations/HtmlDocumentBlock'
 import MarkdownMindmapPanelBlock from '@/components/lego_blocks/integrations/MarkdownMindmapPanelBlock'
+import DocumentAiReadSlotBlock from '@/components/lego_blocks/units/DocumentAiReadSlotBlock'
 import MarkdownMiniNavBlock from '@/components/lego_blocks/integrations/MarkdownMiniNavBlock'
 import MarkdownSectionContentsBlock from '@/components/lego_blocks/integrations/MarkdownSectionContentsBlock'
 import MarkdownRichEditorBlock, { type MarkdownRichEditorBlockHandle } from '@/components/lego_blocks/integrations/MarkdownRichEditorBlock'
@@ -2568,6 +2569,8 @@ function MarkdownTextDocumentRuntimeBlock({
                 content={displayContent}
                 open={supportsMindmap && viewMindmapPanelOpen}
               />
+              {/* What an AI read in this document, when an extension has a reading for it */}
+              <DocumentAiReadSlotBlock path={path} className={cn(isIosPhone ? 'px-5 pt-4' : 'px-8 pt-6')} />
 
               <div
                 className={cn('space-y-2', isIosPhone ? 'px-5 py-5' : 'px-8 py-7')}
