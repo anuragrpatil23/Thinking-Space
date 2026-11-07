@@ -43,7 +43,7 @@ import { FeedOverviewBlock } from './FeedOverviewBlock'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK } from './WebullSidebarBlock'
 import type { WebullUniverseCompanyBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
-import { FEED_DROPS_AVAILABLE, PrivateFeedDropsBlock } from '../units/privatePersonalBlock'
+import { FEED_DROPS_AVAILABLE, PrivateFeedDropsBlock, PrivateValueLineBackfillBlock } from '../units/privatePersonalBlock'
 import { writeFeedReadLogsOrch } from '@/personal_extension/services/orchestrators/feedReadLogOrch'
 import { readWebullExecutionSettingsOrch } from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
 import { feedReadLogPathBlock, feedThemeListPathBlock } from '@/personal_extension/services/lego_blocks/units/feedReadLogBlock'
@@ -226,6 +226,7 @@ function ValueLineStatusBlock() {
       {!running && valueLineAvailableOrch() && (
         <button type="button" onClick={() => { void checkValueLineNowOrch() }} className="ml-2 text-[#3b6fb6] hover:underline dark:text-sky-400">Check now</button>
       )}
+      {PrivateValueLineBackfillBlock && valueLineAvailableOrch() && <Suspense fallback={null}><PrivateValueLineBackfillBlock /></Suspense>}
       {open && <PassQueueListBlock items={running?.items ?? last?.items ?? []} />}
     </span>
   )

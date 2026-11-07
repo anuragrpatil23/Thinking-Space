@@ -139,3 +139,8 @@ export function runPrivateMarketPassNowBlock(): Promise<void> {
   if (!loadMarketPass) return Promise.resolve()
   return loadMarketPass().then(m => (m.runPrivateMarketPassNow ?? m.runPrivateMarketPassIfDue)()).catch(() => undefined)
 }
+
+// Feed → Value Line: fetch every missing back issue, paced like a reader.
+const VALUE_LINE_BACKFILL_MODULES = import.meta.glob<{ default: ComponentType }>('../../../thinkingspace-personal/valueLineBackfill.tsx')
+const loadValueLineBackfill = Object.values(VALUE_LINE_BACKFILL_MODULES)[0]
+export const PrivateValueLineBackfillBlock = loadValueLineBackfill ? lazy(loadValueLineBackfill) : null
