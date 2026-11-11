@@ -144,3 +144,14 @@ export function runPrivateMarketPassNowBlock(): Promise<void> {
 const VALUE_LINE_BACKFILL_MODULES = import.meta.glob<{ default: ComponentType }>('../../../thinkingspace-personal/valueLineBackfill.tsx')
 const loadValueLineBackfill = Object.values(VALUE_LINE_BACKFILL_MODULES)[0]
 export const PrivateValueLineBackfillBlock = loadValueLineBackfill ? lazy(loadValueLineBackfill) : null
+
+// Feed → Overview: your companies' coming earnings reports, from the same
+// private folder (its daily pass records them); without it there is no panel.
+const EARNINGS_CALENDAR_MODULES = import.meta.glob<{ default: ComponentType<PrivateFeedDropsPropsBlock> }>('../../../thinkingspace-personal/earningsCalendar.tsx')
+const loadEarningsCalendar = Object.values(EARNINGS_CALENDAR_MODULES)[0]
+export const PrivateEarningsCalendarBlock = loadEarningsCalendar ? lazy(loadEarningsCalendar) : null
+
+// Feed → Calendar: the same reports as a month, from the same private folder.
+const EARNINGS_CALENDAR_VIEW_MODULES = import.meta.glob<{ default: ComponentType<PrivateFeedDropsPropsBlock> }>('../../../thinkingspace-personal/earningsCalendarView.tsx')
+const loadEarningsCalendarView = Object.values(EARNINGS_CALENDAR_VIEW_MODULES)[0]
+export const PrivateEarningsCalendarViewBlock = loadEarningsCalendarView ? lazy(loadEarningsCalendarView) : null

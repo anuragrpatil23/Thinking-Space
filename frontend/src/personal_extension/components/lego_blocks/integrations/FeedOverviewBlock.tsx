@@ -391,7 +391,7 @@ function FeedTopicsPanelBlock({ topics, sourceOf, onOpenItem, dayLabel }: { topi
   )
 }
 
-export function FeedOverviewBlock({ reader, onOpenItem, chart, header, day, onPickDay }: {
+export function FeedOverviewBlock({ reader, onOpenItem, chart, header, day, onPickDay, side }: {
   reader: ReturnType<typeof useFeedAiReadBlock>
   /** The Feed's day, YYYY-MM-DD: today unless another was picked */
   day: string
@@ -401,6 +401,8 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header, day, onPi
   header: React.ReactNode
   /** The articles-per-day chart, owned by the Feed page */
   chart: React.ReactNode
+  /** More of where things stand, under the day's panel (the Earnings calendar) */
+  side?: React.ReactNode
 }) {
   const { feeds, preferences } = useRssFeedsBlock()
   // "Since you last looked" compares with the visit before this one
@@ -540,6 +542,8 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header, day, onPi
           {newStories !== null && <F9FactRowBlock divided label="New since your last visit" value={newStories} />}
           <F9FactRowBlock divided={newStories === null} label={isToday ? 'This week' : `The week to ${dayLabel}`} value={weekStories} sub={(() => { const read = history.reduce((n, d) => n + d.read, 0); return `${read} read by you${weekStories ? ` · ${Math.round((read / weekStories) * 100)}%` : ''}` })()} />
         </F9PanelBlock>
+
+        {side}
 
         {sourcesToday.length > 0 && (
           <F9PanelBlock className="px-5 pb-3 pt-[18px] text-[13px]">

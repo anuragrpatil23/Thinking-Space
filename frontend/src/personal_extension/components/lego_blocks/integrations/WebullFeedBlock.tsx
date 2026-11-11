@@ -43,7 +43,7 @@ import { FeedOverviewBlock } from './FeedOverviewBlock'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK } from './WebullSidebarBlock'
 import type { WebullUniverseCompanyBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
-import { FEED_DROPS_AVAILABLE, PrivateFeedDropsBlock, PrivateValueLineBackfillBlock } from '../units/privatePersonalBlock'
+import { FEED_DROPS_AVAILABLE, PrivateEarningsCalendarBlock, PrivateEarningsCalendarViewBlock, PrivateFeedDropsBlock, PrivateValueLineBackfillBlock } from '../units/privatePersonalBlock'
 import { writeFeedReadLogsOrch } from '@/personal_extension/services/orchestrators/feedReadLogOrch'
 import { readWebullExecutionSettingsOrch } from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
 import { feedReadLogPathBlock, feedThemeListPathBlock } from '@/personal_extension/services/lego_blocks/units/feedReadLogBlock'
@@ -58,7 +58,7 @@ import { F9_CHART_TOOLTIP_STYLE_BLOCK, F9PanelBlock, F9SegmentedBlock } from '..
 // and the sources only the AI reads). The reader itself is the app's RSS
 // reader (shared code).
 
-type FeedViewBlock = 'overview' | 'reading' | 'drops' | 'sources'
+type FeedViewBlock = 'overview' | 'reading' | 'drops' | 'calendar' | 'sources'
 
 const TRUST_OPTIONS_BLOCK: Array<{ value: 'high' | 'normal' | 'low'; label: string }> = [
   { value: 'high', label: 'Trusted' },
@@ -985,7 +985,7 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
         <div className="min-w-0">
           {/* "Feed" and the day it shows, as one title */}
           <h1 className={cn('font-bold leading-tight tracking-tight', compactHeader ? 'text-[20px]' : 'text-[26px]')}>
-            Feed{view !== 'sources' && <FeedDayTitleBlock day={feedDay} today={todayKey} onPick={pickDay} />}
+            Feed{view !== 'sources' && view !== 'calendar' && <FeedDayTitleBlock day={feedDay} today={todayKey} onPick={pickDay} />}
           </h1>
           {!compactHeader && <p className="mt-0.5 text-[13px] text-zinc-500 dark:text-zinc-400">Where things are first seen. Write down what you notice.</p>}
         </div>
@@ -993,6 +993,7 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
           { value: 'overview', label: 'Overview' },
           { value: 'reading', label: 'Reading' },
           ...(FEED_DROPS_AVAILABLE ? [{ value: 'drops' as const, label: 'Drops' }] : []),
+          ...(PrivateEarningsCalendarViewBlock ? [{ value: 'calendar' as const, label: 'Calendar' }] : []),
           { value: 'sources', label: 'Sources' },
         ]} />
       </header>
@@ -1007,8 +1008,17 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
     )
   }
 
+  if (view === 'calendar' && PrivateEarningsCalendarViewBlock) {
+    return (
+      <div className="flex flex-col gap-4">
+        {header}
+        <Suspense fallback={null}><PrivateEarningsCalendarViewBlock groups={dropGroups} /></Suspense>
+      </div>
+    )
+  }
+
   if (view === 'overview') {
-    return <FeedOverviewBlock reader={aiReader} onOpenItem={openFromOverview} chart={<VolumeChartBlock day={feedDay} onPickDay={pickDay} />} header={header} day={feedDay} onPickDay={pickDay} />
+    return <FeedOverviewBlock reader={aiReader} onOpenItem={openFromOverview} chart={<VolumeChartBlock day={feedDay} onPickDay={pickDay} />} header={header} day={feedDay} onPickDay={pickDay} side={PrivateEarningsCalendarBlock && <Suspense fallback={null}><PrivateEarningsCalendarBlock groups={dropGroups} /></Suspense>} />
   }
 
   return (
