@@ -9,6 +9,7 @@ import type { CapacitorElectronConfig } from '@capacitor-community/electron';
 import { getCapacitorElectronConfig, setupElectronDeepLinking } from '@capacitor-community/electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MenuItem, nativeTheme, session, shell } from 'electron';
+import { printSecFilingPdfBlock } from './secFilingPdfBlock';
 import electronIsDev from 'electron-is-dev';
 import unhandled from 'electron-unhandled';
 import { autoUpdater } from 'electron-updater';
@@ -2290,6 +2291,9 @@ ipcMain.handle('net:fetchText', async (_event, url: string, options?: { userAgen
   }
   return fetchTextOnce(url.trim());
 });
+
+// An SEC filing printed to PDF in a shut, hidden window (secFilingPdfBlock: www.sec.gov filings only)
+ipcMain.handle('net:secFilingPdf', async (_event, url: unknown, options?: { userAgent?: string }) => printSecFilingPdfBlock(url, options?.userAgent));
 
 // Fetch binary bytes from an https URL — used to bypass renderer CORS for
 // resources like the parqet logo CDN that don't send Access-Control headers.

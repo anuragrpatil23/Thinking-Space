@@ -165,7 +165,9 @@ export async function loadWebullCompanyDossierBlock(params: {
     ),
     filings: parseSecFilingsCsvBlock(filingsText),
     // Named "2026 10-K.md" and "2026 annual report.pdf": newest year first, the booklet before the 10-K
-    annualReports: annualFiles.filter(name => /^\d{4} .+\.(md|pdf)$/i.test(name)).sort().reverse()
+    // A PDF and an older text copy of the same report: the PDF only
+    annualReports: annualFiles.filter(name => /^\d{4} .+\.(md|pdf)$/i.test(name))
+      .filter(name => !/\.md$/i.test(name) || !annualFiles.includes(name.replace(/\.md$/i, '.pdf'))).sort().reverse()
       .map(name => ({ path: `${companyFolder}/annual/${name}`, name: name.replace(/\.(md|pdf)$/i, ''), dateKey: Number(name.slice(0, 4)) * 10000 })),
     optionMonths: optionFiles.filter(name => /^\d{4}-\d{2}\.csv$/.test(name)).sort().reverse()
       .map(name => ({ path: `${companyFolder}/options/${name}`, name: name.slice(0, 7), dateKey: Number(name.slice(0, 4)) * 10000 + Number(name.slice(5, 7)) * 100 })),

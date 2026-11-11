@@ -340,7 +340,7 @@ export function createF9SyncOrch(deps: F9SyncDepsBlock) {
           company.facts = facts[company.ticker]
           factsUnsaved = true
         }
-        ledgers[dataset.id] = { ...ledgers[dataset.id], [item.ticker]: recordResultBlock(result, deps.now().toISOString()) }
+        ledgers[dataset.id] = { ...ledgers[dataset.id], [item.ticker]: recordResultBlock(result, deps.now().toISOString(), dataset.version) }
         unsaved.add(dataset.id)
         strikes.delete(lane)
         if (result.outcome !== 'current') pause = dataset.paceMs ?? 0
@@ -497,7 +497,7 @@ export function createF9SyncOrch(deps: F9SyncDepsBlock) {
         const key = f9SyncKeyBlock(d.id, c.ticker)
         const entry = ledger?.[c.ticker]
         const state: F9SyncCellStateBlock = on?.key === key ? 'working' : pending.has(key) ? 'waiting'
-          : entryFailingBlock(entry) ? 'failed' : entryDueBlock(entry, d.cadence, now) ? 'due' : entry ? 'fresh' : 'never'
+          : entryFailingBlock(entry) ? 'failed' : entryDueBlock(entry, d.cadence, now, d.version) ? 'due' : entry ? 'fresh' : 'never'
         return { ticker: c.ticker, state }
       }).sort((a, b) => a.ticker.localeCompare(b.ticker))
       return {

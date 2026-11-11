@@ -78,3 +78,14 @@ describe('where a dataset stands', () => {
     expect(tallyBlock(prices, companies, ledger, now)).toEqual({ total: 4, fresh: 1, due: 2, failed: 1, lastAt: '2026-11-10T22:10:00Z' })
   })
 })
+
+describe('a dataset that changes what it writes', () => {
+  it('makes every company synced under an older version due, whatever its cadence', () => {
+    const weekly: F9SyncDatasetPlanBlock = { id: 'sec', cadence: 'weekly', order: 40, covers: () => true, version: 5 }
+    const old = recordResultBlock({ outcome: 'fetched' }, '2026-11-10T22:10:00Z', 4)
+    const current = recordResultBlock({ outcome: 'fetched' }, '2026-11-10T22:10:00Z', 5)
+    expect(entryDueBlock(old, 'weekly', now, 5)).toBe(true)
+    expect(entryDueBlock(current, 'weekly', now, 5)).toBe(false)
+    expect(planBlock([weekly], [co('AAPL', true), co('MSFT', true)], { sec: { AAPL: old, MSFT: current } }, { scope: 'yours', mode: 'due' }, now).map(i => i.ticker)).toEqual(['AAPL'])
+  })
+})

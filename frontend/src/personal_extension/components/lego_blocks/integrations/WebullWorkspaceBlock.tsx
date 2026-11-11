@@ -13,6 +13,7 @@ import { gapsForPositionBlock } from '@/personal_extension/services/lego_blocks/
 import { GapChipsBlock } from '@/personal_extension/components/lego_blocks/units/GapChipsBlock'
 import WebullOverallPageBlock from './WebullOverallPageBlock'
 import WebullSidebarBlock from './WebullSidebarBlock'
+import { DROPS_FOCUS_EVENT_BLOCK } from '@/personal_extension/services/lego_blocks/units/dropsFocusBlock'
 import { F9SyncLineBlock, openF9SyncPanelBlock } from '../units/F9SyncLineBlock'
 import { useWebullCompanyUniverseBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullCompanyUniverseBlock'
 import { loadF9SyncEngineBlock } from '@/personal_extension/components/lego_blocks/hooks/useF9AppSyncBlock'
@@ -1277,6 +1278,17 @@ export default function WebullWorkspaceBlock({
   // A company with no F9-execution folder (watchlist or research only) still
   // gets its page: study, research, gaps and price, without holdings.
   const [virtualCompany, setVirtualCompany] = useState<WebullUniverseCompanyBlock | null>(null)
+  // "Options in Drops" on a company page: to the Feed, where Drops scrolls to that company
+  useEffect(() => {
+    const onFocus = () => {
+      onSelectSubtab('feed')
+      setPreserveOverallContext(false)
+      setVirtualCompany(null)
+      onSelectCompanyTicker(null)
+    }
+    window.addEventListener(DROPS_FOCUS_EVENT_BLOCK, onFocus)
+    return () => window.removeEventListener(DROPS_FOCUS_EVENT_BLOCK, onFocus)
+  }, [onSelectSubtab, onSelectCompanyTicker])
   const showVirtualCompany = !selectedCompany && !!virtualCompany && !preserveOverallContext
   const companyPageOpen = showCompanyView || showVirtualCompany
   const selectedCompanyMetrics = useMemo(() => {

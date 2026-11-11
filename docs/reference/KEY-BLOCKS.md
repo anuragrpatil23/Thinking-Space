@@ -373,6 +373,10 @@ Every F9 fetch (prices, Value Line, earnings calls, and the private folder's opt
 
 **SEC filings and annual reports.** The weekly SEC step writes `filings.csv` (10-K, 10-Q, 8-K, ARS, proxy; three years). The `annual` dataset saves each year's 10-K as text (`annual/YYYY 10-K.md`, converted by string work, not a DOM, since a 10-K can be 10 MB) and the annual report to shareholders as filed (`annual/YYYY annual report.pdf`, form ARS). `net:fetchBytes` takes the same optional user agent as `net:fetchText`, because sec.gov refuses downloads that do not name who is asking. The company page lists filings, annual reports and option prices beside Value Line and the calls.
 
+**Versions.** A dataset's `version` is the lever for a code change the ledger cannot see: an entry synced under an older version is due at the next check, whatever the cadence (the SEC dataset carries `SEC_STEP_VERSION_BLOCK`). Raise it whenever a dataset starts writing something new; without it a weekly dataset waits a week.
+
+**Filings as filed.** A filing opened from the company page is printed to PDF by main (`net:secFilingPdf`, see SECURITY.md) into `filings/`; an 8-K or 6-K prints its press release (EX-99.1). The `annual` dataset keeps the newest 10-K and booklet as PDFs in `annual/`; older years print when opened. Shares for a company with several share classes come from the statements' weighted average (`statementSharesBlock`), since SEC's concept API leaves class-split cover counts out.
+
 **Who is "yours".** Companies with a folder holding prices under F9-execution, plus the list the F9 page publishes to `sync/yours.json` (held, watchlist, to research). The private roster adds every watched company and the market line (SPY).
 
 **Traps.**

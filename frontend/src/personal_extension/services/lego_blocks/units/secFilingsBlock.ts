@@ -1,6 +1,6 @@
 // A company's SEC filings, as kept in <company>/filings.csv by the SEC sync
 // (newest first), and its annual reports in <company>/annual/:
-//   YYYY 10-K.md              the annual report on form 10-K, as readable text
+//   YYYY 10-K.pdf             the annual report on form 10-K, printed as filed
 //   YYYY annual report.pdf    the glossy report to shareholders (form ARS), as filed
 //
 // filings.csv:  date,form,report_date,accession,document,cik,items
@@ -114,7 +114,7 @@ export function secFilingUrlBlock(f: Pick<SecFilingBlock, 'cik' | 'accession' | 
 /** Where the annual reports for a filing land in the company's folder. */
 export function annualReportPathBlock(folder: string, f: Pick<SecFilingBlock, 'form' | 'reportDate' | 'date' | 'document'>): string | null {
   const year = (f.reportDate || f.date).slice(0, 4)
-  if (f.form === '10-K' || f.form === '20-F' || f.form === '40-F') return `${folder}/annual/${year} ${f.form}.md`
+  if (f.form === '10-K' || f.form === '20-F' || f.form === '40-F') return `${folder}/annual/${year} ${f.form}.pdf`
   if (f.form === 'ARS' && /\.pdf$/i.test(f.document)) return `${folder}/annual/${year} annual report.pdf`
   return null
 }

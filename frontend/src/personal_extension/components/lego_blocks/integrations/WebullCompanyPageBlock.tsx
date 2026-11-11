@@ -3,6 +3,7 @@ import { useAppWorkAttentionBlock } from '@/components/lego_blocks/hooks/shared/
 import { Suspense, useMemo, useState, type ReactNode } from 'react'
 import { F9PriceChartBlock, type TimedPriceBandBlock } from '../units/F9PriceChartBlock'
 import { openExternalUrlOrch } from '@/services/orchestrators/fileSystemOrch'
+import { openInDropsBlock } from '@/personal_extension/services/lego_blocks/units/dropsFocusBlock'
 import { secFilingTitleBlock, secFilingUrlBlock, type SecFilingBlock } from '@/personal_extension/services/lego_blocks/units/secFilingsBlock'
 import FileCopyMenuHostBlock, { openFileCopyMenuBlock } from '@/components/lego_blocks/integrations/FileCopyMenuBlock'
 import { ChevronRight, Download, Loader2 } from 'lucide-react'
@@ -19,7 +20,7 @@ import {
   F9SectionLabelBlock,
   F9SegmentedBlock,
 } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
-import { PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock, PrivateCompanyPanelsBlock, readPrivateSecFilingBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
+import { FEED_DROPS_AVAILABLE, PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock, PrivateCompanyPanelsBlock, readPrivateSecFilingBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 import { valueLineDueBlock, valueLineIssueLabelBlock, valueLineIssueRowsBlock, type ValueLineIssueRowBlock, type WebullResearchFileBlock, type WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
 import type { WebullClosedPositionBlock } from '@/personal_extension/services/lego_blocks/units/webullClosedPositionsBlock'
 import { useWebullClosedPositionsBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullClosedPositionsBlock'
@@ -480,7 +481,7 @@ function AnnualReportsRowBlock({ reports, expanded, onToggle, onOpenFile }: { re
         <li key={r.path}>
           <button type="button" onClick={() => onOpenFile(r.path)} onContextMenu={(event) => openFileCopyMenuBlock(event, { kind: 'file', path: r.path })} className={FOLD_ITEM_CLASS}>
             <span className="w-10 shrink-0 tabular-nums text-zinc-800 dark:text-zinc-200">{r.name.slice(0, 4)}</span>
-            <span className="min-w-0 flex-1 truncate">{/annual report/i.test(r.name) ? 'Annual report to shareholders' : `${r.name.slice(5)}, as text`}</span>
+            <span className="min-w-0 flex-1 truncate">{/annual report/i.test(r.name) ? 'Annual report to shareholders' : `Annual report (form ${r.name.slice(5)})`}</span>
           </button>
         </li>
       ))}
@@ -491,12 +492,12 @@ function AnnualReportsRowBlock({ reports, expanded, onToggle, onOpenFile }: { re
 // The option prices the sync records each trading day, a file a month
 function OptionPricesRowBlock({ months, expanded, onToggle, onOpenFile, onShowTable }: { months: WebullResearchFileBlock[]; expanded: boolean; onToggle: () => void; onOpenFile: (path: string) => void; onShowTable?: () => void }) {
   if (months.length === 0) return null
-  // With the private folder, the page has the Options table: the row takes you there
+  // With the private folder, Feed → Drops has this company's calls (and the days before): the row takes you to its row there
   if (onShowTable) {
     return (
       <div className="border-b border-zinc-200/70 last:border-b-0 dark:border-zinc-800">
         <button type="button" onClick={onShowTable} className="ltm-motion-fast flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
-          <span className="truncate">Options</span>
+          <span className="truncate">Options in Drops</span>
           <span className="flex shrink-0 items-center gap-1 text-zinc-500 dark:text-zinc-400">
             {monthLabelBlock(months[0].name)}
             <ChevronRight className="h-3.5 w-3.5 opacity-60" />
@@ -567,7 +568,7 @@ function ResearchPanelBlock({ reports, calls, filings, annualReports, optionMont
         expanded={openGroup === 'Option prices'}
         onToggle={() => toggle('Option prices')}
         onOpenFile={onOpenFile}
-        onShowTable={PrivateCompanyPanelsBlock ? () => document.getElementById('company-options')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : undefined}
+        onShowTable={FEED_DROPS_AVAILABLE && ticker ? () => openInDropsBlock(ticker) : undefined}
       />
       {groups.map(group => {
         const expanded = openGroup === group.label
@@ -854,12 +855,6 @@ export default function WebullCompanyPageBlock({
             onOpenFile={onOpenFile}
             onChartBands={setPrivateChartBands}
           />
-        </Suspense>
-      )}
-
-      {PrivateCompanyPanelsBlock && executionRoot && ticker && (
-        <Suspense fallback={null}>
-          <PrivateCompanyPanelsBlock slot="options" ticker={ticker} executionRoot={executionRoot} prices={prices} livePrice={null} studyFrontmatter={null} onOpenFile={onOpenFile} />
         </Suspense>
       )}
 

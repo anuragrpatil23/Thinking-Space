@@ -185,6 +185,8 @@ interface ElectronAPI {
   fetchText?(url: string, options?: { userAgent?: string }): Promise<{ status: number; body: string }>
   runAfterDailyPassHook?(): Promise<{ ran: boolean; code: number | null; output: string }>
   fetchBytes?(url: string, options?: { userAgent?: string }): Promise<{ status: number; bytesBase64: string; contentType: string | null }>
+  /** An SEC filing document (www.sec.gov only), rendered and printed to PDF in main */
+  secFilingPdf?(url: string, options?: { userAgent?: string }): Promise<{ bytesBase64: string }>
   /** Read-only native AI session metadata (locked to ~/.claude/projects + ~/.codex/sessions). */
   nativeAiSessionsList?(): Promise<Array<{
     source: 'claude' | 'codex'

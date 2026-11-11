@@ -32,9 +32,9 @@ describe('SEC filings', () => {
     const filings = secFilingsFromSubmissionsBlock(submissions, 320193, '2025-01-01')
     expect(parseSecFilingsCsvBlock(secFilingsCsvBlock(filings))).toEqual(filings)
   })
-  it('files a 10-K as text and the annual report booklet as its PDF, by fiscal year', () => {
+  it('files the 10-K and the annual report booklet as PDFs, by fiscal year', () => {
     const [, , ars, proxy, tenK] = secFilingsFromSubmissionsBlock(submissions, 320193, '2025-01-01')
-    expect(annualReportPathBlock('/f9/AAPL', tenK)).toBe('/f9/AAPL/annual/2025 10-K.md')
+    expect(annualReportPathBlock('/f9/AAPL', tenK)).toBe('/f9/AAPL/annual/2025 10-K.pdf')
     expect(annualReportPathBlock('/f9/AAPL', ars)).toBe('/f9/AAPL/annual/2026 annual report.pdf')
     expect(annualReportPathBlock('/f9/AAPL', proxy)).toBeNull()
   })

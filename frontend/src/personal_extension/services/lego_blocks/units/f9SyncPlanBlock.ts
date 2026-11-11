@@ -52,6 +52,8 @@ export interface F9SyncEntryBlock {
   fails?: number
   /** The failure needs you (a sign-in): not tried again on its own, only when you ask */
   waitsForYou?: boolean
+  /** The dataset's version when this sync worked (see F9SyncDatasetPlanBlock.version) */
+  version?: number
 }
 
 /** One dataset's ledger: ticker -> entry. A job (no company) is filed under ''. */
@@ -80,6 +82,12 @@ export interface F9SyncDatasetPlanBlock {
   order: number
   /** One piece of work with no company (the back-issue allowance) */
   job?: boolean
+  /**
+   * Raised when what the dataset writes changes (a new file, a new column): every
+   * company synced under an older version is due at the next check, whatever its
+   * cadence. The ledger cannot see a code change; this is the lever that can.
+   */
+  version?: number
   covers(company: F9SyncCompanyBlock): boolean
 }
 
@@ -124,9 +132,11 @@ export function entryFailingBlock(entry: F9SyncEntryBlock | undefined): boolean 
  * trading day, so a source that is down is not asked all day. A company the
  * source does not cover is asked again after a month.
  */
-export function entryDueBlock(entry: F9SyncEntryBlock | undefined, cadence: F9SyncCadenceBlock, now: Date): boolean {
+export function entryDueBlock(entry: F9SyncEntryBlock | undefined, cadence: F9SyncCadenceBlock, now: Date, version = 0): boolean {
   if (cadence === 'on-demand') return false
   if (!entry) return true
+  // Synced before the dataset changed what it writes: due again (a failing one keeps its own pace)
+  if (!entryFailingBlock(entry) && entry.outcome !== 'not-covered' && (entry.version ?? 0) < version) return true
   if (entryFailingBlock(entry)) {
     if (entry.waitsForYou) return false
     const failedAt = Date.parse(entry.failedAt!)
@@ -139,8 +149,8 @@ export function entryDueBlock(entry: F9SyncEntryBlock | undefined, cadence: F9Sy
   return cadenceDueBlock(cadence, okAt, now)
 }
 
-export function recordResultBlock(result: F9SyncResultBlock, at: string): F9SyncEntryBlock {
-  return { okAt: at, outcome: result.outcome, ...(result.detail ? { detail: result.detail } : {}) }
+export function recordResultBlock(result: F9SyncResultBlock, at: string, version = 0): F9SyncEntryBlock {
+  return { okAt: at, outcome: result.outcome, ...(result.detail ? { detail: result.detail } : {}), ...(version ? { version } : {}) }
 }
 
 /** A failure keeps what last worked: the panel still says when the data is from. */
@@ -165,9 +175,9 @@ export function planBlock(
   now: Date,
 ): F9SyncItemBlock[] {
   const only = ask.tickers ? new Set(ask.tickers.map(t => t.toUpperCase())) : null
-  const wanted = (entry: F9SyncEntryBlock | undefined, cadence: F9SyncCadenceBlock) =>
+  const wanted = (entry: F9SyncEntryBlock | undefined, cadence: F9SyncCadenceBlock, version?: number) =>
     ask.mode === 'force'
-    || entryDueBlock(entry, cadence, now)
+    || entryDueBlock(entry, cadence, now, version)
     || (ask.mode === 'now' && (cadence === 'on-demand' || entryFailingBlock(entry)))
   const items: Array<F9SyncItemBlock & { order: number }> = []
   for (const d of datasets) {
@@ -175,7 +185,7 @@ export function planBlock(
     const ledger = ledgers[d.id] ?? {}
     if (d.job) {
       // A job belongs to no company: it comes with everyone, or when named
-      if ((ask.scope === 'everyone' || ask.datasets) && !only && wanted(ledger[''], d.cadence)) {
+      if ((ask.scope === 'everyone' || ask.datasets) && !only && wanted(ledger[''], d.cadence, d.version)) {
         items.push({ key: f9SyncKeyBlock(d.id, ''), dataset: d.id, ticker: '', yours: false, order: d.order })
       }
       continue
@@ -183,7 +193,7 @@ export function planBlock(
     for (const c of companies) {
       if (ask.scope === 'yours' && !c.yours) continue
       if (only && !only.has(c.ticker)) continue
-      if (!d.covers(c) || !wanted(ledger[c.ticker], d.cadence)) continue
+      if (!d.covers(c) || !wanted(ledger[c.ticker], d.cadence, d.version)) continue
       items.push({ key: f9SyncKeyBlock(d.id, c.ticker), dataset: d.id, ticker: c.ticker, yours: c.yours, order: d.order })
     }
   }
@@ -211,7 +221,7 @@ export function tallyBlock(dataset: F9SyncDatasetPlanBlock, companies: F9SyncCom
     tally.total += 1
     if (entry?.okAt && (!tally.lastAt || entry.okAt > tally.lastAt)) tally.lastAt = entry.okAt
     if (entryFailingBlock(entry)) tally.failed += 1
-    else if (entryDueBlock(entry, dataset.cadence, now)) tally.due += 1
+    else if (entryDueBlock(entry, dataset.cadence, now, dataset.version)) tally.due += 1
     else if (entry) tally.fresh += 1
   }
   if (dataset.job) count(ledger?.[''])
