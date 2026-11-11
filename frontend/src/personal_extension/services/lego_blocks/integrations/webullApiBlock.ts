@@ -289,6 +289,15 @@ async function hydrateCachedWebullAccessTokenFromSecureStoreBlock(): Promise<voi
   }
 }
 
+/**
+ * Whether a usable Webull sign-in is on hand, without asking Webull for one.
+ * Asking for a new one sends a 2FA prompt to the phone: only ever when you ask.
+ */
+export async function webullSignedInBlock(): Promise<boolean> {
+  await hydrateCachedWebullAccessTokenFromSecureStoreBlock()
+  return isCachedAccessTokenUsableBlock(cachedWebullAccessTokenBlock)
+}
+
 function waitForMsBlock(ms: number): Promise<void> {
   return new Promise(resolve => {
     window.setTimeout(resolve, Math.max(0, ms))

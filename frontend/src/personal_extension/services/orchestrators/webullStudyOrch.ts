@@ -1,16 +1,13 @@
 // Study orchestrator — loads F9 study records from the vault, enriches them with
-// live prices (held positions from existing Webull overall cache; not-held watchlist
-// stocks from Yahoo v8 chart), categorizes by range/validity, and returns a typed
-// snapshot for the Study tab UI.
+// prices, categorizes by range/validity, and returns a typed snapshot for the
+// Study tab UI. Nothing is fetched here: the price is the newer of the one F9
+// sync keeps (the last close, or the day's quote) and the Webull account's.
 
 import {
   scanWebullStudyVaultBlock,
   type WebullStudyLoadedRecordBlock,
 } from '../lego_blocks/integrations/webullStudyVaultBlock'
-import {
-  fetchYahooStockQuotesBlock,
-  type YahooStockQuoteBlock,
-} from '../lego_blocks/integrations/yahooQuoteBlock'
+import { readSyncedPricesOrch, type SyncedPriceBlock } from './webullPricesOrch'
 import { loadWebullOverallCacheOrch } from './webullExecutionOrch'
 import { readWebullExecutionSettingsOrch } from './webullExecutionSettingsOrch'
 import type {
@@ -21,7 +18,8 @@ import type {
 export type WebullStudyPriceSourceOrch =
   | 'webull-holding'
   | 'webull-option-leg'
-  | 'yahoo-chart'
+  /** F9 sync's last close or quote of the day */
+  | 'synced'
   | 'unavailable'
 
 export interface WebullStudyLivePriceOrch {
@@ -261,7 +259,8 @@ function buildRowOrch(
   ticker: string,
   loaded: WebullStudyLoadedRecordBlock | null,
   holdingsIndex: HoldingsIndexOrch,
-  yahooQuotesByTicker: Map<string, YahooStockQuoteBlock>,
+  syncedByTicker: Map<string, SyncedPriceBlock>,
+  overallFetchedAt: string | null,
   nowIso: string,
 ): WebullStudyRowOrch {
   const record = loaded?.record ?? null
@@ -271,40 +270,17 @@ function buildRowOrch(
   const heldUnderlying = holdingsIndex.heldUnderlyingTickers.has(tickerUpper)
   const held = heldUnderlying
 
-  // Live stock price: prefer Webull holding, else Yahoo.
-  let livePrice: WebullStudyLivePriceOrch
+  // The price: the newer of the Webull account's (as of its last pull) and F9 sync's
   const heldLast = holdingsIndex.stockLastPriceByTicker.get(tickerUpper)
-  if (heldLast !== undefined) {
-    livePrice = {
-      value: heldLast,
-      source: 'webull-holding',
-      note: null,
-      fetchedAt: null,
-      currency: 'USD',
-      marketState: null,
-    }
-  } else {
-    const yahoo = yahooQuotesByTicker.get(tickerUpper)
-    if (yahoo && yahoo.lastPrice !== null) {
-      livePrice = {
-        value: yahoo.lastPrice,
-        source: 'yahoo-chart',
-        note: null,
-        fetchedAt: yahoo.fetchedAt,
-        currency: yahoo.currency,
-        marketState: yahoo.marketState,
-      }
-    } else {
-      livePrice = {
-        value: null,
-        source: 'unavailable',
-        note: yahoo ? 'Yahoo response had no chart data.' : null,
-        fetchedAt: null,
-        currency: null,
-        marketState: null,
-      }
-    }
-  }
+  const synced = syncedByTicker.get(tickerUpper)
+  // A close counts as of that day's bell; a quote as of when it was taken
+  const syncedAt = synced ? synced.at ?? `${synced.day}T21:00:00.000Z` : null
+  const webullNewer = heldLast !== undefined && (!syncedAt || (overallFetchedAt !== null && overallFetchedAt > syncedAt))
+  const livePrice: WebullStudyLivePriceOrch = webullNewer
+    ? { value: heldLast!, source: 'webull-holding', note: null, fetchedAt: overallFetchedAt, currency: 'USD', marketState: null }
+    : synced
+      ? { value: synced.price, source: 'synced', note: synced.live ? 'Quote of the day' : `Close of ${synced.day}`, fetchedAt: syncedAt, currency: 'USD', marketState: null }
+      : { value: null, source: 'unavailable', note: 'No price synced yet', fetchedAt: null, currency: null, marketState: null }
 
   // Per-option rows.
   const optionRows: WebullStudyOptionRowOrch[] = (record?.options ?? []).map((spec) => {
@@ -410,28 +386,9 @@ export async function loadWebullStudySnapshotOrch(): Promise<WebullStudySnapshot
   }
   const holdingsIndex = indexHoldingsOrch(holdingsRaw)
 
-  // 3) Determine which tickers need Yahoo lookups (record exists, not held as stock).
+  // 3) Every recorded and held ticker's price as F9 sync keeps it (no fetching)
   const recordedTickers = new Set(scan.records.map((r) => r.record.ticker.toUpperCase()))
-  const yahooSymbols: string[] = []
-  for (const ticker of recordedTickers) {
-    if (!holdingsIndex.stockLastPriceByTicker.has(ticker)) {
-      yahooSymbols.push(ticker)
-    }
-  }
-  const yahooByTicker = new Map<string, YahooStockQuoteBlock>()
-  if (yahooSymbols.length > 0) {
-    try {
-      const result = await fetchYahooStockQuotesBlock(yahooSymbols)
-      for (const [k, v] of Object.entries(result.quotes)) yahooByTicker.set(k, v)
-      for (const [sym, msg] of Object.entries(result.errors)) {
-        warnings.push(`Yahoo quote for ${sym}: ${msg}`)
-      }
-    } catch (err) {
-      errors.push(
-        `Yahoo quote batch failed: ${err instanceof Error ? err.message : String(err)}`,
-      )
-    }
-  }
+  const syncedByTicker = await readSyncedPricesOrch(executionRoot, [...recordedTickers, ...holdingsIndex.heldUnderlyingTickers])
 
   // 4) Build rows: one per recorded ticker, plus held-without-record placeholders.
   const recordsByTicker = new Map<string, WebullStudyLoadedRecordBlock>()
@@ -447,7 +404,7 @@ export async function loadWebullStudySnapshotOrch(): Promise<WebullStudySnapshot
   const rows: WebullStudyRowOrch[] = []
   for (const ticker of allTickers) {
     const loaded = recordsByTicker.get(ticker) ?? null
-    rows.push(buildRowOrch(ticker, loaded, holdingsIndex, yahooByTicker, loadedAt))
+    rows.push(buildRowOrch(ticker, loaded, holdingsIndex, syncedByTicker, overallFetchedAt, loadedAt))
   }
 
   // Stable sort: by category bucket priority, then ticker ascending.

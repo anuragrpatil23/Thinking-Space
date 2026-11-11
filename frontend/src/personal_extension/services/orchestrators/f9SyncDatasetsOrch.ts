@@ -3,15 +3,35 @@
 // the engine (f9SyncOrch) decides when, for whom, and in what order.
 
 import { issueDetailBlock } from '@/services/lego_blocks/units/passQueueBlock'
+import { isOperatingCompanyBlock } from '../lego_blocks/units/f9SyncPlanBlock'
 import { F9SyncLaneStopBlock, type F9SyncEngineBlock } from './f9SyncOrch'
 import { earningsCallsAvailableOrch, syncEarningsCallsOrch } from './webullEarningsCallsOrch'
 import { pricesAvailableOrch, syncPricesOrch } from './webullPricesOrch'
+import { pullWebullAccountOrch, webullAccountAvailableOrch } from './webullAccountSyncOrch'
 import { syncValueLineOrch, valueLineAvailableOrch } from './webullValueLineOrch'
 
 // A sign-in problem fails every company the same way: the lane stops at the first
 const LIBRARY_SIGN_IN = /Keychain|login saved|desktop app|sign-in loops|library login did not/i
 
 export function registerF9SyncDatasetsOrch(engine: F9SyncEngineBlock): void {
+  engine.registerDataset({
+    id: 'webull-account',
+    label: 'Webull account',
+    about: 'Positions and balances in every account',
+    lane: 'webull',
+    cadence: 'six-hours',
+    order: 1,
+    job: true,
+    covers: () => false,
+    available: webullAccountAvailableOrch,
+    // Asked for by hand, it may sign in again (a 2FA prompt); on its own, never
+    sync: async (_company, { byHand }) => {
+      const pull = await pullWebullAccountOrch(byHand)
+      const positions = pull.execution?.positionCount ?? null
+      return { outcome: 'fetched', detail: positions !== null ? `${positions} positions` : pull.executionError ?? undefined }
+    },
+  })
+
   engine.registerDataset({
     id: 'prices',
     label: 'Prices',
@@ -24,11 +44,13 @@ export function registerF9SyncDatasetsOrch(engine: F9SyncEngineBlock): void {
     covers: () => true,
     available: pricesAvailableOrch,
     sync: async (company) => {
-      const result = await syncPricesOrch(company!.pricesRoot, company!.ticker)
+      const result = await syncPricesOrch(company!.pricesRoot, company!.ticker, { needListing: !company!.facts?.type })
       if (result.outcome === 'error') throw new Error(result.error)
+      // What kind of thing it is, so the other datasets know whether it is theirs
+      const facts = result.listing ? { type: result.listing.type, ...(result.listing.currency ? { currency: result.listing.currency } : {}), ...(result.listing.exchange ? { exchange: result.listing.exchange } : {}) } : undefined
       return result.outcome === 'not-covered'
-        ? { outcome: 'not-covered', detail: 'Yahoo has no prices for this symbol' }
-        : { outcome: result.outcome, detail: result.detail }
+        ? { outcome: 'not-covered', detail: 'Yahoo has no prices for this symbol', facts }
+        : { outcome: result.outcome, detail: result.detail, facts }
     },
   })
 
@@ -39,7 +61,7 @@ export function registerF9SyncDatasetsOrch(engine: F9SyncEngineBlock): void {
     lane: 'library',
     cadence: 'daily',
     order: 50,
-    covers: c => c.yours && !c.index,
+    covers: c => c.yours && isOperatingCompanyBlock(c),
     available: valueLineAvailableOrch,
     sync: async (company, { root }) => {
       const result = await syncValueLineOrch(root, company!.ticker)
@@ -58,7 +80,7 @@ export function registerF9SyncDatasetsOrch(engine: F9SyncEngineBlock): void {
     lane: 'stockanalysis',
     cadence: 'daily',
     order: 60,
-    covers: c => c.yours && !c.index,
+    covers: c => c.yours && isOperatingCompanyBlock(c),
     available: earningsCallsAvailableOrch,
     sync: async (company, { root }) => {
       const result = await syncEarningsCallsOrch(root, company!.ticker)

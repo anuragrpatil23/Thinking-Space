@@ -363,6 +363,16 @@ Every F9 fetch (prices, Value Line, earnings calls, and the private folder's opt
 
 **Triggers.** The app coming to the front, once idle, at most every ten minutes (`useF9AppSyncBlock`); "Sync yours" on the sidebar line; any dataset from the panel; Drops' Check; "Refresh everything". Nothing runs on a timer. Opening a company still calls `syncValueLineOrch` / `syncEarningsCallsOrch` directly for that one company (they check their own files first and share in-flight work with the engine).
 
+**What a company is (2026-11-11).** The prices dataset learns each symbol's kind from Yahoo's chart header (stock, fund, index; its currency and exchange) and returns it as `facts`; the engine keeps them in `sync/companies.json` and on each company. Datasets say what they cover in those terms (`isOperatingCompanyBlock`, `isUsListingBlock` in f9SyncPlanBlock), so a fund is never asked for estimates and a foreign listing never for SEC data. The engine checks `covers` again just before each item starts, since a kind can be learned mid-run.
+
+**"Nothing there" is not a failure.** A dataset throws `F9SyncNotCoveredBlock` when the source answered but has nothing for the company; it is recorded as not covered and asked again in a month. `F9SyncNeedsYouBlock` is the opposite: the failure needs a person (an expired Webull sign-in). The lane stops and the entry gets `waitsForYou`, so automatic checks leave it alone until someone asks.
+
+**Webull account** is a job dataset (`webullAccountSyncOrch`), every six hours, and when Overall Positions opens after half an hour (`syncAuto`, never signing in). Only a pull asked for by hand (`ctx.byHand`) may create a new token, because that sends a 2FA prompt to the phone. Any pull notifies `subscribeWebullPullOrch`, which redraws the page.
+
+**Study prices** are not fetched: `readSyncedPricesOrch` gives the last close in prices.csv, or the day's quote in market/live.json, and Study takes the newer of that and the Webull account's.
+
+**SEC filings and annual reports.** The weekly SEC step writes `filings.csv` (10-K, 10-Q, 8-K, ARS, proxy; three years). The `annual` dataset saves each year's 10-K as text (`annual/YYYY 10-K.md`, converted by string work, not a DOM, since a 10-K can be 10 MB) and the annual report to shareholders as filed (`annual/YYYY annual report.pdf`, form ARS). `net:fetchBytes` takes the same optional user agent as `net:fetchText`, because sec.gov refuses downloads that do not name who is asking. The company page lists filings, annual reports and option prices beside Value Line and the calls.
+
 **Who is "yours".** Companies with a folder holding prices under F9-execution, plus the list the F9 page publishes to `sync/yours.json` (held, watchlist, to research). The private roster adds every watched company and the market line (SPY).
 
 **Traps.**

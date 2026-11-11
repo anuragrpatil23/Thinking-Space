@@ -9,6 +9,8 @@
 export type F9SyncCadenceBlock =
   /** Once after each trading day settles */
   | 'daily'
+  /** Every six hours: something that changes through the day but must not be asked often */
+  | 'six-hours'
   | 'weekly'
   | 'monthly'
   /** Never on its own: only when asked */
@@ -43,6 +45,7 @@ export function lastSettleBlock(now: Date): Date {
 /** Whether data with this cadence, last synced at `lastAt` (ms), is due at `now`. */
 export function cadenceDueBlock(cadence: F9SyncCadenceBlock, lastAt: number, now: Date): boolean {
   if (cadence === 'on-demand') return false
+  if (cadence === 'six-hours') return now.getTime() - lastAt > 6 * 60 * 60 * 1000
   if (cadence === 'weekly') return now.getTime() - lastAt > 7 * F9_SYNC_DAY_MS_BLOCK
   if (cadence === 'monthly') return now.getTime() - lastAt > 30 * F9_SYNC_DAY_MS_BLOCK
   return lastAt < lastSettleBlock(now).getTime()

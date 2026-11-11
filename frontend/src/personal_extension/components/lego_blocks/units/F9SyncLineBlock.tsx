@@ -52,6 +52,7 @@ const ACTION = cn(INK, 'rounded-md hover:bg-sky-500/10 disabled:text-zinc-400 di
 
 const CADENCE: Record<F9SyncDatasetViewBlock['cadence'], string> = {
   daily: 'after each trading day',
+  'six-hours': 'every six hours',
   weekly: 'once a week',
   monthly: 'once a month',
   'on-demand': 'only when you ask',
@@ -181,7 +182,10 @@ function SyncPanelBlock({ engine, snap, anchor, account, tab, onTab, onClose }: 
   }, [onClose])
   const head = headlineBlock(snap)
   const scope: F9SyncScopeBlock = tab === 'everyone' ? 'everyone' : 'yours'
-  const rows = snap.datasets.filter(d => (scope === 'yours' ? d.yours.total > 0 : d.everyone.total > d.yours.total))
+  const rows = snap.datasets.filter(d => d.id !== 'webull-account' && (scope === 'yours' ? d.yours.total > 0 : d.everyone.total > d.yours.total))
+  const webull = snap.datasets.find(d => d.id === 'webull-account')
+  const webullFailure = webull?.failures[0] ?? null
+  const webullBusy = Boolean(webull && (webull.working !== null || webull.waiting > 0))
   const labelOf = (id: string) => snap.datasets.find(d => d.id === id)?.label ?? id
   // What came in, one entry per company (newest first), each with its kinds of data in the panel's order.
   // My businesses lists only yours; Whole market lists everything, yours included.
@@ -267,9 +271,24 @@ function SyncPanelBlock({ engine, snap, anchor, account, tab, onTab, onClose }: 
 
       {tab === 'account' && account ? (
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          <p className="mb-3 text-[12px] text-zinc-500 dark:text-zinc-400">
-            {account.fetchedAt ? `Positions last pulled from Webull ${whenBlock(account.fetchedAt)}.` : 'Positions have not been pulled from Webull yet.'}
-          </p>
+          <div className="mb-3 flex items-start gap-3">
+            <div className="min-w-0 flex-1 text-[12px] leading-snug">
+              <p className="text-zinc-700 dark:text-zinc-300">
+                {webullBusy ? 'Pulling from Webull…' : account.fetchedAt ? `Positions last pulled from Webull ${whenBlock(account.fetchedAt)}.` : 'Positions have not been pulled from Webull yet.'}
+              </p>
+              <p className="text-zinc-500 dark:text-zinc-400">Pulled every six hours in the background, and when Overall Positions opens after half an hour. It never asks Webull to sign in again on its own.</p>
+              {webullFailure && !webullBusy && <p className="mt-1 text-red-600 dark:text-red-400">{webullFailure.error}</p>}
+            </div>
+            <button
+              type="button"
+              disabled={!webull?.available || webullBusy}
+              onClick={() => { void engine.sync({ scope: 'everyone', mode: 'force', datasets: ['webull-account'] }) }}
+              title="Pull positions and balances now. If the sign-in has run out, Webull sends a prompt to your phone."
+              className={cn(ACTION, 'inline-flex shrink-0 items-center gap-1 px-2 py-1 text-[12px] font-medium')}
+            >
+              <RefreshCw className={cn('h-3 w-3', webullBusy && 'animate-spin motion-reduce:animate-none')} />Pull from Webull
+            </button>
+          </div>
           {account.details}
         </div>
       ) : (

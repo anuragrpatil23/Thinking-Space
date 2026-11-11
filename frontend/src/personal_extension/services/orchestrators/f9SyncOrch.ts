@@ -24,8 +24,10 @@ import { startActivity } from '@/services/lego_blocks/units/backgroundActivityBl
 import { readWebullExecutionSettingsOrch } from './webullExecutionSettingsOrch'
 import {
   f9TrackedTickersBlock,
+  readF9SyncFactsBlock,
   readF9SyncLedgerBlock,
   readF9SyncYoursBlock,
+  writeF9SyncFactsBlock,
   writeF9SyncLedgerBlock,
   writeF9SyncYoursBlock,
 } from '../lego_blocks/integrations/f9SyncLedgerBlock'
@@ -40,6 +42,7 @@ import {
   type F9SyncAskBlock,
   type F9SyncCompanyBlock,
   type F9SyncDatasetPlanBlock,
+  type F9SyncFactsBlock,
   type F9SyncItemBlock,
   type F9SyncLedgerBlock,
   type F9SyncOutcomeBlock,
@@ -60,13 +63,27 @@ export interface F9SyncDatasetBlock extends F9SyncDatasetPlanBlock {
   needs?: string[]
   available(): boolean
   /** Bring one company up to date (null for a job). Throw on failure. */
-  sync(company: F9SyncCompanyBlock | null, ctx: { root: string; signal: AbortSignal }): Promise<F9SyncResultBlock>
+  /** `byHand`: someone asked for it just now (it may do what needs them, like a sign-in) */
+  sync(company: F9SyncCompanyBlock | null, ctx: { root: string; signal: AbortSignal; byHand: boolean }): Promise<F9SyncResultBlock>
   /** The dataset has nothing more waiting: write whatever it batched */
   flush?(root: string): Promise<void>
 }
 
 /** Thrown by a dataset when every item of its lane would fail the same way (not signed in). */
 export class F9SyncLaneStopBlock extends Error {}
+
+/**
+ * Thrown by a dataset when the source answered but has nothing for this company
+ * (a fund has no analyst estimates, a foreign listing no SEC filings). Not a
+ * failure: the item is recorded as not covered and asked again in a month.
+ */
+export class F9SyncNotCoveredBlock extends Error {}
+
+/**
+ * Thrown when the failure needs you (a sign-in that expired). The lane stops, and
+ * the item is not tried again on its own: only once you ask, after signing in.
+ */
+export class F9SyncNeedsYouBlock extends Error {}
 
 /** Every company sync covers; `yours` is the tickers known to be in your lists. */
 export type F9SyncRosterBlock = (root: string, yours: Set<string>) => Promise<F9SyncCompanyBlock[]>
@@ -137,6 +154,8 @@ export interface F9SyncDepsBlock {
   root(): Promise<string | null>
   readLedger(root: string, dataset: string): Promise<F9SyncLedgerBlock>
   writeLedger(root: string, dataset: string, ledger: F9SyncLedgerBlock): Promise<void>
+  readFacts(root: string): Promise<Record<string, F9SyncFactsBlock>>
+  writeFacts(root: string, facts: Record<string, F9SyncFactsBlock>): Promise<void>
   readYours(root: string): Promise<string[]>
   writeYours(root: string, tickers: string[]): Promise<void>
   tracked(root: string): Promise<string[]>
@@ -172,6 +191,8 @@ export function createF9SyncOrch(deps: F9SyncDepsBlock) {
   let byTicker = new Map<string, F9SyncCompanyBlock>()
   const ledgers: Record<string, F9SyncLedgerBlock> = {}
   const unsaved = new Set<string>()
+  let facts: Record<string, F9SyncFactsBlock> = {}
+  let factsUnsaved = false
   let lastLedgerWrite = 0
   let loading: Promise<void> | null = null
   let ready = false
@@ -185,8 +206,9 @@ export function createF9SyncOrch(deps: F9SyncDepsBlock) {
       return touch()
     }
     const at = root
-    const [published, tracked] = await Promise.all([deps.readYours(at), deps.tracked(at)])
-    companies = await roster(at, new Set([...published, ...tracked]))
+    const [published, tracked, known] = await Promise.all([deps.readYours(at), deps.tracked(at), deps.readFacts(at)])
+    if (!factsUnsaved) facts = known
+    companies = (await roster(at, new Set([...published, ...tracked]))).map(c => (facts[c.ticker] ? { ...c, facts: { ...facts[c.ticker], ...c.facts } } : c))
     byTicker = new Map(companies.map(c => [c.ticker, c]))
     // A ledger with unsaved entries is newer than its file
     await Promise.all([...datasets.keys()].filter(id => !unsaved.has(id)).map(async (id) => { ledgers[id] = await deps.readLedger(at, id) }))
@@ -200,6 +222,10 @@ export function createF9SyncOrch(deps: F9SyncDepsBlock) {
   async function writeLedgersBlock(): Promise<void> {
     if (!root) return
     lastLedgerWrite = deps.now().getTime()
+    if (factsUnsaved) {
+      factsUnsaved = false
+      await deps.writeFacts(root, facts).catch(() => { factsUnsaved = true })
+    }
     const ids = [...unsaved]
     unsaved.clear()
     await Promise.all(ids.map(id => deps.writeLedger(root!, id, ledgers[id] ?? {}).catch(() => { unsaved.add(id) })))
@@ -295,12 +321,25 @@ export function createF9SyncOrch(deps: F9SyncDepsBlock) {
     let pause = 0
     if (item.ticker && !company) {
       finishBlock(item, 'postponed', undefined, true)
+    } else if (company && !dataset.covers(company)) {
+      // Learned since the plan was made (a fund, a foreign listing): not this dataset's
+      finishBlock(item, 'current', undefined, true)
     } else {
       working.set(lane, item)
       if (item.ticker) busy.add(item.ticker)
       touch()
       try {
-        const result = await dataset.sync(company, { root: root!, signal: abort.signal })
+        const result: F9SyncResultBlock = await dataset.sync(company, { root: root!, signal: abort.signal, byHand: item.byHand })
+          .catch((err: unknown) => {
+            // Nothing there for this company: not a failure
+            if (err instanceof F9SyncNotCoveredBlock) return { outcome: 'not-covered' as const, detail: errorTextBlock(err) }
+            throw err
+          })
+        if (result.facts && company) {
+          facts = { ...facts, [company.ticker]: { ...facts[company.ticker], ...result.facts } }
+          company.facts = facts[company.ticker]
+          factsUnsaved = true
+        }
         ledgers[dataset.id] = { ...ledgers[dataset.id], [item.ticker]: recordResultBlock(result, deps.now().toISOString()) }
         unsaved.add(dataset.id)
         strikes.delete(lane)
@@ -311,7 +350,8 @@ export function createF9SyncOrch(deps: F9SyncDepsBlock) {
         if (result.outcome === 'fetched') for (const l of savedListeners) l(item.ticker, dataset.id)
       } catch (err) {
         const message = errorTextBlock(err)
-        const laneStop = err instanceof F9SyncLaneStopBlock
+        const needsYou = err instanceof F9SyncNeedsYouBlock
+        const laneStop = needsYou || err instanceof F9SyncLaneStopBlock
         const tried = (tries.get(item.key) ?? 0) + 1
         tries.set(item.key, tried)
         working.delete(lane)
@@ -323,7 +363,7 @@ export function createF9SyncOrch(deps: F9SyncDepsBlock) {
           logBlock(item, 'retrying', message)
           touch()
         } else {
-          ledgers[dataset.id] = { ...ledgers[dataset.id], [item.ticker]: recordFailureBlock(ledgers[dataset.id]?.[item.ticker], message, deps.now().toISOString()) }
+          ledgers[dataset.id] = { ...ledgers[dataset.id], [item.ticker]: recordFailureBlock(ledgers[dataset.id]?.[item.ticker], message, deps.now().toISOString(), needsYou) }
           unsaved.add(dataset.id)
           finishBlock(item, 'failed', message)
         }
@@ -544,6 +584,10 @@ export function createF9SyncOrch(deps: F9SyncDepsBlock) {
     sync(ask: F9SyncAskBlock): Promise<Record<string, F9SyncItemStateBlock>> {
       return requestBlock(ask, 'user')
     },
+    /** Asked for by the app, not a person (a page opening): it never does what needs you. */
+    syncAuto(ask: F9SyncAskBlock): Promise<Record<string, F9SyncItemStateBlock>> {
+      return requestBlock(ask, 'auto')
+    },
     /** Sync now: what is due, what failed, and everything on demand. */
     syncNow(scope: F9SyncScopeBlock): Promise<Record<string, F9SyncItemStateBlock>> {
       return requestBlock({ scope, mode: 'now' }, 'user')
@@ -585,6 +629,8 @@ export const f9SyncOrch = createF9SyncOrch({
   },
   readLedger: readF9SyncLedgerBlock,
   writeLedger: writeF9SyncLedgerBlock,
+  readFacts: readF9SyncFactsBlock,
+  writeFacts: writeF9SyncFactsBlock,
   readYours: readF9SyncYoursBlock,
   writeYours: writeF9SyncYoursBlock,
   tracked: f9TrackedTickersBlock,

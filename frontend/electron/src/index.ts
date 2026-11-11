@@ -2293,13 +2293,14 @@ ipcMain.handle('net:fetchText', async (_event, url: string, options?: { userAgen
 
 // Fetch binary bytes from an https URL — used to bypass renderer CORS for
 // resources like the parqet logo CDN that don't send Access-Control headers.
-ipcMain.handle('net:fetchBytes', async (_event, url: string): Promise<{ status: number; bytesBase64: string; contentType: string | null }> => {
+ipcMain.handle('net:fetchBytes', async (_event, url: string, options?: { userAgent?: string }): Promise<{ status: number; bytesBase64: string; contentType: string | null }> => {
   if (typeof url !== 'string' || !/^https?:\/\//i.test(url.trim())) {
     throw new Error('net:fetchBytes requires an http/https URL');
   }
   assertPublicFetchUrlBlock(url);
   const defaultHeaders = {
-    'User-Agent': 'Mozilla/5.0 (compatible; ThinkingSpace/1.0)',
+    // As for net:fetchText: a site that asks callers to say who they are (SEC filings) gets the caller's name
+    'User-Agent': typeof options?.userAgent === 'string' && /^[\x20-\x7E]{1,200}$/.test(options.userAgent) ? options.userAgent : 'Mozilla/5.0 (compatible; ThinkingSpace/1.0)',
     'Accept': 'image/png, image/svg+xml, image/*;q=0.8, */*;q=0.5',
   };
   function fetchBytesOnce(targetUrl: string): Promise<{ status: number; bytesBase64: string; contentType: string | null }> {

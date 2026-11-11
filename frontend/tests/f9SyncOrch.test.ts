@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { createF9SyncOrch, F9SyncLaneStopBlock, type F9SyncDatasetBlock, type F9SyncDepsBlock } from '@/personal_extension/services/orchestrators/f9SyncOrch'
+import { createF9SyncOrch, F9SyncLaneStopBlock, F9SyncNeedsYouBlock, F9SyncNotCoveredBlock, type F9SyncDatasetBlock, type F9SyncDepsBlock } from '@/personal_extension/services/orchestrators/f9SyncOrch'
 import type { F9SyncLedgerBlock, F9SyncResultBlock } from '@/personal_extension/services/lego_blocks/units/f9SyncPlanBlock'
 
 // Tuesday 2026-11-10, 5:30 PM New York
@@ -17,6 +17,8 @@ function rig(yours = ['AAPL', 'MSFT', 'NVDA']) {
     root: async () => '/f9',
     readLedger: async (_root, id) => ({ ...vault[id] }),
     writeLedger: async (_root, id, ledger) => { vault[id] = { ...ledger } },
+    readFacts: async () => ({}),
+    writeFacts: async () => undefined,
     readYours: async () => yours,
     writeYours: async () => undefined,
     tracked: async () => [],
@@ -177,6 +179,26 @@ describe('the F9 sync engine', () => {
     expect(states).toMatchObject({ 'prices|MSFT': 'postponed', 'prices|NVDA': 'postponed' })
     expect(Object.keys(vault.prices)).toEqual(['AAPL'])
     expect(engine.read().run).toBeNull()
+  })
+
+  it('records "nothing there" as not covered, learns what a company is, and waits for you on a sign-in', async () => {
+    trace = []
+    const { engine, vault, run } = rig(['AAPL', 'TQQQ'])
+    engine.registerDataset(dataset('prices', 'yahoo', {}, t => ({ outcome: 'fetched', facts: { type: t === 'TQQQ' ? 'fund' : 'stock' } })).d)
+    const estimates = dataset('estimates', 'other', { order: 20, needs: ['prices'], covers: c => c.facts?.type !== 'fund' }, () => new F9SyncNotCoveredBlock('No analyst revenue estimates'))
+    engine.registerDataset(estimates.d)
+    const account = dataset('account', 'webull', { order: 1, job: true, covers: () => false }, () => new F9SyncNeedsYouBlock('Sign in again'))
+    engine.registerDataset(account.d)
+    await engine.syncNow('everyone')
+    await run()
+    // The fund is learned to be one before estimates plan for it: never asked
+    expect(estimates.calls).toEqual(['AAPL'])
+    expect(vault.estimates.AAPL).toMatchObject({ outcome: 'not-covered', detail: 'No analyst revenue estimates' })
+    expect(vault.estimates.AAPL.failedAt).toBeUndefined()
+    expect(vault.account['']).toMatchObject({ waitsForYou: true })
+    // Not tried again on its own
+    await engine.syncDue()
+    expect(account.calls).toHaveLength(1)
   })
 
   it('lets a dataset write what it batched once, after its last item', async () => {

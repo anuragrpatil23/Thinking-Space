@@ -24,6 +24,20 @@ export interface F9SyncResultBlock {
   outcome: F9SyncOutcomeBlock
   /** "3 new days", "Sep 2026 report" */
   detail?: string
+  /** What the sync learned about the company (its kind of listing), kept for every dataset to see */
+  facts?: F9SyncFactsBlock
+}
+
+/**
+ * What kind of thing a company is, learned once (from its price chart) and kept in
+ * sync/companies.json. Datasets say what they cover in these terms, so a fund is
+ * never asked for analyst estimates and a foreign listing never for SEC filings.
+ */
+export interface F9SyncFactsBlock {
+  type?: 'stock' | 'fund' | 'index' | 'other'
+  /** The currency it trades in: USD for a US listing */
+  currency?: string
+  exchange?: string
 }
 
 export interface F9SyncEntryBlock {
@@ -36,6 +50,8 @@ export interface F9SyncEntryBlock {
   error?: string
   /** Failures in a row */
   fails?: number
+  /** The failure needs you (a sign-in): not tried again on its own, only when you ask */
+  waitsForYou?: boolean
 }
 
 /** One dataset's ledger: ticker -> entry. A job (no company) is filed under ''. */
@@ -53,6 +69,7 @@ export interface F9SyncCompanyBlock {
   index?: boolean
   /** Anything else a dataset's own code needs (the private folder's universe row) */
   extra?: unknown
+  facts?: F9SyncFactsBlock
 }
 
 /** What the planner needs to know of a dataset. */
@@ -111,6 +128,7 @@ export function entryDueBlock(entry: F9SyncEntryBlock | undefined, cadence: F9Sy
   if (cadence === 'on-demand') return false
   if (!entry) return true
   if (entryFailingBlock(entry)) {
+    if (entry.waitsForYou) return false
     const failedAt = Date.parse(entry.failedAt!)
     if ((entry.fails ?? 1) < QUICK_RETRIES) return now.getTime() - failedAt >= RETRY_AFTER_MS
     return failedAt < lastSettleBlock(now).getTime()
@@ -126,9 +144,17 @@ export function recordResultBlock(result: F9SyncResultBlock, at: string): F9Sync
 }
 
 /** A failure keeps what last worked: the panel still says when the data is from. */
-export function recordFailureBlock(entry: F9SyncEntryBlock | undefined, error: string, at: string): F9SyncEntryBlock {
-  return { ...entry, failedAt: at, error, fails: (entryFailingBlock(entry) ? entry?.fails ?? 1 : 0) + 1 }
+export function recordFailureBlock(entry: F9SyncEntryBlock | undefined, error: string, at: string, waitsForYou = false): F9SyncEntryBlock {
+  const { waitsForYou: _was, ...rest } = entry ?? {}
+  return { ...rest, failedAt: at, error, fails: (entryFailingBlock(entry) ? entry?.fails ?? 1 : 0) + 1, ...(waitsForYou ? { waitsForYou } : {}) }
 }
+
+/** The general kinds datasets cover, from what is known of a company (unknown counts as covered). */
+export const isFundBlock = (c: F9SyncCompanyBlock) => c.facts?.type === 'fund'
+/** A company, not a fund or an index: what has estimates, calls, reports */
+export const isOperatingCompanyBlock = (c: F9SyncCompanyBlock) => !c.index && c.facts?.type !== 'fund' && c.facts?.type !== 'index'
+/** Listed in the US (trades in dollars): what the SEC has filings for */
+export const isUsListingBlock = (c: F9SyncCompanyBlock) => !c.facts?.currency || c.facts.currency === 'USD'
 
 /** The items a request asks for: yours first, then by dataset order, then A to Z. */
 export function planBlock(

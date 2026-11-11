@@ -116,6 +116,14 @@ export function settledBarsBlock(bars: PriceBarBlock[], now = new Date()): Price
   return bars.filter(bar => bar.date < today || (bar.date === today && closed))
 }
 
+/** The newest close in the file, with its day; null when it has none. */
+export function lastCloseBlock(csv: string | null): { date: string; close: number } | null {
+  if (!csv) return null
+  const rows = parseRowsBlock(csv).rows.filter((r): r is CsvRowBlock & { close: number } => r.close !== null)
+  const last = rows.reduce<(CsvRowBlock & { close: number }) | null>((best, r) => (!best || r.date > best.date ? r : best), null)
+  return last ? { date: last.date, close: last.close } : null
+}
+
 export function pricesCsvPathBlock(executionRoot: string, ticker: string): string {
   return `${executionRoot.replace(/\/+$/, '')}/${ticker.toUpperCase()}/prices.csv`
 }

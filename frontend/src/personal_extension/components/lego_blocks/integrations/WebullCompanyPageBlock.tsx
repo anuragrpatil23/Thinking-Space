@@ -2,6 +2,8 @@ import CursorTooltipBlock from '@/components/lego_blocks/units/CursorTooltipBloc
 import { useAppWorkAttentionBlock } from '@/components/lego_blocks/hooks/shared/useAppWorkAttentionBlock'
 import { Suspense, useMemo, useState, type ReactNode } from 'react'
 import { F9PriceChartBlock, type TimedPriceBandBlock } from '../units/F9PriceChartBlock'
+import { openExternalUrlOrch } from '@/services/orchestrators/fileSystemOrch'
+import { SEC_FILING_FORM_LABELS_BLOCK, secFilingUrlBlock, type SecFilingBlock } from '@/personal_extension/services/lego_blocks/units/secFilingsBlock'
 import FileCopyMenuHostBlock, { openFileCopyMenuBlock } from '@/components/lego_blocks/integrations/FileCopyMenuBlock'
 import { ChevronRight, Download, Loader2 } from 'lucide-react'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
@@ -351,11 +353,122 @@ function EarningsCallsRowBlock({ calls, sync, expanded, onToggle, onOpenFile }: 
   )
 }
 
-// Research lives in the side panel: Value Line and the earnings calls first,
-// then each research folder folds out its files.
-function ResearchPanelBlock({ reports, calls, callsSync, groups, valueLine, onOpenFile }: {
+const monthLabelBlock = (month: string) => new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+const dayLabelBlock = (day: string) => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+
+/** A row of the research panel that folds out a list: its label, what is newest, and a count. */
+function FoldRowBlock({ label, newest, count, expanded, onToggle, onOpenOnly, onContextMenu, children }: {
+  label: string
+  newest: string
+  count: number
+  expanded: boolean
+  onToggle: () => void
+  /** With a single item: open it instead of folding out */
+  onOpenOnly?: () => void
+  onContextMenu?: (event: React.MouseEvent) => void
+  children: React.ReactNode
+}) {
+  const folds = count > 1 || !onOpenOnly
+  return (
+    <div className="border-b border-zinc-200/70 last:border-b-0 dark:border-zinc-800">
+      <button
+        type="button"
+        aria-expanded={folds ? expanded : undefined}
+        onClick={() => (folds ? onToggle() : onOpenOnly?.())}
+        onContextMenu={onContextMenu}
+        className="ltm-motion-fast flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+      >
+        <span className="truncate">{label}</span>
+        <span className="flex shrink-0 items-center gap-1 text-zinc-500 dark:text-zinc-400">
+          {newest}
+          {count > 1 && <span className="tabular-nums text-zinc-400"> · {count}</span>}
+          {folds && <ChevronRight className={cn('h-3.5 w-3.5 opacity-60 transition-transform', expanded && 'rotate-90')} />}
+        </span>
+      </button>
+      {expanded && <ul className="max-h-80 overflow-y-auto pb-1.5">{children}</ul>}
+    </div>
+  )
+}
+
+const FOLD_ITEM_CLASS = 'flex w-full items-baseline gap-2 px-4 py-1.5 pl-7 text-left text-xs text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
+
+// The SEC filings the sync lists (filings.csv): reports, results, the proxy; each opens on sec.gov
+function SecFilingsRowBlock({ filings, expanded, onToggle }: { filings: SecFilingBlock[]; expanded: boolean; onToggle: () => void }) {
+  if (filings.length === 0) return null
+  const newest = filings[0]
+  return (
+    <FoldRowBlock label="SEC filings" newest={`${newest.form} · ${dayLabelBlock(newest.date)}`} count={filings.length} expanded={expanded} onToggle={onToggle}>
+      {filings.map(f => (
+        <li key={`${f.accession}-${f.document}`}>
+          <button type="button" onClick={() => { void openExternalUrlOrch(secFilingUrlBlock(f)) }} title={`Open on sec.gov: ${SEC_FILING_FORM_LABELS_BLOCK[f.form] ?? f.form}`} className={FOLD_ITEM_CLASS}>
+            <span className="w-16 shrink-0 font-medium text-zinc-800 dark:text-zinc-200">{f.form}</span>
+            <span className="min-w-0 flex-1 truncate">{SEC_FILING_FORM_LABELS_BLOCK[f.form] ?? f.form}</span>
+            <span className="shrink-0 tabular-nums text-zinc-400">{dayLabelBlock(f.date)}</span>
+          </button>
+        </li>
+      ))}
+    </FoldRowBlock>
+  )
+}
+
+// The annual reports in the vault: each year's 10-K as text, and the booklet to shareholders
+function AnnualReportsRowBlock({ reports, expanded, onToggle, onOpenFile }: { reports: WebullResearchFileBlock[]; expanded: boolean; onToggle: () => void; onOpenFile: (path: string) => void }) {
+  if (reports.length === 0) return null
+  return (
+    <FoldRowBlock
+      label="Annual reports"
+      newest={reports[0].name.slice(0, 4)}
+      count={reports.length}
+      expanded={expanded}
+      onToggle={onToggle}
+      onOpenOnly={() => onOpenFile(reports[0].path)}
+      onContextMenu={(event) => openFileCopyMenuBlock(event, { kind: 'folder', path: folderOfBlock(reports[0].path) })}
+    >
+      {reports.map(r => (
+        <li key={r.path}>
+          <button type="button" onClick={() => onOpenFile(r.path)} onContextMenu={(event) => openFileCopyMenuBlock(event, { kind: 'file', path: r.path })} className={FOLD_ITEM_CLASS}>
+            <span className="w-10 shrink-0 tabular-nums text-zinc-800 dark:text-zinc-200">{r.name.slice(0, 4)}</span>
+            <span className="min-w-0 flex-1 truncate">{/annual report/i.test(r.name) ? 'Annual report to shareholders' : `${r.name.slice(5)}, as text`}</span>
+          </button>
+        </li>
+      ))}
+    </FoldRowBlock>
+  )
+}
+
+// The option prices the sync records each trading day, a file a month
+function OptionPricesRowBlock({ months, expanded, onToggle, onOpenFile }: { months: WebullResearchFileBlock[]; expanded: boolean; onToggle: () => void; onOpenFile: (path: string) => void }) {
+  if (months.length === 0) return null
+  return (
+    <FoldRowBlock
+      label="Option prices"
+      newest={monthLabelBlock(months[0].name)}
+      count={months.length}
+      expanded={expanded}
+      onToggle={onToggle}
+      onOpenOnly={() => onOpenFile(months[0].path)}
+      onContextMenu={(event) => openFileCopyMenuBlock(event, { kind: 'folder', path: folderOfBlock(months[0].path) })}
+    >
+      {months.map(m => (
+        <li key={m.path}>
+          <button type="button" onClick={() => onOpenFile(m.path)} onContextMenu={(event) => openFileCopyMenuBlock(event, { kind: 'file', path: m.path })} className={FOLD_ITEM_CLASS}>
+            {monthLabelBlock(m.name)}
+          </button>
+        </li>
+      ))}
+    </FoldRowBlock>
+  )
+}
+
+// Research lives in the side panel: Value Line, the earnings calls, the annual
+// reports, the SEC's filings and the option prices first, then each research
+// folder folds out its files.
+function ResearchPanelBlock({ reports, calls, filings, annualReports, optionMonths, callsSync, groups, valueLine, onOpenFile }: {
   reports: WebullResearchFileBlock[]
   calls: WebullResearchFileBlock[]
+  filings: SecFilingBlock[]
+  annualReports: WebullResearchFileBlock[]
+  optionMonths: WebullResearchFileBlock[]
   callsSync: { checking: boolean; notCovered: boolean }
   groups: WebullResearchGroupBlock[]
   valueLine: ValueLinePanelStateBlock
@@ -379,6 +492,9 @@ function ResearchPanelBlock({ reports, calls, callsSync, groups, valueLine, onOp
         onToggle={() => toggle('Earnings calls')}
         onOpenFile={onOpenFile}
       />
+      <AnnualReportsRowBlock reports={annualReports} expanded={openGroup === 'Annual reports'} onToggle={() => toggle('Annual reports')} onOpenFile={onOpenFile} />
+      <SecFilingsRowBlock filings={filings} expanded={openGroup === 'SEC filings'} onToggle={() => toggle('SEC filings')} />
+      <OptionPricesRowBlock months={optionMonths} expanded={openGroup === 'Option prices'} onToggle={() => toggle('Option prices')} onOpenFile={onOpenFile} />
       {groups.map(group => {
         const expanded = openGroup === group.label
         return (
@@ -768,8 +884,8 @@ export default function WebullCompanyPageBlock({
           )}
         </F9PanelBlock>
 
-        {dossier && (dossier.researchFolderPath || reports.length > 0 || dossier.earningsCalls.length > 0 || valueLine.available) && (
-          <ResearchPanelBlock reports={reports} calls={dossier.earningsCalls} callsSync={callsSync} groups={dossier.researchGroups} valueLine={valueLine} onOpenFile={onOpenFile} />
+        {dossier && (dossier.researchFolderPath || reports.length > 0 || dossier.earningsCalls.length > 0 || dossier.filings.length > 0 || dossier.optionMonths.length > 0 || valueLine.available) && (
+          <ResearchPanelBlock reports={reports} calls={dossier.earningsCalls} filings={dossier.filings} annualReports={dossier.annualReports} optionMonths={dossier.optionMonths} callsSync={callsSync} groups={dossier.researchGroups} valueLine={valueLine} onOpenFile={onOpenFile} />
         )}
       </aside>
     </div>

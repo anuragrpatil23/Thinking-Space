@@ -1,11 +1,12 @@
 // F9 sync's files in the vault, under <F9-execution>/sync/:
 //   <dataset>.json  one dataset's ledger (f9SyncPlanBlock): ticker -> last sync
 //   yours.json      the companies in your lists, as the F9 page last saw them
+//   companies.json  what kind of thing each company is (f9SyncPlanBlock.F9SyncFactsBlock)
 // They live in the vault, not in this computer's storage, so every device
 // knows what has already been fetched and none fetches it twice.
 
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
-import type { F9SyncLedgerBlock } from '../units/f9SyncPlanBlock'
+import type { F9SyncFactsBlock, F9SyncLedgerBlock } from '../units/f9SyncPlanBlock'
 
 const TICKER = /^[A-Z][A-Z0-9.-]{0,9}$/
 const trim = (root: string) => root.replace(/\/+$/, '')
@@ -46,6 +47,14 @@ export async function readF9SyncYoursBlock(root: string): Promise<string[]> {
 
 export function writeF9SyncYoursBlock(root: string, tickers: string[]): Promise<void> {
   return writeJsonBlock(root, 'yours.json', { tickers: [...new Set(tickers.filter(t => TICKER.test(t)))].sort() })
+}
+
+export function readF9SyncFactsBlock(root: string): Promise<Record<string, F9SyncFactsBlock>> {
+  return readJsonBlock<Record<string, F9SyncFactsBlock>>(`${syncDir(root)}/companies.json`, {})
+}
+
+export function writeF9SyncFactsBlock(root: string, facts: Record<string, F9SyncFactsBlock>): Promise<void> {
+  return writeJsonBlock(root, 'companies.json', Object.fromEntries(Object.entries(facts).sort(([a], [b]) => a.localeCompare(b))))
 }
 
 /** Companies with a folder of their own in F9-execution that already holds prices. */

@@ -523,7 +523,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** Runs ~/.thinking-space/hooks/after-daily-pass.sh when it exists. */
   runAfterDailyPassHook: () => ipcRenderer.invoke('hooks:afterDailyPass') as Promise<{ ran: boolean; code: number | null; output: string }>,
   fetchText: (url: string, options?: { userAgent?: string }) => ipcRenderer.invoke('net:fetchText', url, options) as Promise<{ status: number; body: string }>,
-  fetchBytes: (url: string) => ipcRenderer.invoke('net:fetchBytes', url) as Promise<{ status: number; bytesBase64: string; contentType: string | null }>,
+  fetchBytes: (url: string, options?: { userAgent?: string }) => ipcRenderer.invoke('net:fetchBytes', url, options) as Promise<{ status: number; bytesBase64: string; contentType: string | null }>,
   googleOauthRequest: (payload: {
     method: 'GET' | 'POST' | 'PUT'
     url: string

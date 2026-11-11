@@ -228,10 +228,36 @@ export function parseYahooDailyBarsBlock(body: string): YahooDailyBarBlock[] {
   return out
 }
 
+export interface YahooListingBlock {
+  type: 'stock' | 'fund' | 'index' | 'other'
+  currency: string | null
+  exchange: string | null
+}
+
+/** What kind of thing a symbol is, from a chart answer's header: a stock, a fund, an index. */
+export function parseYahooListingBlock(body: string): YahooListingBlock | null {
+  let meta: { instrumentType?: unknown; currency?: unknown; fullExchangeName?: unknown; exchangeName?: unknown } | undefined
+  try {
+    meta = (JSON.parse(body) as { chart?: { result?: Array<{ meta?: typeof meta }> } }).chart?.result?.[0]?.meta
+  } catch {
+    return null
+  }
+  if (!meta || typeof meta.instrumentType !== 'string') return null
+  const kind = meta.instrumentType.toUpperCase()
+  const type = kind === 'EQUITY' ? 'stock' : kind === 'ETF' || kind === 'MUTUALFUND' ? 'fund' : kind === 'INDEX' ? 'index' : 'other'
+  const text = (v: unknown) => (typeof v === 'string' && v ? v : null)
+  return { type, currency: text(meta.currency), exchange: text(meta.fullExchangeName) ?? text(meta.exchangeName) }
+}
+
 /** Daily bars for [fromDay, toDay] (YYYY-MM-DD). Electron-only, like the quote fetch. */
 export async function fetchYahooDailyBarsBlock(symbol: string, fromDay: string, toDay: string): Promise<YahooDailyBarBlock[]> {
+  return (await fetchYahooDailyChartBlock(symbol, fromDay, toDay)).bars
+}
+
+/** Daily bars for [fromDay, toDay], and what kind of thing the symbol is. */
+export async function fetchYahooDailyChartBlock(symbol: string, fromDay: string, toDay: string): Promise<{ bars: YahooDailyBarBlock[]; listing: YahooListingBlock | null }> {
   const normalized = symbol.trim().toUpperCase()
-  if (!normalized) return []
+  if (!normalized) return { bars: [], listing: null }
   const period1 = Math.floor(Date.parse(`${fromDay}T00:00:00Z`) / 1000)
   const period2 = Math.floor(Date.parse(`${toDay}T23:59:59Z`) / 1000)
   const url = `${YAHOO_CHART_BASE_BLOCK}/${encodeURIComponent(yahooSymbolBlock(normalized))}?interval=1d&period1=${period1}&period2=${period2}`
@@ -242,8 +268,8 @@ export async function fetchYahooDailyBarsBlock(symbol: string, fromDay: string, 
     await new Promise(r => window.setTimeout(r, wait))
     response = await fetchTextThroughElectronBlock(url)
   }
-  if (response.status === 404) return []
+  if (response.status === 404) return { bars: [], listing: null }
   if (response.status === 429) throw new Error(`Yahoo is limiting requests (HTTP 429) for ${normalized}`)
   if (response.status < 200 || response.status >= 300) throw new Error(`Yahoo chart HTTP ${response.status} for ${normalized}`)
-  return parseYahooDailyBarsBlock(response.body)
+  return { bars: parseYahooDailyBarsBlock(response.body), listing: parseYahooListingBlock(response.body) }
 }

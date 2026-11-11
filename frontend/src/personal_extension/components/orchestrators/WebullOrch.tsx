@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { loadF9SyncEngineBlock } from '../lego_blocks/hooks/useF9AppSyncBlock'
+import { subscribeWebullPullOrch } from '@/personal_extension/services/orchestrators/webullAccountSyncOrch'
 import WebullWorkspaceBlock from '../lego_blocks/integrations/WebullWorkspaceBlock'
 import {
   fetchWebullOverallSnapshotOrch,
@@ -53,7 +55,7 @@ const Webull_SIM_SUBTAB: { id: WebullSubtabId; label: string } = { id: 'sim', la
 /** Where F9 opens: Study when it is there, else the Feed. */
 const DEFAULT_SUBTAB_BLOCK: WebullSubtabId = STUDY_TAB_AVAILABLE ? 'study' : 'feed'
 
-const WEBULL_AUTO_REFRESH_STALENESS_MS = 60_000
+const WEBULL_AUTO_REFRESH_STALENESS_MS = 30 * 60_000
 
 function parseSelectedAccountBlock(value: unknown): WebullSelectedAccountOrch | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -569,6 +571,16 @@ export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
     }
   }, [activeCompanyTicker, activePositionFileName])
 
+  // Any pull of the Webull account (F9 sync's, in the background or asked for) redraws the page
+  useEffect(() => subscribeWebullPullOrch((pull) => {
+    setSnapshot(pull.snapshot)
+    if (pull.execution) setExecutionSync(pull.execution)
+    setExecutionSyncError(pull.executionError)
+    void loadExecutionOverview()
+  }), [loadExecutionOverview])
+
+  // Overall Positions opening asks F9 sync for a pull when the last one is over half an hour old.
+  // It never signs in again on its own (a 2FA prompt): an expired sign-in waits for you in the sync sheet.
   useEffect(() => {
     if (activeSubtabId !== 'overall') return
     if (runtime !== 'electron') {
@@ -579,13 +591,9 @@ export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
       void loadSavedOverallSnapshot()
       return
     }
-    // Skip the auto-fetch (which rewrites every position/company .md file)
-    // when we already have a recent snapshot. Tab switches shouldn't churn
-    // the vault — the manual refresh button stays available for an immediate update.
     const fetchedAtMs = snapshot?.fetchedAt ? Date.parse(snapshot.fetchedAt) : NaN
-    const isFresh = Number.isFinite(fetchedAtMs) && (Date.now() - fetchedAtMs) < WEBULL_AUTO_REFRESH_STALENESS_MS
-    if (isFresh) return
-    void refreshOverall()
+    if (Number.isFinite(fetchedAtMs) && Date.now() - fetchedAtMs < WEBULL_AUTO_REFRESH_STALENESS_MS) return
+    void loadF9SyncEngineBlock().then(engine => engine.syncAuto({ scope: 'everyone', mode: 'force', datasets: ['webull-account'] }))
   }, [activeSubtabId, hasConfig, loadSavedOverallSnapshot, refreshOverall, runtime, snapshot?.fetchedAt])
 
   return (

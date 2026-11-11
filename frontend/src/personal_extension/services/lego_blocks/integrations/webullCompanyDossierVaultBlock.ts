@@ -18,6 +18,7 @@ import {
   type WebullResearchFileBlock,
   type WebullResearchGroupBlock,
 } from '../units/webullCompanyDossierBlock'
+import { parseSecFilingsCsvBlock, type SecFilingBlock } from '../units/secFilingsBlock'
 
 export const WEBULL_RESEARCH_FOLDER_NAME_BLOCK = 'Thoughts, Predictions, launches and Postmortem'
 export const ADDITIONAL_COMPANIES_FOLDER_BLOCK = 'Additional companies'
@@ -35,6 +36,12 @@ export interface WebullCompanyDossierBlock {
   valueLineReports: WebullResearchFileBlock[]
   /** Earnings call transcripts, newest first */
   earningsCalls: WebullResearchFileBlock[]
+  /** SEC filings kept by the sync (filings.csv), newest first */
+  filings: SecFilingBlock[]
+  /** annual/: each year's 10-K as text and the annual report booklet, newest first */
+  annualReports: WebullResearchFileBlock[]
+  /** options/YYYY-MM.csv: the daily option prices the sync records, newest month first */
+  optionMonths: WebullResearchFileBlock[]
   researchGroups: WebullResearchGroupBlock[]
   warnings: string[]
 }
@@ -123,15 +130,18 @@ export async function loadWebullCompanyDossierBlock(params: {
   const warnings: string[] = []
 
   // Without a ticker (a research-only company) there is no company folder to read.
-  const [study, pricesText, valueLineFiles, callFiles, bandsText] = ticker
+  const [study, pricesText, valueLineFiles, callFiles, bandsText, filingsText, annualFiles, optionFiles] = ticker
     ? await Promise.all([
         findStudyRecordBlock(executionRoot, ticker),
         readTextBlock(`${companyFolder}/prices.csv`),
         listFolderEntries(`${companyFolder}/${VALUE_LINE_FOLDER_NAME_BLOCK}`).then(e => e.files).catch(() => [] as string[]),
         listFolderEntries(`${companyFolder}/${EARNINGS_CALLS_FOLDER_NAME_BLOCK}`).then(e => e.files).catch(() => [] as string[]),
         readTextBlock(`${companyFolder}/bands.yaml`),
+        readTextBlock(`${companyFolder}/filings.csv`),
+        listFolderEntries(`${companyFolder}/annual`).then(e => e.files).catch(() => [] as string[]),
+        listFolderEntries(`${companyFolder}/options`).then(e => e.files).catch(() => [] as string[]),
       ])
-    : [null, null, [] as string[], [] as string[], null]
+    : [null, null, [] as string[], [] as string[], null, null, [] as string[], [] as string[]]
   const companyName = study?.company ?? params.companyName
   const researchFolderPath = await findResearchFolderBlock(researchRoot, ticker, companyName)
   const research = researchFolderPath
@@ -153,6 +163,12 @@ export async function loadWebullCompanyDossierBlock(params: {
     earningsCalls: sortResearchFilesBlock(
       callFiles.filter(name => /^\d{4}-\d{2}\.md$/.test(name)).map(name => toResearchFileBlock(`${companyFolder}/${EARNINGS_CALLS_FOLDER_NAME_BLOCK}`, name)),
     ),
+    filings: parseSecFilingsCsvBlock(filingsText),
+    // Named "2026 10-K.md" and "2026 annual report.pdf": newest year first, the booklet before the 10-K
+    annualReports: annualFiles.filter(name => /^\d{4} .+\.(md|pdf)$/i.test(name)).sort().reverse()
+      .map(name => ({ path: `${companyFolder}/annual/${name}`, name: name.replace(/\.(md|pdf)$/i, ''), dateKey: Number(name.slice(0, 4)) * 10000 })),
+    optionMonths: optionFiles.filter(name => /^\d{4}-\d{2}\.csv$/.test(name)).sort().reverse()
+      .map(name => ({ path: `${companyFolder}/options/${name}`, name: name.slice(0, 7), dateKey: Number(name.slice(0, 4)) * 10000 + Number(name.slice(5, 7)) * 100 })),
     // Transcripts left in an old research folder still show there
     researchGroups: research.groups,
     warnings,
