@@ -5,6 +5,7 @@ import {
   parseSecFilingsCsvBlock,
   secFilingsCsvBlock,
   secFilingsFromSubmissionsBlock,
+  secFilingTitleBlock,
   secFilingUrlBlock,
 } from '@/personal_extension/services/lego_blocks/units/secFilingsBlock'
 
@@ -15,6 +16,7 @@ const submissions = JSON.stringify({
       filingDate: ['2026-10-30', '2026-08-01', '2026-07-01', '2026-01-10', '2026-01-10', '2025-11-01', '2022-11-01'],
       reportDate: ['2026-10-30', '2026-06-27', '', '', '', '2025-09-27', '2022-09-24'],
       accessionNumber: ['0000320193-26-000100', '0000320193-26-000080', 'x', '0000320193-26-000010', '0000320193-26-000011', '0000320193-25-000079', 'y'],
+      items: ['2.02,9.01', '', '', '', '', '', ''],
       primaryDocument: ['a8-k.htm', 'q3.htm', 'f4.xml', 'ars2025.pdf', 'proxy.htm', 'aapl-20250927.htm', 'old.htm'],
     },
   },
@@ -40,5 +42,15 @@ describe('SEC filings', () => {
     const html = '<html><head><title>x</title></head><body><ix:header><ix:hidden>secret</ix:hidden></ix:header>'
       + '<p>Net sales&nbsp;rose <b>8%</b>.</p><table><tr><td>Revenue</td><td>$391,035</td></tr></table><div>Risk&#8217;s here</div></body></html>'
     expect(filingHtmlToTextBlock(html)).toBe('Net sales rose 8%.\n\nRevenue | $391,035\n\nRisk’s here')
+  })
+  it('says what each filing is in plain words', () => {
+    const [results, quarter, ars, proxy, tenK] = secFilingsFromSubmissionsBlock(submissions, 320193, '2025-01-01')
+    expect(secFilingTitleBlock(results)).toEqual({ title: 'Results announced', covers: null })
+    expect(secFilingTitleBlock(quarter)).toEqual({ title: 'Quarterly report', covers: 'quarter ending Jun 2026' })
+    expect(secFilingTitleBlock(tenK)).toEqual({ title: 'Annual report', covers: 'fiscal 2025' })
+    expect(secFilingTitleBlock(ars).title).toBe('Annual report to shareholders')
+    expect(secFilingTitleBlock(proxy)).toEqual({ title: 'Proxy statement', covers: 'the vote, the board, executive pay' })
+    expect(secFilingTitleBlock({ form: '8-K', date: '2026-01-01', reportDate: '', items: '5.02 5.07' })).toEqual({ title: 'Leadership change', covers: 'shareholder vote results' })
+    expect(secFilingTitleBlock({ form: '8-K', date: '2026-01-01', reportDate: '' }).title).toBe('Company news')
   })
 })

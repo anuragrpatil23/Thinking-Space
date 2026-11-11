@@ -1,3 +1,4 @@
+import type { SecFilingBlock } from '@/personal_extension/services/lego_blocks/units/secFilingsBlock'
 import type { F9SyncEngineBlock } from '@/personal_extension/services/orchestrators/f9SyncOrch'
 import { lazy, type ComponentType } from 'react'
 import type { WebullUniverseGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
@@ -43,7 +44,7 @@ export const PrivateCompanyNoticedBlock = loadCompanyNoticed ? lazy(loadCompanyN
 export interface PrivateCompanyPanelsPropsBlock {
   ticker: string
   executionRoot: string
-  slot: 'main' | 'study' | 'closed-row' | 'price-range'
+  slot: 'main' | 'study' | 'closed-row' | 'price-range' | 'options'
   /** slot 'price-range' only: the first day the chart shows; null for all. */
   windowFrom?: string | null
   /** slot 'closed-row' only: the closed position's file; the slot renders that row's two sale cells. */
@@ -151,4 +152,13 @@ export async function registerPrivateF9SyncBlock(engine: F9SyncEngineBlock): Pro
   if (!loadSyncDatasets) return
   const module = await loadSyncDatasets().catch(() => null)
   module?.registerPrivateF9SyncOrch(engine)
+}
+
+// Reading an SEC filing in the app (fetched once into the company's folder); without the folder, sec.gov opens instead.
+type PrivateSecFilingsModuleBlock = { readSecFilingOrch(companyFolder: string, ticker: string, filing: SecFilingBlock): Promise<string> }
+const SEC_FILINGS_MODULES = import.meta.glob<PrivateSecFilingsModuleBlock>('../../../thinkingspace-personal/secFilings.ts')
+const loadSecFilings = Object.values(SEC_FILINGS_MODULES)[0]
+export async function readPrivateSecFilingBlock(companyFolder: string, ticker: string, filing: SecFilingBlock): Promise<string | null> {
+  if (!loadSecFilings) return null
+  return (await loadSecFilings()).readSecFilingOrch(companyFolder, ticker, filing)
 }

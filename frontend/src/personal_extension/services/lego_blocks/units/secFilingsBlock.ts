@@ -3,7 +3,8 @@
 //   YYYY 10-K.md              the annual report on form 10-K, as readable text
 //   YYYY annual report.pdf    the glossy report to shareholders (form ARS), as filed
 //
-// filings.csv:  date,form,report_date,accession,document,cik
+// filings.csv:  date,form,report_date,accession,document,cik,items
+// (items: an 8-K's item numbers, "2.02 9.01"; files from before it was kept have none)
 
 export interface SecFilingBlock {
   /** The day it was filed, YYYY-MM-DD */
@@ -15,26 +16,56 @@ export interface SecFilingBlock {
   /** The filing's main document */
   document: string
   cik: number
+  /** An 8-K's item numbers (what the news is about), space-separated */
+  items?: string
 }
 
 /** The forms worth listing: reports, results, the proxy, the annual booklet, and their foreign twins. */
 export const SEC_FILING_FORMS_BLOCK = new Set(['10-K', '10-Q', '8-K', 'ARS', 'DEF 14A', '20-F', '40-F', '6-K', 'S-1', '10-K/A', '10-Q/A'])
 
-export const SEC_FILING_FORM_LABELS_BLOCK: Record<string, string> = {
-  '10-K': 'Annual report',
-  '10-K/A': 'Annual report, amended',
-  '10-Q': 'Quarterly report',
-  '10-Q/A': 'Quarterly report, amended',
-  '8-K': 'Current report',
-  ARS: 'Annual report to shareholders',
-  'DEF 14A': 'Proxy statement',
-  '20-F': 'Annual report (foreign)',
-  '40-F': 'Annual report (Canada)',
-  '6-K': 'Current report (foreign)',
-  'S-1': 'Registration',
+// What an 8-K is about, by its items; the first that matters names it (9.01 is only "exhibits attached")
+const EIGHT_K_ITEMS_BLOCK: Array<[string, string]> = [
+  ['2.02', 'Results announced'],
+  ['5.02', 'Leadership change'],
+  ['5.07', 'Shareholder vote results'],
+  ['1.01', 'Major agreement signed'],
+  ['2.01', 'Acquisition or sale completed'],
+  ['2.03', 'New debt taken on'],
+  ['2.05', 'Restructuring costs'],
+  ['2.06', 'Write-down'],
+  ['1.02', 'Agreement ended'],
+  ['3.02', 'New shares sold'],
+  ['5.03', 'Bylaws or fiscal year changed'],
+  ['4.01', 'Auditor changed'],
+  ['7.01', 'Investor presentation or update'],
+  ['8.01', 'Other company news'],
+]
+
+const monthYearBlock = (day: string) => (day ? new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '')
+
+/** A filing in plain words: what it is, and what it covers. */
+export function secFilingTitleBlock(f: Pick<SecFilingBlock, 'form' | 'reportDate' | 'date' | 'items'>): { title: string; covers: string | null } {
+  const amended = f.form.endsWith('/A') ? ', corrected' : ''
+  const year = (f.reportDate || f.date).slice(0, 4)
+  switch (f.form.replace(/\/A$/, '')) {
+    case '10-K': return { title: `Annual report${amended}`, covers: `fiscal ${year}` }
+    case '20-F': return { title: `Annual report${amended}`, covers: `fiscal ${year}, foreign company` }
+    case '40-F': return { title: `Annual report${amended}`, covers: `fiscal ${year}, Canadian company` }
+    case '10-Q': return { title: `Quarterly report${amended}`, covers: f.reportDate ? `quarter ending ${monthYearBlock(f.reportDate)}` : null }
+    case 'ARS': return { title: 'Annual report to shareholders', covers: 'the booklet' }
+    case 'DEF 14A': return { title: 'Proxy statement', covers: 'the vote, the board, executive pay' }
+    case 'S-1': return { title: 'Registration to sell shares', covers: null }
+    case '6-K': return { title: 'Company news', covers: 'foreign company' }
+    case '8-K': {
+      const items = (f.items ?? '').split(/[\s,]+/)
+      const named = EIGHT_K_ITEMS_BLOCK.filter(([code]) => items.includes(code)).map(([, label]) => label)
+      return { title: named[0] ?? 'Company news', covers: named.length > 1 ? named.slice(1).join(', ').toLowerCase() : null }
+    }
+    default: return { title: f.form, covers: null }
+  }
 }
 
-const HEADER = 'date,form,report_date,accession,document,cik'
+const HEADER = 'date,form,report_date,accession,document,cik,items'
 
 /** The filings worth listing from SEC's submissions file, newest first, from `since` (YYYY-MM-DD) on. */
 export function secFilingsFromSubmissionsBlock(body: string | null, cik: number, since: string): SecFilingBlock[] {
@@ -47,7 +78,8 @@ export function secFilingsFromSubmissionsBlock(body: string | null, cik: number,
       const accession = recent.accessionNumber?.[i] ?? ''
       const document = recent.primaryDocument?.[i] ?? ''
       if (!SEC_FILING_FORMS_BLOCK.has(form) || date < since || !accession || !document) return []
-      return [{ date, form, reportDate: recent.reportDate?.[i] ?? '', accession, document, cik }]
+      const items = (recent.items?.[i] ?? '').split(',').map(x => x.trim()).filter(Boolean).join(' ')
+      return [{ date, form, reportDate: recent.reportDate?.[i] ?? '', accession, document, cik, ...(items ? { items } : {}) }]
     }).sort((a, b) => b.date.localeCompare(a.date) || a.form.localeCompare(b.form))
   } catch {
     return []
@@ -57,7 +89,7 @@ export function secFilingsFromSubmissionsBlock(body: string | null, cik: number,
 const cell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
 
 export function secFilingsCsvBlock(filings: SecFilingBlock[]): string {
-  return [HEADER, ...filings.map(f => [f.date, f.form, f.reportDate, f.accession, f.document, String(f.cik)].map(cell).join(','))].join('\n') + '\n'
+  return [HEADER, ...filings.map(f => [f.date, f.form, f.reportDate, f.accession, f.document, String(f.cik), f.items ?? ''].map(cell).join(','))].join('\n') + '\n'
 }
 
 export function parseSecFilingsCsvBlock(text: string | null): SecFilingBlock[] {
@@ -67,9 +99,9 @@ export function parseSecFilingsCsvBlock(text: string | null): SecFilingBlock[] {
     if (!line.trim()) continue
     // Fields are plain except the form ("DEF 14A" has no comma); split simply, unquoting
     const parts = line.match(/("([^"]|"")*"|[^,]*)(,|$)/g)?.map(p => p.replace(/,$/, '').replace(/^"|"$/g, '').replace(/""/g, '"')) ?? []
-    const [date, form, reportDate, accession, document, cik] = parts
+    const [date, form, reportDate, accession, document, cik, items] = parts
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '') || !form || !accession || !document) continue
-    rows.push({ date, form, reportDate: reportDate ?? '', accession, document, cik: Number(cik) || 0 })
+    rows.push({ date, form, reportDate: reportDate ?? '', accession, document, cik: Number(cik) || 0, ...(items ? { items } : {}) })
   }
   return rows
 }
