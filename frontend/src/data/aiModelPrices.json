@@ -57,7 +57,7 @@
     "  cacheCreation1h cache write, 1-hour TTL (Anthropic: 2.0x input).",
     "                  Equal to the 5m figure where a provider has no TTL split."
   ],
-  "refreshed_at": "2026-11-06",
+  "refreshed_at": "2026-11-10",
   "exact_source": "LiteLLM model_prices_and_context_window.json",
   "overrides": {
     "claude-fable-5-1": {
@@ -1057,6 +1057,13 @@
       "cacheCreation5m": 12.5,
       "cacheCreation1h": 20
     },
+    "claude-mythos-5-2": {
+      "input": 8,
+      "output": 40,
+      "cacheRead": 0.2,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 16
+    },
     "claude-mythos-preview": {
       "input": 10,
       "output": 50,
@@ -1133,6 +1140,13 @@
       "cacheRead": 1,
       "cacheCreation5m": 10,
       "cacheCreation1h": 10
+    },
+    "claude-fable-5-2": {
+      "input": 8,
+      "output": 40,
+      "cacheRead": 0.2,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 16
     }
   },
   "patterns": [
