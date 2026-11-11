@@ -1,4 +1,3 @@
-import { DROPS_FOCUS_EVENT_BLOCK, dropsFocusPendingBlock } from '@/personal_extension/services/lego_blocks/units/dropsFocusBlock'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PassQueueListBlock } from '@/components/lego_blocks/units/PassQueueListBlock'
 import type { PassItemBlock } from '@/services/lego_blocks/units/passQueueBlock'
@@ -724,12 +723,7 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
   const { layout } = useUILayoutBlock()
   const { openFile } = useMarkdownViewer()
   const phone = layout.mode === 'phone'
-  const [view, setView] = useState<FeedViewBlock>(() => (dropsFocusPendingBlock() && FEED_DROPS_AVAILABLE ? 'drops' : 'overview'))
-  useEffect(() => {
-    const onFocus = () => { if (FEED_DROPS_AVAILABLE) setView('drops') }
-    window.addEventListener(DROPS_FOCUS_EVENT_BLOCK, onFocus)
-    return () => window.removeEventListener(DROPS_FOCUS_EVENT_BLOCK, onFocus)
-  }, [])
+  const [view, setView] = useState<FeedViewBlock>('overview')
   const [article, setArticle] = useState<OpenArticleBlock | null>(null)
   const [nav, setNav] = useState<RssArticleNavStateBlock | null>(null)
   const { feeds, preferences } = useRssFeedsBlock()

@@ -77,6 +77,13 @@ function headlineBlock(snap: F9SyncSnapshotBlock): { text: string; tone: 'busy' 
   return lastAt ? { text: 'Your businesses are up to date', tone: 'good', lastAt, sub } : { text: 'Nothing to sync yet', tone: 'idle', lastAt, sub }
 }
 
+/** The sidebar's few words: the time when all is well, else the headline made short. */
+function lineTextBlock(head: ReturnType<typeof headlineBlock>): string {
+  if (head.tone === 'good' && head.lastAt) return `Synced ${whenBlock(head.lastAt)}`
+  if (head.tone === 'busy') return 'Syncing'
+  return head.text.replace(/ to bring up to date$/, ' to update')
+}
+
 const DOT: Record<ReturnType<typeof headlineBlock>['tone'], string> = {
   busy: 'bg-[#3b6fb6] dark:bg-sky-400 animate-pulse motion-reduce:animate-none',
   bad: 'bg-red-500',
@@ -364,8 +371,8 @@ export function F9SyncLineBlock({ account }: { account?: F9SyncAccountBlock }) {
         className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-zinc-600 hover:bg-zinc-500/10 focus:outline-none focus-visible:ring-1 focus-visible:ring-sky-500/50 dark:text-zinc-300"
       >
         <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', DOT[head.tone])} />
-        <span className="truncate">{head.text.replace(/^Your businesses are u/, 'U').replace(/ your businesses$/, '')}</span>
-        {account && account.warnings > 0 && <span className="shrink-0 rounded-full bg-amber-500/20 px-1.5 text-[10.5px] font-medium text-amber-700 dark:text-amber-300" title={`${account.warnings} Webull ${account.warnings === 1 ? 'warning' : 'warnings'}`}>{account.warnings}</span>}
+        {/* When yours last synced, when all is well; otherwise what needs a look. Webull's warnings live in the sheet's tab. */}
+        <span className="truncate">{lineTextBlock(head)}</span>
       </button>
       <button
         type="button"

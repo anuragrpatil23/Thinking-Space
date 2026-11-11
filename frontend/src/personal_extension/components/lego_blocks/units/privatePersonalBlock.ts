@@ -111,6 +111,8 @@ export interface PrivateFeedDropsPropsBlock {
   groups: Record<string, WebullUniverseGroupBlock>
   /** A past day the Feed is showing (YYYY-MM-DD), or null for today */
   day?: string | null
+  /** One company only (a company page's side panel): just its row, and only its files are read */
+  only?: string | null
 }
 const FEED_DROPS_MODULES = import.meta.glob<{ default: ComponentType<PrivateFeedDropsPropsBlock> }>('../../../thinkingspace-personal/feedDrops.tsx')
 const loadFeedDrops = Object.values(FEED_DROPS_MODULES)[0]

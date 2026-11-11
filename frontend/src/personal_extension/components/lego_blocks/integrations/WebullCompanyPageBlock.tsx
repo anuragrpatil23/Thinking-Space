@@ -3,7 +3,7 @@ import { useAppWorkAttentionBlock } from '@/components/lego_blocks/hooks/shared/
 import { Suspense, useMemo, useState, type ReactNode } from 'react'
 import { F9PriceChartBlock, type TimedPriceBandBlock } from '../units/F9PriceChartBlock'
 import { openExternalUrlOrch } from '@/services/orchestrators/fileSystemOrch'
-import { openInDropsBlock } from '@/personal_extension/services/lego_blocks/units/dropsFocusBlock'
+import { F9SidePanelBlock } from '@/personal_extension/components/lego_blocks/units/F9SidePanelBlock'
 import { secFilingTitleBlock, secFilingUrlBlock, type SecFilingBlock } from '@/personal_extension/services/lego_blocks/units/secFilingsBlock'
 import FileCopyMenuHostBlock, { openFileCopyMenuBlock } from '@/components/lego_blocks/integrations/FileCopyMenuBlock'
 import { ChevronRight, Download, Loader2 } from 'lucide-react'
@@ -20,7 +20,7 @@ import {
   F9SectionLabelBlock,
   F9SegmentedBlock,
 } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
-import { FEED_DROPS_AVAILABLE, PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock, PrivateCompanyPanelsBlock, readPrivateSecFilingBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
+import { PrivateFeedDropsBlock, PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock, PrivateCompanyPanelsBlock, readPrivateSecFilingBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 import { valueLineDueBlock, valueLineIssueLabelBlock, valueLineIssueRowsBlock, type ValueLineIssueRowBlock, type WebullResearchFileBlock, type WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
 import type { WebullClosedPositionBlock } from '@/personal_extension/services/lego_blocks/units/webullClosedPositionsBlock'
 import { useWebullClosedPositionsBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullClosedPositionsBlock'
@@ -492,12 +492,12 @@ function AnnualReportsRowBlock({ reports, expanded, onToggle, onOpenFile }: { re
 // The option prices the sync records each trading day, a file a month
 function OptionPricesRowBlock({ months, expanded, onToggle, onOpenFile, onShowTable }: { months: WebullResearchFileBlock[]; expanded: boolean; onToggle: () => void; onOpenFile: (path: string) => void; onShowTable?: () => void }) {
   if (months.length === 0) return null
-  // With the private folder, Feed → Drops has this company's calls (and the days before): the row takes you to its row there
+  // With the private folder: this company's row of the Drops table, in a side panel
   if (onShowTable) {
     return (
       <div className="border-b border-zinc-200/70 last:border-b-0 dark:border-zinc-800">
         <button type="button" onClick={onShowTable} className="ltm-motion-fast flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
-          <span className="truncate">Options in Drops</span>
+          <span className="truncate">Options</span>
           <span className="flex shrink-0 items-center gap-1 text-zinc-500 dark:text-zinc-400">
             {monthLabelBlock(months[0].name)}
             <ChevronRight className="h-3.5 w-3.5 opacity-60" />
@@ -544,6 +544,7 @@ function ResearchPanelBlock({ reports, calls, filings, annualReports, optionMont
   onOpenFile: (path: string) => void
 }) {
   const [openGroup, setOpenGroup] = useState<string | null>(null)
+  const [dropsOpen, setDropsOpen] = useState(false)
   const toggle = (label: string) => setOpenGroup(prev => (prev === label ? null : label))
   return (
     <F9PanelBlock id="webull-company-research" className="scroll-mt-4 overflow-hidden">
@@ -568,7 +569,7 @@ function ResearchPanelBlock({ reports, calls, filings, annualReports, optionMont
         expanded={openGroup === 'Option prices'}
         onToggle={() => toggle('Option prices')}
         onOpenFile={onOpenFile}
-        onShowTable={FEED_DROPS_AVAILABLE && ticker ? () => openInDropsBlock(ticker) : undefined}
+        onShowTable={PrivateFeedDropsBlock && ticker ? () => setDropsOpen(true) : undefined}
       />
       {groups.map(group => {
         const expanded = openGroup === group.label
@@ -606,6 +607,11 @@ function ResearchPanelBlock({ reports, calls, filings, annualReports, optionMont
           </div>
         )
       })}
+      {dropsOpen && PrivateFeedDropsBlock && (
+        <F9SidePanelBlock title={`${ticker} in Drops`} subtitle="Its row of the Drops table: the drop, the valuation, and the calls 4 to 24 months out" onClose={() => setDropsOpen(false)}>
+          <Suspense fallback={null}><PrivateFeedDropsBlock groups={{}} only={ticker} /></Suspense>
+        </F9SidePanelBlock>
+      )}
     </F9PanelBlock>
   )
 }
