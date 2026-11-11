@@ -13,7 +13,7 @@ import { gapsForPositionBlock } from '@/personal_extension/services/lego_blocks/
 import { GapChipsBlock } from '@/personal_extension/components/lego_blocks/units/GapChipsBlock'
 import WebullOverallPageBlock from './WebullOverallPageBlock'
 import WebullSidebarBlock from './WebullSidebarBlock'
-import { F9SyncLineBlock } from '../units/F9SyncLineBlock'
+import { F9SyncLineBlock, openF9SyncPanelBlock } from '../units/F9SyncLineBlock'
 import { useWebullCompanyUniverseBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullCompanyUniverseBlock'
 import { loadF9SyncEngineBlock } from '@/personal_extension/components/lego_blocks/hooks/useF9AppSyncBlock'
 import type { WebullUniverseCompanyBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
@@ -2167,7 +2167,6 @@ export default function WebullWorkspaceBlock({
     return () => window.clearTimeout(settled)
   }, [executionRoot, universeTickers])
   const [createPositionOpen, setCreatePositionOpen] = useState(false)
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   // The company positions table docks its zoom controls in the section header.
   const [positionsZoomHost, setPositionsZoomHost] = useState<HTMLElement | null>(null)
   const sidebarCompanyGroups = useMemo(() => {
@@ -2318,6 +2317,103 @@ export default function WebullWorkspaceBlock({
     return row ? firstNumberBlock(row.last_price, row.lastPrice) : null
   })()
 
+  // The Webull sync behind these numbers, in full: shown in the sync sheet's Webull account tab
+  const webullAccountDetails = (
+            <div className="space-y-4 text-xs">
+              {(() => {
+                // One list of what needs attention, without saying the same thing twice.
+                const notices = [
+                  ...allWarnings,
+                  ...(!liveRefreshAvailable ? ['Live Webull refresh runs only in the Electron app; this view shows the saved data from your last Electron refresh.'] : []),
+                  ...(liveRefreshAvailable && !hasConfig ? ['Missing Webull credentials. Open Settings > Webull and save your app key and app secret to secure device storage.'] : []),
+                ]
+                if (notices.length === 0) return null
+                return (
+                  <ul className="space-y-1.5 rounded-lg bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+                    {notices.map(notice => (
+                      <li key={notice} className="flex gap-2">
+                        <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                        <span>{notice}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              })()}
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {([
+                  {
+                    title: 'Sync',
+                    rows: [
+                      ['Runtime', formatRuntimeLabelBlock(runtime)],
+                      ['Fetched', formatFetchedTimestampBlock(fetchedAt)],
+                      ['Fetched in', formatRuntimeLabelBlock(lastRefreshRuntime)],
+                    ],
+                  },
+                  {
+                    title: 'Execution',
+                    rows: [
+                      ['Root', executionRoot ?? 'Not configured'],
+                      ['Companies', String(executionCompanyCount)],
+                      ['Positions', String(executionPositionCount)],
+                      ['Source', executionSyncSource],
+                    ],
+                  },
+                  {
+                    title: `Accounts · ${accounts.length || (selectedAccount ? 1 : 0)}`,
+                    rows: accountLabelEntries.length > 0
+                      ? accountLabelEntries.map(entry => [
+                          entry.label,
+                          `${entry.accountNumber ?? entry.accountId ?? 'Unknown'}${entry.accountId && entry.accountNumber ? ` · ${entry.accountId}` : ''}`,
+                        ])
+                      : [
+                          ['Account id', selectedAccount?.accountId ?? 'Not available'],
+                          ['Account number', selectedAccount?.accountNumber ?? 'Not available'],
+                        ],
+                  },
+                  {
+                    title: 'Endpoints',
+                    rows: [
+                      ['Account list', endpoints.accountList ?? 'Not requested'],
+                      ['Legacy balance', endpoints.accountBalanceLegacy ?? 'Not requested'],
+                      ['Legacy positions', endpoints.accountPositionsLegacy ?? 'Not requested'],
+                      ['OpenAPI positions', endpoints.assetsPositions ?? 'Not requested'],
+                    ],
+                  },
+                ] as Array<{ title: string; rows: Array<[string, string]> }>).map(group => (
+                  <div key={group.title} className="min-w-0 rounded-lg bg-zinc-50 px-3 py-2.5 dark:bg-zinc-800/50">
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.02em] text-zinc-500 dark:text-zinc-400">{group.title}</p>
+                    <dl>
+                      {group.rows.map(([label, value]) => (
+                        <div key={label} className="flex items-baseline justify-between gap-3 py-1">
+                          <dt className="shrink-0 text-zinc-500 dark:text-zinc-400">{label}</dt>
+                          <dd className={cn('min-w-0 break-all text-right text-zinc-800 dark:text-zinc-200', value === 'Not requested' && 'text-zinc-400 dark:text-zinc-500')}>{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ))}
+              </div>
+
+              {attempts.length > 0 && (
+                <div>
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.02em] text-zinc-500 dark:text-zinc-400">Sync log</p>
+                  <pre className="max-h-48 overflow-auto rounded-lg bg-zinc-50 px-3 py-2 font-mono text-[11px] leading-5 text-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300">{attempts.join('\n')}</pre>
+                </div>
+              )}
+              <details className="group/raw">
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[12px] text-sky-600 hover:text-sky-700 dark:text-sky-400 [&::-webkit-details-marker]:hidden">
+                  <ChevronRight className="h-3 w-3 transition-transform group-open/raw:rotate-90" />
+                  Raw account positions payloads
+                </summary>
+                <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-zinc-50 px-3 py-2 font-mono text-[11px] leading-5 text-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300">{toJsonBlock({
+                  accountPositionsLegacy,
+                  assetsPositions,
+                })}</pre>
+              </details>
+            </div>
+  )
+
   const nativeSnapshotNotice = liveRefreshAvailable ? null : `${fetchedAt ? `Updated ${new Date(fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} ` : ''}from saved snapshot`
   const nativeFooter = (
     <p className="flex flex-wrap items-center justify-end gap-1.5 text-right text-[11px] leading-relaxed text-zinc-500 dark:text-zinc-400">
@@ -2330,7 +2426,8 @@ export default function WebullWorkspaceBlock({
       {allWarnings.length > 0 && (
         <button
           type="button"
-          onClick={() => { setDiagnosticsOpen(true); requestAnimationFrame(() => document.getElementById('webull-diagnostics')?.scrollIntoView({ behavior: 'smooth' })) }}
+          onClick={() => openF9SyncPanelBlock('account')}
+          title="Open the Webull account's sync details"
           className="inline-flex h-[22px] items-center rounded-full px-2 font-medium text-amber-800 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.45)] transition-colors hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-500/10"
         >
           {allWarnings.length} {allWarnings.length === 1 ? 'warning' : 'warnings'}
@@ -2348,8 +2445,8 @@ export default function WebullWorkspaceBlock({
           },
           {
             key: 'diagnostics',
-            label: diagnosticsOpen ? 'Hide diagnostics' : 'Diagnostics',
-            onClick: () => { setDiagnosticsOpen(prev => !prev); requestAnimationFrame(() => document.getElementById('webull-diagnostics')?.scrollIntoView({ behavior: 'smooth' })) },
+            label: 'Webull sync details',
+            onClick: () => openF9SyncPanelBlock('account'),
           },
         ]}
       />
@@ -2519,7 +2616,7 @@ export default function WebullWorkspaceBlock({
           />
         </div>
         {/* How fresh your data is, and Sync yours (desktop) */}
-        {!phoneListMode && <div className="bg-background/40"><F9SyncLineBlock /></div>}
+        {!phoneListMode && <div className="bg-background/40"><F9SyncLineBlock account={{ details: webullAccountDetails, warnings: allWarnings.length, fetchedAt: fetchedAt ?? null }} /></div>}
         </div>
         </aside>
       )}
@@ -2966,116 +3063,6 @@ export default function WebullWorkspaceBlock({
               onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
             />
           ) : null}
-
-          <details
-            id="webull-diagnostics"
-            open={diagnosticsOpen}
-            onToggle={(event) => setDiagnosticsOpen(event.currentTarget.open)}
-            className={cn(
-              'group scroll-mt-4 overflow-hidden',
-              F9_PANEL_CLASS_BLOCK,
-              (privateViewActive || (nativeView && !diagnosticsOpen)) && 'hidden',
-            )}
-          >
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
-              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform group-open:rotate-90" />
-              <span className="text-[13px] font-semibold">Diagnostics</span>
-              <span className="truncate text-xs text-zinc-500 dark:text-zinc-400">The sync, accounts and endpoints behind these numbers</span>
-            </summary>
-            <div className="space-y-4 border-t-[0.5px] border-[#E5E5EA] px-4 pb-4 pt-3 text-xs dark:border-zinc-800">
-              {(() => {
-                // One list of what needs attention, without saying the same thing twice.
-                const notices = [
-                  ...(nativeView ? allWarnings : []),
-                  ...(!liveRefreshAvailable ? ['Live Webull refresh runs only in the Electron app; this view shows the saved data from your last Electron refresh.'] : []),
-                  ...(liveRefreshAvailable && !hasConfig ? ['Missing Webull credentials. Open Settings > Webull and save your app key and app secret to secure device storage.'] : []),
-                ]
-                if (notices.length === 0) return null
-                return (
-                  <ul className="space-y-1.5 rounded-lg bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-                    {notices.map(notice => (
-                      <li key={notice} className="flex gap-2">
-                        <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-                        <span>{notice}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )
-              })()}
-
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {([
-                  {
-                    title: 'Sync',
-                    rows: [
-                      ['Runtime', formatRuntimeLabelBlock(runtime)],
-                      ['Fetched', formatFetchedTimestampBlock(fetchedAt)],
-                      ['Fetched in', formatRuntimeLabelBlock(lastRefreshRuntime)],
-                    ],
-                  },
-                  {
-                    title: 'Execution',
-                    rows: [
-                      ['Root', executionRoot ?? 'Not configured'],
-                      ['Companies', String(executionCompanyCount)],
-                      ['Positions', String(executionPositionCount)],
-                      ['Source', executionSyncSource],
-                    ],
-                  },
-                  {
-                    title: `Accounts · ${accounts.length || (selectedAccount ? 1 : 0)}`,
-                    rows: accountLabelEntries.length > 0
-                      ? accountLabelEntries.map(entry => [
-                          entry.label,
-                          `${entry.accountNumber ?? entry.accountId ?? 'Unknown'}${entry.accountId && entry.accountNumber ? ` · ${entry.accountId}` : ''}`,
-                        ])
-                      : [
-                          ['Account id', selectedAccount?.accountId ?? 'Not available'],
-                          ['Account number', selectedAccount?.accountNumber ?? 'Not available'],
-                        ],
-                  },
-                  {
-                    title: 'Endpoints',
-                    rows: [
-                      ['Account list', endpoints.accountList ?? 'Not requested'],
-                      ['Legacy balance', endpoints.accountBalanceLegacy ?? 'Not requested'],
-                      ['Legacy positions', endpoints.accountPositionsLegacy ?? 'Not requested'],
-                      ['OpenAPI positions', endpoints.assetsPositions ?? 'Not requested'],
-                    ],
-                  },
-                ] as Array<{ title: string; rows: Array<[string, string]> }>).map(group => (
-                  <div key={group.title} className="min-w-0 rounded-lg bg-zinc-50 px-3 py-2.5 dark:bg-zinc-800/50">
-                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.02em] text-zinc-500 dark:text-zinc-400">{group.title}</p>
-                    <dl>
-                      {group.rows.map(([label, value]) => (
-                        <div key={label} className="flex items-baseline justify-between gap-3 py-1">
-                          <dt className="shrink-0 text-zinc-500 dark:text-zinc-400">{label}</dt>
-                          <dd className={cn('min-w-0 break-all text-right text-zinc-800 dark:text-zinc-200', value === 'Not requested' && 'text-zinc-400 dark:text-zinc-500')}>{value}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                ))}
-              </div>
-
-              {attempts.length > 0 && (
-                <div>
-                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.02em] text-zinc-500 dark:text-zinc-400">Sync log</p>
-                  <pre className="max-h-48 overflow-auto rounded-lg bg-zinc-50 px-3 py-2 font-mono text-[11px] leading-5 text-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300">{attempts.join('\n')}</pre>
-                </div>
-              )}
-              <details className="group/raw">
-                <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[12px] text-sky-600 hover:text-sky-700 dark:text-sky-400 [&::-webkit-details-marker]:hidden">
-                  <ChevronRight className="h-3 w-3 transition-transform group-open/raw:rotate-90" />
-                  Raw account positions payloads
-                </summary>
-                <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-zinc-50 px-3 py-2 font-mono text-[11px] leading-5 text-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300">{toJsonBlock({
-                  accountPositionsLegacy,
-                  assetsPositions,
-                })}</pre>
-              </details>
-            </div>
-          </details>
         </CardContent>
       </Card>
 

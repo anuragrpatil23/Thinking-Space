@@ -79,6 +79,8 @@ export interface F9SyncEventBlock {
   ticker: string
   state: F9SyncItemStateBlock
   detail?: string
+  /** For one of your companies */
+  yours: boolean
 }
 
 export interface F9SyncDatasetViewBlock {
@@ -91,6 +93,8 @@ export interface F9SyncDatasetViewBlock {
   everyone: F9SyncTallyBlock
   /** Items of this dataset still waiting in the run */
   waiting: number
+  /** Of those, the ones for your companies */
+  waitingYours: number
   /** The company being synced right now ('' for a job), or null */
   working: string | null
   failures: Array<{ ticker: string; error: string; at: string; yours: boolean }>
@@ -116,6 +120,8 @@ export interface F9SyncSnapshotBlock {
   companies: { yours: number; everyone: number }
   datasets: F9SyncDatasetViewBlock[]
   run: F9SyncRunBlock | null
+  /** Companies with something still to do in the run: yours, and everyone else */
+  left: { yours: number; others: number }
   /** What each lane is on */
   working: Array<{ dataset: string; ticker: string }>
   /** What just happened, newest first */
@@ -141,14 +147,14 @@ export interface F9SyncDepsBlock {
 const MAX_LANES = 3
 const AUTO_EVERY_MS = 10 * 60 * 1000
 const LEDGER_WRITE_EVERY_MS = 20_000
-const RECENT_KEPT = 60
+const RECENT_KEPT = 120
 const FAILURES_SHOWN = 40
 const TRIES_PER_RUN = 2
 const LIMIT_STRIKES = 3
 const LIMIT_COOL_MS = 20_000
 const LIMITED = /\b429\b|too many requests|rate.?limit|limiting requests/i
 
-const EMPTY: F9SyncSnapshotBlock = { ready: false, canSync: false, companies: { yours: 0, everyone: 0 }, datasets: [], run: null, working: [], recent: [], notices: [] }
+const EMPTY: F9SyncSnapshotBlock = { ready: false, canSync: false, companies: { yours: 0, everyone: 0 }, datasets: [], run: null, left: { yours: 0, others: 0 }, working: [], recent: [], notices: [] }
 
 const errorTextBlock = (err: unknown) =>
   (err instanceof Error ? err.message : String(err)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
@@ -230,7 +236,7 @@ export function createF9SyncOrch(deps: F9SyncDepsBlock) {
   }
 
   function logBlock(item: F9SyncItemBlock, state: F9SyncItemStateBlock, detail?: string): void {
-    recent = [{ at: deps.now().toISOString(), dataset: item.dataset, ticker: item.ticker, state, ...(detail ? { detail } : {}) }, ...recent].slice(0, RECENT_KEPT)
+    recent = [{ at: deps.now().toISOString(), dataset: item.dataset, ticker: item.ticker, state, yours: item.yours, ...(detail ? { detail } : {}) }, ...recent].slice(0, RECENT_KEPT)
   }
 
   /** An item is through, one way or another. */
@@ -463,17 +469,22 @@ export function createF9SyncOrch(deps: F9SyncDepsBlock) {
         yours: d.job ? { total: 0, fresh: 0, due: 0, failed: 0, lastAt: null } : tallyBlock(d, yours, ledger, now),
         everyone: tallyBlock(d, companies, ledger, now),
         waiting: queue.reduce((n, i) => n + Number(i.dataset === d.id), 0),
+        waitingYours: queue.reduce((n, i) => n + Number(i.dataset === d.id && i.yours), 0),
         working: on ? on.ticker : null,
         failures: failures.slice(0, FAILURES_SHOWN),
         cells,
       }
     })
+    const leftYours = new Set<string>()
+    const leftOthers = new Set<string>()
+    for (const item of [...queue, ...working.values()]) if (item.ticker) (item.yours ? leftYours : leftOthers).add(item.ticker)
     snapshot = {
       ready,
       canSync: views.some(v => v.available),
       companies: { yours: yours.filter(c => !c.index).length, everyone: companies.filter(c => !c.index).length },
       datasets: views,
       run: run ? { reason: run.reason, startedAt: run.startedAt, total: run.total, done: run.done, failed: run.failed } : null,
+      left: { yours: leftYours.size, others: leftOthers.size },
       working: [...working.values()].map(i => ({ dataset: i.dataset, ticker: i.ticker })),
       recent,
       notices: [...parked.values()],
