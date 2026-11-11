@@ -111,6 +111,7 @@ import {
 import { REFRESH_ALL_EVENT_BLOCK } from './services/lego_blocks/units/refreshAllEventBlock'
 import { useChromeStateEventBlock } from './components/lego_blocks/hooks/shared/useChromeStateEventBlock'
 import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
+import { useF9AppSyncBlock } from './personal_extension/components/lego_blocks/hooks/useF9AppSyncBlock'
 import { useNativePushNavigationBlock } from './components/lego_blocks/hooks/shared/useNativePushNavigationBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, isEmbeddedTerminalSupported, setVaultRoot } from './services/orchestrators/runtimeOrch'
@@ -2259,6 +2260,9 @@ function App() {
     completedCount: ambientSyncCompleted,
     totalCount: ambientSyncTotal,
   } = useAmbientSyncActivityBlock()
+
+  // F9 sync, app-wide: what is due runs when the app comes to the front (lazy, idle, never on a timer)
+  useF9AppSyncBlock()
 
   useNativeTopChromeBlock({
     enabled: useNativeTopChrome && !needsVaultSetup,

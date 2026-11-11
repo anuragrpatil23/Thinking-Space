@@ -38,16 +38,14 @@ export const STORAGE_KEYS = {
   sheetWidthPrefix: 'ltm-sheet-width:',
   /** The last library full-text pass (time and counts), this device only. */
   libraryFillLast: 'ltm-library-fill-last',
-  valueLinePassLast: 'ltm-value-line-pass-last',
   /** Which model reads feed articles (provider + model), this device only. */
   feedAiReader: 'ltm-feed-ai-reader',
   feedAiReadLast: 'ltm-feed-ai-read-last',
   valueLineChecks: 'ltm-value-line-checks',
   valueLineIssueLists: 'ltm-value-line-issue-lists',
   earningsCallChecks: 'ltm-earnings-call-checks',
-  earningsCallPassLast: 'ltm-earnings-call-pass-last',
-  pricesPassLast: 'ltm-prices-pass-last',
   pricesChecks: 'ltm-prices-checks',
+  /** F9 sync: the companies it covers (set by the F9 page) and each source's last run, this device only. */
   webullOverallRememberByProjectRoot: 'ltm-webull-overall-remember-by-project-root',
   aiManualCredentials: 'ltm-ai-manual-credentials',
   aiOauthCredentials: 'ltm-ai-oauth-credentials',

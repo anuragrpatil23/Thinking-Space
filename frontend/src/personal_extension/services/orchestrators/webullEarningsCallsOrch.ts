@@ -1,8 +1,8 @@
 // Keep each tracked company's recent earnings calls in
 // F9-execution/<TICKER>/calls/YYYY-MM.md, from StockAnalysis's public pages.
 //
-// Same shape as webullValueLineOrch: desktop only, when asked (opening a
-// company, or the F9 page once a day), no timers. A company is asked only when
+// Same shape as webullValueLineOrch: desktop only, one company at a time, run
+// by F9 sync (f9SyncOrch). A company is asked only when
 // it has no call yet or the newest is past due (earningsCallPlanBlock). The
 // history goes back four years (EARNINGS_CALL_HISTORY_QUARTERS_BLOCK): the
 // newest call is fetched to learn its quarter, then the list is walked one
@@ -12,7 +12,6 @@
 // its newest call is recent. A file is never overwritten: the vault's copy may
 // be a longer transcript.
 
-import { setPassItemBlock, type PassItemBlock, type PassItemStateBlock } from '@/services/lego_blocks/units/passQueueBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
 import { STORAGE_KEYS, getJsonStorageItem, setJsonStorageItem } from '@/services/orchestrators/storageOrch'
@@ -34,7 +33,6 @@ const MAX_PAGES_PER_SYNC = 18
 /** Fewer calls than this in four years counts as a short history. */
 const FULL_HISTORY_CALLS = 14
 const SHORT_HISTORY_RECHECK_MS = 7 * 24 * 60 * 60 * 1000
-export const EARNINGS_CALLS_PASS_STALE_MS = 24 * 60 * 60 * 1000
 
 export type EarningsCallOutcomeBlock = 'current' | 'fetched' | 'no-new' | 'not-covered' | 'error'
 
@@ -44,16 +42,6 @@ export interface EarningsCallSyncResultBlock {
   /** Files written, e.g. ["2026-08"] */
   written?: string[]
   error?: string
-}
-
-export interface EarningsCallPassBlock {
-  at: string
-  fetched: string[]
-  notCovered: string[]
-  failed: string[]
-  error: string | null
-  /** Each company and what came of it */
-  items?: PassItemBlock[]
 }
 
 export function earningsCallsAvailableOrch(): boolean {
@@ -71,15 +59,6 @@ function writeCheckBlock(ticker: string, result: ValueLineCheckBlock['result']):
 
 export function earningsCallsNotCoveredOrch(ticker: string): boolean {
   return earningsCallPlanBlock(null, readChecksBlock()[ticker.toUpperCase()], new Date()) === 'not-covered'
-}
-
-export function readLastEarningsCallPassOrch(): EarningsCallPassBlock | null {
-  return getJsonStorageItem<EarningsCallPassBlock | null>(STORAGE_KEYS.earningsCallPassLast, null)
-}
-
-export function earningsCallPassDueOrch(now = Date.now()): boolean {
-  const last = readLastEarningsCallPassOrch()
-  return !last || now - Date.parse(last.at) > EARNINGS_CALLS_PASS_STALE_MS
 }
 
 const inflight = new Map<string, Promise<EarningsCallSyncResultBlock>>()
@@ -149,92 +128,4 @@ async function syncBlock(executionRoot: string, ticker: string): Promise<Earning
   } catch (err) {
     return { ticker, outcome: 'error', error: err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err) }
   }
-}
-
-// The pass in progress, for the status line in Feed → Sources
-export interface EarningsCallPassProgressBlock {
-  done: number
-  total: number
-  fetched: number
-  /** Each company: waiting, being fetched, or what came of it */
-  items: PassItemBlock[]
-}
-let progress: EarningsCallPassProgressBlock | null = null
-const listeners = new Set<() => void>()
-function setProgressBlock(next: EarningsCallPassProgressBlock | null): void {
-  progress = next
-  for (const listener of listeners) listener()
-}
-
-export function readEarningsCallPassProgressOrch(): EarningsCallPassProgressBlock | null {
-  return progress
-}
-
-export function subscribeEarningsCallPassOrch(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => { listeners.delete(listener) }
-}
-
-// What the daily pass covers (set by the F9 page), so "Check now" can run it on demand
-let passTarget: { executionRoot: string; tickers: string[] } | null = null
-
-export function setEarningsCallPassTargetOrch(executionRoot: string, tickers: string[]): void {
-  passTarget = { executionRoot, tickers }
-}
-
-/** Run the pass now, whatever the day's schedule says; null before the F9 page has said what to cover. */
-export function checkEarningsCallsNowOrch(): Promise<EarningsCallPassBlock> | null {
-  return passTarget ? runEarningsCallPassOrch(passTarget.executionRoot, passTarget.tickers) : null
-}
-
-let running: Promise<EarningsCallPassBlock> | null = null
-
-/** One pass over the tracked companies; a company that fails is tried once more at the end. */
-export function runEarningsCallPassOrch(executionRoot: string, tickers: string[]): Promise<EarningsCallPassBlock> {
-  if (running) return running
-  running = (async () => {
-    const pass: EarningsCallPassBlock = { at: new Date().toISOString(), fetched: [], notCovered: [], failed: [], error: null }
-    const unique = [...new Set(tickers.map(t => t.toUpperCase()))]
-    const retry: string[] = []
-    let items: PassItemBlock[] = unique.map(ticker => ({ ticker, state: 'waiting' as const }))
-    let done = 0
-    const mark = (ticker: string, state: PassItemStateBlock, detail?: string) => {
-      items = setPassItemBlock(items, ticker, state, detail)
-      setProgressBlock({ done, total: unique.length, fetched: pass.fetched.length, items })
-    }
-    const describe = (ticker: string, result: EarningsCallSyncResultBlock, last: boolean) => {
-      if (result.outcome === 'fetched') mark(ticker, 'fetched', `${result.written?.length ?? 0} ${result.written?.length === 1 ? 'call' : 'calls'}`)
-      else if (result.outcome === 'not-covered') mark(ticker, 'not-covered')
-      else if (result.outcome === 'no-new') mark(ticker, 'no-new')
-      else if (result.outcome === 'current') mark(ticker, 'skipped')
-      else mark(ticker, last ? 'failed' : 'retrying', result.error)
-    }
-    setProgressBlock({ done, total: unique.length, fetched: 0, items })
-    for (const ticker of unique) {
-      mark(ticker, 'working')
-      const result = await syncEarningsCallsOrch(executionRoot, ticker)
-      if (result.outcome === 'fetched') pass.fetched.push(ticker)
-      if (result.outcome === 'not-covered') pass.notCovered.push(ticker)
-      if (result.outcome === 'error') retry.push(ticker)
-      done += 1
-      describe(ticker, result, false)
-    }
-    for (const ticker of retry) {
-      mark(ticker, 'working')
-      const result = await syncEarningsCallsOrch(executionRoot, ticker)
-      if (result.outcome === 'fetched') pass.fetched.push(ticker)
-      if (result.outcome === 'error') {
-        pass.failed.push(ticker)
-        pass.error = `${ticker}: ${result.error}`
-      }
-      describe(ticker, result, true)
-    }
-    pass.items = items
-    setJsonStorageItem(STORAGE_KEYS.earningsCallPassLast, pass)
-    return pass
-  })().finally(() => {
-    running = null
-    setProgressBlock(null)
-  })
-  return running
 }

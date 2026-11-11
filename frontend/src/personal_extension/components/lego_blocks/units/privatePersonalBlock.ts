@@ -1,3 +1,4 @@
+import type { F9SyncEngineBlock } from '@/personal_extension/services/orchestrators/f9SyncOrch'
 import { lazy, type ComponentType } from 'react'
 import type { WebullUniverseGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
 import type { GapPositionLinkBlock } from '@/personal_extension/services/lego_blocks/units/webullGapLinkMatchBlock'
@@ -125,21 +126,6 @@ export async function loadPrivateGapPositionLinksBlock(executionRoot: string): P
   return loadGapLinks().then(m => m.loadPrivateGapPositionLinks(executionRoot)).catch(() => [])
 }
 
-const MARKET_PASS_MODULES = import.meta.glob<{ runPrivateMarketPassIfDue: () => Promise<void>; runPrivateMarketPassNow?: () => Promise<void> }>('../../../thinkingspace-personal/marketPass.ts')
-const loadMarketPass = Object.values(MARKET_PASS_MODULES)[0]
-
-/** Runs the private market pass if it is present and due; a no-op otherwise. */
-export function runPrivateMarketPassIfDueBlock(): void {
-  if (!loadMarketPass) return
-  void loadMarketPass().then(m => m.runPrivateMarketPassIfDue()).catch(() => undefined)
-}
-
-/** Runs the private market pass now, due or not; a no-op without the private folder. */
-export function runPrivateMarketPassNowBlock(): Promise<void> {
-  if (!loadMarketPass) return Promise.resolve()
-  return loadMarketPass().then(m => (m.runPrivateMarketPassNow ?? m.runPrivateMarketPassIfDue)()).catch(() => undefined)
-}
-
 // Feed → Value Line: fetch every missing back issue, paced like a reader.
 const VALUE_LINE_BACKFILL_MODULES = import.meta.glob<{ default: ComponentType }>('../../../thinkingspace-personal/valueLineBackfill.tsx')
 const loadValueLineBackfill = Object.values(VALUE_LINE_BACKFILL_MODULES)[0]
@@ -155,3 +141,14 @@ export const PrivateEarningsCalendarBlock = loadEarningsCalendar ? lazy(loadEarn
 const EARNINGS_CALENDAR_VIEW_MODULES = import.meta.glob<{ default: ComponentType<PrivateFeedDropsPropsBlock> }>('../../../thinkingspace-personal/earningsCalendarView.tsx')
 const loadEarningsCalendarView = Object.values(EARNINGS_CALENDAR_VIEW_MODULES)[0]
 export const PrivateEarningsCalendarViewBlock = loadEarningsCalendarView ? lazy(loadEarningsCalendarView) : null
+
+// F9 sync: the private folder's datasets and its roster of watched companies,
+// added to the public engine by loadF9SyncEngineBlock; nothing without the folder.
+type PrivateF9SyncModuleBlock = { registerPrivateF9SyncOrch(engine: F9SyncEngineBlock): void }
+const SYNC_DATASET_MODULES = import.meta.glob<PrivateF9SyncModuleBlock>('../../../thinkingspace-personal/syncDatasets.ts')
+const loadSyncDatasets = Object.values(SYNC_DATASET_MODULES)[0]
+export async function registerPrivateF9SyncBlock(engine: F9SyncEngineBlock): Promise<void> {
+  if (!loadSyncDatasets) return
+  const module = await loadSyncDatasets().catch(() => null)
+  module?.registerPrivateF9SyncOrch(engine)
+}

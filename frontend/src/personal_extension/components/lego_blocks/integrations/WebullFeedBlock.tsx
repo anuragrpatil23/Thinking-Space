@@ -1,5 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { checkPricesNowOrch, pricesAvailableOrch, readLastPricesPassOrch, readPricesPassProgressOrch, subscribePricesPassOrch } from '@/personal_extension/services/orchestrators/webullPricesOrch'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PassQueueListBlock } from '@/components/lego_blocks/units/PassQueueListBlock'
 import type { PassItemBlock } from '@/services/lego_blocks/units/passQueueBlock'
 import { useSearchParams } from 'react-router-dom'
@@ -34,8 +33,7 @@ import {
   type RssFeedItemBlock,
   type RssMergedViewsModeBlock,
 } from '@/services/lego_blocks/units/rssFeedBlock'
-import { checkEarningsCallsNowOrch, earningsCallsAvailableOrch, readEarningsCallPassProgressOrch, readLastEarningsCallPassOrch, subscribeEarningsCallPassOrch } from '@/personal_extension/services/orchestrators/webullEarningsCallsOrch'
-import { checkValueLineNowOrch, readLastValueLinePassOrch, readValueLinePassProgressOrch, subscribeValueLinePassOrch, valueLineAvailableOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
+import { valueLineAvailableOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
 import { useFeedAiReadBlock } from './FeedAiReaderBlock'
 import { FeedNoteCaptureBlock } from './FeedNoteCaptureBlock'
 import { nameNoteCompaniesOrch, pickUpTaggedArticlesOrch } from '@/personal_extension/services/orchestrators/feedNotesOrch'
@@ -178,59 +176,30 @@ function LibraryStatusBlock({ library, reader }: { library: ReturnType<typeof us
       <button
         type="button"
         onClick={() => {
-          // Different sources, own queues: they run side by side
+          // The feed's own work: article text and the AI reader, side by side
           if (!progress) void run()
-          void checkValueLineNowOrch()
-          void checkEarningsCallsNowOrch()
-          void checkPricesNowOrch()
           void reader.runNow()
         }}
-        title="Library articles, Value Line, earnings calls and prices, now"
+        title="Fill in article text from the library and run the AI reader, now"
         className="text-[13px] text-sky-600 hover:text-sky-700 dark:text-sky-400"
       >
-        Check all
+        Check feeds
       </button>
       {open && <div className="basis-full"><PassQueueListBlock items={progress?.items ?? last?.items ?? []} /></div>}
-      <ValueLineStatusBlock />
-      <EarningsCallsStatusBlock />
-      <PricesStatusBlock />
       <AiReadsStatusBlock reader={reader} />
+      {PrivateValueLineBackfillBlock && valueLineAvailableOrch() && (
+        <span className="basis-full text-[12px] text-zinc-500 dark:text-zinc-400">
+          <span className="mr-2 font-semibold text-zinc-900 dark:text-zinc-100">Value Line back issues</span>
+          <Suspense fallback={null}><PrivateValueLineBackfillBlock /></Suspense>
+        </span>
+      )}
+      <span className="basis-full text-[12px] text-zinc-500 dark:text-zinc-400">
+        Prices, Value Line, earnings calls and the rest of the market data: the sync line at the bottom of the F9 sidebar.
+      </span>
     </F9PanelBlock>
   )
 }
 
-// The daily Value Line pass runs from the F9 page (useValueLinePassBlock); this
-// only reports the last one.
-function ValueLineStatusBlock() {
-  const [open, setOpen] = useState(false)
-  const running = useSyncExternalStore(subscribeValueLinePassOrch, readValueLinePassProgressOrch)
-  // Re-read the last pass whenever a pass moves or ends
-  const last = useMemo(() => readLastValueLinePassOrch(), [running]) // eslint-disable-line react-hooks/exhaustive-deps
-  const listBlock = (tickers: string[]) => (tickers.length > 4 ? `${tickers.slice(0, 4).join(', ')}…` : tickers.join(', '))
-  return (
-    <span className="basis-full text-[12px] text-zinc-500 dark:text-zinc-400">
-      <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} title="Show each company in the pass" className="mr-2 inline-flex items-center gap-1 font-semibold text-zinc-900 hover:underline dark:text-zinc-100">
-        <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />Value Line
-      </button>
-      {running
-        ? `Fetching reports · ${running.done} of ${running.total}${running.fetched ? ` · ${running.fetched} new so far` : ''}`
-        : last
-        ? [
-          last.fetched.length > 0 ? `${last.fetched.length} new ${last.fetched.length === 1 ? 'report' : 'reports'} (${listBlock(last.fetched)})` : 'No new reports',
-          last.notCovered.length > 0 ? `${last.notCovered.length} not covered` : null,
-          last.failed?.length ? `${last.failed.length} failed (${listBlock(last.failed)})` : null,
-          minutesAgoBlock(last.at),
-        ].filter(Boolean).join(' · ')
-        : 'Not run yet; it runs when the F9 page opens'}
-      {!running && last?.error && <span className="ml-2 text-red-600 dark:text-red-400">{last.error}</span>}
-      {!running && valueLineAvailableOrch() && (
-        <button type="button" onClick={() => { void checkValueLineNowOrch() }} className="ml-2 text-[#3b6fb6] hover:underline dark:text-sky-400">Check now</button>
-      )}
-      {PrivateValueLineBackfillBlock && valueLineAvailableOrch() && <Suspense fallback={null}><PrivateValueLineBackfillBlock /></Suspense>}
-      {open && <PassQueueListBlock items={running?.items ?? last?.items ?? []} />}
-    </span>
-  )
-}
 
 // The AI reading the feed (switched on in Settings → Webull): each article it
 // distils and each story card it writes, live, and what came of the last job.
@@ -266,64 +235,7 @@ function AiReadsStatusBlock({ reader }: { reader: ReturnType<typeof useFeedAiRea
   )
 }
 
-// The daily prices pass runs beside Value Line's; this reports it.
-function PricesStatusBlock() {
-  const [open, setOpen] = useState(false)
-  const running = useSyncExternalStore(subscribePricesPassOrch, readPricesPassProgressOrch)
-  const last = useMemo(() => readLastPricesPassOrch(), [running]) // eslint-disable-line react-hooks/exhaustive-deps
-  const listBlock = (tickers: string[]) => (tickers.length > 4 ? `${tickers.slice(0, 4).join(', ')}…` : tickers.join(', '))
-  return (
-    <span className="basis-full text-[12px] text-zinc-500 dark:text-zinc-400">
-      <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} title="Show each company in the pass" className="mr-2 inline-flex items-center gap-1 font-semibold text-zinc-900 hover:underline dark:text-zinc-100">
-        <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />Prices
-      </button>
-      {running
-        ? `Fetching · ${running.done} of ${running.total}${running.fetched ? ` · ${running.fetched} updated` : ''}`
-        : last
-          ? [
-            last.fetched.length > 0 ? `Updated ${listBlock(last.fetched)}` : 'Nothing new',
-            last.failed.length > 0 ? `${last.failed.length} failed (${listBlock(last.failed)})` : null,
-            minutesAgoBlock(last.at),
-          ].filter(Boolean).join(' · ')
-          : 'Not run yet; it runs when the F9 page opens'}
-      {!running && last?.error && <span className="ml-2 text-red-600 dark:text-red-400">{last.error}</span>}
-      {!running && pricesAvailableOrch() && (
-        <button type="button" onClick={() => { void checkPricesNowOrch() }} className="ml-2 text-[#3b6fb6] hover:underline dark:text-sky-400">Check now</button>
-      )}
-      {open && <PassQueueListBlock items={running?.items ?? last?.items ?? []} />}
-    </span>
-  )
-}
 
-// The daily earnings call pass runs beside Value Line's; this reports it.
-function EarningsCallsStatusBlock() {
-  const [open, setOpen] = useState(false)
-  const running = useSyncExternalStore(subscribeEarningsCallPassOrch, readEarningsCallPassProgressOrch)
-  const last = useMemo(() => readLastEarningsCallPassOrch(), [running]) // eslint-disable-line react-hooks/exhaustive-deps
-  const listBlock = (tickers: string[]) => (tickers.length > 4 ? `${tickers.slice(0, 4).join(', ')}…` : tickers.join(', '))
-  return (
-    <span className="basis-full text-[12px] text-zinc-500 dark:text-zinc-400">
-      <button type="button" onClick={() => setOpen(v => !v)} aria-expanded={open} title="Show each company in the pass" className="mr-2 inline-flex items-center gap-1 font-semibold text-zinc-900 hover:underline dark:text-zinc-100">
-        <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />Earnings calls
-      </button>
-      {running
-        ? `Fetching · ${running.done} of ${running.total}${running.fetched ? ` · ${running.fetched} with new calls` : ''}`
-        : last
-          ? [
-            last.fetched.length > 0 ? `New calls for ${listBlock(last.fetched)}` : 'No new calls',
-            last.notCovered.length > 0 ? `${last.notCovered.length} not covered` : null,
-            last.failed.length > 0 ? `${last.failed.length} failed (${listBlock(last.failed)})` : null,
-            minutesAgoBlock(last.at),
-          ].filter(Boolean).join(' · ')
-          : 'Not run yet; it runs when the F9 page opens'}
-      {!running && last?.error && <span className="ml-2 text-red-600 dark:text-red-400">{last.error}</span>}
-      {!running && earningsCallsAvailableOrch() && (
-        <button type="button" onClick={() => { void checkEarningsCallsNowOrch() }} className="ml-2 text-[#3b6fb6] hover:underline dark:text-sky-400">Check now</button>
-      )}
-      {open && <PassQueueListBlock items={running?.items ?? last?.items ?? []} />}
-    </span>
-  )
-}
 
 // Articles per day over the last 30 days, one bar a day: the part the app can
 // show in full at the bottom, headline-only on top, so the bar's height is

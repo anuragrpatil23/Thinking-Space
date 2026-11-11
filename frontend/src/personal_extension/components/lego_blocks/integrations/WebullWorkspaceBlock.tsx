@@ -13,8 +13,9 @@ import { gapsForPositionBlock } from '@/personal_extension/services/lego_blocks/
 import { GapChipsBlock } from '@/personal_extension/components/lego_blocks/units/GapChipsBlock'
 import WebullOverallPageBlock from './WebullOverallPageBlock'
 import WebullSidebarBlock from './WebullSidebarBlock'
+import { F9SyncLineBlock } from '../units/F9SyncLineBlock'
 import { useWebullCompanyUniverseBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullCompanyUniverseBlock'
-import { useValueLinePassBlock } from '@/personal_extension/components/lego_blocks/hooks/useValueLinePassBlock'
+import { loadF9SyncEngineBlock } from '@/personal_extension/components/lego_blocks/hooks/useF9AppSyncBlock'
 import type { WebullUniverseCompanyBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
 import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
@@ -2157,9 +2158,14 @@ export default function WebullWorkspaceBlock({
     return { ticker: company.companyTicker, cost: Math.max(0, metrics.stockCost ?? 0) + Math.max(0, metrics.optionCost ?? 0) }
   }), [executionOverview])
   const companyUniverse = useWebullCompanyUniverseBlock(executionRoot, universeExecutionCompanies)
-  // Every tracked company gets its newest Value Line report, once a day (desktop only)
   const universeTickers = useMemo(() => companyUniverse.map(company => company.ticker), [companyUniverse])
-  useValueLinePassBlock(executionRoot, universeTickers)
+  // The companies in your lists, told to F9 sync (kept in the vault, so syncing needs no page open)
+  useEffect(() => {
+    if (!executionRoot || universeTickers.length === 0) return
+    // Once the list has settled: it grows as the page's sources load, and each change would be a vault write
+    const settled = window.setTimeout(() => { void loadF9SyncEngineBlock().then(engine => engine.publishYours(universeTickers.filter((t): t is string => Boolean(t)))) }, 5000)
+    return () => window.clearTimeout(settled)
+  }, [executionRoot, universeTickers])
   const [createPositionOpen, setCreatePositionOpen] = useState(false)
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   // The company positions table docks its zoom controls in the section header.
@@ -2466,9 +2472,10 @@ export default function WebullWorkspaceBlock({
           )}
           aria-hidden={!phoneListMode && sideTabsCollapsed}
         >
+        <div className={cn('flex h-full flex-col', phoneListMode ? 'w-full' : 'w-[220px] border-r border-border/60')}>
         <div className={cn(
-          'h-full overflow-y-auto px-3 py-4',
-          phoneListMode ? 'w-full bg-background/40' : 'w-[220px] border-r border-border/60 bg-background/40 px-2.5',
+          'min-h-0 flex-1 overflow-y-auto px-3 py-4',
+          phoneListMode ? 'w-full bg-background/40' : 'bg-background/40 px-2.5',
           // The native dock floats over the web view (64pt above the home
           // indicator) — nothing reserves room for it, so the last company
           // row sat under it with no way to scroll clear.
@@ -2510,6 +2517,9 @@ export default function WebullWorkspaceBlock({
               }
             })}
           />
+        </div>
+        {/* How fresh your data is, and Sync yours (desktop) */}
+        {!phoneListMode && <div className="bg-background/40"><F9SyncLineBlock /></div>}
         </div>
         </aside>
       )}

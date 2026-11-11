@@ -7,7 +7,7 @@ import { rssFeedIdsExcludedFromAllUnreadBlock, rssReaderFeedsBlock, type RssFeed
 import { buildRssDayInboxBlock, recentRssFeedsBlock, rssDayLabelBlock, type RssStoryBlock } from '@/services/lego_blocks/units/rssStoryBlock'
 import { localDayBlock, rssDistinctHeadlinesBlock, rssOutsideCountsBlock, rssTopicItemsBlock, rssTopicsShownBlock, type RssTopicBlock } from '@/services/lego_blocks/units/rssTopicBlock'
 import { readLastLibraryPassOrch } from '@/services/orchestrators/libraryFullTextOrch'
-import { readLastValueLinePassOrch } from '@/personal_extension/services/orchestrators/webullValueLineOrch'
+import { useF9SyncBlock } from '../hooks/useF9AppSyncBlock'
 import { cn } from '@/lib/utils'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { Bar, BarChart, Cell, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -446,6 +446,9 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header, day, onPi
     }
   }, [deferredFeeds, preferences, topicState, day])
 
+  // Value Line's failures, from F9 sync's ledger
+  const { snap: f9Sync } = useF9SyncBlock()
+  const valueLineFailed = f9Sync?.datasets.find(d => d.id === 'value-line')?.yours.failed ?? 0
   const warnings = useMemo(() => {
     const out: string[] = []
     const aiOnly = preferences ? rssFeedIdsExcludedFromAllUnreadBlock(preferences.groups, preferences.feeds) : new Set<string>()
@@ -458,10 +461,9 @@ export function FeedOverviewBlock({ reader, onOpenItem, chart, header, day, onPi
     if (reader.available && reader.last?.error && reader.settings.on) out.push(`AI reader: ${reader.last.error}`)
     const library = readLastLibraryPassOrch()
     if (library?.error) out.push(`Library: ${library.error}`)
-    const valueLine = readLastValueLinePassOrch()
-    if (valueLine?.failed?.length) out.push(`Value Line: ${valueLine.failed.length} ${valueLine.failed.length === 1 ? 'company' : 'companies'} failed`)
+    if (valueLineFailed > 0) out.push(`Value Line: ${valueLineFailed} ${valueLineFailed === 1 ? 'company' : 'companies'} failed`)
     return out
-  }, [feeds, preferences, reader.available, reader.settings.on, reader.last])
+  }, [feeds, preferences, reader.available, reader.settings.on, reader.last, valueLineFailed])
 
   const sourcesToday = useMemo(() => {
     const counts = new Map<string, number>()

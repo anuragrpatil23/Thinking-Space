@@ -1,13 +1,12 @@
 // Keep each tracked company's newest Value Line report in
 // F9-execution/<TICKER>/valueline/YYYY-MM.pdf, from the library.
 //
-// Runs in the desktop app only, when asked: opening a company, or the F9 page
-// once a day (no timers). The library is asked only for a company with no
+// Runs in the desktop app only, one company at a time: F9 sync (f9SyncOrch)
+// decides when and for whom. The library is asked only for a company with no
 // issue or a due one (webullCompanyDossierBlock.valueLinePlanBlock), one at a
 // time through main's paced library session. The PDF lands in the vault, so
 // the phone gets it through sync.
 
-import { issueDetailBlock, setPassItemBlock, type PassItemBlock, type PassItemStateBlock } from '@/services/lego_blocks/units/passQueueBlock'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
 import { base64ToBytesBlock } from '@/services/lego_blocks/units/byteEncodingBlock'
 import { listFolderEntries } from '@/services/orchestrators/fileSystemOrch'
@@ -21,9 +20,6 @@ import {
   type ValueLineCheckBlock,
 } from '../lego_blocks/units/webullCompanyDossierBlock'
 
-/** The F9 page opened after this long since the last pass runs one again. */
-export const VALUE_LINE_PASS_STALE_MS = 24 * 60 * 60 * 1000
-
 export type ValueLineOutcomeBlock = 'current' | 'fetched' | 'no-new' | 'not-covered' | 'error'
 
 export interface ValueLineSyncResultBlock {
@@ -32,17 +28,6 @@ export interface ValueLineSyncResultBlock {
   /** The issue fetched, YYYY-MM-DD */
   issueDate?: string
   error?: string
-}
-
-export interface ValueLinePassBlock {
-  at: string
-  fetched: string[]
-  notCovered: string[]
-  /** Companies that failed twice; the next pass or opening the company tries again. */
-  failed: string[]
-  error: string | null
-  /** Each company and what came of it */
-  items?: PassItemBlock[]
 }
 
 export function valueLineAvailableOrch(): boolean {
@@ -62,15 +47,6 @@ function writeCheckBlock(ticker: string, result: ValueLineCheckBlock['result']):
 export function valueLineNotCoveredOrch(ticker: string): boolean {
   const check = readChecksBlock()[ticker.toUpperCase()]
   return valueLinePlanBlock(null, check, new Date()) === 'not-covered'
-}
-
-export function readLastValueLinePassOrch(): ValueLinePassBlock | null {
-  return getJsonStorageItem<ValueLinePassBlock | null>(STORAGE_KEYS.valueLinePassLast, null)
-}
-
-export function valueLinePassDueOrch(now = Date.now()): boolean {
-  const last = readLastValueLinePassOrch()
-  return !last || now - Date.parse(last.at) > VALUE_LINE_PASS_STALE_MS
 }
 
 // Each company's issue list (dates, newest first), from its last listing.
@@ -157,106 +133,4 @@ async function syncBlock(executionRoot: string, ticker: string): Promise<ValueLi
   } catch (err) {
     return { ticker, outcome: 'error', error: err instanceof Error ? err.message : String(err) }
   }
-}
-
-let running: Promise<ValueLinePassBlock> | null = null
-
-// The pass in progress, for the status line in Feed → Sources
-export interface ValueLinePassProgressBlock {
-  done: number
-  total: number
-  fetched: number
-  /** Each company: waiting, being fetched, or what came of it */
-  items: PassItemBlock[]
-}
-let progress: ValueLinePassProgressBlock | null = null
-const listeners = new Set<() => void>()
-
-function setProgressBlock(next: ValueLinePassProgressBlock | null): void {
-  progress = next
-  for (const listener of listeners) listener()
-}
-
-export function readValueLinePassProgressOrch(): ValueLinePassProgressBlock | null {
-  return progress
-}
-
-/** Called when a pass moves or ends. */
-export function subscribeValueLinePassOrch(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => { listeners.delete(listener) }
-}
-
-/**
- * One pass over the tracked companies. A company that fails is tried once
- * more at the end (a library hiccup, or the session being re-made by another
- * request); a login failure stops the pass. Concurrent calls share it.
- */
-// What the daily pass covers (set by the F9 page), so "Check now" can run it on demand
-let passTarget: { executionRoot: string; tickers: string[] } | null = null
-
-export function setValueLinePassTargetOrch(executionRoot: string, tickers: string[]): void {
-  passTarget = { executionRoot, tickers }
-}
-
-/** Run the pass now, whatever the day's schedule says; null when the F9 page has not said what to cover. */
-export function checkValueLineNowOrch(): Promise<ValueLinePassBlock> | null {
-  return passTarget ? runValueLinePassOrch(passTarget.executionRoot, passTarget.tickers) : null
-}
-
-export function runValueLinePassOrch(executionRoot: string, tickers: string[]): Promise<ValueLinePassBlock> {
-  if (running) return running
-  running = (async () => {
-    const pass: ValueLinePassBlock = { at: new Date().toISOString(), fetched: [], notCovered: [], failed: [], error: null }
-    const unique = [...new Set(tickers.map(t => t.toUpperCase()))]
-    const failed: string[] = []
-    let done = 0
-    const total = unique.length
-    let items: PassItemBlock[] = unique.map(ticker => ({ ticker, state: 'waiting' as const }))
-    const mark = (ticker: string, state: PassItemStateBlock, detail?: string) => {
-      items = setPassItemBlock(items, ticker, state, detail)
-      setProgressBlock({ done, total, fetched: pass.fetched.length, items })
-    }
-    const record = (ticker: string, result: ValueLineSyncResultBlock, last: boolean): boolean => {
-      if (result.outcome === 'fetched') pass.fetched.push(ticker)
-      if (result.outcome === 'not-covered') pass.notCovered.push(ticker)
-      if (result.outcome === 'fetched') mark(ticker, 'fetched', issueDetailBlock(result.issueDate))
-      else if (result.outcome === 'not-covered') mark(ticker, 'not-covered')
-      else if (result.outcome === 'no-new') mark(ticker, 'no-new')
-      else if (result.outcome === 'current') mark(ticker, 'skipped')
-      if (result.outcome !== 'error') return true
-      mark(ticker, last ? 'failed' : 'retrying', result.error)
-      if (last) pass.failed.push(ticker)
-      else failed.push(ticker)
-      pass.error = `${ticker}: ${result.error}`
-      // A sign-in problem fails every company the same way: stop at the first
-      return !/Keychain|login saved|desktop app|sign-in loops|library login did not/i.test(result.error ?? '')
-    }
-    setProgressBlock({ done, total, fetched: 0, items })
-    let carryOn = true
-    for (const ticker of unique) {
-      mark(ticker, 'working')
-      carryOn = record(ticker, await syncValueLineOrch(executionRoot, ticker), false)
-      done += 1
-      setProgressBlock({ done, total, fetched: pass.fetched.length, items })
-      if (!carryOn) break
-    }
-    if (carryOn) {
-      for (const ticker of failed) {
-        mark(ticker, 'working')
-        if (!record(ticker, await syncValueLineOrch(executionRoot, ticker), true)) break
-      }
-      if (pass.failed.length === 0) pass.error = null
-    } else {
-      pass.failed.push(...failed)
-    }
-    // A pass stopped early (a sign-in problem) leaves the rest as they were: not asked
-    pass.items = items.map(item => (item.state === 'retrying' ? { ...item, state: 'failed' as const } : item))
-    setJsonStorageItem(STORAGE_KEYS.valueLinePassLast, pass)
-    return pass
-  })().finally(() => {
-    running = null
-    setProgressBlock(null)
-  })
-  return running
 }
