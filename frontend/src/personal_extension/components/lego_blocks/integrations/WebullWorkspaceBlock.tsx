@@ -21,7 +21,7 @@ import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_block
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import WebullFeedBlock from './WebullFeedBlock'
-import { PrivatePositionPanelBlock, PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock, PrivateStudyBlock } from '../units/privatePersonalBlock'
+import { PrivatePositionMarkBlock, PrivatePositionPanelBlock, PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock, PrivateStudyBlock } from '../units/privatePersonalBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -1816,13 +1816,19 @@ export default function WebullWorkspaceBlock({
       ? `$${Number(option[2])} ${option[4] === 'CALL' ? 'Call' : 'Put'}`
       : raw
     const sub = option ? raw : instrumentType === 'EQUITY' || instrumentType === 'STOCK' ? 'Stock' : (instrumentType ? instrumentType.charAt(0) + instrumentType.slice(1).toLowerCase() : null)
+    const ref = backlogTableModel.positionRefByNodeUuid.get(node.uuid)
+    const root = executionRoot?.replace(/\/+$/, '')
+    const Mark = PrivatePositionMarkBlock
     return (
       <>
-        <span className="block">{name}</span>
+        <span className="block">
+          {name}
+          {Mark && ref && root && <Suspense fallback={null}><Mark filePath={`${root}/${ref.companyTicker}/positions/${ref.fileName}`} /></Suspense>}
+        </span>
         {sub && <span className="block text-[11px] text-zinc-500 dark:text-zinc-400">{sub}</span>}
       </>
     )
-  }, [])
+  }, [backlogTableModel.positionRefByNodeUuid, executionRoot])
 
   // Which gap holds each position, from the gaps' positions logs
   const gapLinks = useGapPositionLinksBlock(executionRoot)
@@ -3080,6 +3086,7 @@ export default function WebullWorkspaceBlock({
               filePath={path}
               ticker={ticker}
               executionRoot={root}
+              accountLabel={(accountId, accountNumber) => resolveAccountLabelBlock(accountLabelEntries, accountId, accountNumber)}
               onClose={() => { setPositionPanelPath(null); setDetailPanelNodeId(null) }}
               onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
             />

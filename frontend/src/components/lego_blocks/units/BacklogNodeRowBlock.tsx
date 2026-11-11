@@ -162,6 +162,15 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
+      // The whole row opens it, not only the title: a click on the row's own
+      // controls (status, links, notes) or one that ends a text selection does not.
+      onClick={(event) => {
+        if (event.defaultPrevented) return
+        const target = event.target as HTMLElement
+        if (target.closest('button, a, input, select, textarea, label, [role="button"], [contenteditable="true"]')) return
+        if (window.getSelection()?.toString()) return
+        onSelectNode()
+      }}
       className={cn(
         // Native rows don't scroll on their own: the table's viewport does, so the title can pin to it.
         native ? 'group/noderow cursor-pointer' : 'cursor-pointer overflow-x-auto overflow-y-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden',

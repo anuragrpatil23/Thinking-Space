@@ -74,10 +74,22 @@ export interface PrivatePositionPanelPropsBlock {
   executionRoot: string
   onClose: () => void
   onOpenFile: (path: string) => void
+  /** The account's name ("Traditional IRA") for an account id or number, when known. */
+  accountLabel?: (accountId: string | null, accountNumber: string | null) => string | null
 }
 const POSITION_PANEL_MODULES = import.meta.glob<{ default: ComponentType<PrivatePositionPanelPropsBlock> }>('../../../thinkingspace-personal/positionPanel.tsx')
 const loadPositionPanel = Object.values(POSITION_PANEL_MODULES)[0]
 export const PrivatePositionPanelBlock = loadPositionPanel ? lazy(loadPositionPanel) : null
+
+// A mark beside a position's name in the positions table (it has comments,
+// they are shared), when the private folder provides one.
+export interface PrivatePositionMarkPropsBlock {
+  /** The position's file. */
+  filePath: string
+}
+const POSITION_MARK_MODULES = import.meta.glob<{ default: ComponentType<PrivatePositionMarkPropsBlock> }>('../../../thinkingspace-personal/positionMark.tsx')
+const loadPositionMark = Object.values(POSITION_MARK_MODULES)[0]
+export const PrivatePositionMarkBlock = loadPositionMark ? lazy(loadPositionMark) : null
 
 // Overall Positions → Buys and sells (every trade, linked to the gap behind it),
 // when the private folder provides it; without it the page shows positions only.
