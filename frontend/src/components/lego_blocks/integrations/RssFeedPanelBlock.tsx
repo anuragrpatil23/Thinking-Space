@@ -415,8 +415,9 @@ export default function RssFeedPanelBlock({
     for (const d of inboxDaysKey.split(',')) if (/^\d{4}-\d{2}-\d{2}$/.test(d)) void loadRssTopicsOrch(d)
   }, [byTheme, inboxDaysKey])
   const dayInbox = useMemo<RssDayInboxBlock[]>(
-    () => (byTheme ? regroupRssDayInboxByThemeBlock(sourceInbox, d => readRssTopicsOrch(d)) : sourceInbox),
-    [byTheme, sourceInbox, topicsTick],  // eslint-disable-line react-hooks/exhaustive-deps
+    // Narrowed to chosen sources: only theirs, without what the other sources had
+    () => (byTheme ? regroupRssDayInboxByThemeBlock(sourceInbox, d => readRssTopicsOrch(d), { outside: filteredInboxFeeds === inboxFeeds }) : sourceInbox),
+    [byTheme, sourceInbox, topicsTick, filteredInboxFeeds, inboxFeeds],  // eslint-disable-line react-hooks/exhaustive-deps
   )
   // Each day's whole count, whatever Unread hides: the filter chooses the rows,
   // not the day's size. Grouped once per feed snapshot (only with Unread on).
@@ -483,6 +484,7 @@ export default function RssFeedPanelBlock({
     ? dayInbox.filter(day => !foldedDays.has(day.day)).flatMap(day => day.sources.filter(source => !foldedSources.has(`${day.day}|${source.feedId}`)).flatMap(source => source.stories.map(story => ({
       rowId: rssRowIdBlock(`day:${day.day}`, story.lead.item.id),
       itemId: story.lead.item.id,
+      group: `${day.day}|${source.feedId}`,
     }))))
     : flattenVisibleRssRowsBlock({
     // Native lists filter by Unread instead of offering the merged row
@@ -572,6 +574,25 @@ export default function RssFeedPanelBlock({
    *
    *  Enter/Space still open via the button's native click handling, but they are
    *  no longer required for anything. */
+  // From a "From other sources" row (it sits after its group's stories): ↓ opens
+  // the first story after the group, ↑ its last one, so reading carries on
+  const handleDigestKeyDown = useCallback((groupKey: string, event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    const rows = visibleRows as Array<{ rowId: string; itemId: string; group?: string }>
+    let last = -1
+    rows.forEach((row, i) => { if (row.group === groupKey) last = i })
+    const firstAfter = last >= 0 ? last + 1 : rows.findIndex(row => (row.group ?? '') > groupKey)
+    const target = rows[event.key === 'ArrowDown' ? firstAfter : (last >= 0 ? last : firstAfter - 1)]
+    if (!target) return
+    event.preventDefault()
+    const button = itemButtonRefs.current.get(target.rowId)
+    button?.focus({ preventScroll: true })
+    button?.scrollIntoView({ block: 'center' })
+    setSelectedItemId(target.itemId)
+    const item = itemsById.get(target.itemId)
+    if (item) handleItemClick(item, target.rowId)
+  }, [visibleRows, itemsById, handleItemClick])
+
   const handleItemKeyDown = useCallback((rowId: string, event: KeyboardEvent<HTMLButtonElement>) => {
     if (deleteMode) return
     if (articleOpen) {
@@ -827,6 +848,7 @@ export default function RssFeedPanelBlock({
             registerItemButton={registerItemButton}
             tagColors={tagColors}
             onOpenDigest={onOpenDigest}
+            onDigestKeyDown={handleDigestKeyDown}
             activeDigestKey={activeDigestKey}
           />
         )}
@@ -1379,11 +1401,20 @@ function SourceTabsBlock({ feeds, chosen, onChange }: {
   const only = chosen.length === 1 ? chosen[0] : null
   const tabs = [
     { id: null as string | null, title: 'All', unread: feeds.reduce((n, f) => n + f.items.filter(i => !i.read).length, 0) },
-    ...feeds.map(f => ({ id: f.feedId as string | null, title: f.feedTitle.replace(/\s*[-:–].*$/, '').replace(/\s*\(.*\)$/, ''), unread: f.items.filter(i => !i.read).length }))
-      .sort((a, b) => b.unread - a.unread || a.title.localeCompare(b.title)),
+    // Your sources' own order, so a tab never moves as its count changes
+    ...feeds.map(f => ({ id: f.feedId as string | null, title: f.feedTitle.replace(/\s*[-:–].*$/, '').replace(/\s*\(.*\)$/, ''), unread: f.items.filter(i => !i.read).length })),
   ]
+  const columnRef = useRef<HTMLDivElement>(null)
+  // The chosen tab scrolled into view whenever the choice changes
+  useEffect(() => {
+    columnRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
+  }, [only, chosen.length])
   return (
-    <div className="flex h-full flex-col items-end gap-1 overflow-y-auto py-1 [mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Sources" aria-orientation="vertical">
+    // The scroller is wider than the column and clipped, so its scrollbar falls
+    // outside what shows; the tabs keep a fixed 30px track flush against the card
+    <div className="h-full overflow-hidden [mask-image:linear-gradient(to_bottom,black,black_calc(100%-24px),transparent)]">
+    <div className="h-full w-[calc(100%+40px)] overflow-y-auto">
+    <div ref={columnRef} className="flex w-[30px] flex-col items-end gap-1 pb-8 pt-1" role="tablist" aria-label="Sources" aria-orientation="vertical">
       {tabs.map(t => {
         const active = t.id === null ? chosen.length === 0 : only === t.id
         return (
@@ -1395,17 +1426,20 @@ function SourceTabsBlock({ feeds, chosen, onChange }: {
             title={`${t.title}${t.unread ? ` · ${t.unread} unread` : ''}`}
             onClick={() => onChange(t.id === null || active ? [] : [t.id])}
             className={cn(
-              'flex shrink-0 items-center gap-1.5 rounded-l-lg py-2.5 pl-1 pr-1.5 text-[11px] font-medium transition-colors [writing-mode:vertical-rl] rotate-180',
+              'flex shrink-0 items-center gap-1.5 rounded-r-lg py-2.5 pl-1 pr-1.5 text-[11px] font-medium transition-colors [writing-mode:vertical-rl] rotate-180',
               active
-                ? 'w-[30px] bg-white text-zinc-900 shadow-[-1px_0_3px_rgba(0,0,0,0.08)] dark:bg-zinc-900 dark:text-zinc-100'
+                // The open tab: the list's own selection colour, so it reads as chosen in light and dark alike
+                ? 'relative z-10 w-[30px] bg-[var(--ltm-explorer-selected-color,#c73773)] text-white focus:outline-none'
                 : 'w-[26px] bg-zinc-200/70 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200',
             )}
           >
-            <span className="max-h-[120px] truncate">{t.title}</span>
-            {t.unread > 0 && <span className={cn('tabular-nums', active ? 'text-zinc-500' : 'text-zinc-400')}>{t.unread}</span>}
+            <span className="max-h-[96px] truncate">{t.title}</span>
+            {t.unread > 0 && <span className={cn('tabular-nums', active ? 'text-white/75' : 'text-zinc-400')}>{t.unread}</span>}
           </button>
         )
       })}
+    </div>
+    </div>
     </div>
   )
 }
@@ -1485,6 +1519,7 @@ function DayInboxRenderer({
   registerItemButton,
   tagColors,
   onOpenDigest,
+  onDigestKeyDown,
   activeDigestKey,
 }: {
   days: RssDayInboxBlock[]
@@ -1501,6 +1536,7 @@ function DayInboxRenderer({
   registerItemButton: (rowId: string, node: HTMLButtonElement | null) => void
   tagColors: Record<string, string>
   onOpenDigest?: (entry: RssThemeDigestEntryBlock) => void
+  onDigestKeyDown?: (groupKey: string, event: KeyboardEvent<HTMLButtonElement>) => void
   activeDigestKey: string | null
 }) {
   const now = new Date()
@@ -1591,7 +1627,7 @@ function DayInboxRenderer({
                 })}
                 {/* After the theme's own articles: what the other sources had on it */}
                 {!sourceFolded && source.digest && (onOpenDigest
-                  ? <ThemeDigestRowBlock entry={{ key: `${day.day}|${source.feedId}`, theme: source.feedTitle, digest: source.digest }} active={activeDigestKey === `${day.day}|${source.feedId}`} onOpen={onOpenDigest} />
+                  ? <ThemeDigestRowBlock entry={{ key: `${day.day}|${source.feedId}`, theme: source.feedTitle, digest: source.digest }} active={activeDigestKey === `${day.day}|${source.feedId}`} onOpen={onOpenDigest} onKeyDown={onDigestKeyDown ? (e) => onDigestKeyDown(`${day.day}|${source.feedId}`, e) : undefined} />
                   : <ThemeDigestBlock digest={source.digest} />)}
               </div>
               )
@@ -1637,7 +1673,7 @@ function ThemeDigestBlock({ digest }: { digest: RssThemeDigestBlock }) {
  * A theme's digest as a row of the list, read last in its theme like one more
  * article: what the other sources had, opened beside the list in full.
  */
-function ThemeDigestRowBlock({ entry, active, onOpen }: { entry: RssThemeDigestEntryBlock; active: boolean; onOpen: (entry: RssThemeDigestEntryBlock) => void }) {
+function ThemeDigestRowBlock({ entry, active, onOpen, onKeyDown }: { entry: RssThemeDigestEntryBlock; active: boolean; onOpen: (entry: RssThemeDigestEntryBlock) => void; onKeyDown?: (event: KeyboardEvent<HTMLButtonElement>) => void }) {
   const { digest } = entry
   if (!digest.note && digest.cited.length === 0) return null
   const lead = digest.note ?? `Also covered: ${digest.cited.map(c => `${c.topic} (${c.sources.map(rssOutletNameBlock).join(', ')})`).join('; ')}`
@@ -1645,6 +1681,7 @@ function ThemeDigestRowBlock({ entry, active, onOpen }: { entry: RssThemeDigestE
     <button
       type="button"
       onClick={() => onOpen(entry)}
+      onKeyDown={onKeyDown}
       className={cn(
         'flex w-full items-start gap-2 border-b border-border/40 px-3 py-3 text-left text-xs outline-none',
         active ? 'border-[var(--ltm-explorer-selected-color,#c73773)] bg-[var(--ltm-explorer-selected-color,#c73773)] text-white' : 'hover:bg-muted/40',

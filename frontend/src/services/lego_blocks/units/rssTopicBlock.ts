@@ -178,7 +178,13 @@ export const RSS_UNSORTED_THEME_BLOCK = 'Not sorted yet'
  * theme of the first of its copies a topic holds. The groups stand where the
  * sources stood, keyed `theme:<name>`, so the list draws them the same way.
  */
-export function regroupRssDayInboxByThemeBlock(days: RssDayInboxBlock[], topicsFor: (day: string) => RssTopicsDayBlock): RssDayInboxBlock[] {
+export function regroupRssDayInboxByThemeBlock(
+  days: RssDayInboxBlock[],
+  topicsFor: (day: string) => RssTopicsDayBlock,
+  /** false when the list is narrowed to chosen sources: what other sources had (Elsewhere, "From other sources") is left out */
+  options: { outside?: boolean } = {},
+): RssDayInboxBlock[] {
+  const withOutside = options.outside !== false
   return days.map((day) => {
     const state = topicsFor(day.day)
     const themeOf = new Map<string, string>()
@@ -198,9 +204,9 @@ export function regroupRssDayInboxByThemeBlock(days: RssDayInboxBlock[], topicsF
     const last = (name: string) => (name === RSS_UNSORTED_THEME_BLOCK ? 3 : name === FEED_OTHER_THEME_BLOCK ? 2 : name.startsWith('Market · ') ? 0 : 1)
     const sources = [...groups.entries()]
       .sort((a, b) => last(a[0]) - last(b[0]) || b[1].length - a[1].length || a[0].localeCompare(b[0]))
-      .map(([name, stories]) => ({ feedId: `theme:${name}`, feedTitle: name, stories, ...(digests.themes.get(name) ? { digest: digests.themes.get(name) } : {}) }))
+      .map(([name, stories]) => ({ feedId: `theme:${name}`, feedTitle: name, stories, ...(withOutside && digests.themes.get(name) ? { digest: digests.themes.get(name) } : {}) }))
     // Then what the other sources had that the reading list did not, by theme
-    const elsewhere = [...digests.elsewhere.entries()]
+    const elsewhere = !withOutside ? [] : [...digests.elsewhere.entries()]
       .sort((a, b) => b[1].sources.length - a[1].sources.length || a[0].localeCompare(b[0]))
       .map(([name, digest]) => ({ feedId: `elsewhere:${name}`, feedTitle: `Elsewhere · ${name}`, stories: [] as RssStoryBlock[], digest }))
     return { ...day, sources: [...sources, ...elsewhere] }

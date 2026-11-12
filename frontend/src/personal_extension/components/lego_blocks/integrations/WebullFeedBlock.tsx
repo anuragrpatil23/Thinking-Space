@@ -950,11 +950,11 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
       ) : (
         // Desktop: the list beside the article. The pair is pinned to the window's
         // height so the list and the article each scroll on their own, not the page.
-        <div ref={readingSurfaceRef} className="grid h-[calc(100dvh-10rem)] min-h-[420px] grid-cols-[minmax(320px,400px)_minmax(0,1fr)] gap-3">
-          <div className="relative flex min-h-0 flex-col">
-            {/* The sources as notebook tabs, standing out of the card's left edge into the page's margin */}
-            <div ref={setSourceTabsHost} className="absolute bottom-6 right-full top-14 w-[30px]" />
-            <F9PanelBlock className="flex min-h-0 flex-1 flex-col overflow-hidden"><div className="h-full min-h-0 flex-1">{panel}</div></F9PanelBlock>
+        <div ref={readingSurfaceRef} className="grid h-[calc(100dvh-10rem)] min-h-[420px] grid-cols-[minmax(350px,430px)_minmax(0,1fr)] gap-3">
+          <div className="flex min-h-0">
+            {/* The sources as notebook tabs: their own narrow column, flush against the card's left edge */}
+            <div ref={setSourceTabsHost} className="relative z-10 w-[30px] shrink-0 pt-14" />
+            <F9PanelBlock className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"><div className="h-full min-h-0 flex-1">{panel}</div></F9PanelBlock>
           </div>
           <F9PanelBlock className="flex min-h-0 flex-col overflow-hidden">
             {reader
