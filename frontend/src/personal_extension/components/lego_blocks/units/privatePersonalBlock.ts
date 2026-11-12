@@ -133,6 +133,12 @@ const loadFeedDrops = Object.values(FEED_DROPS_MODULES)[0]
 export const FEED_DROPS_AVAILABLE = Boolean(loadFeedDrops)
 export const PrivateFeedDropsBlock = loadFeedDrops ? lazy(loadFeedDrops) : null
 
+// The Feed's News view (Webull's stories for the companies you hold), when the
+// private folder provides it.
+const FEED_NEWS_MODULES = import.meta.glob<{ default: ComponentType<PrivateFeedDropsPropsBlock> }>('../../../thinkingspace-personal/feedNews.tsx')
+const loadFeedNews = Object.values(FEED_NEWS_MODULES)[0]
+export const PrivateFeedNewsBlock = loadFeedNews ? lazy(loadFeedNews) : null
+
 // Which gap holds which position, read from the gaps' positions logs; without
 // the private folder there are no gaps, so every position shows none.
 const GAP_LINKS_MODULES = import.meta.glob<{ loadPrivateGapPositionLinks: (executionRoot: string) => Promise<GapPositionLinkBlock[]> }>('../../../thinkingspace-personal/gapLinks.ts')
