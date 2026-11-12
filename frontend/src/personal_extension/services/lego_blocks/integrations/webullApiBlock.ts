@@ -1023,36 +1023,47 @@ export async function fetchWebullOrderHistoryBlock(accountId: string, from: Date
   const account = accountId.trim()
   if (!account) throw new Error('Account id is required for order history.')
   const config = getWebullConfigBlock()
-  const day = (d: Date) => d.toISOString().slice(0, 10)
-  const routes: Array<{ paths: string[]; query: (cursor: string | null) => Record<string, string | number | undefined> }> = [
-    {
-      paths: ['/openapi/trading/orders/historical-orders/list', '/trading/orders/historical-orders/list'],
-      query: cursor => ({ account_id: account, start_time: from.toISOString(), end_time: to.toISOString(), ...(cursor ? { pagination_key: cursor } : {}) }),
-    },
-    {
-      paths: ['/openapi/account/orders/history', '/openapi/trade/orders/history'],
-      query: cursor => ({ account_id: account, start_date: day(from), end_date: day(to), page_size: 100, ...(cursor ? { last_client_order_id: cursor } : {}) }),
-    },
-  ]
-  const errors: string[] = []
-  for (const route of routes) {
-    const pages: unknown[] = []
-    let cursor: string | null = null
-    try {
-      for (let page = 0; page < 20; page++) {
-        const res = await fetchByPathCandidatesBlock(config, route.paths, { query: route.query(cursor), continueStatuses: [404, 400, 417], errorLabel: 'Webull order history' })
-        pages.push(res.data)
-        const d = res.data as Record<string, unknown> | unknown[] | null
-        const next = d && !Array.isArray(d) ? (d.pagination_key ?? d.last_client_order_id ?? null) : null
-        if (typeof next !== 'string' || !next || next === cursor) break
-        cursor = next
+  const accessToken = await ensureWebullAccessTokenBlock(config)
+  // Signed the v2 way with the access token, as account list is: the plain
+  // signed GET gets 404 on these routes.
+  const paths = ['/trading/orders/historical-orders/list', '/openapi/trading/orders/historical-orders/list']
+  let path: string | null = null
+  let pageSize: number | null = 100
+  let calls = 0
+  const rowsOf = (d: unknown) => Array.isArray(d) ? d.length : Array.isArray((d as { data?: unknown })?.data) ? (d as { data: unknown[] }).data.length : 0
+  const call = async (a: Date, b: Date): Promise<unknown> => {
+    if (calls++ > 0) await new Promise(r => setTimeout(r, 1000)) // about one call a second
+    const tryPaths = path ? [path] : paths
+    const errors: string[] = []
+    for (const p of tryPaths) {
+      const q = { account_id: account, start_time: a.toISOString(), end_time: b.toISOString(), ...(pageSize ? { page_size: pageSize } : {}) }
+      let res = await signedV2RequestBlock('GET', buildEndpointBlock(config.baseUrl, p, q), { accessToken })
+      if ((res.status === 400 || res.status === 417) && pageSize) {
+        pageSize = null // Webull doesn't take page_size here; ask without it
+        res = await signedV2RequestBlock('GET', buildEndpointBlock(config.baseUrl, p, { account_id: account, start_time: a.toISOString(), end_time: b.toISOString() }), { accessToken })
       }
-      return pages
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err))
+      if (res.status >= 200 && res.status < 300) { path = p; return res.data }
+      errors.push(`${p} -> HTTP ${res.status}${res.status === 404 ? '' : `: ${buildErrorPreviewBlock(res.data)}`}`)
     }
+    throw new Error(errors.join(' · '))
   }
-  throw new Error(errors.join(' · '))
+  // A reply that fills a page may have been cut short (the history has shown no
+  // cursor): split that window in half until each piece fits.
+  const pages: unknown[] = []
+  const walk = async (a: Date, b: Date, depth: number): Promise<void> => {
+    const data = await call(a, b)
+    const n = rowsOf(data)
+    const full = n > 0 && (n === 10 || n === 20 || n === 50 || n === 100)
+    if (full && depth < 12 && b.getTime() - a.getTime() > 60 * 60 * 1000) {
+      const mid = new Date((a.getTime() + b.getTime()) / 2)
+      await walk(a, mid, depth + 1)
+      await walk(mid, b, depth + 1)
+      return
+    }
+    pages.push(data)
+  }
+  await walk(from, to, 0)
+  return pages
 }
 
 export interface WebullAccessCheckBlock {
