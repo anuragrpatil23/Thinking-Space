@@ -14,6 +14,7 @@ import { createPortal } from 'react-dom'
 import { ChevronRight, RefreshCw, Square, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useF9SyncBlock } from '../hooks/useF9AppSyncBlock'
+import { WebullApiAccessCheckBlock } from '../integrations/WebullApiAccessCheckBlock'
 import type {
   F9SyncCellStateBlock,
   F9SyncDatasetViewBlock,
@@ -297,6 +298,7 @@ function SyncPanelBlock({ engine, snap, anchor, account, tab, onTab, onClose }: 
             </button>
           </div>
           {account.details}
+          <WebullApiAccessCheckBlock />
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">

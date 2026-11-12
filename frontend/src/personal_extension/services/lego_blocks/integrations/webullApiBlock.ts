@@ -1011,3 +1011,106 @@ export async function fetchWebullMarketQuotesBlock(symbols: string[]): Promise<W
   const sample = attempts.slice(0, 4).join(', ')
   throw new Error(`Webull market quotes route/params not found after ${attempts.length} attempts. Sample: ${sample}`)
 }
+
+// An account's orders in a time window, with when each one filled. Webull's
+// order history: the current API names it /trading/orders/historical-orders/list
+// (start_time / end_time as ISO instants, cursor paging by pagination_key);
+// the older one /openapi/account/orders/history (start_date / end_date days).
+// Each route is tried with its own parameters; the first that answers wins.
+// The raw pages are returned; webullOrderFillsBlock reads them.
+export async function fetchWebullOrderHistoryBlock(accountId: string, from: Date, to: Date): Promise<unknown[]> {
+  assertElectronRuntimeBlock()
+  const account = accountId.trim()
+  if (!account) throw new Error('Account id is required for order history.')
+  const config = getWebullConfigBlock()
+  const day = (d: Date) => d.toISOString().slice(0, 10)
+  const routes: Array<{ paths: string[]; query: (cursor: string | null) => Record<string, string | number | undefined> }> = [
+    {
+      paths: ['/openapi/trading/orders/historical-orders/list', '/trading/orders/historical-orders/list'],
+      query: cursor => ({ account_id: account, start_time: from.toISOString(), end_time: to.toISOString(), ...(cursor ? { pagination_key: cursor } : {}) }),
+    },
+    {
+      paths: ['/openapi/account/orders/history', '/openapi/trade/orders/history'],
+      query: cursor => ({ account_id: account, start_date: day(from), end_date: day(to), page_size: 100, ...(cursor ? { last_client_order_id: cursor } : {}) }),
+    },
+  ]
+  const errors: string[] = []
+  for (const route of routes) {
+    const pages: unknown[] = []
+    let cursor: string | null = null
+    try {
+      for (let page = 0; page < 20; page++) {
+        const res = await fetchByPathCandidatesBlock(config, route.paths, { query: route.query(cursor), continueStatuses: [404, 400, 417], errorLabel: 'Webull order history' })
+        pages.push(res.data)
+        const d = res.data as Record<string, unknown> | unknown[] | null
+        const next = d && !Array.isArray(d) ? (d.pagination_key ?? d.last_client_order_id ?? null) : null
+        if (typeof next !== 'string' || !next || next === cursor) break
+        cursor = next
+      }
+      return pages
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err))
+    }
+  }
+  throw new Error(errors.join(' · '))
+}
+
+export interface WebullAccessCheckBlock {
+  area: string
+  /** The path that answered, or the last one tried. */
+  path: string
+  status: number | null
+  ok: boolean
+  /** What came back: how many rows, a time, or the error. */
+  note: string
+}
+
+// One call to each part of the API the app might build on, to see what this
+// account's access returns (data, or "Insufficient permission"). Read-only
+// calls only; nothing is placed or changed. Each path is tried with and
+// without the /openapi prefix, since the docs and the older routes differ.
+export async function checkWebullApiAccessBlock(symbol = 'MU'): Promise<WebullAccessCheckBlock[]> {
+  assertElectronRuntimeBlock()
+  const config = getWebullConfigBlock()
+  const accessToken = await ensureWebullAccessTokenBlock(config)
+  const list = await signedV2RequestBlock('GET', buildEndpointBlock(config.baseUrl, '/openapi/account/list'), { accessToken })
+  const accounts = JSON.stringify(list.data).match(/"account_id"\s*:\s*"([^"]+)"/)
+  const accountId = accounts?.[1] ?? ''
+  const day = 86400000
+  const checks: Array<{ area: string; path: string; query: Record<string, string | number> }> = [
+    { area: 'Stock snapshot (real-time?)', path: '/market-data/stocks/snapshots/list', query: { symbols: symbol, category: 'US_STOCK' } },
+    { area: 'Open orders', path: '/trading/orders/open-orders/list', query: { account_id: accountId } },
+    { area: 'Order history', path: '/trading/orders/historical-orders/list', query: { account_id: accountId, start_time: new Date(Date.now() - 7 * day).toISOString(), end_time: new Date().toISOString() } },
+    { area: 'Cash activities', path: '/trading/activities/cash-activities/list', query: { account_id: accountId, start_time: new Date(Date.now() - 30 * day).toISOString(), end_time: new Date().toISOString() } },
+    { area: 'Analyst target prices', path: '/market-data/fundamentals/analysis/target-prices/get', query: { symbol, category: 'US_STOCK' } },
+    { area: 'Analyst ratings', path: '/market-data/fundamentals/analysis/ratings/get', query: { symbol, category: 'US_STOCK' } },
+    { area: 'Insider transactions', path: '/market-data/fundamentals/insider-transactions/list', query: { symbol, category: 'US_STOCK' } },
+    { area: '13F institutions', path: '/market-data/fundamentals/institutions/list', query: { keyword: 'Berkshire' } },
+    { area: 'Unusual activity', path: '/market-data/screeners/unusual-activities/list', query: { category: 'US_STOCK', count: 5 } },
+    { area: 'Stock news', path: '/market-data/news/stock-news/list', query: { symbol, category: 'US_STOCK' } },
+    { area: 'Fear & greed', path: '/market-data/screeners/fear-greed-indexes/get', query: { category: 'US_STOCK' } },
+    { area: 'Option snapshot (OPRA)', path: '/market-data/options/snapshots/list', query: { symbols: `${symbol}271217C00900000`, category: 'US_OPTION' } },
+  ]
+  const describe = (data: unknown): string => {
+    const text = JSON.stringify(data) ?? ''
+    const rows = Array.isArray(data) ? data.length : Array.isArray((data as { data?: unknown })?.data) ? ((data as { data: unknown[] }).data).length : null
+    const time = text.match(/"(quote_time|last_trade_time|update_time|date)"\s*:\s*"?([^",}]+)/)
+    return [rows !== null ? `${rows} rows` : null, time ? `${time[1]}=${time[2]}` : null, text.slice(0, 160)].filter(Boolean).join(' · ')
+  }
+  const out: WebullAccessCheckBlock[] = []
+  for (const c of checks) {
+    let result: WebullAccessCheckBlock = { area: c.area, path: c.path, status: null, ok: false, note: 'not tried' }
+    for (const path of [`/openapi${c.path}`, c.path]) {
+      try {
+        const res = await signedV2RequestBlock('GET', buildEndpointBlock(config.baseUrl, path, c.query), { accessToken })
+        result = { area: c.area, path, status: res.status, ok: res.status >= 200 && res.status < 300, note: res.status >= 200 && res.status < 300 ? describe(res.data) : buildErrorPreviewBlock(res.data) }
+        if (res.status !== 404) break
+      } catch (err) {
+        result = { area: c.area, path, status: null, ok: false, note: err instanceof Error ? err.message : String(err) }
+      }
+    }
+    out.push(result)
+    await new Promise(r => setTimeout(r, 1100)) // Webull allows about 1 call a second on these
+  }
+  return out
+}
