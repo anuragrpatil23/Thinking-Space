@@ -3087,6 +3087,7 @@ export default function WebullWorkspaceBlock({
               ticker={ticker}
               executionRoot={root}
               accountLabel={(accountId, accountNumber) => resolveAccountLabelBlock(accountLabelEntries, accountId, accountNumber)}
+              onOpenPosition={(next) => { setDetailPanelNodeId(null); setPositionPanelPath(next) }}
               onClose={() => { setPositionPanelPath(null); setDetailPanelNodeId(null) }}
               onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
             />

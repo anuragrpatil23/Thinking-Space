@@ -76,6 +76,8 @@ export interface PrivatePositionPanelPropsBlock {
   onOpenFile: (path: string) => void
   /** The account's name ("Traditional IRA") for an account id or number, when known. */
   accountLabel?: (accountId: string | null, accountNumber: string | null) => string | null
+  /** Switch the panel to another position's file (a swap's other half). */
+  onOpenPosition?: (path: string) => void
 }
 const POSITION_PANEL_MODULES = import.meta.glob<{ default: ComponentType<PrivatePositionPanelPropsBlock> }>('../../../thinkingspace-personal/positionPanel.tsx')
 const loadPositionPanel = Object.values(POSITION_PANEL_MODULES)[0]
