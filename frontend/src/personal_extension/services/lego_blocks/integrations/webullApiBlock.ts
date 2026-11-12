@@ -1125,3 +1125,22 @@ export async function checkWebullApiAccessBlock(symbol = 'MU'): Promise<WebullAc
   }
   return out
 }
+
+/**
+ * One read-only GET to Webull's API (market data, fundamentals, screeners),
+ * signed the v2 way with the access token. The path is tried as the docs give
+ * it and with the /openapi prefix. Throws with the status and Webull's message.
+ */
+export async function fetchWebullDataBlock(path: string, query: Record<string, string | number | undefined>): Promise<unknown> {
+  assertElectronRuntimeBlock()
+  const config = getWebullConfigBlock()
+  const accessToken = await ensureWebullAccessTokenBlock(config)
+  const errors: string[] = []
+  for (const p of [path, `/openapi${path}`]) {
+    const res = await signedV2RequestBlock('GET', buildEndpointBlock(config.baseUrl, p, query), { accessToken })
+    if (res.status >= 200 && res.status < 300) return res.data
+    errors.push(`${p} -> HTTP ${res.status}: ${buildErrorPreviewBlock(res.data)}`)
+    if (res.status !== 404) break
+  }
+  throw new Error(errors.join(' · '))
+}
