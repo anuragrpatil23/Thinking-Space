@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { createContext, memo, useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
   ArrowLeft,
@@ -115,6 +116,9 @@ interface RssFeedPanelBlockProps {
   onOpenDigest?: (entry: RssThemeDigestEntryBlock) => void
   /** The digest open beside the list, to mark its row */
   activeDigestKey?: string | null
+  /** Native, desktop: an element beside the list (outside its card) to hold the
+   *  sources as notebook tabs; picking one narrows the list to that source. */
+  sourceTabsHost?: HTMLElement | null
 }
 
 /** A theme's digest as opened from the list: its key, the label the list shows, the digest. */
@@ -176,6 +180,7 @@ export default function RssFeedPanelBlock({
   focus = null,
   onOpenDigest,
   activeDigestKey = null,
+  sourceTabsHost = null,
 }: RssFeedPanelBlockProps) {
   const native = appearance === 'native'
   const { layout } = useUILayoutBlock()
@@ -687,6 +692,10 @@ export default function RssFeedPanelBlock({
 
   return (
     <NativeListContextBlock.Provider value={native}>
+    {native && dayMode && sourceTabsHost && createPortal(
+      <SourceTabsBlock feeds={inboxFeeds} chosen={sourceFilter} onChange={chooseSourceFilter} />,
+      sourceTabsHost,
+    )}
     <div className={cn('flex h-full flex-col', className)}>
       {!reelsFullBleed && <PanelHeader
         title={focusedFeedId ? (feeds.find(f => f.feedId === focusedFeedId)?.feedTitle ?? 'Feed') : 'RSS Feeds'}
@@ -1354,6 +1363,49 @@ function FeedSection({
           {loading ? 'Loading feed...' : 'No items.'}
         </div>
       )}
+    </div>
+  )
+}
+
+// The sources as a notebook's divider tabs, standing out of the list's left
+// edge: "All" first, then each source with its unread count, the text running
+// up the tab. One source at a time (the Sources menu still picks several); the
+// chosen tab is white like the page it opens. Scrolls when there are many.
+function SourceTabsBlock({ feeds, chosen, onChange }: {
+  feeds: Array<{ feedId: string; feedTitle: string; items: RssFeedItemBlock[] }>
+  chosen: string[]
+  onChange: (feedIds: string[]) => void
+}) {
+  const only = chosen.length === 1 ? chosen[0] : null
+  const tabs = [
+    { id: null as string | null, title: 'All', unread: feeds.reduce((n, f) => n + f.items.filter(i => !i.read).length, 0) },
+    ...feeds.map(f => ({ id: f.feedId as string | null, title: f.feedTitle.replace(/\s*[-:–].*$/, '').replace(/\s*\(.*\)$/, ''), unread: f.items.filter(i => !i.read).length }))
+      .sort((a, b) => b.unread - a.unread || a.title.localeCompare(b.title)),
+  ]
+  return (
+    <div className="flex h-full flex-col items-end gap-1 overflow-y-auto py-1 [mask-image:linear-gradient(to_bottom,transparent,black_12px,black_calc(100%-12px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Sources" aria-orientation="vertical">
+      {tabs.map(t => {
+        const active = t.id === null ? chosen.length === 0 : only === t.id
+        return (
+          <button
+            key={t.id ?? 'all'}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            title={`${t.title}${t.unread ? ` · ${t.unread} unread` : ''}`}
+            onClick={() => onChange(t.id === null || active ? [] : [t.id])}
+            className={cn(
+              'flex shrink-0 items-center gap-1.5 rounded-l-lg py-2.5 pl-1 pr-1.5 text-[11px] font-medium transition-colors [writing-mode:vertical-rl] rotate-180',
+              active
+                ? 'w-[30px] bg-white text-zinc-900 shadow-[-1px_0_3px_rgba(0,0,0,0.08)] dark:bg-zinc-900 dark:text-zinc-100'
+                : 'w-[26px] bg-zinc-200/70 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200',
+            )}
+          >
+            <span className="max-h-[120px] truncate">{t.title}</span>
+            {t.unread > 0 && <span className={cn('tabular-nums', active ? 'text-zinc-500' : 'text-zinc-400')}>{t.unread}</span>}
+          </button>
+        )
+      })}
     </div>
   )
 }

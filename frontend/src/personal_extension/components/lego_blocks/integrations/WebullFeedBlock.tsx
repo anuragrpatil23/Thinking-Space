@@ -41,7 +41,7 @@ import { FeedOverviewBlock } from './FeedOverviewBlock'
 import { identityMemoBlock } from '@/services/lego_blocks/units/identityMemoBlock'
 import { WEBULL_FOLD_SIDEBAR_GROUPS_EVENT_BLOCK } from './WebullSidebarBlock'
 import type { WebullUniverseCompanyBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
-import { FEED_DROPS_AVAILABLE, PrivateFeedNewsBlock, PrivateEarningsCalendarBlock, PrivateEarningsCalendarViewBlock, PrivateFeedDropsBlock, PrivateValueLineBackfillBlock } from '../units/privatePersonalBlock'
+import { FEED_DROPS_AVAILABLE, PrivateEarningsCalendarBlock, PrivateEarningsCalendarViewBlock, PrivateFeedDropsBlock, PrivateValueLineBackfillBlock } from '../units/privatePersonalBlock'
 import { writeFeedReadLogsOrch } from '@/personal_extension/services/orchestrators/feedReadLogOrch'
 import { readWebullExecutionSettingsOrch } from '@/personal_extension/services/orchestrators/webullExecutionSettingsOrch'
 import { feedReadLogPathBlock, feedThemeListPathBlock } from '@/personal_extension/services/lego_blocks/units/feedReadLogBlock'
@@ -56,7 +56,7 @@ import { F9_CHART_TOOLTIP_STYLE_BLOCK, F9PanelBlock, F9SegmentedBlock } from '..
 // and the sources only the AI reads). The reader itself is the app's RSS
 // reader (shared code).
 
-type FeedViewBlock = 'overview' | 'reading' | 'news' | 'drops' | 'calendar' | 'sources'
+type FeedViewBlock = 'overview' | 'reading' | 'drops' | 'calendar' | 'sources'
 
 const TRUST_OPTIONS_BLOCK: Array<{ value: 'high' | 'normal' | 'low'; label: string }> = [
   { value: 'high', label: 'Trusted' },
@@ -724,6 +724,8 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
   const { openFile } = useMarkdownViewer()
   const phone = layout.mode === 'phone'
   const [view, setView] = useState<FeedViewBlock>('overview')
+  // Desktop: the slot left of the list's card where Reading puts its sources as notebook tabs
+  const [sourceTabsHost, setSourceTabsHost] = useState<HTMLDivElement | null>(null)
   const [article, setArticle] = useState<OpenArticleBlock | null>(null)
   const [nav, setNav] = useState<RssArticleNavStateBlock | null>(null)
   const { feeds, preferences } = useRssFeedsBlock()
@@ -877,6 +879,7 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
 
   const panel = (
     <RssFeedPanelBlock
+      sourceTabsHost={phone ? null : sourceTabsHost}
       appearance="native"
       onOpenArticle={openArticle}
       onNavStateChange={setNav}
@@ -904,22 +907,12 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
         <F9SegmentedBlock ariaLabel="Feed view" value={view} onChange={setView} options={[
           { value: 'overview', label: 'Overview' },
           { value: 'reading', label: 'Reading' },
-          ...(PrivateFeedNewsBlock ? [{ value: 'news' as const, label: 'News' }] : []),
           ...(FEED_DROPS_AVAILABLE ? [{ value: 'drops' as const, label: 'Drops' }] : []),
           ...(PrivateEarningsCalendarViewBlock ? [{ value: 'calendar' as const, label: 'Calendar' }] : []),
           { value: 'sources', label: 'Sources' },
         ]} />
       </header>
   )
-
-  if (view === 'news' && PrivateFeedNewsBlock) {
-    return (
-      <div className="flex flex-col gap-4">
-        {header}
-        <Suspense fallback={null}><PrivateFeedNewsBlock groups={dropGroups} /></Suspense>
-      </div>
-    )
-  }
 
   if (view === 'drops' && PrivateFeedDropsBlock) {
     return (
@@ -940,7 +933,7 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
   }
 
   if (view === 'overview') {
-    return <FeedOverviewBlock reader={aiReader} onOpenItem={openFromOverview} chart={<VolumeChartBlock day={feedDay} onPickDay={pickDay} />} header={header} day={feedDay} onPickDay={pickDay} side={PrivateEarningsCalendarBlock && <Suspense fallback={null}><PrivateEarningsCalendarBlock groups={dropGroups} /></Suspense>} />
+    return <FeedOverviewBlock reader={aiReader} onOpenItem={openFromOverview} chart={<VolumeChartBlock day={feedDay} onPickDay={pickDay} />} header={header} day={feedDay} onPickDay={pickDay} side={PrivateEarningsCalendarBlock && <Suspense fallback={null}><PrivateEarningsCalendarBlock groups={dropGroups} day={pickedDay} /></Suspense>} />
   }
 
   return (
@@ -958,7 +951,11 @@ export default function WebullFeedBlock({ companies = [] }: { companies?: Webull
         // Desktop: the list beside the article. The pair is pinned to the window's
         // height so the list and the article each scroll on their own, not the page.
         <div ref={readingSurfaceRef} className="grid h-[calc(100dvh-10rem)] min-h-[420px] grid-cols-[minmax(320px,400px)_minmax(0,1fr)] gap-3">
-          <F9PanelBlock className="flex min-h-0 flex-col overflow-hidden"><div className="h-full min-h-0 flex-1">{panel}</div></F9PanelBlock>
+          <div className="relative flex min-h-0 flex-col">
+            {/* The sources as notebook tabs, standing out of the card's left edge into the page's margin */}
+            <div ref={setSourceTabsHost} className="absolute bottom-6 right-full top-14 w-[30px]" />
+            <F9PanelBlock className="flex min-h-0 flex-1 flex-col overflow-hidden"><div className="h-full min-h-0 flex-1">{panel}</div></F9PanelBlock>
+          </div>
           <F9PanelBlock className="flex min-h-0 flex-col overflow-hidden">
             {reader
               // The reader fills its pane, as it does in the Explorer

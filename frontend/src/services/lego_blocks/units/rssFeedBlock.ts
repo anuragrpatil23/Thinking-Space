@@ -176,6 +176,10 @@ export interface RssFeedItemBlock {
    *  marked `textInCache: true` in its frontmatter). The reader shows that
    *  text instead of opening the link, which may need a login. */
   textInCache?: boolean
+  /** The source's own summary of the story (Webull writes one for each), not
+   *  the AI's: shown where no AI summary has been written yet, and never
+   *  counted as read by the AI. */
+  sourceSummary?: string
   /** A short summary written by the AI that read the article (a derived
    *  record: the model and prompt version say how to rebuild it). */
   aiSummary?: RssAiSummaryBlock

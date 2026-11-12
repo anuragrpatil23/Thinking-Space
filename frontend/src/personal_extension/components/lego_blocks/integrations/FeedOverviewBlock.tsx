@@ -243,7 +243,8 @@ function FeedTopicRowBlock({ entry, sourceOf, onOpenItem, mood }: { entry: FeedT
   const outlets = [...new Set(items.map(item => publisherNameBlock(sourceOf(item))).filter(Boolean))]
   // A wire piece re-published through the day (and through several feeds) is one row, with its copies counted
   const distinct = useMemo(() => rssDistinctHeadlinesBlock(items), [items])
-  const lead = topic.detail ?? items[0]?.aiSummary?.text.split('\n').find(Boolean)?.replace(/^-\s*/, '') ?? null
+  // The AI's summary first; else a source's own summary of the story (Webull writes one)
+  const lead = topic.detail ?? items[0]?.aiSummary?.text.split('\n').find(Boolean)?.replace(/^-\s*/, '') ?? items.find(i => i.sourceSummary)?.sourceSummary ?? null
   return (
     <div className={cn('border-t-[0.5px] border-[#EFEFF2] dark:border-zinc-800', mood && 'border-l-2 border-l-amber-300 dark:border-l-amber-500/60')}>
       <button type="button" onClick={() => setOpen(o => !o)} className="flex w-full items-start gap-4 px-5 py-3.5 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">

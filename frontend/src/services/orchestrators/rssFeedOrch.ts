@@ -83,6 +83,7 @@ function serializeRssItemFileBlock(
     important: item.important ?? false,
     // Only written when set, so ordinary article files keep their usual shape.
     ...(item.textInCache ? { textInCache: true } : {}),
+    ...(item.sourceSummary ? { sourceSummary: item.sourceSummary } : {}),
     ...(item.aiSummary ? {
       aiSummary: item.aiSummary.text,
       aiSummaryModel: item.aiSummary.model,
@@ -136,6 +137,7 @@ function parseRssItemFileBlock(content: string): RssFeedItemBlock | null {
     important: f.important === true,
     // An outside tool put the full article text in the body.
     ...(f.textInCache === true ? { textInCache: true } : {}),
+    ...(typeof f.sourceSummary === 'string' && f.sourceSummary.trim() ? { sourceSummary: f.sourceSummary } : {}),
     ...(typeof f.aiSummary === 'string' && f.aiSummary.trim() ? {
       aiSummary: {
         text: f.aiSummary,
@@ -561,6 +563,37 @@ export async function addRssFeedOrch(
   await writeRssFeedPreferencesOrch(prefs)
   await ensureRssArticleDirOrch(entry.id)
   return entry
+}
+
+/**
+ * A source filled by an outside tool (a sync step, a script that logs in):
+ * added to the sources under a fixed id if it is not there yet. The app shows
+ * its cache and never fetches the URL.
+ */
+export async function ensureExternalRssFeedOrch(id: string, url: string, title: string): Promise<void> {
+  const prefs = await readRssFeedPreferencesOrch()
+  if (!prefs.feeds.some(f => f.id === id)) {
+    prefs.feeds.push({ id, url, title, groupId: null, fetchedExternally: true, inMergedViews: 'show' })
+    await writeRssFeedPreferencesOrch(prefs)
+  }
+  await ensureRssArticleDirOrch(id)
+}
+
+/**
+ * Writes an outside tool's items into a source's cache: only those not there
+ * already, so what was read, kept or dismissed stays as it is. Returns how
+ * many were new.
+ */
+export async function writeExternalRssItemsOrch(feedId: string, feedTitle: string, items: RssFeedItemBlock[]): Promise<number> {
+  const fs = getVaultFS()
+  let added = 0
+  for (const item of items) {
+    const path = `${RSS_ARTICLES_DIR}/${feedId}/${itemFilenameBlock(item.id)}`
+    if (await fs.exists(path).catch(() => false)) continue
+    await writeRssItemFileOrch(feedId, feedTitle, { ...item, textInCache: true })
+    added++
+  }
+  return added
 }
 
 export async function removeRssFeedOrch(feedId: string): Promise<void> {

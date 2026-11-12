@@ -1144,3 +1144,52 @@ export async function fetchWebullDataBlock(path: string, query: Record<string, s
   }
   throw new Error(errors.join(' · '))
 }
+
+/**
+ * Webull's streamed answer (server-sent events) as markdown: each
+ * `data: {"type":"text","message":…}` piece appended, each table
+ * (`{"type":"table","headers":[{text}],"rows":[[{text}]]}`) as a markdown
+ * table; anything else (meta) left out.
+ */
+export function webullStreamToMarkdownBlock(raw: string): string {
+  const parts: string[] = []
+  let text = ''
+  const cellText = (c: unknown) => String((c as { text?: unknown })?.text ?? c ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ')
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(/^data:\s?(.*)$/)
+    if (!m) continue
+    let d: Record<string, unknown>
+    try { d = JSON.parse(m[1]) as Record<string, unknown> } catch { continue }
+    if (d.type === 'text' && typeof d.message === 'string') { text += d.message; continue }
+    if (d.type === 'table') {
+      const t = (d.message && typeof d.message === 'object' ? d.message : d) as { headers?: unknown[]; rows?: unknown[][] }
+      const headers = (t.headers ?? []).map(cellText)
+      if (!headers.length) continue
+      if (text.trim()) { parts.push(text.trim()); text = '' }
+      parts.push([`| ${headers.join(' | ')} |`, `| ${headers.map(() => '---').join(' | ')} |`, ...(t.rows ?? []).map(r => `| ${r.map(cellText).join(' | ')} |`)].join('\n'))
+    }
+  }
+  if (text.trim()) parts.push(text.trim())
+  return parts.join('\n\n')
+}
+
+/** Webull's AI news summary across these companies, as markdown. */
+export async function fetchWebullNewsSummaryBlock(symbols: string[]): Promise<string> {
+  assertElectronRuntimeBlock()
+  const config = getWebullConfigBlock()
+  const accessToken = await ensureWebullAccessTokenBlock(config)
+  const body = JSON.stringify({ category_symbols: [{ category: 'US_STOCK', symbols }], lang: 'en' })
+  const errors: string[] = []
+  for (const p of ['/market-data/news/summaries/get', '/openapi/market-data/news/summaries/get']) {
+    const res = await signedV2RequestBlock('POST', buildEndpointBlock(config.baseUrl, p), { accessToken, body })
+    if (res.status >= 200 && res.status < 300) {
+      const raw = typeof res.data === 'string' ? res.data : JSON.stringify(res.data)
+      const md = webullStreamToMarkdownBlock(raw)
+      if (!md) throw new Error(`Webull sent no summary (${raw.slice(0, 120)})`)
+      return md
+    }
+    errors.push(`${p} -> HTTP ${res.status}: ${buildErrorPreviewBlock(res.data)}`)
+    if (res.status !== 404) break
+  }
+  throw new Error(errors.join(' · '))
+}
