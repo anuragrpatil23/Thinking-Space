@@ -395,3 +395,14 @@ A replay is the F9 loop at a moment in history: one company, the desk on day 0, 
 - `SimReplayViewBlock` + `SimReplayChartBlock`: the replay page. Axis in weeks, never dates.
 - Masking runs twice (fetcher and on display) and covers slash dates ("10/21/02"): a filing title leaked one before that rule.
 - Plain walks (no anchor) stay under Noticed → Reading → Sim; replays are filtered out there.
+
+## F9 money ledger (private: what paid for what)
+
+One account's money, every dollar placed once. Lives in `personal_extension/thinkingspace-personal/`.
+
+- **Journal**: Webull's fills, kept per account in `statements/webull-fills-<id>.json` (`fillsStoreBlock`); Webull is only asked for stretches not yet covered, plus a one-time backfill. Read in today's terms across splits and renames (`stockSplitsBlock`, `statements/splits.csv`).
+- **Links** (`fundingLinkBlock`): a position's `- Funded by:` line is readable words plus `<!-- ledger sell=<order id> buy=<order id> amount=… -->`. Only the comment is read; words are never parsed back. Cash / something else: `kind=cash|other`, no sell.
+- **Ledger** (`moneyLedgerBlock`): links of *this account's* positions only (money doesn't cross accounts without a transfer — the same trade done in two accounts the same minute is two sales). Written links placed exactly, capped by the buy's cost and the sell's money; anything that can't stand (buy/sell not in the fills, sell after buy, more than there) is **flagged, never guessed around**. Then "likely": each buy takes from the sells of the 30 days before it, most recent first; the rest is cash; a sell's untaken money "stayed cash". `free` (per sell) = what written links left — what the picker offers.
+- **Panel** (`LedgerFundingBlock`, `positionPanel`): only displays the ledger and writes/removes links. No other code works out funding. Do not add a second matcher, a day-window rule or a "left" calculation outside the ledger — that patchwork was removed on 2026-11-12.
+- **Older words-only lines** (`legacyFundingBlock`, `fundingLedgerBlock.parseFundingLineBlock`): read only to convert them once (done 2026-11-12) and to explain any left "to decide".
+- **History**: closed position files for every finished holding since 2020 are written from fills once per account (`fillsHistoryBlock`), never overwriting.
