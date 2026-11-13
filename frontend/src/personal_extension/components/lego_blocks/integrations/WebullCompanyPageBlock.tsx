@@ -22,11 +22,7 @@ import {
 } from '@/personal_extension/components/lego_blocks/units/F9NativeBlock'
 import { PrivateFeedDropsBlock, PrivateCompanyGapsBlock, PrivateCompanyNoticedBlock, PrivateCompanyPanelsBlock, readPrivateSecFilingBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 import { valueLineDueBlock, valueLineIssueLabelBlock, valueLineIssueRowsBlock, type ValueLineIssueRowBlock, type WebullResearchFileBlock, type WebullResearchGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyDossierBlock'
-import type { WebullClosedPositionBlock } from '@/personal_extension/services/lego_blocks/units/webullClosedPositionsBlock'
-import { useWebullClosedPositionsBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullClosedPositionsBlock'
-import { useGapPositionLinksBlock } from '@/personal_extension/components/lego_blocks/hooks/useGapPositionLinksBlock'
-import { gapsForPositionBlock, type GapPositionLinkBlock } from '@/personal_extension/services/lego_blocks/units/webullGapLinkMatchBlock'
-import { GapChipsBlock } from '@/personal_extension/components/lego_blocks/units/GapChipsBlock'
+import { useSyncedPriceBlock } from '@/personal_extension/components/lego_blocks/hooks/useSyncedPriceBlock'
 import { cn } from '@/lib/utils'
 
 
@@ -67,13 +63,13 @@ interface WebullCompanyPageBlockProps {
   /** The positions table and its controls, owned by the workspace; none for a company you don't hold. */
   positionsSlot?: ReactNode
   positionsActions?: ReactNode
-  /** The name an account goes by, for the closed positions table under the open ones. */
-  accountLabel?: (accountId: string | null, accountNumber: string | null) => string | null
+  /** The same table over the company's closed positions, and how many there are. */
+  closedSlot?: ReactNode
+  closedActions?: ReactNode
+  closedCount?: number
   /** The quiet status line under the side panel: sync time, warnings, tags, diagnostics. */
   footer?: ReactNode
   onOpenFile: (path: string) => void
-  /** Opens a position's own panel from its file, when one exists; otherwise rows open the file. */
-  onOpenPosition?: (path: string) => void
 }
 
 function formatPriceBlock(value: number): string {
@@ -85,103 +81,6 @@ function formatDateBlock(iso: string | null): string {
   const date = new Date(`${iso.slice(0, 10)}T12:00:00`)
   if (Number.isNaN(date.getTime())) return iso
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function moneyBlock(value: number | null): string {
-  if (value === null) return '—'
-  return `$${Math.round(value).toLocaleString('en-US')}`
-}
-
-/**
- * Closed positions, latest first: what each cost and what it was worth the
- * last time a sync saw it open. That is the last value before it closed, not
- * the sale price; the track record has what the statements say it came back with.
- */
-export function ClosedPositionsTableBlock({ rows, gapLinks, accountLabel, filePath, onOpenFile, renderSaleCells }: {
-  rows: WebullClosedPositionBlock[]
-  gapLinks: GapPositionLinkBlock[]
-  accountLabel?: (accountId: string | null, accountNumber: string | null) => string | null
-  filePath: ((row: WebullClosedPositionBlock) => string) | null
-  onOpenFile: (path: string) => void
-  /** When given, replaces the "Last value" and "Result" cells with two cells of its own (what it sold for). */
-  renderSaleCells?: (row: WebullClosedPositionBlock, path: string | null) => ReactNode
-}) {
-  const total = rows.reduce((sum, row) => sum + (row.result ?? 0), 0)
-  const counted = rows.filter(row => row.result !== null).length
-  return (
-    <F9PanelBlock className="overflow-x-auto">
-      <table className="w-full min-w-[640px] border-collapse text-left text-[13px] tabular-nums">
-        <thead className="[&_th]:whitespace-nowrap [&_th]:border-b-[0.5px] [&_th]:border-[#E5E5EA] [&_th]:px-3 [&_th]:py-2 [&_th]:text-[11px] [&_th]:font-medium [&_th]:text-zinc-500 dark:[&_th]:border-zinc-800">
-          <tr>
-            <th className="!pl-4">Position</th>
-            <th>Account</th>
-            <th>Gap</th>
-            <th className="text-right">Qty</th>
-            <th className="text-right">Cost</th>
-            {renderSaleCells
-              ? <th className="text-right" title="What it sold for: from the statements, or estimated from the last sync until the statement is in">Sold</th>
-              : <th className="text-right" title="Its value the last time a sync saw it open">Last value</th>}
-            <th className="text-right">Result</th>
-            <th className="!pr-4 text-right" title="About when it closed: the last time a sync saw it">Closed</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(row => (
-            <tr
-              key={row.fileName}
-              onClick={filePath ? () => onOpenFile(filePath(row)) : undefined}
-              className={cn('[&>td]:border-b-[0.5px] [&>td]:border-[#EFEFF2] [&>td]:px-3 [&>td]:py-2 last:[&>td]:border-b-0 dark:[&>td]:border-zinc-800/70', filePath && 'cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50')}
-            >
-              <td className="!pl-4">
-                <div className="font-medium text-zinc-900 dark:text-zinc-100">
-                  {row.kind === 'stock' ? row.symbol : `${row.symbol} ${row.strike ?? ''} ${row.kind}`}
-                </div>
-                <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  {row.kind === 'stock' ? 'Stock' : `Expires ${formatDateBlock(row.expiry)}`}
-                </div>
-              </td>
-              <td className="text-zinc-500 dark:text-zinc-400">{accountLabel?.(row.accountId, row.accountNumber) ?? '—'}</td>
-              <td>
-                <GapChipsBlock
-                  onOpen={onOpenFile}
-                  gaps={gapsForPositionBlock(gapLinks, {
-                    id: row.webullId,
-                    symbol: row.symbol,
-                    instrumentType: row.kind === 'stock' ? 'STOCK' : 'OPTION',
-                    optionType: row.kind === 'stock' ? null : row.kind,
-                    optionExpireDate: row.expiry,
-                    optionExercisePrice: row.strike,
-                  })}
-                />
-              </td>
-              <td className="text-right">{row.quantity ?? '—'}</td>
-              <td className="text-right">{moneyBlock(row.cost)}</td>
-              {renderSaleCells ? renderSaleCells(row, filePath ? filePath(row) : null) : (
-                <>
-                  <td className="text-right">{moneyBlock(row.lastValue)}</td>
-                  <td className={cn('text-right', row.result !== null && (row.result >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'))}>
-                    {row.result === null ? '—' : `${row.result >= 0 ? '+' : '−'}${moneyBlock(Math.abs(row.result))}`}
-                  </td>
-                </>
-              )}
-              <td className="!pr-4 text-right text-zinc-500 dark:text-zinc-400">{formatDateBlock(row.closedOn)}</td>
-            </tr>
-          ))}
-        </tbody>
-        {counted > 1 && !renderSaleCells && (
-          <tfoot>
-            <tr className="[&>td]:border-t-[0.5px] [&>td]:border-[#E5E5EA] [&>td]:px-3 [&>td]:py-2 dark:[&>td]:border-zinc-800">
-              <td colSpan={6} className="!pl-4 text-[12px] text-zinc-500 dark:text-zinc-400">Together, {counted} with a known cost</td>
-              <td className={cn('text-right font-medium', total >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
-                {`${total >= 0 ? '+' : '−'}${moneyBlock(Math.abs(total))}`}
-              </td>
-              <td />
-            </tr>
-          </tfoot>
-        )}
-      </table>
-    </F9PanelBlock>
-  )
 }
 
 type ValueLinePanelStateBlock = ReturnType<typeof useValueLineCompanyBlock>
@@ -668,19 +567,19 @@ export default function WebullCompanyPageBlock({
   positionCount,
   positionsSlot,
   positionsActions,
-  accountLabel,
+  closedSlot,
+  closedActions,
+  closedCount = 0,
   footer,
   onOpenFile,
-  onOpenPosition,
 }: WebullCompanyPageBlockProps) {
   const valueLine = useValueLineCompanyBlock(executionRoot, ticker)
   const callsSync = useEarningsCallsCompanyBlock(executionRoot, ticker)
   const { dossier, loading, error } = useWebullCompanyDossierBlock(executionRoot, ticker, companyName, valueLine.fetchedCount + callsSync.fetchedCount)
   const { record: trackRecord, reportPath } = useWebullTrackRecordBlock(executionRoot, ticker)
-  const closedPositions = useWebullClosedPositionsBlock(executionRoot, ticker)
+  const syncedPrice = useSyncedPriceBlock(executionRoot, ticker)
   // Time studying the company is filed in its folder.
   const workRef = useAppWorkAttentionBlock(executionRoot ? `${executionRoot}/${ticker.toUpperCase()}/company` : null, `${ticker.toUpperCase()} company page`)
-  const gapLinks = useGapPositionLinksBlock(executionRoot)
   const [privateChartBands, setPrivateChartBands] = useState<TimedPriceBandBlock[]>([])
   const [positionsTab, setPositionsTab] = useState<'open' | 'closed'>('open')
   const [priceWindow, setPriceWindow] = useState<PriceWindowBlock>('2y')
@@ -706,14 +605,21 @@ export default function WebullCompanyPageBlock({
     const b = best as { date: string; price: number; index: number }
     return { price: b.price, date: b.date, daysAgo: prices.length - 1 - b.index }
   }, [prices])
-  // One price for the whole page: the newest dated one. The synced price wins
-  // only when it is at least as new as the latest daily close.
-  const current = useMemo((): { price: number; date: string | null } | null => {
+  // One price for the whole page: the newest dated one. A live quote taken
+  // after the Webull account was last read wins; otherwise the Webull price
+  // wins only when it is at least as new as the latest daily close.
+  const current = useMemo((): { price: number; date: string | null; from: string | null } | null => {
+    const clock = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : null)
+    const quote = syncedPrice?.live && syncedPrice.at ? syncedPrice : null
+    if (quote && (!lastClose || quote.day > lastClose.date) && (livePrice === null || !livePriceAsOf || Date.parse(quote.at!) > Date.parse(livePriceAsOf))) {
+      return { price: quote.price, date: quote.day, from: `Live quote, ${clock(quote.at)}` }
+    }
     const liveDay = livePriceAsOf ? livePriceAsOf.slice(0, 10) : null
-    if (livePrice !== null && (!lastClose || (liveDay !== null && liveDay >= lastClose.date))) return { price: livePrice, date: liveDay }
-    if (lastClose) return { price: lastClose.price, date: lastClose.date }
-    return livePrice !== null ? { price: livePrice, date: liveDay } : null
-  }, [livePrice, livePriceAsOf, lastClose])
+    const webull = { price: livePrice ?? 0, date: liveDay, from: livePriceAsOf ? `Webull, ${clock(livePriceAsOf)}` : 'Webull' }
+    if (livePrice !== null && (!lastClose || (liveDay !== null && liveDay >= lastClose.date))) return webull
+    if (lastClose) return { price: lastClose.price, date: lastClose.date, from: `Close of ${formatDateBlock(lastClose.date)}` }
+    return livePrice !== null ? webull : null
+  }, [livePrice, livePriceAsOf, lastClose, syncedPrice])
   const price = current?.price ?? null
   // Older than four days (a weekend plus a holiday): shown, but marked, and no range verdict.
   const priceStale = current?.date ? Date.now() - Date.parse(`${current.date}T23:59:59`) > 4 * 86_400_000 : current !== null
@@ -756,7 +662,7 @@ export default function WebullCompanyPageBlock({
         {price !== null && (
           <div className="flex flex-col items-end text-right tabular-nums">
             {price !== null && (<>
-            <p className="text-[26px] font-semibold leading-tight">{formatPriceBlock(price)}</p>
+            <p className="text-[26px] font-semibold leading-tight" title={current?.from ?? undefined}>{formatPriceBlock(price)}</p>
             {/* Two small stacks side by side, as the Drops table sets a row: the figure, then
                 what it is and what it is measured against in grey. Hover either for the dollars. */}
             {((fromMid !== null && mid && range) || (yearHigh && yearHigh.price > 0 && price < yearHigh.price)) && (
@@ -880,37 +786,24 @@ export default function WebullCompanyPageBlock({
         </section>
       )}
 
-      {(positionsSlot || closedPositions.length > 0) && (() => {
+      {(positionsSlot || (closedSlot && closedCount > 0)) && (() => {
         // Open and closed positions are one table with two tabs.
-        const tab = positionsSlot ? positionsTab : 'closed'
-        const SaleCells = PrivateCompanyPanelsBlock
+        const hasClosed = Boolean(closedSlot) && closedCount > 0
+        const tab = !positionsSlot ? 'closed' : hasClosed ? positionsTab : 'open'
         return (
           <section id="webull-company-positions" className="scroll-mt-4">
-            <F9SectionLabelBlock trailing={tab === 'open' ? positionsActions : undefined}>
+            <F9SectionLabelBlock trailing={tab === 'open' ? positionsActions : closedActions}>
               <F9SegmentedBlock
                 ariaLabel="Open or closed positions"
                 value={tab}
                 onChange={setPositionsTab}
                 options={[
                   ...(positionsSlot ? [{ value: 'open' as const, label: 'Open', count: positionCount }] : []),
-                  ...(closedPositions.length > 0 ? [{ value: 'closed' as const, label: 'Closed', count: closedPositions.length }] : []),
+                  ...(hasClosed ? [{ value: 'closed' as const, label: 'Closed', count: closedCount }] : []),
                 ]}
               />
             </F9SectionLabelBlock>
-            {tab === 'open' ? positionsSlot : (
-              <ClosedPositionsTableBlock
-                rows={closedPositions}
-                gapLinks={gapLinks}
-                accountLabel={accountLabel}
-                filePath={executionRoot ? (row) => `${executionRoot}/${ticker.toUpperCase()}/archived_positions/${row.fileName}` : null}
-                onOpenFile={onOpenPosition ?? onOpenFile}
-                renderSaleCells={SaleCells && executionRoot && ticker ? (_row, path) => (
-                  <Suspense fallback={<><td /><td /></>}>
-                    <SaleCells slot="closed-row" rowFilePath={path} ticker={ticker} executionRoot={executionRoot} prices={prices} livePrice={null} studyFrontmatter={null} onOpenFile={onOpenFile} />
-                  </Suspense>
-                ) : undefined}
-              />
-            )}
+            {tab === 'open' ? positionsSlot : closedSlot}
           </section>
         )
       })()}

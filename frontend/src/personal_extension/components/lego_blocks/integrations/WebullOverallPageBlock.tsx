@@ -70,6 +70,7 @@ interface WebullOverallPageBlockProps {
   positionsSlot: ReactNode
   /** Every closed position across companies, and how many */
   closedSlot?: ReactNode
+  closedActions?: ReactNode
   closedCount?: number
   positionCount: number
   footer?: ReactNode
@@ -702,6 +703,7 @@ export default function WebullOverallPageBlock({
   positionsActions,
   positionsSlot,
   closedSlot,
+  closedActions,
   closedCount = 0,
   positionCount,
   footer,
@@ -769,7 +771,7 @@ export default function WebullOverallPageBlock({
                   { value: 'trades' as const, label: 'Buys and sells' },
                 ]}
               />
-              {tab === 'positions' && positionsActions}
+              {tab === 'positions' ? positionsActions : tab === 'closed' ? closedActions : null}
             </div>
             {tab === 'positions' ? positionsSlot : tab === 'closed' ? closedSlot : (
               <Suspense fallback={null}>

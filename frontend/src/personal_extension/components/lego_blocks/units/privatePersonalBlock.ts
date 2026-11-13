@@ -44,10 +44,10 @@ export const PrivateCompanyNoticedBlock = loadCompanyNoticed ? lazy(loadCompanyN
 export interface PrivateCompanyPanelsPropsBlock {
   ticker: string
   executionRoot: string
-  slot: 'main' | 'study' | 'closed-row' | 'price-range'
+  slot: 'main' | 'study' | 'closed-sold' | 'closed-result' | 'price-range'
   /** slot 'price-range' only: the first day the chart shows; null for all. */
   windowFrom?: string | null
-  /** slot 'closed-row' only: the closed position's file; the slot renders that row's two sale cells. */
+  /** slots 'closed-sold' and 'closed-result' only: the closed position's file; the slot renders that cell's content (what it sold for, how it came out). */
   rowFilePath?: string | null
   /** Daily prices, oldest first. */
   prices: Array<{ date: string; price: number }>

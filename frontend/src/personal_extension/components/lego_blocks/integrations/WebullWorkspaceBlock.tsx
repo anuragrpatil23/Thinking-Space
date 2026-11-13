@@ -1,5 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { OverallClosedPositionsBlock } from './OverallClosedPositionsBlock'
+import { closedPositionsBlock } from '@/personal_extension/services/lego_blocks/units/webullClosedPositionsBlock'
 import { setCompanyIgnoredBlock } from '@/personal_extension/thinkingspace-personal/services/lego_blocks/integrations/marketVaultBlock'
 import { BookOpen, ChevronRight, Binoculars, Crosshair, Eye, EyeOff, History, Rss, Wallet, type LucideIcon } from 'lucide-react'
 import {
@@ -23,7 +23,7 @@ import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_block
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import WebullFeedBlock from './WebullFeedBlock'
-import { PrivatePositionMarkBlock, PrivatePositionPanelBlock, PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock, PrivateStudyBlock } from '../units/privatePersonalBlock'
+import { PrivateCompanyPanelsBlock, PrivatePositionMarkBlock, PrivatePositionPanelBlock, PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock, PrivateStudyBlock } from '../units/privatePersonalBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -371,6 +371,7 @@ function formatRuntimeLabelBlock(value: WebullRuntimeSurfaceOrch | null): string
 }
 
 const SYNTHETIC_NODE_TIMESTAMP_BLOCK = '1970-01-01T00:00:00.000Z'
+const CLOSED_PAGE_SIZE_BLOCK = 50
 
 function asRecordArrayBlock(value: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(value)) {
@@ -1470,6 +1471,82 @@ export default function WebullWorkspaceBlock({
     }
   }, [companiesForTable, executionRoot, isArchivedVisibleForTickerBlock, tickerToCompanyName])
 
+  // Closed positions ride the same table as the open ones: one section, newest
+  // close first. A company's page lists all of its own; Overall lists every
+  // company's, fifty at a time (each row's sale is worked out once it is shown).
+  const [closedShown, setClosedShown] = useState(CLOSED_PAGE_SIZE_BLOCK)
+  const closedTableModel = useMemo(() => {
+    const companies = showCompanyView ? (selectedCompany ? [selectedCompany] : []) : (executionOverview?.companies ?? [])
+    const all = companies.flatMap((company) => {
+      const companyTicker = company.companyTicker.toUpperCase()
+      const archived = company.positions.filter(p => normalizePositionStatusBlock(p.status) === 'archived')
+      const byFile = new Map(archived.map(p => [p.fileName, p]))
+      // Copies of one position (older syncs named the file differently) are folded into one row
+      return closedPositionsBlock(archived).flatMap((row) => {
+        const position = byFile.get(row.fileName)
+        return position ? [{ row, position, companyTicker }] : []
+      })
+    })
+    all.sort((a, b) => (b.row.closedOn ?? '').localeCompare(a.row.closedOn ?? '') || a.row.fileName.localeCompare(b.row.fileName))
+    const shown = showCompanyView ? all : all.slice(0, closedShown)
+    const root = executionRoot?.replace(/\/+$/, '') ?? 'webull'
+    const programUuid = showCompanyView && selectedCompany
+      ? `webull-closed-${normalizeKeyFragmentBlock(selectedCompany.companyTicker.toUpperCase())}`
+      : 'webull-closed-all'
+    const nodes: NodeRecord[] = shown.map(({ row, position, companyTicker }, index) => {
+      const uuid = `webull-closed-pos-${normalizeKeyFragmentBlock(companyTicker)}-${normalizeKeyFragmentBlock(row.fileName)}`
+      return {
+        uuid,
+        key: uuid,
+        title: positionTitleFromSummaryBlock(position),
+        type: 'epic',
+        level: 1,
+        parent: programUuid,
+        parentUuid: programUuid,
+        parentType: 'program',
+        filePath: `${root}/${companyTicker}/archived_positions/${row.fileName}`,
+        projectRoot: executionRoot ?? 'webull-execution',
+        tags: normalizeTagListBlock(['webull', 'execution', companyTicker.toLowerCase(), ...(position.tags ?? [])]),
+        projectPresetTags: normalizeTagListBlock(position.projectPresetTags ?? []),
+        relatedNodes: (position.relatedNodes ?? []).map(path => path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')).filter(Boolean),
+        status: 'archived',
+        sortOrder: index,
+        createdAt: SYNTHETIC_NODE_TIMESTAMP_BLOCK,
+        updatedAt: SYNTHETIC_NODE_TIMESTAMP_BLOCK,
+        metadata: {
+          webull_company_ticker: companyTicker,
+          webull_position_file_name: row.fileName,
+          webull_position_status: 'archived',
+          webull_linked_idea_id: position.linkedIdeaId ?? '',
+          webull_position_quantity: position.quantity ?? '',
+          webull_position_payload: positionPayloadFromSummaryBlock(position),
+          webull_closed_on: row.closedOn ?? '',
+          webull_closed_cost: row.cost,
+          webull_closed_last_value: row.lastValue,
+          webull_closed_result: row.result,
+        },
+      } satisfies NodeRecord
+    })
+    const program: NodeRecord = {
+      uuid: programUuid,
+      key: programUuid,
+      title: showCompanyView && selectedCompany
+        ? `${tickerToCompanyName.get(selectedCompany.companyTicker.toUpperCase()) ?? selectedCompany.companyTicker.toUpperCase()} Closed`
+        : 'Closed positions',
+      type: 'program',
+      level: 0,
+      filePath: (showCompanyView && selectedCompany?.indexFilePath) || `${root}/closed`,
+      projectRoot: executionRoot ?? 'webull-execution',
+      tags: ['webull', 'execution'],
+      status: 'active',
+      createdAt: SYNTHETIC_NODE_TIMESTAMP_BLOCK,
+      // The table keeps a section's rows until the section changes: this is what tells it the rows did
+      updatedAt: new Date(all.length * 100_000 + shown.length).toISOString(),
+      metadata: {},
+    }
+    return { programs: nodes.length > 0 ? [program] : [], nodes, total: all.length }
+  }, [closedShown, executionOverview, executionRoot, selectedCompany, showCompanyView, tickerToCompanyName])
+
 
   const [detailPanelNodeId, setDetailPanelNodeId] = useState<string | null>(null)
   // A position opened by its file (a closed row on the company page), when the private position panel is present.
@@ -1824,11 +1901,15 @@ export default function WebullWorkspaceBlock({
     const ref = backlogTableModel.positionRefByNodeUuid.get(node.uuid)
     const root = executionRoot?.replace(/\/+$/, '')
     const Mark = PrivatePositionMarkBlock
+    // A closed row carries its own file; an open one is found through the table
+    const markPath = metadata.webull_position_status === 'archived' && metadata.webull_closed_on !== undefined
+      ? node.filePath ?? null
+      : ref && root ? `${root}/${ref.companyTicker}/positions/${ref.fileName}` : null
     return (
       <>
         <span className="block">
           {name}
-          {Mark && ref && root && <Suspense fallback={null}><Mark filePath={`${root}/${ref.companyTicker}/positions/${ref.fileName}`} /></Suspense>}
+          {Mark && markPath && <Suspense fallback={null}><Mark filePath={markPath} /></Suspense>}
         </span>
         {sub && <span className="block text-[11px] text-zinc-500 dark:text-zinc-400">{sub}</span>}
       </>
@@ -1837,7 +1918,6 @@ export default function WebullWorkspaceBlock({
 
   // Which gap holds each position, from the gaps' positions logs
   const gapLinks = useGapPositionLinksBlock(executionRoot)
-  const closedPositionCount = useMemo(() => (executionOverview?.companies ?? []).reduce((n, c) => n + c.positions.filter(p => normalizePositionStatusBlock(p.status) === 'archived').length, 0), [executionOverview])
   const openGapFile = onOpenFileForReading ?? onOpenNodeFile
   const webullRowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
     return [
@@ -1884,9 +1964,11 @@ export default function WebullWorkspaceBlock({
               <span className="block tabular-nums">
                 {new Date(`${expiry}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
-              <span className={cn('block text-[11px] tabular-nums', days <= 30 ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-500 dark:text-zinc-400')}>
-                {days < 0 ? 'expired' : days === 0 ? 'today' : `in ${days}d · ${businessDays} business days`}
-              </span>
+              {metadata.webull_position_status !== 'archived' && (
+                <span className={cn('block text-[11px] tabular-nums', days <= 30 ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-500 dark:text-zinc-400')}>
+                  {days < 0 ? 'expired' : days === 0 ? 'today' : `in ${days}d · ${businessDays} business days`}
+                </span>
+              )}
             </span>
           )
         },
@@ -1982,6 +2064,83 @@ export default function WebullWorkspaceBlock({
       },
     ]
   }, [accountLabelEntries, gapLinks, openGapFile])
+
+  // The closed tab is the same table with the columns a closed position has:
+  // what it sold for and how it came out, in place of today's price and P/L.
+  const closedRowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
+    const shared = (id: string) => webullRowColumns.find(column => column.id === id)!
+    const SaleCell = PrivateCompanyPanelsBlock
+    const root = executionRoot?.replace(/\/+$/, '') ?? null
+    const saleCell = (node: NodeRecord, slot: 'closed-sold' | 'closed-result') => (SaleCell && root && node.filePath ? (
+      <Suspense fallback={null}>
+        <SaleCell slot={slot} rowFilePath={node.filePath} ticker={firstStringBlock(asMetadataRecordBlock(node).webull_company_ticker)} executionRoot={root} prices={[]} livePrice={null} studyFrontmatter={null} onOpenFile={openGapFile} />
+      </Suspense>
+    ) : null)
+    return [
+      shared('account'),
+      shared('expiry'),
+      shared('quantity'),
+      {
+        id: 'cost',
+        label: 'Cost',
+        widthClassName: 'w-24',
+        align: 'right',
+        render: node => (node.type === 'epic' ? formatCurrencyBlock(firstNumberBlock(asMetadataRecordBlock(node).webull_closed_cost)) : null),
+      },
+      {
+        // With the statements: what it sold for. Without: its value the last time a sync saw it open.
+        id: 'sold',
+        label: SaleCell ? 'Sold' : 'Last value',
+        widthClassName: 'w-40',
+        align: 'right',
+        render: (node) => {
+          if (node.type !== 'epic') return null
+          return saleCell(node, 'closed-sold') ?? formatCurrencyBlock(firstNumberBlock(asMetadataRecordBlock(node).webull_closed_last_value))
+        },
+      },
+      {
+        id: 'result',
+        label: 'Result',
+        widthClassName: 'w-28',
+        align: 'right',
+        render: (node) => {
+          if (node.type !== 'epic') return null
+          const own = saleCell(node, 'closed-result')
+          if (own) return own
+          const value = firstNumberBlock(asMetadataRecordBlock(node).webull_closed_result)
+          return (
+            <span className={cn(value !== null && value > 0 && 'text-emerald-600 dark:text-emerald-400', value !== null && value < 0 && 'text-red-600 dark:text-red-400')}>
+              {formatCurrencyBlock(value)}
+            </span>
+          )
+        },
+      },
+      {
+        // About when it closed: the last time a sync saw it
+        id: 'closed-on',
+        label: 'Closed',
+        widthClassName: 'w-28',
+        align: 'right',
+        render: (node) => {
+          const day = node.type === 'epic' ? firstStringBlock(asMetadataRecordBlock(node).webull_closed_on) : ''
+          return day ? new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null
+        },
+      },
+      shared('gap'),
+    ]
+  }, [executionRoot, openGapFile, webullRowColumns])
+
+  const loadClosedEpics = useCallback(async (): Promise<NodeRecord[]> => closedTableModel.nodes, [closedTableModel.nodes])
+  // A closed position opens in the position panel, as an open one does: its fills, how it ended, its comments
+  const onSelectClosedNode = useCallback((node: NodeRecord) => {
+    if (node.type !== 'epic' || !node.filePath) return
+    if (PrivatePositionPanelBlock) {
+      setDetailPanelNodeId(null)
+      setPositionPanelPath(node.filePath)
+    } else {
+      (onOpenFileForReading ?? onOpenNodeFile)(node.filePath)
+    }
+  }, [onOpenFileForReading, onOpenNodeFile])
 
   const linkOptionsByPath = useMemo(() => {
     const map = new Map<string, WebullLinkOptionBlock>()
@@ -2570,6 +2729,68 @@ export default function WebullWorkspaceBlock({
   )
 
 
+  // Closed: the same table, zoom and all, over the closed positions
+  const closedPositionsActions = (
+    <div className="flex items-center gap-4 text-xs">
+      <span ref={setPositionsZoomHost} className="flex items-center" />
+    </div>
+  )
+  const closedPositionsTable = (
+    <div className="space-y-2">
+      <div className={cn(F9_PANEL_CLASS_BLOCK, 'overflow-hidden pt-2')}>
+        <ScrollableZoomSurfaceBlock
+          minWidthClassName={Webull_WIDE_TABLE_MIN_WIDTH_CLASS_BLOCK}
+          controlsLabel="Zoom"
+          controlsAppearance="quiet"
+          controlsHost={positionsZoomHost}
+          fitToWidthLabel="Fit"
+          fitColumnsToWidthLabel="Fit columns"
+          showFitColumnsToWidthButton
+          persistStateKey={showCompanyView ? 'webull-company-positions' : 'webull-overall-positions'}
+        >
+          <BacklogListBlock
+            renderNodeTitle={renderPositionTitle}
+            programs={closedTableModel.programs}
+            showProgramLayoutToggle={false}
+            appearance="native"
+            loadEpics={loadClosedEpics}
+            loadChildren={loadBacklogChildren}
+            selectedNodeId={closedTableModel.nodes.find(node => node.filePath === positionPanelPath)?.uuid ?? null}
+            readOnly
+            onSelectNode={onSelectClosedNode}
+            relatedNodeOptions={linkOptions}
+            onOpenRelatedNode={handleBacklogOpenRelated}
+            projectPresetTagsByRoot={rowProjectPresetTagsByRoot}
+            canOpenNodeDetails={handleBacklogCanOpenDetails}
+            rowColumns={closedRowColumns}
+            showRowColumnsOnCompact
+            rowPresetTagLimit={5}
+            rowPresetTagsClassName="w-[12rem]"
+            linksColumnLabel="Links"
+            linksColumnWidthClassName="w-[4.5rem]"
+            linksColumnAlign="left"
+            linksColumnPaddingClassName="px-0"
+            linksBeforeTags
+            rowDetailsRenderer={renderWebullInlineDetails}
+            titleColumnClassName="w-[11rem]"
+            wrapTitleText
+            showProgramStatus={false}
+            showProgramCopyButton={false}
+            preferInlineDetailsButton
+            showNodeTypeIcons={false}
+            showExpandToggles={false}
+            showPriorityDots={false}
+          />
+        </ScrollableZoomSurfaceBlock>
+      </div>
+      {closedTableModel.total > closedTableModel.nodes.length && (
+        <button type="button" onClick={() => setClosedShown(n => n + CLOSED_PAGE_SIZE_BLOCK)} className="text-sm text-sky-600 hover:text-sky-700 dark:text-sky-400">
+          Show {Math.min(CLOSED_PAGE_SIZE_BLOCK, closedTableModel.total - closedTableModel.nodes.length)} more <span className="text-zinc-500">({closedTableModel.total - closedTableModel.nodes.length} older)</span>
+        </button>
+      )}
+    </div>
+  )
+
   return (
     <div ref={tabWorkRef} className="ltm-webull-shell flex h-full min-h-0 w-full">
       {/* On iPhone, the desktop collapse state is ignored — list/detail mode
@@ -2825,17 +3046,9 @@ export default function WebullWorkspaceBlock({
             const allocation = slices.length > 0 && total > 0 ? { slices, total, legend, optionExpiries } : null
             return (
               <WebullOverallPageBlock
-                closedSlot={executionRoot && executionOverview ? (
-                  <OverallClosedPositionsBlock
-                    companies={executionOverview.companies}
-                    executionRoot={executionRoot}
-                    gapLinks={gapLinks}
-                    accountLabel={(id, number) => resolveAccountLabelBlock(accountLabelEntries, id, number)}
-                    // A closed position opens in the position panel, as an open one does: its fills, how it ended, its comments
-                    onOpenFile={PrivatePositionPanelBlock ? setPositionPanelPath : (onOpenFileForReading ?? onOpenNodeFile)}
-                  />
-                ) : undefined}
-                closedCount={closedPositionCount}
+                closedSlot={closedPositionsTable}
+                closedActions={closedPositionsActions}
+                closedCount={closedTableModel.total}
                 executionRoot={executionRoot}
                 onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
                 accountCount={accountCount}
@@ -2883,9 +3096,10 @@ export default function WebullWorkspaceBlock({
               holding={selectedCompanyHolding}
               positionsActions={nativePositionsActions}
               positionCount={selectedCompany.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived').length}
-              accountLabel={(accountId, accountNumber) => resolveAccountLabelBlock(accountLabelEntries, accountId, accountNumber)}
+              closedSlot={closedPositionsTable}
+              closedActions={closedPositionsActions}
+              closedCount={closedTableModel.total}
               onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
-              onOpenPosition={PrivatePositionPanelBlock ? setPositionPanelPath : undefined}
               positionsSlot={(
                 <div className="space-y-3">
                   <div className={cn(F9_PANEL_CLASS_BLOCK, 'overflow-hidden pt-2')}>

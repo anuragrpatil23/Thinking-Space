@@ -64,6 +64,8 @@ interface BacklogNodeRowBlockProps {
   titleSlot?: ReactNode
   /** Native tables: the grid template shared with the header (nativeRowGridTemplateBlock). */
   nativeGridTemplate?: string
+  /** False when the table has no status column (a native table without a status label). */
+  showStatus?: boolean
   showRowColumnsOnCompact?: boolean
   rowPresetTagsClassName?: string
   reserveTagsSlotWhenEmpty?: boolean
@@ -121,6 +123,7 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
   native = false,
   titleSlot,
   nativeGridTemplate,
+  showStatus = true,
   showRowColumnsOnCompact = false,
   rowPresetTagsClassName,
   reserveTagsSlotWhenEmpty = false,
@@ -275,7 +278,7 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
         </div>
       )}
       {!native && !linksBeforeTags && linksSlot}
-      {taskNode ? (
+      {showStatus && (taskNode ? (
         statusReadOnly || !canEditTaskStatus ? (
           <div className={cn(
             'shrink-0 self-center',
@@ -352,7 +355,7 @@ export const BacklogNodeRowBlock = memo(function BacklogNodeRowBlock({
             )}
           </div>
         )
-      )}
+      ))}
       {native && (linksSlot ?? <span aria-hidden="true" />)}
       {canToggleDetails && (
         <button
