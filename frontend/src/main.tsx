@@ -37,7 +37,13 @@ const isLocalApp = isElectron() || isCapacitorNative()
 const useHashRouter = isLocalApp || import.meta.env.VITE_HASH_ROUTER === 'true'
 const Router = useHashRouter ? HashRouter : BrowserRouter
 const webBasename = '/thinking-space'
-const routerProps = useHashRouter ? {} : { basename: webBasename }
+// Navigation commits right away instead of as a React transition. As a
+// transition the old tab stayed on screen until the next one had finished
+// rendering in the background, and that render restarted on every unrelated
+// state update: a click on a heavy tab did nothing for about a second.
+const routerProps = useHashRouter
+  ? { useTransitions: false }
+  : { basename: webBasename, useTransitions: false }
 const disableStrictModeForCapacitorDebug = import.meta.env.DEV && isCapacitorNative()
 
 const appTree = (
