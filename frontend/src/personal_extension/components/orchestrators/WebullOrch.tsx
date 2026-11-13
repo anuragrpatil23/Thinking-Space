@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { IGNORED_COMPANIES_CHANGED_EVENT_BLOCK } from '@/personal_extension/thinkingspace-personal/services/lego_blocks/integrations/marketVaultBlock'
 import { useSearchParams } from 'react-router-dom'
 import { loadF9SyncEngineBlock } from '../lego_blocks/hooks/useF9AppSyncBlock'
 import { subscribeWebullPullOrch } from '@/personal_extension/services/orchestrators/webullAccountSyncOrch'
@@ -270,6 +271,12 @@ export default function WebullOrch({ pageTitle }: WebullOrchProps = {}) {
       setExecutionOverviewLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    const reload = () => { void loadExecutionOverview() }
+    window.addEventListener(IGNORED_COMPANIES_CHANGED_EVENT_BLOCK, reload)
+    return () => window.removeEventListener(IGNORED_COMPANIES_CHANGED_EVENT_BLOCK, reload)
+  }, [loadExecutionOverview])
 
   const loadSavedOverallSnapshot = useCallback(async (): Promise<WebullOverallSnapshotOrch | null> => {
     try {

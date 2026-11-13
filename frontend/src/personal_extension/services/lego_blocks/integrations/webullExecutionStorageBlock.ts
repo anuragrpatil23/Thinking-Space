@@ -542,6 +542,8 @@ export async function readWebullExecutionOverviewBlock(
 
     const parsed = parseMarkdownFrontmatterBlock(await fs.read(indexFilePath))
     const frontmatter = parsed.frontmatter
+    // An ignored company keeps its folder (old positions and all) but isn't listed
+    if (frontmatter.ignored === true || String(frontmatter.ignored ?? '').toLowerCase() === 'yes') continue
     const positions = sortPositionSummariesAscendingBlock(asPositionSummaryListBlock(frontmatter.positions))
     const strategyNotes = readStringFieldBlock(frontmatter.strategy_notes)
     const relatedIdeaIds = readStringArrayFieldBlock(frontmatter.related_idea_ids)

@@ -192,6 +192,14 @@ export async function fetchYahooDailyClosesBlock(
   return parseYahooDailyClosesBlock(response.body)
 }
 
+/** A symbol's whole chart answer with its split events (parse with parseYahooSplitsBlock). Desktop app. */
+export async function fetchYahooSplitsBodyBlock(symbol: string): Promise<string> {
+  const url = `${YAHOO_CHART_BASE_BLOCK}/${encodeURIComponent(yahooSymbolBlock(symbol.trim().toUpperCase()))}?interval=1mo&range=max&events=split`
+  const response = await fetchTextThroughElectronBlock(url)
+  if (response.status < 200 || response.status >= 300) throw new Error(`Yahoo chart HTTP ${response.status} for ${symbol}`)
+  return response.body
+}
+
 export interface YahooDailyBarBlock {
   /** YYYY-MM-DD, the exchange's trading day */
   date: string

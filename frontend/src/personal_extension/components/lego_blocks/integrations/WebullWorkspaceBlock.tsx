@@ -1,4 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { setCompanyIgnoredBlock } from '@/personal_extension/thinkingspace-personal/services/lego_blocks/integrations/marketVaultBlock'
 import { BookOpen, ChevronRight, Binoculars, Crosshair, Eye, EyeOff, History, Rss, Wallet, type LucideIcon } from 'lucide-react'
 import {
   dispatchWebullSidebarChromeStateBlock,
@@ -2454,6 +2455,12 @@ export default function WebullWorkspaceBlock({
             label: 'Webull sync details',
             onClick: () => openF9SyncPanelBlock('account'),
           },
+          // Ignore: the folder and its old positions stay; the company leaves every list and fetch (Settings → Webull brings it back)
+          ...(companyPageOpen && activeCompanyTicker && executionRoot ? [{
+            key: 'ignore',
+            label: `Ignore ${activeCompanyTicker}`,
+            onClick: () => { void setCompanyIgnoredBlock(executionRoot, activeCompanyTicker, true).then(() => onSelectCompanyTicker(null)) },
+          }] : []),
         ]}
       />
     </p>

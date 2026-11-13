@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FeedAiReaderSettingsRowBlock } from '@/personal_extension/components/lego_blocks/integrations/FeedAiReaderSettingsRowBlock'
+import { IgnoredCompaniesSettingsRowBlock } from '@/personal_extension/components/lego_blocks/integrations/IgnoredCompaniesSettingsRowBlock'
 import { SIM_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 import { isSettingsTabHiddenInStaticWebBuildBlock } from '@/services/lego_blocks/units/staticWebBuildBlock'
 import { cn } from '@/lib/utils'
@@ -2046,6 +2047,8 @@ export default function SettingsOrch({
               )}
             />
           </SettingsGroupBlock>
+
+          <IgnoredCompaniesSettingsRowBlock executionFolderPath={webullSavedExecutionFolderPath} />
         </>
       )}
 
