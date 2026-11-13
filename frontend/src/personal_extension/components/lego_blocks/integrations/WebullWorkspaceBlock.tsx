@@ -2831,7 +2831,8 @@ export default function WebullWorkspaceBlock({
                     executionRoot={executionRoot}
                     gapLinks={gapLinks}
                     accountLabel={(id, number) => resolveAccountLabelBlock(accountLabelEntries, id, number)}
-                    onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
+                    // A closed position opens in the position panel, as an open one does: its fills, how it ended, its comments
+                    onOpenFile={PrivatePositionPanelBlock ? setPositionPanelPath : (onOpenFileForReading ?? onOpenNodeFile)}
                   />
                 ) : undefined}
                 closedCount={closedPositionCount}
