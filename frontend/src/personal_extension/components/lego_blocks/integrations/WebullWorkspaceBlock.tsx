@@ -1,4 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { OverallClosedPositionsBlock } from './OverallClosedPositionsBlock'
 import { setCompanyIgnoredBlock } from '@/personal_extension/thinkingspace-personal/services/lego_blocks/integrations/marketVaultBlock'
 import { BookOpen, ChevronRight, Binoculars, Crosshair, Eye, EyeOff, History, Rss, Wallet, type LucideIcon } from 'lucide-react'
 import {
@@ -1306,10 +1307,13 @@ export default function WebullWorkspaceBlock({
       if ((executionOverview?.companies.length ?? 0) > 0) return executionOverview?.companies ?? []
       return buildFallbackCompaniesFromOverallRowsBlock(overallRows)
     })()
-    const mapped = sourceCompanies.map(company => ({
-      ...company,
-      positions: sortWebullPositionsAscendingBlock(company.positions),
-    }))
+    const mapped = sourceCompanies
+      // The overall table is what's held: a company with nothing open (all of it closed, or only history) isn't a row
+      .filter(company => showCompanyView || company.positions.some(p => normalizePositionStatusBlock(p.status) !== 'archived'))
+      .map(company => ({
+        ...company,
+        positions: sortWebullPositionsAscendingBlock(company.positions),
+      }))
     if (companyOrder.length === 0 || showCompanyView) return mapped
     const indexByTicker = new Map<string, number>()
     companyOrder.forEach((ticker, idx) => { indexByTicker.set(ticker.toUpperCase(), idx) })
@@ -1833,6 +1837,7 @@ export default function WebullWorkspaceBlock({
 
   // Which gap holds each position, from the gaps' positions logs
   const gapLinks = useGapPositionLinksBlock(executionRoot)
+  const closedPositionCount = useMemo(() => (executionOverview?.companies ?? []).reduce((n, c) => n + c.positions.filter(p => normalizePositionStatusBlock(p.status) === 'archived').length, 0), [executionOverview])
   const openGapFile = onOpenFileForReading ?? onOpenNodeFile
   const webullRowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
     return [
@@ -2820,6 +2825,16 @@ export default function WebullWorkspaceBlock({
             const allocation = slices.length > 0 && total > 0 ? { slices, total, legend, optionExpiries } : null
             return (
               <WebullOverallPageBlock
+                closedSlot={executionRoot && executionOverview ? (
+                  <OverallClosedPositionsBlock
+                    companies={executionOverview.companies}
+                    executionRoot={executionRoot}
+                    gapLinks={gapLinks}
+                    accountLabel={(id, number) => resolveAccountLabelBlock(accountLabelEntries, id, number)}
+                    onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
+                  />
+                ) : undefined}
+                closedCount={closedPositionCount}
                 executionRoot={executionRoot}
                 onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
                 accountCount={accountCount}

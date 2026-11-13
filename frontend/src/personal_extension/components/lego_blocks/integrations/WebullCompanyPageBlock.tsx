@@ -97,7 +97,7 @@ function moneyBlock(value: number | null): string {
  * last time a sync saw it open. That is the last value before it closed, not
  * the sale price; the track record has what the statements say it came back with.
  */
-function ClosedPositionsTableBlock({ rows, gapLinks, accountLabel, filePath, onOpenFile, renderSaleCells }: {
+export function ClosedPositionsTableBlock({ rows, gapLinks, accountLabel, filePath, onOpenFile, renderSaleCells }: {
   rows: WebullClosedPositionBlock[]
   gapLinks: GapPositionLinkBlock[]
   accountLabel?: (accountId: string | null, accountNumber: string | null) => string | null

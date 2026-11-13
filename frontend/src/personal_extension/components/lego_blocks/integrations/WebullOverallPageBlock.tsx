@@ -68,6 +68,9 @@ interface WebullOverallPageBlockProps {
   onSelectTicker: (ticker: string) => void
   positionsActions?: ReactNode
   positionsSlot: ReactNode
+  /** Every closed position across companies, and how many */
+  closedSlot?: ReactNode
+  closedCount?: number
   positionCount: number
   footer?: ReactNode
 }
@@ -698,11 +701,13 @@ export default function WebullOverallPageBlock({
   onSelectTicker,
   positionsActions,
   positionsSlot,
+  closedSlot,
+  closedCount = 0,
   positionCount,
   footer,
 }: WebullOverallPageBlockProps) {
   const { record: trackRecord, reportPath } = useWebullOverallTrackRecordBlock(executionRoot)
-  const [tab, setTab] = useState<'positions' | 'trades'>('positions')
+  const [tab, setTab] = useState<'positions' | 'closed' | 'trades'>('positions')
   const subline = [
     `${accountCount || '—'} ${accountCount === 1 ? 'account' : 'accounts'}`,
     companyCount > 0 ? `${companyCount} ${companyCount === 1 ? 'company' : 'companies'} indexed` : null,
@@ -760,12 +765,13 @@ export default function WebullOverallPageBlock({
                 onChange={setTab}
                 options={[
                   { value: 'positions' as const, label: 'Positions', count: positionCount },
+                  ...(closedSlot && closedCount > 0 ? [{ value: 'closed' as const, label: 'Closed', count: closedCount }] : []),
                   { value: 'trades' as const, label: 'Buys and sells' },
                 ]}
               />
               {tab === 'positions' && positionsActions}
             </div>
-            {tab === 'positions' ? positionsSlot : (
+            {tab === 'positions' ? positionsSlot : tab === 'closed' ? closedSlot : (
               <Suspense fallback={null}>
                 <PrivateBuysSellsBlock executionRoot={executionRoot} onOpenFile={onOpenFile} />
               </Suspense>

@@ -1,4 +1,5 @@
 import yaml from 'js-yaml'
+import { getNodesUnderPath } from '@/services/lego_blocks/integrations/dbBlock'
 import {
   LEGACY_POSITION_MARKS_FILE_BLOCK,
   POSITION_HISTORY_DIR_BLOCK,
@@ -531,6 +532,7 @@ export async function readWebullExecutionOverviewBlock(
 
   const listedRoot = await fs.list(executionRoot)
   const companies: WebullCompanyOverviewBlock[] = []
+  const positionsByCompany = await readPositionSummariesBlock(fs, executionRoot, listedRoot.folders.map(f => joinPathBlock(executionRoot, f)))
 
   for (const folder of listedRoot.folders) {
     const ticker = normalizeTickerBlock(folder)
@@ -544,7 +546,8 @@ export async function readWebullExecutionOverviewBlock(
     const frontmatter = parsed.frontmatter
     // An ignored company keeps its folder (old positions and all) but isn't listed
     if (frontmatter.ignored === true || String(frontmatter.ignored ?? '').toLowerCase() === 'yes') continue
-    const positions = sortPositionSummariesAscendingBlock(asPositionSummaryListBlock(frontmatter.positions))
+    // A company's positions are its position files: open in positions/, closed in archived_positions/
+    const positions = positionsByCompany.get(companyDir) ?? []
     const strategyNotes = readStringFieldBlock(frontmatter.strategy_notes)
     const relatedIdeaIds = readStringArrayFieldBlock(frontmatter.related_idea_ids)
     const programGroupIdRaw = readNullableStringFieldBlock(frontmatter.program_group)
@@ -1004,6 +1007,50 @@ export async function saveWebullPositionBodyBlock(
   }
 }
 
+// Every company's positions, by company folder: the position files as the app's cache (IndexedDB, rebuilt
+// from the vault) has them, the folder deciding open (positions/) or closed (archived_positions/). Before the
+// cache has them (a first run), the files are read directly.
+async function readPositionSummariesBlock(fs: VaultFS, executionRoot: string, companyDirs: string[]): Promise<Map<string, WebullPositionSummaryBlock[]>> {
+  const out = new Map<string, WebullPositionSummaryBlock[]>(companyDirs.map(d => [d, []]))
+  const place = (path: string, fm: Record<string, unknown>) => {
+    const m = path.match(/^(.*)\/(positions|archived_positions)\/([^/]+\.md)$/)
+    const list = m ? out.get(m[1]) : undefined
+    if (!m || !list) return
+    const summary = asPositionSummaryListBlock([{ ...fm, file_name: m[3] }])[0]
+    if (!summary) return
+    const closed = m[2] === 'archived_positions'
+    list.push(closed ? { ...summary, status: 'archived' as NodeStatus } : summary.status === 'archived' ? { ...summary, status: 'taken' as NodeStatus } : summary)
+  }
+  const nodes = await getNodesUnderPath(`${executionRoot.replace(/\/+$/, '')}/`).catch(() => [])
+  const cached = nodes.filter(n => /\/(positions|archived_positions)\/[^/]+\.md$/.test(n.filePath))
+  if (cached.length) {
+    for (const n of cached) {
+      place(n.filePath, {
+        ...(n.metadata ?? {}),
+        id: (n.metadata?.id as string | undefined) ?? n.key,
+        title: n.title,
+        status: n.status,
+        tags: n.tags,
+        project_preset_tags: n.projectPresetTags ?? [],
+        related_nodes: n.relatedNodes ?? [],
+        updated_at: n.updatedAt,
+      })
+    }
+  } else {
+    await Promise.all(companyDirs.flatMap(dir => (['positions', 'archived_positions'] as const).map(async (sub) => {
+      const folder = joinPathBlock(dir, sub)
+      const files = (await fs.list(folder).catch(() => ({ files: [] as string[] }))).files.filter(f => f.endsWith('.md'))
+      await Promise.all(files.map(async (f) => {
+        const text = await fs.read(joinPathBlock(folder, f)).catch(() => null)
+        if (!text) return
+        try { place(joinPathBlock(folder, f), parseMarkdownFrontmatterBlock(text).frontmatter) } catch { /* unreadable: left out */ }
+      }))
+    })))
+  }
+  for (const [dir, list] of out) out.set(dir, sortPositionSummariesAscendingBlock(list))
+  return out
+}
+
 async function upsertCompanyIndexBlock(input: {
   fs: VaultFS
   companyDir: string
@@ -1011,8 +1058,7 @@ async function upsertCompanyIndexBlock(input: {
   indexId: string
   summaries: WebullPositionSummaryBlock[]
 }): Promise<void> {
-  const { fs, companyDir, ticker, indexId, summaries } = input
-  const orderedSummaries = sortPositionSummariesAscendingBlock(summaries)
+  const { fs, companyDir, ticker, indexId } = input
   const indexFilePath = joinPathBlock(companyDir, `${ticker}-index.md`)
   let existingFrontmatter: Record<string, unknown> = {}
   let existingBody = ''
@@ -1024,8 +1070,12 @@ async function upsertCompanyIndexBlock(input: {
   }
 
   const now = new Date().toISOString()
+  // The positions are their own files; the index keeps only what is about the company
+  const { positions: _oldCopy, position_count: _oldCount, ...companyOnly } = existingFrontmatter
+  void _oldCopy
+  void _oldCount
   const nextFrontmatter: Record<string, unknown> = {
-    ...existingFrontmatter,
+    ...companyOnly,
     id: indexId,
     parent_id: null,
     title: `${ticker} index`,
@@ -1043,37 +1093,12 @@ async function upsertCompanyIndexBlock(input: {
       if (!pdfReportPath) return null
       return normalizeSlashPathBlock(pdfReportPath).replace(/^\/+|\/+$/g, '')
     })(),
-    position_count: orderedSummaries.length,
     updated_at: now,
-    positions: orderedSummaries.map((summary) => ({
-      id: summary.id,
-      file_name: summary.fileName,
-      symbol: summary.symbol,
-      status: summary.status,
-      source: summary.source,
-      account_id: summary.accountId,
-      account_number: summary.accountNumber,
-      cash_currency: summary.cashCurrency,
-      instrument_type: summary.instrumentType,
-      option_type: summary.optionType,
-      option_expire_date: summary.optionExpireDate,
-      option_exercise_price: summary.optionExercisePrice,
-      quantity: summary.quantity,
-      cost: summary.cost,
-      proportion: summary.proportion,
-      last_price: summary.lastPrice,
-      unrealized_profit_loss: summary.unrealizedProfitLoss,
-      day_profit_loss: summary.dayProfitLoss,
-      linked_idea_id: summary.linkedIdeaId,
-      related_nodes: summary.relatedNodes,
-      tags: summary.tags,
-      project_preset_tags: summary.projectPresetTags,
-    })),
   }
 
   const body = existingBody.trim() ? existingBody : DEFAULT_COMPANY_INDEX_BODY_BLOCK
   // Unchanged apart from the time: leave the file alone
-  const { updated_at: _was, ...before } = existingFrontmatter
+  const { updated_at: _was, ...before } = existingFrontmatter as Record<string, unknown>
   const { updated_at: _now, ...after } = nextFrontmatter
   void _was
   void _now

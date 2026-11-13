@@ -364,6 +364,12 @@ export async function getNodesByTaskStatus(taskStatus: string): Promise<NodeReco
 /**
  * Get nodes that include a metadata key in their generic metadata blob.
  */
+/** Every cached note under a folder (vault-relative, ending in "/"), by the indexed filePath. */
+export async function getNodesUnderPath(folder: string): Promise<NodeRecord[]> {
+  const db = getDb()
+  return db.nodes.where('filePath').startsWith(folder).toArray()
+}
+
 export async function getNodesByMetadataKey(metadataKey: string): Promise<NodeRecord[]> {
   const db = getDb()
   return db.nodes.where('metadataKeys').equals(metadataKey).toArray()
