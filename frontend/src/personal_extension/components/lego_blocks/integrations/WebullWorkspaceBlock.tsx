@@ -2860,8 +2860,10 @@ export default function WebullWorkspaceBlock({
         </aside>
       )}
 
-      <div className={cn(
-        'min-w-0 overflow-auto px-6 py-5',
+      {/* data-f9-pane: a record board that is the whole page (the private
+          RecordBoardPageBlock) lays itself over this pane, edge to edge. */}
+      <div data-f9-pane className={cn(
+        'relative min-w-0 overflow-auto px-6 py-5',
         // The company page is the first F9 view on the native ground: grey,
         // with white panels instead of one big card.
         nativeView && 'bg-[#F5F5F7] px-7 py-6 dark:bg-zinc-950',
