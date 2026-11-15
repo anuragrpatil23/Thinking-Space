@@ -34,6 +34,20 @@ const loadNoticed = Object.values(NOTICED_MODULES)[0]
 export const NOTICED_TAB_AVAILABLE = Boolean(loadNoticed)
 export const PrivateNoticedBlock = loadNoticed ? lazy(loadNoticed) : null
 
+// Home canvas: sorting a note's lines into Noticed (things to study, questions, comments).
+export interface PrivateCanvasNoteSortPropsBlock {
+  /** The note's whole text. */
+  text: string
+  /** When the note was made on the canvas (ms), if known. */
+  createdAt?: number
+  /** The note's text once lines have been sent away; '' removes the note. */
+  onChangeText: (next: string) => void
+  onClose: () => void
+}
+const CANVAS_NOTE_SORT_MODULES = import.meta.glob<{ default: ComponentType<PrivateCanvasNoteSortPropsBlock> }>('../../../thinkingspace-personal/canvasNoteSort.tsx')
+const loadCanvasNoteSort = Object.values(CANVAS_NOTE_SORT_MODULES)[0]
+export const PrivateCanvasNoteSortBlock = loadCanvasNoteSort ? lazy(loadCanvasNoteSort) : null
+
 const COMPANY_NOTICED_MODULES = import.meta.glob<{ default: ComponentType<PrivateCompanyGapsPropsBlock> }>('../../../thinkingspace-personal/companyNoticed.tsx')
 const loadCompanyNoticed = Object.values(COMPANY_NOTICED_MODULES)[0]
 export const PrivateCompanyNoticedBlock = loadCompanyNoticed ? lazy(loadCompanyNoticed) : null

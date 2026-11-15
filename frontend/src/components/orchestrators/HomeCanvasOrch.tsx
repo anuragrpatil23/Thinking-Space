@@ -6,6 +6,7 @@ import MoonSceneBlock from '@/components/lego_blocks/units/MoonSceneBlock'
 import { homeCanvasStorage } from '@/services/lego_blocks/integrations/homeCanvasStorageBlock'
 import { readBoardInboxBlock, removeBoardInboxNotesBlock } from '@/services/lego_blocks/integrations/boardInboxBlock'
 import { isElectron } from '@/services/lego_blocks/integrations/fsBlock'
+import { PrivateCanvasNoteSortBlock } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 
 /** Stable, so the board's inbox effect does not re-run every render. Only
  *  the desktop pulls the inbox in: every device that holds the board writes
@@ -73,6 +74,7 @@ export default function HomeCanvasOrch() {
       surfaceId="home"
       storage={homeCanvasStorage}
       inbox={BOARD_INBOX_BLOCK}
+      noteSorter={PrivateCanvasNoteSortBlock ?? undefined}
       seedTiles={SEED_TILES}
       worldHeight={worldHeight}
       initialFocus={{

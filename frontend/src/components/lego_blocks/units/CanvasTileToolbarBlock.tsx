@@ -1,4 +1,4 @@
-import { Move, Copy, Trash2, Droplet, ArrowUpRight, RefreshCw, Timer, Info, FolderInput } from 'lucide-react'
+import { Move, Copy, Trash2, Droplet, ArrowUpRight, RefreshCw, Timer, Info, FolderInput, ListChecks } from 'lucide-react'
 import { HOME_CANVAS_PATH } from '@/services/lego_blocks/integrations/homeCanvasStorageBlock'
 import { useEffect, useState } from 'react'
 import type {
@@ -27,6 +27,8 @@ interface Props {
   onOpenInPage?: (filePath: string) => void
   /** Post-its only: open the save-to-vault dialog for this tile. */
   onSaveToVault?: (id: string) => void
+  /** Sort a post-it's lines into somewhere else (an extension's sheet); absent when nothing offers it. */
+  onSortNote?: (id: string) => void
   onRefreshWidget?: (id: string) => void
   onSetWidgetRefreshSec?: (id: string, refreshSec: number | undefined) => void
 }
@@ -87,6 +89,7 @@ export default function CanvasTileToolbarBlock({
   onRemove,
   onOpenInPage,
   onSaveToVault,
+  onSortNote,
   onRefreshWidget,
   onSetWidgetRefreshSec,
 }: Props) {
@@ -420,6 +423,15 @@ export default function CanvasTileToolbarBlock({
           title="Save to vault"
         >
           <FolderInput size={ICON_SIZE} />
+        </button>
+      )}
+      {isPostIt && onSortNote && tile.text.trim() && (
+        <button
+          style={buttonStyle}
+          onClick={() => onSortNote(tile.id)}
+          title="Sort this note: send its lines to study, questions and comments"
+        >
+          <ListChecks size={ICON_SIZE} />
         </button>
       )}
       {isNote && onOpenInPage && (

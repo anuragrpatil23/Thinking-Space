@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   useInfiniteCanvasBlock,
@@ -55,6 +55,13 @@ export interface CanvasSurfaceOrchProps {
     read: () => Promise<BoardInboxNoteBlock[]>
     remove: (ids: string[]) => Promise<void>
   }
+  /**
+   * A sheet that sorts a post-it's lines into somewhere else (an extension's:
+   * the canvas does not know where). It hands back the note's text with the
+   * sent lines gone; '' means every line went, and the post-it is removed.
+   * Each post-it's toolbar offers it when this is given.
+   */
+  noteSorter?: ComponentType<{ text: string; createdAt?: number; onChangeText: (next: string) => void; onClose: () => void }>
 }
 
 const DEFAULT_WORLD_WIDTH = 4500
@@ -71,6 +78,7 @@ export default function CanvasSurfaceOrch({
   worldExtras,
   showGrid = true,
   inbox,
+  noteSorter: NoteSorter,
 }: CanvasSurfaceOrchProps) {
   const navigate = useNavigate()
   const theme = useCanvasThemeBlock()
@@ -163,6 +171,7 @@ export default function CanvasSurfaceOrch({
     | { kind: 'search'; screenX: number; screenY: number; worldX: number; worldY: number }
     | { kind: 'widget-picker'; worldX: number; worldY: number }
     | { kind: 'save-to-vault'; tileId: string }
+    | { kind: 'sort-note'; tileId: string }
     | null
   const [popover, setPopover] = useState<CanvasPopover>(null)
   const [widgetReloadKeys, setWidgetReloadKeys] = useState<Record<string, number>>({})
@@ -351,6 +360,7 @@ export default function CanvasSurfaceOrch({
   }
 
   const saveTile = popover?.kind === 'save-to-vault' ? tiles.find(t => t.id === popover.tileId) : undefined
+  const sortTile = popover?.kind === 'sort-note' ? tiles.find(t => t.id === popover.tileId) : undefined
   const handleSaveToVault = async (folderPath: string, filename: string) => {
     if (!saveTile || saveTile.type !== 'post-it') return
     // Throws on failure; the dialog shows the error and the post-it is untouched.
@@ -598,6 +608,7 @@ export default function CanvasSurfaceOrch({
           onRemove={removeTile}
           onOpenInPage={handleOpenInPage}
           onSaveToVault={id => setPopover({ kind: 'save-to-vault', tileId: id })}
+          onSortNote={NoteSorter ? id => setPopover({ kind: 'sort-note', tileId: id }) : undefined}
           onRefreshWidget={refreshWidget}
           onSetWidgetRefreshSec={setWidgetRefreshSec}
         />
@@ -634,6 +645,17 @@ export default function CanvasSurfaceOrch({
           onPick={handlePickNote}
         />
       )}
+      {NoteSorter && sortTile && sortTile.type === 'post-it' && (
+        <Suspense fallback={null}>
+          <NoteSorter
+            text={sortTile.text}
+            createdAt={sortTile.createdAt}
+            onChangeText={(next) => { if (next.trim()) updateTileText(sortTile.id, next); else removeTile(sortTile.id) }}
+            onClose={() => setPopover(null)}
+          />
+        </Suspense>
+      )}
+
       {saveTile?.type === 'post-it' && (
         <CanvasSaveToVaultDialogBlock
           text={saveTile.text}
