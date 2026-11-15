@@ -71,6 +71,22 @@ const PAGE_EDGE_BLOCK: Record<PdfPaperThemeBlock, string> = {
   night: '#2b2d33',
 }
 const DESK_PADDING_PX_BLOCK = 20
+
+/* Side margins of the page(s). foliate's one `gap` knob gives each page an
+   outer margin twice its inner one, which on a spread left the right-hand
+   page's flush-left text sitting in the spine's shadow. A spread therefore
+   takes a wider gap for the gutter and caps the outer margin separately
+   (`--ts-outer-gap`, our patch in vendor/foliate-js/paginator.js): about 67px
+   to the fold and 96px to the outer edge at full width, where it was 47 and
+   102. The column limit rises with it so the wider gap, not the limit, sets
+   the line length. A single page has no spine and keeps the plain gap. */
+function applyPageMarginsBlock(renderer: HTMLElement, spread: boolean) {
+  if (spread) renderer.style.setProperty('--ts-outer-gap', '2%')
+  else renderer.style.removeProperty('--ts-outer-gap')
+  renderer.setAttribute('gap', spread ? '11%' : '8%')
+  renderer.setAttribute('max-column-count', spread ? '2' : '1')
+  renderer.setAttribute('max-inline-size', spread ? '640px' : '600px')
+}
 /* Below this the window holds one comfortable page, not a spread. */
 const SPREAD_MIN_WIDTH_PX_BLOCK = 900
 const SPREAD_MAX_WIDTH_PX_BLOCK = 1280
@@ -110,6 +126,9 @@ interface EpubDocumentBlockProps {
    *  bytes in place of reading `path`, which then only names it. Read when
    *  `path` changes. */
   loadFile?: () => Promise<File>
+  /** First refusal on a link that leaves the book (any href with a scheme).
+   *  Return true when handled; otherwise it goes out the external-URL gate. */
+  onExternalLink?: (href: string) => boolean
   active?: boolean
   /** Where the document header wants the toolbar docked; null floats it. */
   toolbarHost?: HTMLElement | null
@@ -135,6 +154,7 @@ function flattenTocBlock(items: readonly FoliateTocItem[] | undefined, depth = 0
 export default function EpubDocumentBlock({
   path,
   loadFile,
+  onExternalLink,
   active = true,
   toolbarHost = null,
   topInset = 0,
@@ -143,6 +163,8 @@ export default function EpubDocumentBlock({
   const hostRef = useRef<HTMLDivElement | null>(null)
   const loadFileRef = useRef(loadFile)
   loadFileRef.current = loadFile
+  const onExternalLinkRef = useRef(onExternalLink)
+  onExternalLinkRef.current = onExternalLink
   const deskRef = useRef<HTMLDivElement | null>(null)
   const bookRef = useRef<HTMLDivElement | null>(null)
   /* Every page turn goes through here; assigned once the look is known. */
@@ -301,6 +323,7 @@ export default function EpubDocumentBlock({
         view.addEventListener('external-link', (event) => {
           event.preventDefault()
           const href = (event as CustomEvent<{ href_?: string }>).detail.href_ ?? ''
+          if (onExternalLinkRef.current?.(href)) return
           void openExternalUrlOrch(href).catch(() => undefined)
         })
         /* Keys pressed while the page iframe has focus never reach the window. */
@@ -321,10 +344,8 @@ export default function EpubDocumentBlock({
            jump cut. */
         view.renderer.setAttribute('animated', '')
         view.renderer.setAttribute('margin', '36px')
-        view.renderer.setAttribute('gap', '8%')
-        view.renderer.setAttribute('max-inline-size', '600px')
-        view.renderer.setAttribute('max-column-count', lookRef.current.spread ? '2' : '1')
-        view.renderer.setStyles?.(buildEpubReaderCssBlock(currentPrefs, currentTheme))
+        applyPageMarginsBlock(view.renderer, lookRef.current.spread)
+        view.renderer.setStyles?.(buildEpubReaderCssBlock(currentPrefs, currentTheme, lookRef.current.spread))
         setToc(flattenTocBlock(book.toc))
 
         const saved = readEpubReadingPositionBlock(path)
@@ -352,8 +373,8 @@ export default function EpubDocumentBlock({
     const view = viewRef.current
     if (!view?.renderer) return
     view.renderer.setAttribute('flow', prefs.flow)
-    view.renderer.setAttribute('max-column-count', spread ? '2' : '1')
-    view.renderer.setStyles?.(buildEpubReaderCssBlock(prefs, look))
+    applyPageMarginsBlock(view.renderer, spread)
+    view.renderer.setStyles?.(buildEpubReaderCssBlock(prefs, look, spread))
   }, [prefs, look, spread])
 
   const applyPrefsBlock = useCallback((next: EpubReaderPrefsBlock) => {

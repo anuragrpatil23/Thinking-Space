@@ -14,6 +14,7 @@ import { Button } from '@/components/lego_blocks/units/ui/button'
 import PdfPageCanvasBlock from '@/components/lego_blocks/units/PdfPageCanvasBlock'
 import PdfPageScrubberBlock from '@/components/lego_blocks/units/PdfPageScrubberBlock'
 import PdfToolbarMenuBlock from '@/components/lego_blocks/units/PdfToolbarMenuBlock'
+import type { ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import PdfPageJumpBlock from '@/components/lego_blocks/units/PdfPageJumpBlock'
 import PdfMarkSettingsBlock from '@/components/lego_blocks/units/PdfMarkSettingsBlock'
 import PdfSelectionHighlightBarBlock from '@/components/lego_blocks/units/PdfSelectionHighlightBarBlock'
@@ -40,6 +41,8 @@ import {
 } from '@/services/lego_blocks/units/pdfAnnotationGeometryBlock'
 import { cn } from '@/lib/utils'
 import { readPdfDocumentOrch } from '@/services/orchestrators/pdfDocumentsOrch'
+import { usePdfChapterStartsBlock } from '@/components/lego_blocks/hooks/shared/usePdfChapterStartsBlock'
+import { computePdfChapterProgressBlock, formatPdfChapterProgressBlock } from '@/services/lego_blocks/units/pdfChapterProgressBlock'
 import { usePdfPageMetricsBlock } from '@/components/lego_blocks/hooks/shared/usePdfPageMetricsBlock'
 import { usePdfReadingPositionBlock } from '@/components/lego_blocks/hooks/shared/usePdfReadingPositionBlock'
 import { readPdfReadingPositionBlock } from '@/services/lego_blocks/units/pdfReadingPositionBlock'
@@ -355,6 +358,11 @@ export default function PdfDocumentBlock({
   const [paperTheme, setPaperTheme] = useState<PdfPaperThemeBlock>(readPdfPaperThemeBlock)
 
   const { metricsByPage, fallbackMetrics } = usePdfPageMetricsBlock(docProxy)
+  const chapterStarts = usePdfChapterStartsBlock(docProxy)
+  const chapterProgress = useMemo(
+    () => computePdfChapterProgressBlock(chapterStarts, pageNumber, numPages),
+    [chapterStarts, pageNumber, numPages],
+  )
 
   /* The annotation layer still speaks in crop terms so its geometry stays
      general, but the reader no longer trims: an empty crop is the identity. */
@@ -1117,6 +1125,17 @@ export default function PdfDocumentBlock({
     if (el) el.scrollIntoView({ behavior: immediate ? 'auto' : 'smooth', block: 'start' })
   }, [])
 
+  const currentChapterPage = chapterProgress?.startPage ?? null
+  const chapterEntries = useMemo<ContextMenuEntryBlock[]>(() => chapterStarts.map((start, index) => {
+    const length = (chapterStarts[index + 1]?.page ?? numPages + 1) - start.page
+    return {
+      key: `${start.page}`,
+      label: `${start.title || `Page ${start.page}`} · ${length} ${length === 1 ? 'page' : 'pages'}`,
+      checked: start.page === currentChapterPage,
+      onClick: () => { setPageNumber(start.page); scrollToPage(start.page) },
+    }
+  }), [chapterStarts, currentChapterPage, numPages, scrollToPage])
+
   useEffect(() => {
     const viewport = viewportRef.current
     if (!viewport || numPages <= 0) return
@@ -1432,6 +1451,18 @@ export default function PdfDocumentBlock({
           numPages={numPages}
           onJump={(p) => { setPageNumber(p); scrollToPage(p) }}
         />
+        {/* The end of the book is too far off to read toward; the end of the
+            chapter is not. Shown only when the PDF's outline says where
+            chapters start. It opens the chapter list, so the reader can see
+            what comes next and how long each stretch is. */}
+        {chapterProgress && (
+          <PdfToolbarMenuBlock
+            title={chapterProgress.title ? `Chapters · in: ${chapterProgress.title}` : 'Chapters'}
+            className="px-2 text-xs font-normal tabular-nums text-muted-foreground"
+            label={formatPdfChapterProgressBlock(chapterProgress)}
+            entries={chapterEntries}
+          />
+        )}
         <Button
           type="button"
           variant="ghost"

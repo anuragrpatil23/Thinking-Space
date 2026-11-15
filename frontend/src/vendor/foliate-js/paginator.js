@@ -476,11 +476,11 @@ export class Paginator extends HTMLElement {
             --_max-height: var(--_max-block-size);
             display: grid;
             grid-template-columns:
-                minmax(var(--_half-gap), 1fr)
+                minmax(var(--ts-outer-gap, var(--_half-gap)), 1fr)
                 var(--_half-gap)
                 minmax(0, calc(var(--_max-width) - var(--_gap)))
                 var(--_half-gap)
-                minmax(var(--_half-gap), 1fr);
+                minmax(var(--ts-outer-gap, var(--_half-gap)), 1fr);
             grid-template-rows:
                 minmax(var(--_margin), 1fr)
                 minmax(0, var(--_max-height))

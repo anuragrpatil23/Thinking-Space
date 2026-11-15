@@ -52,7 +52,7 @@ const FONT_STACKS_BLOCK: Record<Exclude<EpubFontFaceBlock, 'publisher'>, string>
 
 /** The stylesheet laid over every section. `!important` is the only way to
     win against a book's own CSS, which is often itself `!important`. */
-export function buildEpubReaderCssBlock(prefs: EpubReaderPrefsBlock, theme: PdfPaperThemeBlock): string {
+export function buildEpubReaderCssBlock(prefs: EpubReaderPrefsBlock, theme: PdfPaperThemeBlock, spread = false): string {
   const background = PDF_PAPER_THEME_BACKGROUNDS_BLOCK[theme]
   const ink = INK_BLOCK[theme]
   const rules = [
@@ -69,6 +69,12 @@ export function buildEpubReaderCssBlock(prefs: EpubReaderPrefsBlock, theme: PdfP
   }
   if (theme === 'night') {
     rules.push('a, a * { color: #8ab4f8 !important; }')
+  }
+  /* A book assembled in the app can mark what only makes sense on a two-page
+     spread — the blank left-hand page that puts a chapter opener on the right.
+     One page at a time, that would be a blank page to turn past. */
+  if (!spread) {
+    rules.push('.ts-spread-only { display: none !important; }')
   }
   if (prefs.fontFace !== 'publisher') {
     rules.push(`body, body *:not(code):not(pre):not(kbd):not(samp) { font-family: ${FONT_STACKS_BLOCK[prefs.fontFace]} !important; }`)

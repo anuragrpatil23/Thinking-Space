@@ -14,6 +14,12 @@ Only the files the EPUB path reaches are copied. Not vendored: `pdf.js` and
 
 - `view.js` `makeBook`: the PDF branch throws `UnsupportedTypeError` instead of
   importing `./pdf.js`.
+- `paginator.js` `#top` grid: the two outer tracks read
+  `var(--ts-outer-gap, var(--_half-gap))` instead of `var(--_half-gap)`.
+  Upstream ties a page's outer margin to twice its inner one; the variable
+  (inherited from the host element, unset = upstream behaviour) lets
+  `EpubDocumentBlock` widen the gutter at the spine without pushing the text
+  further from the book's outer edges.
 
 ## Security
 
@@ -25,4 +31,4 @@ CSP into every section before it is turned into a blob. See
 docs/contracts/SECURITY.md.
 
 To update: copy the same file list from a newer upstream commit, re-apply the
-patch above, update the pinned commit here.
+patches above, update the pinned commit here.
