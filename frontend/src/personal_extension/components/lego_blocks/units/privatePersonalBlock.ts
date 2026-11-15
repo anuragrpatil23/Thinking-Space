@@ -178,3 +178,11 @@ export async function readPrivateSecFilingBlock(companyFolder: string, ticker: s
   if (!loadSecFilings) return null
   return (await loadSecFilings()).readSecFilingOrch(companyFolder, ticker, filing)
 }
+
+// Textbooks (what has been studied, arranged by subject, with questions after
+// each topic) is a tab of its own, from the same private folder; without it
+// there is no tab and no route.
+const TEXTBOOKS_MODULES = import.meta.glob<{ default: ComponentType }>('../../../thinkingspace-personal/textbooks.tsx')
+const loadTextbooks = Object.values(TEXTBOOKS_MODULES)[0]
+export const TEXTBOOKS_TAB_AVAILABLE = Boolean(loadTextbooks)
+export const PrivateTextbooksBlock = loadTextbooks ? lazy(loadTextbooks) : null

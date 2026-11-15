@@ -18,6 +18,7 @@ const STATIC_WEB_HIDDEN_ROUTES_BLOCK = new Set([
   '/password-manager',
   '/personal-tools',
   '/personal-extension',
+  '/textbooks',
   '/ai/chat',
   '/ai/schedules',
   '/web',

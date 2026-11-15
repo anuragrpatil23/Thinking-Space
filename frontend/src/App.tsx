@@ -11,6 +11,7 @@ import {
   Settings as SettingsIcon,
   Sparkles,
   Waypoints,
+  LibraryBig,
   X,
 } from 'lucide-react'
 import {
@@ -112,6 +113,7 @@ import { REFRESH_ALL_EVENT_BLOCK } from './services/lego_blocks/units/refreshAll
 import { useChromeStateEventBlock } from './components/lego_blocks/hooks/shared/useChromeStateEventBlock'
 import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
 import { useF9AppSyncBlock } from './personal_extension/components/lego_blocks/hooks/useF9AppSyncBlock'
+import { PrivateTextbooksBlock } from './personal_extension/components/lego_blocks/units/privatePersonalBlock'
 import { useNativePushNavigationBlock } from './components/lego_blocks/hooks/shared/useNativePushNavigationBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, isEmbeddedTerminalSupported, setVaultRoot } from './services/orchestrators/runtimeOrch'
@@ -379,6 +381,8 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
     icon: OrganizerNavIcon,
     activePaths: ['/file-organizer'],
   },
+  // Only when the private folder provides the tab (privatePersonalBlock).
+  ...(PrivateTextbooksBlock ? [{ to: '/textbooks', label: 'Textbooks', icon: LibraryBig }] : []),
 ].filter(item => !isHiddenInStaticWebBuildBlock(item.to))
 
 const TOOLS_NAV_ITEM: NavItem = {
@@ -1906,6 +1910,7 @@ function App() {
       case '/tools':
       case '/personal-tools':
       case '/vault-graph':
+      case '/textbooks':
         navigate(resolveWorkspaceNavigationRoute(navItemId))
         return
       case 'search':
@@ -3189,6 +3194,7 @@ function App() {
                   {/* Vault Graph is a top-level rail destination — standalone,
                       outside the Tools shell so it carries no tools subtab bar. */}
                   <Route path="/vault-graph" element={<VaultGraph />} />
+                  {PrivateTextbooksBlock && <Route path="/textbooks" element={<div className="ltm-page"><PrivateTextbooksBlock /></div>} />}
                   <Route path="/ai-activity" element={<HomeSection section="ai-activity" />} />
                   <Route path="/worked-on" element={<HomeSection section="worked-on" />} />
                   <Route path="/board" element={<HomeSection section="board" />} />
