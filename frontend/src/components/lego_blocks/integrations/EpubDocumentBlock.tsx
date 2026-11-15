@@ -104,7 +104,12 @@ const PAGE_TURN_GESTURE_GAP_MS_BLOCK = 220
 const PAGE_TURN_TRAVEL_PX_BLOCK = 40
 
 interface EpubDocumentBlockProps {
+  /** The book's vault path; also the key its reading position is kept under. */
   path: string
+  /** A book that is not a vault file (one assembled in memory): supplies its
+   *  bytes in place of reading `path`, which then only names it. Read when
+   *  `path` changes. */
+  loadFile?: () => Promise<File>
   active?: boolean
   /** Where the document header wants the toolbar docked; null floats it. */
   toolbarHost?: HTMLElement | null
@@ -129,12 +134,15 @@ function flattenTocBlock(items: readonly FoliateTocItem[] | undefined, depth = 0
 
 export default function EpubDocumentBlock({
   path,
+  loadFile,
   active = true,
   toolbarHost = null,
   topInset = 0,
   className,
 }: EpubDocumentBlockProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const loadFileRef = useRef(loadFile)
+  loadFileRef.current = loadFile
   const deskRef = useRef<HTMLDivElement | null>(null)
   const bookRef = useRef<HTMLDivElement | null>(null)
   /* Every page turn goes through here; assigned once the look is known. */
@@ -254,7 +262,7 @@ export default function EpubDocumentBlock({
     void (async () => {
       try {
         const [file, foliate] = await Promise.all([
-          readEpubDocumentOrch(path),
+          loadFileRef.current ? loadFileRef.current() : readEpubDocumentOrch(path),
           import('@/vendor/foliate-js/view.js'),
         ])
         if (cancelled) return
