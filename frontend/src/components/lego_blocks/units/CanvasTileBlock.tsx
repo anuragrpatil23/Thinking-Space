@@ -21,6 +21,30 @@ interface Props {
   onRemove: (id: string) => void
 }
 
+// A line written as ~~like this~~ (after its list number or bullet, if it has
+// one) is drawn struck through, the tildes hidden: something finished or moved
+// elsewhere, kept in sight until its owner deletes it. Only when the post-it
+// is not being typed in; in the editor the tildes show, and can be taken out.
+const STRUCK_LINE_BLOCK = /^(\s*(?:\d+[.)]|[-*•])\s+)?~~(.+?)~~(\s*)$/
+
+function PostItTextBlock({ text }: { text: string }) {
+  if (!text.includes('~~')) return <>{text}</>
+  const lines = text.split('\n')
+  return (
+    <>
+      {lines.map((line, i) => {
+        const m = STRUCK_LINE_BLOCK.exec(line)
+        return (
+          <span key={i}>
+            {m ? <>{m[1] ?? ''}<s style={{ opacity: 0.5 }}>{m[2]}</s></> : line}
+            {i < lines.length - 1 ? '\n' : ''}
+          </span>
+        )
+      })}
+    </>
+  )
+}
+
 function CanvasTileBlockImpl({
   tile,
   focused,
@@ -184,7 +208,7 @@ function CanvasTileBlockImpl({
               pointerEvents: 'none',
             }}
           >
-            {tile.text || 'Type something…'}
+            {tile.text ? <PostItTextBlock text={tile.text} /> : 'Type something…'}
           </div>
         )
       ) : tile.type === 'note' ? (
