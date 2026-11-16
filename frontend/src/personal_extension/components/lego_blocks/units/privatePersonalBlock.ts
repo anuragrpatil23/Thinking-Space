@@ -3,6 +3,7 @@ import type { F9SyncEngineBlock } from '@/personal_extension/services/orchestrat
 import { lazy, type ComponentType } from 'react'
 import type { WebullUniverseGroupBlock } from '@/personal_extension/services/lego_blocks/units/webullCompanyUniverseBlock'
 import type { GapPositionLinkBlock } from '@/personal_extension/services/lego_blocks/units/webullGapLinkMatchBlock'
+import type { PositionBoughtBlock } from '@/personal_extension/services/lego_blocks/units/webullPositionBoughtBlock'
 import type { TimedPriceBandBlock } from './F9PriceChartBlock'
 
 // The Gaps tab lives in a private folder (personal_extension/thinkingspace-personal) that is not
@@ -149,12 +150,18 @@ export const PrivateFeedDropsBlock = loadFeedDrops ? lazy(loadFeedDrops) : null
 
 // Which gap holds which position, read from the gaps' positions logs; without
 // the private folder there are no gaps, so every position shows none.
-const GAP_LINKS_MODULES = import.meta.glob<{ loadPrivateGapPositionLinks: (executionRoot: string) => Promise<GapPositionLinkBlock[]> }>('../../../thinkingspace-personal/gapLinks.ts')
+const GAP_LINKS_MODULES = import.meta.glob<{ loadPrivateGapPositionLinks: (executionRoot: string) => Promise<GapPositionLinkBlock[]>; loadPrivatePositionBought?: (executionRoot: string) => Promise<Record<string, PositionBoughtBlock>> }>('../../../thinkingspace-personal/gapLinks.ts')
 const loadGapLinks = Object.values(GAP_LINKS_MODULES)[0]
 
 export async function loadPrivateGapPositionLinksBlock(executionRoot: string): Promise<GapPositionLinkBlock[]> {
   if (!loadGapLinks) return []
   return loadGapLinks().then(m => m.loadPrivateGapPositionLinks(executionRoot)).catch(() => [])
+}
+
+/** When each held position was bought, from Webull's record of trades; nothing without the private folder. */
+export async function loadPrivatePositionBoughtBlock(executionRoot: string): Promise<Record<string, PositionBoughtBlock>> {
+  if (!loadGapLinks) return {}
+  return loadGapLinks().then(m => m.loadPrivatePositionBought?.(executionRoot) ?? {}).catch(() => ({}))
 }
 
 // Feed → Value Line: fetch every missing back issue, paced like a reader.

@@ -13,6 +13,11 @@ import WebullCompanyPageBlock, { type WebullCompanyHoldingBlock } from './Webull
 import { useGapPositionLinksBlock } from '@/personal_extension/components/lego_blocks/hooks/useGapPositionLinksBlock'
 import { gapsForPositionBlock } from '@/personal_extension/services/lego_blocks/units/webullGapLinkMatchBlock'
 import { GapChipsBlock } from '@/personal_extension/components/lego_blocks/units/GapChipsBlock'
+import { useWebullAccountNamesBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullAccountNamesBlock'
+import { resolveAccountNamesBlock } from '@/personal_extension/services/lego_blocks/units/webullAccountNamesBlock'
+import { PositionBoughtCellBlock } from '@/personal_extension/components/lego_blocks/units/PositionBoughtCellBlock'
+import { usePositionBoughtBlock } from '@/personal_extension/components/lego_blocks/hooks/usePositionBoughtBlock'
+import { positionBoughtKeyBlock, positionBoughtViewBlock } from '@/personal_extension/services/lego_blocks/units/webullPositionBoughtBlock'
 import WebullOverallPageBlock from './WebullOverallPageBlock'
 import WebullSidebarBlock from './WebullSidebarBlock'
 import { F9SyncLineBlock, openF9SyncPanelBlock } from '../units/F9SyncLineBlock'
@@ -591,77 +596,44 @@ interface WebullAccountLabelEntryBlock {
   label: string
   accountId: string | null
   accountNumber: string | null
+  accountClass: string | null
 }
 
-// Friendly personal-account display names. These are now derived primarily from
-// the stable Webull `account_class` / `account_label` carried on each account, so
-// labels follow account identity rather than discovery order (which previously
-// crossed the two labels whenever Webull returned accounts in a different order).
-// The order-based list below is only a last-resort fallback for accounts that
-// arrive without any class/label; any account beyond it falls back to "Account N".
-const PERSONAL_WEBULL_ACCOUNT_CLASS_LABELS_BLOCK: Record<string, string> = {
-  ROTH_IRA: 'Roth IRA',
-  INDIVIDUAL_CASH: 'Individual Cash',
-  TRADITIONAL_IRA: 'Traditional IRA',
-  MARGIN: 'Margin',
-}
-const PERSONAL_WEBULL_ACCOUNT_LABELS_BLOCK = ['Individual Cash', 'Roth IRA']
-
-// Resolve a friendly label for a single account, preferring stable identity
-// (account_class, then Webull's own account_label) and only falling back to the
-// discovery-order list when neither is present.
-function resolveFriendlyAccountLabelBlock(
-  account: { accountClass?: string | null; accountLabel?: string | null },
-  orderIndex: number,
-): string {
-  const normalizedClass = (account.accountClass ?? '').trim().toUpperCase()
-  if (normalizedClass && PERSONAL_WEBULL_ACCOUNT_CLASS_LABELS_BLOCK[normalizedClass]) {
-    return PERSONAL_WEBULL_ACCOUNT_CLASS_LABELS_BLOCK[normalizedClass]
-  }
-  const apiLabel = (account.accountLabel ?? '').trim()
-  if (apiLabel) return apiLabel
-  return PERSONAL_WEBULL_ACCOUNT_LABELS_BLOCK[orderIndex] ?? `Account ${orderIndex + 1}`
-}
-
+// What each account is called: the name set in Settings → Webull → Accounts,
+// else the one from Webull's account type (webullAccountNamesBlock). Keyed by
+// account identity, never by the order Webull lists them in.
 function buildAccountLabelEntriesBlock(
   accounts: WebullAccountSnapshotOrch[],
   selectedAccount: WebullSelectedAccountOrch | null,
+  customNames: Record<string, string>,
 ): WebullAccountLabelEntryBlock[] {
   const sourceAccounts = accounts.length > 0
     ? accounts.map((snapshot) => snapshot.account)
     : (selectedAccount ? [selectedAccount] : [])
-  const seen = new Set<string>()
-  const entries: WebullAccountLabelEntryBlock[] = []
-
-  for (const account of sourceAccounts) {
-    const accountId = firstStringBlock(account.accountId) || null
-    const accountNumber = firstStringBlock(account.accountNumber) || null
-    if (!accountId && !accountNumber) continue
-    const dedupeKey = `${accountId ?? ''}::${accountNumber ?? ''}`
-    if (seen.has(dedupeKey)) continue
-    seen.add(dedupeKey)
-    entries.push({
-      label: resolveFriendlyAccountLabelBlock(account, entries.length),
-      accountId,
-      accountNumber,
-    })
-  }
-
-  return entries
+  return resolveAccountNamesBlock(sourceAccounts.map(account => ({
+    accountId: firstStringBlock(account.accountId) || null,
+    accountNumber: firstStringBlock(account.accountNumber) || null,
+    accountClass: firstStringBlock(account.accountClass) || null,
+    accountLabel: firstStringBlock(account.accountLabel) || null,
+  })), customNames).map(a => ({ label: a.name, accountId: a.accountId, accountNumber: a.accountNumber, accountClass: a.accountClass }))
 }
 
-function resolveAccountLabelBlock(
+function resolveAccountEntryBlock(
   accountLabels: WebullAccountLabelEntryBlock[],
   accountId: unknown,
   accountNumber: unknown,
-): string | null {
+): WebullAccountLabelEntryBlock | null {
   const normalizedAccountId = firstStringBlock(accountId) || null
   const normalizedAccountNumber = firstStringBlock(accountNumber) || null
   for (const entry of accountLabels) {
-    if (normalizedAccountId && entry.accountId === normalizedAccountId) return entry.label
-    if (normalizedAccountNumber && entry.accountNumber === normalizedAccountNumber) return entry.label
+    if (normalizedAccountId && entry.accountId === normalizedAccountId) return entry
+    if (normalizedAccountNumber && entry.accountNumber === normalizedAccountNumber) return entry
   }
   return null
+}
+
+function resolveAccountLabelBlock(accountLabels: WebullAccountLabelEntryBlock[], accountId: unknown, accountNumber: unknown): string | null {
+  return resolveAccountEntryBlock(accountLabels, accountId, accountNumber)?.label ?? null
 }
 
 function formatAccountDescriptorBlock(entry: WebullAccountLabelEntryBlock): string {
@@ -669,10 +641,10 @@ function formatAccountDescriptorBlock(entry: WebullAccountLabelEntryBlock): stri
   return suffix ? `${entry.label} (${suffix})` : entry.label
 }
 
-// Pastel account chip colors: Roth IRA = bright amber, Individual Cash (and any other) = soft blue.
-function accountPillClassBlock(label: string | null): string {
+// Pastel account chip colors by account type, so a renamed account keeps its color: Roth IRA = bright amber, any other = soft blue.
+function accountPillClassBlock(accountClass: string | null): string {
   const base = 'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium'
-  const color: ChipColorBlock = label === 'Roth IRA' ? 'amber' : 'sky'
+  const color: ChipColorBlock = (accountClass ?? '').toUpperCase() === 'ROTH_IRA' ? 'amber' : 'sky'
   return `${base} ${chipColorClassBlock(color)}`
 }
 
@@ -1879,9 +1851,14 @@ export default function WebullWorkspaceBlock({
     setDetailPanelNodeId(null)
   }, [backlogTableModel.nodeByUuid, detailPanelNodeId])
 
+  const { accounts: namedAccounts } = useWebullAccountNamesBlock(executionRoot, fetchedAt)
+  const customAccountNames = useMemo(
+    () => Object.fromEntries(namedAccounts.filter(a => a.custom && a.accountNumber).map(a => [a.accountNumber as string, a.name])),
+    [namedAccounts],
+  )
   const accountLabelEntries = useMemo(
-    () => buildAccountLabelEntriesBlock(accounts, selectedAccount),
-    [accounts, selectedAccount],
+    () => buildAccountLabelEntriesBlock(accounts, selectedAccount, customAccountNames),
+    [accounts, selectedAccount, customAccountNames],
   )
 
   // A position's name as two lines: "$300 Call" over its raw symbol, or the
@@ -1917,7 +1894,9 @@ export default function WebullWorkspaceBlock({
   }, [backlogTableModel.positionRefByNodeUuid, executionRoot])
 
   // Which gap holds each position, from the gaps' positions logs
-  const gapLinks = useGapPositionLinksBlock(executionRoot)
+  // Read again after the table's own refresh, and whenever a gap's positions change
+  const gapLinks = useGapPositionLinksBlock(executionRoot, fetchedAt)
+  const positionBought = usePositionBoughtBlock(executionRoot, fetchedAt)
   const openGapFile = onOpenFileForReading ?? onOpenNodeFile
   const webullRowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
     return [
@@ -2041,6 +2020,31 @@ export default function WebullWorkspaceBlock({
           return formatCurrencyFromUnknownBlock(payload?.last_price)
         },
       },
+      // When it was bought: each buy still held, when there were several
+      {
+        id: 'bought',
+        label: 'Bought',
+        widthClassName: 'w-[8.5rem]',
+        align: 'right',
+        render: (node) => {
+          if (node.type !== 'epic') return null
+          const metadata = asMetadataRecordBlock(node)
+          const payload = metadata.webull_position_payload as Record<string, unknown> | undefined
+          if (!payload) return null
+          const type = firstStringBlock(payload.instrument_type).toUpperCase()
+          if (type === 'CASH') return null
+          const key = positionBoughtKeyBlock({
+            account: firstStringBlock(payload.account_number, payload.accountNumber) || null,
+            symbol: firstStringBlock(payload.symbol) || null,
+            isOption: type === 'OPTION' || Boolean(firstStringBlock(payload.option_expire_date)),
+            strike: firstStringBlock(payload.option_exercise_price) || null,
+            right: firstStringBlock(payload.option_type) || null,
+            expiry: firstStringBlock(payload.option_expire_date) || null,
+          })
+          const view = positionBoughtViewBlock(key ? positionBought[key] : undefined, readNumberFromRecordBlock(metadata, 'webull_position_quantity'))
+          return <PositionBoughtCellBlock view={view} />
+        },
+      },
       // Last, beside Status: which gap holds the position
       {
         id: 'gap',
@@ -2063,7 +2067,7 @@ export default function WebullWorkspaceBlock({
         },
       },
     ]
-  }, [accountLabelEntries, gapLinks, openGapFile])
+  }, [accountLabelEntries, gapLinks, openGapFile, positionBought])
 
   // The closed tab is the same table with the columns a closed position has:
   // what it sold for and how it came out, in place of today's price and P/L.
@@ -2178,7 +2182,7 @@ export default function WebullWorkspaceBlock({
       <div className="space-y-1.5 text-xs text-muted-foreground">
         <div className="flex flex-wrap items-center gap-2">
           {accountLabel && (
-            <span className={accountPillClassBlock(accountLabel)}>
+            <span className={accountPillClassBlock(resolveAccountEntryBlock(accountLabelEntries, payload?.account_id ?? payload?.accountId, payload?.account_number ?? payload?.accountNumber)?.accountClass ?? null)}>
               {accountLabel}
             </span>
           )}
