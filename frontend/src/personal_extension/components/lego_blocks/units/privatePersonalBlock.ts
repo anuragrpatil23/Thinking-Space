@@ -28,6 +28,42 @@ export interface PrivateCompanyGapsPropsBlock {
 
 export const PrivateCompanyGapsBlock = loadCompanyGaps ? lazy(loadCompanyGaps) : null
 
+// The company page's "what if" for all its open positions together; without
+// the private folder the page has none.
+const COMPANY_WHAT_IF_MODULES = import.meta.glob<{ default: ComponentType<PrivateCompanyWhatIfPropsBlock> }>('../../../thinkingspace-personal/companyWhatIf.tsx')
+const loadCompanyWhatIf = Object.values(COMPANY_WHAT_IF_MODULES)[0]
+
+export interface PrivateCompanyWhatIfPropsBlock {
+  ticker: string
+  executionRoot: string
+  /** The company's open positions, as the index lists them. */
+  positions: Array<{
+    /** The Webull position id: what the table's What if column matches rows by. */
+    id: string
+    instrumentType: string | null
+    optionType: string | null
+    optionExpireDate: string | null
+    optionExercisePrice: string | null
+    quantity: string | null
+    cost: string | null
+    lastPrice: string | null
+  }>
+  /** The stock's price from the last Webull pull, when the stock itself is held. */
+  livePrice: number | null
+  /** Each position's result at the price asked, for the table's What if column; null when nothing is asked. Pass a stable setter. */
+  onBreakdown?: (b: PrivateWhatIfBreakdownBlock | null) => void
+}
+
+export interface PrivateWhatIfBreakdownBlock {
+  label: string
+  byId: Record<string, { worth: number; made: number }>
+  /** All the positions together: what they cost, and their worth and result. */
+  paid: number
+  total: { worth: number; made: number }
+}
+
+export const PrivateCompanyWhatIfBlock = loadCompanyWhatIf ? lazy(loadCompanyWhatIf) : null
+
 // Noticed (things seen happening, before they are gaps) lives in the same
 // private folder: its own F9 view, and a section on the company page.
 const NOTICED_MODULES = import.meta.glob<{ default: ComponentType }>('../../../thinkingspace-personal/noticed.tsx')

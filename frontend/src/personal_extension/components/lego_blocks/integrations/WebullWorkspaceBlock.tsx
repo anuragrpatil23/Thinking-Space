@@ -16,6 +16,7 @@ import { GapChipsBlock } from '@/personal_extension/components/lego_blocks/units
 import { useWebullAccountNamesBlock } from '@/personal_extension/components/lego_blocks/hooks/useWebullAccountNamesBlock'
 import { resolveAccountNamesBlock } from '@/personal_extension/services/lego_blocks/units/webullAccountNamesBlock'
 import { PositionBoughtCellBlock } from '@/personal_extension/components/lego_blocks/units/PositionBoughtCellBlock'
+import { daysAheadBlock } from '@/personal_extension/services/lego_blocks/units/daysAheadBlock'
 import { usePositionBoughtBlock } from '@/personal_extension/components/lego_blocks/hooks/usePositionBoughtBlock'
 import { positionBoughtKeyBlock, positionBoughtViewBlock } from '@/personal_extension/services/lego_blocks/units/webullPositionBoughtBlock'
 import WebullOverallPageBlock from './WebullOverallPageBlock'
@@ -28,7 +29,7 @@ import { F9_PANEL_CLASS_BLOCK } from '@/personal_extension/components/lego_block
 import { scanWebullStudyVaultBlock } from '@/personal_extension/services/lego_blocks/integrations/webullStudyVaultBlock'
 import TickerLogoBlock from '@/personal_extension/components/lego_blocks/units/TickerLogoBlock'
 import WebullFeedBlock from './WebullFeedBlock'
-import { PrivateCompanyPanelsBlock, PrivatePositionMarkBlock, PrivatePositionPanelBlock, PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock, PrivateStudyBlock } from '../units/privatePersonalBlock'
+import { type PrivateWhatIfBreakdownBlock, PrivateCompanyPanelsBlock, PrivateCompanyWhatIfBlock, PrivatePositionMarkBlock, PrivatePositionPanelBlock, PrivateGapsBlock, PrivateNoticedBlock, PrivateSimBlock, PrivateStudyBlock } from '../units/privatePersonalBlock'
 import ScrollableZoomSurfaceBlock from '@/components/lego_blocks/integrations/ScrollableZoomSurfaceBlock'
 import { TagDisclosureButtonBlock, TagListEditorBlock } from '@/components/lego_blocks/integrations/TagManagerBlock'
 import type { BacklogRowColumnBlock } from '@/components/lego_blocks/units/BacklogRowColumnsBlock'
@@ -1897,6 +1898,8 @@ export default function WebullWorkspaceBlock({
   // Read again after the table's own refresh, and whenever a gap's positions change
   const gapLinks = useGapPositionLinksBlock(executionRoot, fetchedAt)
   const positionBought = usePositionBoughtBlock(executionRoot, fetchedAt)
+  // The company what-if's answer, position by position, while a price is asked in it
+  const [whatIfBreakdown, setWhatIfBreakdown] = useState<PrivateWhatIfBreakdownBlock | null>(null)
   const openGapFile = onOpenFileForReading ?? onOpenNodeFile
   const webullRowColumns = useMemo<BacklogRowColumnBlock[]>(() => {
     return [
@@ -1931,13 +1934,8 @@ export default function WebullWorkspaceBlock({
           const expiry = firstStringBlock(payload?.option_expire_date).slice(0, 10)
             || ((node.title ?? '').match(/-(\d{4}-\d{2}-\d{2})-(?:CALL|PUT)$/)?.[1] ?? '')
           if (!expiry) return null
-          const days = Math.round((Date.parse(`${expiry}T00:00:00`) - new Date().setHours(0, 0, 0, 0)) / 86_400_000)
-          // Weekdays from tomorrow through expiry; market holidays aren't subtracted.
-          let businessDays = 0
-          for (let i = 1; i <= days; i += 1) {
-            const day = new Date(Date.parse(`${expiry}T12:00:00`) - (days - i) * 86_400_000).getDay()
-            if (day !== 0 && day !== 6) businessDays += 1
-          }
+          // Counted the one way every what-if counts it
+          const { calendar: days, trading: businessDays } = daysAheadBlock(expiry)
           return (
             <span className="block leading-tight">
               <span className="block tabular-nums">
@@ -2020,6 +2018,35 @@ export default function WebullWorkspaceBlock({
           return formatCurrencyFromUnknownBlock(payload?.last_price)
         },
       },
+      // What the company what-if asks, for each position: shown only while a price is asked
+      ...(whatIfBreakdown ? [{
+        id: 'what-if',
+        label: `If ${whatIfBreakdown.label}`,
+        widthClassName: 'w-[9rem]',
+        align: 'right' as const,
+        render: (node: Parameters<BacklogRowColumnBlock['render']>[0]) => {
+          // The company row: all of them together
+          let r: { worth: number; made: number } | undefined
+          let paid = 0
+          if (node.type === 'program') {
+            r = whatIfBreakdown.total
+            paid = whatIfBreakdown.paid
+          } else if (node.type === 'epic') {
+            const payload = asMetadataRecordBlock(node).webull_position_payload as Record<string, unknown> | undefined
+            const id = firstStringBlock(payload?.id).split('::').pop() ?? ''
+            r = id ? whatIfBreakdown.byId[id] : undefined
+            paid = r ? r.worth - r.made : 0
+          }
+          if (!r) return null
+          const tone = r.made >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+          return (
+            <span className={cn('block leading-tight tabular-nums', node.type === 'program' && 'font-semibold')} title={`Worth about ${formatCurrencyBlock(r.worth)}, against ${formatCurrencyBlock(paid)} paid`}>
+              <span className={cn('block', tone)}>{r.made >= 0 ? '+' : '−'}{formatCurrencyBlock(Math.abs(r.made))}</span>
+              {paid > 0 && <span className={cn('block text-[11px] font-normal', tone)}>{r.made >= 0 ? '+' : '−'}{Math.abs((r.made / paid) * 100).toFixed(Math.abs(r.made / paid) < 0.1 ? 1 : 0)}%</span>}
+            </span>
+          )
+        },
+      }] : []),
       // When it was bought: each buy still held, when there were several
       {
         id: 'bought',
@@ -2067,7 +2094,7 @@ export default function WebullWorkspaceBlock({
         },
       },
     ]
-  }, [accountLabelEntries, gapLinks, openGapFile, positionBought])
+  }, [accountLabelEntries, gapLinks, openGapFile, positionBought, whatIfBreakdown])
 
   // The closed tab is the same table with the columns a closed position has:
   // what it sold for and how it came out, in place of today's price and P/L.
@@ -3108,6 +3135,19 @@ export default function WebullWorkspaceBlock({
               onOpenFile={onOpenFileForReading ?? onOpenNodeFile}
               positionsSlot={(
                 <div className="space-y-3">
+                  {PrivateCompanyWhatIfBlock && executionRoot && (
+                    <Suspense fallback={null}>
+                      <div className={cn(F9_PANEL_CLASS_BLOCK, 'px-4 py-3')}>
+                        <PrivateCompanyWhatIfBlock
+                          ticker={selectedCompany.companyTicker}
+                          executionRoot={executionRoot}
+                          positions={selectedCompany.positions.filter(p => normalizePositionStatusBlock(p.status) !== 'archived')}
+                          livePrice={selectedCompanyLivePrice}
+                          onBreakdown={setWhatIfBreakdown}
+                        />
+                      </div>
+                    </Suspense>
+                  )}
                   <div className={cn(F9_PANEL_CLASS_BLOCK, 'overflow-hidden pt-2')}>
                     {backlogLayoutEditMode && (
                     <div className="flex flex-wrap items-center gap-3 px-4 pb-2">
