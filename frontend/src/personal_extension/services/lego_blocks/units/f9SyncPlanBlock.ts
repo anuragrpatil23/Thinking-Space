@@ -83,6 +83,11 @@ export interface F9SyncDatasetPlanBlock {
   /** One piece of work with no company (the back-issue allowance) */
   job?: boolean
   /**
+   * A job about your own account (the Webull pull): it comes with Sync mine too,
+   * and Sync now always runs it, whatever its cadence, so what you just bought shows.
+   */
+  mine?: boolean
+  /**
    * Raised when what the dataset writes changes (a new file, a new column): every
    * company synced under an older version is due at the next check, whatever its
    * cadence. The ledger cannot see a code change; this is the lever that can.
@@ -184,9 +189,11 @@ export function planBlock(
     if (ask.datasets && !ask.datasets.includes(d.id)) continue
     const ledger = ledgers[d.id] ?? {}
     if (d.job) {
-      // A job belongs to no company: it comes with everyone, or when named
-      if ((ask.scope === 'everyone' || ask.datasets) && !only && wanted(ledger[''], d.cadence, d.version)) {
-        items.push({ key: f9SyncKeyBlock(d.id, ''), dataset: d.id, ticker: '', yours: false, order: d.order })
+      // A job belongs to no company: it comes with everyone, or when named; one about your account comes with yours too
+      const asked = ask.scope === 'everyone' || ask.datasets || d.mine
+      const due = (d.mine && ask.mode === 'now') || wanted(ledger[''], d.cadence, d.version)
+      if (asked && !only && due) {
+        items.push({ key: f9SyncKeyBlock(d.id, ''), dataset: d.id, ticker: '', yours: Boolean(d.mine), order: d.order })
       }
       continue
     }

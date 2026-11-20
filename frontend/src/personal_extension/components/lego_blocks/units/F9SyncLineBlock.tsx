@@ -380,7 +380,7 @@ export function F9SyncLineBlock({ account }: { account?: F9SyncAccountBlock }) {
         type="button"
         disabled={!snap.canSync || (Boolean(snap.run) && snap.left.yours > 0)}
         onClick={() => { void engine.syncNow('yours') }}
-        title={snap.canSync ? `Bring your ${snap.companies.yours} businesses up to date, with a fresh quote. The whole market is in the sheet.` : 'Fetching needs the desktop app'}
+        title={snap.canSync ? `Bring your ${snap.companies.yours} businesses up to date, with a fresh quote and your Webull positions. The whole market is in the sheet.` : 'Fetching needs the desktop app'}
         className={cn(ACTION, 'inline-flex shrink-0 items-center gap-1 px-1.5 py-1 font-medium')}
       >
         <RefreshCw className={cn('h-3 w-3', snap.run && snap.left.yours > 0 && 'animate-spin motion-reduce:animate-none')} />Sync mine

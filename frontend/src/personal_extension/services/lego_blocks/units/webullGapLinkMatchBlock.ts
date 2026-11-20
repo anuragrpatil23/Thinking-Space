@@ -1,7 +1,11 @@
 // Which gap a Webull position belongs to, from the gaps' positions logs (read
 // by the private Gaps folder when it is present). A leg that carries the
 // position's Webull id is the match; otherwise an option leg of the same
-// contract, or a stock leg of the same company. One contract can sit on
+// contract, or a stock leg of the same company, that carries no Webull id of
+// its own (written by hand). A leg linked to another Webull position never
+// claims this one: two positions in the same contract (another account, or
+// bought on another day) are separate, and the one no log links is on no gap.
+// One contract can sit on
 // several gaps, bought for each at a different time, so a position can show
 // more than one.
 
@@ -46,7 +50,7 @@ export function gapsForPositionBlock(links: GapPositionLinkBlock[], p: WebullPos
     ? byId
     : !symbol || type === 'CASH'
       ? []
-      : links.filter(l => l.symbol.toUpperCase() === symbol && (isOption
+      : links.filter(l => !l.webullId && l.symbol.toUpperCase() === symbol && (isOption
         ? l.kind === 'option' && l.expiry === p.optionExpireDate && l.right === right && strike !== null && l.strike !== null && Math.abs(l.strike - strike) < 1e-6
         : l.kind === 'stock'))
   const seen = new Map<string, GapOfPositionBlock>()

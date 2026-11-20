@@ -22,6 +22,8 @@ export function registerF9SyncDatasetsOrch(engine: F9SyncEngineBlock): void {
     cadence: 'six-hours',
     order: 1,
     job: true,
+    // Your positions: Sync mine pulls them, so a new buy shows on its company page
+    mine: true,
     covers: () => false,
     available: webullAccountAvailableOrch,
     // Asked for by hand, it may sign in again (a 2FA prompt); on its own, never

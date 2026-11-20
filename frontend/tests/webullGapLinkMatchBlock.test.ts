@@ -18,6 +18,13 @@ describe('gapsForPositionBlock', () => {
     expect(gapsForPositionBlock(links, { id: 'X', ...option }).map(g => g.gapId)).toEqual(['G-0040', 'G-0031'])
   })
 
+  it('never lends a leg linked to another Webull position to this one', () => {
+    // Two positions in one contract: G-0093 links W2 only, so W1 is on no gap
+    const links = [link({ gapId: 'G-0093', webullId: 'W2' })]
+    expect(gapsForPositionBlock(links, { id: 'ACC::W1', ...option })).toEqual([])
+    expect(gapsForPositionBlock(links, { id: 'ACC::W2', ...option }).map(g => g.gapId)).toEqual(['G-0093'])
+  })
+
   it('matches a stock to the gaps holding the company\'s stock, and cash to none', () => {
     const links = [link({ gapId: 'G-0003', kind: 'stock', strike: null, expiry: null }), link({ gapId: 'G-0004' })]
     expect(gapsForPositionBlock(links, { id: null, symbol: 'tsla', instrumentType: 'STOCK', optionType: null, optionExpireDate: null, optionExercisePrice: null }).map(g => g.gapId)).toEqual(['G-0003'])

@@ -60,6 +60,13 @@ describe('what a request asks for', () => {
       'live-quote|AAPL', 'live-quote|NVDA', 'live-quote|SPY', 'prices|AAPL', 'prices|SPY', 'calls|AAPL', 'calls|NVDA',
     ])
   })
+  it('your own account (a mine job): Sync mine always pulls it, the automatic check only when due', () => {
+    const account: F9SyncDatasetPlanBlock = { id: 'webull-account', cadence: 'six-hours', order: 1, job: true, mine: true, covers: () => false }
+    const fresh = { 'webull-account': { '': recordResultBlock({ outcome: 'fetched' }, '2026-11-10T22:00:00Z') } }
+    const plan = (ask: Parameters<typeof planBlock>[3]) => planBlock([account, prices], companies, fresh, ask, now)
+    expect(plan({ scope: 'yours', mode: 'now' })[0]).toMatchObject({ key: 'webull-account|', yours: true })
+    expect(plan({ scope: 'everyone', mode: 'due' }).map(i => i.key)).not.toContain('webull-account|')
+  })
   it('a dataset forced: every company it covers, due or not', () => {
     expect(keys({ scope: 'everyone', mode: 'force', datasets: ['prices'] })).toEqual(['prices|AAPL', 'prices|NVDA', 'prices|SPY', 'prices|ZM'])
     expect(keys({ scope: 'yours', mode: 'force', datasets: ['back-issues'] })).toEqual(['back-issues|'])
