@@ -858,6 +858,13 @@ export default function WebullCompanyPageBlock({
           )}
         </F9PanelBlock>
 
+        {/* Its own card under the study: levels change more often than a study, and companies without one need them too. */}
+        {PrivateCompanyPanelsBlock && executionRoot && ticker && (
+          <Suspense fallback={null}>
+            <PrivateCompanyPanelsBlock slot="levels" ticker={ticker} executionRoot={executionRoot} prices={prices} livePrice={null} studyFrontmatter={study?.rawFrontmatter ?? null} onOpenFile={onOpenFile} />
+          </Suspense>
+        )}
+
         {dossier && (dossier.researchFolderPath || reports.length > 0 || dossier.earningsCalls.length > 0 || dossier.filings.length > 0 || dossier.optionMonths.length > 0 || valueLine.available) && (
           <ResearchPanelBlock reports={reports} calls={dossier.earningsCalls} filings={dossier.filings} annualReports={dossier.annualReports} optionMonths={dossier.optionMonths} companyFolder={executionRoot && ticker ? `${executionRoot.replace(/\/+$/, '')}/${ticker}` : null} ticker={ticker} callsSync={callsSync} groups={dossier.researchGroups} valueLine={valueLine} onOpenFile={onOpenFile} />
         )}

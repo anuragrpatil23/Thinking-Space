@@ -90,12 +90,12 @@ const loadCompanyNoticed = Object.values(COMPANY_NOTICED_MODULES)[0]
 export const PrivateCompanyNoticedBlock = loadCompanyNoticed ? lazy(loadCompanyNoticed) : null
 
 // More private company-page panels, from the same folder: one module rendered
-// in two spots (the main column, and inside the study panel). Without the
+// in several spots (the main column, inside the study panel, its own card under it). Without the
 // folder the page has neither.
 export interface PrivateCompanyPanelsPropsBlock {
   ticker: string
   executionRoot: string
-  slot: 'main' | 'study' | 'closed-sold' | 'closed-result' | 'price-range'
+  slot: 'main' | 'study' | 'levels' | 'closed-sold' | 'closed-result' | 'price-range'
   /** slot 'price-range' only: the first day the chart shows; null for all. */
   windowFrom?: string | null
   /** slots 'closed-sold' and 'closed-result' only: the closed position's file; the slot renders that cell's content (what it sold for, how it came out). */
