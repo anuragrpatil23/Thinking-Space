@@ -12,6 +12,7 @@ import {
   Sparkles,
   Waypoints,
   LibraryBig,
+  FlaskConical,
   X,
 } from 'lucide-react'
 import {
@@ -113,7 +114,7 @@ import { REFRESH_ALL_EVENT_BLOCK } from './services/lego_blocks/units/refreshAll
 import { useChromeStateEventBlock } from './components/lego_blocks/hooks/shared/useChromeStateEventBlock'
 import { useNativeTopChromeBlock } from './components/lego_blocks/hooks/shared/useNativeTopChromeBlock'
 import { useF9AppSyncBlock } from './personal_extension/components/lego_blocks/hooks/useF9AppSyncBlock'
-import { PrivateTextbooksBlock } from './personal_extension/components/lego_blocks/units/privatePersonalBlock'
+import { PrivateSiResearchBlock, PrivateTextbooksBlock } from './personal_extension/components/lego_blocks/units/privatePersonalBlock'
 import { useNativePushNavigationBlock } from './components/lego_blocks/hooks/shared/useNativePushNavigationBlock'
 import { deriveAdaptiveShellStateOrch } from './services/orchestrators/uiNavigationOrch'
 import { isElectron, isEmbeddedTerminalSupported, setVaultRoot } from './services/orchestrators/runtimeOrch'
@@ -383,6 +384,7 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   },
   // Only when the private folder provides the tab (privatePersonalBlock).
   ...(PrivateTextbooksBlock ? [{ to: '/textbooks', label: 'Textbooks', icon: LibraryBig }] : []),
+  ...(PrivateSiResearchBlock ? [{ to: '/si-research', label: 'si-research', icon: FlaskConical }] : []),
 ].filter(item => !isHiddenInStaticWebBuildBlock(item.to))
 
 const TOOLS_NAV_ITEM: NavItem = {
@@ -1911,6 +1913,7 @@ function App() {
       case '/personal-tools':
       case '/vault-graph':
       case '/textbooks':
+      case '/si-research':
         navigate(resolveWorkspaceNavigationRoute(navItemId))
         return
       case 'search':
@@ -3195,6 +3198,7 @@ function App() {
                       outside the Tools shell so it carries no tools subtab bar. */}
                   <Route path="/vault-graph" element={<VaultGraph />} />
                   {PrivateTextbooksBlock && <Route path="/textbooks" element={<div className="ltm-page"><PrivateTextbooksBlock /></div>} />}
+                  {PrivateSiResearchBlock && <Route path="/si-research" element={<div className="ltm-page absolute inset-0 !min-h-0 overflow-hidden"><PrivateSiResearchBlock /></div>} />}
                   <Route path="/ai-activity" element={<HomeSection section="ai-activity" />} />
                   <Route path="/worked-on" element={<HomeSection section="worked-on" />} />
                   <Route path="/board" element={<HomeSection section="board" />} />

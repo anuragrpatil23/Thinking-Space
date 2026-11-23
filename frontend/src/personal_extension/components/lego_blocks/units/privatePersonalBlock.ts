@@ -243,3 +243,9 @@ const TEXTBOOKS_MODULES = import.meta.glob<{ default: ComponentType }>('../../..
 const loadTextbooks = Object.values(TEXTBOOKS_MODULES)[0]
 export const TEXTBOOKS_TAB_AVAILABLE = Boolean(loadTextbooks)
 export const PrivateTextbooksBlock = loadTextbooks ? lazy(loadTextbooks) : null
+
+// si-research (how a research project's ideas evolved, as a board) is a tab of
+// its own, from the same private folder; without it there is no tab and no route.
+const SI_RESEARCH_MODULES = import.meta.glob<{ default: ComponentType }>('../../../thinkingspace-personal/siResearch.tsx')
+const loadSiResearch = Object.values(SI_RESEARCH_MODULES)[0]
+export const PrivateSiResearchBlock = loadSiResearch ? lazy(loadSiResearch) : null

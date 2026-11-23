@@ -19,6 +19,7 @@ const STATIC_WEB_HIDDEN_ROUTES_BLOCK = new Set([
   '/personal-tools',
   '/personal-extension',
   '/textbooks',
+  '/si-research',
   '/ai/chat',
   '/ai/schedules',
   '/web',
