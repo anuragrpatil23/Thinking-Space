@@ -108,6 +108,13 @@ describe('reading a code folder', () => {
     expect(listed.type === 'folder' && listed.files.map(file => file.name)).not.toContain('.env')
   })
 
+  it('leaves generated folders out of the listing', async () => {
+    await mkdir(path.join(root, '__pycache__'))
+    await mkdir(path.join(root, 'node_modules'))
+    const listed = await describeLinkedCodeBlock(root, '')
+    expect(listed.type === 'folder' && listed.folders).toEqual(['guo-2026'])
+  })
+
   it('gives a large file its size and refuses to load it', async () => {
     await writeFile(path.join(root, 'big.jsonl'), 'x'.repeat(600 * 1024))
     expect(await describeLinkedCodeBlock(root, 'big.jsonl')).toEqual({ type: 'file', size: 600 * 1024 })

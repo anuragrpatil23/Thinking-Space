@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight, Folder, FolderOpen, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { explorerBaseFileIconBlock, explorerFileIconColorBlock } from '@/components/lego_blocks/units/explorerFileIconBlock'
@@ -13,8 +13,17 @@ export interface ReadOnlyTreeListingBlock {
 
 type TreeNodeBlock = { listing?: ReadOnlyTreeListingBlock; error?: string }
 
-export default function ReadOnlyFileTreeBlock({ root, load, selected, onSelect, formatSize }: {
+/** A folder and every folder above it, from the top down. */
+function foldersDownToBlock(path: string, root: string): string[] {
+  const inside = root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path === root ? '' : path
+  const parts = inside.split('/').filter(Boolean)
+  return parts.map((_, index) => [root, ...parts.slice(0, index + 1)].filter(Boolean).join('/'))
+}
+
+export default function ReadOnlyFileTreeBlock({ root, reveal = null, load, selected, onSelect, formatSize }: {
   root: string
+  /** A folder to open on, with the folders above it expanded and it scrolled into view. */
+  reveal?: string | null
   load: (path: string) => Promise<ReadOnlyTreeListingBlock>
   selected: string | null
   onSelect: (path: string) => void
@@ -22,6 +31,8 @@ export default function ReadOnlyFileTreeBlock({ root, load, selected, onSelect, 
 }) {
   const [nodes, setNodes] = useState<Record<string, TreeNodeBlock>>({})
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const scrolledRef = useRef(false)
 
   const fetchNode = useCallback((path: string) => {
     load(path)
@@ -30,10 +41,22 @@ export default function ReadOnlyFileTreeBlock({ root, load, selected, onSelect, 
   }, [load])
 
   useEffect(() => {
+    const opened = reveal === null ? [] : foldersDownToBlock(reveal, root)
+    scrolledRef.current = false
     setNodes({})
-    setExpanded(new Set())
-    fetchNode(root)
-  }, [root, fetchNode])
+    setExpanded(new Set(opened))
+    for (const path of [root, ...opened]) fetchNode(path)
+  }, [root, reveal, fetchNode])
+
+  // Once, when the row it opened on has loaded.
+  useEffect(() => {
+    const target = selected ?? reveal
+    if (scrolledRef.current || !target) return
+    const row = containerRef.current?.querySelector(`[data-tree-path="${CSS.escape(target)}"]`)
+    if (!row) return
+    scrolledRef.current = true
+    row.scrollIntoView({ block: 'center' })
+  }, [nodes, selected, reveal])
 
   const toggle = (path: string) => {
     const opening = !expanded.has(path)
@@ -66,6 +89,7 @@ export default function ReadOnlyFileTreeBlock({ root, load, selected, onSelect, 
           key={`folder-${folderPath}`}
           type="button"
           aria-expanded={open}
+          data-tree-path={folderPath}
           onClick={() => toggle(folderPath)}
           className={cn('ltm-explorer-row ltm-explorer-folder-row group relative flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/90 transition-colors hover:bg-muted/70', open && 'bg-muted/50')}
           style={{ paddingLeft: `${8 + depth * 14}px` }}
@@ -87,6 +111,7 @@ export default function ReadOnlyFileTreeBlock({ root, load, selected, onSelect, 
           key={`file-${filePath}`}
           type="button"
           aria-current={isSelected ? 'true' : undefined}
+          data-tree-path={filePath}
           onClick={() => onSelect(filePath)}
           className={cn(
             'ltm-explorer-row ltm-explorer-file-row group relative flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground/80 transition-colors hover:bg-muted/70',
@@ -105,5 +130,5 @@ export default function ReadOnlyFileTreeBlock({ root, load, selected, onSelect, 
     return rows
   }
 
-  return <div className="ltm-explorer-compact min-h-full">{renderPath(root, 0)}</div>
+  return <div ref={containerRef} className="ltm-explorer-compact min-h-full">{renderPath(root, 0)}</div>
 }

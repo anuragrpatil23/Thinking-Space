@@ -11,8 +11,8 @@ import { fileSizeWordBlock, folderFileRankBlock, sortFolderFilesBlock } from '@/
 import { describeLinkedCodePathOrch } from '@/services/orchestrators/linkedFoldersOrch'
 
 // A side sheet on a linked code folder for any page: the Explorer's tree beside
-// the app's document reader. Read only. It starts at the path it is given and
-// can't go above it.
+// the app's document reader. Read only. The tree is the whole folder, opened at
+// the path it is given, because the code for a path often lives beside it.
 
 const SHEET_DEFAULT_WIDTH_BLOCK = 1040
 const SHEET_MIN_WIDTH_BLOCK = 560
@@ -28,7 +28,7 @@ export default function LinkedCodeFolderSheetBlock({ folderId, name, start, init
   onClose: () => void
 }) {
   const { width, resizing, handle } = useResizableSheetBlock('linked-code-folder', SHEET_DEFAULT_WIDTH_BLOCK, { minWidth: SHEET_MIN_WIDTH_BLOCK })
-  const [top, setTop] = useState<string | null>(null)
+  const [reveal, setReveal] = useState<string | null>(null)
   const [file, setFile] = useState<string | null>(initialFile ?? null)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,11 +37,11 @@ export default function LinkedCodeFolderSheetBlock({ folderId, name, start, init
     describeLinkedCodePathOrch(folderId, start).then((entry) => {
       if (!live) return
       if (entry.type === 'file') {
-        setTop(parentOf(start))
+        setReveal(parentOf(start))
         setFile(start)
         return
       }
-      setTop(start)
+      setReveal(start)
       // Open on what explains the folder, so the sheet is never blank.
       const lead = sortFolderFilesBlock(entry.files)[0]
       if (lead && folderFileRankBlock(lead.name) <= 1) setFile(current => current ?? (start ? `${start}/${lead.name}` : lead.name))
@@ -75,7 +75,7 @@ export default function LinkedCodeFolderSheetBlock({ folderId, name, start, init
           <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {error
               ? <p className="p-2 text-[13px] text-muted-foreground">{error}</p>
-              : top !== null && <ReadOnlyFileTreeBlock root={top} load={load} selected={file} onSelect={setFile} formatSize={fileSizeWordBlock} />}
+              : reveal !== null && <ReadOnlyFileTreeBlock root="" reveal={reveal} load={load} selected={file} onSelect={setFile} formatSize={fileSizeWordBlock} />}
           </div>
         </nav>
         <section className="min-w-0 flex-1">

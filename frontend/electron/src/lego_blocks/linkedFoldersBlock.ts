@@ -27,6 +27,8 @@ const TEXT_EXTENSIONS = new Set(['.md', '.txt']);
 const DOCUMENT_TEXT_EXTENSIONS = new Set(['.md', '.txt', '.html']);
 const DOCUMENT_BYTE_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif']);
 const MAX_DOCUMENT_BYTES = 200 * 1024 * 1024;
+// Generated folders, left out of a code folder's listing.
+const GENERATED_FOLDERS = new Set(['__pycache__', 'node_modules']);
 const MAX_CODE_TEXT_BYTES = 512 * 1024;
 // Shown as text only. A script here is something to read; nothing in a code folder is ever launched.
 const CODE_TEXT_EXTENSIONS = new Set([
@@ -152,7 +154,7 @@ export async function describeLinkedCodeBlock(root: string, relPath: unknown): P
   })));
   return {
     type: 'folder',
-    folders: entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort(),
+    folders: entries.filter(entry => entry.isDirectory() && !GENERATED_FOLDERS.has(entry.name)).map(entry => entry.name).sort(),
     files: files.sort((a, b) => a.name.localeCompare(b.name)),
   };
 }
