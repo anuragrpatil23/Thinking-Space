@@ -25,7 +25,9 @@ function monthKeyBlock(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
-export default function F9MonthTimelineBlock({ title, note, items, className }: {
+export default function F9MonthTimelineBlock({ title, note, items, className, startAtFirst = false }: {
+  /** Begin at the first month with anything in it, rather than January. */
+  startAtFirst?: boolean
   title: string
   note?: string
   items: F9TimelineItemBlock[]
@@ -49,8 +51,8 @@ export default function F9MonthTimelineBlock({ title, note, items, className }: 
         future: key > nowKey,
         items: (byMonth.get(key) ?? []).sort((a, b) => b.day.localeCompare(a.day)),
       }
-    })
-  }, [dated, year])
+    }).filter(month => !startAtFirst || month.key >= [...byMonth.keys()].sort()[0])
+  }, [dated, year, startAtFirst])
 
   if (dated.length === 0) return null
 

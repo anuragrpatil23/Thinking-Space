@@ -519,6 +519,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Vault folder picker dialog
   selectVaultFolder: () => ipcRenderer.invoke('vault:selectFolder'),
+  // Linked folders: main keeps the list; the renderer names a folder by id, never by path
+  linkedFoldersList: () => ipcRenderer.invoke('linkedFolders:list'),
+  linkedFoldersAdd: (kind: 'papers' | 'code', project: string | null) => ipcRenderer.invoke('linkedFolders:add', kind, project),
+  linkedFoldersRemove: (id: string) => ipcRenderer.invoke('linkedFolders:remove', id),
+  linkedFoldersListDir: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:listDir', id, relPath),
+  linkedFoldersReadText: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:readText', id, relPath),
+  linkedFoldersOpen: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:open', id, relPath),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   /** Runs ~/.thinking-space/hooks/after-daily-pass.sh when it exists. */
   runAfterDailyPassHook: () => ipcRenderer.invoke('hooks:afterDailyPass') as Promise<{ ran: boolean; code: number | null; output: string }>,

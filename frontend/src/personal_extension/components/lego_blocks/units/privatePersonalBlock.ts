@@ -249,3 +249,6 @@ export const PrivateTextbooksBlock = loadTextbooks ? lazy(loadTextbooks) : null
 const SI_RESEARCH_MODULES = import.meta.glob<{ default: ComponentType }>('../../../thinkingspace-personal/siResearch.tsx')
 const loadSiResearch = Object.values(SI_RESEARCH_MODULES)[0]
 export const PrivateSiResearchBlock = loadSiResearch ? lazy(loadSiResearch) : null
+const SI_RESEARCH_SETTINGS_MODULES = import.meta.glob<{ default: ComponentType }>('../../../thinkingspace-personal/siResearchSettings.tsx')
+const loadSiResearchSettings = Object.values(SI_RESEARCH_SETTINGS_MODULES)[0]
+export const PrivateSiResearchSettingsBlock = loadSiResearchSettings ? lazy(loadSiResearchSettings) : null

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { FeedAiReaderSettingsRowBlock } from '@/personal_extension/components/lego_blocks/integrations/FeedAiReaderSettingsRowBlock'
 import { IgnoredCompaniesSettingsRowBlock } from '@/personal_extension/components/lego_blocks/integrations/IgnoredCompaniesSettingsRowBlock'
 import { WebullAccountNamesSettingsRowBlock } from '@/personal_extension/components/lego_blocks/integrations/WebullAccountNamesSettingsRowBlock'
-import { SIM_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
+import { PrivateSiResearchSettingsBlock, SIM_TAB_AVAILABLE } from '@/personal_extension/components/lego_blocks/units/privatePersonalBlock'
 import { isSettingsTabHiddenInStaticWebBuildBlock } from '@/services/lego_blocks/units/staticWebBuildBlock'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/lego_blocks/units/ui/button'
@@ -150,7 +150,7 @@ import {
 
 // 'activity' is no longer a tab — it folded into 'ai_activity' — but it stays
 // here as the busyAction key for saving the file-activity paths.
-export type SettingsTabId = 'workspace_profiles' | 'navigation' | 'theme' | 'explorer' | 'moon_scene' | 'activity' | 'ai_activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer' | 'projects'
+export type SettingsTabId = 'si_research' | 'workspace_profiles' | 'navigation' | 'theme' | 'explorer' | 'moon_scene' | 'activity' | 'ai_activity' | 'scheduler' | 'ai' | 'ai_websites' | 'web_bookmarks' | 'google_docs_sheets' | 'webull' | 'rss' | 'cache' | 'vault' | 'about' | 'developer' | 'projects'
 export type SettingsTabWithProfileId = SettingsTabId | 'profile'
 
 interface SettingsOrchProps {
@@ -255,6 +255,7 @@ const TAB_GROUPS: Array<{ heading: string; items: Array<{ id: SettingsTabWithPro
     heading: 'Integrations',
     items: [
       { id: 'webull', label: 'Webull' },
+      ...(PrivateSiResearchSettingsBlock ? [{ id: 'si_research' as const, label: 'si-research' }] : []),
     ],
   },
   {
@@ -2053,6 +2054,10 @@ export default function SettingsOrch({
 
           <IgnoredCompaniesSettingsRowBlock executionFolderPath={webullSavedExecutionFolderPath} />
         </>
+      )}
+
+      {activeTab === 'si_research' && PrivateSiResearchSettingsBlock && (
+        <Suspense fallback={null}><PrivateSiResearchSettingsBlock /></Suspense>
       )}
 
       {activeTab === 'rss' && (

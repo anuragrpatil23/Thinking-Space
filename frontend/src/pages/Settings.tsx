@@ -44,6 +44,8 @@ export default function Settings({
         ? 'ai'
         : requestedTab === 'webull'
           ? 'webull'
+        : requestedTab === 'si_research'
+          ? 'si_research'
           : requestedTab === 'google-docs-sheets'
             ? 'google_docs_sheets'
           : requestedTab === 'explorer'

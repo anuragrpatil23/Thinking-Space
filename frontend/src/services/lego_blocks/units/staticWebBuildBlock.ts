@@ -32,6 +32,7 @@ const STATIC_WEB_HIDDEN_SETTINGS_TABS_BLOCK = new Set([
   'google_docs_sheets',
   'rss',
   'webull',
+  'si_research',
 ])
 
 /** Whether `route` is left out of the static web build. */

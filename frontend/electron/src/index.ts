@@ -56,6 +56,14 @@ import { earningsCallGetBlock, earningsCallsListBlock } from './lego_blocks/earn
 import { yahooOptionsChainBlock } from './lego_blocks/yahooOptionsBlock';
 import { installReaderAdblockBlock } from './lego_blocks/readerAdblockBlock';
 import {
+  addLinkedFolderBlock,
+  linkedFileToOpenBlock,
+  listLinkedFolderBlock,
+  readLinkedFoldersBlock,
+  readLinkedTextBlock,
+  writeLinkedFoldersBlock,
+} from './lego_blocks/linkedFoldersBlock';
+import {
   readAiPlanUsageBlock,
   readClaudeUsageLogBlock,
   disposeAiPlanUsageBlock,
@@ -1929,6 +1937,45 @@ ipcMain.handle('webull:signedRequest', async (_event, payload: WebullSignedReque
   const headers = buildWebullSignedHeadersBlock(payload, credentials);
   const body = typeof payload.body === 'string' ? payload.body : '';
   return requestTextOverHttps(payload.method, payload.url, headers, body);
+});
+
+// -- Linked folders --
+// Folders outside the vault that the user picked. Only the native picker adds
+// one; the renderer names a folder by id and never supplies a root. Code folders
+// are stored but cannot be read or opened yet.
+const linkedFoldersFile = () => path.join(app.getPath('userData'), 'linked-folders.json');
+const linkedPapersFolder = async (id: unknown) => {
+  const folder = (await readLinkedFoldersBlock(linkedFoldersFile())).find(item => item.id === id);
+  if (!folder) throw new Error('That linked folder is no longer set up.');
+  if (folder.kind !== 'papers') throw new Error('Files in a code folder cannot be read yet.');
+  return folder;
+};
+const linkedFoldersWithStatus = async () => Promise.all((await readLinkedFoldersBlock(linkedFoldersFile())).map(async folder => ({
+  ...folder,
+  available: await fsPromises.stat(folder.path).then(stat => stat.isDirectory()).catch(() => false),
+})));
+
+ipcMain.handle('linkedFolders:list', async () => linkedFoldersWithStatus());
+ipcMain.handle('linkedFolders:add', async (_event, kind: unknown, project: unknown) => {
+  const result = await dialog.showOpenDialog(myCapacitorApp.getMainWindow(), {
+    properties: ['openDirectory'],
+    title: kind === 'code' ? 'Choose a code folder to link' : 'Choose your papers folder',
+  });
+  if (result.canceled || result.filePaths.length === 0) return linkedFoldersWithStatus();
+  const file = linkedFoldersFile();
+  await writeLinkedFoldersBlock(file, await addLinkedFolderBlock(await readLinkedFoldersBlock(file), result.filePaths[0], kind, project));
+  return linkedFoldersWithStatus();
+});
+ipcMain.handle('linkedFolders:remove', async (_event, id: unknown) => {
+  const file = linkedFoldersFile();
+  await writeLinkedFoldersBlock(file, (await readLinkedFoldersBlock(file)).filter(folder => folder.id !== id));
+  return linkedFoldersWithStatus();
+});
+ipcMain.handle('linkedFolders:listDir', async (_event, id: unknown, relPath: unknown) => listLinkedFolderBlock((await linkedPapersFolder(id)).path, relPath));
+ipcMain.handle('linkedFolders:readText', async (_event, id: unknown, relPath: unknown) => readLinkedTextBlock((await linkedPapersFolder(id)).path, relPath));
+ipcMain.handle('linkedFolders:open', async (_event, id: unknown, relPath: unknown) => {
+  const openErr = await shell.openPath(await linkedFileToOpenBlock((await linkedPapersFolder(id)).path, relPath));
+  if (openErr) throw new Error(openErr);
 });
 
 // -- Vault folder picker --

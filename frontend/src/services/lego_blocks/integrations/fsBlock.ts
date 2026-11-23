@@ -371,6 +371,12 @@ interface ElectronAPI {
   copyPath?(vaultRoot: string, fromRelPath: string, toRelPath: string): Promise<void>
   revealPath?(vaultRoot: string, relPath: string): Promise<void>
   openPath?(vaultRoot: string, relPath: string): Promise<void>
+  linkedFoldersList?(): Promise<Array<{ id: string; path: string; kind: 'papers' | 'code'; project: string | null; available: boolean }>>
+  linkedFoldersAdd?(kind: 'papers' | 'code', project: string | null): Promise<Array<{ id: string; path: string; kind: 'papers' | 'code'; project: string | null; available: boolean }>>
+  linkedFoldersRemove?(id: string): Promise<Array<{ id: string; path: string; kind: 'papers' | 'code'; project: string | null; available: boolean }>>
+  linkedFoldersListDir?(id: string, relPath: string): Promise<{ folders: string[]; files: string[] }>
+  linkedFoldersReadText?(id: string, relPath: string): Promise<string>
+  linkedFoldersOpen?(id: string, relPath: string): Promise<void>
   git(vaultRoot: string, args: string[]): Promise<string>
   excalidrawPluginStatus(vaultRoot: string): Promise<import('@/services/lego_blocks/units/typesBlock').ExcalidrawPluginStatus>
   installLatestExcalidrawPlugin(vaultRoot: string): Promise<import('@/services/lego_blocks/units/typesBlock').ExcalidrawPluginStatus>
