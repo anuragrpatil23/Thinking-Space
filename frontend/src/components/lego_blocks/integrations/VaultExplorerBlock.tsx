@@ -22,15 +22,12 @@ function ExcalidrawIcon({ className = 'h-4 w-4' }: { className?: string }) {
 }
 import {
   ChevronRight,
-  File,
-  FileText,
   Folder,
   FolderOpen,
   FilePlus,
   FolderPlus,
   Info,
   Link,
-  Link2,
   ListOrdered,
   Loader2,
   Plus,
@@ -71,6 +68,7 @@ import {
 import { addGlobalSyncRefreshListenerBlock } from '@/services/lego_blocks/units/globalSyncRefreshBlock'
 import { subscribeExternalVaultChangesBlock } from '@/services/lego_blocks/integrations/vaultExternalChangeBlock'
 import { cn } from '@/lib/utils'
+import { explorerBaseFileIconBlock, explorerFileIconColorBlock } from '@/components/lego_blocks/units/explorerFileIconBlock'
 import ContextMenuBlock, { type ContextMenuEntryBlock } from '@/components/lego_blocks/units/ui/ContextMenuBlock'
 import {
   Select,
@@ -355,22 +353,10 @@ export interface VaultExplorerHandle {
 }
 
 function getFileIcon(name: string) {
-  const lower = name.toLowerCase()
-  if (isExcalidrawPathBlock(lower)) return ExcalidrawIcon
-  if (lower.endsWith('.md')) return FileText
-  if (lower.endsWith('.url')) return Link2
-  return File
+  return isExcalidrawPathBlock(name.toLowerCase()) ? ExcalidrawIcon : explorerBaseFileIconBlock(name)
 }
 
-function getFileIconColor(name: string, isSelected: boolean): string {
-  if (isSelected) return 'text-white'
-  const lower = name.toLowerCase()
-  if (lower.endsWith('.url')) return 'text-blue-400'
-  if (isExcalidrawPathBlock(lower)) return 'text-violet-400'
-  if (lower.endsWith('.pdf')) return 'text-red-400'
-  if (lower.endsWith('.epub')) return 'text-amber-500'
-  return 'text-muted-foreground'
-}
+const getFileIconColor = explorerFileIconColorBlock
 
 function remapPathAfterMove(path: string, sourcePath: string, targetPath: string): string {
   if (path === sourcePath) return targetPath

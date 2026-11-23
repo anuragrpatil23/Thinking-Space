@@ -30,7 +30,7 @@ const MAX_DOCUMENT_BYTES = 200 * 1024 * 1024;
 const MAX_CODE_TEXT_BYTES = 512 * 1024;
 // Shown as text only. A script here is something to read; nothing in a code folder is ever launched.
 const CODE_TEXT_EXTENSIONS = new Set([
-  '.md', '.txt', '.rst', '.log', '.json', '.jsonl', '.yaml', '.yml', '.toml', '.csv', '.tsv', '.ipynb',
+  '.md', '.txt', '.rst', '.log', '.out', '.err', '.json', '.jsonl', '.yaml', '.yml', '.toml', '.csv', '.tsv', '.ipynb',
   '.py', '.sh', '.bash', '.zsh', '.r', '.jl', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.html', '.css', '.sql', '.slurm', '.lsf',
 ]);
 const CODE_TEXT_NAMES = new Set(['readme', 'license', 'makefile', 'dockerfile', 'requirements']);

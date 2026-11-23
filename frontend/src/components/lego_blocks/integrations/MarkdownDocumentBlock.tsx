@@ -149,7 +149,7 @@ import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPa
 import { claimPageTopInsetBlock } from '@/services/lego_blocks/units/pageTopInsetBlock'
 import { isHtmlDocumentPathBlock } from '@/services/lego_blocks/units/htmlDocumentPathBlock'
 import { isExternalDocumentPathBlock } from '@/services/lego_blocks/units/externalDocumentPathBlock'
-import { isLinkedDocumentPathBlock, linkedDocumentBreadcrumbBlock } from '@/services/lego_blocks/units/linkedDocumentPathBlock'
+import { isLinkedCodeDocumentPathBlock, isLinkedDocumentPathBlock, linkedDocumentBreadcrumbBlock } from '@/services/lego_blocks/units/linkedDocumentPathBlock'
 import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
 import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
 import { useScreenWakeLockBlock } from '@/components/lego_blocks/hooks/useScreenWakeLockBlock'
@@ -220,7 +220,7 @@ const SUPPORTED_TEXT_EXTENSIONS_BLOCK = new Set([
   'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'py', 'java', 'kt', 'kts', 'go', 'rs',
   'c', 'cc', 'cpp', 'cxx', 'h', 'hpp', 'cs', 'swift', 'rb', 'php', 'scala', 'lua', 'r',
   'sql', 'graphql', 'gql', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'xml', 'svg', 'tex',
-  'log', 'csv', 'tsv',
+  'log', 'out', 'err', 'rst', 'slurm', 'lsf', 'ipynb', 'csv', 'tsv',
 ])
 
 function isUnsupportedFilePathBlock(path: string): boolean {
@@ -810,7 +810,8 @@ function MarkdownTextDocumentRuntimeBlock({
       clearLongPressTimer()
     }
   }
-  const isHtmlDoc = isHtmlDocumentPathBlock(path)
+  // HTML in a linked code folder is source to read, so it never runs as a page.
+  const isHtmlDoc = isHtmlDocumentPathBlock(path) && !isLinkedCodeDocumentPathBlock(path)
   // Code files (.ts/.py/.json/…) are read/edited as code, never as markdown —
   // the prose renderer wraps comments/imports as paragraphs. In view mode they
   // get a read-only syntax-highlighted CM6 surface instead of ReactMarkdown.

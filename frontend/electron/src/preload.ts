@@ -527,6 +527,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   linkedFoldersReadText: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:readText', id, relPath),
   linkedFoldersCodeDescribe: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:codeDescribe', id, relPath),
   linkedFoldersCodeRead: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:codeRead', id, relPath),
+  linkedFoldersCodeReadBytes: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:codeReadBytes', id, relPath),
+  linkedFoldersCodeStat: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:codeStat', id, relPath),
   linkedFoldersDocRead: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:docRead', id, relPath),
   linkedFoldersDocReadBytes: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:docReadBytes', id, relPath),
   linkedFoldersDocStat: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:docStat', id, relPath),

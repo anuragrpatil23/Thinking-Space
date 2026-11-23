@@ -13,7 +13,7 @@ import { getStoredVaultRoot, setStoredVaultRoot } from '@/services/lego_blocks/u
 import { notifyFileChanged } from '@/services/lego_blocks/units/crossWindowSyncBlock'
 import { atomicTempPathBlock } from '@/services/lego_blocks/units/atomicWriteNamingBlock'
 import { isExternalDocumentPathBlock } from '@/services/lego_blocks/units/externalDocumentPathBlock'
-import { isLinkedDocumentPathBlock, parseLinkedDocumentPathBlock } from '@/services/lego_blocks/units/linkedDocumentPathBlock'
+import { isLinkedDocumentPathBlock, parseLinkedDocumentPathBlock, plainLinkedErrorBlock, type LinkedDocumentKindBlock } from '@/services/lego_blocks/units/linkedDocumentPathBlock'
 import { logDebug, logWarn } from '@/services/lego_blocks/units/debugLogBlock'
 import {
   base64ToBytesBlock,
@@ -379,6 +379,8 @@ interface ElectronAPI {
   linkedFoldersReadText?(id: string, relPath: string): Promise<string>
   linkedFoldersCodeDescribe?(id: string, relPath: string): Promise<{ type: 'file'; size: number } | { type: 'folder'; folders: string[]; files: Array<{ name: string; size: number }> }>
   linkedFoldersCodeRead?(id: string, relPath: string): Promise<string>
+  linkedFoldersCodeReadBytes?(id: string, relPath: string): Promise<string>
+  linkedFoldersCodeStat?(id: string, relPath: string): Promise<VaultStat>
   linkedFoldersDocRead?(id: string, relPath: string): Promise<string>
   linkedFoldersDocReadBytes?(id: string, relPath: string): Promise<string>
   linkedFoldersDocStat?(id: string, relPath: string): Promise<VaultStat>
@@ -735,7 +737,7 @@ class ElectronVaultFS implements VaultFS {
   }
 
   /** A linked-folder path, or null. Every write below refuses one. */
-  private linkedTarget(path: string): { folderId: string; relPath: string } | null {
+  private linkedTarget(path: string): { folderId: string; relPath: string; kind: LinkedDocumentKindBlock } | null {
     if (!isLinkedDocumentPathBlock(path)) return null
     const target = parseLinkedDocumentPathBlock(path)
     if (!target) throw new Error('That linked path is not valid.')
@@ -748,7 +750,10 @@ class ElectronVaultFS implements VaultFS {
 
   async read(path: string): Promise<string> {
     const linked = this.linkedTarget(path)
-    if (linked) return this.api.linkedFoldersDocRead!(linked.folderId, linked.relPath)
+    if (linked) {
+      const reader = linked.kind === 'code' ? this.api.linkedFoldersCodeRead : this.api.linkedFoldersDocRead
+      return reader!(linked.folderId, linked.relPath).catch((err) => { throw plainLinkedErrorBlock(err) })
+    }
     if (isExternalDocumentPathBlock(path) && this.api.externalFileRead) return this.api.externalFileRead(path)
     const safePath = assertValidVaultPathBlock('read', path)
     return this.api.read(this.vaultRoot, safePath)
@@ -767,7 +772,10 @@ class ElectronVaultFS implements VaultFS {
 
   async readBytes(path: string): Promise<Uint8Array> {
     const linked = this.linkedTarget(path)
-    if (linked) return base64ToBytesBlock(await this.api.linkedFoldersDocReadBytes!(linked.folderId, linked.relPath))
+    if (linked) {
+      const reader = linked.kind === 'code' ? this.api.linkedFoldersCodeReadBytes : this.api.linkedFoldersDocReadBytes
+      return base64ToBytesBlock(await reader!(linked.folderId, linked.relPath).catch((err) => { throw plainLinkedErrorBlock(err) }))
+    }
     const safePath = assertValidVaultPathBlock('readBytes', path)
     if (this.api.readBytesBase64) {
       const base64 = await this.api.readBytesBase64(this.vaultRoot, safePath)
@@ -810,7 +818,10 @@ class ElectronVaultFS implements VaultFS {
 
   async stat(path: string): Promise<VaultStat> {
     const linked = this.linkedTarget(path)
-    if (linked) return this.api.linkedFoldersDocStat!(linked.folderId, linked.relPath)
+    if (linked) {
+      const reader = linked.kind === 'code' ? this.api.linkedFoldersCodeStat : this.api.linkedFoldersDocStat
+      return reader!(linked.folderId, linked.relPath).catch((err) => { throw plainLinkedErrorBlock(err) })
+    }
     if (isExternalDocumentPathBlock(path) && this.api.externalFileStat) return this.api.externalFileStat(path)
     const safePath = assertValidVaultPathBlock('stat', path)
     return this.api.stat(this.vaultRoot, safePath)
