@@ -149,6 +149,7 @@ import { isExcalidrawPathBlock } from '@/services/lego_blocks/units/excalidrawPa
 import { claimPageTopInsetBlock } from '@/services/lego_blocks/units/pageTopInsetBlock'
 import { isHtmlDocumentPathBlock } from '@/services/lego_blocks/units/htmlDocumentPathBlock'
 import { isExternalDocumentPathBlock } from '@/services/lego_blocks/units/externalDocumentPathBlock'
+import { isLinkedDocumentPathBlock, linkedDocumentBreadcrumbBlock } from '@/services/lego_blocks/units/linkedDocumentPathBlock'
 import { readImageDocumentOrch } from '@/services/orchestrators/imageDocumentsOrch'
 import { useRouteActivityBlock } from '@/components/lego_blocks/hooks/shared/useRouteActivityBlock'
 import { useScreenWakeLockBlock } from '@/components/lego_blocks/hooks/useScreenWakeLockBlock'
@@ -665,13 +666,16 @@ function MarkdownTextDocumentRuntimeBlock({
   // A file from outside the vault shows its real folder, not vault crumbs, and
   // cannot be renamed (main serves only the exact path it granted).
   const isExternalDocument = isExternalDocumentPathBlock(path)
-  const breadcrumb = isExternalDocument
+  const isLinkedDocument = isLinkedDocumentPathBlock(path)
+  const breadcrumb = isLinkedDocument
+    ? linkedDocumentBreadcrumbBlock(path)
+    : isExternalDocument
     ? path.slice(0, path.lastIndexOf('/')) || '/'
     : path.split('/').slice(0, -1).join(' / ')
-  const canRenameInHeader = !isExternalDocument && !!(onOpenPathForEdit || onOpenPath)
+  const canRenameInHeader = !isExternalDocument && !isLinkedDocument && !!(onOpenPathForEdit || onOpenPath)
   const obsidianUrl = buildObsidianOpenUrlOrch(path)
   const openInSystemLabel = getOpenInSystemLabelOrch()
-  const canOpenInSystem = openInSystemLabel !== null
+  const canOpenInSystem = openInSystemLabel !== null && !isLinkedDocumentPathBlock(path)
   const openInSystemButtonLabel = openInSystemLabel ?? 'System'
   const openLinkedPath = onOpenPath ?? onOpenPathForEdit
   const openRelatedThoughtPath = onOpenPathForEdit ?? onOpenPath
@@ -733,7 +737,7 @@ function MarkdownTextDocumentRuntimeBlock({
     [],
   )
 
-  useReadingAttentionBlock(countsAsReading ? path : null, attending, {
+  useReadingAttentionBlock(countsAsReading && !isLinkedDocument ? path : null, attending, {
     surfaceRef: readingSurfaceRef,
     scrollRef: contentScrollRef,
     uuid: documentUuid,
@@ -1581,7 +1585,7 @@ function MarkdownTextDocumentRuntimeBlock({
   }, [isExcalidrawDoc, path])
 
   const startEditing = () => {
-    if (loading || error) return
+    if (loading || error || isLinkedDocument) return
     if (isExcalidrawDoc) {
       preserveExcalidrawCrashMarkerOnUnmountRef.current = true
       markExcalidrawCrashStageBlock(path, 'edit_requested')
@@ -2188,6 +2192,11 @@ function MarkdownTextDocumentRuntimeBlock({
                   ) : (
                     <span className="truncate font-medium">{filename}</span>
                   )}
+                  {isLinkedDocument && (
+                    <span className="shrink-0 rounded-full border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground" title="From a linked folder. It can be read here and is never changed.">
+                      Read only
+                    </span>
+                  )}
                   {isExternalDocument && (
                     <span
                       className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
@@ -2253,7 +2262,7 @@ function MarkdownTextDocumentRuntimeBlock({
                   </Tooltip>
                 )}
 
-                {!isEditing && (
+                {!isEditing && !isLinkedDocument && (
                   longPressToEditActive ? (
                     <TooltipProvider delayDuration={200}>
                       <Tooltip>
@@ -2824,9 +2833,9 @@ function ReaderDocumentRuntimeBlock({
   className,
 }: MarkdownDocumentBlockProps & { format: 'pdf' | 'epub' }) {
   const filename = path.split('/').pop() || path
-  const breadcrumb = path.split('/').slice(0, -1).join(' / ')
+  const breadcrumb = isLinkedDocumentPathBlock(path) ? linkedDocumentBreadcrumbBlock(path) : path.split('/').slice(0, -1).join(' / ')
   const openInSystemLabel = getOpenInSystemLabelOrch()
-  const canOpenInSystem = openInSystemLabel !== null
+  const canOpenInSystem = openInSystemLabel !== null && !isLinkedDocumentPathBlock(path)
   const openInSystemButtonLabel = openInSystemLabel ?? 'System'
   const [openInSystemError, setOpenInSystemError] = useState<string | null>(null)
 
@@ -3014,7 +3023,7 @@ function ReaderDocumentRuntimeBlock({
           <PdfDocumentBlock
             path={path}
             active={active}
-            countsAsReading={countsAsReading}
+            countsAsReading={countsAsReading && !isLinkedDocumentPathBlock(path)}
             toolbarHost={topBarHidden ? null : toolbarHost}
             topInset={topBarHidden ? 0 : chromeHeight}
             onChromeHiddenChange={setScrolledAway}
@@ -3034,9 +3043,9 @@ function ImageDocumentRuntimeBlock({
   className,
 }: MarkdownDocumentBlockProps) {
   const filename = path.split('/').pop() || path
-  const breadcrumb = path.split('/').slice(0, -1).join(' / ')
+  const breadcrumb = isLinkedDocumentPathBlock(path) ? linkedDocumentBreadcrumbBlock(path) : path.split('/').slice(0, -1).join(' / ')
   const openInSystemLabel = getOpenInSystemLabelOrch()
-  const canOpenInSystem = openInSystemLabel !== null
+  const canOpenInSystem = openInSystemLabel !== null && !isLinkedDocumentPathBlock(path)
   const openInSystemButtonLabel = openInSystemLabel ?? 'System'
   const [openInSystemError, setOpenInSystemError] = useState<string | null>(null)
 
@@ -3113,9 +3122,9 @@ function UnsupportedFileDocumentRuntimeBlock({
   className,
 }: MarkdownDocumentBlockProps) {
   const filename = path.split('/').pop() || path
-  const breadcrumb = path.split('/').slice(0, -1).join(' / ')
+  const breadcrumb = isLinkedDocumentPathBlock(path) ? linkedDocumentBreadcrumbBlock(path) : path.split('/').slice(0, -1).join(' / ')
   const openInSystemLabel = getOpenInSystemLabelOrch()
-  const canOpenInSystem = openInSystemLabel !== null
+  const canOpenInSystem = openInSystemLabel !== null && !isLinkedDocumentPathBlock(path)
   const [openInSystemError, setOpenInSystemError] = useState<string | null>(null)
 
   const handleOpenInDefaultApp = useCallback(() => {

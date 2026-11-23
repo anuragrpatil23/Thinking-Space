@@ -4,10 +4,15 @@ import path from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   addLinkedFolderBlock,
+  describeLinkedCodeBlock,
   isBlockedLinkedNameBlock,
   linkedFileToOpenBlock,
   listLinkedFolderBlock,
   parseLinkedFoldersBlock,
+  readLinkedCodeTextBlock,
+  readLinkedDocumentBytesBlock,
+  readLinkedDocumentTextBlock,
+  statLinkedDocumentBlock,
   readLinkedFoldersBlock,
   readLinkedTextBlock,
   resolveLinkedPathBlock,
@@ -69,27 +74,66 @@ describe('paths inside a linked folder', () => {
 })
 
 describe('the list of linked folders', () => {
-  it('adds a picked folder once, and needs a project for code', async () => {
-    const one = await addLinkedFolderBlock([], root, 'papers', null, path.join(base, 'home'))
-    expect(one).toMatchObject([{ path: root, kind: 'papers', project: null }])
-    expect(await addLinkedFolderBlock(one, root, 'papers', null, path.join(base, 'home'))).toHaveLength(1)
-    await expect(addLinkedFolderBlock([], root, 'code', null, path.join(base, 'home'))).rejects.toThrow()
-    expect(await addLinkedFolderBlock([], root, 'code', 'interpretability', path.join(base, 'home'))).toMatchObject([{ kind: 'code', project: 'interpretability' }])
+  it('adds a picked folder once', async () => {
+    const one = await addLinkedFolderBlock([], root, 'papers', path.join(base, 'home'))
+    expect(one).toMatchObject([{ path: root, kind: 'papers' }])
+    expect(await addLinkedFolderBlock(one, root, 'papers', path.join(base, 'home'))).toHaveLength(1)
+    expect(await addLinkedFolderBlock([], root, 'code', path.join(base, 'home'))).toMatchObject([{ kind: 'code' }])
+    expect(parseLinkedFoldersBlock('[{"id":"x","path":"/a","kind":"code","project":"old"}]')).toEqual([{ id: 'x', path: '/a', kind: 'code' }])
   })
 
   it('refuses the whole disk, the home folder and anything above it', async () => {
     const home = path.join(root, 'guo-2026')
-    await expect(addLinkedFolderBlock([], '/', 'papers', null, home)).rejects.toThrow()
-    await expect(addLinkedFolderBlock([], home, 'papers', null, home)).rejects.toThrow()
-    await expect(addLinkedFolderBlock([], root, 'papers', null, home)).rejects.toThrow()
+    await expect(addLinkedFolderBlock([], '/', 'papers', home)).rejects.toThrow()
+    await expect(addLinkedFolderBlock([], home, 'papers', home)).rejects.toThrow()
+    await expect(addLinkedFolderBlock([], root, 'papers', home)).rejects.toThrow()
   })
 
   it('survives a save, and drops anything malformed', async () => {
     const file = path.join(base, 'linked.json')
-    const list = await addLinkedFolderBlock([], root, 'papers', null, path.join(base, 'home'))
+    const list = await addLinkedFolderBlock([], root, 'papers', path.join(base, 'home'))
     await writeLinkedFoldersBlock(file, list)
     expect(await readLinkedFoldersBlock(file)).toEqual(list)
     expect(parseLinkedFoldersBlock('[{"id":"x","path":"relative","kind":"papers"},{"id":"y","path":"/a","kind":"run"}]')).toEqual([])
     expect(parseLinkedFoldersBlock('not json')).toEqual([])
+  })
+})
+
+describe('reading a code folder', () => {
+  it('shows a script as text, with sizes, and hides secrets from the listing', async () => {
+    expect(await readLinkedCodeTextBlock(root, 'guo-2026/run.sh')).toBe('echo hi')
+    const listed = await describeLinkedCodeBlock(root, 'guo-2026')
+    expect(listed.type === 'folder' && listed.files.map(file => file.name)).toEqual(expect.arrayContaining(['run.sh']))
+    expect(listed.type === 'folder' && listed.files.map(file => file.name)).not.toContain('credentials.json')
+    expect(listed.type === 'folder' && listed.files.map(file => file.name)).not.toContain('.env')
+  })
+
+  it('gives a large file its size and refuses to load it', async () => {
+    await writeFile(path.join(root, 'big.jsonl'), 'x'.repeat(600 * 1024))
+    expect(await describeLinkedCodeBlock(root, 'big.jsonl')).toEqual({ type: 'file', size: 600 * 1024 })
+    await expect(readLinkedCodeTextBlock(root, 'big.jsonl')).rejects.toThrow('too large')
+  })
+
+  it('refuses binaries, archives, secrets, keys inside files, and escapes', async () => {
+    await writeFile(path.join(root, 'samples.jsonl.gz'), 'gz')
+    await writeFile(path.join(root, 'bin.json'), Buffer.from([1, 0, 2]))
+    await writeFile(path.join(root, 'config.json'), '{"key":"sk-ant-abcdefghijklmnopqrstuvwxyz"}')
+    await writeFile(path.join(root, 'id.txt'), '-----BEGIN OPENSSH PRIVATE KEY-----')
+    await symlink(path.join(base, 'outside.md'), path.join(root, 'way-out.md'))
+    for (const rel of ['samples.jsonl.gz', 'bin.json', 'config.json', 'id.txt', 'way-out.md', '../outside.md', 'guo-2026/.env', 'guo-2026/credentials.json']) {
+      await expect(readLinkedCodeTextBlock(root, rel)).rejects.toThrow()
+    }
+  })
+})
+
+describe('reading a paper in the app', () => {
+  it('reads notes and PDFs, and refuses scripts, secrets and escapes', async () => {
+    expect(await readLinkedDocumentTextBlock(root, 'guo-2026/guo-2026.md')).toBe('# note')
+    expect(Buffer.from(await readLinkedDocumentBytesBlock(root, 'guo-2026/guo-2026.pdf'), 'base64').toString()).toBe('pdf')
+    expect((await statLinkedDocumentBlock(root, 'guo-2026/guo-2026.pdf')).size).toBe(3)
+    for (const rel of ['guo-2026/run.sh', 'guo-2026/.env', 'guo-2026/credentials.json', '../outside.md']) {
+      await expect(readLinkedDocumentTextBlock(root, rel)).rejects.toThrow()
+      await expect(readLinkedDocumentBytesBlock(root, rel)).rejects.toThrow()
+    }
   })
 })

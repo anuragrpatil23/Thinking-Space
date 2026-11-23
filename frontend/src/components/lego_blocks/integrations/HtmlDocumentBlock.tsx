@@ -3,6 +3,7 @@ import { Loader2, Minus, Plus, RotateCw, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isElectron } from '@/services/lego_blocks/integrations/fsBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
+import { isLinkedDocumentPathBlock } from '@/services/lego_blocks/units/linkedDocumentPathBlock'
 import NoteFindBarBlock from '@/components/lego_blocks/units/NoteFindBarBlock'
 import MarkdownTableOfContentsBlock from '@/components/lego_blocks/integrations/MarkdownTableOfContentsBlock'
 import {
@@ -82,7 +83,8 @@ export default function HtmlDocumentBlock({
     if (!electron) return
     const root = getStoredVaultRoot()
     const mint = window.electronAPI?.vaultHtmlPageUrl
-    if (!path || !root || !mint) {
+    // A linked page gets no served folder: it runs alone from a data: URL and can reach no other file.
+    if (!path || !root || !mint || isLinkedDocumentPathBlock(path)) {
       setPageUrl(null)
       return
     }

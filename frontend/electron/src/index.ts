@@ -61,6 +61,11 @@ import {
   listLinkedFolderBlock,
   readLinkedFoldersBlock,
   readLinkedTextBlock,
+  readLinkedCodeTextBlock,
+  describeLinkedCodeBlock,
+  readLinkedDocumentBytesBlock,
+  readLinkedDocumentTextBlock,
+  statLinkedDocumentBlock,
   writeLinkedFoldersBlock,
 } from './lego_blocks/linkedFoldersBlock';
 import {
@@ -1942,28 +1947,29 @@ ipcMain.handle('webull:signedRequest', async (_event, payload: WebullSignedReque
 // -- Linked folders --
 // Folders outside the vault that the user picked. Only the native picker adds
 // one; the renderer names a folder by id and never supplies a root. Code folders
-// are stored but cannot be read or opened yet.
+// can be listed and read as text, and have no route to shell.openPath.
 const linkedFoldersFile = () => path.join(app.getPath('userData'), 'linked-folders.json');
-const linkedPapersFolder = async (id: unknown) => {
+const linkedFolderOfKind = async (id: unknown, kind: 'papers' | 'code') => {
   const folder = (await readLinkedFoldersBlock(linkedFoldersFile())).find(item => item.id === id);
   if (!folder) throw new Error('That linked folder is no longer set up.');
-  if (folder.kind !== 'papers') throw new Error('Files in a code folder cannot be read yet.');
+  if (folder.kind !== kind) throw new Error('That linked folder cannot be used this way.');
   return folder;
 };
+const linkedPapersFolder = (id: unknown) => linkedFolderOfKind(id, 'papers');
 const linkedFoldersWithStatus = async () => Promise.all((await readLinkedFoldersBlock(linkedFoldersFile())).map(async folder => ({
   ...folder,
   available: await fsPromises.stat(folder.path).then(stat => stat.isDirectory()).catch(() => false),
 })));
 
 ipcMain.handle('linkedFolders:list', async () => linkedFoldersWithStatus());
-ipcMain.handle('linkedFolders:add', async (_event, kind: unknown, project: unknown) => {
+ipcMain.handle('linkedFolders:add', async (_event, kind: unknown) => {
   const result = await dialog.showOpenDialog(myCapacitorApp.getMainWindow(), {
     properties: ['openDirectory'],
     title: kind === 'code' ? 'Choose a code folder to link' : 'Choose your papers folder',
   });
   if (result.canceled || result.filePaths.length === 0) return linkedFoldersWithStatus();
   const file = linkedFoldersFile();
-  await writeLinkedFoldersBlock(file, await addLinkedFolderBlock(await readLinkedFoldersBlock(file), result.filePaths[0], kind, project));
+  await writeLinkedFoldersBlock(file, await addLinkedFolderBlock(await readLinkedFoldersBlock(file), result.filePaths[0], kind));
   return linkedFoldersWithStatus();
 });
 ipcMain.handle('linkedFolders:remove', async (_event, id: unknown) => {
@@ -1973,6 +1979,11 @@ ipcMain.handle('linkedFolders:remove', async (_event, id: unknown) => {
 });
 ipcMain.handle('linkedFolders:listDir', async (_event, id: unknown, relPath: unknown) => listLinkedFolderBlock((await linkedPapersFolder(id)).path, relPath));
 ipcMain.handle('linkedFolders:readText', async (_event, id: unknown, relPath: unknown) => readLinkedTextBlock((await linkedPapersFolder(id)).path, relPath));
+ipcMain.handle('linkedFolders:codeDescribe', async (_event, id: unknown, relPath: unknown) => describeLinkedCodeBlock((await linkedFolderOfKind(id, 'code')).path, relPath));
+ipcMain.handle('linkedFolders:codeRead', async (_event, id: unknown, relPath: unknown) => readLinkedCodeTextBlock((await linkedFolderOfKind(id, 'code')).path, relPath));
+ipcMain.handle('linkedFolders:docRead', async (_event, id: unknown, relPath: unknown) => readLinkedDocumentTextBlock((await linkedPapersFolder(id)).path, relPath));
+ipcMain.handle('linkedFolders:docReadBytes', async (_event, id: unknown, relPath: unknown) => readLinkedDocumentBytesBlock((await linkedPapersFolder(id)).path, relPath));
+ipcMain.handle('linkedFolders:docStat', async (_event, id: unknown, relPath: unknown) => statLinkedDocumentBlock((await linkedPapersFolder(id)).path, relPath));
 ipcMain.handle('linkedFolders:open', async (_event, id: unknown, relPath: unknown) => {
   const openErr = await shell.openPath(await linkedFileToOpenBlock((await linkedPapersFolder(id)).path, relPath));
   if (openErr) throw new Error(openErr);

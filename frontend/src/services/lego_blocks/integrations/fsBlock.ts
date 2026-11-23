@@ -13,6 +13,7 @@ import { getStoredVaultRoot, setStoredVaultRoot } from '@/services/lego_blocks/u
 import { notifyFileChanged } from '@/services/lego_blocks/units/crossWindowSyncBlock'
 import { atomicTempPathBlock } from '@/services/lego_blocks/units/atomicWriteNamingBlock'
 import { isExternalDocumentPathBlock } from '@/services/lego_blocks/units/externalDocumentPathBlock'
+import { isLinkedDocumentPathBlock, parseLinkedDocumentPathBlock } from '@/services/lego_blocks/units/linkedDocumentPathBlock'
 import { logDebug, logWarn } from '@/services/lego_blocks/units/debugLogBlock'
 import {
   base64ToBytesBlock,
@@ -371,11 +372,16 @@ interface ElectronAPI {
   copyPath?(vaultRoot: string, fromRelPath: string, toRelPath: string): Promise<void>
   revealPath?(vaultRoot: string, relPath: string): Promise<void>
   openPath?(vaultRoot: string, relPath: string): Promise<void>
-  linkedFoldersList?(): Promise<Array<{ id: string; path: string; kind: 'papers' | 'code'; project: string | null; available: boolean }>>
-  linkedFoldersAdd?(kind: 'papers' | 'code', project: string | null): Promise<Array<{ id: string; path: string; kind: 'papers' | 'code'; project: string | null; available: boolean }>>
-  linkedFoldersRemove?(id: string): Promise<Array<{ id: string; path: string; kind: 'papers' | 'code'; project: string | null; available: boolean }>>
+  linkedFoldersList?(): Promise<Array<{ id: string; path: string; kind: 'papers' | 'code'; available: boolean }>>
+  linkedFoldersAdd?(kind: 'papers' | 'code'): Promise<Array<{ id: string; path: string; kind: 'papers' | 'code'; available: boolean }>>
+  linkedFoldersRemove?(id: string): Promise<Array<{ id: string; path: string; kind: 'papers' | 'code'; available: boolean }>>
   linkedFoldersListDir?(id: string, relPath: string): Promise<{ folders: string[]; files: string[] }>
   linkedFoldersReadText?(id: string, relPath: string): Promise<string>
+  linkedFoldersCodeDescribe?(id: string, relPath: string): Promise<{ type: 'file'; size: number } | { type: 'folder'; folders: string[]; files: Array<{ name: string; size: number }> }>
+  linkedFoldersCodeRead?(id: string, relPath: string): Promise<string>
+  linkedFoldersDocRead?(id: string, relPath: string): Promise<string>
+  linkedFoldersDocReadBytes?(id: string, relPath: string): Promise<string>
+  linkedFoldersDocStat?(id: string, relPath: string): Promise<VaultStat>
   linkedFoldersOpen?(id: string, relPath: string): Promise<void>
   git(vaultRoot: string, args: string[]): Promise<string>
   excalidrawPluginStatus(vaultRoot: string): Promise<import('@/services/lego_blocks/units/typesBlock').ExcalidrawPluginStatus>
@@ -728,13 +734,28 @@ class ElectronVaultFS implements VaultFS {
     return window.electronAPI!
   }
 
+  /** A linked-folder path, or null. Every write below refuses one. */
+  private linkedTarget(path: string): { folderId: string; relPath: string } | null {
+    if (!isLinkedDocumentPathBlock(path)) return null
+    const target = parseLinkedDocumentPathBlock(path)
+    if (!target) throw new Error('That linked path is not valid.')
+    return target
+  }
+
+  private refuseLinkedWrite(path: string): void {
+    if (isLinkedDocumentPathBlock(path)) throw new Error('Linked folders are read-only.')
+  }
+
   async read(path: string): Promise<string> {
+    const linked = this.linkedTarget(path)
+    if (linked) return this.api.linkedFoldersDocRead!(linked.folderId, linked.relPath)
     if (isExternalDocumentPathBlock(path) && this.api.externalFileRead) return this.api.externalFileRead(path)
     const safePath = assertValidVaultPathBlock('read', path)
     return this.api.read(this.vaultRoot, safePath)
   }
 
   async write(path: string, data: string): Promise<void> {
+    this.refuseLinkedWrite(path)
     if (isExternalDocumentPathBlock(path) && this.api.externalFileWrite) {
       await this.api.externalFileWrite(path, data)
       return
@@ -745,6 +766,8 @@ class ElectronVaultFS implements VaultFS {
   }
 
   async readBytes(path: string): Promise<Uint8Array> {
+    const linked = this.linkedTarget(path)
+    if (linked) return base64ToBytesBlock(await this.api.linkedFoldersDocReadBytes!(linked.folderId, linked.relPath))
     const safePath = assertValidVaultPathBlock('readBytes', path)
     if (this.api.readBytesBase64) {
       const base64 = await this.api.readBytesBase64(this.vaultRoot, safePath)
@@ -755,6 +778,7 @@ class ElectronVaultFS implements VaultFS {
   }
 
   async writeBytes(path: string, data: Uint8Array): Promise<void> {
+    this.refuseLinkedWrite(path)
     const safePath = assertValidVaultPathBlock('writeBytes', path)
     if (this.api.writeBytesBase64) {
       await this.api.writeBytesBase64(this.vaultRoot, safePath, bytesToBase64Block(data))
@@ -785,12 +809,15 @@ class ElectronVaultFS implements VaultFS {
   }
 
   async stat(path: string): Promise<VaultStat> {
+    const linked = this.linkedTarget(path)
+    if (linked) return this.api.linkedFoldersDocStat!(linked.folderId, linked.relPath)
     if (isExternalDocumentPathBlock(path) && this.api.externalFileStat) return this.api.externalFileStat(path)
     const safePath = assertValidVaultPathBlock('stat', path)
     return this.api.stat(this.vaultRoot, safePath)
   }
 
   async exists(path: string): Promise<boolean> {
+    if (isLinkedDocumentPathBlock(path)) return this.stat(path).then(() => true, () => false)
     if (isExternalDocumentPathBlock(path) && this.api.externalFileStat) {
       return this.api.externalFileStat(path).then(() => true, () => false)
     }
@@ -800,11 +827,13 @@ class ElectronVaultFS implements VaultFS {
   }
 
   async mkdir(path: string): Promise<void> {
+    this.refuseLinkedWrite(path)
     const safePath = assertValidVaultPathBlock('mkdir', path, { allowEmpty: true })
     return this.api.mkdir(this.vaultRoot, safePath)
   }
 
   async delete(path: string): Promise<void> {
+    this.refuseLinkedWrite(path)
     const safePath = assertValidVaultPathBlock('delete', path)
     if (this.api.deletePath) {
       await this.api.deletePath(this.vaultRoot, safePath, false)
