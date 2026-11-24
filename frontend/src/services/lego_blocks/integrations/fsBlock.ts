@@ -378,6 +378,9 @@ interface ElectronAPI {
   linkedFoldersListDir?(id: string, relPath: string): Promise<{ folders: string[]; files: string[] }>
   linkedFoldersReadText?(id: string, relPath: string): Promise<string>
   linkedFoldersCodeDescribe?(id: string, relPath: string): Promise<{ type: 'file'; size: number } | { type: 'folder'; folders: string[]; files: Array<{ name: string; size: number }> }>
+  linkedFoldersCodeWatch?(id: string, relPath: string): Promise<string>
+  linkedFoldersCodeUnwatch?(watchId: string): Promise<void>
+  onLinkedFoldersCodeChanged?(handler: (watchId: string) => void): () => void
   linkedFoldersCodeRead?(id: string, relPath: string): Promise<string>
   linkedFoldersCodeReadBytes?(id: string, relPath: string): Promise<string>
   linkedFoldersCodeStat?(id: string, relPath: string): Promise<VaultStat>

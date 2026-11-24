@@ -529,6 +529,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   linkedFoldersCodeRead: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:codeRead', id, relPath),
   linkedFoldersCodeReadBytes: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:codeReadBytes', id, relPath),
   linkedFoldersCodeStat: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:codeStat', id, relPath),
+  linkedFoldersCodeWatch: (id: string, relPath: string): Promise<string> => ipcRenderer.invoke('linkedFolders:codeWatch', id, relPath),
+  linkedFoldersCodeUnwatch: (watchId: string) => ipcRenderer.invoke('linkedFolders:codeUnwatch', watchId),
+  onLinkedFoldersCodeChanged: (handler: (watchId: string) => void) => {
+    const listener = (_: unknown, watchId: unknown) => { if (typeof watchId === 'string') handler(watchId); };
+    ipcRenderer.on('linkedFolders:codeChanged', listener);
+    return () => { ipcRenderer.removeListener('linkedFolders:codeChanged', listener); };
+  },
   linkedFoldersDocRead: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:docRead', id, relPath),
   linkedFoldersDocReadBytes: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:docReadBytes', id, relPath),
   linkedFoldersDocStat: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:docStat', id, relPath),

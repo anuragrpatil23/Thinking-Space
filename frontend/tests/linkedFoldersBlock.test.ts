@@ -16,6 +16,7 @@ import {
   readLinkedFoldersBlock,
   readLinkedTextBlock,
   resolveLinkedPathBlock,
+  watchLinkedCodeFolderBlock,
   writeLinkedFoldersBlock,
 } from '../electron/src/lego_blocks/linkedFoldersBlock'
 
@@ -142,5 +143,20 @@ describe('reading a paper in the app', () => {
       await expect(readLinkedDocumentTextBlock(root, rel)).rejects.toThrow()
       await expect(readLinkedDocumentBytesBlock(root, rel)).rejects.toThrow()
     }
+  })
+})
+
+describe('watching a code folder', () => {
+  it('says something changed under the folder, and refuses paths outside it', async () => {
+    let calls = 0
+    const stop = await watchLinkedCodeFolderBlock(root, 'guo-2026', () => { calls += 1 }, 20)
+    await new Promise(resolve => setTimeout(resolve, 100))
+    await mkdir(path.join(root, 'guo-2026', 'log'))
+    await writeFile(path.join(root, 'guo-2026', 'log', '2026-11-24-0040-a.md'), 'x')
+    for (let i = 0; i < 40 && calls === 0; i++) await new Promise(resolve => setTimeout(resolve, 50))
+    stop()
+    expect(calls).toBeGreaterThan(0)
+    await expect(watchLinkedCodeFolderBlock(root, '../', () => {})).rejects.toThrow()
+    await expect(watchLinkedCodeFolderBlock(root, 'guo-2026/guo-2026.md', () => {})).rejects.toThrow('Only a folder')
   })
 })

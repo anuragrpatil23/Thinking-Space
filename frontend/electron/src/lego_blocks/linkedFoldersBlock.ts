@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
+import { promises as fs, watch as fsWatch } from 'fs';
 import os from 'os';
 import path from 'path';
 import { atomicWriteFileBlock } from './atomicWriteBlock';
@@ -204,4 +204,27 @@ export async function statLinkedDocumentBlock(root: string, relPath: unknown): P
   const stat = await fs.stat(real);
   if (!stat.isFile()) throw new Error('That is not a file.');
   return { mtime: stat.mtimeMs, ctime: stat.ctimeMs, size: stat.size };
+}
+
+/**
+ * Calls `onChange` (debounced) when anything under a folder inside a linked code
+ * folder changes, for example after a git pull. It says only that something
+ * changed, never what, so the renderer re-reads through the usual checked reads.
+ * Never writes. Returns the function that stops watching.
+ */
+export async function watchLinkedCodeFolderBlock(root: string, relPath: unknown, onChange: () => void, waitMs = 400): Promise<() => void> {
+  const real = await resolveLinkedPathBlock(root, relPath);
+  if (!(await fs.stat(real)).isDirectory()) throw new Error('Only a folder can be watched.');
+  let timer: NodeJS.Timeout | null = null;
+  const watcher = fsWatch(real, { recursive: true, persistent: false }, (_kind, name) => {
+    const parts = String(name ?? '').split(path.sep);
+    if (parts.some(part => GENERATED_FOLDERS.has(part) || part === '.git')) return;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; onChange(); }, waitMs);
+  });
+  watcher.on('error', () => watcher.close());
+  return () => {
+    if (timer) clearTimeout(timer);
+    watcher.close();
+  };
 }

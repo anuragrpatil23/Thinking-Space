@@ -63,6 +63,7 @@ import {
   readLinkedTextBlock,
   readLinkedCodeTextBlock,
   describeLinkedCodeBlock,
+  watchLinkedCodeFolderBlock,
   readLinkedDocumentBytesBlock,
   readLinkedDocumentTextBlock,
   statLinkedDocumentBlock,
@@ -1983,6 +1984,25 @@ ipcMain.handle('linkedFolders:codeDescribe', async (_event, id: unknown, relPath
 ipcMain.handle('linkedFolders:codeRead', async (_event, id: unknown, relPath: unknown) => readLinkedCodeTextBlock((await linkedFolderOfKind(id, 'code')).path, relPath));
 ipcMain.handle('linkedFolders:codeReadBytes', async (_event, id: unknown, relPath: unknown) => readLinkedDocumentBytesBlock((await linkedFolderOfKind(id, 'code')).path, relPath));
 ipcMain.handle('linkedFolders:codeStat', async (_event, id: unknown, relPath: unknown) => statLinkedDocumentBlock((await linkedFolderOfKind(id, 'code')).path, relPath));
+// A page that shows records from a code folder refreshes when the files change.
+// The event carries only the watch id; at most 16 watches at once, closed with
+// their window.
+const linkedCodeWatches = new Map<string, () => void>();
+ipcMain.handle('linkedFolders:codeWatch', async (event, id: unknown, relPath: unknown) => {
+  if (linkedCodeWatches.size >= 16) throw new Error('Too many folders are being watched.');
+  const watchId = randomUUID();
+  const sender = event.sender;
+  const stop = await watchLinkedCodeFolderBlock((await linkedFolderOfKind(id, 'code')).path, relPath, () => {
+    if (!sender.isDestroyed()) sender.send('linkedFolders:codeChanged', watchId);
+  });
+  const close = () => { stop(); linkedCodeWatches.delete(watchId); };
+  linkedCodeWatches.set(watchId, close);
+  sender.once('destroyed', close);
+  return watchId;
+});
+ipcMain.handle('linkedFolders:codeUnwatch', async (_event, watchId: unknown) => {
+  if (typeof watchId === 'string') linkedCodeWatches.get(watchId)?.();
+});
 ipcMain.handle('linkedFolders:docRead', async (_event, id: unknown, relPath: unknown) => readLinkedDocumentTextBlock((await linkedPapersFolder(id)).path, relPath));
 ipcMain.handle('linkedFolders:docReadBytes', async (_event, id: unknown, relPath: unknown) => readLinkedDocumentBytesBlock((await linkedPapersFolder(id)).path, relPath));
 ipcMain.handle('linkedFolders:docStat', async (_event, id: unknown, relPath: unknown) => statLinkedDocumentBlock((await linkedPapersFolder(id)).path, relPath));

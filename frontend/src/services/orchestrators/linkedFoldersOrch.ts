@@ -25,3 +25,31 @@ export async function describeLinkedCodePathOrch(folderId: string, relPath: stri
   if (!api?.linkedFoldersCodeDescribe) throw new Error('Linked folders open in the desktop app.')
   return api.linkedFoldersCodeDescribe(folderId, relPath).catch((err) => { throw plainLinkedErrorBlock(err) })
 }
+
+export async function readLinkedCodeTextOrch(folderId: string, relPath: string): Promise<string> {
+  const api = window.electronAPI
+  if (!api?.linkedFoldersCodeRead) throw new Error('Linked folders open in the desktop app.')
+  return api.linkedFoldersCodeRead(folderId, relPath).catch((err) => { throw plainLinkedErrorBlock(err) })
+}
+
+/**
+ * Calls `onChange` when anything under a folder of a linked code folder changes
+ * (a git pull, a new file). Returns the stop function; a no-op outside the
+ * desktop app or when the folder cannot be watched.
+ */
+export function watchLinkedCodeFolderOrch(folderId: string, relPath: string, onChange: () => void): () => void {
+  const api = window.electronAPI
+  if (!api?.linkedFoldersCodeWatch || !api.onLinkedFoldersCodeChanged) return () => {}
+  let watchId: string | null = null
+  let stopped = false
+  const unlisten = api.onLinkedFoldersCodeChanged((id) => { if (id === watchId) onChange() })
+  api.linkedFoldersCodeWatch(folderId, relPath).then((id) => {
+    if (stopped) void api.linkedFoldersCodeUnwatch?.(id)
+    else watchId = id
+  }).catch(() => {})
+  return () => {
+    stopped = true
+    unlisten()
+    if (watchId) void api.linkedFoldersCodeUnwatch?.(watchId)
+  }
+}
