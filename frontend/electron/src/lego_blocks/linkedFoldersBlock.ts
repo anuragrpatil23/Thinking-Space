@@ -35,7 +35,8 @@ const CODE_TEXT_EXTENSIONS = new Set([
   '.md', '.txt', '.rst', '.log', '.out', '.err', '.json', '.jsonl', '.yaml', '.yml', '.toml', '.csv', '.tsv', '.ipynb',
   '.py', '.sh', '.bash', '.zsh', '.r', '.jl', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.html', '.css', '.sql', '.slurm', '.lsf',
 ]);
-const CODE_TEXT_NAMES = new Set(['readme', 'license', 'makefile', 'dockerfile', 'requirements']);
+// experiment_id: labbook's one-line copy of an experiment's id, which the si-research page checks against the vault's.
+const CODE_TEXT_NAMES = new Set(['readme', 'license', 'makefile', 'dockerfile', 'requirements', 'experiment_id']);
 // Keys pasted into an otherwise ordinary file, such as a run's saved config.
 const SECRET_CONTENT = /-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:sk-ant-[\w-]{20,}|sk-[A-Za-z0-9_-]{32,}|gh[pousr]_[A-Za-z0-9]{36,}|github_pat_\w{40,}|AKIA[0-9A-Z]{16}|hf_[A-Za-z0-9]{30,}|xox[baprs]-[\w-]{20,})/;
 // Documents only. Anything that can run (.app, .command, .sh, .pkg, .py, ...) is refused by not being listed.
