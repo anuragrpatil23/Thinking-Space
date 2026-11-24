@@ -57,7 +57,7 @@
     "  cacheCreation1h cache write, 1-hour TTL (Anthropic: 2.0x input).",
     "                  Equal to the 5m figure where a provider has no TTL split."
   ],
-  "refreshed_at": "2026-11-20",
+  "refreshed_at": "2026-11-24",
   "exact_source": "LiteLLM model_prices_and_context_window.json",
   "overrides": {
     "claude-fable-5-1": {
@@ -1168,6 +1168,34 @@
       "cacheRead": 0.4,
       "cacheCreation5m": 10,
       "cacheCreation1h": 8
+    },
+    "gpt-6.2-astra-healthcare": {
+      "input": 8,
+      "output": 40,
+      "cacheRead": 0.4,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 8
+    },
+    "gpt-6.2-sol-healthcare": {
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.1,
+      "cacheCreation5m": 2.5,
+      "cacheCreation1h": 2
+    },
+    "gpt-6-astra-healthcare": {
+      "input": 10,
+      "output": 50,
+      "cacheRead": 1,
+      "cacheCreation5m": 10,
+      "cacheCreation1h": 10
+    },
+    "gpt-6.1-sol-healthcare": {
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.1,
+      "cacheCreation5m": 2,
+      "cacheCreation1h": 2
     }
   },
   "patterns": [
