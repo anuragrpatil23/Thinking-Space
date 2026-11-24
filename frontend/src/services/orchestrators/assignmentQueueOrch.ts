@@ -227,6 +227,33 @@ export async function getQueueSessionTranscriptSourceOrch(
   return null
 }
 
+/**
+ * A session's transcript by its id alone, in any project: the full id, or at
+ * least its first 8 characters. Null when no transcript with that id has been
+ * read (not on this machine, or not copied here yet).
+ */
+export async function getSessionTranscriptSourceByIdOrch(sessionId: string): Promise<ActivityChain | null> {
+  const want = sessionId.trim().toLowerCase()
+  if (want.length < 8) return null
+  let chains: ActivityChain[]
+  try {
+    chains = await deriveCanonicalChainsOrch()
+  } catch {
+    return null
+  }
+  // The transcript itself (.jsonl) before any rendered backup of it.
+  let backup: ActivityChain | null = null
+  for (const chain of chains) {
+    for (const session of chain.sessions) {
+      const id = sessionIdOf(session).toLowerCase()
+      if (!(id.startsWith(want) || (id.length === 8 && want.startsWith(id)))) continue
+      if (session.path.endsWith('.jsonl')) return oneSessionChainBlock(chain.project, session)
+      backup = backup ?? oneSessionChainBlock(chain.project, session)
+    }
+  }
+  return backup
+}
+
 /** Wrap a single session as a chain of one, for readers that render chains. */
 function oneSessionChainBlock(project: string, session: ParsedSession): ActivityChain {
   return {
