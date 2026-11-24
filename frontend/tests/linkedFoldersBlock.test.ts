@@ -10,6 +10,7 @@ import {
   listLinkedFolderBlock,
   parseLinkedFoldersBlock,
   readLinkedCodeTextBlock,
+  readLinkedCodeDataBlock,
   readLinkedDocumentBytesBlock,
   readLinkedDocumentTextBlock,
   statLinkedDocumentBlock,
@@ -158,5 +159,16 @@ describe('watching a code folder', () => {
     expect(calls).toBeGreaterThan(0)
     await expect(watchLinkedCodeFolderBlock(root, '../', () => {})).rejects.toThrow()
     await expect(watchLinkedCodeFolderBlock(root, 'guo-2026/guo-2026.md', () => {})).rejects.toThrow('Only a folder')
+  })
+})
+
+describe('reading the data of a run', () => {
+  it('reads large .jsonl but nothing that is not data, and still refuses keys', async () => {
+    await writeFile(path.join(root, 'guo-2026', 'records.jsonl'), '{"id":"a"}\n'.repeat(80_000))
+    await expect(readLinkedCodeTextBlock(root, 'guo-2026/records.jsonl')).rejects.toThrow('too large')
+    expect((await readLinkedCodeDataBlock(root, 'guo-2026/records.jsonl')).length).toBeGreaterThan(512 * 1024)
+    await expect(readLinkedCodeDataBlock(root, 'guo-2026/run.sh')).rejects.toThrow('Only data files')
+    await writeFile(path.join(root, 'guo-2026', 'k.json'), `{"key":"sk-ant-${'a'.repeat(30)}"}`)
+    await expect(readLinkedCodeDataBlock(root, 'guo-2026/k.json')).rejects.toThrow('key')
   })
 })

@@ -64,6 +64,7 @@ import {
   readLinkedCodeTextBlock,
   describeLinkedCodeBlock,
   watchLinkedCodeFolderBlock,
+  readLinkedCodeDataBlock,
   readLinkedDocumentBytesBlock,
   readLinkedDocumentTextBlock,
   statLinkedDocumentBlock,
@@ -1982,6 +1983,7 @@ ipcMain.handle('linkedFolders:listDir', async (_event, id: unknown, relPath: unk
 ipcMain.handle('linkedFolders:readText', async (_event, id: unknown, relPath: unknown) => readLinkedTextBlock((await linkedPapersFolder(id)).path, relPath));
 ipcMain.handle('linkedFolders:codeDescribe', async (_event, id: unknown, relPath: unknown) => describeLinkedCodeBlock((await linkedFolderOfKind(id, 'code')).path, relPath));
 ipcMain.handle('linkedFolders:codeRead', async (_event, id: unknown, relPath: unknown) => readLinkedCodeTextBlock((await linkedFolderOfKind(id, 'code')).path, relPath));
+ipcMain.handle('linkedFolders:codeReadData', async (_event, id: unknown, relPath: unknown) => readLinkedCodeDataBlock((await linkedFolderOfKind(id, 'code')).path, relPath));
 ipcMain.handle('linkedFolders:codeReadBytes', async (_event, id: unknown, relPath: unknown) => readLinkedDocumentBytesBlock((await linkedFolderOfKind(id, 'code')).path, relPath));
 ipcMain.handle('linkedFolders:codeStat', async (_event, id: unknown, relPath: unknown) => statLinkedDocumentBlock((await linkedFolderOfKind(id, 'code')).path, relPath));
 // A page that shows records from a code folder refreshes when the files change.

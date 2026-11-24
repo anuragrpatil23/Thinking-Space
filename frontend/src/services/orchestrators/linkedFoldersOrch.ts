@@ -32,6 +32,20 @@ export async function readLinkedCodeTextOrch(folderId: string, relPath: string):
   return api.linkedFoldersCodeRead(folderId, relPath).catch((err) => { throw plainLinkedErrorBlock(err) })
 }
 
+/** A data file of a code folder (.jsonl, .json, .html), up to 16 MB. */
+export async function readLinkedCodeDataOrch(folderId: string, relPath: string): Promise<string> {
+  const api = window.electronAPI
+  if (!api?.linkedFoldersCodeReadData) throw new Error('Linked folders open in the desktop app.')
+  return api.linkedFoldersCodeReadData(folderId, relPath).catch((err) => { throw plainLinkedErrorBlock(err) })
+}
+
+/** An image of a code folder, as base64. */
+export async function readLinkedCodeImageOrch(folderId: string, relPath: string): Promise<string> {
+  const api = window.electronAPI
+  if (!api?.linkedFoldersCodeReadBytes) throw new Error('Linked folders open in the desktop app.')
+  return api.linkedFoldersCodeReadBytes(folderId, relPath).catch((err) => { throw plainLinkedErrorBlock(err) })
+}
+
 /**
  * Calls `onChange` when anything under a folder of a linked code folder changes
  * (a git pull, a new file). Returns the stop function; a no-op outside the

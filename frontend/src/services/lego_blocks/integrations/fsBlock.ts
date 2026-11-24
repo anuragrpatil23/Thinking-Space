@@ -383,6 +383,7 @@ interface ElectronAPI {
   onLinkedFoldersCodeChanged?(handler: (watchId: string) => void): () => void
   linkedFoldersCodeRead?(id: string, relPath: string): Promise<string>
   linkedFoldersCodeReadBytes?(id: string, relPath: string): Promise<string>
+  linkedFoldersCodeReadData?(id: string, relPath: string): Promise<string>
   linkedFoldersCodeStat?(id: string, relPath: string): Promise<VaultStat>
   linkedFoldersDocRead?(id: string, relPath: string): Promise<string>
   linkedFoldersDocReadBytes?(id: string, relPath: string): Promise<string>

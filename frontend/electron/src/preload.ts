@@ -528,6 +528,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   linkedFoldersCodeDescribe: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:codeDescribe', id, relPath),
   linkedFoldersCodeRead: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:codeRead', id, relPath),
   linkedFoldersCodeReadBytes: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:codeReadBytes', id, relPath),
+  linkedFoldersCodeReadData: (id: string, relPath: string): Promise<string> => ipcRenderer.invoke('linkedFolders:codeReadData', id, relPath),
   linkedFoldersCodeStat: (id: string, relPath: string) => ipcRenderer.invoke('linkedFolders:codeStat', id, relPath),
   linkedFoldersCodeWatch: (id: string, relPath: string): Promise<string> => ipcRenderer.invoke('linkedFolders:codeWatch', id, relPath),
   linkedFoldersCodeUnwatch: (watchId: string) => ipcRenderer.invoke('linkedFolders:codeUnwatch', watchId),

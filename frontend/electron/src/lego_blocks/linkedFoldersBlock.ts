@@ -160,15 +160,30 @@ export async function describeLinkedCodeBlock(root: string, relPath: unknown): P
 }
 
 /** A code folder's file as text, for showing in the app. Large, binary or secret-bearing files are refused. */
-export async function readLinkedCodeTextBlock(root: string, relPath: unknown): Promise<string> {
+export async function readLinkedCodeTextBlock(root: string, relPath: unknown, maxBytes = MAX_CODE_TEXT_BYTES): Promise<string> {
   const real = await resolveLinkedPathBlock(root, relPath);
   const base = path.basename(real).toLowerCase();
   if (!CODE_TEXT_EXTENSIONS.has(path.extname(base)) && !CODE_TEXT_NAMES.has(base)) throw new Error('This kind of file is not shown as text.');
+  return readCheckedTextBlock(real, maxBytes);
+}
+
+// Data a page reads rather than shows: a run's records, labels and drawn panels.
+const CODE_DATA_EXTENSIONS = new Set(['.jsonl', '.json', '.html']);
+const MAX_CODE_DATA_BYTES = 16 * 1024 * 1024;
+
+/** A run's data file as text (.jsonl, .json, .html), with a larger limit and the same checks. */
+export async function readLinkedCodeDataBlock(root: string, relPath: unknown): Promise<string> {
+  const real = await resolveLinkedPathBlock(root, relPath);
+  if (!CODE_DATA_EXTENSIONS.has(path.extname(real).toLowerCase())) throw new Error('Only data files are read this way.');
+  return readCheckedTextBlock(real, MAX_CODE_DATA_BYTES);
+}
+
+async function readCheckedTextBlock(real: string, maxBytes: number): Promise<string> {
   const handle = await fs.open(real, 'r');
   try {
     const stat = await handle.stat();
     if (!stat.isFile()) throw new Error('That is not a file.');
-    if (stat.size > MAX_CODE_TEXT_BYTES) throw new Error('This file is too large to show here.');
+    if (stat.size > maxBytes) throw new Error('This file is too large to show here.');
     const buffer = Buffer.alloc(stat.size);
     const { bytesRead } = await handle.read(buffer, 0, stat.size, 0);
     const bytes = buffer.subarray(0, bytesRead);
