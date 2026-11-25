@@ -16,6 +16,10 @@ import { useEffect } from 'react'
  *  - Does nothing while the container isn't actually overflowing on that axis, so
  *    a strip that fits never traps the wheel.
  *
+ * `'both'` is for a container that overflows both ways (a wide, tall table on a
+ * board): each axis's delta scrolls that axis, no cross-axis fallback, and the
+ * event goes to the canvas only when neither axis can move the way it asks.
+ *
  * The listener is attached natively (non-passive) so preventDefault can stop the
  * canvas from also handling the wheel. Re-attaches when `ready` changes so it
  * still binds if the scroll container mounts after the first render (e.g. behind
@@ -23,13 +27,24 @@ import { useEffect } from 'react'
  */
 export function useWheelScrollCaptureBlock(
   ref: React.RefObject<HTMLElement | null>,
-  axis: 'x' | 'y',
+  axis: 'x' | 'y' | 'both',
   ready = true,
 ): void {
   useEffect(() => {
     const el = ref.current
     if (!el || !ready) return
     const onWheel = (e: WheelEvent) => {
+      if (axis === 'both') {
+        if (e.ctrlKey || e.metaKey) return // a pinch zooms the canvas
+        const canX = (e.deltaX < 0 && el.scrollLeft > 0) || (e.deltaX > 0 && el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+        const canY = (e.deltaY < 0 && el.scrollTop > 0) || (e.deltaY > 0 && el.scrollTop + el.clientHeight < el.scrollHeight - 1)
+        if (!canX && !canY) return
+        e.preventDefault()
+        e.stopPropagation()
+        if (canX) el.scrollLeft += e.deltaX
+        if (canY) el.scrollTop += e.deltaY
+        return
+      }
       const overflowing =
         axis === 'x'
           ? el.scrollWidth - el.clientWidth > 1
