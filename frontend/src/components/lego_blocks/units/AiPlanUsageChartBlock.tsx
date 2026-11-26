@@ -44,6 +44,9 @@ function formatTooltipDate(iso: string): string {
  * so the two read as one pair: Trend is the time spent, this is what that time
  * cost against the plan.
  */
+/** Data-key suffix for a project's agent part. A NUL can't occur in a name. */
+const AGENT_SUFFIX = '\u0000agent'
+
 export default function AiPlanUsageChartBlock({
   days,
   filterProject = null,
@@ -77,7 +80,13 @@ export default function AiPlanUsageChartBlock({
     () =>
       days.map(day => {
         const row: Record<string, number | string> = { date: day.date }
-        for (const name of projects) row[name] = day.byProject[name] ?? 0
+        // Each project is two stacked parts of one total: the person's (solid)
+        // and the agents' (hatched). They share one limit, so both always show.
+        for (const name of projects) {
+          const agent = day.agentByProject?.[name] ?? 0
+          row[name] = Math.max(0, (day.byProject[name] ?? 0) - agent)
+          if (agent > 0) row[`${name}${AGENT_SUFFIX}`] = agent
+        }
         if (showUnattributed) row[UNATTRIBUTED_KEY] = day.unattributed
         return row
       }),
@@ -160,16 +169,22 @@ export default function AiPlanUsageChartBlock({
                     </div>
                     <div className="mt-1 space-y-0.5">
                       {rows.map(row => {
-                        const key = String(row.dataKey)
-                        const unattributed = key === UNATTRIBUTED_KEY
+                        const rawKey = String(row.dataKey)
+                        const unattributed = rawKey === UNATTRIBUTED_KEY
+                        const isAgent = rawKey.endsWith(AGENT_SUFFIX)
+                        const key = isAgent ? rawKey.slice(0, -AGENT_SUFFIX.length) : rawKey
                         const stroke = unattributed
                           ? UNATTRIBUTED_COLOR
                           : getProjectColor(key, isDark).stroke
                         return (
-                          <div key={key} className="flex items-baseline gap-2">
-                            <span className="h-2 w-2 rounded-full" style={{ background: stroke }} />
+                          <div key={rawKey} className="flex items-baseline gap-2">
+                            <span
+                              className="h-2 w-2 rounded-full"
+                              style={isAgent ? { boxShadow: `inset 0 0 0 1px ${stroke}` } : { background: stroke }}
+                            />
                             <span className="text-foreground/80">
                               {unattributed ? 'Not from a session here' : projectLabelBlock(key)}
+                              {isAgent && <span className="text-muted-foreground/70"> · agents</span>}
                             </span>
                             <span
                               className="ml-auto tabular-nums"
@@ -185,7 +200,14 @@ export default function AiPlanUsageChartBlock({
                 )
               }}
             />
-            {projects.map(name => (
+            <defs>
+              {projects.map((name, i) => (
+                <pattern key={name} id={`plan-agent-hatch-${i}`} patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+                  <rect width="3" height="6" fill={getProjectColor(name, isDark).fill} />
+                </pattern>
+              ))}
+            </defs>
+            {projects.flatMap((name, i) => [
               <Bar
                 key={name}
                 dataKey={name}
@@ -195,8 +217,19 @@ export default function AiPlanUsageChartBlock({
                 isAnimationActive
                 animationDuration={550}
                 animationEasing="ease-out"
-              />
-            ))}
+              />,
+              // The agents' part sits right on top of the same project's
+              // solid part, hatched — the mark agent time has everywhere.
+              <Bar
+                key={`${name}${AGENT_SUFFIX}`}
+                dataKey={`${name}${AGENT_SUFFIX}`}
+                stackId="1"
+                fill={`url(#plan-agent-hatch-${i})`}
+                isAnimationActive
+                animationDuration={550}
+                animationEasing="ease-out"
+              />,
+            ])}
             {showUnattributed && (
               <Bar
                 dataKey={UNATTRIBUTED_KEY}

@@ -32,7 +32,7 @@ import AiActivityProjectChipsBlock from '@/components/lego_blocks/units/AiActivi
 import AiPlanUsageSectionBlock, {
   AiPlanUsageProviderToggleBlock,
 } from '@/components/lego_blocks/integrations/AiPlanUsageSectionBlock'
-import { planUsageProviderIdsBlock } from '@/services/lego_blocks/units/aiPlanUsageHistoryBlock'
+import { planUsageProviderIdsBlock, type PlanUsageMoveBlock } from '@/services/lego_blocks/units/aiPlanUsageHistoryBlock'
 import { useAiPlanUsageBlock } from '@/components/lego_blocks/hooks/shared/useAiPlanUsageBlock'
 import { usePlanUsageMovesBlock } from '@/components/lego_blocks/hooks/units/usePlanUsageMovesBlock'
 import { baseSessionIdBlock } from '@/services/orchestrators/aiLimitShareOrch'
@@ -180,6 +180,32 @@ export default function AiActivityPanelBlock({
     return map
   }, [activity.allSessions])
   const planUsageDates = useMemo(() => activity.days.map(d => d.date), [activity.days])
+  // The plan limit is one pool the person and their agents share, so the chart
+  // always shows both — whatever the actor view — with the agents' part
+  // hatched. A move is credited to whichever window of its session was running
+  // when it was read: the latest one started by then.
+  const actorOfMove = useMemo(() => {
+    const starts = new Map<string, Array<{ ms: number; agent: boolean }>>()
+    for (const s of activity.allSessions) {
+      if (s.source !== 'claude-code' && s.source !== 'codex') continue
+      const sid = baseSessionIdBlock(s)
+      const arr = starts.get(sid) ?? []
+      arr.push({ ms: Date.parse(s.startedIso), agent: s.actor === 'agent' })
+      starts.set(sid, arr)
+    }
+    for (const arr of starts.values()) arr.sort((a, b) => a.ms - b.ms)
+    return (move: PlanUsageMoveBlock): 'me' | 'agent' => {
+      const arr = move.baseSid ? starts.get(move.baseSid) : undefined
+      if (!arr || arr.length === 0) return 'me'
+      const t = move.t * 1000
+      let pick = arr[0]
+      for (const w of arr) {
+        if (w.ms <= t) pick = w
+        else break
+      }
+      return pick.agent ? 'agent' : 'me'
+    }
+  }, [activity.allSessions])
   // The section hides outright when no provider has a meter or a history to
   // show — someone who uses neither tool, or a device with no capture. One
   // provider is on screen at a time, for the meters and the graph together.
@@ -762,6 +788,7 @@ export default function AiActivityPanelBlock({
               planUsage={planUsage}
               moves={planUsageMoves}
               projectByBaseSid={projectByBaseSid}
+              actorOfMove={actorOfMove}
               dates={planUsageDates}
               filterProject={activeProject}
             />

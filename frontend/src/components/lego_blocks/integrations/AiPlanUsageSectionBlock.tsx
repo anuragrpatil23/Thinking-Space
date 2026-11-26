@@ -75,6 +75,8 @@ interface AiPlanUsageSectionBlockProps {
   moves: readonly PlanUsageMoveBlock[]
   /** Base session id → project, across every session, not just the visible ones. */
   projectByBaseSid: ReadonlyMap<string, string>
+  /** Splits each project's bar into the person's part and the agents'. */
+  actorOfMove?: (move: PlanUsageMoveBlock) => 'me' | 'agent'
   /** The card's visible range, one entry per day, oldest first. */
   dates: readonly string[]
   /** The card's project filter; narrows the graph to that project's share. */
@@ -96,6 +98,7 @@ export default function AiPlanUsageSectionBlock({
   planUsage,
   moves,
   projectByBaseSid,
+  actorOfMove,
   dates,
   filterProject = null,
 }: AiPlanUsageSectionBlockProps) {
@@ -109,8 +112,8 @@ export default function AiPlanUsageSectionBlock({
   )
 
   const days = useMemo(
-    () => buildPlanUsageDaysBlock(moves, projectByBaseSid, dates, provider),
-    [moves, projectByBaseSid, dates, provider],
+    () => buildPlanUsageDaysBlock(moves, projectByBaseSid, dates, provider, actorOfMove),
+    [moves, projectByBaseSid, dates, provider, actorOfMove],
   )
   const hasBars = useMemo(
     () =>

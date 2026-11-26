@@ -32,10 +32,22 @@ const move = (
 ): PlanUsageMoveBlock => ({ t: noon(iso), provider, baseSid, pct })
 
 describe('buildPlanUsageDaysBlock', () => {
+  it("keeps each project's total and records the agents' part of it", () => {
+    const days = buildPlanUsageDaysBlock(
+      [move('2026-10-06', 'sid-a', 4), move('2026-10-06', 'sid-b', 3)],
+      PROJECTS,
+      DATES,
+      'claude',
+      m => (m.baseSid === 'sid-b' ? 'agent' : 'me'),
+    )
+    expect(days[1].byProject).toEqual({ alpha: 4, beta: 3 })
+    expect(days[1].agentByProject).toEqual({ beta: 3 })
+  })
+
   it('returns one row per requested date, in order, zeros included', () => {
     const days = buildPlanUsageDaysBlock([move('2026-10-06', 'sid-a', 4)], PROJECTS, DATES, 'claude')
     expect(days.map(d => d.date)).toEqual(DATES)
-    expect(days[0]).toEqual({ date: '2026-10-05', byProject: {}, unattributed: 0 })
+    expect(days[0]).toEqual({ date: '2026-10-05', byProject: {}, agentByProject: {}, unattributed: 0 })
     expect(days[1].byProject).toEqual({ alpha: 4 })
   })
 
@@ -57,7 +69,7 @@ describe('buildPlanUsageDaysBlock', () => {
       DATES,
       'claude',
     )
-    expect(days[2]).toEqual({ date: '2026-10-07', byProject: {}, unattributed: 8 })
+    expect(days[2]).toEqual({ date: '2026-10-07', byProject: {}, agentByProject: {}, unattributed: 8 })
   })
 
   it('reads one provider at a time and ignores days outside the range', () => {

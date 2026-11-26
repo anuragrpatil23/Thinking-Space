@@ -31,8 +31,11 @@ export interface PlanUsageMoveBlock {
 export interface PlanUsageDayBlock {
   /** Local calendar day, YYYY-MM-DD. */
   date: string
-  /** Points of the weekly limit, by project. */
+  /** Points of the weekly limit, by project — the person's and the agents'
+   *  together, because they draw on one shared limit. */
   byProject: Record<string, number>
+  /** The agents' part of each `byProject` figure (a subset, never extra). */
+  agentByProject: Record<string, number>
   /**
    * Points no known session accounts for: usage on claude.ai, on a machine
    * whose sessions never reached this vault, or a session with no project.
@@ -62,17 +65,24 @@ export function buildPlanUsageDaysBlock(
   projectByBaseSid: ReadonlyMap<string, string>,
   dates: readonly string[],
   provider: AiLimitsProviderIdBlock,
+  /** Whose spend a move was: the window of its session running at that
+   *  moment. Absent → everything reads as the person's, as before. */
+  actorOfMove?: (move: PlanUsageMoveBlock) => 'me' | 'agent',
 ): PlanUsageDayBlock[] {
   const rows = new Map<string, PlanUsageDayBlock>()
-  for (const date of dates) rows.set(date, { date, byProject: {}, unattributed: 0 })
+  for (const date of dates) rows.set(date, { date, byProject: {}, agentByProject: {}, unattributed: 0 })
 
   for (const move of moves) {
     if (move.provider !== provider || !(move.pct > 0)) continue
     const row = rows.get(isoDayLocalBlock(move.t))
     if (!row) continue
     const project = move.baseSid ? projectByBaseSid.get(move.baseSid) : undefined
-    if (project) row.byProject[project] = (row.byProject[project] ?? 0) + move.pct
-    else row.unattributed += move.pct
+    if (project) {
+      row.byProject[project] = (row.byProject[project] ?? 0) + move.pct
+      if (actorOfMove?.(move) === 'agent') {
+        row.agentByProject[project] = (row.agentByProject[project] ?? 0) + move.pct
+      }
+    } else row.unattributed += move.pct
   }
   return dates.map((date) => rows.get(date) as PlanUsageDayBlock)
 }
