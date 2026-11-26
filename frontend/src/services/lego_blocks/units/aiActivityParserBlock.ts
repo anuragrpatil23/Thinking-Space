@@ -140,6 +140,23 @@ export interface ParsedSession {
    *  field existed, which is how the cache knows to re-parse them. Type-only
    *  import; erased at runtime, so no cycle. */
   limitReadings?: import('./aiLimitShareBlock').CodexLimitReadingBlock[]
+  /** Whose time this window is. Absent means the person's (`me`) — every row
+   *  from before agents were told apart reads that way. `agent` is work another
+   *  session or a launcher asked for (see `sessionAuthorshipBlock`). */
+  actor?: 'agent'
+  /** The transcript's first prompt marked it as launcher-spawned. */
+  spawned?: boolean
+  /** First two lines of the session's first prompt, window 0 of Claude rows
+   *  only — the cache re-checks it against the user's spawn patterns. `null`
+   *  when the session has no typed-looking prompt. */
+  openingPrompt?: string | null
+  /** When the person approved a permission prompt during this window: presence
+   *  without speech. Shown, never turned into duration. */
+  touchIsos?: string[]
+  /** Agent windows only: spans the agent spent waiting on something it started. */
+  waits?: import('./nativeAiSessionParserBlock').AgentWaitSpan[]
+  /** Agent windows only: when a timer or automation woke it. */
+  wakeIsos?: string[]
 }
 
 export interface SessionTokens {
@@ -173,6 +190,9 @@ export interface ActivityChain {
   /** Sum of the chain's sessions' active durations (see ParsedSession). Absent
    *  when no session carried per-message timing. */
   activeDurationMs?: number
+  /** `agent` when the chain is agents' work (every member shares the actor —
+   *  it is part of the grouping key). Absent = the person's. */
+  actor?: 'agent'
 }
 
 // Strict id form used by Claude Code transcripts (date + 8-char hex).
@@ -568,6 +588,10 @@ export interface ChainableBlock {
    *  what makes zero-length rows measure start-to-start rather than over-merge. */
   endedIso?: string
   hadClear: boolean
+  /** `agent` for work another session asked for. Part of the grouping key: the
+   *  person's sittings and the agents' never share a chain, so a chain's
+   *  duration is always wholly one actor's. Absent = the person's. */
+  actor?: 'agent'
   /** Stable tie-break for identical start instants. Must not depend on readdir
    *  order or the filesystem decides chain membership, differently per device. */
   chainSortKey: string
@@ -613,12 +637,15 @@ export function groupChainableBlock<T extends ChainableBlock>(items: T[]): T[][]
       a.chainSortKey.localeCompare(b.chainSortKey),
   )
 
-  // Group by project, then chain within each project's time-ordered list.
+  // Group by project and actor, then chain within each group's time-ordered
+  // list. The actor half of the key is empty for the person's rows, so every
+  // row from before agents were told apart groups exactly as it did.
   const byProject = new Map<string, T[]>()
   for (const s of sorted) {
-    const arr = byProject.get(s.project) ?? []
+    const groupKey = s.actor === 'agent' ? `${s.project}\u0000agent` : s.project
+    const arr = byProject.get(groupKey) ?? []
     arr.push(s)
-    byProject.set(s.project, arr)
+    byProject.set(groupKey, arr)
   }
 
   const groups: T[][] = []
@@ -753,5 +780,6 @@ function makeChain(project: string, sessions: ParsedSession[]): ActivityChain {
     sessions,
     touchedPaths: touched ? Array.from(touched) : undefined,
     activeDurationMs,
+    ...(first.actor === 'agent' ? { actor: 'agent' as const } : {}),
   }
 }

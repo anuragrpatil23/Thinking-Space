@@ -22,9 +22,14 @@ import type {
 import { IDLE_GAP_MS } from '@/services/lego_blocks/units/aiActivityParserBlock'
 import { autoInferProjectFromPathBlock } from '@/services/lego_blocks/units/aiActivityMappingBlock'
 import {
+  actorOfAuthorBlock,
+  classifyUserTurnBlock,
   extractAutomationIdBlock,
+  isSpawnedKickoffBlock,
+  isTaskNotificationBlock,
   isWorkAuthorBlock,
   resolveAuthorshipBlock,
+  SPAWNED_BY_TAG_RE,
   type TurnAuthor,
   type TurnFlags,
 } from '@/services/lego_blocks/units/sessionAuthorshipBlock'
@@ -161,8 +166,48 @@ function ingestUserBody(scan: UserMsgScan, raw: string): void {
   }
   scan.count += 1
   if (!scan.substantiveTopic) {
-    scan.substantiveTopic = body.split('\n')[0].slice(0, 140)
+    // A peer's message opens with the harness's own wrapper line, and a
+    // spawned kickoff with its `[spawned-by: …]` tag — neither says what the
+    // work was about, so neither may become the topic.
+    if (PEER_TOPIC_SKIP_RE.test(body)) {
+      // Not the topic — but the peer's own first line beats "(no user message)"
+      // for a worker whose every turn is a peer's.
+      if (!scan.fallbackTopic) {
+        const inner = /<cross-session-message[^>]*>\s*([^\n<][^\n]*)/.exec(body)?.[1]
+        if (inner) scan.fallbackTopic = inner.trim().slice(0, 140)
+      }
+      return
+    }
+    const lines = body.split('\n')
+    const first = SPAWNED_BY_TAG_RE.test(lines[0]) && lines.length > 1 ? lines[1] : lines[0]
+    scan.substantiveTopic = first.slice(0, 140)
   }
+}
+
+// `<task-notification>` is here too: it only reaches a window's scan when an
+// agent's own job landed inside agent work, and its XML is never a topic.
+const PEER_TOPIC_SKIP_RE = /^(Another Claude session sent a message:|<cross-session-message\b|\[Cross-session (idle|delivery) notice\]|<task-notification>)/
+
+/** Waits shorter than this are just the pace of work, not a hand-off. */
+const MIN_WAIT_MS = 2 * 60_000
+
+/** A span where an agent was idle because something it started was running
+ *  elsewhere — a background job, a download, another session. Drawn in the
+ *  agent view, never counted as working time. */
+export interface AgentWaitSpan {
+  startIso: string
+  endIso: string
+  /** What it was waiting on, in the agent's own words: the launched command's
+   *  description, or the peer session's name. */
+  label: string
+}
+
+/** First line of a tool_use's own description of itself, for a wait label. */
+function launchLabel(input: Record<string, unknown> | undefined): string {
+  if (!input) return 'background task'
+  const pick = (k: string) => (typeof input[k] === 'string' ? (input[k] as string).trim() : '')
+  const raw = pick('description') || pick('command') || pick('prompt') || 'background task'
+  return raw.split('\n')[0].slice(0, 80)
 }
 
 interface ParseEnvelope {
@@ -173,6 +218,9 @@ interface ParseEnvelope {
   mtime: number
   /** File contents (full JSONL). */
   text: string
+  /** The user's older launch phrasings that mark a session as spawned (see
+   *  `isSpawnedKickoffBlock`). The `[spawned-by:` tag needs no entry here. */
+  spawnKickoffPatterns?: readonly string[]
 }
 
 /** Within a single session file, split into separate "active windows" wherever
@@ -275,6 +323,18 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   const codexLimitReadings: CodexLimitReadingBlock[] = []
   let codexRunningTokens = 0
 
+  // Presence without speech: a person approving a permission prompt. Claude
+  // Code writes `permissionDecision.source: "user_*"` on the tool result; the
+  // click happened when the tool was REQUESTED, so it is timed by the
+  // assistant event that asked (`sourceToolAssistantUUID`), not by the result,
+  // which can land an hour later when the tool was a download.
+  const assistantTsByUuid = new Map<string, number>()
+  const touchTimes: number[] = []
+  // Background launches (tool_use id → when and what), closed by the
+  // `<task-notification>` that names the same tool_use id.
+  const launches = new Map<string, { ts: number; label: string }>()
+  const taskWaits: Array<{ start: number; end: number; label: string }> = []
+
   const convEvents: ConvEvent[] = []
   const recordConv = (
     tsStr: string,
@@ -321,7 +381,27 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
         recordConv(ts, true, body, typeof evt.uuid === 'string' ? evt.uuid : undefined, undefined, {
           isSidechain: evt.isSidechain === true,
           isMeta: evt.isMeta === true,
+          ...(typeof evt.turnOrigin === 'string' ? { turnOrigin: evt.turnOrigin } : {}),
+          ...(evt.isCompactSummary === true ? { isCompactSummary: true } : {}),
         })
+        const decision = evt.permissionDecision as Record<string, unknown> | undefined
+        if (decision && typeof decision.source === 'string' && decision.source.startsWith('user')) {
+          const asker =
+            typeof evt.sourceToolAssistantUUID === 'string'
+              ? assistantTsByUuid.get(evt.sourceToolAssistantUUID)
+              : undefined
+          const at = asker ?? Date.parse(ts)
+          if (Number.isFinite(at)) touchTimes.push(at)
+        }
+        if (isTaskNotificationBlock(body)) {
+          const id = /<tool-use-id>\s*([^<\s]+)\s*<\/tool-use-id>/.exec(body)?.[1]
+          const launch = id ? launches.get(id) : undefined
+          const end = Date.parse(ts)
+          if (launch && Number.isFinite(end)) {
+            taskWaits.push({ start: launch.ts, end, label: launch.label })
+            launches.delete(id!)
+          }
+        }
       }
       if (type === 'assistant') {
         const message = evt.message as Record<string, unknown> | undefined
@@ -368,6 +448,21 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
                   : 0,
               },
             })
+          }
+        }
+        const askedMs = Date.parse(ts)
+        if (Number.isFinite(askedMs)) {
+          if (typeof evt.uuid === 'string') assistantTsByUuid.set(evt.uuid, askedMs)
+          if (Array.isArray(message?.content)) {
+            for (const block of message!.content as unknown[]) {
+              const b = block as Record<string, unknown> | null
+              if (!b || b.type !== 'tool_use' || typeof b.id !== 'string') continue
+              const input = b.input as Record<string, unknown> | undefined
+              // Only launches that report back by notification can close a wait.
+              if (input?.run_in_background === true || b.name === 'Agent' || b.name === 'Task') {
+                launches.set(b.id, { ts: askedMs, label: launchLabel(input) })
+              }
+            }
           }
         }
         const editPaths = extractEditedPaths(message?.content, cwd)
@@ -536,10 +631,38 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   // ── Authorship. Must run after the sort (it is a state machine over the
   // stream) and after the legacy-dedup above (which zeroes bodies, and a zeroed
   // body must read as a continuation rather than as a fresh human turn).
+  //
+  // The kickoff is decided first: a launcher-spawned session's first prompt is
+  // recorded exactly like typing, so only its text can say otherwise.
+  const kickoff = convEvents.find(
+    e => e.isUser && classifyUserTurnBlock(e.body, e.flags) === 'human',
+  )
+  const openingPrompt = kickoff ? kickoff.body.trim().split('\n').slice(0, 2).join('\n').slice(0, 200) : null
+  const spawned = !!kickoff && isSpawnedKickoffBlock(kickoff.body, env.spawnKickoffPatterns)
+  if (spawned) kickoff!.flags = { ...kickoff!.flags, spawnedKickoff: true }
+
   resolveAuthorshipBlock(convEvents)
   for (const e of convEvents) {
     if (e.author === 'automation') e.automationId = extractAutomationIdBlock(e.body)
   }
+
+  // Waiting on another session: a peer message that arrives after the agent
+  // has sat idle. Measured from the last work event before it, so the span is
+  // exactly the silence the hand-off caused.
+  const peerWaits: Array<{ start: number; end: number; label: string }> = []
+  {
+    let lastWorkTs: number | null = null
+    for (const e of convEvents) {
+      if (e.isUser && e.author === 'delegated' && lastWorkTs !== null && e.ts - lastWorkTs >= MIN_WAIT_MS) {
+        const from = /from-name="([^"]+)"/.exec(e.body)?.[1]
+        if (from) peerWaits.push({ start: lastWorkTs, end: e.ts, label: `waiting on ${from}` })
+      }
+      if (e.author && isWorkAuthorBlock(e.author)) lastWorkTs = e.ts
+    }
+  }
+  const allWaits = [...taskWaits, ...peerWaits]
+    .filter(w => w.end - w.start >= MIN_WAIT_MS)
+    .sort((a, b) => a.start - b.start)
 
   // Automation-driven events are recorded (they are real, and they cost real
   // tokens) but they do not get to hold a sitting open. This is the fix for the
@@ -554,7 +677,12 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   if (workEvents.length === 0) return []
 
   // ── Window split: break wherever the gap to the previous event exceeds the
-  // idle threshold. Each window is a contiguous run of conversation events.
+  // idle threshold, or where the work changes hands between the person and
+  // the agents. Each window is a contiguous run of one actor's events, so a
+  // window's duration is never part yours and part a peer's. A session with no
+  // `delegated` turn never meets the second condition and splits exactly as
+  // before.
+  const actorOf = (e: ConvEvent) => actorOfAuthorBlock(e.author ?? 'human')
   const windows: ConvEvent[][] = []
   let cur: ConvEvent[] = []
   for (const e of workEvents) {
@@ -562,7 +690,7 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       cur.push(e)
       continue
     }
-    if (e.ts - cur[cur.length - 1].ts > WINDOW_GAP_MS) {
+    if (e.ts - cur[cur.length - 1].ts > WINDOW_GAP_MS || actorOf(e) !== actorOf(cur[cur.length - 1])) {
       windows.push(cur)
       cur = [e]
     } else {
@@ -825,6 +953,22 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       new Set(winAutomation.map(e => e.automationId).filter((v): v is string => !!v)),
     )
 
+    // Actor and the agent-view extras. Every new field is written only when it
+    // has something to say, so a person's window from before any of this
+    // existed serialises exactly as it did.
+    const isAgentWin = actorOf(win[0]) === 'agent'
+    const lower = isFirst ? -Infinity : winStart
+    const winTouches = touchTimes.filter(t => t >= lower && t < windowBoundary)
+    const winWaits: AgentWaitSpan[] = isAgentWin
+      ? allWaits
+          .filter(w => w.start >= lower && w.start < windowBoundary)
+          .map(w => ({
+            startIso: new Date(w.start).toISOString(),
+            endIso: new Date(w.end).toISOString(),
+            label: w.label,
+          }))
+      : []
+
     out.push({
       path,
       source: sourceTag,
@@ -861,6 +1005,18 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       automationIds: automationIds.length > 0 ? automationIds : undefined,
       limitReadings:
         env.source === 'codex' ? codexLimitReadingsForWindow(winStart, windowBoundary) : undefined,
+      ...(isAgentWin ? { actor: 'agent' as const } : {}),
+      ...(spawned ? { spawned: true } : {}),
+      // Transport for the cache's spawn-pattern freshness check: lets it tell,
+      // without re-reading the transcript, whether a change to the user's
+      // patterns flips this file. Window 0 only; Claude only (Codex has no
+      // launcher convention to match).
+      ...(isFirst && env.source === 'claude' ? { openingPrompt } : {}),
+      ...(winTouches.length > 0 ? { touchIsos: winTouches.map(t => new Date(t).toISOString()) } : {}),
+      ...(winWaits.length > 0 ? { waits: winWaits } : {}),
+      ...(isAgentWin && winAutomation.length > 0
+        ? { wakeIsos: winAutomation.map(e => new Date(e.ts).toISOString()) }
+        : {}),
     } as ParsedSession & { sessionId?: string } as ParsedSession)
   })
 

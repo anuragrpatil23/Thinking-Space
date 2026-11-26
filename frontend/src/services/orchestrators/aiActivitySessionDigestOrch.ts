@@ -368,6 +368,10 @@ export function projectSessionFieldsBlock(
   if (session.startedIso) next.startedIso = session.startedIso
   if (session.endedIso ?? session.startedIso) next.endedIso = session.endedIso ?? session.startedIso
   next.hadClear = session.hadClear === true
+  // Recomputed like the other grouping fields: the parser's verdict is the
+  // truth, and the stored copy is only transport.
+  if (session.actor === 'agent') next.actor = 'agent'
+  else delete next.actor
   if (typeof session.userMsgCount === 'number' && Number.isFinite(session.userMsgCount)) {
     next.msgCount = session.userMsgCount
   }
@@ -397,7 +401,8 @@ export function sessionFieldsDifferBlock(
     a.endedIso !== b.endedIso ||
     a.hadClear !== b.hadClear ||
     a.msgCount !== b.msgCount ||
-    a.durationMs !== b.durationMs
+    a.durationMs !== b.durationMs ||
+    a.actor !== b.actor
   )
 }
 

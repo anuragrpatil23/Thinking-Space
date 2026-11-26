@@ -58,6 +58,8 @@ export const STORAGE_KEYS = {
   webSites: 'ltm-web-sites',
   fileActivityIgnoredPaths: 'ltm-file-activity-ignored-paths',
   aiActivityProjectMapping: 'ltm-ai-activity-project-mapping',
+  aiActivitySpawnPatterns: 'ltm-ai-activity-spawn-patterns',
+  aiActivityActorView: 'ltm-ai-activity-actor-view',
   aiActivityVaultSourcePrefixes: 'ltm-ai-activity-vault-source-prefixes',
   readingKeepScreenAwake: 'ltm-reading-keep-screen-awake',
   readingInstallId: 'ltm-reading-install-id',

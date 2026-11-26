@@ -109,6 +109,7 @@ export async function readNativeAiSession(
  */
 export async function loadAndParseNativeAiSession(
   entry: NativeListEntry,
+  spawnKickoffPatterns: readonly string[] = [],
 ): Promise<ParsedSession[]> {
   try {
     const text = await readNativeAiSession(entry.source, entry.relPath)
@@ -117,6 +118,7 @@ export async function loadAndParseNativeAiSession(
       relPath: entry.relPath,
       mtime: entry.mtime,
       text,
+      spawnKickoffPatterns,
     })
   } catch {
     return []

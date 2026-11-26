@@ -47,6 +47,19 @@ import {
   type AiActivityCacheFile,
 } from '@/services/lego_blocks/integrations/aiActivityCacheStoreBlock'
 import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock'
+import { readAiActivitySpawnPatternsBlock } from '@/services/lego_blocks/units/aiActivitySpawnPatternsBlock'
+import { isSpawnedKickoffBlock } from '@/services/lego_blocks/units/sessionAuthorshipBlock'
+
+/** Whether the user's current spawn patterns would classify this cached file
+ *  differently from how it was parsed. Window 0 (the row whose path has no
+ *  `#w` suffix) carries the opening prompt; a row cached without the field is
+ *  treated as flipped so it re-parses once. */
+function spawnVerdictFlipped(windows: ParsedSession[], patterns: readonly string[]): boolean {
+  const w0 = windows.find(s => !s.path.includes('#w'))
+  if (!w0 || w0.openingPrompt === undefined) return true
+  const now = w0.openingPrompt !== null && isSpawnedKickoffBlock(w0.openingPrompt, patterns)
+  return now !== (w0.spawned === true)
+}
 
 // v12: project detection switched to the generic "cwd folder name" scheme and
 // sessions now carry an explicit `cwd` — bump so every transcript re-classifies.
@@ -84,7 +97,16 @@ import { getStoredVaultRoot } from '@/services/lego_blocks/units/storageKeyBlock
 // itself (windows that were nothing but automation are no longer emitted).
 // Cached rows carry all three in their old form, so without this bump the
 // phantom durations stay on the timeline forever.
-const CACHE_VERSION = 22
+// v23: windows are split by ACTOR — the person vs agents (2026-11-26). A turn
+// another session caused (`<cross-session-message>`, a peer notice, a
+// launcher-spawned kickoff) is `delegated`: it anchors a window, but that
+// window is `actor: 'agent'` and never merges with the person's. A scheduled
+// prompt is automation; a compaction summary is a continuation. This moves
+// window bounds and the row set for every session that ever received a peer
+// message (from 2026-10-02 on), and adds touches/waits/wakes. Transcripts with
+// none of these signals parse byte-identically (checked against all 1,464 on
+// the author's machine), so their ids — the digests' addresses — are unchanged.
+const CACHE_VERSION = 23
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000
@@ -228,6 +250,7 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
     readClaudeHistory(),
   ])
 
+  const spawnPatterns = readAiActivitySpawnPatternsBlock()
   const sourcePrefixes = readVaultSessionPrefixesBlock()
   const vaultSessions: VaultEntry[] = vaultEntries.filter(e =>
     sourcePrefixes.some(prefix => e.path.startsWith(prefix)),
@@ -322,7 +345,11 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
         // Same trick for Claude titles: rows parsed before `aiTitle` was read
         // lack the field entirely (the parser now always writes it, `null`
         // when absent), so exactly those re-parse once.
-        (entry.source !== 'claude' || cachedWindows.every(s => s.aiTitle !== undefined))
+        (entry.source !== 'claude' || cachedWindows.every(s => s.aiTitle !== undefined)) &&
+        // The user's spawn patterns are an input the mtime cannot see. Rather
+        // than re-parse everything when they change, re-parse exactly the files
+        // whose verdict flips: the opening prompt rides on window 0 for this.
+        (entry.source !== 'claude' || !spawnVerdictFlipped(cachedWindows, spawnPatterns))
       if (fresh) {
         for (const s of cachedWindows) {
           present.add(s.path)
@@ -337,7 +364,7 @@ async function performLoad(fs: VaultFS): Promise<LoadResult> {
     }
   }
   const nativeParsed = await runParallel(nativeToParse, READ_CONCURRENCY, async entry => {
-    const parsed = await loadAndParseNativeAiSession(entry)
+    const parsed = await loadAndParseNativeAiSession(entry, spawnPatterns)
     if (parsed.length > 0) return parsed
     // Parse failure: fall back to whatever windows we have cached for this file.
     const key = `native/${entry.source}/${entry.relPath}`

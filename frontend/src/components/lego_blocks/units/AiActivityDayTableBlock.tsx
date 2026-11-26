@@ -627,10 +627,24 @@ export default function AiActivityDayTableBlock({
                       }
                     >
                       <span className="flex items-center gap-1.5" style={{ color: color.stroke }}>
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color.stroke }} />
+                        {/* Agents' rows get a hollow dot and a quiet label — the
+                            same mark wherever agent time is drawn. */}
+                        <span
+                          className="h-1.5 w-1.5 shrink-0 rounded-full"
+                          style={
+                            c.actor === 'agent'
+                              ? { boxShadow: `inset 0 0 0 1px ${color.stroke}` }
+                              : { background: color.stroke }
+                          }
+                        />
                         <span className="truncate" title={projectLabelBlock(c.project)}>
                           {projectLabelBlock(c.project)}
                         </span>
+                        {c.actor === 'agent' && (
+                          <span className="shrink-0 text-[10px] text-muted-foreground/70" title="Work another session or a launcher asked for">
+                            agent
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td

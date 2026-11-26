@@ -19,6 +19,9 @@ interface AiActivityDayTimelineBlockProps {
    *  hour of margin either side, and let an hour shrink below the usual floor
    *  so the day fits the width instead of scrolling. */
   fitActive?: boolean
+  /** Permission approvals to mark on the strip — the person's presence inside
+   *  agent work. Ticks only; they add no length to anything. */
+  touchIsos?: string[]
 }
 
 /** Floor for an hour's width. The strip stretches its hours to fill the card,
@@ -66,6 +69,7 @@ function fmtTime(iso: string): string {
 export default function AiActivityDayTimelineBlock({
   dateIso,
   chains,
+  touchIsos,
   highlightProject = null,
   fitActive = false,
 }: AiActivityDayTimelineBlockProps) {
@@ -99,17 +103,27 @@ export default function AiActivityDayTimelineBlock({
     chains: ActivityChain[]
     msgCount: number
     topic: string
+    /** Agents' work: drawn hatched, never merged with the person's pills. */
+    agent: boolean
+    /** Agent waits from the pill's sessions — drawn as a dotted tail, never as
+     *  a filled bar, because waiting is not working. */
+    waits: Array<{ startMs: number; endMs: number; label: string }>
   }
   const pills = useMemo<MergedPill[]>(() => {
     if (chains.length === 0) return []
+    // Merge key includes the actor: a person's pill and an agent's pill for the
+    // same project overlap all the time and must stay two pills.
     const byProject = new Map<string, ActivityChain[]>()
     for (const c of chains) {
-      const arr = byProject.get(c.project) ?? []
+      const k = c.actor === 'agent' ? `${c.project}\u0000agent` : c.project
+      const arr = byProject.get(k) ?? []
       arr.push(c)
-      byProject.set(c.project, arr)
+      byProject.set(k, arr)
     }
     const out: MergedPill[] = []
-    for (const [project, list] of byProject) {
+    for (const [groupKey, list] of byProject) {
+      const project = list[0].project
+      const agent = list[0].actor === 'agent'
       const sorted = [...list].sort(
         (a, b) => Date.parse(a.startedIso) - Date.parse(b.startedIso),
       )
@@ -118,9 +132,16 @@ export default function AiActivityDayTimelineBlock({
         if (!cur) return
         const first = cur.chains[0]
         const msgCount = cur.chains.reduce((n, c) => n + c.msgCount, 0)
+        const waits = cur.chains.flatMap(c =>
+          c.sessions.flatMap(s =>
+            (s.waits ?? []).map(w => ({ startMs: Date.parse(w.startIso), endMs: Date.parse(w.endIso), label: w.label })),
+          ),
+        )
         out.push({
-          key: `${project}::${cur.startMs}::${cur.chains.length}`,
+          key: `${groupKey}::${cur.startMs}::${cur.chains.length}`,
           project,
+          agent,
+          waits,
           startedIso: new Date(cur.startMs).toISOString(),
           endedIso: new Date(cur.endMs).toISOString(),
           chains: cur.chains,
@@ -225,12 +246,19 @@ export default function AiActivityDayTimelineBlock({
       if (endedH <= startedH) continue // entirely outside the visible window
       const leftPx = (startedH - startHour) * pxPerHour
       const widthPx = Math.max(MIN_PILL_PX, (endedH - startedH) * pxPerHour)
+      // A wait's dotted tail shares the pill's row, so the row is reserved to
+      // the end of the latest wait — otherwise a later pill packs on top of it.
+      const waitEndH = c.waits.reduce(
+        (m, w) => Math.max(m, Math.min((w.endMs - dayStartMs) / 3_600_000, endHour)),
+        0,
+      )
+      const extentPx = Math.max(leftPx + widthPx, (waitEndH - startHour) * pxPerHour)
       let row = rowEnds.findIndex(end => end <= leftPx + ROW_PACK_SLACK_PX)
       if (row === -1) {
         row = rowEnds.length
         rowEnds.push(0)
       }
-      rowEnds[row] = leftPx + widthPx
+      rowEnds[row] = extentPx
       out.push({ key: c.key, pill: c, leftPx, widthPx, row })
     }
     return { placed: out, rows: rowEnds.length }
@@ -382,13 +410,58 @@ export default function AiActivityDayTimelineBlock({
                   height: ROW_HEIGHT,
                   // Use the project's `fill` (≈45% alpha) instead of `chipBg`
                   // (≈15%) — chipBg was too faint to read at small pill sizes.
-                  background: color.fill,
+                  // Agents' work is hatched: same hue, so the project still
+                  // reads, but never mistakable for the person's own time.
+                  background: pill.agent
+                    ? `repeating-linear-gradient(135deg, ${color.fill} 0 4px, transparent 4px 7px)`
+                    : color.fill,
                   boxShadow: ringStyle
                     ? `inset 0 0 0 1.5px ${ringStyle}`
                     : undefined,
                 }}
-                title={`${fmtTime(pill.startedIso)}–${fmtTime(pill.endedIso)} · ${projectLabelBlock(pill.project)} · ${pill.msgCount} msgs — ${pill.topic}`}
+                title={`${pill.agent ? 'Agents · ' : ''}${fmtTime(pill.startedIso)}–${fmtTime(pill.endedIso)} · ${projectLabelBlock(pill.project)} · ${pill.msgCount} msgs — ${pill.topic}`}
                 aria-label={`${projectLabelBlock(pill.project)} · ${pill.msgCount} msgs at ${fmtTime(pill.startedIso)}`}
+              />
+            )
+          })}
+
+          {/* Waits: a dotted line on the agent pill's row from when it went
+              idle to when what it was waiting on came back. Drawn, not
+              counted — no total anywhere includes these. */}
+          {placed.placed.flatMap(({ key, pill, row }) =>
+            pill.waits.map((w, i) => {
+              const sH = Math.max((w.startMs - dayStartMs) / 3_600_000, startHour)
+              const eH = Math.min((w.endMs - dayStartMs) / 3_600_000, endHour)
+              if (eH <= sH) return null
+              const color = getProjectColor(pill.project, isDark)
+              return (
+                <div
+                  key={`${key}::wait::${i}`}
+                  className="pointer-events-auto absolute"
+                  style={{
+                    left: (sH - startHour) * pxPerHour,
+                    width: (eH - sH) * pxPerHour,
+                    top: row * (ROW_HEIGHT + ROW_GAP) + ROW_HEIGHT / 2 - 1,
+                    height: 2,
+                    backgroundImage: `repeating-linear-gradient(90deg, ${color.stroke} 0 2px, transparent 2px 5px)`,
+                    opacity: 0.55,
+                  }}
+                  title={`${fmtTime(new Date(w.startMs).toISOString())}–${fmtTime(new Date(w.endMs).toISOString())} · ${w.label}`}
+                />
+              )
+            }),
+          )}
+
+          {/* Touches: the person approving a prompt inside agent work. */}
+          {(touchIsos ?? []).map((iso, i) => {
+            const h = (Date.parse(iso) - dayStartMs) / 3_600_000
+            if (h < startHour || h > endHour) return null
+            return (
+              <div
+                key={`touch::${i}`}
+                className="absolute w-[2px] rounded-full bg-foreground/55"
+                style={{ left: (h - startHour) * pxPerHour - 1, bottom: -5, height: 5 }}
+                title={`You approved a prompt at ${fmtTime(iso)}`}
               />
             )
           })}

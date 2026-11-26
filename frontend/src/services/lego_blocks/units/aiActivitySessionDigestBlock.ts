@@ -93,6 +93,10 @@ export interface ProjectSessionDigest {
    *  transport file, and any address for that file is an output of the
    *  grouping algorithm — the derived-address defect all over again. */
   hadClear: boolean
+  /** MECHANICAL. `agent` when the session was agents' work, not the person's
+   *  — part of the chain grouping key, so it travels with the other grouping
+   *  fields for devices that cannot read `~/.claude`. Absent = the person's. */
+  actor?: 'agent'
   /** MECHANICAL. Root-relative paths this session wrote, from the transcript's
    *  structured tool calls — never inferred from prose. Empty means only "this
    *  device had no transcript to derive from"; it is never evidence that the
@@ -193,6 +197,7 @@ export function groupSessionDigestsBlock(
     startedIso: d.startedIso,
     endedIso: d.endedIso,
     hadClear: d.hadClear,
+    ...(d.actor === 'agent' ? { actor: 'agent' as const } : {}),
     chainSortKey: d.sessionId,
   }))
   const groups = groupChainableBlock(chainable).map(group => group.map(g => g.digest))
@@ -282,6 +287,7 @@ function commonSessionDigestFieldsBlock(
     startedIso: toStringOrEmpty(parsed.startedIso),
     endedIso: toStringOrEmpty(parsed.endedIso),
     hadClear: parsed.hadClear === true,
+    ...(parsed.actor === 'agent' ? { actor: 'agent' as const } : {}),
     filesWritten: toStringArray(parsed.filesWritten),
     filesRead: toStringArray(parsed.filesRead),
     undertaking: toStringArrayLoose(parsed.undertaking),
@@ -350,6 +356,7 @@ export function stringifyProjectSessionDigestMarkdownBlock(digest: ProjectSessio
     startedIso: digest.startedIso,
     endedIso: digest.endedIso,
     hadClear: digest.hadClear,
+    ...(digest.actor === 'agent' ? { actor: 'agent' } : {}),
     msgCount: digest.msgCount,
     durationMs: digest.durationMs,
     activeDurationMs: digest.activeDurationMs,

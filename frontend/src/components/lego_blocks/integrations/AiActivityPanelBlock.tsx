@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -11,6 +11,8 @@ import {
   AI_ACTIVITY_PRESETS,
   type AiActivityPreset,
   type AiSourceFilter,
+  type AiActorView,
+  AI_ACTOR_VIEWS,
   type CustomRange,
   type ReadingCounts,
   type ReadingSourceFilter,
@@ -277,12 +279,37 @@ export default function AiActivityPanelBlock({
       ? `${fmtDateShort(selectedRange.startIso)} → ${fmtDateShort(selectedRange.endIso)}`
       : ''
 
+  // Whether an instant falls in the drilled day (with the same overnight
+  // allowance the chain filter uses) or range — for counting touches.
+  const inDrillWindow = useCallback(
+    (iso: string) => {
+      const t = Date.parse(iso)
+      if (selectedDate) {
+        const dayStart = Date.parse(selectedDate + 'T00:00:00')
+        return t >= dayStart && t < dayStart + 30 * 3_600_000
+      }
+      if (selectedRange) {
+        const d = new Date(iso)
+        const localDay = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        return localDay >= selectedRange.startIso && localDay <= selectedRange.endIso
+      }
+      return false
+    },
+    [selectedDate, selectedRange],
+  )
+
   const drillSummary = useMemo(() => {
     if (drillChains.length === 0) return undefined
     const msgs = drillChains.reduce((n, c) => n + c.msgCount, 0)
     const sessions = drillChains.reduce((n, c) => n + c.sessions.length, 0)
-    const durLabel = fmtDurationMsBlock(mergedDurationMsBlock(drillChains))
-    const base = `${drillChains.length} chains · ${sessions} sessions · ${msgs} msgs · ${durLabel}`
+    // Your time and the agents' are reported side by side, never as one
+    // figure: they measure different things.
+    const durLabel =
+      activity.actorView === 'both'
+        ? `you ${fmtDurationMsBlock(mergedDurationMsBlock(drillChains.filter(c => c.actor !== 'agent')))} · agents ${fmtDurationMsBlock(mergedDurationMsBlock(drillChains.filter(c => c.actor === 'agent')))}`
+        : fmtDurationMsBlock(mergedDurationMsBlock(drillChains))
+    const touches = activity.touchIsos.filter(t => drillChains.length > 0 && inDrillWindow(t)).length
+    const base = `${drillChains.length} chains · ${sessions} sessions · ${msgs} msgs · ${durLabel}${touches > 0 ? ` · ${touches} touch${touches === 1 ? '' : 'es'}` : ''}`
     // With a project filter active, append how much of the selection's
     // wall-clock time belongs to that project.
     if (activeProject) {
@@ -291,7 +318,7 @@ export default function AiActivityPanelBlock({
       return `${base} — ${activeProject}: ${projDur}`
     }
     return base
-  }, [drillChains, activeProject])
+  }, [drillChains, activeProject, activity.actorView, activity.touchIsos, inDrillWindow])
 
   // Project-filter stats across the whole visible range (independent of the
   // drill selection) — surfaced next to the "clear filter" chip.
@@ -447,6 +474,7 @@ export default function AiActivityPanelBlock({
             <AiActivityDayTimelineBlock
               dateIso={selectedDate}
               chains={drillChains}
+              touchIsos={activity.touchIsos}
               highlightProject={activeProject}
               fitActive={phonePage}
             />
@@ -525,6 +553,14 @@ export default function AiActivityPanelBlock({
         {/* Two words in the corner say what is in effect — source, then range
             — and each opens its own short list. */}
         <div className="-ml-2 flex items-center sm:-mr-2 sm:ml-0">
+          <ActorMenu
+            value={activity.actorView}
+            onChange={next => {
+              activity.setActorView(next)
+              resetDrillToToday(activity.customRange)
+            }}
+            counts={activity.actorCounts}
+          />
           <SourceMenu
             value={activity.sourceFilter}
             onChange={next => {
@@ -886,6 +922,67 @@ function DrillTableScroll({ children }: { children: React.ReactNode }) {
     >
       {children}
     </div>
+  )
+}
+
+/** Whose time is on screen: the person's (default), the agents', or both.
+ *  Same trigger and menu as the source and range menus beside it. */
+function ActorMenu({
+  value,
+  onChange,
+  counts,
+}: {
+  value: AiActorView
+  onChange: (next: AiActorView) => void
+  counts: { me: number; agents: number }
+}) {
+  const [open, setOpen] = useState(false)
+  const label = AI_ACTOR_VIEWS.find(v => v.id === value)?.label ?? 'Me'
+  const countOf = (id: AiActorView) =>
+    id === 'me' ? counts.me : id === 'agents' ? counts.agents : counts.me + counts.agents
+  return (
+    <span className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={cn(
+          FILTER_TRIGGER_CLASS,
+          open ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:text-foreground',
+        )}
+        title="Whose time to show: sessions you worked in, or work other sessions handed to agents"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        {label}
+        <ChevronDown className="h-3 w-3 opacity-60" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          <div role="menu" className={cn(FILTER_MENU_CLASS, 'min-w-[136px]')}>
+            {AI_ACTOR_VIEWS.map(o => {
+              const active = o.id === value
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={active}
+                  onClick={() => {
+                    onChange(o.id)
+                    setOpen(false)
+                  }}
+                  className={cn(FILTER_ITEM_CLASS, active ? FILTER_ITEM_ACTIVE_CLASS : FILTER_ITEM_IDLE_CLASS)}
+                  title={`${countOf(o.id)} sessions in range`}
+                >
+                  {o.label}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </span>
   )
 }
 

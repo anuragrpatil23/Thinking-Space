@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getVaultFS } from '@/services/lego_blocks/integrations/fsBlock'
+import { getJsonStorageItem, setJsonStorageItem, STORAGE_KEYS } from '@/services/lego_blocks/units/storageKeyBlock'
 import {
   getCachedSnapshot,
   loadAiActivity,
@@ -71,6 +72,21 @@ export interface ActivityProject {
 
 export type AiSourceFilter = 'all' | 'claude-code' | 'codex' | 'chatgpt' | 'grok' | 'reading'
 
+/** Whose time is on screen. `me` (default) is the person's own sittings — what
+ *  they typed and the work it asked for. `agents` is work other sessions or
+ *  launchers asked for. `both` shows them together, always drawn apart. */
+export type AiActorView = 'me' | 'agents' | 'both'
+export const AI_ACTOR_VIEWS: ReadonlyArray<{ id: AiActorView; label: string }> = [
+  { id: 'me', label: 'Me' },
+  { id: 'agents', label: 'Agents' },
+  { id: 'both', label: 'Me + agents' },
+]
+
+function readStoredActorView(): AiActorView {
+  const v = getJsonStorageItem<unknown>(STORAGE_KEYS.aiActivityActorView, 'me')
+  return v === 'agents' || v === 'both' ? v : 'me'
+}
+
 /** Sub-source filter shown only when the "Reading" source pill is active. Acts
  *  as a second filter dimension within reading — the way the project chips
  *  filter AI sessions. 'all' shows every reading-family source. */
@@ -129,6 +145,15 @@ export interface UseAiActivityResult {
    *  just narrows which sessions feed every downstream aggregation. */
   sourceFilter: AiSourceFilter
   setSourceFilter: (filter: AiSourceFilter) => void
+  /** Whose time feeds every aggregation: the person's, the agents', or both. */
+  actorView: AiActorView
+  setActorView: (view: AiActorView) => void
+  /** Sessions in the range per actor, ignoring the actor view — labels the menu. */
+  actorCounts: { me: number; agents: number }
+  /** Every permission approval (a "touch") in the visible range, from any
+   *  session — the person's presence inside agent work, shown even when agent
+   *  rows are hidden, never turned into duration. */
+  touchIsos: string[]
   /** Sub-source filter within the "Reading" pill (Memorize /
    *  Markdown / Drawing). Only meaningful while sourceFilter === 'reading'. */
   readingSource: ReadingSourceFilter
@@ -300,6 +325,11 @@ export function useAiActivityBlock(
     writeStoredSourceFilter(next)
     setSourceFilterState(next)
   }, [])
+  const [actorView, setActorViewState] = useState<AiActorView>(readStoredActorView)
+  const setActorView = useCallback((next: AiActorView) => {
+    setJsonStorageItem(STORAGE_KEYS.aiActivityActorView, next)
+    setActorViewState(next)
+  }, [])
   const [readingSource, setReadingSourceState] = useState<ReadingSourceFilter>(
     () => readStoredReadingSource() ?? 'all',
   )
@@ -413,7 +443,7 @@ export function useAiActivityBlock(
   // Apply the AI-source filter before the range overlap step so 'codex'/'claude
   // only' views drive every downstream aggregation (heatmap, area chart,
   // project chips, day timeline, today's chains) consistently.
-  const sourceFilteredSessions = useMemo(() => {
+  const sourceOnlySessions = useMemo(() => {
     if (sourceFilter === 'all') return mappedSessions
     if (sourceFilter === 'reading') {
       // Umbrella: every reading-family source, optionally narrowed to one
@@ -425,6 +455,34 @@ export function useAiActivityBlock(
     }
     return mappedSessions.filter(s => s.source === sourceFilter)
   }, [mappedSessions, sourceFilter, readingSource])
+  // The actor view narrows the same way, before the range step, so every
+  // aggregation follows it. Rows without `actor` are the person's.
+  const sourceFilteredSessions = useMemo(() => {
+    if (actorView === 'both') return sourceOnlySessions
+    const wantAgent = actorView === 'agents'
+    return sourceOnlySessions.filter(s => (s.actor === 'agent') === wantAgent)
+  }, [sourceOnlySessions, actorView])
+  const { actorCounts, touchIsos } = useMemo(() => {
+    const startMs = Date.parse(startIso + 'T00:00:00')
+    const endMs = Date.parse(endIso + 'T23:59:59')
+    let me = 0
+    let agents = 0
+    const touches: string[] = []
+    for (const s of sourceOnlySessions) {
+      const sStart = Date.parse(s.startedIso)
+      const sEnd = Date.parse(s.endedIso ?? s.startedIso)
+      if (sEnd >= startMs && sStart <= endMs) {
+        if (s.actor === 'agent') agents++
+        else me++
+      }
+      for (const t of s.touchIsos ?? []) {
+        const ms = Date.parse(t)
+        if (ms >= startMs && ms <= endMs) touches.push(t)
+      }
+    }
+    touches.sort()
+    return { actorCounts: { me, agents }, touchIsos: touches }
+  }, [sourceOnlySessions, startIso, endIso])
 
   // Sessions whose activity window OVERLAPS the visible range. A long-running
   // session (e.g. an 8-day Claude chat started a week ago but still active
@@ -613,6 +671,10 @@ export function useAiActivityBlock(
     customRange,
     setCustomRange,
     sourceFilter,
+    actorView,
+    setActorView,
+    actorCounts,
+    touchIsos,
     setSourceFilter,
     readingSource,
     setReadingSource,

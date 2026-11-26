@@ -41,18 +41,73 @@
  *  transcripts (46 in `frontend`, 23 in `airms-datapilot`, 4 in `App`) as "100%
  *  automation" during development. `agent` and `human` behave identically for
  *  windowing and duration; the split exists so delegated work stays
- *  *attributable* without being *discardable*. */
-export type TurnAuthor = 'human' | 'agent' | 'automation' | 'continuation'
+ *  *attributable* without being *discardable*.
+ *
+ *  `delegated` is a session doing work that no human asked for *in this
+ *  session*: another session messaged it (`<cross-session-message>`, an idle
+ *  notice), or a launcher started it with a brief (`[spawned-by: …]` kickoff).
+ *  It is real work and anchors windows like `human` does, but it is the
+ *  *agents'* time, not the person's — see `actorOfAuthorBlock`. Learned
+ *  2026-11-26, when coordinator sessions started spawning workers: every
+ *  worker's kickoff is recorded as `origin: human, promptSource: typed`
+ *  (the launcher types it into a terminal), and every later peer message is
+ *  `isMeta`, so the whole worker inherited `human` and its hours were
+ *  credited to the person. */
+export type TurnAuthor = 'human' | 'agent' | 'delegated' | 'automation' | 'continuation'
 
 /** Turn kinds that count as real work — they anchor windows and own duration. */
 export function isWorkAuthorBlock(author: TurnAuthor): boolean {
-  return author === 'human' || author === 'agent'
+  return author === 'human' || author === 'agent' || author === 'delegated'
+}
+
+/** Whose time a work turn is. `me` is the person (typed turns and the work
+ *  they directly asked for, subagents included); `agent` is work some other
+ *  session or launcher asked for. Windows never mix the two. */
+export type ActivityActor = 'me' | 'agent'
+
+export function actorOfAuthorBlock(author: TurnAuthor): ActivityActor {
+  return author === 'delegated' ? 'agent' : 'me'
 }
 
 /** Codex heartbeat: a timer-driven turn carrying the automation that fired. */
 const HEARTBEAT_RE = /^<heartbeat>/
 /** Claude Code: the harness waking the agent when a background task lands. */
 const TASK_NOTIFICATION_RE = /^<task-notification>/
+/** Claude Code: another session's message, delivered into this one. The
+ *  harness writes it as an `isMeta` user turn, which is why it must be
+ *  recognised before the `isMeta` → continuation rule below. */
+const PEER_MESSAGE_RE = /^(Another Claude session sent a message:\s*)?<cross-session-message\b/
+/** Claude Code: harness notices about peer sessions (one went idle, a message
+ *  was held or refused). They exist only because another session did
+ *  something, so they wake this session on that session's behalf. */
+const PEER_NOTICE_RE = /^\[Cross-session (idle|delivery) notice\]/
+/** The kickoff tag a launcher puts on the first line of a spawned session's
+ *  prompt: `[spawned-by: <parent> via <script>]`. A documented convention,
+ *  not anyone's private one — any launcher can adopt it. */
+export const SPAWNED_BY_TAG_RE = /^\[spawned-by:[^\]\n]*\]/
+
+/** True when a turn is a background-task completion notice. */
+export function isTaskNotificationBlock(body: string): boolean {
+  return TASK_NOTIFICATION_RE.test(body.trim())
+}
+
+/**
+ * Whether a session's first prompt marks it as spawned by a launcher rather
+ * than typed by a person. The `[spawned-by:` tag always counts. `patterns` are
+ * the user's own older launch phrasings (Settings → AI activity), matched as
+ * case-insensitive prefixes of the trimmed prompt — they exist because
+ * sessions launched before the tag convention carry no other marker: the
+ * kickoff's transcript fields are identical to a typed prompt.
+ */
+export function isSpawnedKickoffBlock(body: string, patterns: readonly string[] = []): boolean {
+  const text = body.trim()
+  if (SPAWNED_BY_TAG_RE.test(text)) return true
+  const lower = text.toLowerCase()
+  return patterns.some(p => {
+    const q = p.trim().toLowerCase()
+    return q.length > 0 && lower.startsWith(q)
+  })
+}
 
 /** System-injected user turns. Machine-authored, but they say nothing about who
  *  is driving — so they inherit rather than reset. `<environment_context>` is
@@ -82,6 +137,16 @@ export interface TurnFlags {
   /** Claude Code `isMeta` — harness-injected (caveats, skill preambles, image
    *  refs). Never typed by the user. */
   isMeta?: boolean
+  /** Claude Code `turnOrigin` (newer builds): `human`, `system`, `scheduled`,
+   *  `task_notification`. Only `scheduled` is read — a timer-fired prompt is
+   *  shaped exactly like a typed one otherwise. */
+  turnOrigin?: string
+  /** Claude Code `isCompactSummary` — the summary the harness writes after a
+   *  compaction. Machine prose, so it inherits whoever was driving. */
+  isCompactSummary?: boolean
+  /** Set by the parser on the session's first prompt when that prompt marks the
+   *  session as launcher-spawned (`isSpawnedKickoffBlock`). */
+  spawnedKickoff?: boolean
 }
 
 /**
@@ -100,10 +165,21 @@ export function classifyUserTurnBlock(body: string, flags: TurnFlags = {}): Turn
   // user events) and it MUST come before any human default.
   if (!text) return 'continuation'
 
-  if (flags.isMeta) return 'continuation'
+  // A timer firing a stored prompt. Its body is ordinary prose, so only the
+  // origin flag can tell it from typing.
+  if (flags.turnOrigin === 'scheduled') return 'automation'
+
+  // Another session speaking. Before the isMeta rule: the harness marks these
+  // isMeta, and as continuations they would let the person keep the credit
+  // for work a peer asked for — the 45-minutes-after-you-left case.
+  if (PEER_MESSAGE_RE.test(text) || PEER_NOTICE_RE.test(text)) return 'delegated'
+
+  if (flags.isMeta || flags.isCompactSummary) return 'continuation'
   for (const p of SYSTEM_PREFIXES) {
     if (text.startsWith(p)) return 'continuation'
   }
+
+  if (flags.spawnedKickoff) return 'delegated'
 
   // Delegated work. Checked after the system prefixes so a subagent's own
   // caveats don't register as agent speech.
@@ -144,7 +220,19 @@ export function resolveAuthorshipBlock<
   let mode: TurnAuthor = 'human'
   for (const e of events) {
     if (e.isUser) {
-      const author = classifyUserTurnBlock(e.body, e.flags)
+      let author = classifyUserTurnBlock(e.body, e.flags)
+      if (mode === 'delegated') {
+        // Inside agent-driven work, two signals stay the agent's:
+        //  - a background task the agent itself started finishing. For a
+        //    person's session the contract keeps this as automation (it must
+        //    not hold a sitting open), but a worker has no person to wait for —
+        //    landing its own job and acting on it IS its work.
+        //  - a subagent's turn: delegated work delegated further.
+        // Neither can occur in a session without a `delegated` turn, so the
+        // person's own accounting is untouched by this branch.
+        if (author === 'automation' && isTaskNotificationBlock(e.body)) author = 'delegated'
+        else if (author === 'agent') author = 'delegated'
+      }
       if (author !== 'continuation') mode = author
       e.author = author === 'continuation' ? mode : author
     } else {

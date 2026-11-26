@@ -113,6 +113,7 @@ import {
 } from '@/services/orchestrators/aiWebsiteOrch'
 import type { AiWebsiteBlock } from '@/services/lego_blocks/units/aiWebsiteBlock'
 import AiActivityProjectMappingSettingsBlock from '@/components/lego_blocks/integrations/AiActivityProjectMappingSettingsBlock'
+import AiActivitySpawnPatternsSettingsBlock from '@/components/lego_blocks/integrations/AiActivitySpawnPatternsSettingsBlock'
 import AiActivitySessionSourcesSettingsBlock from '@/components/lego_blocks/integrations/AiActivitySessionSourcesSettingsBlock'
 import AiActivityPlanUsageSettingsBlock from '@/components/lego_blocks/integrations/AiActivityPlanUsageSettingsBlock'
 import AiActivitySetModeSettingsBlock from '@/components/lego_blocks/integrations/AiActivitySetModeSettingsBlock'
@@ -1543,6 +1544,7 @@ export default function SettingsOrch({
           />
           <AiActivitySessionSourcesSettingsBlock />
           <AiActivityProjectMappingSettingsBlock />
+          <AiActivitySpawnPatternsSettingsBlock />
           <AiActivityPlanUsageSettingsBlock />
           <AiActivitySetModeSettingsBlock />
           <AiActivityCalendarModeSettingsBlock />
