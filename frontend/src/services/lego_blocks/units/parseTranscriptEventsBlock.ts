@@ -74,6 +74,10 @@ export type TranscriptItemBlock =
   | { kind: 'tool'; ts: number | null; tool: TranscriptToolBlock }
   | { kind: 'command'; ts: number | null; name: string; args: string }
   | { kind: 'compacted'; ts: number | null }
+  /** Another session speaking into this one: a `<cross-session-message>` or a
+   *  harness notice about a peer. Not the person's words — but in an agent's
+   *  own session, these are its instructions. */
+  | { kind: 'peer'; ts: number | null; from: string; text: string; notice: boolean }
 
 export interface TranscriptFileTouchBlock {
   path: string
@@ -411,6 +415,28 @@ function describeCodexCall(
  * Parse a native transcript. `window` clips to one sitting; pass null for the
  * whole file.
  */
+const PEER_MSG_RE = /^(?:Another Claude session sent a message:\s*)?<cross-session-message\b([^>]*)>([\s\S]*?)(?:<\/cross-session-message>|$)/
+const PEER_NOTICE_RE = /^\[Cross-session (idle|delivery) notice\]\s*([\s\S]*)$/
+
+/** A peer session's message or a harness notice about one, else null. */
+export function readPeerMessage(raw: string): { from: string; text: string; notice: boolean } | null {
+  const body = raw.trim()
+  const m = PEER_MSG_RE.exec(body)
+  if (m) {
+    const attrs = m[1]
+    const from =
+      /from-name="([^"]+)"/.exec(attrs)?.[1] ?? /from="([^"]+)"/.exec(attrs)?.[1] ?? 'another session'
+    return { from, text: m[2].trim(), notice: false }
+  }
+  const n = PEER_NOTICE_RE.exec(body)
+  if (n) {
+    // `"thinking-space-d1", which you asked…` — the quoted name is the peer.
+    const from = /"([^"]+)"/.exec(n[2])?.[1] ?? 'another session'
+    return { from, text: n[2].trim(), notice: true }
+  }
+  return null
+}
+
 export function parseTranscriptEventsBlock(
   jsonl: string,
   window: TranscriptWindowBlock | null,
@@ -451,6 +477,15 @@ export function parseTranscriptEventsBlock(
 
     // ── Claude ────────────────────────────────────────────────────────────
     if (type === 'user' || type === 'assistant') {
+      // A peer's message is harness-marked isMeta, but it IS conversation —
+      // just not the person's. Read it before the meta skip below.
+      if (type === 'user' && ev.isSidechain !== true) {
+        const peer = readPeerMessage(textParts((ev.message as Record<string, unknown> | undefined)?.content, ['text']))
+        if (peer) {
+          items.push({ kind: 'peer', ts, ...peer })
+          continue
+        }
+      }
       // Subagent traffic and harness meta-turns are not the conversation.
       if ((ev.isSidechain === true && !options.sidechain) || ev.isMeta === true) continue
       if (ev.isCompactSummary === true) {
@@ -672,6 +707,9 @@ export function transcriptItemsToMarkdownBlock(items: TranscriptItemBlock[]): st
         break
       case 'compacted':
         out.push('_Conversation compacted_', '')
+        break
+      case 'peer':
+        out.push('---', '', `### ${item.notice ? 'Notice about' : 'From'} agent ${item.from}${stamp}`, '', item.text, '')
         break
     }
   }

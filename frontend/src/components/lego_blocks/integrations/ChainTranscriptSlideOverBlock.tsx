@@ -133,6 +133,7 @@ function SessionBody({
         query={query}
         opener={opener}
         loadSubagent={part.session.path.startsWith('native/claude/') ? loadSubagent : undefined}
+        agentSession={part.session.actor === 'agent'}
       />
     )
   }

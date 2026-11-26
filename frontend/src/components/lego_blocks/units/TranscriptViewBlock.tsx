@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type {
@@ -138,6 +139,8 @@ function itemText(item: TranscriptItemBlock): string {
       return `${item.tool.name} ${item.tool.target} ${item.tool.result ?? ''}`
     case 'command':
       return `${item.name} ${item.args}`
+    case 'peer':
+      return `${item.from} ${item.text}`
     default:
       return ''
   }
@@ -198,6 +201,172 @@ function DiffBlock({ lines, more }: { lines: string[]; more?: number }) {
 }
 
 const hitRing = 'ring-1 ring-amber-400/50 bg-amber-400/[0.07]'
+
+/** One stable colour per sender, so a thread between several agents reads as
+ *  several voices. Hashed from the name: the same agent is the same colour in
+ *  every transcript. */
+const PEER_HUES = [262, 200, 155, 28, 330, 95, 8, 180]
+function peerHue(name: string): number {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0
+  return PEER_HUES[Math.abs(h) % PEER_HUES.length]
+}
+
+/** "agent <name>" in the sender's colour — the one mark every peer message
+ *  carries, in either kind of session. */
+function PeerBadge({ from, notice }: { from: string; notice: boolean }) {
+  const hue = peerHue(from)
+  return (
+    <span className="inline-flex min-w-0 items-baseline gap-1.5">
+      <span
+        className="shrink-0 rounded px-1 text-[10.5px] uppercase tracking-wide"
+        style={{ color: `hsl(${hue} 50% 45%)`, background: `hsl(${hue} 60% 50% / 0.12)` }}
+      >
+        {notice ? 'notice' : 'agent'}
+      </span>
+      <span className="truncate font-medium" style={{ color: `hsl(${hue} 50% 45%)` }}>{from}</span>
+    </span>
+  )
+}
+
+/** Room the floating card needs beside the panel; below this it opens inline. */
+const PEER_CARD_MIN_PX = 260
+
+/**
+ * A message from another session.
+ *
+ * In an agent's own session it is the agent's instruction, so it reads like a
+ * prompt — tinted in the sender's colour and labelled with who sent it.
+ *
+ * In the person's session it is an interruption from somewhere else: one quiet
+ * line. Opening it shows the full message in a card that floats to the LEFT of
+ * the transcript panel, beside the row, so the conversation itself never moves.
+ * Where there is no room to the left (a narrow window), it opens inline.
+ */
+function PeerRow({
+  item, id, hit, asPrompt, open, onToggle, nested,
+}: {
+  item: Extract<TranscriptItemBlock, { kind: 'peer' }>
+  id: string
+  hit: boolean
+  asPrompt: boolean
+  open: boolean
+  onToggle: () => void
+  nested: boolean
+}) {
+  const hue = peerHue(item.from)
+  const rowRef = useRef<HTMLDivElement | null>(null)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const [pos, setPos] = useState<{ top: number; right: number; width: number; maxHeight: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (asPrompt || !open) { setPos(null); return }
+    const place = () => {
+      const r = rowRef.current?.getBoundingClientRect()
+      if (!r) return
+      const room = r.left - 40
+      if (room < PEER_CARD_MIN_PX) { setPos(null); return }
+      const top = Math.min(Math.max(r.top - 8, 16), window.innerHeight - 160)
+      setPos({
+        top,
+        right: window.innerWidth - r.left + 28,
+        width: Math.min(440, room),
+        maxHeight: window.innerHeight - top - 16,
+      })
+    }
+    place()
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [asPrompt, open])
+
+  useEffect(() => {
+    if (asPrompt || !open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onToggle() } }
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (cardRef.current?.contains(t) || rowRef.current?.contains(t)) return
+      onToggle()
+    }
+    window.addEventListener('keydown', onKey, true)
+    window.addEventListener('mousedown', onDown, true)
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('mousedown', onDown, true)
+    }
+  }, [asPrompt, open, onToggle])
+
+  const time = item.ts !== null && (
+    <span className="shrink-0 tabular-nums text-[11px] text-muted-foreground/60" title={new Date(item.ts).toLocaleString()}>
+      {fmtTime(item.ts)}
+    </span>
+  )
+  const body = <div className="whitespace-pre-wrap" style={{ overflowWrap: 'anywhere' }}>{item.text}</div>
+
+  if (asPrompt) {
+    return (
+      <div
+        id={id}
+        data-tx-prompt={nested ? undefined : ''}
+        data-tx-hit={hit ? '' : undefined}
+        className={cn('-mx-2 min-w-0 scroll-mt-4 space-y-1 rounded px-2 py-1.5 text-foreground/90', hit && hitRing)}
+        style={{ background: `hsl(${hue} 60% 50% / 0.07)`, boxShadow: `inset 2px 0 0 hsl(${hue} 55% 50% / 0.6)` }}
+      >
+        <div className="flex items-baseline justify-between gap-2 text-[11.5px]">
+          <PeerBadge from={item.from} notice={item.notice} />
+          {time}
+        </div>
+        {body}
+      </div>
+    )
+  }
+
+  const first = item.text.split('\n').find(l => l.trim()) ?? ''
+  const forceInline = open && !pos
+  const showCard = open && !!pos
+  return (
+    <div ref={rowRef} id={id} data-tx-hit={hit ? '' : undefined} className={cn('-mx-1 min-w-0 rounded px-1', hit && hitRing)}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="group flex w-full min-w-0 items-baseline gap-2 text-left text-[11.5px]"
+        title={open ? 'Close' : 'Show the full message'}
+      >
+        <span className="w-2 shrink-0 select-none" style={{ color: `hsl(${hue} 50% 50%)` }}>⇢</span>
+        <PeerBadge from={item.from} notice={item.notice} />
+        <span className="min-w-0 flex-1 truncate text-muted-foreground/70 group-hover:text-foreground/80">
+          {first}
+        </span>
+        {time}
+      </button>
+      {forceInline && (
+        <div className="ml-4 mt-1 rounded px-2 py-1.5 text-foreground/85" style={{ background: `hsl(${hue} 60% 50% / 0.07)` }}>
+          {body}
+        </div>
+      )}
+      {showCard && createPortal(
+        <div
+          ref={cardRef}
+          role="dialog"
+          aria-label={`Message from ${item.from}`}
+          className="fixed z-[120] overflow-y-auto rounded-lg border border-border/60 bg-background/95 p-3 font-mono text-[12.5px] leading-[1.7] text-foreground/85 shadow-xl backdrop-blur"
+          style={{ top: pos.top, right: pos.right, width: pos.width, maxHeight: pos.maxHeight, boxShadow: `inset 2px 0 0 hsl(${hue} 55% 50% / 0.6)` }}
+        >
+          <div className="mb-2 flex items-baseline justify-between gap-2 text-[11.5px]">
+            <PeerBadge from={item.from} notice={item.notice} />
+            {time}
+          </div>
+          {body}
+        </div>,
+        document.body,
+      )}
+    </div>
+  )
+}
 const flashBg = 'bg-amber-400/20'
 
 function OpenButton({ rel, opener }: { rel: string; opener: TranscriptFileOpenerBlock }) {
@@ -489,11 +658,15 @@ interface TranscriptViewBlockProps {
   /** A subagent's steps inside its parent: no summary card, no prompt marks
    *  (j/k and the rail are for the conversation, not the agent's brief). */
   nested?: boolean
+  /** The session is an agent's: messages from other sessions are its
+   *  instructions and read as prompts. Otherwise they fold to one line. */
+  agentSession?: boolean
 }
 
 export default function TranscriptViewBlock({
-  items, summary, idPrefix, query = '', opener, loadSubagent, nested = false,
+  items, summary, idPrefix, query = '', opener, loadSubagent, nested = false, agentSession = false,
 }: TranscriptViewBlockProps) {
+  const [openPeer, setOpenPeer] = useState<number | null>(null)
   const rows = useMemo(() => buildRows(items), [items])
   const [open, setOpen] = useState<Set<number>>(() => new Set())
   const [flash, setFlash] = useState<number | null>(null)
@@ -622,6 +795,20 @@ export default function TranscriptViewBlock({
 
           const { item, index } = row
           const hit = hits.has(index)
+          if (item.kind === 'peer') {
+            return (
+              <PeerRow
+                key={index}
+                item={item}
+                id={itemId(index)}
+                hit={hit}
+                asPrompt={agentSession}
+                open={openPeer === index}
+                onToggle={() => setOpenPeer(o => (o === index ? null : index))}
+                nested={nested}
+              />
+            )
+          }
           if (item.kind === 'user') {
             return (
               <div

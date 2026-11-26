@@ -31,6 +31,11 @@ import {
   setAiActivityRestDays,
   setAiActivitySetMode,
 } from '@/services/lego_blocks/units/storageKeyBlock'
+import { clearAiActivitySnapshot } from '@/services/lego_blocks/integrations/aiActivityCacheBlock'
+import {
+  readAiActivitySpawnPatternsBlock,
+  writeAiActivitySpawnPatternsBlock,
+} from '@/services/lego_blocks/units/aiActivitySpawnPatternsBlock'
 
 const THINK_SPACE_DIR_ORCH = '.thinking-space'
 const LEGACY_THINK_SPACE_DIR_ORCH = '.think-space'
@@ -240,6 +245,7 @@ const AI_ACTIVITY_ROAMING_STORAGE_KEYS_ORCH = new Set<string>([
   STORAGE_KEYS.aiActivityCalendarMode,
   STORAGE_KEYS.aiActivityAiTitlesEnabled,
   STORAGE_KEYS.aiActivityRestDays,
+  STORAGE_KEYS.aiActivitySpawnPatterns,
 ])
 
 function snapshotLocalAiActivityPrefsOrch(): AiActivityRoamingPrefsBlock {
@@ -248,6 +254,7 @@ function snapshotLocalAiActivityPrefsOrch(): AiActivityRoamingPrefsBlock {
     calendarMode: getAiActivityCalendarMode(),
     aiTitlesEnabled: getAiActivityAiTitlesEnabled(),
     restDays: getAiActivityRestDays(),
+    spawnPatterns: readAiActivitySpawnPatternsBlock(),
   }
 }
 
@@ -280,6 +287,15 @@ function applyRoamedAiActivityPrefsOrch(prefs: AiActivityRoamingPrefsBlock): voi
     }
     if (prefs.restDays !== null && JSON.stringify(prefs.restDays) !== JSON.stringify(getAiActivityRestDays())) {
       setAiActivityRestDays(prefs.restDays)
+    }
+    if (
+      prefs.spawnPatterns !== null &&
+      JSON.stringify(prefs.spawnPatterns) !== JSON.stringify(readAiActivitySpawnPatternsBlock())
+    ) {
+      writeAiActivitySpawnPatternsBlock(prefs.spawnPatterns)
+      // The parse that already ran used the old list; drop the in-memory
+      // snapshot so the next load re-parses exactly the files that flip.
+      clearAiActivitySnapshot()
     }
   } finally {
     applyingRoamingPullOrch = false

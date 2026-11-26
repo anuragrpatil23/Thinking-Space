@@ -146,6 +146,10 @@ export interface ParsedSession {
   actor?: 'agent'
   /** The transcript's first prompt marked it as launcher-spawned. */
   spawned?: boolean
+  /** The session's own name (`claude -n`, `/rename`), when it has one. */
+  sessionName?: string
+  /** Agent windows only: the parent named by a `[spawned-by: …]` kickoff. */
+  spawnedBy?: string
   /** First two lines of the session's first prompt, window 0 of Claude rows
    *  only — the cache re-checks it against the user's spawn patterns. `null`
    *  when the session has no typed-looking prompt. */

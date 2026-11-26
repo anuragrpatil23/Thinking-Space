@@ -106,7 +106,10 @@ function spawnVerdictFlipped(windows: ParsedSession[], patterns: readonly string
 // message (from 2026-10-02 on), and adds touches/waits/wakes. Transcripts with
 // none of these signals parse byte-identically (checked against all 1,464 on
 // the author's machine), so their ids — the digests' addresses — are unchanged.
-const CACHE_VERSION = 23
+// v24: windows carry the session's own name (`sessionName`) and agent windows
+// their `spawnedBy` parent; a compaction summary or a slash command's printed
+// output no longer becomes a window's topic. v23 rows lack all three.
+const CACHE_VERSION = 24
 
 /** How long to trust the in-memory snapshot before re-walking on the next load call. */
 const MEM_TTL_MS = 5 * 60 * 1000

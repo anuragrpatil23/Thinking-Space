@@ -282,6 +282,17 @@ function buildDrillDownMarkdown(
   return lines.join('\n')
 }
 
+/** A chain's session name and (agents only) parent, from its first session
+ *  that has one.
+ *  Members share a session file far more often than not, so the first name
+ *  found is the chain's. */
+function agentNameOf(c: ActivityChain): string | undefined {
+  return c.sessions.find(s => s.sessionName)?.sessionName
+}
+function spawnedByOf(c: ActivityChain): string | undefined {
+  return c.sessions.find(s => s.spawnedBy)?.spawnedBy
+}
+
 export default function AiActivityDayTableBlock({
   title,
   heading,
@@ -641,8 +652,17 @@ export default function AiActivityDayTableBlock({
                           {projectLabelBlock(c.project)}
                         </span>
                         {c.actor === 'agent' && (
-                          <span className="shrink-0 text-[10px] text-muted-foreground/70" title="Work another session or a launcher asked for">
-                            agent
+                          // The agent's own name where the session has one;
+                          // the bare word otherwise.
+                          <span
+                            className="min-w-0 max-w-[9rem] shrink truncate text-[10px] text-muted-foreground/70"
+                            title={
+                              agentNameOf(c)
+                                ? `Agent ${agentNameOf(c)}${spawnedByOf(c) ? ` · spawned by ${spawnedByOf(c)}` : ''}`
+                                : 'Work another session or a launcher asked for'
+                            }
+                          >
+                            {agentNameOf(c) ?? 'agent'}
                           </span>
                         )}
                       </span>
@@ -744,6 +764,15 @@ export default function AiActivityDayTableBlock({
                             <span className="text-muted-foreground/60">
                               · {c.sessions.length} session{c.sessions.length === 1 ? '' : 's'}
                             </span>
+                            {/* The session's own name, for anyone's rows; the
+                                table itself shows it only on agent rows. */}
+                            {agentNameOf(c) && (
+                              <span className="text-muted-foreground/60">
+                                · {c.actor === 'agent' ? 'agent' : 'session'}{' '}
+                                <span className="text-foreground/70">{agentNameOf(c)}</span>
+                                {spawnedByOf(c) && <> · spawned by <span className="text-foreground/70">{spawnedByOf(c)}</span></>}
+                              </span>
+                            )}
                           </div>
                         ) : isReconstructed ? (
                           <span className="text-muted-foreground/60">

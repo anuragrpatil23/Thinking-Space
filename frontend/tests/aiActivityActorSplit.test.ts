@@ -10,6 +10,8 @@ import {
 } from '@/services/lego_blocks/units/sessionAuthorshipBlock'
 import { parseNativeAiSession } from '@/services/lego_blocks/units/nativeAiSessionParserBlock'
 import { buildChains, type ParsedSession } from '@/services/lego_blocks/units/aiActivityParserBlock'
+import { parseTranscriptEventsBlock, readPeerMessage } from '@/services/lego_blocks/units/parseTranscriptEventsBlock'
+import { normalizeAiActivityRoamingPrefsBlock } from '@/services/lego_blocks/units/vaultUiPreferencesBlock'
 
 const SID = '056389a3-e8f9-4702-afe5-f2757bf57e90'
 let n = 0
@@ -130,6 +132,23 @@ describe('parsing: windows never mix the person and the agents', () => {
     expect(out[1].startedIso).toBe('2026-11-26T08:05:00.000Z')
   })
 
+  it("carries the session's own name on every window, and the parent on agent ones", () => {
+    const out = parse([
+      JSON.stringify({ type: 'custom-title', customTitle: 'old-name', sessionId: SID }),
+      user('2026-11-26T06:00:00.000Z', '[spawned-by: interpretability-6c via sessions.sh]\nRead the brief at /b'),
+      assistant('2026-11-26T06:10:00.000Z'),
+      JSON.stringify({ type: 'agent-name', agentName: 'w-interp-cd960d', sessionId: SID }),
+      user('2026-11-26T06:20:00.000Z', 'quick question'),
+      assistant('2026-11-26T06:21:00.000Z'),
+    ])
+    expect(out.map(s => [s.actor ?? 'me', s.sessionName, s.spawnedBy])).toEqual([
+      ['agent', 'w-interp-cd960d', 'interpretability-6c'],
+      ['me', 'w-interp-cd960d', undefined],
+    ])
+    // The tag line never becomes the topic.
+    expect(out[0].topic).toBe('Read the brief at /b')
+  })
+
   it('leaves a session with no agent signals exactly as before', () => {
     const out = parse([
       user('2026-07-01T09:00:00.000Z', 'plain work'),
@@ -159,5 +178,26 @@ describe('chains keep the actors apart', () => {
     ])
     const byActor = Object.fromEntries(chains.map(c => [c.actor ?? 'me', c.sessions.map(s => s.path)]))
     expect(byActor).toEqual({ me: ['me1', 'me2'], agent: ['ag1'] })
+  })
+})
+
+describe('transcripts show who else spoke', () => {
+  it('reads a peer message with its sender, and a peer notice', () => {
+    expect(readPeerMessage(peer('w-worker', 'results attached'))).toEqual({ from: 'w-worker', text: 'results attached', notice: false })
+    expect(readPeerMessage('[Cross-session idle notice] "thinking-space-d1", which you asked to watch, is idle.')).toMatchObject({ from: 'thinking-space-d1', notice: true })
+    expect(readPeerMessage('just a person typing')).toBeNull()
+  })
+
+  it("keeps a peer's message in the transcript even though the harness marks it isMeta", () => {
+    const { items } = parseTranscriptEventsBlock(
+      [user('2026-11-26T09:00:00.000Z', peer('kai', 'go ahead'), { isMeta: true }), user('2026-11-26T09:01:00.000Z', 'caveat', { isMeta: true })].join('\n'),
+      null,
+    )
+    expect(items).toEqual([{ kind: 'peer', ts: Date.parse('2026-11-26T09:00:00.000Z'), from: 'kai', text: 'go ahead', notice: false }])
+  })
+
+  it('roams the spawn patterns through ui.json', () => {
+    expect(normalizeAiActivityRoamingPrefsBlock({ spawnPatterns: ['Read the brief at', '', 3] }).spawnPatterns).toEqual(['Read the brief at'])
+    expect(normalizeAiActivityRoamingPrefsBlock({}).spawnPatterns).toBeNull()
   })
 })

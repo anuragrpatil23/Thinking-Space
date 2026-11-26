@@ -149,7 +149,7 @@ function emptyScan(): UserMsgScan {
   return { count: 0, substantiveTopic: '', fallbackTopic: '' }
 }
 
-function ingestUserBody(scan: UserMsgScan, raw: string): void {
+function ingestUserBody(scan: UserMsgScan, raw: string, topicEligible = true): void {
   const body = raw.trim()
   if (!body) return
   if (isLocalCommandCaveat(body)) return // caveat doesn't count as a real message
@@ -165,7 +165,7 @@ function ingestUserBody(scan: UserMsgScan, raw: string): void {
     return
   }
   scan.count += 1
-  if (!scan.substantiveTopic) {
+  if (!scan.substantiveTopic && topicEligible) {
     // A peer's message opens with the harness's own wrapper line, and a
     // spawned kickoff with its `[spawned-by: …]` tag — neither says what the
     // work was about, so neither may become the topic.
@@ -186,7 +186,9 @@ function ingestUserBody(scan: UserMsgScan, raw: string): void {
 
 // `<task-notification>` is here too: it only reaches a window's scan when an
 // agent's own job landed inside agent work, and its XML is never a topic.
-const PEER_TOPIC_SKIP_RE = /^(Another Claude session sent a message:|<cross-session-message\b|\[Cross-session (idle|delivery) notice\]|<task-notification>)/
+// `<local-command-stdout>` is a slash command's printed output (e.g. the
+// "Compacted" notice), never what the sitting was about.
+const PEER_TOPIC_SKIP_RE = /^(Another Claude session sent a message:|<cross-session-message\b|\[Cross-session (idle|delivery) notice\]|<task-notification>|<local-command-stdout>|<system-reminder>)/
 
 /** Waits shorter than this are just the pace of work, not a hand-off. */
 const MIN_WAIT_MS = 2 * 60_000
@@ -288,6 +290,11 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   let sessionId = ''
   let model: string | undefined
   let aiTitle: string | null = null
+  // The session's own name (`claude -n <name>`, or `/rename`). Claude Code
+  // writes it as `agent-name` and/or `custom-title`; the last one of either
+  // wins, with `agent-name` preferred when both are present.
+  let agentName: string | undefined
+  let customTitle: string | undefined
   // Claude usage is per-turn — we sum. Codex emits running totals — we take last.
   //
   // One API response can be written as SEVERAL assistant lines (a `thinking`
@@ -368,6 +375,12 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       // Untimestamped and session-wide: every window of the file shares it.
       if (type === 'ai-title' && typeof evt.aiTitle === 'string' && evt.aiTitle.trim()) {
         aiTitle = evt.aiTitle.trim()
+      }
+      if (type === 'agent-name' && typeof evt.agentName === 'string' && evt.agentName.trim()) {
+        agentName = evt.agentName.trim()
+      }
+      if (type === 'custom-title' && typeof evt.customTitle === 'string' && evt.customTitle.trim()) {
+        customTitle = evt.customTitle.trim()
       }
 
       if (type === 'user') {
@@ -640,6 +653,10 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
   const openingPrompt = kickoff ? kickoff.body.trim().split('\n').slice(0, 2).join('\n').slice(0, 200) : null
   const spawned = !!kickoff && isSpawnedKickoffBlock(kickoff.body, env.spawnKickoffPatterns)
   if (spawned) kickoff!.flags = { ...kickoff!.flags, spawnedKickoff: true }
+  // Who launched it, when the kickoff says: `[spawned-by: <parent> via <script>]`.
+  const spawnedBy = kickoff
+    ? /^\[spawned-by:\s*([^\]\n]*?)\s+via\s+[^\]\n]*\]/.exec(kickoff.body.trim())?.[1]?.trim() || undefined
+    : undefined
 
   resolveAuthorshipBlock(convEvents)
   for (const e of convEvents) {
@@ -876,7 +893,9 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
       if (/<command-name>\/clear<\/command-name>/.test(e.body)) winHadClear = true
       if (isAutoCommit(e.body)) winHadAutoCommit = true
       if (isTelegram(e.body)) winHadTelegram = true
-      ingestUserBody(scan, e.body)
+      // A compaction summary still counts as a message (it always has), but its
+      // boilerplate opening line is never what the sitting was about.
+      ingestUserBody(scan, e.body, !e.flags?.isCompactSummary)
     }
 
     let project: string
@@ -1007,6 +1026,8 @@ export function parseNativeAiSession(env: ParseEnvelope): ParsedSession[] {
         env.source === 'codex' ? codexLimitReadingsForWindow(winStart, windowBoundary) : undefined,
       ...(isAgentWin ? { actor: 'agent' as const } : {}),
       ...(spawned ? { spawned: true } : {}),
+      ...((agentName ?? customTitle) ? { sessionName: agentName ?? customTitle } : {}),
+      ...(isAgentWin && spawnedBy && spawnedBy !== 'unknown' ? { spawnedBy } : {}),
       // Transport for the cache's spawn-pattern freshness check: lets it tell,
       // without re-reading the transcript, whether a change to the user's
       // patterns flips this file. Window 0 only; Claude only (Codex has no

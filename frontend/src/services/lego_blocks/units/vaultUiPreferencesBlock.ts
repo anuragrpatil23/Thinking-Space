@@ -53,6 +53,10 @@ export interface AiActivityRoamingPrefsBlock {
   calendarMode: boolean | null
   aiTitlesEnabled: boolean | null
   restDays: number[] | null
+  /** Launch phrasings that mark a session as agent-spawned (Settings ▸ AI
+   *  activity ▸ Agent sessions). Roams so the list survives a reinstall and can
+   *  be edited in the vault; only Electron parses transcripts with it. */
+  spawnPatterns: string[] | null
 }
 
 export interface VaultUiPreferencesBlock {
@@ -129,6 +133,7 @@ export const DEFAULT_VAULT_UI_PREFERENCES_BLOCK: VaultUiPreferencesBlock = {
     calendarMode: null,
     aiTitlesEnabled: null,
     restDays: null,
+    spawnPatterns: null,
   },
 }
 
@@ -157,6 +162,7 @@ export function createDefaultAiActivityRoamingPrefsBlock(): AiActivityRoamingPre
     calendarMode: null,
     aiTitlesEnabled: null,
     restDays: null,
+    spawnPatterns: null,
   }
 }
 
@@ -175,6 +181,9 @@ export function normalizeAiActivityRoamingPrefsBlock(value: unknown): AiActivity
       ? record.restDays.filter(
           (n): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 6,
         )
+      : null,
+    spawnPatterns: Array.isArray(record.spawnPatterns)
+      ? record.spawnPatterns.filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
       : null,
   }
 }
