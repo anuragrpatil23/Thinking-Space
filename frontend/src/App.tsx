@@ -220,6 +220,10 @@ import {
   type WebullSidebarChromeStateBlock,
 } from '@/personal_extension/services/lego_blocks/units/webullSidebarChromeBlock'
 import {
+  siResearchSidebarChromeBlock,
+  type SiResearchSidebarChromeStateBlock,
+} from '@/personal_extension/services/lego_blocks/units/siResearchSidebarChromeBlock'
+import {
   toolsSidebarChromeBlock,
   type ToolsSidebarChromeStateBlock,
 } from '@/services/lego_blocks/units/toolsSidebarChromeBlock'
@@ -692,6 +696,11 @@ function App() {
     collapsed: false,
     label: 'webull',
   })
+  const [siResearchSidebarChromeState, setSiResearchSidebarChromeState] = useState<SiResearchSidebarChromeStateBlock>({
+    enabled: false,
+    collapsed: false,
+    label: 'si-research',
+  })
   const [toolsSidebarChromeState, setToolsSidebarChromeState] = useState<ToolsSidebarChromeStateBlock>({
     enabled: false,
     collapsed: false,
@@ -817,6 +826,7 @@ function App() {
     && organizerSidebarChromeState.enabled
   const showOrganizerHeaderToggle = showOrganizerSidebarChromeControl && organizerSidebarChromeState.showHeaderToggle
   const showWebullSidebarChromeControl = location.pathname === '/webull' && webullSidebarChromeState.enabled
+  const showSiResearchSidebarChromeControl = location.pathname === '/si-research' && siResearchSidebarChromeState.enabled
   const showToolsSidebarChromeControl = toolsSidebarChromeState.enabled && TOOLS_NAV_ACTIVE_PATHS.includes(location.pathname)
   const showSettingsSidebarChromeControl = location.pathname === '/settings' && settingsSidebarChromeState.enabled
   // On Capacitor, each of these tabs owns its own edge-swipe gesture.
@@ -826,6 +836,7 @@ function App() {
     || showWebSidebarChromeControl
     || showOrganizerSidebarChromeControl
     || showWebullSidebarChromeControl
+    || showSiResearchSidebarChromeControl
     || showToolsSidebarChromeControl
     || showSettingsSidebarChromeControl
   const isElectronDesktopSurface = layout.surface === 'electron' && layout.mode === 'desktop'
@@ -1171,6 +1182,13 @@ function App() {
       toggleLabels: { show: 'Show sidebar', hide: 'Hide sidebar' },
     },
     {
+      id: 'si-research',
+      show: showSiResearchSidebarChromeControl,
+      block: siResearchSidebarChromeBlock,
+      collapsed: siResearchSidebarChromeState.collapsed,
+      toggleLabels: { show: 'Show sidebar', hide: 'Hide sidebar' },
+    },
+    {
       id: 'tools',
       show: showToolsSidebarChromeControl,
       block: toolsSidebarChromeBlock,
@@ -1310,6 +1328,14 @@ function App() {
         label: webullSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
       }
     }
+    if (showSiResearchSidebarChromeControl) {
+      return {
+        kind: 'si-research-sidebar',
+        enabled: layout.mode !== 'phone',
+        active: !siResearchSidebarChromeState.collapsed,
+        label: siResearchSidebarChromeState.collapsed ? 'Show side panel' : 'Hide side panel',
+      }
+    }
     if (showSettingsSidebarChromeControl) {
       return {
         kind: 'settings-sidebar',
@@ -1347,6 +1373,8 @@ function App() {
     showSettingsSidebarChromeControl,
     showWebSidebarChromeControl,
     showWebullSidebarChromeControl,
+    showSiResearchSidebarChromeControl,
+    siResearchSidebarChromeState.collapsed,
     settingsSidebarChromeState.collapsed,
     thinkingSpaceGoogleWorkspaceChromeState.explorerCollapsed,
     webSidebarChromeState.collapsed,
@@ -1940,6 +1968,9 @@ function App() {
         return
       case 'webull-sidebar':
         webullSidebarChromeBlock.dispatchToggle()
+        return
+      case 'si-research-sidebar':
+        siResearchSidebarChromeBlock.dispatchToggle()
         return
       case 'settings-sidebar':
         settingsSidebarChromeBlock.dispatchToggle()
@@ -2588,6 +2619,17 @@ function App() {
         enabled: Boolean(detail.enabled),
         collapsed: Boolean(detail.collapsed),
         label: typeof detail.label === 'string' ? detail.label : 'webull',
+      })
+    },
+  )
+
+  useChromeStateEventBlock<SiResearchSidebarChromeStateBlock>(
+    siResearchSidebarChromeBlock.stateEvent,
+    (detail) => {
+      setSiResearchSidebarChromeState({
+        enabled: Boolean(detail.enabled),
+        collapsed: Boolean(detail.collapsed),
+        label: typeof detail.label === 'string' ? detail.label : 'si-research',
       })
     },
   )
