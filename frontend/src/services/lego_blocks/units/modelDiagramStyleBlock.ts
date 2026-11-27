@@ -82,7 +82,7 @@ background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line
 .mdg .note{font-size:13.5px;color:var(--muted)}
 .mdg .side{display:contents} .mdg .sideclose{display:none}
 .mdg.full{box-sizing:border-box;width:100%;height:100%;padding:12px 16px;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto minmax(0,1fr);gap:10px 14px}
-.mdg.full.overlay{position:fixed;inset:0;z-index:2147483000;width:auto;height:auto}
+.mdg.full.overlay{position:fixed;inset:0;z-index:2147483000;width:auto;height:auto;padding-top:40px}
 .mdg.full .bar2,.mdg.full .strip{grid-column:1 / -1}
 .mdg.full .strip{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px} .mdg.full .grp{flex:none} .mdg.full .chips{flex-wrap:nowrap} .mdg.full .chips button{white-space:nowrap} .mdg.full .grp.stack{display:none}
 .mdg.full .stageframe{grid-column:1;aspect-ratio:auto;max-height:none;min-height:0;height:calc(100% - 2px)}

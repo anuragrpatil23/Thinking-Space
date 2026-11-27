@@ -171,7 +171,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     button('Zoom in', () => renderer?.zoom(0.8)), button('Zoom out', () => renderer?.zoom(1.25)),
     button('Reset view', () => renderer?.flyTo(state.focus ? scene.stops.find((s) => s.id === state.focus)!.frame : scene.all)),
   )
-  // ---- full screen: the display's own full screen where the browser has it, else the drawing laid over the whole window
+  // ---- full screen: the drawing laid over the whole window
   let full = false
   const refit = () => setTimeout(() => { if (!disposed) renderer?.flyTo(state.focus ? scene.stops.find((s) => s.id === state.focus)!.frame : scene.all) }, 80)
   // In full screen the words wait in a side panel: a click on a block or a step's title brings it up.
@@ -198,14 +198,8 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     if (on) doc.body.appendChild(root); else host.appendChild(root)
     applyFull(on)
   }
-  function setFull(on: boolean) {
-    if (on) {
-      if (typeof root.requestFullscreen === 'function') root.requestFullscreen().catch(() => overlay(true))
-      else overlay(true)
-    } else if (doc.fullscreenElement === root) void doc.exitFullscreen()
-    else overlay(false)
-  }
-  const onFullscreenChange = () => { if (!root.classList.contains('overlay')) applyFull(doc.fullscreenElement === root) }
+  // Full screen fills the window, as the app's own focus modes do; it does not take over the display.
+  function setFull(on: boolean) { overlay(on) }
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && root.classList.contains('overlay')) overlay(false) }
   // a stage that changed size lays the focused step out again, so its numbers keep clear of each other
   let sizeWas = ''
@@ -216,7 +210,6 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     if (!first && state.focus && !disposed) draw()
   }) : null
   stageRo?.observe(stage)
-  doc.addEventListener('fullscreenchange', onFullscreenChange)
   doc.addEventListener('keydown', onKey)
   viewBtns.append(notesBtn, fullBtn)
   const inputBtns = new Map<string, HTMLButtonElement>()
@@ -376,8 +369,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     dispose() {
       disposed = true
       stageRo?.disconnect()
-      doc.removeEventListener('fullscreenchange', onFullscreenChange); doc.removeEventListener('keydown', onKey)
-      if (doc.fullscreenElement === root) void doc.exitFullscreen()
+      doc.removeEventListener('keydown', onKey)
       mq?.removeEventListener('change', retheme); mo?.disconnect()
       renderer?.dispose(); renderer = null
       scenes.clear(); values.clear()
