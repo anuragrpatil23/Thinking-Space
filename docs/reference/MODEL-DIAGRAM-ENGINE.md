@@ -77,3 +77,4 @@ Screenshots and `report.json` land in `frontend/tests/.model-diagram-check/<name
 - **Row names thin out like axis ticks.** Row names and column numbers that cannot all fit are dropped in between (`thin`); the row in use always shows (`keep`).
 - **The first step shows what goes in.** A tower that opens with a patch layer draws the picture's patches (the `pixels` slice) as a bar before it, and the step as the linear layer it is.
 - The check takes `--size W,H` for a smaller window, and shoots the full-screen layouts.
+- **The step in focus takes the room it needs.** Its numbers, table of weights and written-out sum can reach into where a neighbouring step's working part is drawn (Query over Key and Value). Inside that room (`focusBox`) a neighbour keeps its bar and gives up its circle, box, fan of lines and title.

@@ -1077,25 +1077,38 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
   }
   // The numbers inside the focused unit each sit beside a line, so they cannot be moved apart on screen afterwards.
   // They are spaced here instead, by the distance the camera will take, so that no two touch.
+  let focusBox: [number, number, number, number] | null = null
   if (focus) {
     const st = steps.get(focus)!, { ux, uy } = st.s, base = st.extra, STAGE = state.stage?.h || 785, PILL = 19.5, ASPECT = state.stage ? state.stage.w / state.stage.h : 16 / 8.6
+    const around = () => {
+    // what the unit will add around itself once drawn: its written-out sum, its table of weights, its bend
+    if (st.EL.kind === 'linear') {
+      const relu = st.s.unit === 'relu', ex = relu ? ux + 19.5 : ux + 7.4, ey = uy + st.half + 3.0
+      if (st.shown.length > 1) grow(st, ex - (relu ? 8 : 5.2), ex + (relu ? 8.2 : 5.6), ey, ey + 2.4)
+      if (st.EL.W?.length) grow(st, ux - 0.2 - 5.6, ux - 0.2 + 4.6, uy - st.half - 4.4 - 2.9, uy - st.half - 4.4)
+    }
+    if (st.s.unit === 'relu') grow(st, ux - 1.85 - 0.5, ux - 1.85 + 3.4 + 6.6, uy - st.half - 1.7, uy + st.half + 2.0 + 2.1 + 0.9)
+    }
     for (let pass = 0; pass < 3 && st.n > 1; pass++) {
       st.extra = base
-      // what the unit will add around itself once drawn: its written-out sum, its table of weights, its bend
-      if (st.EL.kind === 'linear') {
-        const relu = st.s.unit === 'relu', ex = relu ? ux + 19.5 : ux + 7.4, ey = uy + st.half + 3.0
-        if (st.shown.length > 1) grow(st, ex - (relu ? 8 : 5.2), ex + (relu ? 8.2 : 5.6), ey, ey + 2.4)
-        if (st.EL.W?.length) grow(st, ux - 0.2 - 5.6, ux - 0.2 + 4.6, uy - st.half - 4.4 - 2.9, uy - st.half - 4.4)
-      }
-      if (st.s.unit === 'relu') grow(st, ux - 1.85 - 0.5, ux - 1.85 + 3.4 + 6.6, uy - st.half - 1.7, uy + st.half + 2.0 + 2.1 + 0.9)
+      around()
       const f = frameOf(st), eff = Math.max(f.hh, f.hw / ASPECT) * 1.06
       st.sp = Math.max(st.sp, (PILL * 2 * eff) / STAGE); st.y0 = ((st.n - 1) / 2) * st.sp; st.half = Math.max(st.y0 + 0.5, 1.25)
     }
+    // The room the step in focus takes, with its numbers, its table and its sums: a neighbour's working part inside it is not drawn.
+    st.extra = base; around()
+    const e = st.extra as [number, number, number, number] | null
+    focusBox = [Math.min(ux - 3.4, e ? e[0] : Infinity), Math.max(ux + 2.0, e ? e[1] : -Infinity), Math.min(uy - st.half - 0.5, e ? e[2] : Infinity), Math.max(uy + st.half + 1.7, e ? e[3] : -Infinity)]
     st.extra = base
   }
 
   plan.stops.forEach((s, n) => {
     const st = steps.get(s.id)!, EL = st.EL, { ux, uy } = s, px = ux - 1.25, cc: V3 = [ux + 0.75, uy, 0.4], tg = `step:${s.id}`
+    if (focusBox && s.id !== focus && !s.wrap && ux + 1.7 > focusBox[0] && ux - 2.4 < focusBox[1] && uy + 1.4 > focusBox[2] && uy - 1.4 < focusBox[3]) {
+      // inside the room the step in focus has taken: this step keeps its bar and gives up its working part
+      st.out = [cc, tilePt(s.key, st.t, st.i)]
+      return
+    }
     let k = 0
     const pillAt = (text: string, isW: boolean, ci: number) => {
       const y = uy + st.y0 - k * st.sp; k++
