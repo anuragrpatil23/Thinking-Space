@@ -644,7 +644,10 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
   // The name of a bar's row: its token, or the row's number when the rows are not tokens (patches) or were chosen.
   const X = (values ?? {}) as unknown as { picture?: { first_row?: number; last_row?: number }; attention_last_row?: Record<string, Record<string, number[]>>; attention_last_row_every?: number }
   const pic = typeof X.picture?.first_row === 'number' && typeof X.picture?.last_row === 'number' ? { first: X.picture.first_row, last: X.picture.last_row } : null
-  const head = Math.max(0, Math.floor(state.head ?? 0))
+  // A head other than the first is drawn only where its numbers exist: the attention weights and the mix that uses them.
+  // Everywhere else the drawing stays on head 1, whatever the picker was last left at.
+  const headStep = plan.stops.find((s) => s.id === state.focus)
+  const head = headStep && (headStep.part === 'weights' || headStep.part === 'mix') ? Math.max(0, Math.floor(state.head ?? 0)) : 0
   // An attention map as the file writes it ({ rows, row_ids }) or as the parser hands it on (rows, with the ids beside).
   const attMap = (op: string, h: number): { rows: number[][]; ids?: number[] } | null => {
     const m = values?.attention?.[op]?.[String(h)] as unknown
@@ -722,8 +725,11 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
   const put = (key: string, slice: string, kind: Reg['kind'], size: number, square: boolean, cols?: number, masked = true) => {
     let src = sliceRows(slice)
     let lastRow: number[] | null = null
-    if (!src && square && slice.endsWith('.weights')) {
+    // similarity scores are saved for the first head only: another head's bar is drawn empty, not with the first head's numbers
+    if (square && head > 0 && slice.endsWith('.scores')) src = null
+    if (square && slice.endsWith('.weights') && (!src || head > 0)) {
       const op = attOf(slice), am = attMap(op, head)
+      if (head > 0) src = null
       if (am) src = am.rows
       else {
         // A head whose whole map was not saved: its last row was, at every few tokens.
@@ -885,7 +891,7 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
     const fo = focus ? spec.ops.find((o) => o.id === steps.get(focus)!.s.opId) : undefined
     // the head picker is offered only where it changes the drawing: a step that reads or writes a bar drawn one head at a time
     const fs = focus ? steps.get(focus)! : null
-    const perHead = !!fs && [fs.s.key, ...fs.inKeys].some((k) => (plan.bars.get(k)?.heads ?? 0) > 1)
+    const perHead = !!fs && (fs.s.part === 'weights' || fs.s.part === 'mix')
     if (fo?.kind === 'attention' && (fo.heads ?? 1) > 1 && perHead) {
       const saved = Object.keys(values?.attention?.[fo.id] ?? {}).map(Number)
       for (const k of Object.keys(X.attention_last_row?.[fo.id] ?? {})) if (!saved.includes(Number(k))) saved.push(Number(k))
@@ -962,7 +968,7 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
       lab('*', 'ruler', b.x, ry - 0.55, 0.1, [['', `${b.cells.heads} x ${fmtN(b.cells.side)} x ${fmtN(b.cells.side)}`]])
       lab(tagk, 'pu', b.x, ry - 1.7, 0.1, [['', 'each small square is one head’s memory'], ['', 'purple is above zero, blue below'], ['', 'it is the same size at every token']])
     }
-    const nm = b.heads && b.heads > 1 ? `${b.name}, head ${head + 1} of ${b.heads}` : b.square ? `${b.name}, head 1` : b.name
+    const nm = b.heads && b.heads > 1 ? `${b.name}, head ${head + 1} of ${b.heads}${head > 0 && !R.real ? ' (saved for head 1 only)' : ''}` : b.square ? `${b.name}, head 1` : b.name
     lab(tagk, '', b.x, b.y + g.h / 2 + 0.5, 0, [['tag act', 'ACTIVATIONS'], ['nm', nm], ['', shape]], { anchor: 'bottom' })
     if (b.square && b.masked && nR > 2) {
       // the mask's edge: a token reads itself and what came before, never what comes after
@@ -1365,7 +1371,7 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
       sizes.push(`this layer: ${fmtN(nO)} neurons x ${fmtN(nI)} slopes${EL.bias ? ` + ${fmtN(nO)} intercepts = ${fmtN(nO * nI + nO)}` : ` = ${fmtN(nO * nI)}`} weights`)
       sizes.push(`a neuron is as wide as its input (${fmtN(nI)}); how many neurons there are (${fmtN(nO)}) is a free choice`)
     }
-    if (['scores', 'weights', 'mix'].includes(s.part)) sizes.push(`drawn for head 1 of ${facts.heads}; each head has its own ${HS} columns of the queries, keys and values`)
+    if (['scores', 'weights', 'mix'].includes(s.part)) sizes.push(`drawn for head ${head + 1} of ${facts.heads}; each head has its own ${HS} columns of the queries, keys and values`)
     what.push({ t: 'sizes', lines: sizes })
     const exchanges = ['scores', 'weights', 'mix'].includes(s.part)
     const at = s.part === 'scores' || s.part === 'weights' ? `looking at position ${st.i + 1} (“${word(st.i)}”)` : `column ${st.i + 1} of ${fmtN(R.size)}`

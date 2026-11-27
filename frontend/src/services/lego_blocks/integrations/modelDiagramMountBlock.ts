@@ -370,12 +370,14 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
       // one word at a time, forwards or back: the same stepper as the heads
       writeBtn.textContent = '\u203A'; writeBtn.title = 'Write the next word'; writeBtn.setAttribute('aria-label', 'Write the next word')
       overBtn.textContent = '\u2039'; overBtn.title = 'Take the last word back'; overBtn.setAttribute('aria-label', 'Take the last word back')
-      passLabel.className = 'v'; tokensEl.className = 'v dim'
-      passGroup.classList.add('pager'); passGroup.append(el('span', 'l', 'Words written'), overBtn, passLabel, writeBtn, tokensEl, showBtn)
+      tokensEl.className = 'v dim'; passGroup.append(tokensEl)
     } else passGroup.append(passLabel, writeBtn, overBtn, showBtn)
-    wroteGroup.append(el('span', 'l', 'Written so far'), writtenEl, el('span', 'l', 'Next word'), nextEl)
+    // in the app one control: what is written, the word that comes next, and an arrow either side to take a word back or write it
+    if (inApp) wroteGroup.append(overBtn, el('span', 'l', 'Written so far'), writtenEl, el('span', 'l', 'Next word'), nextEl, writeBtn)
+    else wroteGroup.append(el('span', 'l', 'Written so far'), writtenEl, el('span', 'l', 'Next word'), nextEl)
     wroteGroup.classList.add('readout')
-    if (inApp) { showBtn.textContent = 'Highlight the new token'; showBtn.title = 'Show what the new token touches'; showBtn.className = 'switch'; showBtn.setAttribute('role', 'switch') }
+    // in the app what the new token touches is always shown: it is the point of stepping a word at a time
+    if (inApp) state.showNew = true
     if (inApp) bar.append(g, wroteGroup, passGroup); else bar.append(g, passGroup, wroteGroup)
   }
   bar.append(headGroup, exGroup)
@@ -431,9 +433,10 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     const ps = scene.passes
     wroteGroup.hidden = !ps
     passGroup.hidden = !ps || ps.count <= 1
+    if (inApp) { writeBtn.hidden = overBtn.hidden = !ps || ps.count <= 1 }
     if (ps) {
       passLabel.textContent = props.appearance === 'app' ? `${ps.pass} of ${ps.count - 1}` : `Pass ${ps.pass + 1} of ${ps.count}: ${scene.tokens.length} tokens go in`
-      writeBtn.disabled = ps.pass >= ps.count - 1; overBtn.disabled = ps.pass === 0; tokensEl.textContent = `the model reads ${scene.tokens.length} tokens`; passGroup.title = 'Each run of the model writes one word. Step forward to write the next word, back to take one away.'
+      writeBtn.disabled = ps.pass >= ps.count - 1; overBtn.disabled = ps.pass === 0; tokensEl.textContent = `${ps.pass} of ${ps.count - 1} words \u00B7 the model reads ${scene.tokens.length} tokens`
       showBtn.setAttribute('aria-pressed', state.showNew ? 'true' : 'false'); if (inApp) showBtn.setAttribute('aria-checked', state.showNew ? 'true' : 'false')
       writtenEl.textContent = ps.written.length ? ps.written.join(' ') : '(nothing yet)'; nextEl.textContent = ps.next
     }
