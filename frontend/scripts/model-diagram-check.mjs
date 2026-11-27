@@ -167,6 +167,14 @@ try {
       await js(`document.querySelectorAll(".mdg .strip .chips button")[${n}].click()`); await sleep(500)
       // the whole page as it sits in the app: controls, navigator, drawing, cards
       await shot('.mdg', join(outDir, `engine-${theme}-page.png`))
+      // the numbers that open over the drawing when asked for (the app look only)
+      if (await js(`!!document.querySelector(".mdg.app")`)) {
+        await js(`document.querySelectorAll(".mdg .strip .chips button")[3].click()`); await sleep(900)
+        await js(`[...document.querySelectorAll(".mdg .viewbtns button")].find((b) => b.textContent === 'Numbers')?.click()`); await sleep(1400)
+        await shot('.mdg', join(outDir, `engine-${theme}-pop.png`))
+        await js(`[...document.querySelectorAll(".mdg .viewbtns button")].find((b) => b.textContent === 'Numbers')?.click()`)
+        await js(`document.querySelectorAll(".mdg .strip .chips button")[${n}].click()`); await sleep(500)
+      }
       await press('Full screen'); await sleep(700)
       await shot('.mdg', join(outDir, `engine-${theme}-full.png`))
       await press('Notes'); await sleep(700)

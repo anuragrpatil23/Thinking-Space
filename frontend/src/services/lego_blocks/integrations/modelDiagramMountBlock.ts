@@ -105,11 +105,15 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   }
   const hint = el('p', 'hint', 'This is one drawing of the whole model. Click a step name or any block to fly into that part. Once inside, click any block to see the step that made it, at work on that number. Drag to turn, right-drag to slide. Block height: for similarity scores and for shares, taller means a larger value. For every other bar it is the size of the number, with negative numbers drawn paler.')
   const under = el('section', 'under'), what = el('div', 'card'), weights = el('div', 'card w')
-  under.append(what, weights)
+  // In the app the numbers are not a card under the page: they open over the drawing, when asked for, and stay until closed.
+  const pop = el('div', 'pop'), appLook = props.appearance === 'app'
+  if (appLook) { under.append(what); what.classList.add('what'); pop.appendChild(weights); weights.hidden = true } else under.append(what, weights)
   frame.append(stage, labels, stepBtns, viewBtns, legend)
+  if (appLook) frame.appendChild(pop)
   // Everything that is words: under the drawing as a rule (the wrapper is invisible to layout), a side panel in full screen.
   const side = el('div', 'side')
-  side.append(hint, under)
+  // in the app the step's words come first, straight under the drawing they describe; the general notes follow
+  if (appLook) side.append(under, hint); else side.append(hint, under)
   root.append(bar, strip, frame, side)
   host.appendChild(root)
 
@@ -156,7 +160,8 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     props.onStep?.(s ? s.specStep : 0, s?.part || undefined)
   }
   const focus = (id: string | null, tell = true, open: string | null = null) => {
-    state.focus = id; state.open = open
+    // in the app a click flies to the step and no more: a bar's numbers open when asked for, beside the drawing
+    state.focus = id; state.open = props.appearance === 'app' ? null : open
     draw(); renderer?.flyTo(id ? scene.stops.find((s) => s.id === id)!.frame : scene.all)
     if (tell) report()
   }
@@ -246,6 +251,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   // in the app the camera buttons are a small stack in the stage's corner, as on a map
   const inApp = props.appearance === 'app'
   const ICON: Record<string, string> = {
+    Numbers: '<rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M2.5 6.5h11M2.5 9.8h11M6.3 3v10"/>',
     'Zoom in': '<path d="M8 3.5v9M3.5 8h9"/>', 'Zoom out': '<path d="M3.5 8h9"/>',
     'Reset view': '<path d="M3 8a5 5 0 1 0 1.6-3.7"/><path d="M3 2.8v2.6h2.6"/>', Run: '<path d="M5.2 3.6v8.8L12.4 8z" fill="currentColor" stroke-linejoin="round"/>',
   }
@@ -253,6 +259,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     b.innerHTML = `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">${ICON[name]}</svg>${withText ? `<span>${name}</span>` : ''}`
     b.title = name; b.setAttribute('aria-label', name)
   }
+  const numBtn = button('Numbers', () => { showN = !showN; draw() })
   const camBtn = (text: string, _glyph: string, onClick: () => void) => { const b = button(text, onClick); if (inApp) icon(b, text); return b }
   viewBtns.append(
     camBtn('Zoom in', '+', () => renderer?.zoom(0.8)), camBtn('Zoom out', '\u2212', () => renderer?.zoom(1.25)),
@@ -330,7 +337,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   }) : null
   stageRo?.observe(stage)
   doc.addEventListener('keydown', onKey)
-  if (inApp) { navTools.append(notesBtn, fullBtn); icon(runBtn, 'Run', true); runBtn.title = 'Play this step again'; runBtn.classList.add('run'); viewBtns.prepend(runBtn) } else viewBtns.append(notesBtn, fullBtn)
+  if (inApp) { navTools.append(notesBtn, fullBtn); icon(runBtn, 'Run', true); runBtn.title = 'Play this step again'; runBtn.classList.add('run'); viewBtns.prepend(runBtn); icon(numBtn, 'Numbers', true); numBtn.title = 'Show this step\u2019s numbers beside the drawing'; numBtn.classList.add('run'); runBtn.after(numBtn) } else viewBtns.append(notesBtn, fullBtn)
   const inputBtns = new Map<string, HTMLButtonElement>()
   const passLabel = el('span', 'l'), writtenEl = el('b', 'mono'), nextEl = el('b', 'mono nxt')
   const setPass = (n: number) => {
@@ -361,7 +368,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   exGroup.append(exLabel, exRange); exGroup.hidden = true
   // the saved numbers of a bar that was clicked
   const openCard = el('div', 'card open'), openBody = el('div', 'openbody')
-  const closeBtn = button('Close', () => { state.open = null; draw() })
+  const closeBtn = button('Close', () => { state.open = null; showN = false; draw() })
   openCard.append(closeBtn, openBody); openCard.hidden = true
   if (props.inputs.length) {
     const g = el('div', 'g join'); g.appendChild(el('span', 'l', inApp ? 'Prompt' : 'Prompt at the front'))
@@ -380,17 +387,26 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     if (inApp) state.showNew = true
     if (inApp) bar.append(g, wroteGroup, passGroup); else bar.append(g, passGroup, wroteGroup)
   }
+  headGroup.classList.add('right')
   bar.append(headGroup, exGroup)
-  side.insertBefore(openCard, under)
+  if (inApp) pop.insertBefore(openCard, pop.firstChild); else side.insertBefore(openCard, under)
 
   // in the app each card says what it is before it says anything else
   const card = (into: HTMLElement, items: ModelDiagramCardItemBlock[], tagged: boolean, eyebrow?: [string, string]) => {
     into.textContent = ''
     if (inApp && eyebrow) { const e = el('div', 'eyebrow'); e.append(el('b', '', eyebrow[0]), el('span', '', eyebrow[1])); into.appendChild(e) }
     let head: HTMLElement | null = null
+    // the step's card in the app: the telling on the left, the formula and sizes beside it
+    const split = inApp && into === what
+    const main = split ? el('div', 'main') : into, aside = split ? el('div', 'aside') : into
+    if (split) { const cols = el('div', 'cols'); cols.append(main, aside); into.appendChild(cols) }
+    const dest = (t: string) => (t === 'h2' || t === 'p' ? main : aside)
+    let skipSum = false
     if (tagged) { head = el('div', 'hd'); head.appendChild(el('span', 'tag wt', 'WEIGHTS')); into.appendChild(head) }
     for (const it of items) {
-      if (it.t === 'sizes') { const d = el('div', 'sizes'); for (const l of it.lines) d.appendChild(el('span', '', l)); into.appendChild(d) }
+      // the sum written out already has its place in the drawing's corner
+      if (split) { if (it.t === 'h3' && it.text === 'The sum, written out') { skipSum = true; continue } if (skipSum && it.t === 'formula') continue; skipSum = false }
+      if (it.t === 'sizes') { const d = el('div', 'sizes'); for (const l of it.lines) d.appendChild(el('span', '', l)); dest(it.t).appendChild(d) }
       else if (it.t === 'table') {
         const t = el('table', it.cls)
         it.rows.forEach((r, n) => {
@@ -400,14 +416,21 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
           r.cells.forEach((c, k) => { const td = el(n === 0 ? 'th' : 'td', '', c); const sh = r.shade?.[k]; if (sh) td.style.background = `color-mix(in srgb, var(--neuron) ${Math.round(sh * 60)}%, transparent)`; if (inApp && it.pickRows && r.on && k >= 1 && k <= 8) td.style.boxShadow = `inset 0 -3px 0 var(--c${k})`; tr.appendChild(td) })
           t.appendChild(tr)
         })
-        const d = el('div', 'tscroll'); d.appendChild(t); into.appendChild(d)
+        const d = el('div', 'tscroll'); d.appendChild(t); dest(it.t).appendChild(d)
       } else if (it.t === 'h3' && head && head.childNodes.length === 1) head.appendChild(el('h3', '', it.text))
-      else into.appendChild(el(it.t === 'h2' || it.t === 'h3' ? it.t : it.t === 'p' || it.t === 'note' ? 'p' : 'div', it.t === 'note' ? 'note' : it.t === 'formula' ? 'formula' : '', it.text))
+      else dest(it.t).appendChild(el(it.t === 'h2' || it.t === 'h3' ? it.t : it.t === 'p' || it.t === 'note' ? 'p' : 'div', it.t === 'note' ? 'note' : it.t === 'formula' ? 'formula' : '', it.text))
     }
   }
 
+  let showN = false
   function draw() {
     scene = sceneNow()
+    if (inApp) {
+      // the inspector shows the numbers of the step in focus: its result, and its weights when it has any
+      const cur = showN && state.focus ? scene.stops.find((x) => x.id === state.focus) : undefined
+      const key = cur ? cur.bars[cur.bars.length - 1] ?? null : null
+      if (state.open !== key) { state.open = key; scene = sceneNow() }
+    }
     for (const [id, b] of chip) { if (id === state.focus) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current') }
     // a strip that scrolls sideways keeps the step in focus in sight
     const cur = state.focus ? chip.get(state.focus) : allChip
@@ -429,18 +452,30 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     if (ex) { exLabel.textContent = `Example ${ex.index + 1} of ${ex.count} in the batch`; exRange.max = String(ex.count); exRange.value = String(ex.index + 1) }
     bar.hidden = !props.inputs.length && !hs && !ex
     openCard.hidden = !scene.open
-    if (scene.open) card(openBody, scene.open, false, ['The bar you clicked', 'the numbers saved for it'])
+    if (scene.open) card(openBody, scene.open, false, [inApp ? 'This step\u2019s result' : 'The bar you clicked', 'the numbers saved for it'])
     const ps = scene.passes
     wroteGroup.hidden = !ps
     passGroup.hidden = !ps || ps.count <= 1
     if (inApp) { writeBtn.hidden = overBtn.hidden = !ps || ps.count <= 1 }
     if (ps) {
       passLabel.textContent = props.appearance === 'app' ? `${ps.pass} of ${ps.count - 1}` : `Pass ${ps.pass + 1} of ${ps.count}: ${scene.tokens.length} tokens go in`
-      writeBtn.disabled = ps.pass >= ps.count - 1; overBtn.disabled = ps.pass === 0; tokensEl.textContent = `${ps.pass} of ${ps.count - 1} words \u00B7 the model reads ${scene.tokens.length} tokens`
+      writeBtn.disabled = ps.pass >= ps.count - 1; overBtn.disabled = ps.pass === 0; tokensEl.textContent = `${ps.pass} of ${ps.count - 1} words \u00B7 ${scene.tokens.length} tokens read`
       showBtn.setAttribute('aria-pressed', state.showNew ? 'true' : 'false'); if (inApp) showBtn.setAttribute('aria-checked', state.showNew ? 'true' : 'false')
-      writtenEl.textContent = ps.written.length ? ps.written.join(' ') : '(nothing yet)'; nextEl.textContent = ps.next
+      const wr = ps.written.join(' ')
+      // in the app the control keeps its width as words are added: a long run shows its end
+      writtenEl.textContent = !ps.written.length ? '(nothing yet)' : inApp && wr.length > 24 ? `\u2026${wr.slice(-23)}` : wr; writtenEl.title = wr; nextEl.textContent = ps.next
     }
     card(what, scene.what, false, [state.focus ? 'This step' : 'The model', state.focus ? 'what it does, in words and numbers' : 'what the drawing shows']); card(weights, scene.weights, true, [state.focus ? 'This step\u2019s weights' : 'Weights', state.focus ? 'click a row to show that neuron in the drawing' : 'learned in training; the same for every prompt'])
+    if (inApp) {
+      const hasTable = scene.weights.some((x) => x.t === 'table')
+      weights.hidden = !(showN && state.focus && hasTable)
+      numBtn.hidden = !state.focus; numBtn.setAttribute('aria-pressed', showN ? 'true' : 'false')
+      const aside = what.querySelector('.aside')
+      if (aside && state.focus && !hasTable) aside.appendChild(el('p', 'note', 'This step has no weights of its own: it only combines what earlier steps produced.'))
+      // the inspector takes a strip of the stage; the drawing is fitted again into what is left
+      const insp = showN && Boolean(state.focus)
+      if (insp !== root.classList.contains('inspect')) { root.classList.toggle('inspect', insp); refit() }
+    }
     renderer?.setScene(scene, state.focus)
   }
 
@@ -472,7 +507,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
       onStop: (id) => { focus(id); setNotes(true) },
       obstacles() {
         const f = stage.getBoundingClientRect(), out: { x0: number; y0: number; x1: number; y1: number }[] = []
-        for (const e of [stepBtns, viewBtns, legend]) {
+        for (const e of [stepBtns, viewBtns, legend, pop]) {
           if (e.parentElement !== frame) continue
           const r = e.getBoundingClientRect()
           if (r.width > 0 && r.height > 0) out.push({ x0: r.left - f.left, y0: r.top - f.top, x1: r.right - f.left, y1: r.bottom - f.top })

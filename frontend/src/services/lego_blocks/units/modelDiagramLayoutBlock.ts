@@ -956,12 +956,13 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
         ? `(${tn.axes.map((a, k) => (k < tn.axes.length - 1 && typeof a === 'string' && LET[a]) || fmtN(ax(a))).join(', ')}) = ${tn.axes.map((a) => fmtN(ax(a))).join(' x ')}${nR < ax(tn.axes[tn.axes.length - 2] ?? 0) ? `, ${nR} rows` : ''}${drawn ? `${nR < ax(tn.axes[tn.axes.length - 2] ?? 0) ? ' and' : ','}${drawn.slice(1)}` : ''}`
         : `(B, T, ${fmtN(R.size)}) = ${batch} x ${nR} x ${fmtN(R.size)}${drawn}`
     // A ruler under the bar, to one scale across the whole drawing.
-    const broken = R.size > 3072, L = broken ? 11 : Math.max(0.35, (R.size / 768) * 3), ry = b.y - g.h / 2 - 0.6
+    // A square bar shows every one of its columns, so its ruler is simply its own width, and says what the columns are.
+    const broken = R.size > 3072, L = b.square ? g.w : broken ? 11 : Math.max(0.35, (R.size / 768) * 3), ry = b.y - g.h / 2 - 0.6
     const ra: V3 = [b.x - L / 2, ry, 0.1], rb: V3 = [b.x + L / 2, ry, 0.1]
     if (!b.cells) {
       if (broken) { rod(ra, [b.x - 0.5, ry, 0.1], 0.06, 'bar', 1); rod([b.x + 0.5, ry, 0.1], rb, 0.06, 'bar', 1) } else rod(ra, rb, 0.06, 'bar', 1)
       for (const e of [ra, rb]) rod([e[0], ry - 0.22, 0.1], [e[0], ry + 0.22, 0.1], 0.05, 'bar', 1)
-      lab('*', 'ruler', b.x, ry - 0.55, 0.1, [['', fmtN(R.size)]])
+      lab('*', 'ruler', b.x, ry - 0.55, 0.1, [['', b.square ? `${fmtN(R.size)} columns, one per token` : fmtN(R.size)]])
     } else {
       // the bank of heads: a thin frame round each head's patch, and what the whole thing is
       for (let h = 0; h < b.cells.heads; h++) wire([b.x + ((h % 8) * 2 + 1 - nC / 2) * p, b.y - (Math.floor(h / 8) * 2 + 1 - nR / 2) * p, 0.05], 2 * p, 2 * p, 0.02, 'neuron', 0.5)

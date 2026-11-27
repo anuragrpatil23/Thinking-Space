@@ -21,7 +21,7 @@ background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line
 .mdg.app:not(.full) .stageframe{align-self:flex-start;flex:none;overflow:hidden;-webkit-mask-image:linear-gradient(to right,transparent 0,#000 56px,#000 calc(100% - 56px),transparent 100%);mask-image:linear-gradient(to right,transparent 0,#000 56px,#000 calc(100% - 56px),transparent 100%)}
 .mdg.app .viewbtns{top:auto;bottom:12px;right:12px;flex-direction:row;align-items:stretch;gap:0;height:32px;border:1px solid var(--rule);border-radius:9px;overflow:hidden;background:var(--panel);box-shadow:0 1px 3px rgb(0 0 0 / .12)}
 .mdg.app .viewbtns button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:34px;width:auto;height:100%;margin:0;padding:0 9px;font-size:12.5px;line-height:1;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;color:var(--fg)}
-.mdg.app .viewbtns button+button{border-left:1px solid var(--rule)} .mdg.app .viewbtns button:hover{background:color-mix(in srgb,var(--fg) 8%,transparent)} .mdg.app .viewbtns button.run{padding:0 12px 0 9px} .mdg.app .viewbtns svg{display:block;flex:none}
+.mdg.app .viewbtns button+button{border-left:1px solid var(--rule)} .mdg.app .viewbtns button[aria-pressed="true"]{background:hsl(var(--primary));color:hsl(var(--primary-foreground))} .mdg.app .viewbtns button[hidden]{display:none} .mdg.app .viewbtns button:hover{background:color-mix(in srgb,var(--fg) 8%,transparent)} .mdg.app .viewbtns button.run{padding:0 12px 0 9px} .mdg.app .viewbtns svg{display:block;flex:none}
 .mdg.app .stepbtns{display:none}
 .mdg.app:not(.full) .viewbtns{right:64px}
 .mdg.app .navsec{margin-left:auto} .mdg.app .navtools{display:flex;gap:6px;margin-left:14px} .mdg.app .navtools button{font-size:12px;padding:4px 10px;white-space:nowrap}
@@ -66,11 +66,25 @@ background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line
 .mdg.app .bar2 .g.join{gap:0} .mdg.app .bar2 .g.join .l{margin-right:8px} .mdg.app .bar2 .g.join button{border-radius:0;margin-left:-1px;position:relative}
 .mdg.app .bar2 .g.join button:first-of-type{border-radius:7px 0 0 7px;margin-left:0} .mdg.app .bar2 .g.join button:last-of-type{border-radius:0 7px 7px 0} .mdg.app .bar2 .g.join button:only-of-type{border-radius:7px}
 .mdg.app .bar2 .g.join button[aria-pressed="true"]{z-index:1;background:hsl(var(--primary));color:hsl(var(--primary-foreground));border-color:hsl(var(--primary));outline:0;box-shadow:none}
-.mdg.app .bar2 .g.readout{gap:8px;padding:4px 12px;border-radius:7px;background:color-mix(in srgb,var(--fg) 7%,transparent);font-family:var(--mono);font-size:12px;min-width:0} .mdg.app .bar2 .g.readout .l{margin:0} .mdg.app .bar2 .g.readout{padding:3px 4px} .mdg.app .bar2 .g.readout button{width:24px;height:24px;padding:0;font-size:16px;line-height:1;border-radius:6px;display:grid;place-items:center;flex:none;font-family:inherit} .mdg.app .bar2 .g.readout button:first-child{margin-right:4px} .mdg.app .bar2 .g.readout button:last-child{margin-left:4px} .mdg.app .bar2 .g.pager:last-child{margin-left:auto}
+.mdg.app .bar2 .g.readout{gap:8px;padding:4px 12px;border-radius:7px;background:color-mix(in srgb,var(--fg) 7%,transparent);font-family:var(--mono);font-size:12px;min-width:0} .mdg.app .bar2 .g.readout .l{margin:0} .mdg.app .bar2 .g.readout{padding:3px 4px} .mdg.app .bar2 .g.readout button{width:24px;height:24px;padding:0;font-size:16px;line-height:1;border-radius:6px;display:grid;place-items:center;flex:none;font-family:inherit} .mdg.app .bar2 .g.readout button:first-child{margin-right:4px} .mdg.app .bar2 .g.readout button:last-child{margin-left:4px} .mdg.app .bar2 .g.right{margin-left:auto} .mdg.app .bar2 .g.readout .mono{display:inline-block;min-width:13ch}
 .mdg.app .bar2 .v.dim{color:var(--muted);font-size:12px;margin:0 6px}
 .mdg.app .bar2 .v{font-size:12.5px;color:var(--fg);white-space:nowrap;font-variant-numeric:tabular-nums} .mdg.app .bar2 .g.pager button{width:26px;height:26px;padding:0;font-size:16px;line-height:1;border-radius:999px;display:grid;place-items:center} .mdg.app .bar2 .g.pager .v{min-width:52px;text-align:center}
 .mdg.app .eyebrow{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;font-size:12px;color:var(--muted);padding-bottom:8px;margin-bottom:2px;border-bottom:1px solid var(--rule)} .mdg.app .eyebrow b{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--fg)}
 .mdg.app .card.open>button{top:8px}
+.mdg.app{--insp:min(470px,42%)}
+.mdg.app .pop{position:absolute;z-index:6;top:0;bottom:0;right:0;width:var(--insp);display:none;flex-direction:column;gap:0;overflow:auto;background:var(--bg);border-left:1px solid var(--rule)} .mdg.app.inspect .pop{display:flex}
+.mdg.app:not(.full) .pop{right:56px;border-right:1px solid var(--rule)}
+.mdg.app.inspect .mdg-stage,.mdg.app.inspect .mdg-labels{right:var(--insp)} .mdg.app.inspect:not(.full) .mdg-stage,.mdg.app.inspect:not(.full) .mdg-labels{right:calc(var(--insp) + 56px)}
+.mdg.app.inspect .viewbtns{right:calc(var(--insp) + 12px)} .mdg.app.inspect:not(.full) .viewbtns{right:calc(var(--insp) + 68px)}
+.mdg.app .pop>.card{flex:none;position:relative;background:transparent;border:0;border-radius:0;padding:14px 16px;font-size:12.5px}
+.mdg.app .pop>.card[hidden]{display:none} .mdg.app .pop .popclose,.mdg.app .pop .card.open>button{position:absolute;right:12px;top:9px;font-size:12px;padding:3px 9px} .mdg.app .pop .eyebrow{padding-right:64px}
+.mdg.app .card.what .morerow{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+@container mdg (max-width:820px){ .mdg.app{--insp:min(360px,62%)} }
+.mdg.app .under{grid-template-columns:minmax(0,1fr)} .mdg.app .card.what{border-radius:10px;padding:18px 22px}
+.mdg.app .card.what .cols{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:8px 36px;align-items:start} .mdg.app .card.what .main,.mdg.app .card.what .aside{display:flex;flex-direction:column;gap:9px;min-width:0}
+.mdg.app .card.what .aside{padding-left:24px;border-left:1px solid var(--rule)} .mdg.app .card.what .more{font-size:12.5px;padding:5px 11px}
+.mdg.app.full .card.what .cols{grid-template-columns:minmax(0,1fr)} .mdg.app.full .card.what .aside{padding-left:0;border-left:0}
+@container mdg (max-width:820px){ .mdg.app .card.what .cols{grid-template-columns:minmax(0,1fr)} .mdg.app .card.what .aside{padding-left:0;border-left:0} }
 .mdg.app tr.pickable{cursor:pointer} .mdg.app tr.pickable:hover td{background:color-mix(in srgb,var(--fg) 7%,transparent)}
 .mdg.app .card{border-radius:12px;box-shadow:0 1px 2px rgb(0 0 0 / .04)}
 .mdg.app .hint{font-size:12.5px}
