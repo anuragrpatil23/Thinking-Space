@@ -16,6 +16,10 @@ export interface ModelDiagramLabelBoxBlock {
   shortH?: number
   /** 'fixed' shows where it is; 'nudge' shows, moved a little to clear others; 'slide' moves whole lines; the default gives way. */
   mode?: 'fixed' | 'slide' | 'nudge'
+  /** A fixed label that is one of a run (a row's name, a column's number): dropped when it would sit on its neighbour, like the ticks of an axis. */
+  thin?: boolean
+  /** In a thinned run, the one that always shows (the row in use). */
+  keep?: boolean
 }
 
 export type ModelDiagramLabelFateBlock = 'full' | 'short' | 'hidden'
@@ -33,19 +37,23 @@ for (let r = 1; r <= 24; r++) { const d = r * 7; NUDGES.push([0, -d], [0, d], [d
  * smallest step that clears what is already placed. A sliding one (a step's
  * title) is never hidden either: it moves up or down whole lines, then half
  * its width sideways, and shrinks to its short form only when no place is free. The rest give way, highest rank
- * first, earlier winning a tie.
+ * first, earlier winning a tie. `walls` are the parts of the drawing (bars,
+ * circles) that a label which can move keeps off; a fixed label belongs to
+ * the drawing and ignores them.
  */
-export function placeModelDiagramLabelsBlock(boxes: ModelDiagramLabelBoxBlock[]): ModelDiagramLabelPlaceBlock[] {
+export function placeModelDiagramLabelsBlock(boxes: ModelDiagramLabelBoxBlock[], walls: { x0: number; y0: number; x1: number; y1: number }[] = []): ModelDiagramLabelPlaceBlock[] {
   const out: ModelDiagramLabelPlaceBlock[] = boxes.map(() => ({ fate: 'hidden', dx: 0, dy: 0 }))
   const byRank = (ids: number[]) => ids.sort((a, b) => boxes[b].rank - boxes[a].rank || a - b)
   const ids = boxes.map((_, i) => i).filter((i) => boxes[i].w > 0 && boxes[i].h > 0)
   // Placed rectangles as flat [x0, y0, x1, y1] runs.
   const placed: number[] = []
-  const free = (b: ModelDiagramLabelBoxBlock, w: number, h: number, dx: number, dy: number) => {
+  const free = (b: ModelDiagramLabelBoxBlock, w: number, h: number, dx: number, dy: number, offDrawing = true) => {
     const x0 = b.x + dx - w / 2 - PAD, y0 = b.y + dy - h / 2 - PAD, x1 = b.x + dx + w / 2 + PAD, y1 = b.y + dy + h / 2 + PAD
     for (let k = 0; k < placed.length; k += 4) {
       if (x0 < placed[k + 2] && x1 > placed[k] && y0 < placed[k + 3] && y1 > placed[k + 1]) return false
     }
+    // the drawing itself: a label that can move does not sit on a bar or a step's circle
+    if (offDrawing) for (const q of walls) if (x0 < q.x1 && x1 > q.x0 && y0 < q.y1 && y1 > q.y0) return false
     return true
   }
   const take = (i: number, w: number, h: number, dx: number, dy: number, fate: ModelDiagramLabelFateBlock = 'full') => {
@@ -54,9 +62,19 @@ export function placeModelDiagramLabelsBlock(boxes: ModelDiagramLabelBoxBlock[])
     out[i] = { fate, dx, dy }
   }
   const of = (mode: ModelDiagramLabelBoxBlock['mode']) => ids.filter((k) => boxes[k].mode === mode)
-  for (const i of of('fixed')) take(i, boxes[i].w, boxes[i].h, 0, 0)
+  const fixed = of('fixed')
+  for (const i of fixed) if (!boxes[i].thin) take(i, boxes[i].w, boxes[i].h, 0, 0)
+  // a run of names: the one in use first, then every one that has room among those already kept
+  const run = fixed.filter((k) => boxes[k].thin)
+  for (const i of byRank(run)) {
+    const b = boxes[i]
+    // the name of the row in use always shows; the others fit around it
+    if (b.keep) { take(i, b.w, b.h, 0, 0); continue }
+    if (free(b, Math.max(1, b.w - 4), Math.max(1, b.h * 0.7), 0, 0)) take(i, b.w, b.h, 0, 0)
+  }
   for (const i of byRank(of('nudge'))) {
-    const b = boxes[i], d = NUDGES.find(([dx, dy]) => free(b, b.w, b.h, dx, dy)) ?? NUDGES[0]
+    // clear of labels and the drawing if it can be; else clear of labels at least: words on a bar read better than words on words
+    const b = boxes[i], d = NUDGES.find(([dx, dy]) => free(b, b.w, b.h, dx, dy)) ?? NUDGES.find(([dx, dy]) => free(b, b.w, b.h, dx, dy, false)) ?? NUDGES[0]
     take(i, b.w, b.h, d[0], d[1])
   }
   for (const i of byRank(of('slide'))) {
@@ -64,7 +82,7 @@ export function placeModelDiagramLabelsBlock(boxes: ModelDiagramLabelBoxBlock[])
     // Whole lines first, then half a width to either side on the nearer lines.
     const tries: [number, number][] = [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6].map((k) => [0, k * line])
     for (const k of [0, -1, 1, -2, 2, -3, 3]) tries.push([b.w / 2 + 4, k * line], [-b.w / 2 - 4, k * line])
-    const d = tries.find(([dx, dy]) => free(b, b.w, b.h, dx, dy))
+    const d = tries.find(([dx, dy]) => free(b, b.w, b.h, dx, dy)) ?? tries.find(([dx, dy]) => free(b, b.w, b.h, dx, dy, false))
     if (d) { take(i, b.w, b.h, d[0], d[1]); continue }
     if (b.shortW && b.shortH) {
       const sw = b.shortW, sh = b.shortH
@@ -75,7 +93,8 @@ export function placeModelDiagramLabelsBlock(boxes: ModelDiagramLabelBoxBlock[])
   }
   for (const i of byRank(of(undefined))) {
     const b = boxes[i]
-    if (free(b, b.w, b.h, 0, 0)) take(i, b.w, b.h, 0, 0)
+    // these sit where the drawing wants them (a ruler's number, a note on a grid): they give way to labels only
+    if (free(b, b.w, b.h, 0, 0, false)) take(i, b.w, b.h, 0, 0)
   }
   return out
 }

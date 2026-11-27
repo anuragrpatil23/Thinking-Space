@@ -104,7 +104,7 @@ export function modelDiagramPartTextBlock(part: string, f: ModelDiagramTextFacts
     case 'join':
       return 'Two rows of tokens are put in one line. From here on the network cannot tell which came from where: each is one row of the stream.'
     case 'patchify':
-      return 'The picture is cut into small squares, and each square’s numbers are laid out as one row. From here on a square is a token like any word.'
+      return 'The picture is cut into small squares, and each square’s pixel numbers are laid out as one row: that is the bar on the left, one row per square. A linear layer then turns each row of pixel numbers into a row of the width the tower works in. Each neuron is one equation, with one slope for every pixel number of a square. From here on a square is a token like any word.'
     case 'position':
       return 'Each position picks a row from the position table, so the network can tell the first token from the fifth.'
     case 'act':

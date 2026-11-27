@@ -64,7 +64,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   let input: string | null = props.inputs[0] ?? null
   let themeProp = props.theme
   let disposed = false
-  const state: ModelDiagramStateBlock & Required<ModelDiagramPassStateBlock> = { focus: null, t: 5, sel: {}, pass: 0, showNew: true, head: 0, example: 0, open: null }
+  const state: ModelDiagramStateBlock & Required<Omit<ModelDiagramPassStateBlock, 'stage'>> & Pick<ModelDiagramPassStateBlock, 'stage'> = { focus: null, t: 5, sel: {}, pass: 0, showNew: true, head: 0, example: 0, open: null, stage: undefined }
   const stopFor = (step: number, part?: string) => {
     if (!step) return null
     const mine = stops.filter((s) => s.specStep === step)
@@ -117,7 +117,10 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   const scenes = new Map<string, ModelDiagramSceneBlock>()
   const sceneNow = () => {
     const v = input ? values.get(input) ?? null : null
-    const key = JSON.stringify([v ? input : null, state.focus, state.t, state.sel, state.pass, state.showNew, state.head, state.example, state.open])
+    // the stage's size, to the nearest 5 px, so a step's numbers are spaced for the room there is
+    const sw = Math.round(stage.clientWidth / 5) * 5, sh = Math.round(stage.clientHeight / 5) * 5
+    state.stage = sw > 0 && sh > 0 && state.focus ? { w: sw, h: sh } : undefined
+    const key = JSON.stringify([v ? input : null, state.focus, state.t, state.sel, state.pass, state.showNew, state.head, state.example, state.open, state.stage])
     let s = scenes.get(key)
     if (!s) {
       s = layoutModelDiagramBlock(spec, v, state)
@@ -204,6 +207,15 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   }
   const onFullscreenChange = () => { if (!root.classList.contains('overlay')) applyFull(doc.fullscreenElement === root) }
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && root.classList.contains('overlay')) overlay(false) }
+  // a stage that changed size lays the focused step out again, so its numbers keep clear of each other
+  let sizeWas = ''
+  const stageRo = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => {
+    const now = `${Math.round(stage.clientWidth / 5)}x${Math.round(stage.clientHeight / 5)}`
+    if (now === sizeWas) return
+    const first = sizeWas === ''; sizeWas = now
+    if (!first && state.focus && !disposed) draw()
+  }) : null
+  stageRo?.observe(stage)
   doc.addEventListener('fullscreenchange', onFullscreenChange)
   doc.addEventListener('keydown', onKey)
   viewBtns.append(notesBtn, fullBtn)
@@ -363,6 +375,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     labelRects: () => renderer?.labelRects() ?? [],
     dispose() {
       disposed = true
+      stageRo?.disconnect()
       doc.removeEventListener('fullscreenchange', onFullscreenChange); doc.removeEventListener('keydown', onKey)
       if (doc.fullscreenElement === root) void doc.exitFullscreen()
       mq?.removeEventListener('change', retheme); mo?.disconnect()

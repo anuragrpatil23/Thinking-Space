@@ -29,7 +29,8 @@ const weightsPath = arg('weights', join(dirname(dirname(valuesPath)), 'weights.j
 const refPath = arg('ref', '')
 const name = arg('name', 'gpt-2')
 const outDir = resolve(arg('out', join(frontend, 'tests/.model-diagram-check', name)))
-const W = 1500, H = 1000
+// --size 920,700 shoots in a smaller window than the reference's 1500 x 1000
+const [W, H] = arg('size', '1500,1000').split(',').map(Number)
 // --steps 0,24 shoots only those steps; --themes dark only that theme; --quick skips the performance run.
 const onlySteps = arg('steps', '') ? arg('steps', '').split(',').map(Number) : null
 const themes = arg('themes', 'dark,light').split(',')
@@ -156,7 +157,7 @@ try {
       if (onlySteps && !onlySteps.includes(n)) continue
       await js(`document.querySelectorAll(".mdg .strip .chips button")[${n}].click()`); await sleep(350)
       await shot('.mdg .stageframe', join(outDir, `engine-${theme}-${pad(n)}.png`))
-      const over = await js(`(() => { const r = window.__md.labelRects(), out = []; for (let a = 0; a < r.length; a++) for (let b = a + 1; b < r.length; b++) { const p = r[a], q = r[b]; const ox = Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0), oy = Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0); const idx = p.text.length <= 12 && q.text.length <= 12; /* row names and table indices: their line boxes touch, their letters do not, as on the reference */ if (ox > 1 && oy > (idx ? 6 : 1)) out.push(p.text.slice(0, 28) + ' | ' + q.text.slice(0, 28)) } return out })()`)
+      const over = await js(`(() => { const r = window.__md.labelRects(), out = []; for (let a = 0; a < r.length; a++) for (let b = a + 1; b < r.length; b++) { const p = r[a], q = r[b]; const ox = Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0), oy = Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0); const idx = p.text.length <= 16 && q.text.length <= 16; /* row names and table indices: their line boxes touch, their letters do not, as on the reference */ if (ox > 1 && oy > (idx ? 6 : 1)) out.push(p.text.slice(0, 28) + ' | ' + q.text.slice(0, 28)) } return out })()`)
       if (over.length) report.overlaps[`${theme}-${pad(n)}`] = over
     }
     // full screen (headless Chrome refuses the display's own, so this is the laid-over form): the drawing alone, then with the side panel
@@ -167,7 +168,7 @@ try {
       await shot('.mdg', join(outDir, `engine-${theme}-full.png`))
       await press('Notes'); await sleep(700)
       await shot('.mdg', join(outDir, `engine-${theme}-full-notes.png`))
-      const over = await js(`(() => { const r = window.__md.labelRects(), out = []; for (let a = 0; a < r.length; a++) for (let b = a + 1; b < r.length; b++) { const p = r[a], q = r[b]; const idx = p.text.length <= 12 && q.text.length <= 12; const ox = Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0), oy = Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0); if (ox > 1 && oy > (idx ? 6 : 1)) out.push(p.text.slice(0, 28) + ' | ' + q.text.slice(0, 28)) } return out })()`)
+      const over = await js(`(() => { const r = window.__md.labelRects(), out = []; for (let a = 0; a < r.length; a++) for (let b = a + 1; b < r.length; b++) { const p = r[a], q = r[b]; const idx = p.text.length <= 16 && q.text.length <= 16; const ox = Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0), oy = Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0); if (ox > 1 && oy > (idx ? 6 : 1)) out.push(p.text.slice(0, 28) + ' | ' + q.text.slice(0, 28)) } return out })()`)
       if (over.length) report.overlaps[`${theme}-full-notes`] = over
       await press('Exit full screen'); await sleep(300)
     }

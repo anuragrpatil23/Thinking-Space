@@ -132,6 +132,8 @@ export interface ModelDiagramPassStateBlock {
   example?: number
   /** The bar whose saved numbers are laid out as a table (a click on it). */
   open?: string | null
+  /** The stage's size on screen, in pixels: the numbers inside a step are spaced to clear each other at this size. */
+  stage?: { w: number; h: number }
 }
 
 export const MODEL_DIAGRAM_START_STATE_BLOCK: ModelDiagramStateBlock = { focus: null, t: 5, sel: {} }
@@ -331,9 +333,15 @@ function planOf(spec: ModelSpec): Plan {
     }
 
     if (!streamKey) {
-      // A model that does not open with an embedding: its first output is the stream's first bar.
+      // A model that does not open with an embedding: its first output is the stream's first bar, and what it
+      // reads (the picture's patches, each one a row of pixel numbers) is drawn before it.
+      const inKey = op.in[0] && tensor.has(op.in[0]) ? op.in[0] : ''
+      const inOp = inKey ? spec.ops.find((o) => o.kind === 'input' && o.out.includes(inKey)) : undefined
+      if (inKey) bar({ key: inKey, x: ox - PITCH, y: row, kind: 'act', size: lastSize(inKey), name: inOp?.note ?? (inOp ? plainName(inOp) : 'what goes in'), slice: inKey, square: false })
+      if (inKey) plan.extraBars.push({ key: inKey, rowOf: op.id })
       bar({ key: out, x: ox, y: row, kind: 'act', size: lastSize(out), name: plainName(op), slice: out, square: false })
-      stop({ id: op.id, opId: op.id, part: '', unit: 'plain', circle: MODEL_DIAGRAM_CIRCLE_BLOCK[op.kind] ?? 'Σ', key: out, ux: ox - 6, uy: row, group: group(op), chip: plainName(op), text: text(op.kind), ins: [] })
+      const layer = inKey && op.kind === 'patchify'
+      stop({ id: op.id, opId: op.id, part: '', unit: layer ? 'linear' : 'plain', circle: layer ? 'Σ' : MODEL_DIAGRAM_CIRCLE_BLOCK[op.kind] ?? 'Σ', key: out, ux: ox - 6, uy: row, group: group(op), chip: plainName(op), text: text(op.kind), ins: inKey ? [inKey] : [], w: layer ? [`${op.id}.weight`] : [], b: layer ? [`${op.id}.bias`] : [] })
       streamKey = out; x = ox
       continue
     }
@@ -933,7 +941,7 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
         const xr = b.x + (r + 1 - nC / 2) * p, yt = b.y - (r - nR / 2) * p
         thin([xr, yt, 0.06], [xr, yt - p, 0.06], 'neuron', 0.9); thin([xr, yt - p, 0.06], [xr + p, yt - p, 0.06], 'neuron', 0.9)
       }
-      lab(tagk, 'pu', b.x + g.w * 0.22, b.y + g.h * 0.24, 0.3, [['', 'masked:'], ['', 'no looking ahead']])
+      lab(tagk, 'pu', b.x + g.w * 0.22, b.y + g.h * 0.24, 0.3, [['', 'masked:'], ['', 'no looking ahead']], { mode: undefined })
     }
     if (picRows.some(Boolean) && p >= 0.1) lab(tagk, 'or', b.x, ry - (b.square ? 1.9 : 1.5), 0.2, [['', 'orange rows: the picture’s tokens']])
     if (nh > 1) lab(tagk, 'or', b.x + g.w / 2 + 2.4, b.y + g.h / 2 + 0.2, -nh * 0.15, [['', `${b.heads} heads, one behind another`]])
@@ -1070,7 +1078,7 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
   // The numbers inside the focused unit each sit beside a line, so they cannot be moved apart on screen afterwards.
   // They are spaced here instead, by the distance the camera will take, so that no two touch.
   if (focus) {
-    const st = steps.get(focus)!, { ux, uy } = st.s, base = st.extra, STAGE = 785, PILL = 19.5, ASPECT = 16 / 8.6
+    const st = steps.get(focus)!, { ux, uy } = st.s, base = st.extra, STAGE = state.stage?.h || 785, PILL = 19.5, ASPECT = state.stage ? state.stage.w / state.stage.h : 16 / 8.6
     for (let pass = 0; pass < 3 && st.n > 1; pass++) {
       st.extra = base
       // what the unit will add around itself once drawn: its written-out sum, its table of weights, its bend

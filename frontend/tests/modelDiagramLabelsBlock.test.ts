@@ -60,4 +60,22 @@ describe('placeModelDiagramLabelsBlock', () => {
     expect(shown.length).toBeGreaterThan(20)
     expect(overlappingModelDiagramLabelsBlock(shown)).toEqual([])
   })
+
+  it('keeps a label that can move off the drawing, and leaves a fixed one where it belongs', () => {
+    const bar = [{ x0: -40, y0: -15, x1: 40, y1: 15 }]
+    const place = placeModelDiagramLabelsBlock([box(0, 0, { mode: 'nudge' }), box(0, 0, { mode: 'fixed', w: 20 }), box(0, 60, { mode: 'slide' })], bar)
+    expect(place[0].dx !== 0 || place[0].dy !== 0).toBe(true)
+    expect(place[1]).toEqual({ fate: 'full', dx: 0, dy: 0 })
+    expect(place[2]).toEqual({ fate: 'full', dx: 0, dy: 0 })
+  })
+
+  it('thins a run of row names that cannot all fit, keeping the row in use', () => {
+    const rows = [0, 1, 2, 3, 4, 5].map((r) => box(0, r * 8, { mode: 'fixed', thin: true, h: 16, rank: r === 3 ? 50 : 40, keep: r === 3 }))
+    const place = placeModelDiagramLabelsBlock(rows)
+    expect(place[3].fate).toBe('full')
+    expect(place[2].fate).toBe('hidden')
+    expect(place.filter((p) => p.fate === 'full').length).toBeGreaterThan(1)
+    const roomy = [0, 1, 2].map((r) => box(0, r * 20, { mode: 'fixed', thin: true, h: 16 }))
+    expect(placeModelDiagramLabelsBlock(roomy).every((p) => p.fate === 'full')).toBe(true)
+  })
 })

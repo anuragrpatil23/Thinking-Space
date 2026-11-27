@@ -304,12 +304,28 @@ export function createModelDiagramRendererBlock(
       q3.copy(b.p).project(camera)
       const vis = q3.z < 1 && Math.abs(q3.x) < 1.15 && Math.abs(q3.y) < 1.15
       if (!vis) { if (b.shown !== 'hidden') { b.el.style.visibility = 'hidden'; b.shown = 'hidden' } return }
-      boxes.push({ x: (q3.x * 0.5 + 0.5) * w, y: (-q3.y * 0.5 + 0.5) * h, w: b.l.mode === 'slide' ? b.w + 2 : b.l.mode && !tight ? Math.max(1, b.w - 2) : b.w, h: b.l.mode === 'slide' ? b.h + 1 : b.l.mode && !(tight && b.l.mode === 'nudge') ? Math.max(1, b.h - 5) : b.h, rank: b.l.rank + (b.l.stop && b.l.stop === focus ? 50 : 0), shortW: b.sw || undefined, shortH: b.sh || undefined, mode: b.l.mode })
+      boxes.push({ x: (q3.x * 0.5 + 0.5) * w, y: (-q3.y * 0.5 + 0.5) * h, w: b.l.mode === 'slide' ? b.w + 2 : b.l.mode && !tight ? Math.max(1, b.w - 2) : b.w, h: b.l.mode === 'slide' ? b.h + 1 : b.l.mode && !(tight && b.l.mode === 'nudge') ? Math.max(1, b.h - 5) : b.h, rank: b.l.rank + (b.l.stop && b.l.stop === focus ? 50 : 0) + (b.l.cls.includes(' on') ? 10 : 0), shortW: b.sw || undefined, shortH: b.sh || undefined, mode: b.l.mode, thin: b.l.mode === 'fixed' && (b.l.cls.startsWith('word') || b.l.cls.startsWith('ruler')), keep: b.l.cls.includes(' on') })
       idx.push(n)
     })
     const real = boxes.length
     for (const o of events.obstacles?.() ?? []) boxes.push({ x: (o.x0 + o.x1) / 2, y: (o.y0 + o.y1) / 2, w: o.x1 - o.x0 + 6, h: o.y1 - o.y0 + 6, rank: 1000, mode: 'fixed' })
-    const place = placeModelDiagramLabelsBlock(boxes)
+    // the drawing's own bars and circles, as rectangles on screen
+    const walls: { x0: number; y0: number; x1: number; y1: number }[] = []
+    if (scene) {
+      const px = (x: number, y: number, z: number): [number, number] | null => { q3.set(x, y, z).project(camera); return q3.z < 1 ? [(q3.x * 0.5 + 0.5) * w, (-q3.y * 0.5 + 0.5) * h] : null }
+      const wall = (pts: ([number, number] | null)[], inset: number) => {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+        for (const p of pts) { if (!p) return; if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1] }
+        if (x1 < 0 || y1 < 0 || x0 > w || y0 > h || x1 - x0 < 2 * inset + 2 || y1 - y0 < 2 * inset + 2) return
+        walls.push({ x0: x0 + inset, y0: y0 + inset, x1: x1 - inset, y1: y1 - inset })
+      }
+      for (const g of scene.grids) {
+        const a = g.cx - g.w / 2, b = g.cx + g.w / 2, c = g.cy - g.h / 2, d = g.cy + g.h / 2
+        wall([px(a, c, 0), px(b, c, 0), px(a, d, 0), px(b, d, 0), px(a, c, 0.5), px(b, c, 0.5), px(a, d, 0.5), px(b, d, 0.5)], 3)
+      }
+      for (const sp of scene.sprites) wall([px(sp.p[0] - 0.7, sp.p[1] - 0.7, sp.p[2]), px(sp.p[0] + 0.7, sp.p[1] + 0.7, sp.p[2])], 2)
+    }
+    const place = placeModelDiagramLabelsBlock(boxes, walls)
     let d = ''
     place.forEach(({ fate: f, dx, dy }, k) => {
       if (k >= real) return
