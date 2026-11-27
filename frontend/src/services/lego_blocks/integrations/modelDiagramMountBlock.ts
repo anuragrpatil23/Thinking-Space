@@ -340,7 +340,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   }) : null
   stageRo?.observe(stage)
   doc.addEventListener('keydown', onKey)
-  if (inApp) { viewBtns.append(notesBtn, fullBtn); icon(notesBtn, 'Notes', true); notesBtn.classList.add('run'); icon(fullBtn, 'Full screen'); icon(runBtn, 'Run', true); runBtn.title = 'Play this step again'; runBtn.classList.add('run'); viewBtns.prepend(runBtn); icon(numBtn, 'Numbers', true); numBtn.title = 'Show this step\u2019s numbers beside the drawing'; numBtn.classList.add('run'); runBtn.after(numBtn) } else viewBtns.append(notesBtn, fullBtn)
+  if (inApp) { viewBtns.append(notesBtn, fullBtn); icon(notesBtn, 'Notes', true); notesBtn.classList.add('run'); icon(fullBtn, 'Full screen'); icon(runBtn, 'Run', true); runBtn.title = 'Play this step again'; runBtn.classList.add('run'); viewBtns.prepend(runBtn); icon(numBtn, 'Numbers', true); numBtn.title = 'Show this step\u2019s numbers beside the drawing'; numBtn.classList.add('run'); notesBtn.before(numBtn) } else viewBtns.append(notesBtn, fullBtn)
   const inputBtns = new Map<string, HTMLButtonElement>()
   const passLabel = el('span', 'l'), writtenEl = el('b', 'mono'), nextEl = el('b', 'mono nxt')
   const setPass = (n: number) => {
