@@ -53,6 +53,7 @@ background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line
 .mdg.app .dots{align-self:flex-start}
 .mdg.app .seglabel{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap;padding:0 7px}
 .mdg.app .seg.cur .seglabel{color:var(--fg)}
+.mdg.app .track .lane{align-self:flex-start;height:20px;display:inline-flex;align-items:center;margin-left:8px;padding-left:10px;border-left:1px solid var(--rule);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap} .mdg.app .track .lane:first-child{margin-left:0;padding-left:0;border-left:0}
 .mdg.app .bubble{position:absolute;transform:translateX(-50%);background:var(--fg);color:var(--bg);font-size:12px;font-weight:500;padding:3px 8px;border-radius:6px;white-space:nowrap;pointer-events:none;z-index:6}
 .mdg.app .navlist{position:absolute;top:38px;left:0;z-index:20;display:flex;flex-wrap:wrap;gap:12px 20px;max-width:min(100%,920px);max-height:60vh;overflow:auto;padding:12px 14px;background:var(--panel);border:1px solid var(--rule);border-radius:12px;box-shadow:0 14px 36px rgb(0 0 0 / .16)}
 .mdg.app .lsec{display:flex;flex-direction:column;gap:1px;min-width:176px}
@@ -156,7 +157,7 @@ background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line
 .mdg .mx th{font-weight:500}
 .mdg .mx tr.on td{background:color-mix(in srgb,var(--neuron) 16%,transparent)}
 .mdg .note{font-size:13.5px;color:var(--muted)}
-.mdg .pic{position:absolute;left:12px;bottom:12px;z-index:4;width:168px;padding:6px 6px 5px;border:1px solid var(--rule);border-radius:9px;background:var(--panel);box-shadow:0 1px 3px rgb(0 0 0 / .12);cursor:zoom-in;display:flex;flex-direction:column;gap:4px;font-size:10.5px;line-height:1.3;color:var(--muted);transition:width .15s} .mdg .pic[hidden]{display:none}
+.mdg .pic{position:absolute;left:12px;bottom:12px;z-index:4;width:128px;padding:6px 6px 5px;border:1px solid var(--rule);border-radius:9px;background:var(--panel);box-shadow:0 1px 3px rgb(0 0 0 / .12);cursor:zoom-in;display:flex;flex-direction:column;gap:4px;font-size:10.5px;line-height:1.3;color:var(--muted);transition:width .15s} .mdg .pic[hidden]{display:none}
 .mdg .pic img{width:100%;height:auto;display:block;border-radius:5px;background:#fff} .mdg .pic.big{width:min(460px,46%);cursor:zoom-out;z-index:7} .mdg.app:not(.full) .pic{left:68px}
 .mdg .side{display:contents} .mdg .sideclose{display:none}
 .mdg.full{box-sizing:border-box;width:100%;height:100%;padding:12px 16px;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto auto minmax(0,1fr);gap:0 14px}

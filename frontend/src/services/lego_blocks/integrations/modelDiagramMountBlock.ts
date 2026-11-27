@@ -217,6 +217,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     cur.append(count, name, el('span', 'navcaret', '▾'))
     row.append(home, pv, cur, nx, track, sec, navTools)
     const dots = new Map<string, HTMLButtonElement>(), items = new Map<string, HTMLButtonElement>(), segs: { seg: HTMLElement; ids: string[] }[] = []
+    let laneWas = ''
     for (const part of scene.strip) {
       if ('note' in part) continue
       const seg = el('div', 'seg'), dd = el('div', 'dots'), col = el('div', 'lsec')
@@ -233,7 +234,10 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
         const li = button(text, () => { list.hidden = true; focus(id) }); li.className = 'litem'; items.set(id, li); col.appendChild(li)
       }
       // under the dots, the section's own name without the block it belongs to ("Attention"); the full name is beside the step's title
-      seg.append(dd, el('span', 'seglabel', part.label.includes(': ') ? part.label.slice(part.label.indexOf(': ') + 2) : part.label)); track.appendChild(seg); segs.push({ seg, ids: part.stops }); list.appendChild(col)
+      // a tower or a block names itself once, ahead of its sections
+      const cut = part.label.indexOf(': '), lane = cut > 0 ? part.label.slice(0, cut) : ''
+      if (lane !== laneWas) { laneWas = lane; if (lane) track.appendChild(el('span', 'lane', lane)) }
+      seg.append(dd, el('span', 'seglabel', cut > 0 ? part.label.slice(cut + 2) : part.label)); track.appendChild(seg); segs.push({ seg, ids: part.stops }); list.appendChild(col)
     }
     track.appendChild(bubble)
     nav.append(row, list)

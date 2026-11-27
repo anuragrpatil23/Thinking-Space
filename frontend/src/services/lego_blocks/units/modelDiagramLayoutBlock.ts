@@ -365,7 +365,7 @@ function planOf(spec: ModelSpec): Plan {
       bar({ key: out, x, y: row, kind: 'act', size: lastSize(out) || width, name: kind === 'att' ? 'the stream after attention is added' : kind === 'mem' ? 'the stream after the memory is added' : 'the stream leaving the block', slice: out, square: false })
       const nk = branchKindFrom(i + 1), nextKind = nk === 'att' ? 'attention' : nk === 'mem' ? 'the memory' : 'the MLP'
       stop({
-        id: op.id, opId: op.id, part: '', unit: 'sum', key: out, ux, uy, group: inBlock ? group(op) : 'Out', chip: 'Add to the stream',
+        id: op.id, opId: op.id, part: '', unit: 'sum', key: out, ux, uy, group: group(op), chip: 'Add to the stream',
         text: text(kind === 'att' ? 'add-attention' : kind === 'mlp' && firstMlp ? 'add-mlp' : 'add'), ins: [stream, other],
         wrap: wraps ? { fromY, next: nextKind, left: ox - 7 } : undefined, act: kind === 'att' ? 'from attention' : kind === 'mem' ? 'from the memory' : 'from the MLP',
       })
@@ -481,18 +481,18 @@ function planOf(spec: ModelSpec): Plan {
       }
       if (op.kind === 'norm') {
         bar({ key: out, x, y: row, kind: 'act', size: lastSize(out) || width, name: 'The stream after the final layer norm', slice: out, square: false })
-        stop({ id: op.id, opId: op.id, part: '', unit: 'norm', key: out, ux: x - 6, uy: row, group: 'Out', chip: `Final ${normName(op).replace('L', 'l')}`, text: text('norm-final'), ins: [src], w: [`${op.id}.weight`, ...op.weights.slice(0, 1)], b: [`${op.id}.bias`, ...op.weights.slice(1, 2)] })
+        stop({ id: op.id, opId: op.id, part: '', unit: 'norm', key: out, ux: x - 6, uy: row, group: group(op), chip: `Final ${normName(op).replace('L', 'l')}`, text: text('norm-final'), ins: [src], w: [`${op.id}.weight`, ...op.weights.slice(0, 1)], b: [`${op.id}.bias`, ...op.weights.slice(1, 2)] })
       } else if (op.kind === 'unembed') {
         bar({ key: out, x, y: row, kind: 'act', size: lastSize(out), name: 'A score for each word', slice: `${op.id}.top`, square: false, cols: 8 })
-        stop({ id: op.id, opId: op.id, part: '', unit: 'linear', key: out, ux: x - 6, uy: row, group: 'Out', chip: 'Score per word', text: text('unembed'), ins: [src], w: [`${op.id}.top.weight`], noBias: true })
+        stop({ id: op.id, opId: op.id, part: '', unit: 'linear', key: out, ux: x - 6, uy: row, group: group(op), chip: 'Score per word', text: text('unembed'), ins: [src], w: [`${op.id}.top.weight`], noBias: true })
       } else if (op.kind === 'output') {
         bar({ key: out, x, y: row, kind: 'prob', size: lastSize(src) || lastSize(out), name: 'The chance of each word coming next', slice: `${op.id}.top`, square: false, cols: 8 })
-        stop({ id: op.id, opId: op.id, part: '', unit: 'softmax', key: out, ux: x - 6, uy: row, group: 'Out', chip: 'Chance of each word', text: text('output'), ins: [src] })
+        stop({ id: op.id, opId: op.id, part: '', unit: 'softmax', key: out, ux: x - 6, uy: row, group: group(op), chip: 'Chance of each word', text: text('output'), ins: [src] })
         plan.feedback = out
       } else {
         const unit: ModelDiagramUnitKind = op.kind === 'linear' ? 'linear' : 'plain'
         bar({ key: out, x, y: row, kind: 'act', size: lastSize(out) || width, name: plainName(op), slice: out, square: false })
-        stop({ id: op.id, opId: op.id, part: '', unit, circle: MODEL_DIAGRAM_CIRCLE_BLOCK[op.kind] ?? 'Σ', key: out, ux: x - 6, uy: row, group: 'Out', chip: plainName(op), text: text(op.kind), ins: [src], w: wOf(op, op.id), b: bOf(op, op.id) })
+        stop({ id: op.id, opId: op.id, part: '', unit, circle: MODEL_DIAGRAM_CIRCLE_BLOCK[op.kind] ?? 'Σ', key: out, ux: x - 6, uy: row, group: group(op), chip: plainName(op), text: text(op.kind), ins: [src], w: wOf(op, op.id), b: bOf(op, op.id) })
       }
       streamKey = out
     }
@@ -856,8 +856,15 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
         const a = A(k1, t, i), c = A(k2, t, i), what = s.act ?? 'the branch'
         return { kind: 'sum', value: y, terms: [{ label: 'the stream', parts: [a], product: a.val }, { label: what, parts: [c], product: c.val }], formula: `the stream + ${what} = ${sg(a.val)} ${c.val < 0 ? '−' : '+'} ${Math.abs(c.val).toFixed(2)} = ${sg(y)}` }
       }
-      default:
+      default: {
+        // A place added to a row: the row that goes in is saved and so is the result, so what was added is their difference.
+        const pk = s.ins.length === 1 && spec.ops.find((o) => o.id === s.opId)?.kind === 'position' ? s.ins[0] : undefined
+        if (pk && real(pk)) {
+          const a = A(pk, t, i), d = y - a.val
+          return { kind: 'sum', value: y, terms: [{ label: 'the row that goes in', parts: [a], product: a.val }], formula: Number.isFinite(d) ? `the row + its place = ${sg(a.val)} ${d < 0 ? '−' : '+'} ${Math.abs(d).toFixed(2)} = ${sg(y)}` : 'the row + its place' }
+        }
         return { kind: 'leaf', value: y, terms: [] }
+      }
     }
   }
 
@@ -970,7 +977,7 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
       lab(tagk, 'pu', b.x, ry - 1.7, 0.1, [['', 'each small square is one head’s memory'], ['', 'purple is above zero, blue below'], ['', 'it is the same size at every token']])
     }
     const nm = b.heads && b.heads > 1 ? `${b.name}, head ${head + 1} of ${b.heads}${head > 0 && !R.real ? ' (saved for head 1 only)' : ''}` : b.square ? `${b.name}, head 1` : b.name
-    lab(tagk, '', b.x, b.y + g.h / 2 + 0.5, 0, [['tag act', 'ACTIVATIONS'], ['nm', nm], ['', shape]], { anchor: 'bottom' })
+    lab(tagk, '', b.x, b.y + g.h / 2 + 0.5, 0, [['tag act', 'ACTIVATIONS'], ['nm', R.real || b.heads ? nm : `${nm} (not saved: drawn flat)`], ['', shape]], { anchor: 'bottom' })
     if (b.square && b.masked && nR > 2) {
       // the mask's edge: a token reads itself and what came before, never what comes after
       for (let r = 0; r < nR - 1; r++) {
@@ -1199,6 +1206,13 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
     const opKind = spec.ops.find((o) => o.id === s.opId)?.kind ?? ''
     const unitTag = s.unit === 'plain' ? ({ state: 'FADE, THEN WRITE', read: 'READ THE MEMORY', times: 'BEND, THEN MULTIPLY' } as Record<string, string>)[s.part] ?? MODEL_DIAGRAM_UNIT_TAG_BLOCK[opKind] ?? 'UNIT' : EL.kind === 'linear' ? `NEURON y${st.i + 1} OF ${fmtN(EL.nOut ?? 0)}` : s.unit === 'lookup' ? MODEL_DIAGRAM_UNIT_TAG_BLOCK.lookup : MODEL_DIAGRAM_UNIT_TAG_BLOCK[st.E.kind] ?? MODEL_DIAGRAM_UNIT_TAG_BLOCK[spec.ops.find((o) => o.id === s.opId)?.kind ?? ''] ?? 'UNIT'
     lab(tg, '', cc[0] - 0.05, uy + st.half - 0.27, 0.4, [['tag nr', unitTag]])
+    // A step with nothing to show its working by: what it reads was not saved for this model. It is still joined to
+    // the bars it reads, by plain lines, and says why there are no numbers.
+    if (focus === s.id && !st.shown.length) {
+      const missing = st.inKeys.filter((k) => !reg.get(k)?.real)
+      for (const k of st.inKeys) if (bars.has(k)) thin(tilePt(k, st.t, 0), [px, uy, 0.4], 'neuron', 0.55)
+      if (missing.length) lab(tg, 'pu', cc[0] - 0.6, uy - st.half - 0.5, 0.4, [['', `the numbers this step reads were not saved for this model,`], ['', 'so only its shape is drawn']])
+    }
 
     if (EL.kind === 'linear' && focus === s.id) {
       const eq = eqLines(st)
