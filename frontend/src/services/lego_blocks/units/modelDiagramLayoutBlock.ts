@@ -962,7 +962,7 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
     if (!b.cells) {
       if (broken) { rod(ra, [b.x - 0.5, ry, 0.1], 0.06, 'bar', 1); rod([b.x + 0.5, ry, 0.1], rb, 0.06, 'bar', 1) } else rod(ra, rb, 0.06, 'bar', 1)
       for (const e of [ra, rb]) rod([e[0], ry - 0.22, 0.1], [e[0], ry + 0.22, 0.1], 0.05, 'bar', 1)
-      lab('*', 'ruler', b.x, ry - 0.55, 0.1, [['', b.square ? `${fmtN(R.size)} columns, one per token` : fmtN(R.size)]])
+      lab('*', 'ruler', b.x, ry - 0.55, 0.1, [['', b.square ? `${fmtN(R.size)} columns, one per position` : fmtN(R.size)]])
     } else {
       // the bank of heads: a thin frame round each head's patch, and what the whole thing is
       for (let h = 0; h < b.cells.heads; h++) wire([b.x + ((h % 8) * 2 + 1 - nC / 2) * p, b.y - (Math.floor(h / 8) * 2 + 1 - nR / 2) * p, 0.05], 2 * p, 2 * p, 0.02, 'neuron', 0.5)

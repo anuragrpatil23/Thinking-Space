@@ -471,10 +471,9 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     card(what, scene.what, false, [state.focus ? 'This step' : 'The model', state.focus ? 'what it does, in words and numbers' : 'what the drawing shows']); card(weights, scene.weights, true, [state.focus ? 'This step\u2019s weights' : 'Weights', state.focus ? 'click a row to show that neuron in the drawing' : 'learned in training; the same for every prompt'])
     if (inApp) {
       const hasTable = scene.weights.some((x) => x.t === 'table')
-      weights.hidden = !(showN && state.focus && hasTable)
+      // whatever the engine has to say about this step's weights, table or not, is in the inspector
+      weights.hidden = !(showN && state.focus && (hasTable || scene.weights.length > 0))
       numBtn.hidden = !state.focus; numBtn.setAttribute('aria-pressed', showN ? 'true' : 'false')
-      const aside = what.querySelector('.aside')
-      if (aside && state.focus && !hasTable) aside.appendChild(el('p', 'note', 'This step has no weights of its own: it only combines what earlier steps produced.'))
       // the inspector takes a strip of the stage; the drawing is fitted again into what is left
       const insp = showN && Boolean(state.focus)
       if (insp !== root.classList.contains('inspect')) { root.classList.toggle('inspect', insp); refit() }
