@@ -156,6 +156,8 @@ background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line
 .mdg .mx th{font-weight:500}
 .mdg .mx tr.on td{background:color-mix(in srgb,var(--neuron) 16%,transparent)}
 .mdg .note{font-size:13.5px;color:var(--muted)}
+.mdg .pic{position:absolute;left:12px;bottom:12px;z-index:4;width:168px;padding:6px 6px 5px;border:1px solid var(--rule);border-radius:9px;background:var(--panel);box-shadow:0 1px 3px rgb(0 0 0 / .12);cursor:zoom-in;display:flex;flex-direction:column;gap:4px;font-size:10.5px;line-height:1.3;color:var(--muted);transition:width .15s} .mdg .pic[hidden]{display:none}
+.mdg .pic img{width:100%;height:auto;display:block;border-radius:5px;background:#fff} .mdg .pic.big{width:min(460px,46%);cursor:zoom-out;z-index:7} .mdg.app:not(.full) .pic{left:68px}
 .mdg .side{display:contents} .mdg .sideclose{display:none}
 .mdg.full{box-sizing:border-box;width:100%;height:100%;padding:12px 16px;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto auto minmax(0,1fr);gap:0 14px}
 .mdg.full.overlay{position:fixed;inset:0;z-index:2147483000;width:auto;height:auto;padding-top:40px}

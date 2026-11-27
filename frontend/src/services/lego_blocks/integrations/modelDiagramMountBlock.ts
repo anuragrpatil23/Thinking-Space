@@ -19,6 +19,8 @@ export interface ModelDiagramMountPropsBlock {
   values?: Record<string, ModelValues>
   /** Called only when an input's values are needed and not in hand. */
   loadValues?: (input: string) => Promise<ModelValues>
+  /** An address an <img> can show for the picture that went in with this input; null when it has none. */
+  loadPicture?: (input: string) => Promise<string | null>
   /** 1-based index into spec.steps; 0 is the whole model. */
   step: number
   /** The stop inside that step ('q', 'scores', ...), when the step opens into several. */
@@ -110,6 +112,12 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   if (appLook) { under.append(what); what.classList.add('what'); pop.appendChild(weights); weights.hidden = true } else under.append(what, weights)
   frame.append(stage, labels, stepBtns, viewBtns, legend)
   if (appLook) frame.appendChild(pop)
+  // The picture that went in, for a model that reads one: a small card in the stage's corner; a click makes it large.
+  const pic = el('div', 'pic'), picImg = doc.createElement('img'), picCap = el('span', '')
+  pic.append(picImg, picCap); pic.hidden = true; pic.title = 'The picture that went in. Click to make it larger.'; picImg.alt = 'The picture that went in'
+  pic.addEventListener('click', () => pic.classList.toggle('big'))
+  frame.appendChild(pic)
+  const pics = new Map<string, string | null>()
   // Everything that is words: under the drawing as a rule (the wrapper is invisible to layout), a side panel in full screen.
   const side = el('div', 'side')
   // in the app the step's words come first, straight under the drawing they describe; the general notes follow
@@ -468,6 +476,21 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
       // in the app the control keeps its width as words are added: a long run shows its end
       writtenEl.textContent = !ps.written.length ? '(nothing yet)' : inApp && wr.length > 24 ? `\u2026${wr.slice(-23)}` : wr; writtenEl.title = wr; nextEl.textContent = ps.next
     }
+    {
+      // the picture is fetched once per input, and only for an input that has one
+      const v = input ? values.get(input) : undefined, name = input
+      if (name && v?.picture && props.loadPicture && !pics.has(name)) {
+        pics.set(name, null)
+        props.loadPicture(name).then((url) => { if (disposed) return; pics.set(name, url); if (url && name === input) draw() }, () => {})
+      }
+      const url = name && v?.picture ? pics.get(name) : null
+      pic.hidden = !url
+      if (url) {
+        if (picImg.getAttribute('src') !== url) picImg.src = url
+        const g = (v!.picture as { grid?: number[] }).grid
+        picCap.textContent = Array.isArray(g) && g.length >= 2 ? `the picture that went in \u00B7 ${g[g.length - 2]} x ${g[g.length - 1]} patches` : 'the picture that went in'
+      }
+    }
     card(what, scene.what, false, [state.focus ? 'This step' : 'The model', state.focus ? 'what it does, in words and numbers' : 'what the drawing shows']); card(weights, scene.weights, true, [state.focus ? 'This step\u2019s weights' : 'Weights', state.focus ? 'click a row to show that neuron in the drawing' : 'learned in training; the same for every prompt'])
     if (inApp) {
       const hasTable = scene.weights.some((x) => x.t === 'table')
@@ -509,7 +532,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
       onStop: (id) => { focus(id); setNotes(true) },
       obstacles() {
         const f = stage.getBoundingClientRect(), out: { x0: number; y0: number; x1: number; y1: number }[] = []
-        for (const e of [stepBtns, viewBtns, legend, pop]) {
+        for (const e of [stepBtns, viewBtns, legend, pop, pic]) {
           if (e.parentElement !== frame) continue
           const r = e.getBoundingClientRect()
           if (r.width > 0 && r.height > 0) out.push({ x0: r.left - f.left, y0: r.top - f.top, x1: r.right - f.left, y1: r.bottom - f.top })

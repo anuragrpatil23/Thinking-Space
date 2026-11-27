@@ -12,6 +12,8 @@ export interface ModelDiagramBlockProps {
   inputs: string[]
   /** Called only when the drawing needs an input's values. */
   loadValues: (input: string) => Promise<ModelValues>
+  /** An address an <img> can show for the picture that went in with this input; null when it has none. */
+  loadPicture?: (input: string) => Promise<string | null>
   /** 1-based index into spec.steps; 0 is the whole model. */
   step: number
   /** The stop inside that step, when the step opens into several. */
@@ -39,6 +41,7 @@ export default function ModelDiagramBlock(props: ModelDiagramBlockProps) {
       handleRef.current = mountModelDiagram(host, {
         spec: p.spec, inputs: p.inputs, step: p.step, part: p.part, theme: p.theme, appearance: 'app',
         loadValues: (input) => latest.current.loadValues(input),
+        loadPicture: (input) => latest.current.loadPicture?.(input) ?? Promise.resolve(null),
         onStep: (step, part) => latest.current.onStep(step, part),
         onPickBlock: (id) => latest.current.onPickBlock?.(id),
         onReady: (info) => latest.current.onReady?.(info),

@@ -64,6 +64,7 @@ w.__mount = () => {
   w.__md = mountModelDiagram(document.getElementById('host')!, {
     spec: p.value, inputs: w.__VALUES__ ? ['input'] : [], step: 0, appearance: w.__APP__ ? 'app' : 'page',
     loadValues: async () => { w.__valuesAt = performance.now(); return w.__VALUES__ },
+    loadPicture: async () => (w.__PICTURE__ ? '/picture' : null),
     onReady: (i: any) => { w.__ready = i },
   })
 }
@@ -71,6 +72,8 @@ w.__mount()
 `)
 await esbuild.build({ entryPoints: [join(work, 'entry.ts')], bundle: true, format: 'iife', minify: true, outfile: join(work, 'bundle.js'), logLevel: 'warning' })
 // An input's values, with the model's weights.json (written once per model) merged in, as the app gives them to the engine.
+// the picture that went in, when the model's folder has one for this input (inputs/<input>.png)
+const picturePath = join(dirname(dirname(valuesPath)), 'inputs', valuesPath.split('/').pop().replace(/\.json$/, '.png'))
 const valuesJson = () => {
   if (!existsSync(valuesPath)) return 'null'
   const v = JSON.parse(readFileSync(valuesPath, 'utf8'))
@@ -80,11 +83,12 @@ const valuesJson = () => {
 const page = (theme) => `<!doctype html><html lang="en" data-theme="${theme}"><head><meta charset="utf-8">
 <style>body{margin:0;background:${theme === 'dark' ? '#0f1218' : '#f6f7f9'}}.wrap{max-width:1642px;margin:0 auto;padding-inline:19px;padding-block:24px 56px}</style></head>
 <body><main class="wrap"><div id="host"></div></main>
-${process.argv.includes('--app') ? '<style>:root{--background:240 14% 97%;--foreground:0 0% 9%;--card:0 0% 100%;--muted-foreground:0 0% 45%;--border:0 0% 90%;--muted:0 0% 94%;--primary:0 0% 9%;--primary-foreground:0 0% 100%}body{background:hsl(var(--background))}</style><script>window.__APP__=1</script>' : ''}<script>window.__SPEC__=${JSON.stringify(readFileSync(specPath, 'utf8'))};window.__VALUES__=${valuesJson()}</script>
+${process.argv.includes('--app') ? '<style>:root{--background:240 14% 97%;--foreground:0 0% 9%;--card:0 0% 100%;--muted-foreground:0 0% 45%;--border:0 0% 90%;--muted:0 0% 94%;--primary:0 0% 9%;--primary-foreground:0 0% 100%}body{background:hsl(var(--background))}</style><script>window.__APP__=1</script>' : ''}<script>window.__SPEC__=${JSON.stringify(readFileSync(specPath, 'utf8'))};window.__VALUES__=${valuesJson()};window.__PICTURE__=${existsSync(picturePath) ? 1 : 0}</script>
 <script src="/bundle.js"></script></body></html>`
 const server = createServer((req, res) => {
   const url = new URL(req.url, 'http://x')
   if (url.pathname === '/engine') { res.setHeader('content-type', 'text/html'); res.end(page(url.searchParams.get('theme') ?? 'light')) }
+  else if (url.pathname === '/picture' && existsSync(picturePath)) { res.setHeader('content-type', 'image/png'); res.end(readFileSync(picturePath)) }
   else if (url.pathname === '/bundle.js') { res.setHeader('content-type', 'text/javascript'); res.end(readFileSync(join(work, 'bundle.js'))) }
   else if (url.pathname === '/ref' && refPath) { res.setHeader('content-type', 'text/html'); res.end(readFileSync(refPath)) }
   else { res.statusCode = 404; res.end() }
