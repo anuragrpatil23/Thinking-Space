@@ -116,6 +116,37 @@ describe('layoutModelDiagramBlock on the tiny fixture', () => {
   })
 })
 
+describe('a batch of examples, and a bar opened as a table', () => {
+  const dir = './fixtures/model-diagram-engine/tiny-gpt/'
+  const p = parseModelSpecBlock(readFileSync(fileURLToPath(new URL(`${dir}tiny-gpt.model.yaml`, import.meta.url)), 'utf8'))
+  if (!p.ok) throw new Error(JSON.stringify(p.problems))
+  const block = (k: number) => Array.from({ length: 5 }, (_, r) => Array.from({ length: 8 }, (_, c) => k + r + c / 10))
+  const values = {
+    input: 'two', run_id: 'r', sha256: 's', tokens: ['a', 'b', 'c', 'd', 'e'], attention: {},
+    slices: { x0: { shape: [2, 5, 8], rows: [block(1), block(100)] } },
+  } as unknown as ModelValues
+
+  it('draws the example the slider picks, and offers the slider only when there is more than one', () => {
+    const first = layoutModelDiagramBlock(p.value, values, { ...start, example: 0, open: 'x0' })
+    const second = layoutModelDiagramBlock(p.value, values, { ...start, example: 1, open: 'x0' })
+    expect(first.examples).toEqual({ count: 2, index: 0 })
+    expect(second.examples).toEqual({ count: 2, index: 1 })
+    const cell = (sc: typeof first) => (sc.open!.find((x) => x.t === 'table') as { rows: { cells: string[] }[] }).rows[1].cells[1]
+    expect(cell(first)).toBe('+1.00')
+    expect(cell(second)).toBe('+100.00')
+    expect(layoutModelDiagramBlock(p.value, null, start).examples).toBeNull()
+  })
+
+  it('lays the clicked bar out as a table with a row per token, and nothing when no bar is open', () => {
+    const scene = layoutModelDiagramBlock(p.value, values, { ...start, open: 'x0' })
+    const table = scene.open!.find((x) => x.t === 'table') as { rows: { cells: string[]; shade?: number[] }[] }
+    expect(table.rows).toHaveLength(6)
+    expect(table.rows[1].cells[0]).toBe('a')
+    expect(table.rows[5].shade![8]).toBeGreaterThan(table.rows[1].shade![1])
+    expect(layoutModelDiagramBlock(p.value, values, start).open).toBeNull()
+  })
+})
+
 describe('layoutModelDiagramBlock on a model with two towers', () => {
   // A small vision-language model in the generator's shape: a vision tower, a hand-over, and a language model with a memory block and an attention block.
   const yaml = `

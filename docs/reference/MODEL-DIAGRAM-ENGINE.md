@@ -67,3 +67,6 @@ Screenshots and `report.json` land in `frontend/tests/.model-diagram-check/<name
 - Rows that are the picture's tokens (`values.picture.first_row..last_row`) are tinted orange and named "picture N".
 - The engine reads `picture`, `attention_last_row`, `attention_last_row_every` and an op's `act` when present. The parser does not pass them on yet, so in the app those three show only after it does; the check script feeds the raw file.
 - The check counts two labels as overlapping at more than 1 px each way (row names and table indices: 6 px down, as their line boxes touch on the reference too). `--steps`, `--themes`, `--quick` shorten a run.
+- A click on a bar opens its saved numbers as a table under the drawing (`state.open`, `scene.open`); an attention grid opens as its map, tinted by weight. Close puts it away.
+- When a values file holds a batch (a slice's `rows` is one block per example), a slider picks the example (`state.example`, `scene.examples`). No model's files hold one yet, so the slider has only been exercised by the unit test.
+- Measured in the running app (Chrome, 120 Hz, 2x pixels, 2026-11-26): Qwen through all 55 steps, 8.7 ms average frame, 9.3 ms at the 95th percentile.

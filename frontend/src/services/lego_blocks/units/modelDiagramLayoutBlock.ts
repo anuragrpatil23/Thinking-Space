@@ -59,7 +59,7 @@ export interface ModelDiagramLabelBlock {
 export type ModelDiagramCardItemBlock =
   | { t: 'h2' | 'h3' | 'p' | 'note' | 'formula'; text: string }
   | { t: 'sizes'; lines: string[] }
-  | { t: 'table'; cls: string; rows: { cells: string[]; on?: boolean }[] }
+  | { t: 'table'; cls: string; rows: { cells: string[]; on?: boolean; /** 0 to 1 per cell: how strongly to tint it. */ shade?: number[] }[] }
 
 export interface ModelDiagramStopBlock {
   id: string
@@ -106,6 +106,10 @@ export interface ModelDiagramSceneBlock {
   dense: boolean
   /** The heads of the attention step in focus, for a head picker; null elsewhere. */
   heads: { count: number; head: number; saved: number[] } | null
+  /** The examples in the values' batch, for a slider; null when there is one. */
+  examples: { count: number; index: number } | null
+  /** The saved numbers of the bar that was clicked, as a card; null when none is open. */
+  open: ModelDiagramCardItemBlock[] | null
 }
 
 export interface ModelDiagramStateBlock {
@@ -124,6 +128,10 @@ export interface ModelDiagramPassStateBlock {
   showNew?: boolean
   /** The attention head in front, from 0. */
   head?: number
+  /** Which example of the batch is drawn, from 0, when the values hold more than one. */
+  example?: number
+  /** The bar whose saved numbers are laid out as a table (a click on it). */
+  open?: string | null
 }
 
 export const MODEL_DIAGRAM_START_STATE_BLOCK: ModelDiagramStateBlock = { focus: null, t: 5, sel: {} }
@@ -514,7 +522,8 @@ function planOf(spec: ModelSpec): Plan {
   const repeats = spec.blocks.filter((b) => b.repeat > 1)
   for (const s of plan.stops) {
     if (s.group !== label) {
-      if ((s.group === 'Out' || s.group === 'Language: Out') && repeats.length) {
+      // once, before the last way out (a model with two towers has an "Out" in each)
+      if ((s.group === 'Out' || s.group === 'Language: Out') && repeats.length && !plan.stops.slice(plan.stops.indexOf(s) + 1).some((x) => x.group !== s.group)) {
         plan.strip.push({ note: repeats.length > 1
           ? `A full model repeats each block with different weights each time: ${repeats.map((b) => `the ${blockName(b.id).toLowerCase()} ${b.repeat} times`).join(', ')}.`
           : `A full model repeats the block with different weights each time: ${repeats.map((b) => `${b.repeat} times`).join(', ')} in ${spec.source.model}.` })
@@ -636,7 +645,7 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
 
   const scene: ModelDiagramSceneBlock = {
     stops: [], strip: plan.strip, all: { cx: 0, cy: 0, hw: 1, hh: 1 }, grids: [], slabs: [], rods: [], lines: [], sprites: [], dots: [],
-    labels: [], what: [], weights: [], at: null, tokens: tokens.slice(0, T), batch, passes: null, legend: plan.legend, dense: plan.stops.length > 24, heads: null,
+    labels: [], what: [], weights: [], at: null, tokens: tokens.slice(0, T), batch, passes: null, legend: plan.legend, dense: plan.stops.length > 24, heads: null, examples: null, open: null,
   }
   const RANK: Record<string, number> = { ttl: 100, grpl: 90, pill: 80, eqn: 70, pu: 55, ex: 55, or: 50, word: 40, ruler: 30 }
   const lab = (tag: string, cls: string, x: number, y: number, z: number, parts: [string, string][], more: Partial<ModelDiagramLabelBlock> = {}) => {
@@ -656,13 +665,21 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
   }
 
   // ---- the numbers each bar draws
+  // A slice saved for several examples holds one block of rows per example.
+  let exampleCount = 1
+  for (const sl of Object.values(values?.slices ?? {})) {
+    const r = sl.rows as unknown[]
+    if (Array.isArray(r) && Array.isArray((r[0] as unknown[])?.[0]) && sl.shape.length >= 3 && r.length > exampleCount) exampleCount = r.length
+  }
+  const example = Math.max(0, Math.min(Math.floor(state.example ?? 0), exampleCount - 1))
+  if (exampleCount > 1) scene.examples = { count: exampleCount, index: example }
   const sliceRows = (name: string): number[][] | null => {
     const mine = top?.[name]
     if (Array.isArray(mine) && mine.length) return mine as number[][]
     const s = values?.slices?.[name]
     if (!s || !Array.isArray(s.rows) || !s.rows.length) return null
     const rows = s.rows as unknown[]
-    return (Array.isArray((rows[0] as unknown[])?.[0]) ? rows[0] : rows) as number[][]
+    return (Array.isArray((rows[0] as unknown[])?.[0]) ? rows[Math.min(example, rows.length - 1)] : rows) as number[][]
   }
   const firstRows = (names: string[]) => { for (const n of names) { const r = sliceRows(n); if (r) return r } return null }
   const firstVec = (names: string[]): number[] | null => { const r = firstRows(names); return r ? (r.length === 1 ? r[0] : r.map((x) => x[0])) : null }
@@ -1230,6 +1247,31 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
     for (const l of scene.labels) if (l.tag === '*') see(l.p[0], l.p[1] + (l.cls.startsWith('grpl') ? 1.2 : 0))
     if (plan.embed) see(-23.5, 0)
     scene.all = Number.isFinite(x0) ? { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, hw: (x1 - x0) / 2 + 1, hh: (y1 - y0) / 2 + 1 } : scene.all
+  }
+
+  // ---- the clicked bar's saved numbers, as a table
+  {
+    const ob = state.open ? plan.bars.get(state.open) : undefined, R = ob ? reg.get(ob.key) : undefined
+    if (ob && R) {
+      const rows = R.rows, nC = rows[0]?.length ?? 0
+      let max = 1e-9
+      for (const row of rows) for (const v of row) if (Number.isFinite(v) && Math.abs(v) > max) max = Math.abs(v)
+      const fmt = (v: number) => (v === -Infinity ? 'masked' : Number.isNaN(v) ? '·' : R.kind === 'prob' ? `${(v * 100).toFixed(1)}%` : sg(v))
+      const names = ob.cols ? ((Array.isArray(top?.labels) ? (top!.labels as string[]) : undefined) ?? extra.labels?.[ob.slice]) : undefined
+      const head1 = ob.square ? rows.map((_, c) => rowName(ob.slice, c)) : Array.from({ length: nC }, (_, c) => names?.[c] ?? String(c + 1))
+      const table: { cells: string[]; on?: boolean; shade?: number[] }[] = [{ cells: [ob.cells ? '' : ob.square ? 'reads ↓ from →' : 'row', ...head1] }]
+      rows.forEach((row, r) => table.push({
+        cells: [ob.cells ? `heads ${Math.floor(r / 2) * 8 + 1} to ${Math.floor(r / 2) * 8 + 8}, line ${(r % 2) + 1}` : rowName(ob.slice, r), ...row.map(fmt)],
+        shade: [0, ...row.map((v) => (Number.isFinite(v) ? Math.min(1, Math.abs(v) / max) : 0))],
+        on: !ob.cells && r === t0,
+      }))
+      const saved = R.real ? `${rows.length} rows x ${nC} columns of it are saved and shown here` : 'its numbers were not saved for this input, so the cells are empty'
+      scene.open = [
+        { t: 'h3', text: ob.heads && ob.heads > 1 ? `${ob.name}, head ${head + 1} of ${ob.heads}` : ob.name },
+        { t: 'sizes', lines: [ob.cells ? `${ob.cells.heads} heads x ${fmtN(ob.cells.side)} x ${fmtN(ob.cells.side)}` : ob.square ? `${fmtN(R.size)} x ${fmtN(R.size)} drawn` : `each row is ${fmtN(R.size)} numbers wide`, saved] },
+        { t: 'table', cls: 'mx', rows: table },
+      ]
+    }
   }
 
   // ---- the two cards under the drawing

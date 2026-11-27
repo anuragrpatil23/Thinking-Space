@@ -64,7 +64,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   let input: string | null = props.inputs[0] ?? null
   let themeProp = props.theme
   let disposed = false
-  const state: ModelDiagramStateBlock & Required<ModelDiagramPassStateBlock> = { focus: null, t: 5, sel: {}, pass: 0, showNew: true, head: 0 }
+  const state: ModelDiagramStateBlock & Required<ModelDiagramPassStateBlock> = { focus: null, t: 5, sel: {}, pass: 0, showNew: true, head: 0, example: 0, open: null }
   const stopFor = (step: number, part?: string) => {
     if (!step) return null
     const mine = stops.filter((s) => s.specStep === step)
@@ -114,7 +114,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   const scenes = new Map<string, ModelDiagramSceneBlock>()
   const sceneNow = () => {
     const v = input ? values.get(input) ?? null : null
-    const key = JSON.stringify([v ? input : null, state.focus, state.t, state.sel, state.pass, state.showNew, state.head])
+    const key = JSON.stringify([v ? input : null, state.focus, state.t, state.sel, state.pass, state.showNew, state.head, state.example, state.open])
     let s = scenes.get(key)
     if (!s) {
       s = layoutModelDiagramBlock(spec, v, state)
@@ -131,8 +131,8 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     const s = stops.find((x) => x.id === state.focus)
     props.onStep?.(s ? s.specStep : 0, s?.part || undefined)
   }
-  const focus = (id: string | null, tell = true) => {
-    state.focus = id
+  const focus = (id: string | null, tell = true, open: string | null = null) => {
+    state.focus = id; state.open = open
     draw(); renderer?.flyTo(id ? scene.stops.find((s) => s.id === id)!.frame : scene.all)
     if (tell) report()
   }
@@ -183,6 +183,15 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   const setHead = (n: number) => { const h = scene.heads; if (!h) return; state.head = (n + h.count) % h.count; draw() }
   headGroup.append(headLabel, button('Previous head', () => setHead(state.head - 1)), button('Next head', () => setHead(state.head + 1)))
   headGroup.hidden = true
+  // which example of the batch is drawn
+  const exGroup = el('div', 'g'), exLabel = el('span', 'l'), exRange = doc.createElement('input')
+  exRange.type = 'range'; exRange.min = '1'; exRange.step = '1'; exRange.setAttribute('aria-label', 'Example in the batch')
+  exRange.addEventListener('input', () => { state.example = Number(exRange.value) - 1; draw() })
+  exGroup.append(exLabel, exRange); exGroup.hidden = true
+  // the saved numbers of a bar that was clicked
+  const openCard = el('div', 'card open'), openBody = el('div', 'openbody')
+  const closeBtn = button('Close', () => { state.open = null; draw() })
+  openCard.append(closeBtn, openBody); openCard.hidden = true
   if (props.inputs.length) {
     const g = el('div', 'g'); g.appendChild(el('span', 'l', 'Prompt at the front'))
     for (const name of props.inputs) { const b = button(name, () => setInput(name)); inputBtns.set(name, b); g.appendChild(b) }
@@ -190,7 +199,8 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     wroteGroup.append(el('span', 'l', 'Written so far'), writtenEl, el('span', 'l', 'Next word'), nextEl)
     bar.append(g, passGroup, wroteGroup)
   }
-  bar.append(headGroup)
+  bar.append(headGroup, exGroup)
+  root.insertBefore(openCard, under)
 
   const card = (into: HTMLElement, items: ModelDiagramCardItemBlock[], tagged: boolean) => {
     into.textContent = ''
@@ -200,7 +210,11 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
       if (it.t === 'sizes') { const d = el('div', 'sizes'); for (const l of it.lines) d.appendChild(el('span', '', l)); into.appendChild(d) }
       else if (it.t === 'table') {
         const t = el('table', it.cls)
-        it.rows.forEach((r, n) => { const tr = el('tr', r.on ? 'on' : ''); for (const c of r.cells) tr.appendChild(el(n === 0 ? 'th' : 'td', '', c)); t.appendChild(tr) })
+        it.rows.forEach((r, n) => {
+          const tr = el('tr', r.on ? 'on' : '')
+          r.cells.forEach((c, k) => { const td = el(n === 0 ? 'th' : 'td', '', c); const sh = r.shade?.[k]; if (sh) td.style.background = `color-mix(in srgb, var(--neuron) ${Math.round(sh * 60)}%, transparent)`; tr.appendChild(td) })
+          t.appendChild(tr)
+        })
         const d = el('div', 'tscroll'); d.appendChild(t); into.appendChild(d)
       } else if (it.t === 'h3' && head && head.childNodes.length === 1) head.appendChild(el('h3', '', it.text))
       else into.appendChild(el(it.t === 'h2' || it.t === 'h3' ? it.t : it.t === 'p' || it.t === 'note' ? 'p' : 'div', it.t === 'note' ? 'note' : it.t === 'formula' ? 'formula' : '', it.text))
@@ -218,9 +232,15 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     const hs = scene.heads
     headGroup.hidden = !hs
     if (hs) headLabel.textContent = `Head ${hs.head + 1} of ${hs.count}${hs.saved.length && !hs.saved.includes(hs.head) ? ' (its numbers were not saved)' : ''}`
-    bar.hidden = !props.inputs.length && !hs
+    const ex = scene.examples
+    exGroup.hidden = !ex
+    if (ex) { exLabel.textContent = `Example ${ex.index + 1} of ${ex.count} in the batch`; exRange.max = String(ex.count); exRange.value = String(ex.index + 1) }
+    bar.hidden = !props.inputs.length && !hs && !ex
+    openCard.hidden = !scene.open
+    if (scene.open) card(openBody, scene.open, false)
     const ps = scene.passes
-    passGroup.hidden = wroteGroup.hidden = !ps
+    wroteGroup.hidden = !ps
+    passGroup.hidden = !ps || ps.count <= 1
     if (ps) {
       passLabel.textContent = `Pass ${ps.pass + 1} of ${ps.count}: ${scene.tokens.length} tokens go in`
       writeBtn.disabled = ps.pass >= ps.count - 1; overBtn.disabled = ps.pass === 0
@@ -253,7 +273,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
         else if (state.focus) { state.t = row; state.sel[id] = col }
         const s = stops.find((x) => x.id === id)
         if (s) props.onPickBlock?.(s.opId)
-        focus(id)
+        focus(id, true, grid.key)
       },
       onStop: (id) => focus(id),
       obstacles() {

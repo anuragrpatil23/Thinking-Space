@@ -61,6 +61,8 @@ background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line
 .mdg .under{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:18px;align-items:start}
 .mdg .card{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:16px 18px;display:flex;flex-direction:column;gap:9px;min-width:0}
 .mdg .card.w{border-style:dashed}
+.mdg .card.open{position:relative} .mdg .card.open>button{position:absolute;right:12px;top:10px;font-size:12px;padding:3px 9px} .mdg .openbody{display:flex;flex-direction:column;gap:9px;min-width:0}
+.mdg input[type=range]{accent-color:var(--neuron);width:140px}
 .mdg .card .hd{display:flex;gap:8px;align-items:center}
 .mdg .formula{font-family:var(--mono);font-size:13px;color:var(--neuron);overflow-wrap:anywhere}
 .mdg .sizes{font-family:var(--mono);font-size:12.5px;color:var(--c4);display:flex;flex-direction:column;gap:2px}
