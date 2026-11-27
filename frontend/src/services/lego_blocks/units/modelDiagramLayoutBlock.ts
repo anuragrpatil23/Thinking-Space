@@ -724,8 +724,14 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
   const firstVec = (names: string[]): number[] | null => { const r = firstRows(names); return r ? (r.length === 1 ? r[0] : r.map((x) => x[0])) : null }
   const num = (v: unknown) => (typeof v !== 'number' || v < -1e8 ? -Infinity : v)
   const reg = new Map<string, Reg>()
+  /** Bars drawn with the picked head's own columns, not the first head's. */
+  const headCols = new Set<string>()
   const put = (key: string, slice: string, kind: Reg['kind'], size: number, square: boolean, cols?: number, masked = true) => {
     let src = sliceRows(slice)
+    // another head's own columns of the queries, keys and values, when the file has them (`attention_heads`)
+    const hp = head > 0 && !square ? /^(.+)\.(q|k|v)$/.exec(slice) : null
+    const hr = hp ? values?.attention_heads?.[hp[1]]?.[String(head)]?.[hp[2] as 'q' | 'k' | 'v'] : undefined
+    if (hr && hr.length) { src = hr; headCols.add(key) }
     let lastRow: number[] | null = null
     // another head's similarity scores come from `attention_scores` when the file has them; without them its bar is
     // drawn empty, never with the first head's numbers
@@ -830,7 +836,7 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
         const terms: Term[] = []
         let sum = 0
         // the queries' and keys' saved columns are the first head's: another head's score is shown, its products are not
-        if (head === 0 && real(s.ins[0]) && real(s.ins[1])) for (let c = 0; c < WIN; c++) {
+        if ((head === 0 || (headCols.has(s.ins[0]) && headCols.has(s.ins[1]))) && real(s.ins[0]) && real(s.ins[1])) for (let c = 0; c < WIN; c++) {
           const q = A(s.ins[0], t, c), k = A(s.ins[1], i, c)
           terms.push({ label: '', parts: [q, k], product: q.val * k.val }); sum += q.val * k.val
         }
@@ -848,11 +854,14 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
       }
       case 'mix': {
         const terms: Term[] = []
-        if (real(s.ins[0]) && real(s.ins[1])) for (let j = 0; j <= t; j++) {
+        // another head's weights go with that head's values, or with nothing: never with the first head's
+        if ((head === 0 || headCols.has(s.ins[1])) && real(s.ins[0]) && real(s.ins[1])) for (let j = 0; j <= t; j++) {
           const a = A(s.ins[0], t, j), v = A(s.ins[1], j, i)
           terms.push({ label: '', parts: [a, v], product: a.val * v.val })
         }
-        return { kind: 'mix', value: y, terms, formula: 'sum over positions of attention weight × value' }
+        // the saved result is the first head's; another head's is the sum just worked, which is exact (every position is saved)
+        const mixed = head > 0 && terms.length ? terms.reduce((sum, x) => sum + x.product, 0) : y
+        return { kind: 'mix', value: mixed, terms, formula: 'sum over positions of attention weight × value' }
       }
       case 'sum': {
         const [k1, k2] = s.ins
@@ -981,7 +990,7 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
       lab(tagk, 'pu', b.x, ry - 1.7, 0.1, [['', 'each small square is one head’s memory'], ['', 'purple is above zero, blue below'], ['', 'it is the same size at every token']])
     }
     const nm = b.heads && b.heads > 1 ? `${b.name}, head ${head + 1} of ${b.heads}${head > 0 && !R.real ? ' (saved for head 1 only)' : ''}` : b.square ? `${b.name}, head 1` : b.name
-    lab(tagk, '', b.x, b.y + g.h / 2 + 0.5, 0, [['tag act', 'ACTIVATIONS'], ['nm', R.real || b.heads ? nm : `${nm} (not saved: drawn flat)`], ['', shape]], { anchor: 'bottom' })
+    lab(tagk, '', b.x, b.y + g.h / 2 + 0.5, 0, [['tag act', 'ACTIVATIONS'], ['nm', headCols.has(b.key) ? `${nm}, head ${head + 1}’s columns` : R.real || b.heads ? nm : `${nm} (not saved: drawn flat)`], ['', shape]], { anchor: 'bottom' })
     if (b.square && b.masked && nR > 2) {
       // the mask's edge: a token reads itself and what came before, never what comes after
       for (let r = 0; r < nR - 1; r++) {
@@ -1216,7 +1225,7 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
       const missing = st.inKeys.filter((k) => !reg.get(k)?.real)
       for (const k of st.inKeys) if (bars.has(k)) thin(tilePt(k, st.t, 0), [px, uy, 0.4], 'neuron', 0.55)
       if (missing.length) lab(tg, 'pu', cc[0] - 0.6, uy - st.half - 0.5, 0.4, [['', `the numbers this step reads were not saved for this model,`], ['', 'so only its shape is drawn']])
-      else if (s.part === 'scores' && head > 0) lab(tg, 'pu', cc[0] - 0.6, uy - st.half - 0.5, 0.4, [['', `the scores are head ${head + 1}’s; the query and key columns saved`], ['', 'are head 1’s, so the products are shown for head 1 only']])
+      else if (s.part === 'scores' && head > 0 && !(headCols.has(s.ins[0]) && headCols.has(s.ins[1]))) lab(tg, 'pu', cc[0] - 0.6, uy - st.half - 0.5, 0.4, [['', `the scores are head ${head + 1}’s; the query and key columns saved`], ['', 'are head 1’s, so the products are shown for head 1 only']])
     }
 
     if (EL.kind === 'linear' && focus === s.id) {

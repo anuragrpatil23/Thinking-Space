@@ -274,3 +274,22 @@ describe('every head\'s similarity scores (attention_scores)', () => {
     expect(scene.grids.find((g) => g.key === st.id)!.heights.some((h) => h > 0.05)).toBe(true)
   })
 })
+
+describe('each head\'s own Q/K/V columns (attention_heads)', () => {
+  const stopOf = (part: string) => layoutModelDiagramBlock(spec, values, start).stops.find((s) => s.part === part)!
+  const T = values.tokens.length
+  const sq = Array.from({ length: T }, (_, r) => Array.from({ length: T }, (_, c) => (c > r ? -1e9 : (r + 1) * 0.5 - c)))
+  const cols = (seed: number) => Array.from({ length: T }, (_, r) => Array.from({ length: 8 }, (_, c) => Math.sin(seed + r * 1.3 + c)))
+  it('without them, another head shows its score but no products; with them, the products are that head\'s', () => {
+    const st = stopOf('scores')
+    const scoresOnly = { ...values, attention_scores: { [st.opId]: { '3': sq } } } as ModelValues
+    const a = layoutModelDiagramBlock(spec, scoresOnly, { ...start, focus: st.id, head: 3 })
+    expect(a.stops.find((s) => s.id === st.id)!.detail.length).toBe(0)
+    const both = { ...scoresOnly, attention_heads: { [st.opId]: { '3': { q: cols(1), k: cols(2), v: cols(3) } } } } as ModelValues
+    const b = layoutModelDiagramBlock(spec, both, { ...start, focus: st.id, head: 3 })
+    expect(b.stops.find((s) => s.id === st.id)!.detail.length).toBeGreaterThan(0)
+    const q = `${st.opId}.q`
+    expect(b.grids.find((g) => g.key === q)!.heights).not.toEqual(a.grids.find((g) => g.key === q)!.heights)
+    expect(b.labels.some((l) => l.parts.some((p) => p[1].includes('head 4’s columns')))).toBe(true)
+  })
+})

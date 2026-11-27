@@ -121,6 +121,8 @@ export interface ModelValues {
   /** Every head's similarity scores, laid out as `attention` is; masked cells are -1e9. Head 0 equals the `<op>.scores` slice. */
   attention_scores?: Record<string, Record<string, number[][]>>
   attention_scores_row_ids?: Record<string, Record<string, number[]>>
+  /** Each head's own columns of the queries, keys and values: the rows of the `<op>.q` slice, the first drawn columns of that head. Head 0 equals the slices. */
+  attention_heads?: Record<string, Record<string, { q?: number[][]; k?: number[][]; v?: number[][] }>>
   row_lengths?: Record<string, number[]>
   reply?: string
   /** Optional extras the engine reads when present. */
@@ -465,6 +467,24 @@ export function parseModelValuesBlock(source: string, input: string, spec: Model
   const { out: attention, ids: attentionRowIds } = byHead('attention')
   const { out: attentionScores, ids: attentionScoresRowIds } = byHead('attention_scores')
 
+  const attentionHeads: NonNullable<ModelValues['attention_heads']> = {}
+  for (const [opId, heads] of Object.entries(isObject(raw.attention_heads) ? raw.attention_heads : {})) {
+    if (!attentionOps.has(opId)) { problem(`attention_heads.${opId}`, `"${opId}" is not an attention op in the spec.`); continue }
+    if (!isObject(heads)) { problem(`attention_heads.${opId}`, 'Each head\'s columns are given by head index.'); continue }
+    const out: Record<string, { q?: number[][]; k?: number[][]; v?: number[][] }> = {}
+    for (const [head, parts] of Object.entries(heads)) {
+      if (!isObject(parts)) { problem(`attention_heads.${opId}.${head}`, 'A head holds { q, k, v }, each a list of rows.'); continue }
+      const one: { q?: number[][]; k?: number[][]; v?: number[][] } = {}
+      for (const p of ['q', 'k', 'v'] as const) {
+        if (parts[p] === undefined) continue
+        if (!Array.isArray(parts[p]) || !(parts[p] as unknown[]).every(Array.isArray)) { problem(`attention_heads.${opId}.${head}.${p}`, 'A list of rows of numbers.'); continue }
+        one[p] = parts[p] as number[][]
+      }
+      out[head] = one
+    }
+    attentionHeads[opId] = out
+  }
+
   if (problems.length > 0) return { ok: false, problems }
   const values: ModelValues = { input, run_id: runId!, sha256: sha!, tokens, slices, attention }
   if (isObject(raw.row_lengths)) values.row_lengths = raw.row_lengths as Record<string, number[]>
@@ -473,6 +493,7 @@ export function parseModelValuesBlock(source: string, input: string, spec: Model
   if (Array.isArray(raw.token_ids)) values.token_ids = raw.token_ids as number[]
   if (Object.keys(attentionRowIds).length > 0) values.attention_row_ids = attentionRowIds
   if (Object.keys(attentionScores).length > 0) values.attention_scores = attentionScores
+  if (Object.keys(attentionHeads).length > 0) values.attention_heads = attentionHeads
   if (Object.keys(attentionScoresRowIds).length > 0) values.attention_scores_row_ids = attentionScoresRowIds
   if (typeof raw.prompt_tokens === 'number') values.prompt_tokens = raw.prompt_tokens
   if (isObject(raw.labels)) values.labels = raw.labels as ModelValues['labels']
