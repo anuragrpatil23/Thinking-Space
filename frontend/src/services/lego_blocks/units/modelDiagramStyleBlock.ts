@@ -19,18 +19,21 @@ background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line
 .mdg.app .stageframe{border:0;border-radius:0;background:transparent;width:100%;max-width:100%}
 .mdg.app.full{background:var(--bg)}
 .mdg.app:not(.full) .stageframe{align-self:flex-start;flex:none;overflow:hidden;-webkit-mask-image:linear-gradient(to right,transparent 0,#000 56px,#000 calc(100% - 56px),transparent 100%);mask-image:linear-gradient(to right,transparent 0,#000 56px,#000 calc(100% - 56px),transparent 100%)}
-.mdg.app .viewbtns{top:auto;bottom:12px;right:12px;flex-direction:column;gap:0;border:1px solid var(--rule);border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgb(0 0 0 / .06)}
-.mdg.app .viewbtns button{width:30px;height:30px;padding:0;font-size:16px;line-height:1;border:0;border-radius:0;box-shadow:none} .mdg.app .viewbtns button+button{border-top:1px solid var(--rule)}
-.mdg.app .stepbtns{left:auto;right:52px;bottom:12px;transform:none}
-.mdg.app:not(.full) .viewbtns{right:64px} .mdg.app:not(.full) .stepbtns{right:104px}
+.mdg.app .viewbtns{top:auto;bottom:12px;right:12px;flex-direction:row;align-items:stretch;gap:0;height:32px;border:1px solid var(--rule);border-radius:9px;overflow:hidden;background:var(--panel);box-shadow:0 1px 3px rgb(0 0 0 / .12)}
+.mdg.app .viewbtns button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:34px;width:auto;height:100%;margin:0;padding:0 9px;font-size:12.5px;line-height:1;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;color:var(--fg)}
+.mdg.app .viewbtns button+button{border-left:1px solid var(--rule)} .mdg.app .viewbtns button:hover{background:color-mix(in srgb,var(--fg) 8%,transparent)} .mdg.app .viewbtns button.run{padding:0 12px 0 9px} .mdg.app .viewbtns svg{display:block;flex:none}
+.mdg.app .stepbtns{display:none}
+.mdg.app:not(.full) .viewbtns{right:64px}
 .mdg.app .navsec{margin-left:auto} .mdg.app .navtools{display:flex;gap:6px;margin-left:14px} .mdg.app .navtools button{font-size:12px;padding:4px 10px;white-space:nowrap}
 .mdg.app{gap:12px;outline:none}
 .mdg.app .stageframe{min-height:min(68vh,640px)}
 .mdg.app button{border-radius:8px;transition:background-color .12s,border-color .12s,color .12s}
 .mdg.app .strip{display:none}
 .mdg.app .stepbtns .walk{display:none}
-.mdg.app .nav{display:flex;flex-direction:column;gap:10px;position:relative;padding-bottom:10px;border-bottom:1px solid var(--rule)}
-.mdg.app .navrow{display:flex;align-items:center;gap:8px;min-width:0}
+.mdg.app .nav{display:flex;flex-direction:column;gap:10px;position:relative}
+.mdg.app .bar2{padding-bottom:12px;border-bottom:1px solid var(--rule)} .mdg.app.full .bar2{border-bottom:0;padding-bottom:0}
+.mdg.app.full .nav{grid-area:1 / 1 / 2 / -1} .mdg.app.full .bar2{grid-area:2 / 1 / 3 / -1}
+.mdg.app .navrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0} .mdg.app .navrow .track{margin-left:16px;padding-top:15px}
 .mdg.app .navhome{font-size:12.5px;padding:5px 11px;border-radius:999px} .mdg.app .navhome[aria-pressed="true"]{background:hsl(var(--primary));color:hsl(var(--primary-foreground));border-color:hsl(var(--primary));box-shadow:none}
 .mdg.app .navarrow{width:28px;height:28px;padding:0;font-size:18px;line-height:1;border-radius:999px;display:grid;place-items:center;flex:none}
 .mdg.app .navcur{display:flex;align-items:baseline;gap:10px;border:0;background:transparent;padding:3px 8px;font-size:17px;font-weight:600;min-width:0}
@@ -63,9 +66,17 @@ background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line
 .mdg.app .bar2 .g.join{gap:0} .mdg.app .bar2 .g.join .l{margin-right:8px} .mdg.app .bar2 .g.join button{border-radius:0;margin-left:-1px;position:relative}
 .mdg.app .bar2 .g.join button:first-of-type{border-radius:7px 0 0 7px;margin-left:0} .mdg.app .bar2 .g.join button:last-of-type{border-radius:0 7px 7px 0} .mdg.app .bar2 .g.join button:only-of-type{border-radius:7px}
 .mdg.app .bar2 .g.join button[aria-pressed="true"]{z-index:1;background:hsl(var(--primary));color:hsl(var(--primary-foreground));border-color:hsl(var(--primary));outline:0;box-shadow:none}
-.mdg.app .bar2 .g.readout{gap:8px;padding:4px 12px;border-radius:7px;background:color-mix(in srgb,var(--fg) 7%,transparent);font-family:var(--mono);font-size:12px;min-width:0} .mdg.app .bar2 .g.readout .l{margin:0}
+.mdg.app .bar2 .g.readout{gap:8px;padding:4px 12px;border-radius:7px;background:color-mix(in srgb,var(--fg) 7%,transparent);font-family:var(--mono);font-size:12px;min-width:0} .mdg.app .bar2 .g.readout .l{margin:0} .mdg.app .bar2 .g.pager button.switch{width:auto;height:auto;border-radius:6px;margin-left:10px} .mdg.app .bar2 .g.pager:last-child{margin-left:auto}
+.mdg.app .bar2 .v.dim{color:var(--muted);font-size:12px;margin:0 6px}
+.mdg.app .bar2 button.switch{display:inline-flex;align-items:center;gap:8px;border:0;background:transparent;box-shadow:none;outline:0;padding:4px 2px;color:var(--muted)}
+.mdg.app .bar2 button.switch::before{content:"";width:26px;height:15px;border-radius:999px;flex:none;background:radial-gradient(circle at 7.5px 50%,var(--bg) 0 5px,transparent 5.6px),color-mix(in srgb,var(--fg) 28%,transparent);transition:background .12s}
+.mdg.app .bar2 button.switch[aria-pressed="true"]{color:var(--fg);background:transparent;border:0}
+.mdg.app .bar2 button.switch[aria-pressed="true"]::before{background:radial-gradient(circle at 18.5px 50%,hsl(var(--primary-foreground)) 0 5px,transparent 5.6px),hsl(var(--primary))}
+.mdg.app .bar2 button.switch:focus-visible{outline:2px solid hsl(var(--primary));outline-offset:2px}
+.mdg.app .bar2 .v{font-size:12.5px;color:var(--fg);white-space:nowrap;font-variant-numeric:tabular-nums} .mdg.app .bar2 .g.pager button{width:26px;height:26px;padding:0;font-size:16px;line-height:1;border-radius:999px;display:grid;place-items:center} .mdg.app .bar2 .g.pager .v{min-width:52px;text-align:center}
 .mdg.app .eyebrow{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;font-size:12px;color:var(--muted);padding-bottom:8px;margin-bottom:2px;border-bottom:1px solid var(--rule)} .mdg.app .eyebrow b{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--fg)}
 .mdg.app .card.open>button{top:8px}
+.mdg.app tr.pickable{cursor:pointer} .mdg.app tr.pickable:hover td{background:color-mix(in srgb,var(--fg) 7%,transparent)}
 .mdg.app .card{border-radius:12px;box-shadow:0 1px 2px rgb(0 0 0 / .04)}
 .mdg.app .hint{font-size:12.5px}
 .mdg *{box-sizing:content-box}
@@ -98,6 +109,7 @@ background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line
 .mdg .lab.pill.w{border-style:dashed}
 .mdg .lab.eqn{font-size:10.5px;line-height:1.45;gap:1px;align-items:flex-start;text-align:left;z-index:2;padding:9px 12px;border:1px solid var(--rule);border-radius:8px;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 .mdg .lab.eqn>:first-child{font-weight:600}
+@container mdg (max-width:1100px){ .mdg .lab.eqn{font-size:9px;line-height:1.35;padding:6px 9px} }
 .mdg .lab.ttl{pointer-events:auto;cursor:pointer;font-family:var(--sans);font-size:12.5px;font-weight:600;color:var(--fg);background:var(--bg);border:1px solid var(--rule);border-radius:4px;padding:2px 7px;white-space:normal;max-width:118px;line-height:1.2}
 .mdg .dense .lab.ttl{white-space:nowrap;max-width:none;font-size:11.5px;padding:1px 6px}
 .mdg .leaders{position:absolute;inset:0;width:100%;height:100%;overflow:visible} .mdg .leaders path{fill:none;stroke:var(--muted);stroke-width:1;opacity:.7}

@@ -202,7 +202,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     const cur = button('', () => { list.hidden = !list.hidden; cur.setAttribute('aria-expanded', list.hidden ? 'false' : 'true') }); cur.className = 'navcur'
     const count = el('span', 'navcount'), name = el('span', 'navname'), sec = el('span', 'navsec')
     cur.append(count, name, el('span', 'navcaret', '▾'))
-    row.append(home, pv, cur, nx, sec, navTools)
+    row.append(home, pv, cur, nx, track, sec, navTools)
     const dots = new Map<string, HTMLButtonElement>(), items = new Map<string, HTMLButtonElement>(), segs: { seg: HTMLElement; ids: string[] }[] = []
     for (const part of scene.strip) {
       if ('note' in part) continue
@@ -223,8 +223,9 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
       seg.append(dd, el('span', 'seglabel', part.label.includes(': ') ? part.label.slice(part.label.indexOf(': ') + 2) : part.label)); track.appendChild(seg); segs.push({ seg, ids: part.stops }); list.appendChild(col)
     }
     track.appendChild(bubble)
-    nav.append(row, track, list)
-    root.insertBefore(nav, strip)
+    nav.append(row, list)
+    // the header reads: where you are in the model, then what is going through it
+    root.insertBefore(nav, bar)
     onOutside = (e) => { if (!list.hidden && !nav.contains(e.target as Node)) list.hidden = true }
     doc.addEventListener('pointerdown', onOutside)
     navUpdate = () => {
@@ -244,7 +245,15 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   }
   // in the app the camera buttons are a small stack in the stage's corner, as on a map
   const inApp = props.appearance === 'app'
-  const camBtn = (text: string, glyph: string, onClick: () => void) => { const b = button(inApp ? glyph : text, onClick); if (inApp) { b.title = text; b.setAttribute('aria-label', text) } return b }
+  const ICON: Record<string, string> = {
+    'Zoom in': '<path d="M8 3.5v9M3.5 8h9"/>', 'Zoom out': '<path d="M3.5 8h9"/>',
+    'Reset view': '<path d="M3 8a5 5 0 1 0 1.6-3.7"/><path d="M3 2.8v2.6h2.6"/>', Run: '<path d="M5.2 3.6v8.8L12.4 8z" fill="currentColor" stroke-linejoin="round"/>',
+  }
+  const icon = (b: HTMLButtonElement, name: string, withText = false) => {
+    b.innerHTML = `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">${ICON[name]}</svg>${withText ? `<span>${name}</span>` : ''}`
+    b.title = name; b.setAttribute('aria-label', name)
+  }
+  const camBtn = (text: string, _glyph: string, onClick: () => void) => { const b = button(text, onClick); if (inApp) icon(b, text); return b }
   viewBtns.append(
     camBtn('Zoom in', '+', () => renderer?.zoom(0.8)), camBtn('Zoom out', '\u2212', () => renderer?.zoom(1.25)),
     camBtn('Reset view', '\u27F2', () => renderer?.flyTo(state.focus ? scene.stops.find((s) => s.id === state.focus)!.frame : scene.all)),
@@ -321,7 +330,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   }) : null
   stageRo?.observe(stage)
   doc.addEventListener('keydown', onKey)
-  if (inApp) { navTools.append(notesBtn, fullBtn); runBtn.title = 'Play this step again' } else viewBtns.append(notesBtn, fullBtn)
+  if (inApp) { navTools.append(notesBtn, fullBtn); icon(runBtn, 'Run', true); runBtn.title = 'Play this step again'; runBtn.classList.add('run'); viewBtns.prepend(runBtn) } else viewBtns.append(notesBtn, fullBtn)
   const inputBtns = new Map<string, HTMLButtonElement>()
   const passLabel = el('span', 'l'), writtenEl = el('b', 'mono'), nextEl = el('b', 'mono nxt')
   const setPass = (n: number) => {
@@ -332,13 +341,18 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     draw()
   }
   const writeBtn = button('Write the next word', () => setPass(state.pass + 1))
-  const overBtn = button('Start over', () => setPass(0))
+  const overBtn = button('Start over', () => setPass(props.appearance === 'app' ? state.pass - 1 : 0)), tokensEl = el('span', '')
   const showBtn = button('Show what the new token touches', () => { state.showNew = !state.showNew; draw() })
   const passGroup = el('div', 'g'), wroteGroup = el('div', 'g')
   // the head in front of an attention step
   const headGroup = el('div', 'g'), headLabel = el('span', 'l')
   const setHead = (n: number) => { const h = scene.heads; if (!h) return; state.head = (n + h.count) % h.count; draw() }
-  headGroup.append(headLabel, button('Previous head', () => setHead(state.head - 1)), button('Next head', () => setHead(state.head + 1)))
+  if (props.appearance === 'app') {
+    const hp = button('\u2039', () => setHead(state.head - 1)), hn = button('\u203A', () => setHead(state.head + 1))
+    hp.title = 'Previous head'; hp.setAttribute('aria-label', 'Previous head'); hn.title = 'Next head'; hn.setAttribute('aria-label', 'Next head')
+    headLabel.className = 'v'; passLabel.className = 'v'
+    headGroup.classList.add('pager'); headGroup.append(el('span', 'l', 'Head'), hp, headLabel, hn)
+  } else headGroup.append(headLabel, button('Previous head', () => setHead(state.head - 1)), button('Next head', () => setHead(state.head + 1)))
   headGroup.hidden = true
   // which example of the batch is drawn
   const exGroup = el('div', 'g'), exLabel = el('span', 'l'), exRange = doc.createElement('input')
@@ -352,11 +366,17 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   if (props.inputs.length) {
     const g = el('div', 'g join'); g.appendChild(el('span', 'l', inApp ? 'Prompt' : 'Prompt at the front'))
     for (const name of props.inputs) { const b = button(name, () => setInput(name)); inputBtns.set(name, b); g.appendChild(b) }
-    passGroup.append(passLabel, writeBtn, overBtn, showBtn)
+    if (inApp) {
+      // one word at a time, forwards or back: the same stepper as the heads
+      writeBtn.textContent = '\u203A'; writeBtn.title = 'Write the next word'; writeBtn.setAttribute('aria-label', 'Write the next word')
+      overBtn.textContent = '\u2039'; overBtn.title = 'Take the last word back'; overBtn.setAttribute('aria-label', 'Take the last word back')
+      passLabel.className = 'v'; tokensEl.className = 'v dim'
+      passGroup.classList.add('pager'); passGroup.append(el('span', 'l', 'Words written'), overBtn, passLabel, writeBtn, tokensEl, showBtn)
+    } else passGroup.append(passLabel, writeBtn, overBtn, showBtn)
     wroteGroup.append(el('span', 'l', 'Written so far'), writtenEl, el('span', 'l', 'Next word'), nextEl)
-    wroteGroup.classList.add('readout'); headGroup.classList.add('join')
-    if (inApp) { showBtn.textContent = 'Highlight the new token'; showBtn.title = 'Show what the new token touches' }
-    bar.append(g, passGroup, wroteGroup)
+    wroteGroup.classList.add('readout')
+    if (inApp) { showBtn.textContent = 'Highlight the new token'; showBtn.title = 'Show what the new token touches'; showBtn.className = 'switch'; showBtn.setAttribute('role', 'switch') }
+    if (inApp) bar.append(g, wroteGroup, passGroup); else bar.append(g, passGroup, wroteGroup)
   }
   bar.append(headGroup, exGroup)
   side.insertBefore(openCard, under)
@@ -373,7 +393,9 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
         const t = el('table', it.cls)
         it.rows.forEach((r, n) => {
           const tr = el('tr', r.on ? 'on' : '')
-          r.cells.forEach((c, k) => { const td = el(n === 0 ? 'th' : 'td', '', c); const sh = r.shade?.[k]; if (sh) td.style.background = `color-mix(in srgb, var(--neuron) ${Math.round(sh * 60)}%, transparent)`; tr.appendChild(td) })
+          const pick = n > 0 ? it.pickRows?.[n - 1] : undefined
+          if (pick !== undefined && state.focus) { const id = state.focus; tr.classList.add('pickable'); tr.title = 'Show this neuron in the drawing'; tr.addEventListener('click', () => { state.sel[id] = pick; draw() }) }
+          r.cells.forEach((c, k) => { const td = el(n === 0 ? 'th' : 'td', '', c); const sh = r.shade?.[k]; if (sh) td.style.background = `color-mix(in srgb, var(--neuron) ${Math.round(sh * 60)}%, transparent)`; if (inApp && it.pickRows && r.on && k >= 1 && k <= 8) td.style.boxShadow = `inset 0 -3px 0 var(--c${k})`; tr.appendChild(td) })
           t.appendChild(tr)
         })
         const d = el('div', 'tscroll'); d.appendChild(t); into.appendChild(d)
@@ -399,7 +421,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     navUpdate()
     const hs = scene.heads
     headGroup.hidden = !hs
-    if (hs) headLabel.textContent = `Head ${hs.head + 1} of ${hs.count}${hs.saved.length && !hs.saved.includes(hs.head) ? ' (its numbers were not saved)' : ''}`
+    if (hs) headLabel.textContent = `${props.appearance === 'app' ? '' : 'Head '}${hs.head + 1} of ${hs.count}${hs.saved.length && !hs.saved.includes(hs.head) ? ' (its numbers were not saved)' : ''}`
     const ex = scene.examples
     exGroup.hidden = !ex
     if (ex) { exLabel.textContent = `Example ${ex.index + 1} of ${ex.count} in the batch`; exRange.max = String(ex.count); exRange.value = String(ex.index + 1) }
@@ -410,12 +432,12 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     wroteGroup.hidden = !ps
     passGroup.hidden = !ps || ps.count <= 1
     if (ps) {
-      passLabel.textContent = `Pass ${ps.pass + 1} of ${ps.count}: ${scene.tokens.length} tokens go in`
-      writeBtn.disabled = ps.pass >= ps.count - 1; overBtn.disabled = ps.pass === 0
-      showBtn.setAttribute('aria-pressed', state.showNew ? 'true' : 'false')
+      passLabel.textContent = props.appearance === 'app' ? `${ps.pass} of ${ps.count - 1}` : `Pass ${ps.pass + 1} of ${ps.count}: ${scene.tokens.length} tokens go in`
+      writeBtn.disabled = ps.pass >= ps.count - 1; overBtn.disabled = ps.pass === 0; tokensEl.textContent = `the model reads ${scene.tokens.length} tokens`; passGroup.title = 'Each run of the model writes one word. Step forward to write the next word, back to take one away.'
+      showBtn.setAttribute('aria-pressed', state.showNew ? 'true' : 'false'); if (inApp) showBtn.setAttribute('aria-checked', state.showNew ? 'true' : 'false')
       writtenEl.textContent = ps.written.length ? ps.written.join(' ') : '(nothing yet)'; nextEl.textContent = ps.next
     }
-    card(what, scene.what, false, [state.focus ? 'This step' : 'The model', state.focus ? 'what it does, in words and numbers' : 'what the drawing shows']); card(weights, scene.weights, true, [state.focus ? 'This step\u2019s weights' : 'Weights', 'learned in training; the same for every prompt'])
+    card(what, scene.what, false, [state.focus ? 'This step' : 'The model', state.focus ? 'what it does, in words and numbers' : 'what the drawing shows']); card(weights, scene.weights, true, [state.focus ? 'This step\u2019s weights' : 'Weights', state.focus ? 'click a row to show that neuron in the drawing' : 'learned in training; the same for every prompt'])
     renderer?.setScene(scene, state.focus)
   }
 

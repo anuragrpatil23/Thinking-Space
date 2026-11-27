@@ -61,7 +61,7 @@ export interface ModelDiagramLabelBlock {
 export type ModelDiagramCardItemBlock =
   | { t: 'h2' | 'h3' | 'p' | 'note' | 'formula'; text: string }
   | { t: 'sizes'; lines: string[] }
-  | { t: 'table'; cls: string; rows: { cells: string[]; on?: boolean; /** 0 to 1 per cell: how strongly to tint it. */ shade?: number[] }[] }
+  | { t: 'table'; cls: string; /** The neuron each body row stands for: a click on the row picks it, as a click on the drawn table does. */ pickRows?: number[]; rows: { cells: string[]; on?: boolean; /** 0 to 1 per cell: how strongly to tint it. */ shade?: number[] }[] }
 
 export interface ModelDiagramStopBlock {
   id: string
@@ -601,7 +601,31 @@ function specSteps(spec: ModelSpec) {
  * same scene.
  */
 export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | null, state: ModelDiagramStateBlock & ModelDiagramPassStateBlock): ModelDiagramSceneBlock {
-  const plan = planFor(spec)
+  const first = layoutOnce(spec, values, state)
+  const stop = state.focus ? first.stops.find((s) => s.id === state.focus) : undefined
+  if (!stop) return first
+  // The step in focus has opened up (its numbers, its table of weights, its sum). A bar it neither reads nor writes
+  // that now sits inside its view steps back, down or up, until it is clear; with nothing in focus it is back in its place.
+  const f = stop.frame, mine = new Set(stop.bars), planned = planFor(spec).bars
+  const near = first.grids.filter((g) => planned.has(g.key) && !mine.has(g.key) && Math.abs(g.cx - f.cx) < f.hw + g.w / 2)
+  let down = 0, up = 0
+  for (const g of near) {
+    if (g.cy < f.cy) down = Math.max(down, g.cy + g.h / 2 + 0.8 - (f.cy - f.hh))
+    else up = Math.max(up, f.cy + f.hh - (g.cy - g.h / 2 - 0.8))
+  }
+  if (down <= 0.05 && up <= 0.05) return first
+  const shift = new Map<string, number>()
+  for (const g of near) { const d = g.cy < f.cy ? -Math.max(0, down) : Math.max(0, up); if (d) shift.set(g.key, d) }
+  return shift.size ? layoutOnce(spec, values, state, shift) : first
+}
+
+function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDiagramStateBlock & ModelDiagramPassStateBlock, shift?: Map<string, number>): ModelDiagramSceneBlock {
+  const plan0 = planFor(spec)
+  const plan: Plan = !shift ? plan0 : {
+    ...plan0,
+    bars: new Map([...plan0.bars].map(([k, b]) => [k, shift.has(k) ? { ...b, y: b.y + shift.get(k)! } : b])),
+    stops: plan0.stops.map((s) => (shift.has(s.key) ? { ...s, uy: s.uy + shift.get(s.key)! } : s)),
+  }
   const stepOf = specSteps(spec)
   const facts = plan.facts
   const HS = facts.headWidth
@@ -859,7 +883,10 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
   const focus = state.focus && steps.has(state.focus) ? state.focus : null
   {
     const fo = focus ? spec.ops.find((o) => o.id === steps.get(focus)!.s.opId) : undefined
-    if (fo?.kind === 'attention' && (fo.heads ?? 1) > 1) {
+    // the head picker is offered only where it changes the drawing: a step that reads or writes a bar drawn one head at a time
+    const fs = focus ? steps.get(focus)! : null
+    const perHead = !!fs && [fs.s.key, ...fs.inKeys].some((k) => (plan.bars.get(k)?.heads ?? 0) > 1)
+    if (fo?.kind === 'attention' && (fo.heads ?? 1) > 1 && perHead) {
       const saved = Object.keys(values?.attention?.[fo.id] ?? {}).map(Number)
       for (const k of Object.keys(X.attention_last_row?.[fo.id] ?? {})) if (!saved.includes(Number(k))) saved.push(Number(k))
       scene.heads = { count: fo.heads!, head: Math.min(head, fo.heads! - 1), saved: saved.sort((p, q) => p - q) }
@@ -1029,7 +1056,7 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
     const L: string[] = []
     const bias = EL.bias && Number.isFinite(EL.bias.val) ? EL.bias : null
     L.push(`the sum for “${rowName(plan.bars.get(st.s.key)!.slice, st.t)}”:  z = ${(ts[0].w as { label: string }).label}·x1 + ${(ts[1].w as { label: string }).label}·x2 + … (${fmtN(EL.nIn ?? 0)} terms)${bias ? ` + ${bias.label}` : ''}`)
-    L.push(`a dot product: this neuron’s row of weights · the input row${bias ? ', plus the intercept' : ''}`); L.push('multiply matching columns, then add up')
+    L.push(`a dot product: weights row · input row${bias ? ', plus the intercept' : ''}`); L.push('multiply matching columns, then add up')
     L.push(`= ${ts.slice(0, 4).map(term).join(' + ')}`)
     if (ts.length > 4) L.push(`+ ${ts.slice(4).map(term).join(' + ')}`)
     L.push(`= ${ts.map((t) => sg(t.p)).join(' ')}   which add to ${sg(s8)}`)
@@ -1345,11 +1372,11 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
     what.push({ t: 'note', text: `Shown at work on: position ${st.t + 1} (“${rowName(plan.bars.get(st.s.key)!.slice, st.t)}”), ${at}. The same thing happens at every position and for every example in the batch, each on its own${exchanges ? ', except that here a position does use the positions before it' : ''}.` })
     if (EL.kind === 'linear') {
       const nO = EL.nOut ?? 0, nI = EL.nIn ?? 0
-      wts.push({ t: 'h3', text: `A corner of this layer: 8 of its ${fmtN(nO)} neurons, 8 of each one’s ${fmtN(nI)} slopes` })
+      wts.push({ t: 'h3', text: `The table drawn under this step, as numbers: 8 of its ${fmtN(nO)} neurons, 8 of each one’s ${fmtN(nI)} slopes` })
       if (EL.W && EL.W.length) {
         const rows: { cells: string[]; on?: boolean }[] = [{ cells: [''].concat([1, 2, 3, 4, 5, 6, 7, 8].map((c) => `x${c}`), ['…', EL.Wb ? 'intercept' : '']) }]
         EL.W.forEach((r, j) => { if (j > 7 && j !== st.i) return; rows.push({ cells: [`y${j + 1} :`].concat(r.slice(0, 8).map(sg), ['…', EL.Wb ? sg(EL.Wb[j]) : '']), on: j === st.i }) })
-        wts.push({ t: 'table', cls: 'mx', rows })
+        wts.push({ t: 'table', cls: 'mx', rows, pickRows: EL.W.map((_, j) => j).filter((j) => j <= 7 || j === st.i) })
       }
       wts.push({ t: 'note', text: `The whole matrix is ${fmtN(nO)} rows by ${fmtN(nI)} columns. These numbers stay the same for every prompt. Only the blocks in the drawing change.` })
     } else if (s.unit === 'lookup') {
