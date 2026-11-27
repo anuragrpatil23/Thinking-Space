@@ -18,24 +18,45 @@ background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line
 --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",Inter,system-ui,sans-serif;background:transparent}
 .mdg.app .stageframe{border:0;border-radius:0;background:transparent;width:100%;max-width:100%}
 .mdg.app.full{background:var(--bg)}
+.mdg.app:not(.full) .stageframe{align-self:flex-start;flex:none;overflow:hidden;-webkit-mask-image:linear-gradient(to right,transparent 0,#000 56px,#000 calc(100% - 56px),transparent 100%);mask-image:linear-gradient(to right,transparent 0,#000 56px,#000 calc(100% - 56px),transparent 100%)}
+.mdg.app:not(.full) .viewbtns{right:64px} .mdg.app:not(.full) .stepbtns{right:64px}
 .mdg.app{gap:12px;outline:none}
 .mdg.app .stageframe{min-height:min(68vh,640px)}
 .mdg.app button{border-radius:8px;transition:background-color .12s,border-color .12s,color .12s}
-.mdg.app .strip{flex-wrap:nowrap;overflow-x:auto;gap:4px 18px;align-items:center;padding:2px 0 8px;border-bottom:1px solid var(--rule);scrollbar-width:none;scroll-behavior:smooth}
-.mdg.app .strip::-webkit-scrollbar{display:none}
-.mdg.app .grp{flex:none;flex-direction:row;align-items:center;gap:6px;border:0;border-radius:0;padding:0;background:transparent}
-.mdg.app .grp .gl{font-family:var(--sans);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;opacity:.8}
-.mdg.app .grp.stack{display:none}
-.mdg.app .chips{flex-wrap:nowrap;gap:2px}
-.mdg.app .chips button{border:0;background:transparent;color:var(--muted);font-size:12.5px;padding:4px 9px;white-space:nowrap}
-.mdg.app .chips button:hover{background:hsl(var(--muted));color:var(--fg)}
-.mdg.app .chips button[aria-current="step"]{background:hsl(var(--primary));color:hsl(var(--primary-foreground));font-weight:600}
+.mdg.app .strip{display:none}
+.mdg.app .stepbtns .walk{display:none} .mdg.app .stepbtns{left:auto;right:12px;transform:none}
+.mdg.app .nav{display:flex;flex-direction:column;gap:10px;position:relative;padding-bottom:10px;border-bottom:1px solid var(--rule)}
+.mdg.app .navrow{display:flex;align-items:center;gap:8px;min-width:0}
+.mdg.app .navhome{font-size:12.5px;padding:5px 11px;border-radius:999px} .mdg.app .navhome[aria-pressed="true"]{background:hsl(var(--primary));color:hsl(var(--primary-foreground));border-color:hsl(var(--primary));box-shadow:none}
+.mdg.app .navarrow{width:28px;height:28px;padding:0;font-size:18px;line-height:1;border-radius:999px;display:grid;place-items:center;flex:none}
+.mdg.app .navcur{display:flex;align-items:baseline;gap:10px;border:0;background:transparent;padding:3px 8px;font-size:17px;font-weight:600;min-width:0}
+.mdg.app .navcur:hover{background:hsl(var(--muted))}
+.mdg.app .navname{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mdg.app .navcount{font-family:var(--mono);font-size:12px;font-weight:400;color:var(--muted);white-space:nowrap}
+.mdg.app .navcaret{font-size:11px;color:var(--muted)}
+.mdg.app .navsec{margin-left:auto;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);white-space:nowrap}
+.mdg.app .track{display:flex;flex-wrap:wrap;gap:10px 8px;align-items:flex-start;position:relative}
+.mdg.app .seg{display:flex;flex-direction:column;gap:5px;min-width:0;flex:none}
+.mdg.app .dots{display:flex;gap:5px;align-items:center;height:20px;padding:0 7px;border-radius:999px;background:color-mix(in srgb,var(--fg) 5%,transparent)}
+.mdg.app .seg.cur .dots{background:color-mix(in srgb,var(--fg) 10%,transparent)}
+.mdg.app .dot{width:8px;height:8px;padding:0;border-radius:999px;border:1.5px solid color-mix(in srgb,var(--fg) 38%,transparent);background:transparent;flex:none;box-shadow:none;transition:transform .12s,background-color .12s,border-color .12s}
+.mdg.app .dot:hover{transform:scale(1.45);border-color:var(--fg)}
+.mdg.app .dot.done{background:color-mix(in srgb,var(--fg) 38%,transparent);border-color:transparent}
+.mdg.app .dot.cur{background:hsl(var(--primary));border-color:hsl(var(--primary));transform:scale(1.5)}
+.mdg.app .dots{align-self:flex-start}
+.mdg.app .seglabel{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap;padding:0 7px}
+.mdg.app .seg.cur .seglabel{color:var(--fg)}
+.mdg.app .bubble{position:absolute;transform:translateX(-50%);background:var(--fg);color:var(--bg);font-size:12px;font-weight:500;padding:3px 8px;border-radius:6px;white-space:nowrap;pointer-events:none;z-index:6}
+.mdg.app .navlist{position:absolute;top:38px;left:0;z-index:20;display:flex;flex-wrap:wrap;gap:12px 20px;max-width:min(100%,920px);max-height:60vh;overflow:auto;padding:12px 14px;background:var(--panel);border:1px solid var(--rule);border-radius:12px;box-shadow:0 14px 36px rgb(0 0 0 / .16)}
+.mdg.app .lsec{display:flex;flex-direction:column;gap:1px;min-width:176px}
+.mdg.app .lhead{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:2px 8px 4px}
+.mdg.app .litem{border:0;background:transparent;text-align:left;font-size:13px;padding:4px 8px;border-radius:6px;box-shadow:none}
+.mdg.app .litem:hover{background:hsl(var(--muted))} .mdg.app .litem[aria-current="step"]{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+.mdg.app.full .nav{grid-column:1 / -1;border-bottom:0;padding-bottom:0}
 .mdg.app .viewbtns button,.mdg.app .stepbtns button{background:color-mix(in srgb,var(--panel) 78%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 1px 2px rgb(0 0 0 / .06)}
-.mdg.app .stepbtns{left:50%;transform:translateX(-50%);bottom:12px}
 .mdg.app .bar2{gap:8px 20px;font-size:13px} .mdg.app .bar2 button{font-size:12.5px;padding:4px 9px}
 .mdg.app .card{border-radius:12px;box-shadow:0 1px 2px rgb(0 0 0 / .04)}
 .mdg.app .hint{font-size:12.5px}
-.mdg.app.full .strip{border-bottom:0;padding-bottom:2px}
 .mdg *{box-sizing:content-box}
 .mdg [hidden]{display:none!important}
 .mdg h2{margin:0;font-size:17px;font-weight:600;color:var(--fg)} .mdg h3{margin:0;font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--fg)}

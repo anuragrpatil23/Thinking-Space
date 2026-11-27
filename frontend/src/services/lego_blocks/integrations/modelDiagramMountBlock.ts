@@ -112,7 +112,16 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     if (h.getAttribute('data-theme') === 'light' || h.classList.contains('light')) return false
     return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches
   }
-  const applyTheme = () => { root.setAttribute('data-theme', themeProp ?? (systemDark() ? 'dark' : 'light')) }
+  // Inside the app the page's real background decides: a light page gets the light drawing whatever the system prefers.
+  const hostDark = (): boolean | null => {
+    if (props.appearance !== 'app') return null
+    const probe = el('span'); probe.style.display = 'none'; probe.style.color = 'hsl(var(--background))'
+    root.appendChild(probe)
+    const m = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(getComputedStyle(probe).color)
+    probe.remove()
+    return m ? 0.2126 * +m[1] + 0.7152 * +m[2] + 0.0722 * +m[3] < 128 : null
+  }
+  const applyTheme = () => { root.setAttribute('data-theme', themeProp ?? ((hostDark() ?? systemDark()) ? 'dark' : 'light')) }
   applyTheme()
 
   // ---- the scene for the present state, laid out once and kept
@@ -168,7 +177,62 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     }
   }
   const prev = button('Previous step', () => stepBy(-1)), next = button('Next step', () => stepBy(1))
-  stepBtns.append(button('The whole model', () => focus(null)), prev, next, button('Run', () => renderer?.run()))
+  const wholeBtn = button('The whole model', () => focus(null)), runBtn = button('Run', () => renderer?.run())
+  for (const b of [wholeBtn, prev, next]) b.classList.add('walk')
+  stepBtns.append(wholeBtn, prev, next, runBtn)
+
+  // ---- inside the app: the step in focus named above a track of every step, to click or scrub along
+  let navUpdate = () => {}
+  let onOutside: ((e: Event) => void) | null = null
+  if (props.appearance === 'app') {
+    const nav = el('div', 'nav'), row = el('div', 'navrow'), track = el('div', 'track'), list = el('div', 'navlist'), bubble = el('div', 'bubble')
+    list.hidden = true; bubble.hidden = true
+    const home = button('Whole model', () => focus(null)); home.className = 'navhome'
+    const pv = button('‹', () => stepBy(-1)), nx = button('›', () => stepBy(1))
+    pv.className = nx.className = 'navarrow'; pv.setAttribute('aria-label', 'Previous step'); nx.setAttribute('aria-label', 'Next step')
+    const cur = button('', () => { list.hidden = !list.hidden; cur.setAttribute('aria-expanded', list.hidden ? 'false' : 'true') }); cur.className = 'navcur'
+    const count = el('span', 'navcount'), name = el('span', 'navname'), sec = el('span', 'navsec')
+    cur.append(count, name, el('span', 'navcaret', '▾'))
+    row.append(home, pv, cur, nx, sec)
+    const dots = new Map<string, HTMLButtonElement>(), items = new Map<string, HTMLButtonElement>(), segs: { seg: HTMLElement; ids: string[] }[] = []
+    for (const part of scene.strip) {
+      if ('note' in part) continue
+      const seg = el('div', 'seg'), dd = el('div', 'dots'), col = el('div', 'lsec')
+      col.appendChild(el('div', 'lhead', part.label))
+      for (const id of part.stops) {
+        const st = scene.stops.find((x) => x.id === id)!, text = `${st.n}. ${st.chip}`
+        const d = button('', () => focus(id)); d.className = 'dot'; d.setAttribute('aria-label', text)
+        d.addEventListener('pointerenter', () => {
+          const r = d.getBoundingClientRect(), t = track.getBoundingClientRect()
+          bubble.textContent = text; bubble.style.left = `${r.left - t.left + r.width / 2}px`; bubble.style.top = `${r.top - t.top - 30}px`; bubble.hidden = false
+        })
+        d.addEventListener('pointerleave', () => { bubble.hidden = true })
+        dots.set(id, d); dd.appendChild(d)
+        const li = button(text, () => { list.hidden = true; focus(id) }); li.className = 'litem'; items.set(id, li); col.appendChild(li)
+      }
+      // under the dots, the section's own name without the block it belongs to ("Attention"); the full name is beside the step's title
+      seg.append(dd, el('span', 'seglabel', part.label.includes(': ') ? part.label.slice(part.label.indexOf(': ') + 2) : part.label)); track.appendChild(seg); segs.push({ seg, ids: part.stops }); list.appendChild(col)
+    }
+    track.appendChild(bubble)
+    nav.append(row, track, list)
+    root.insertBefore(nav, strip)
+    onOutside = (e) => { if (!list.hidden && !nav.contains(e.target as Node)) list.hidden = true }
+    doc.addEventListener('pointerdown', onOutside)
+    navUpdate = () => {
+      const n = state.focus ? stops.findIndex((x) => x.id === state.focus) : -1, at = n >= 0 ? scene.stops[n] : null
+      count.textContent = at ? `${n + 1} / ${stops.length}` : `${stops.length} steps`
+      name.textContent = at ? at.chip : 'The whole model'
+      sec.textContent = at ? at.group : ''
+      pv.disabled = n <= 0; nx.disabled = n === stops.length - 1
+      home.setAttribute('aria-pressed', at ? 'false' : 'true')
+      stops.forEach((x, k) => {
+        dots.get(x.id)?.setAttribute('class', k === n ? 'dot cur' : n >= 0 && k < n ? 'dot done' : 'dot')
+        const li = items.get(x.id)
+        if (li) { if (k === n) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current') }
+      })
+      for (const g of segs) g.seg.classList.toggle('cur', Boolean(state.focus && g.ids.includes(state.focus)))
+    }
+  }
   viewBtns.append(
     button('Zoom in', () => renderer?.zoom(0.8)), button('Zoom out', () => renderer?.zoom(1.25)),
     button('Reset view', () => renderer?.flyTo(state.focus ? scene.stops.find((s) => s.id === state.focus)!.frame : scene.all)),
@@ -192,6 +256,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     if (!on) root.classList.remove('notes')
     notesBtn.hidden = !on
     fullBtn.textContent = on ? 'Exit full screen' : 'Full screen'
+    bleed()
     // the stage has a new size: frame the same step again once it has been measured
     refit()
   }
@@ -214,6 +279,26 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   }
   root.tabIndex = -1
   root.addEventListener('pointerdown', () => { if (!root.contains(doc.activeElement)) root.focus({ preventScroll: true }) })
+  // Inside the app the drawing is not held to the text column: the stage runs the whole width of the page area it scrolls in.
+  let bleedRo: ResizeObserver | null = null
+  const scroller = (() => {
+    if (props.appearance !== 'app') return null
+    for (let e = host.parentElement; e && e !== doc.body; e = e.parentElement) {
+      const o = getComputedStyle(e).overflowY
+      if (o === 'auto' || o === 'scroll') return e
+    }
+    return doc.documentElement
+  })()
+  const bleed = () => {
+    if (!scroller || disposed) return
+    if (full) { frame.style.marginLeft = ''; frame.style.width = ''; frame.style.maxWidth = ''; return }
+    const t = scroller === doc.documentElement ? { left: 0 } : scroller.getBoundingClientRect(), r = root.getBoundingClientRect()
+    const left = Math.max(0, Math.round(r.left - t.left)), w = scroller.clientWidth
+    if (w <= 0) return
+    frame.style.marginLeft = `${-left}px`; frame.style.width = `${w}px`; frame.style.maxWidth = 'none'
+  }
+  if (scroller && typeof ResizeObserver !== 'undefined') { bleedRo = new ResizeObserver(bleed); bleedRo.observe(scroller); bleedRo.observe(host) }
+  bleed()
   // a stage that changed size lays the focused step out again, so its numbers keep clear of each other
   let sizeWas = ''
   const stageRo = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => {
@@ -295,6 +380,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     const n = state.focus ? stops.findIndex((s) => s.id === state.focus) : -1
     prev.disabled = n <= 0; next.disabled = n === stops.length - 1
     drawLegend(scene.legend)
+    navUpdate()
     const hs = scene.heads
     headGroup.hidden = !hs
     if (hs) headLabel.textContent = `Head ${hs.head + 1} of ${hs.count}${hs.saved.length && !hs.saved.includes(hs.head) ? ' (its numbers were not saved)' : ''}`
@@ -387,7 +473,8 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     labelRects: () => renderer?.labelRects() ?? [],
     dispose() {
       disposed = true
-      stageRo?.disconnect()
+      stageRo?.disconnect(); bleedRo?.disconnect()
+      if (onOutside) doc.removeEventListener('pointerdown', onOutside)
       doc.removeEventListener('keydown', onKey)
       mq?.removeEventListener('change', retheme); mo?.disconnect()
       renderer?.dispose(); renderer = null

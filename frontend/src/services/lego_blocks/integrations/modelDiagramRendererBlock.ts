@@ -313,7 +313,7 @@ export function createModelDiagramRendererBlock(
       q3.copy(b.p).project(camera)
       const vis = q3.z < 1 && Math.abs(q3.x) < 1.15 && Math.abs(q3.y) < 1.15
       if (!vis) { if (b.shown !== 'hidden') { b.el.style.visibility = 'hidden'; b.shown = 'hidden' } return }
-      boxes.push({ x: (q3.x * 0.5 + 0.5) * w, y: (-q3.y * 0.5 + 0.5) * h, w: b.l.mode === 'slide' ? b.w + 2 : b.l.mode && !tight ? Math.max(1, b.w - 2) : b.w, h: b.l.mode === 'slide' ? b.h + 1 : b.l.mode && !(tight && b.l.mode === 'nudge') ? Math.max(1, b.h - 5) : b.h, rank: b.l.rank + (b.l.stop && b.l.stop === focus ? 50 : 0) + (b.l.cls.includes(' on') ? 10 : 0), shortW: b.sw || undefined, shortH: b.sh || undefined, mode: b.l.mode, thin: b.l.mode === 'fixed' && (b.l.cls.startsWith('word') || b.l.cls.startsWith('ruler')), keep: b.l.cls.includes(' on') })
+      boxes.push({ x: (q3.x * 0.5 + 0.5) * w, y: (-q3.y * 0.5 + 0.5) * h - (b.l.anchor === 'bottom' ? b.h / 2 : 0), w: b.l.mode === 'slide' ? b.w + 2 : b.l.mode && !tight ? Math.max(1, b.w - 2) : b.w, h: b.l.mode === 'slide' ? b.h + 1 : b.l.mode && !(tight && b.l.mode === 'nudge') ? Math.max(1, b.h - 5) : b.h, rank: b.l.rank + (b.l.stop && b.l.stop === focus ? 50 : 0) + (b.l.cls.includes(' on') ? 10 : 0), shortW: b.sw || undefined, shortH: b.sh || undefined, mode: b.l.mode, thin: b.l.mode === 'fixed' && (b.l.cls.startsWith('word') || b.l.cls.startsWith('ruler')), keep: b.l.cls.includes(' on') })
       idx.push(n)
     })
     const real = boxes.length

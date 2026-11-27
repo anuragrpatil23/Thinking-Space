@@ -48,6 +48,8 @@ export interface ModelDiagramLabelBlock {
   slot?: number
   /** Higher wins when two labels would overlap. */
   rank: number
+  /** 'bottom': the label's bottom edge sits at its point and it grows upward (a caption over a bar), however small the drawing is. */
+  anchor?: 'bottom'
   /**
    * 'fixed' shows exactly where it is (a number beside its line, a row's name). 'nudge' shows, moved a little if that
    * clears another label. 'slide' (a step's title) moves whole lines to find room. None of those ever hides; the rest give way.
@@ -934,7 +936,7 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
       lab(tagk, 'pu', b.x, ry - 1.7, 0.1, [['', 'each small square is one head’s memory'], ['', 'purple is above zero, blue below'], ['', 'it is the same size at every token']])
     }
     const nm = b.heads && b.heads > 1 ? `${b.name}, head ${head + 1} of ${b.heads}` : b.square ? `${b.name}, head 1` : b.name
-    lab(tagk, '', b.x, b.y + g.h / 2 + 0.7, 0, [['tag act', 'ACTIVATIONS'], ['nm', nm], ['', shape]])
+    lab(tagk, '', b.x, b.y + g.h / 2 + 0.5, 0, [['tag act', 'ACTIVATIONS'], ['nm', nm], ['', shape]], { anchor: 'bottom' })
     if (b.square && b.masked && nR > 2) {
       // the mask's edge: a token reads itself and what came before, never what comes after
       for (let r = 0; r < nR - 1; r++) {
@@ -988,7 +990,7 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
     if (more.colsTitle) lab(tag, 'pu', cx, cy - h / 2 - 1.05, 0.2, more.colsTitle.map((x) => ['', x]))
     const ry = cy - (selRow - (nR - 1) / 2) * p, fd = Math.min(1.2, p * 3)
     if (selRow >= 0) wire([cx, ry, fd / 2], w + 0.08, p, fd, 'fg', 1)
-    lab(tag, '', cx, cy + h / 2 + 0.85, 0, [['tag wt', 'WEIGHTS'], ['nm', title], ['', size], ['', sub]].filter((x) => x[1]) as [string, string][])
+    lab(tag, '', cx, cy + h / 2 + 0.55, 0, [['tag wt', 'WEIGHTS'], ['nm', title], ['', size], ['', sub]].filter((x) => x[1]) as [string, string][], { anchor: 'bottom' })
     if (selRow >= 0) lab(tag, 'word on', cx + w / 2 + 1.6, ry, 0.2, [['', rowLabel]], { mode: 'nudge' })
     return { pt, rowPt: [cx - w / 2 - 0.12, ry, 0.1] as V3 }
   }
