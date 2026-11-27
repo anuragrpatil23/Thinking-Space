@@ -250,3 +250,27 @@ steps:
     for (const r of scene.rods.filter((x) => x.color === 'bar' && x.r === 0.06)) expect(Math.abs(r.b[0] - r.a[0])).toBeLessThanOrEqual(12)
   })
 })
+
+describe('every head\'s similarity scores (attention_scores)', () => {
+  const scoresStop = () => layoutModelDiagramBlock(spec, values, start).stops.find((s) => s.part === 'scores')!
+  const grid = (v: ModelValues, head: number) => {
+    const st = scoresStop()
+    return layoutModelDiagramBlock(spec, v, { ...start, focus: st.id, head }).grids.find((g) => g.key === st.id)!
+  }
+  it('without them, the picker is not offered at the scores step and the bar stays on head 1', () => {
+    const bare = { ...values, attention_scores: undefined } as ModelValues
+    const st = scoresStop()
+    expect(layoutModelDiagramBlock(spec, bare, { ...start, focus: st.id, head: 3 }).heads).toBeNull()
+    expect(grid(bare, 3).heights).toEqual(grid(bare, 0).heights)
+  })
+  it('with them, the picker is offered and another head draws its own numbers', () => {
+    const st = scoresStop(), T = values.tokens.length
+    // head 3's scores: a ramp, masked above the diagonal as the file writes it
+    const rows = Array.from({ length: T }, (_, r) => Array.from({ length: T }, (_, c) => (c > r ? -1e9 : (r + 1) * 0.5 - c)))
+    const withScores = { ...values, attention_scores: { [st.opId]: { '3': rows } } } as ModelValues
+    const scene = layoutModelDiagramBlock(spec, withScores, { ...start, focus: st.id, head: 3 })
+    expect(scene.heads?.head).toBe(3)
+    expect(grid(withScores, 3).heights).not.toEqual(grid(withScores, 0).heights)
+    expect(scene.grids.find((g) => g.key === st.id)!.heights.some((h) => h > 0.05)).toBe(true)
+  })
+})

@@ -214,3 +214,19 @@ describe('step pointers and model targets', () => {
     expect(modelViewSearchBlock('a/b.model.yaml', 0)).toBe('?model=a%2Fb.model.yaml')
   })
 })
+
+describe('attention_scores in a values file', () => {
+  it('is kept by head, as attention is, and refused for an op that is not attention', async () => {
+    const { readFileSync } = await import('node:fs'); const { fileURLToPath } = await import('node:url')
+    const { parseModelSpecBlock, parseModelValuesBlock } = await import('../src/services/lego_blocks/units/modelDiagramFormatBlock')
+    const rd = (n: string) => readFileSync(fileURLToPath(new URL(`./fixtures/model-diagram-engine/${n}`, import.meta.url)), 'utf8')
+    const sp = parseModelSpecBlock(rd('gpt-2.model.yaml')); if (!sp.ok) throw new Error('fixture')
+    const raw = JSON.parse(rd('values/sky.json')); const op = sp.value.ops.find((o) => o.kind === 'attention')!.id
+    raw.attention_scores = { [op]: { '0': [[0.1]], '2': { rows: [[0.2], [0.3]], row_ids: [4, 9] } } }
+    const ok = parseModelValuesBlock(JSON.stringify(raw), 'sky', sp.value)
+    expect(ok.ok).toBe(true)
+    if (ok.ok) { expect(ok.value.attention_scores?.[op]['2']).toEqual([[0.2], [0.3]]); expect(ok.value.attention_scores_row_ids?.[op]['2']).toEqual([4, 9]) }
+    raw.attention_scores = { not_an_op: { '0': [[0.1]] } }
+    expect(parseModelValuesBlock(JSON.stringify(raw), 'sky', sp.value).ok).toBe(false)
+  })
+})

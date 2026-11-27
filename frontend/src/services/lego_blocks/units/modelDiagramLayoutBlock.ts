@@ -644,10 +644,12 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
   // The name of a bar's row: its token, or the row's number when the rows are not tokens (patches) or were chosen.
   const X = (values ?? {}) as unknown as { picture?: { first_row?: number; last_row?: number }; attention_last_row?: Record<string, Record<string, number[]>>; attention_last_row_every?: number }
   const pic = typeof X.picture?.first_row === 'number' && typeof X.picture?.last_row === 'number' ? { first: X.picture.first_row, last: X.picture.last_row } : null
-  // A head other than the first is drawn only where its numbers exist: the attention weights and the mix that uses them.
+  // A head other than the first is drawn only where its numbers exist: the attention weights and the mix that uses them,
+  // and the similarity scores when the values carry every head's (`attention_scores`).
   // Everywhere else the drawing stays on head 1, whatever the picker was last left at.
   const headStep = plan.stops.find((s) => s.id === state.focus)
-  const head = headStep && (headStep.part === 'weights' || headStep.part === 'mix') ? Math.max(0, Math.floor(state.head ?? 0)) : 0
+  const headParts = (s: StopPlan | undefined) => !!s && (s.part === 'weights' || s.part === 'mix' || (s.part === 'scores' && Boolean(values?.attention_scores?.[s.opId])))
+  const head = headParts(headStep) ? Math.max(0, Math.floor(state.head ?? 0)) : 0
   // An attention map as the file writes it ({ rows, row_ids }) or as the parser hands it on (rows, with the ids beside).
   const attMap = (op: string, h: number): { rows: number[][]; ids?: number[] } | null => {
     const m = values?.attention?.[op]?.[String(h)] as unknown
@@ -725,8 +727,9 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
   const put = (key: string, slice: string, kind: Reg['kind'], size: number, square: boolean, cols?: number, masked = true) => {
     let src = sliceRows(slice)
     let lastRow: number[] | null = null
-    // similarity scores are saved for the first head only: another head's bar is drawn empty, not with the first head's numbers
-    if (square && head > 0 && slice.endsWith('.scores')) src = null
+    // another head's similarity scores come from `attention_scores` when the file has them; without them its bar is
+    // drawn empty, never with the first head's numbers
+    if (square && head > 0 && slice.endsWith('.scores')) src = values?.attention_scores?.[attOf(slice)]?.[String(head)] ?? null
     if (square && slice.endsWith('.weights') && (!src || head > 0)) {
       const op = attOf(slice), am = attMap(op, head)
       if (head > 0) src = null
@@ -826,7 +829,8 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
         if (i > t && reg.get(key)!.rows[t][i] === -Infinity) return { kind: 'leaf', value: y, formula: 'masked', terms: [] }
         const terms: Term[] = []
         let sum = 0
-        if (real(s.ins[0]) && real(s.ins[1])) for (let c = 0; c < WIN; c++) {
+        // the queries' and keys' saved columns are the first head's: another head's score is shown, its products are not
+        if (head === 0 && real(s.ins[0]) && real(s.ins[1])) for (let c = 0; c < WIN; c++) {
           const q = A(s.ins[0], t, c), k = A(s.ins[1], i, c)
           terms.push({ label: '', parts: [q, k], product: q.val * k.val }); sum += q.val * k.val
         }
@@ -898,7 +902,7 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
     const fo = focus ? spec.ops.find((o) => o.id === steps.get(focus)!.s.opId) : undefined
     // the head picker is offered only where it changes the drawing: a step that reads or writes a bar drawn one head at a time
     const fs = focus ? steps.get(focus)! : null
-    const perHead = !!fs && (fs.s.part === 'weights' || fs.s.part === 'mix')
+    const perHead = !!fs && headParts(fs.s)
     if (fo?.kind === 'attention' && (fo.heads ?? 1) > 1 && perHead) {
       const saved = Object.keys(values?.attention?.[fo.id] ?? {}).map(Number)
       for (const k of Object.keys(X.attention_last_row?.[fo.id] ?? {})) if (!saved.includes(Number(k))) saved.push(Number(k))
@@ -1212,6 +1216,7 @@ function layoutOnce(spec: ModelSpec, values: ModelValues | null, state: ModelDia
       const missing = st.inKeys.filter((k) => !reg.get(k)?.real)
       for (const k of st.inKeys) if (bars.has(k)) thin(tilePt(k, st.t, 0), [px, uy, 0.4], 'neuron', 0.55)
       if (missing.length) lab(tg, 'pu', cc[0] - 0.6, uy - st.half - 0.5, 0.4, [['', `the numbers this step reads were not saved for this model,`], ['', 'so only its shape is drawn']])
+      else if (s.part === 'scores' && head > 0) lab(tg, 'pu', cc[0] - 0.6, uy - st.half - 0.5, 0.4, [['', `the scores are head ${head + 1}’s; the query and key columns saved`], ['', 'are head 1’s, so the products are shown for head 1 only']])
     }
 
     if (EL.kind === 'linear' && focus === s.id) {

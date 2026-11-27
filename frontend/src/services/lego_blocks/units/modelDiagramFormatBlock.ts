@@ -118,6 +118,9 @@ export interface ModelValues {
    * head as `{ rows, row_ids }`; the parser splits it into the two fields.
    */
   attention_row_ids?: Record<string, Record<string, number[]>>
+  /** Every head's similarity scores, laid out as `attention` is; masked cells are -1e9. Head 0 equals the `<op>.scores` slice. */
+  attention_scores?: Record<string, Record<string, number[][]>>
+  attention_scores_row_ids?: Record<string, Record<string, number[]>>
   row_lengths?: Record<string, number[]>
   reply?: string
   /** Optional extras the engine reads when present. */
@@ -436,26 +439,31 @@ export function parseModelValuesBlock(source: string, input: string, spec: Model
   }
 
   const attentionOps = new Set(spec.ops.filter(op => op.kind === 'attention').map(op => op.id))
-  const attention: ModelValues['attention'] = {}
-  const attentionRowIds: NonNullable<ModelValues['attention_row_ids']> = {}
-  for (const [opId, heads] of Object.entries(isObject(raw.attention) ? raw.attention : {})) {
-    if (!attentionOps.has(opId)) { problem(`attention.${opId}`, `"${opId}" is not an attention op in the spec.`); continue }
-    if (!isObject(heads)) { problem(`attention.${opId}`, 'Attention maps are given by head index.'); continue }
-    const maps: Record<string, number[][]> = {}
-    for (const [head, map] of Object.entries(heads)) {
-      if (Array.isArray(map)) { maps[head] = map as number[][]; continue }
-      if (!isObject(map) || !Array.isArray(map.rows) || (map.row_ids !== undefined && !Array.isArray(map.row_ids))) {
-        problem(`attention.${opId}.${head}`, 'A head\'s map is a list of rows, or { rows, row_ids }.')
-        continue
+  // attention maps and, where the file has them, every head's scores: the same layout, read the same way
+  const byHead = (field: 'attention' | 'attention_scores') => {
+    const out: Record<string, Record<string, number[][]>> = {}, ids: Record<string, Record<string, number[]>> = {}
+    for (const [opId, heads] of Object.entries(isObject(raw[field]) ? raw[field] : {})) {
+      if (!attentionOps.has(opId)) { problem(`${field}.${opId}`, `"${opId}" is not an attention op in the spec.`); continue }
+      if (!isObject(heads)) { problem(`${field}.${opId}`, 'Attention maps are given by head index.'); continue }
+      const maps: Record<string, number[][]> = {}
+      for (const [head, map] of Object.entries(heads)) {
+        if (Array.isArray(map)) { maps[head] = map as number[][]; continue }
+        if (!isObject(map) || !Array.isArray(map.rows) || (map.row_ids !== undefined && !Array.isArray(map.row_ids))) {
+          problem(`${field}.${opId}.${head}`, 'A head\'s map is a list of rows, or { rows, row_ids }.')
+          continue
+        }
+        maps[head] = map.rows as number[][]
+        if (Array.isArray(map.row_ids)) {
+          if (map.row_ids.length !== map.rows.length) problem(`${field}.${opId}.${head}`, `"row_ids" has ${map.row_ids.length} entries for ${map.rows.length} rows.`)
+          ids[opId] = { ...ids[opId], [head]: map.row_ids as number[] }
+        }
       }
-      maps[head] = map.rows as number[][]
-      if (Array.isArray(map.row_ids)) {
-        if (map.row_ids.length !== map.rows.length) problem(`attention.${opId}.${head}`, `"row_ids" has ${map.row_ids.length} entries for ${map.rows.length} rows.`)
-        attentionRowIds[opId] = { ...attentionRowIds[opId], [head]: map.row_ids as number[] }
-      }
+      out[opId] = maps
     }
-    attention[opId] = maps
+    return { out, ids }
   }
+  const { out: attention, ids: attentionRowIds } = byHead('attention')
+  const { out: attentionScores, ids: attentionScoresRowIds } = byHead('attention_scores')
 
   if (problems.length > 0) return { ok: false, problems }
   const values: ModelValues = { input, run_id: runId!, sha256: sha!, tokens, slices, attention }
@@ -464,6 +472,8 @@ export function parseModelValuesBlock(source: string, input: string, spec: Model
   if (typeof raw.reply === 'string' && raw.reply) values.reply = raw.reply
   if (Array.isArray(raw.token_ids)) values.token_ids = raw.token_ids as number[]
   if (Object.keys(attentionRowIds).length > 0) values.attention_row_ids = attentionRowIds
+  if (Object.keys(attentionScores).length > 0) values.attention_scores = attentionScores
+  if (Object.keys(attentionScoresRowIds).length > 0) values.attention_scores_row_ids = attentionScoresRowIds
   if (typeof raw.prompt_tokens === 'number') values.prompt_tokens = raw.prompt_tokens
   if (isObject(raw.labels)) values.labels = raw.labels as ModelValues['labels']
   if (isObject(raw.row_stats)) values.row_stats = raw.row_stats as ModelValues['row_stats']
