@@ -56,3 +56,4 @@ frontend/electron/src/cli/bin/
 
 # Private Gaps tab: its own private repo, cloned into this folder.
 frontend/src/personal_extension/thinkingspace-personal/
+frontend/tests/.model-diagram-check/

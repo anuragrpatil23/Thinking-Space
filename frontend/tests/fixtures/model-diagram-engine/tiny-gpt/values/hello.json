@@ -1,0 +1,1 @@
+{"run_id": "run-001", "sha256": "0f0f", "tokens": ["The", " cat", " sat", " on", " the"], "slices": {"x0": {"shape": [1, 5, 8], "rows": [[0.1, 0.2], [0.3, 0.4]]}, "wte": {"shape": [50, 8], "rows": [[2]]}}, "attention": {"attn": {"0": [[1]], "1": [[1]]}}, "reply": " mat"}

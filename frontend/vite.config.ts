@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { modelDiagramEnginePlugin } from './modelDiagramEnginePlugin'
 
 // Electron and Capacitor builds use relative paths so assets load from the app dir.
 // For web, use the /thinking-space/ prefix.
@@ -41,6 +42,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    modelDiagramEnginePlugin(),
     isPagesBuild && {
       name: 'thinking-space-pages-csp',
       transformIndexHtml: () => [

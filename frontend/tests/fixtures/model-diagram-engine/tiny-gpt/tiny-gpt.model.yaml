@@ -1,0 +1,32 @@
+source: {model: test/tiny-gpt, revision: abc123, generator_commit: deadbeef, date: 2026-11-26}
+axes: {batch: 1, tokens: 5, width: 8, heads: 2, head_width: 4, vocab: 50}
+tensors:
+  - {id: ids, axes: [batch, tokens], role: activation}
+  - {id: wte, axes: [vocab, width], role: weight}
+  - {id: x0, axes: [batch, tokens, width], role: activation}
+  - {id: h1, axes: [batch, tokens, width], role: activation}
+  - {id: a1, axes: [batch, tokens, width], role: activation}
+  - {id: x1, axes: [batch, tokens, width], role: activation}
+  - {id: m1, axes: [batch, tokens, width], role: activation}
+  - {id: x2, axes: [batch, tokens, width], role: activation}
+  - {id: w_qkv, axes: [width, 24], role: weight}
+  - {id: w_up, axes: [width, 32], role: weight}
+  - {id: logits, axes: [batch, tokens, vocab], role: activation}
+ops:
+  - {id: tokens_in, kind: input, in: [], out: [ids]}
+  - {id: embed, kind: embed, in: [ids], out: [x0], weights: [wte]}
+  - {id: ln1, kind: norm, in: [x0], out: [h1], block: layer}
+  - {id: attn, kind: attention, in: [h1], out: [a1], weights: [w_qkv], mask: causal, heads: 2, kv_heads: 2, block: layer}
+  - {id: add1, kind: add, in: [x0, a1], out: [x1], block: layer}
+  - {id: mlp, kind: mlp, in: [x1], out: [m1], weights: [w_up], block: layer}
+  - {id: add2, kind: add, in: [x1, m1], out: [x2], block: layer}
+  - {id: unembed, kind: unembed, in: [x2], out: [logits], weights: [wte]}
+blocks:
+  - {id: layer, ops: [ln1, attn, add1, mlp, add2], repeat: 2}
+stream: [x0, x1, x2]
+steps:
+  - {id: embed, text: Each token becomes a row of eight numbers.}
+  - {id: attn, text: Each token looks back at the ones before it.}
+  - {id: mlp, text: Each row is widened and narrowed again.}
+  - {id: layer, text: The same steps run twice, with their own weights.}
+  - {id: unembed, text: The last row is read as a score for every word.}

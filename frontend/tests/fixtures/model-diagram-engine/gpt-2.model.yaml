@@ -1,0 +1,58 @@
+# A hand-written stand-in for the generator's GPT-2 small spec, used by the
+# layout engine's tests until the generated one arrives. The numbers in
+# values/sky.json are those of the hand-built gpt-with-sparse-network.html.
+source: {model: gpt2, revision: hand-written, generator_commit: none, date: 2026-11-26}
+axes: {batch: 3, tokens: 11, width: 768, heads: 12, head_width: 64, mlp_width: 3072, vocab: 50257, positions: 1024}
+tensors:
+  - {id: ids, axes: [batch, tokens], role: activation}
+  - {id: wte, axes: [vocab, width], role: weight}
+  - {id: wpe, axes: [positions, width], role: weight}
+  - {id: tok_emb, axes: [batch, tokens, width], role: activation}
+  - {id: x0, axes: [batch, tokens, width], role: activation}
+  - {id: ln1_g, axes: [width], role: weight}
+  - {id: ln1_b, axes: [width], role: weight}
+  - {id: h1, axes: [batch, tokens, width], role: activation}
+  - {id: c_attn_w, axes: [2304, width], role: weight}
+  - {id: c_attn_b, axes: [2304], role: weight}
+  - {id: c_proj_w, axes: [width, width], role: weight}
+  - {id: c_proj_b, axes: [width], role: weight}
+  - {id: a1, axes: [batch, tokens, width], role: activation}
+  - {id: x1, axes: [batch, tokens, width], role: activation}
+  - {id: ln2_g, axes: [width], role: weight}
+  - {id: ln2_b, axes: [width], role: weight}
+  - {id: h2, axes: [batch, tokens, width], role: activation}
+  - {id: fc_w, axes: [mlp_width, width], role: weight}
+  - {id: fc_b, axes: [mlp_width], role: weight}
+  - {id: mproj_w, axes: [width, mlp_width], role: weight}
+  - {id: mproj_b, axes: [width], role: weight}
+  - {id: m1, axes: [batch, tokens, width], role: activation}
+  - {id: x2, axes: [batch, tokens, width], role: activation}
+  - {id: x_final, axes: [batch, tokens, width], role: activation}
+  - {id: lnf_g, axes: [width], role: weight}
+  - {id: lnf_b, axes: [width], role: weight}
+  - {id: hf, axes: [batch, tokens, width], role: activation}
+  - {id: logits, axes: [batch, tokens, vocab], role: activation}
+  - {id: probs, axes: [batch, tokens, vocab], role: activation}
+ops:
+  - {id: tokens_in, kind: input, in: [], out: [ids]}
+  - {id: embed, kind: embed, in: [ids], out: [tok_emb], weights: [wte]}
+  - {id: pos, kind: position, in: [tok_emb], out: [x0], weights: [wpe]}
+  - {id: ln1, kind: norm, in: [x0], out: [h1], weights: [ln1_g, ln1_b], block: block}
+  - {id: attn, kind: attention, in: [h1], out: [a1], weights: [c_attn_w, c_attn_b, c_proj_w, c_proj_b], mask: causal, heads: 12, kv_heads: 12, block: block}
+  - {id: add1, kind: add, in: [x0, a1], out: [x1], block: block}
+  - {id: ln2, kind: norm, in: [x1], out: [h2], weights: [ln2_g, ln2_b], block: block}
+  - {id: mlp, kind: mlp, in: [h2], out: [m1], weights: [fc_w, fc_b, mproj_w, mproj_b], block: block}
+  - {id: add2, kind: add, in: [x1, m1], out: [x2], block: block}
+  - {id: ln_f, kind: norm, in: [x_final], out: [hf], weights: [lnf_g, lnf_b]}
+  - {id: unembed, kind: unembed, in: [hf], out: [logits], weights: [wte]}
+  - {id: output, kind: output, in: [logits], out: [probs]}
+blocks:
+  - {id: block, ops: [ln1, attn, add1, ln2, mlp, add2], repeat: 12}
+stream: [x0, x1, x2, x_final]
+steps:
+  - {id: embed, text: Each word becomes a row of 768 numbers.}
+  - {id: attn, text: Each word looks back at the words before it and gathers what it needs.}
+  - {id: mlp, text: Each word's row is widened to 3,072 numbers and brought back to 768.}
+  - {id: block, text: The same steps run twelve times, with their own weights each time.}
+  - {id: unembed, text: The last row is read as a score for every word the network knows.}
+  - {id: output, text: The scores become chances, and the most likely word is written.}

@@ -1,0 +1,1 @@
+{"run_id": "run-001", "sha256": "0f0f", "slices": {"w_up": {"shape": [8, 32], "rows": [[0.5]]}, "wte": {"shape": [50, 8], "rows": [[1]]}}}

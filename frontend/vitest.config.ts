@@ -1,7 +1,9 @@
 import { defineConfig } from 'vitest/config'
 import { fileURLToPath, URL } from 'node:url'
+import { modelDiagramEnginePlugin } from './modelDiagramEnginePlugin'
 
 export default defineConfig({
+  plugins: [modelDiagramEnginePlugin()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

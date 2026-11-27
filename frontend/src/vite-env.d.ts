@@ -1,5 +1,11 @@
 /// <reference types="vite/client" />
 
+/** The model-diagram engine as one script, built by modelDiagramEnginePlugin.ts. */
+declare module 'virtual:model-diagram-engine' {
+  const code: string
+  export default code
+}
+
 interface ImportMetaEnv {
   readonly VITE_WEBULL_BASE_URL?: string
   readonly VITE_WEBULL_OPENAPI_BASE_URL?: string

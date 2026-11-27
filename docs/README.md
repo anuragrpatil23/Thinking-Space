@@ -20,6 +20,7 @@ Reference (`reference/`):
 
 - [reference/KEY-BLOCKS.md](reference/KEY-BLOCKS.md) — annotated key service / intelligence / Electron-main blocks
 - [reference/THINKSPC-CLI.md](reference/THINKSPC-CLI.md) — capability runner + multi-agent discipline
+- [reference/MODEL-DIAGRAM-ENGINE.md](reference/MODEL-DIAGRAM-ENGINE.md) — the 3D model-diagram engine: files, rules, how to check it
 - [reference/CHECKPOINT-RITUAL.md](reference/CHECKPOINT-RITUAL.md) — ship scripts + Telegram notification channel
 - [ADR-004-YAML-Architecture.md](ADR-004-YAML-Architecture.md) — YAML frontmatter schema (source of truth for hierarchy)
 - [ADR-005-Agent-Capabilities.md](ADR-005-Agent-Capabilities.md) — agent capability contract
