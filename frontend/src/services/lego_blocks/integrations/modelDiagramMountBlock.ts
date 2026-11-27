@@ -251,6 +251,9 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   // in the app the camera buttons are a small stack in the stage's corner, as on a map
   const inApp = props.appearance === 'app'
   const ICON: Record<string, string> = {
+    Notes: '<path d="M3 4h10M3 8h10M3 12h6"/>',
+    'Full screen': '<path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/>',
+    'Exit full screen': '<path d="M6 3v3H3M13 6h-3V3M10 13v-3h3M3 10h3v3"/>',
     Numbers: '<rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M2.5 6.5h11M2.5 9.8h11M6.3 3v10"/>',
     'Zoom in': '<path d="M8 3.5v9M3.5 8h9"/>', 'Zoom out': '<path d="M3.5 8h9"/>',
     'Reset view': '<path d="M3 8a5 5 0 1 0 1.6-3.7"/><path d="M3 2.8v2.6h2.6"/>', Run: '<path d="M5.2 3.6v8.8L12.4 8z" fill="currentColor" stroke-linejoin="round"/>',
@@ -283,7 +286,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     root.classList.toggle('full', on)
     if (!on) root.classList.remove('notes')
     notesBtn.hidden = !on
-    fullBtn.textContent = on ? 'Exit full screen' : 'Full screen'
+    if (inApp) { icon(fullBtn, on ? 'Exit full screen' : 'Full screen'); fullBtn.title = on ? 'Exit full screen (Esc)' : 'Full screen (F)' } else fullBtn.textContent = on ? 'Exit full screen' : 'Full screen'
     bleed()
     // the stage has a new size: frame the same step again once it has been measured
     refit()
@@ -337,7 +340,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   }) : null
   stageRo?.observe(stage)
   doc.addEventListener('keydown', onKey)
-  if (inApp) { navTools.append(notesBtn, fullBtn); icon(runBtn, 'Run', true); runBtn.title = 'Play this step again'; runBtn.classList.add('run'); viewBtns.prepend(runBtn); icon(numBtn, 'Numbers', true); numBtn.title = 'Show this step\u2019s numbers beside the drawing'; numBtn.classList.add('run'); runBtn.after(numBtn) } else viewBtns.append(notesBtn, fullBtn)
+  if (inApp) { viewBtns.append(notesBtn, fullBtn); icon(notesBtn, 'Notes', true); notesBtn.classList.add('run'); icon(fullBtn, 'Full screen'); icon(runBtn, 'Run', true); runBtn.title = 'Play this step again'; runBtn.classList.add('run'); viewBtns.prepend(runBtn); icon(numBtn, 'Numbers', true); numBtn.title = 'Show this step\u2019s numbers beside the drawing'; numBtn.classList.add('run'); runBtn.after(numBtn) } else viewBtns.append(notesBtn, fullBtn)
   const inputBtns = new Map<string, HTMLButtonElement>()
   const passLabel = el('span', 'l'), writtenEl = el('b', 'mono'), nextEl = el('b', 'mono nxt')
   const setPass = (n: number) => {

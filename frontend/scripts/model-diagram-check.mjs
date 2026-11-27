@@ -162,7 +162,7 @@ try {
     }
     // full screen (headless Chrome refuses the display's own, so this is the laid-over form): the drawing alone, then with the side panel
     if (!onlySteps || onlySteps.includes(0)) {
-      const press = (text) => js(`[...document.querySelectorAll(".mdg button")].find((b) => b.textContent === ${JSON.stringify(text)}).click()`)
+      const press = (text) => js(`[...document.querySelectorAll(".mdg button")].find((b) => b.textContent === ${JSON.stringify(text)} || b.getAttribute("aria-label") === ${JSON.stringify(text)}).click()`)
       const n = Math.min(7, stopCount)
       await js(`document.querySelectorAll(".mdg .strip .chips button")[${n}].click()`); await sleep(500)
       // the whole page as it sits in the app: controls, navigator, drawing, cards
