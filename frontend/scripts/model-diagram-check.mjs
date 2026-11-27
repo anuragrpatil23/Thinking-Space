@@ -164,7 +164,10 @@ try {
     if (!onlySteps || onlySteps.includes(0)) {
       const press = (text) => js(`[...document.querySelectorAll(".mdg button")].find((b) => b.textContent === ${JSON.stringify(text)}).click()`)
       const n = Math.min(7, stopCount)
-      await js(`document.querySelectorAll(".mdg .strip .chips button")[${n}].click()`); await press('Full screen'); await sleep(700)
+      await js(`document.querySelectorAll(".mdg .strip .chips button")[${n}].click()`); await sleep(500)
+      // the whole page as it sits in the app: controls, navigator, drawing, cards
+      await shot('.mdg', join(outDir, `engine-${theme}-page.png`))
+      await press('Full screen'); await sleep(700)
       await shot('.mdg', join(outDir, `engine-${theme}-full.png`))
       await press('Notes'); await sleep(700)
       await shot('.mdg', join(outDir, `engine-${theme}-full-notes.png`))

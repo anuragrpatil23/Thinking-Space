@@ -56,8 +56,15 @@ function button(text: string, onClick: () => void): HTMLButtonElement {
 export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPropsBlock): ModelDiagramHandleBlock {
   const t0 = performance.now()
   const doc = host.ownerDocument
-  if (!doc.getElementById(STYLE_ID)) { const st = doc.createElement('style'); st.id = STYLE_ID; st.textContent = MODEL_DIAGRAM_CSS_BLOCK; doc.head.appendChild(st) }
-  if (!doc.getElementById(FONTS_ID)) { const st = doc.createElement('style'); st.id = FONTS_ID; st.textContent = MODEL_DIAGRAM_FONTS_CSS_BLOCK; doc.head.appendChild(st) }
+  // One stylesheet per document, and always this engine's: a page that has already shown a drawing with an older
+  // engine (a hot reload, a second bundle) must not keep the older rules under newer markup.
+  const sheet = (id: string, css: string) => {
+    let st = doc.getElementById(id) as HTMLStyleElement | null
+    if (!st) { st = doc.createElement('style'); st.id = id; doc.head.appendChild(st) }
+    if (st.textContent !== css) st.textContent = css
+  }
+  sheet(STYLE_ID, MODEL_DIAGRAM_CSS_BLOCK)
+  sheet(FONTS_ID, MODEL_DIAGRAM_FONTS_CSS_BLOCK)
 
   const { spec } = props
   const stops = modelDiagramStopsBlock(spec)
@@ -177,6 +184,8 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     }
   }
   const prev = button('Previous step', () => stepBy(-1)), next = button('Next step', () => stepBy(1))
+  // in the app the page-level buttons (notes, full screen) sit at the end of the navigator's row, off the drawing
+  const navTools = el('div', 'navtools')
   const wholeBtn = button('The whole model', () => focus(null)), runBtn = button('Run', () => renderer?.run())
   for (const b of [wholeBtn, prev, next]) b.classList.add('walk')
   stepBtns.append(wholeBtn, prev, next, runBtn)
@@ -193,7 +202,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     const cur = button('', () => { list.hidden = !list.hidden; cur.setAttribute('aria-expanded', list.hidden ? 'false' : 'true') }); cur.className = 'navcur'
     const count = el('span', 'navcount'), name = el('span', 'navname'), sec = el('span', 'navsec')
     cur.append(count, name, el('span', 'navcaret', '▾'))
-    row.append(home, pv, cur, nx, sec)
+    row.append(home, pv, cur, nx, sec, navTools)
     const dots = new Map<string, HTMLButtonElement>(), items = new Map<string, HTMLButtonElement>(), segs: { seg: HTMLElement; ids: string[] }[] = []
     for (const part of scene.strip) {
       if ('note' in part) continue
@@ -233,9 +242,12 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
       for (const g of segs) g.seg.classList.toggle('cur', Boolean(state.focus && g.ids.includes(state.focus)))
     }
   }
+  // in the app the camera buttons are a small stack in the stage's corner, as on a map
+  const inApp = props.appearance === 'app'
+  const camBtn = (text: string, glyph: string, onClick: () => void) => { const b = button(inApp ? glyph : text, onClick); if (inApp) { b.title = text; b.setAttribute('aria-label', text) } return b }
   viewBtns.append(
-    button('Zoom in', () => renderer?.zoom(0.8)), button('Zoom out', () => renderer?.zoom(1.25)),
-    button('Reset view', () => renderer?.flyTo(state.focus ? scene.stops.find((s) => s.id === state.focus)!.frame : scene.all)),
+    camBtn('Zoom in', '+', () => renderer?.zoom(0.8)), camBtn('Zoom out', '\u2212', () => renderer?.zoom(1.25)),
+    camBtn('Reset view', '\u27F2', () => renderer?.flyTo(state.focus ? scene.stops.find((s) => s.id === state.focus)!.frame : scene.all)),
   )
   // ---- full screen: the drawing laid over the whole window
   let full = false
@@ -309,7 +321,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   }) : null
   stageRo?.observe(stage)
   doc.addEventListener('keydown', onKey)
-  viewBtns.append(notesBtn, fullBtn)
+  if (inApp) { navTools.append(notesBtn, fullBtn); runBtn.title = 'Play this step again' } else viewBtns.append(notesBtn, fullBtn)
   const inputBtns = new Map<string, HTMLButtonElement>()
   const passLabel = el('span', 'l'), writtenEl = el('b', 'mono'), nextEl = el('b', 'mono nxt')
   const setPass = (n: number) => {
@@ -338,17 +350,21 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   const closeBtn = button('Close', () => { state.open = null; draw() })
   openCard.append(closeBtn, openBody); openCard.hidden = true
   if (props.inputs.length) {
-    const g = el('div', 'g'); g.appendChild(el('span', 'l', 'Prompt at the front'))
+    const g = el('div', 'g join'); g.appendChild(el('span', 'l', inApp ? 'Prompt' : 'Prompt at the front'))
     for (const name of props.inputs) { const b = button(name, () => setInput(name)); inputBtns.set(name, b); g.appendChild(b) }
     passGroup.append(passLabel, writeBtn, overBtn, showBtn)
     wroteGroup.append(el('span', 'l', 'Written so far'), writtenEl, el('span', 'l', 'Next word'), nextEl)
+    wroteGroup.classList.add('readout'); headGroup.classList.add('join')
+    if (inApp) { showBtn.textContent = 'Highlight the new token'; showBtn.title = 'Show what the new token touches' }
     bar.append(g, passGroup, wroteGroup)
   }
   bar.append(headGroup, exGroup)
   side.insertBefore(openCard, under)
 
-  const card = (into: HTMLElement, items: ModelDiagramCardItemBlock[], tagged: boolean) => {
+  // in the app each card says what it is before it says anything else
+  const card = (into: HTMLElement, items: ModelDiagramCardItemBlock[], tagged: boolean, eyebrow?: [string, string]) => {
     into.textContent = ''
+    if (inApp && eyebrow) { const e = el('div', 'eyebrow'); e.append(el('b', '', eyebrow[0]), el('span', '', eyebrow[1])); into.appendChild(e) }
     let head: HTMLElement | null = null
     if (tagged) { head = el('div', 'hd'); head.appendChild(el('span', 'tag wt', 'WEIGHTS')); into.appendChild(head) }
     for (const it of items) {
@@ -389,7 +405,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     if (ex) { exLabel.textContent = `Example ${ex.index + 1} of ${ex.count} in the batch`; exRange.max = String(ex.count); exRange.value = String(ex.index + 1) }
     bar.hidden = !props.inputs.length && !hs && !ex
     openCard.hidden = !scene.open
-    if (scene.open) card(openBody, scene.open, false)
+    if (scene.open) card(openBody, scene.open, false, ['The bar you clicked', 'the numbers saved for it'])
     const ps = scene.passes
     wroteGroup.hidden = !ps
     passGroup.hidden = !ps || ps.count <= 1
@@ -399,7 +415,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
       showBtn.setAttribute('aria-pressed', state.showNew ? 'true' : 'false')
       writtenEl.textContent = ps.written.length ? ps.written.join(' ') : '(nothing yet)'; nextEl.textContent = ps.next
     }
-    card(what, scene.what, false); card(weights, scene.weights, true)
+    card(what, scene.what, false, [state.focus ? 'This step' : 'The model', state.focus ? 'what it does, in words and numbers' : 'what the drawing shows']); card(weights, scene.weights, true, [state.focus ? 'This step\u2019s weights' : 'Weights', 'learned in training; the same for every prompt'])
     renderer?.setScene(scene, state.focus)
   }
 

@@ -15,7 +15,7 @@ export interface ModelDiagramLabelBoxBlock {
   shortW?: number
   shortH?: number
   /** 'fixed' shows where it is; 'nudge' shows, moved a little to clear others; 'slide' moves whole lines; the default gives way. */
-  mode?: 'fixed' | 'slide' | 'nudge'
+  mode?: 'fixed' | 'slide' | 'nudge' | 'dock'
   /** A fixed label that is one of a run (a row's name, a column's number): dropped when it would sit on its neighbour, like the ticks of an axis. */
   thin?: boolean
   /** In a thinned run, the one that always shows (the row in use). */
@@ -31,6 +31,10 @@ const PAD = 1
 const NUDGES: [number, number][] = [[0, 0]]
 for (let r = 1; r <= 24; r++) { const d = r * 7; NUDGES.push([0, -d], [0, d], [d, 0], [-d, 0], [d, -d], [-d, -d], [d, d], [-d, d]) }
 
+// Longer moves, for a block of text big enough to stand on its own (a written-out sum): out to 600 px, kept inside the stage.
+const FAR: [number, number][] = []
+for (let r = 9; r <= 30; r++) { const d = r * 20; FAR.push([0, -d], [0, d], [d, 0], [-d, 0], [d, -d], [-d, -d], [d, d], [-d, d], [d, -d / 2], [-d, -d / 2], [d, d / 2], [-d, d / 2], [d / 2, -d], [-d / 2, -d], [d / 2, d], [-d / 2, d]) }
+
 /**
  * Place labels. Fixed ones (a number beside its line, a row's name) show
  * exactly where the layout put them. A nudged one always shows, moved by the
@@ -41,7 +45,7 @@ for (let r = 1; r <= 24; r++) { const d = r * 7; NUDGES.push([0, -d], [0, d], [d
  * circles) that a label which can move keeps off; a fixed label belongs to
  * the drawing and ignores them.
  */
-export function placeModelDiagramLabelsBlock(boxes: ModelDiagramLabelBoxBlock[], walls: { x0: number; y0: number; x1: number; y1: number }[] = []): ModelDiagramLabelPlaceBlock[] {
+export function placeModelDiagramLabelsBlock(boxes: ModelDiagramLabelBoxBlock[], walls: { x0: number; y0: number; x1: number; y1: number }[] = [], stage?: { w: number; h: number }): ModelDiagramLabelPlaceBlock[] {
   const out: ModelDiagramLabelPlaceBlock[] = boxes.map(() => ({ fate: 'hidden', dx: 0, dy: 0 }))
   const byRank = (ids: number[]) => ids.sort((a, b) => boxes[b].rank - boxes[a].rank || a - b)
   const ids = boxes.map((_, i) => i).filter((i) => boxes[i].w > 0 && boxes[i].h > 0)
@@ -62,6 +66,13 @@ export function placeModelDiagramLabelsBlock(boxes: ModelDiagramLabelBoxBlock[],
     out[i] = { fate, dx, dy }
   }
   const of = (mode: ModelDiagramLabelBoxBlock['mode']) => ids.filter((k) => boxes[k].mode === mode)
+  // a docked block has one home whatever the camera does: the stage's top left corner, one under another
+  let dockY = 14
+  for (const i of of('dock')) {
+    const b = boxes[i]
+    if (!stage) { b.mode = 'nudge'; continue }
+    take(i, b.w, b.h, 60 + b.w / 2 - b.x, dockY + b.h / 2 - b.y); dockY += b.h + 8
+  }
   const fixed = of('fixed')
   for (const i of fixed) if (!boxes[i].thin) take(i, boxes[i].w, boxes[i].h, 0, 0)
   // a run of names: the one in use first, then every one that has room among those already kept
@@ -74,7 +85,19 @@ export function placeModelDiagramLabelsBlock(boxes: ModelDiagramLabelBoxBlock[],
   }
   for (const i of byRank(of('nudge'))) {
     // clear of labels and the drawing if it can be; else clear of labels at least: words on a bar read better than words on words
-    const b = boxes[i], d = NUDGES.find(([dx, dy]) => free(b, b.w, b.h, dx, dy)) ?? NUDGES.find(([dx, dy]) => free(b, b.w, b.h, dx, dy, false)) ?? NUDGES[0]
+    const b = boxes[i]
+    const inside = (dx: number, dy: number) => !!stage && b.x + dx - b.w / 2 >= 8 && b.x + dx + b.w / 2 <= stage.w - 8 && b.y + dy - b.h / 2 >= 8 && b.y + dy + b.h / 2 <= stage.h - 8
+    // a block of text goes further for clear ground than a caption may: it reads on its own, a caption only beside its thing
+    const far = stage && b.w * b.h > 40000 ? FAR.find(([dx, dy]) => inside(dx, dy) && free(b, b.w, b.h, dx, dy)) : undefined
+    // a caption hemmed in above and below steps out to one side of its thing, level with where it was
+    const side = (): [number, number] | undefined => {
+      for (let k = 0; k <= 12; k++) for (const dy of [0, b.h / 2, b.h, -b.h / 2]) for (const sx of [1, -1]) {
+        const dx = sx * (b.w / 2 + k * 16)
+        if ((!stage || inside(dx, dy)) && free(b, b.w, b.h, dx, dy)) return [dx, dy]
+      }
+      return undefined
+    }
+    const d = NUDGES.find(([dx, dy]) => free(b, b.w, b.h, dx, dy)) ?? (b.w * b.h > 40000 ? far : side()) ?? far ?? NUDGES.find(([dx, dy]) => free(b, b.w, b.h, dx, dy, false)) ?? NUDGES[0]
     take(i, b.w, b.h, d[0], d[1])
   }
   for (const i of byRank(of('slide'))) {

@@ -54,7 +54,7 @@ export interface ModelDiagramLabelBlock {
    * 'fixed' shows exactly where it is (a number beside its line, a row's name). 'nudge' shows, moved a little if that
    * clears another label. 'slide' (a step's title) moves whole lines to find room. None of those ever hides; the rest give way.
    */
-  mode?: 'fixed' | 'slide' | 'nudge'
+  mode?: 'fixed' | 'slide' | 'nudge' | 'dock'
   /** What a title shrinks to when there is no room for it. */
   short?: string
 }
@@ -990,7 +990,7 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
     if (more.colsTitle) lab(tag, 'pu', cx, cy - h / 2 - 1.05, 0.2, more.colsTitle.map((x) => ['', x]))
     const ry = cy - (selRow - (nR - 1) / 2) * p, fd = Math.min(1.2, p * 3)
     if (selRow >= 0) wire([cx, ry, fd / 2], w + 0.08, p, fd, 'fg', 1)
-    lab(tag, '', cx, cy + h / 2 + 0.55, 0, [['tag wt', 'WEIGHTS'], ['nm', title], ['', size], ['', sub]].filter((x) => x[1]) as [string, string][], { anchor: 'bottom' })
+    lab(tag, '', cx, cy + h / 2 + 0.55, 0, [['tag wt', 'WEIGHTS'], ['nm', title], ['', size], ...(sub ? sub.split('. ') : []).map((l) => ['', l])].filter((x) => x[1]) as [string, string][], { anchor: 'bottom', rank: 65 })
     if (selRow >= 0) lab(tag, 'word on', cx + w / 2 + 1.6, ry, 0.2, [['', rowLabel]], { mode: 'nudge' })
     return { pt, rowPt: [cx - w / 2 - 0.12, ry, 0.1] as V3 }
   }
@@ -1079,17 +1079,18 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
   }
   // The numbers inside the focused unit each sit beside a line, so they cannot be moved apart on screen afterwards.
   // They are spaced here instead, by the distance the camera will take, so that no two touch.
+  // The written-out sum is docked in the stage's top left corner; the step keeps a band clear above itself so the camera leaves that corner empty.
+  const dockRoom = (st: Step) => { const f = frameOf(st), left = f.cx - f.hw, top = f.cy + f.hh; grow(st, left, left + 11, top, top + 4.0) }
   let focusBox: [number, number, number, number] | null = null
   if (focus) {
     const st = steps.get(focus)!, { ux, uy } = st.s, base = st.extra, STAGE = state.stage?.h || 785, PILL = 19.5, ASPECT = state.stage ? state.stage.w / state.stage.h : 16 / 8.6
     const around = () => {
     // what the unit will add around itself once drawn: its written-out sum, its table of weights, its bend
     if (st.EL.kind === 'linear') {
-      const relu = st.s.unit === 'relu', ex = relu ? ux + 19.5 : ux + 7.4, ey = uy + st.half + 3.0
-      if (st.shown.length > 1) grow(st, ex - (relu ? 8 : 5.2), ex + (relu ? 8.2 : 5.6), ey, ey + 2.4)
       if (st.EL.W?.length) grow(st, ux - 0.2 - 5.6, ux - 0.2 + 4.6, uy - st.half - 4.4 - 2.9, uy - st.half - 4.4)
     }
     if (st.s.unit === 'relu') grow(st, ux - 1.85 - 0.5, ux - 1.85 + 3.4 + 6.6, uy - st.half - 1.7, uy + st.half + 2.0 + 2.1 + 0.9)
+    if (st.EL.kind === 'linear' && st.shown.length > 1) dockRoom(st)
     }
     for (let pass = 0; pass < 3 && st.n > 1; pass++) {
       st.extra = base
@@ -1169,8 +1170,8 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
       const eq = eqLines(st)
       if (eq.length) {
         const relu = s.unit === 'relu', ex = relu ? ux + 19.5 : ux + 7.4, ey = uy + st.half + 3.0
-        lab(tg, 'pu eqn', ex, ey, 0.4, eq.map((l) => ['', l]))
-        grow(st, ex - (relu ? 8 : 5.2), ex + (relu ? 8.2 : 5.6), ey, ey + 2.4)
+        // the sum written out has one home, the stage's top left corner, at every step: it is read as text, not found in the drawing
+        lab(tg, 'pu eqn', ex, ey, 0.4, eq.map((l) => ['', l]), { mode: 'dock', rank: 900 })
       }
       if (EL.W && EL.W.length) {
         const Wm = EL.W, rws: number[] = []
@@ -1260,6 +1261,7 @@ export function layoutModelDiagramBlock(spec: ModelSpec, values: ModelValues | n
   // ---- where the camera looks, for each stop and for the whole model
   plan.stops.forEach((s, n) => {
     const st = steps.get(s.id)!
+    if (focus === s.id && st.EL.kind === 'linear' && st.shown.length > 1) dockRoom(st)
     scene.stops.push({ id: s.id, n: n + 1, specStep: stepOf(s), part: s.part, opId: s.opId, group: s.group, chip: s.chip, frame: frameOf(st), detail: st.lines, out: st.out, bars: st.inKeys.concat([s.key]) })
   })
   {
