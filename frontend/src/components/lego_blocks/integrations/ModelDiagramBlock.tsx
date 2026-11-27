@@ -37,7 +37,7 @@ export default function ModelDiagramBlock(props: ModelDiagramBlockProps) {
       if (gone) return
       const p = latest.current
       handleRef.current = mountModelDiagram(host, {
-        spec: p.spec, inputs: p.inputs, step: p.step, part: p.part, theme: p.theme,
+        spec: p.spec, inputs: p.inputs, step: p.step, part: p.part, theme: p.theme, appearance: 'app',
         loadValues: (input) => latest.current.loadValues(input),
         onStep: (step, part) => latest.current.onStep(step, part),
         onPickBlock: (id) => latest.current.onPickBlock?.(id),

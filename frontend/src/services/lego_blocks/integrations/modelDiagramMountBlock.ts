@@ -24,6 +24,8 @@ export interface ModelDiagramMountPropsBlock {
   /** The stop inside that step ('q', 'scores', ...), when the step opens into several. */
   part?: string
   theme?: 'light' | 'dark'
+  /** 'app' takes the host app's colours and type and drops the frame round the drawing; the default is the standalone page's own look. */
+  appearance?: 'page' | 'app'
   onStep?: (step: number, part?: string) => void
   onPickBlock?: (id: string) => void
   onReady?: (info: { firstFrameMs: number }) => void
@@ -74,7 +76,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
 
   // ---- the page
   host.classList.add('mdg-host')
-  const root = el('div', 'mdg')
+  const root = el('div', props.appearance === 'app' ? 'mdg app' : 'mdg')
   const bar = el('div', 'bar2')
   const strip = el('nav', 'strip'); strip.setAttribute('aria-label', 'Steps')
   const frame = el('div', 'stageframe')
@@ -86,7 +88,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     if (legendOf === rows) return
     legendOf = rows; legend.textContent = ''
     // Three lines fit in the drawing's corner, as on the hand-built page; a longer legend gets its own panel under the drawing.
-    const out = rows.length > 3
+    const out = rows.length > 3 || props.appearance === 'app'
     legend.className = out ? 'legend out' : 'legend'
     if (out) { if (legend.parentElement !== side) side.insertBefore(legend, hint) } else if (legend.parentElement !== frame) frame.appendChild(legend)
     for (const [k, text] of rows) {
@@ -200,7 +202,18 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   }
   // Full screen fills the window, as the app's own focus modes do; it does not take over the display.
   function setFull(on: boolean) { overlay(on) }
-  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && root.classList.contains('overlay')) overlay(false) }
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && root.classList.contains('overlay')) { overlay(false); return }
+    // the arrow keys step through the model while the drawing has the keyboard (it was clicked, or it is full screen)
+    const t = e.target as HTMLElement | null
+    if (e.metaKey || e.ctrlKey || e.altKey || (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) || t?.isContentEditable) return
+    if (!full && !(t && root.contains(t))) return
+    if (e.key === 'ArrowRight') { stepBy(1); e.preventDefault() }
+    else if (e.key === 'ArrowLeft') { stepBy(-1); e.preventDefault() }
+    else if (e.key === 'f' || e.key === 'F') { setFull(!full); e.preventDefault() }
+  }
+  root.tabIndex = -1
+  root.addEventListener('pointerdown', () => { if (!root.contains(doc.activeElement)) root.focus({ preventScroll: true }) })
   // a stage that changed size lays the focused step out again, so its numbers keep clear of each other
   let sizeWas = ''
   const stageRo = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => {
@@ -271,6 +284,12 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   function draw() {
     scene = sceneNow()
     for (const [id, b] of chip) { if (id === state.focus) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current') }
+    // a strip that scrolls sideways keeps the step in focus in sight
+    const cur = state.focus ? chip.get(state.focus) : allChip
+    if (cur && strip.scrollWidth > strip.clientWidth + 4) {
+      const c = cur.getBoundingClientRect(), r = strip.getBoundingClientRect()
+      strip.scrollLeft += c.left + c.width / 2 - (r.left + r.width / 2)
+    }
     if (!state.focus) allChip.setAttribute('aria-current', 'step'); else allChip.removeAttribute('aria-current')
     for (const [name, b] of inputBtns) b.setAttribute('aria-pressed', name === input ? 'true' : 'false')
     const n = state.focus ? stops.findIndex((s) => s.id === state.focus) : -1

@@ -31,7 +31,7 @@ const name = arg('name', 'gpt-2')
 const outDir = resolve(arg('out', join(frontend, 'tests/.model-diagram-check', name)))
 // --size 920,700 shoots in a smaller window than the reference's 1500 x 1000
 const [W, H] = arg('size', '1500,1000').split(',').map(Number)
-// --steps 0,24 shoots only those steps; --themes dark only that theme; --quick skips the performance run.
+// --app shoots the look the engine has inside the app (the app's colours stood in for); --steps 0,24 shoots only those steps; --themes dark only that theme; --quick skips the performance run.
 const onlySteps = arg('steps', '') ? arg('steps', '').split(',').map(Number) : null
 const themes = arg('themes', 'dark,light').split(',')
 const quick = process.argv.includes('--quick')
@@ -62,7 +62,7 @@ if (!p.ok) throw new Error(JSON.stringify(p.problems))
 w.__mount = () => {
   w.__ready = null
   w.__md = mountModelDiagram(document.getElementById('host')!, {
-    spec: p.value, inputs: w.__VALUES__ ? ['input'] : [], step: 0,
+    spec: p.value, inputs: w.__VALUES__ ? ['input'] : [], step: 0, appearance: w.__APP__ ? 'app' : 'page',
     loadValues: async () => { w.__valuesAt = performance.now(); return w.__VALUES__ },
     onReady: (i: any) => { w.__ready = i },
   })
@@ -80,7 +80,7 @@ const valuesJson = () => {
 const page = (theme) => `<!doctype html><html lang="en" data-theme="${theme}"><head><meta charset="utf-8">
 <style>body{margin:0;background:${theme === 'dark' ? '#0f1218' : '#f6f7f9'}}.wrap{max-width:1642px;margin:0 auto;padding-inline:19px;padding-block:24px 56px}</style></head>
 <body><main class="wrap"><div id="host"></div></main>
-<script>window.__SPEC__=${JSON.stringify(readFileSync(specPath, 'utf8'))};window.__VALUES__=${valuesJson()}</script>
+${process.argv.includes('--app') ? '<style>:root{--background:240 14% 97%;--foreground:0 0% 9%;--card:0 0% 100%;--muted-foreground:0 0% 45%;--border:0 0% 90%;--muted:0 0% 94%;--primary:0 0% 9%;--primary-foreground:0 0% 100%}body{background:hsl(var(--background))}</style><script>window.__APP__=1</script>' : ''}<script>window.__SPEC__=${JSON.stringify(readFileSync(specPath, 'utf8'))};window.__VALUES__=${valuesJson()}</script>
 <script src="/bundle.js"></script></body></html>`
 const server = createServer((req, res) => {
   const url = new URL(req.url, 'http://x')

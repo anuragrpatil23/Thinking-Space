@@ -14,6 +14,28 @@ export const MODEL_DIAGRAM_CSS_BLOCK = `
 --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
 background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.55;display:flex;flex-direction:column;gap:16px;min-width:0;text-align:left}
 .mdg[data-theme="dark"]{${DARK}}
+.mdg.app{--bg:hsl(var(--background));--panel:hsl(var(--card));--fg:hsl(var(--foreground));--muted:hsl(var(--muted-foreground));--rule:hsl(var(--border));
+--sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",Inter,system-ui,sans-serif;background:transparent}
+.mdg.app .stageframe{border:0;border-radius:0;background:transparent;width:100%;max-width:100%}
+.mdg.app.full{background:var(--bg)}
+.mdg.app{gap:12px;outline:none}
+.mdg.app .stageframe{min-height:min(68vh,640px)}
+.mdg.app button{border-radius:8px;transition:background-color .12s,border-color .12s,color .12s}
+.mdg.app .strip{flex-wrap:nowrap;overflow-x:auto;gap:4px 18px;align-items:center;padding:2px 0 8px;border-bottom:1px solid var(--rule);scrollbar-width:none;scroll-behavior:smooth}
+.mdg.app .strip::-webkit-scrollbar{display:none}
+.mdg.app .grp{flex:none;flex-direction:row;align-items:center;gap:6px;border:0;border-radius:0;padding:0;background:transparent}
+.mdg.app .grp .gl{font-family:var(--sans);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;opacity:.8}
+.mdg.app .grp.stack{display:none}
+.mdg.app .chips{flex-wrap:nowrap;gap:2px}
+.mdg.app .chips button{border:0;background:transparent;color:var(--muted);font-size:12.5px;padding:4px 9px;white-space:nowrap}
+.mdg.app .chips button:hover{background:hsl(var(--muted));color:var(--fg)}
+.mdg.app .chips button[aria-current="step"]{background:hsl(var(--primary));color:hsl(var(--primary-foreground));font-weight:600}
+.mdg.app .viewbtns button,.mdg.app .stepbtns button{background:color-mix(in srgb,var(--panel) 78%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);box-shadow:0 1px 2px rgb(0 0 0 / .06)}
+.mdg.app .stepbtns{left:50%;transform:translateX(-50%);bottom:12px}
+.mdg.app .bar2{gap:8px 20px;font-size:13px} .mdg.app .bar2 button{font-size:12.5px;padding:4px 9px}
+.mdg.app .card{border-radius:12px;box-shadow:0 1px 2px rgb(0 0 0 / .04)}
+.mdg.app .hint{font-size:12.5px}
+.mdg.app.full .strip{border-bottom:0;padding-bottom:2px}
 .mdg *{box-sizing:content-box}
 .mdg [hidden]{display:none!important}
 .mdg h2{margin:0;font-size:17px;font-weight:600;color:var(--fg)} .mdg h3{margin:0;font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--fg)}

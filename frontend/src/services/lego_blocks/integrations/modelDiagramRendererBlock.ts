@@ -89,8 +89,17 @@ export function createModelDiagramRendererBlock(
   const css: Record<string, string> = {}
   const K: Record<string, THREE.Color> = {}
   const readTokens = () => {
-    const cs = getComputedStyle(tokenRoot)
-    for (const n of TOKENS) { css[n] = cs.getPropertyValue(`--${n}`).trim() || '#888'; K[n] = new THREE.Color(css[n]) }
+    // Read each token as the browser resolves it (a token may point at the host app's own colours), through one probe element.
+    const probe = document.createElement('span')
+    probe.style.display = 'none'; tokenRoot.appendChild(probe)
+    for (const n of TOKENS) {
+      probe.style.color = ''; probe.style.color = `var(--${n})`
+      const got = getComputedStyle(probe).color
+      const m = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(got)
+      css[n] = m ? `rgb(${Math.round(+m[1])}, ${Math.round(+m[2])}, ${Math.round(+m[3])})` : '#888888'
+      K[n] = new THREE.Color(css[n])
+    }
+    probe.remove()
   }
   const tmpCol = new THREE.Color()
   const colour = (c: Col, into = tmpCol) => {
