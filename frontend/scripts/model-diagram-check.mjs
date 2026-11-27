@@ -159,6 +159,18 @@ try {
       const over = await js(`(() => { const r = window.__md.labelRects(), out = []; for (let a = 0; a < r.length; a++) for (let b = a + 1; b < r.length; b++) { const p = r[a], q = r[b]; const ox = Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0), oy = Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0); const idx = p.text.length <= 12 && q.text.length <= 12; /* row names and table indices: their line boxes touch, their letters do not, as on the reference */ if (ox > 1 && oy > (idx ? 6 : 1)) out.push(p.text.slice(0, 28) + ' | ' + q.text.slice(0, 28)) } return out })()`)
       if (over.length) report.overlaps[`${theme}-${pad(n)}`] = over
     }
+    // full screen (headless Chrome refuses the display's own, so this is the laid-over form): the drawing alone, then with the side panel
+    if (!onlySteps || onlySteps.includes(0)) {
+      const press = (text) => js(`[...document.querySelectorAll(".mdg button")].find((b) => b.textContent === ${JSON.stringify(text)}).click()`)
+      const n = Math.min(7, stopCount)
+      await js(`document.querySelectorAll(".mdg .strip .chips button")[${n}].click()`); await press('Full screen'); await sleep(700)
+      await shot('.mdg', join(outDir, `engine-${theme}-full.png`))
+      await press('Notes'); await sleep(700)
+      await shot('.mdg', join(outDir, `engine-${theme}-full-notes.png`))
+      const over = await js(`(() => { const r = window.__md.labelRects(), out = []; for (let a = 0; a < r.length; a++) for (let b = a + 1; b < r.length; b++) { const p = r[a], q = r[b]; const idx = p.text.length <= 12 && q.text.length <= 12; const ox = Math.min(p.x1, q.x1) - Math.max(p.x0, q.x0), oy = Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0); if (ox > 1 && oy > (idx ? 6 : 1)) out.push(p.text.slice(0, 28) + ' | ' + q.text.slice(0, 28)) } return out })()`)
+      if (over.length) report.overlaps[`${theme}-full-notes`] = over
+      await press('Exit full screen'); await sleep(300)
+    }
     if (refPath) {
       await go(`${base}/ref`); await js(`document.documentElement.setAttribute('data-theme', '${theme}')`); await settle()
       for (let n = 0; n <= stopCount; n++) {

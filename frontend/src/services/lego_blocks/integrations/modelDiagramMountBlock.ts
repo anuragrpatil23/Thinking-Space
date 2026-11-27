@@ -88,7 +88,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     // Three lines fit in the drawing's corner, as on the hand-built page; a longer legend gets its own panel under the drawing.
     const out = rows.length > 3
     legend.className = out ? 'legend out' : 'legend'
-    if (out) { if (legend.parentElement !== root) root.insertBefore(legend, hint) } else if (legend.parentElement !== frame) frame.appendChild(legend)
+    if (out) { if (legend.parentElement !== side) side.insertBefore(legend, hint) } else if (legend.parentElement !== frame) frame.appendChild(legend)
     for (const [k, text] of rows) {
       if (legend.childNodes.length) legend.appendChild(out ? doc.createTextNode('   ') : el('br'))
       const sp = el('span', 'li'); sp.appendChild(el('b', '', k)); sp.appendChild(doc.createTextNode(text)); legend.appendChild(sp)
@@ -98,7 +98,10 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
   const under = el('section', 'under'), what = el('div', 'card'), weights = el('div', 'card w')
   under.append(what, weights)
   frame.append(stage, labels, stepBtns, viewBtns, legend)
-  root.append(bar, strip, frame, hint, under)
+  // Everything that is words: under the drawing as a rule (the wrapper is invisible to layout), a side panel in full screen.
+  const side = el('div', 'side')
+  side.append(hint, under)
+  root.append(bar, strip, frame, side)
   host.appendChild(root)
 
   const systemDark = () => {
@@ -165,6 +168,45 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     button('Zoom in', () => renderer?.zoom(0.8)), button('Zoom out', () => renderer?.zoom(1.25)),
     button('Reset view', () => renderer?.flyTo(state.focus ? scene.stops.find((s) => s.id === state.focus)!.frame : scene.all)),
   )
+  // ---- full screen: the display's own full screen where the browser has it, else the drawing laid over the whole window
+  let full = false
+  const refit = () => setTimeout(() => { if (!disposed) renderer?.flyTo(state.focus ? scene.stops.find((s) => s.id === state.focus)!.frame : scene.all) }, 80)
+  // In full screen the words wait in a side panel: a click on a block or a step's title brings it up.
+  const setNotes = (on: boolean) => {
+    if (!full || root.classList.contains('notes') === on) return
+    root.classList.toggle('notes', on); notesBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); refit()
+  }
+  const notesBtn = button('Notes', () => setNotes(!root.classList.contains('notes')))
+  notesBtn.hidden = true
+  const closeNotes = button('Close', () => setNotes(false)); closeNotes.className = 'sideclose'
+  side.insertBefore(closeNotes, side.firstChild)
+  const fullBtn = button('Full screen', () => setFull(!full))
+  const applyFull = (on: boolean) => {
+    full = on
+    root.classList.toggle('full', on)
+    if (!on) root.classList.remove('notes')
+    notesBtn.hidden = !on
+    fullBtn.textContent = on ? 'Exit full screen' : 'Full screen'
+    // the stage has a new size: frame the same step again once it has been measured
+    refit()
+  }
+  const overlay = (on: boolean) => {
+    root.classList.toggle('overlay', on)
+    if (on) doc.body.appendChild(root); else host.appendChild(root)
+    applyFull(on)
+  }
+  function setFull(on: boolean) {
+    if (on) {
+      if (typeof root.requestFullscreen === 'function') root.requestFullscreen().catch(() => overlay(true))
+      else overlay(true)
+    } else if (doc.fullscreenElement === root) void doc.exitFullscreen()
+    else overlay(false)
+  }
+  const onFullscreenChange = () => { if (!root.classList.contains('overlay')) applyFull(doc.fullscreenElement === root) }
+  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && root.classList.contains('overlay')) overlay(false) }
+  doc.addEventListener('fullscreenchange', onFullscreenChange)
+  doc.addEventListener('keydown', onKey)
+  viewBtns.append(notesBtn, fullBtn)
   const inputBtns = new Map<string, HTMLButtonElement>()
   const passLabel = el('span', 'l'), writtenEl = el('b', 'mono'), nextEl = el('b', 'mono nxt')
   const setPass = (n: number) => {
@@ -200,7 +242,7 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     bar.append(g, passGroup, wroteGroup)
   }
   bar.append(headGroup, exGroup)
-  root.insertBefore(openCard, under)
+  side.insertBefore(openCard, under)
 
   const card = (into: HTMLElement, items: ModelDiagramCardItemBlock[], tagged: boolean) => {
     into.textContent = ''
@@ -274,8 +316,9 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
         const s = stops.find((x) => x.id === id)
         if (s) props.onPickBlock?.(s.opId)
         focus(id, true, grid.key)
+        setNotes(true)
       },
-      onStop: (id) => focus(id),
+      onStop: (id) => { focus(id); setNotes(true) },
       obstacles() {
         const f = stage.getBoundingClientRect(), out: { x0: number; y0: number; x1: number; y1: number }[] = []
         for (const e of [stepBtns, viewBtns, legend]) {
@@ -320,6 +363,8 @@ export function mountModelDiagram(host: HTMLElement, props: ModelDiagramMountPro
     labelRects: () => renderer?.labelRects() ?? [],
     dispose() {
       disposed = true
+      doc.removeEventListener('fullscreenchange', onFullscreenChange); doc.removeEventListener('keydown', onKey)
+      if (doc.fullscreenElement === root) void doc.exitFullscreen()
       mq?.removeEventListener('change', retheme); mo?.disconnect()
       renderer?.dispose(); renderer = null
       scenes.clear(); values.clear()

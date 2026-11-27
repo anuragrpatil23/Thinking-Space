@@ -45,7 +45,12 @@ export function modelDiagramEnginePlugin(): Plugin {
       code ??= bundle()
       return code.then((js) => `export default ${JSON.stringify(js)}`)
     },
-    // The engine's own files changing in dev makes the next export build it again.
-    handleHotUpdate({ file }) { if (/modelDiagram[A-Za-z]*Block\.ts$/.test(file)) code = null },
+    // An engine file changing in dev: drop the built script and the module Vite holds, so the next export builds it again.
+    handleHotUpdate({ file, server }) {
+      if (!/[mM]odelDiagram[A-Za-z]*\.tsx?$/.test(file)) return
+      code = null
+      const mod = server.moduleGraph.getModuleById(RESOLVED)
+      if (mod) server.moduleGraph.invalidateModule(mod)
+    },
   }
 }
