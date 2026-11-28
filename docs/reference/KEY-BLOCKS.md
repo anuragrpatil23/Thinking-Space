@@ -189,16 +189,13 @@ pdf.js directly so the bitmap can be decoupled from the layout box.
   page takes the window's width, held to a page shape; only scrolled flow is
   capped at 720px.
   A single page is still one side of a spread (`epubSinglePageSideBlock`: odd
-  = left-hand, spine on its right edge). Every turn is one flat leaf hinged
-  at the showing page's spine: it either folds away into the spine or the
-  next page unfolds out of it, whichever makes the free edge travel with the
-  swipe. No perspective on a single page — a book-wide leaf in perspective
-  balloons and is clipped. Rejected the same day: a slide across the spine
-  alternating with a leaf turn, and a leaf carried across the view (blank
-  sheet mid-turn); and, after trying both, a hinge fixed on the left edge
-  under a spine that still switches sides, and a spine fixed on the left —
-  the reader chose the hinge at the spine, edge switching and all. The page
-  stack is drawn on the outer edge only (`pageEdgesShadowBlock`).
+  = left-hand, spine on its right edge; page stack on the outer edge only).
+  Two moves follow from that: over the leaf (on from a right-hand page, back
+  from a left-hand one) the showing page folds flat into its spine; to the
+  facing page the view slides across the spine, no leaf. No perspective on a
+  single page — a book-wide leaf in perspective balloons and is clipped.
+  This pairing was reached after four other shapes the same day (see the
+  comment on `buildSingleBlock`); do not swap the slide for a leaf again.
 - EPUB live slots (2026-11-27): something live (a textbook's interactive
   page) is never put inside a book section, which runs no script. The book
   reserves an element; `EpubDocumentBlock` (`slotSelector` / `renderSlot`)
