@@ -20,6 +20,12 @@ Only the files the EPUB path reaches are copied. Not vendored: `pdf.js` and
   (inherited from the host element, unset = upstream behaviour) lets
   `EpubDocumentBlock` widen the gutter at the spine without pushing the text
   further from the book's outer edges.
+- `paginator.js` `View.expand()`: returns when `this.document` is null. Each
+  section calls `doc.fonts.ready.then(() => this.expand())` and observes
+  resizes; either can fire after the section was destroyed (a chapter change
+  while fonts load), and upstream then throws "Cannot destructure property
+  'documentElement' from null" as an unhandled rejection (seen on iPad,
+  2026-11-27).
 
 ## Security
 

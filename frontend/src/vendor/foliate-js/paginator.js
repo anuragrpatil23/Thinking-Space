@@ -360,6 +360,9 @@ class View {
         }
     }
     expand() {
+        // Thinking Space patch: a late fonts.ready or resize callback can
+        // arrive after this section's iframe was removed (see README).
+        if (!this.document) return
         const { documentElement } = this.document
         if (this.#column) {
             const side = this.#vertical ? 'height' : 'width'

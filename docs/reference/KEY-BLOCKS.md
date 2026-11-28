@@ -179,6 +179,15 @@ pdf.js directly so the bitmap can be decoupled from the layout box.
   resizes the viewport on every toggle and jumps the text. The toolbar docks
   into the header via portal (`toolbarHost`) and morphs into the floating
   pill once the title is away; with the header hidden it floats from the start.
+- EPUB page turns on touch (2026-11-27): on an iPad a swipe turns one page
+  with the 3D leaf (`epubPageFlipBlock`), spread or single page.
+  `EpubDocumentBlock` takes the touch events in the capture phase and stops
+  them, so foliate's drag-and-snap slide never runs; phones
+  (`isTouchPhoneBlock`), scrolled flow, right-to-left books and pinches are
+  left to foliate. The phone exclusion is a memory precaution (per-turn page
+  copies), not a measured kill — measure before removing it. A paged single
+  page takes the window's width, held to a page shape; only scrolled flow is
+  capped at 720px.
 - EPUB reader (`EpubDocumentBlock.tsx`, 2026-10): foliate-js vendored at a
   pinned commit in `src/vendor/foliate-js/` (provenance, local patch and update
   steps in its README; the PDF backend is not vendored). It shares the PDF

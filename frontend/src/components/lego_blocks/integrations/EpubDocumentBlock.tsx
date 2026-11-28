@@ -79,18 +79,24 @@ const DESK_PADDING_PX_BLOCK = 20
    (`--ts-outer-gap`, our patch in vendor/foliate-js/paginator.js): about 67px
    to the fold and 96px to the outer edge at full width, where it was 47 and
    102. The column limit rises with it so the wider gap, not the limit, sets
-   the line length. A single page has no spine and keeps the plain gap. */
-function applyPageMarginsBlock(renderer: HTMLElement, spread: boolean) {
+   the line length. A single page has no spine and keeps the plain gap; turned
+   as pages its column may widen with the page, while a scrolled book keeps
+   the narrower column its capped paper was drawn for. */
+function applyPageMarginsBlock(renderer: HTMLElement, spread: boolean, paged: boolean) {
   if (spread) renderer.style.setProperty('--ts-outer-gap', '2%')
   else renderer.style.removeProperty('--ts-outer-gap')
   renderer.setAttribute('gap', spread ? '11%' : '8%')
   renderer.setAttribute('max-column-count', spread ? '2' : '1')
-  renderer.setAttribute('max-inline-size', spread ? '640px' : '600px')
+  renderer.setAttribute('max-inline-size', spread ? '640px' : paged ? '780px' : '600px')
 }
 /* Below this the window holds one comfortable page, not a spread. */
 const SPREAD_MIN_WIDTH_PX_BLOCK = 900
 const SPREAD_MAX_WIDTH_PX_BLOCK = 1280
-const SINGLE_MAX_WIDTH_PX_BLOCK = 720
+/* A scrolled book has no page shape to hold it, so its column is capped
+   here. A paged single page is not: it takes the width the window gives,
+   held only by its shape (SINGLE_MAX_ASPECT_BLOCK) — capped at this it sat
+   as a narrow strip down the middle of a portrait iPad (2026-11-27). */
+const SCROLLED_MAX_WIDTH_PX_BLOCK = 720
 /* The book's shape follows the window's. A spread only when the space is
    clearly landscape, so each of its pages stays page-shaped; otherwise one
    page. Either way the book is sized from the height too, so it never turns
@@ -116,6 +122,16 @@ function pageEdgesShadowBlock(paper: string, edge: string, night: boolean): stri
 /* Two-finger swipe (or wheel) turns one page per gesture. A gesture is a run of
    wheel events with no gap longer than this; the momentum tail after a turn
    belongs to the same gesture, so a flick never turns several pages. */
+/* A finger has to travel this far sideways before a swipe turns the page. */
+const PAGE_TURN_SWIPE_PX_BLOCK = 36
+/* The leaf's per-turn page copies are left off the phone, whose WebContent
+   memory limit is the tightest (docs/contracts/IOS-MEMORY.md); an iPad has
+   the room, and its pages turn like the desktop's. */
+function isTouchPhoneBlock(): boolean {
+  if (typeof window === 'undefined') return false
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false
+  return coarse && Math.min(window.screen.width, window.screen.height) < 600
+}
 const PAGE_TURN_GESTURE_GAP_MS_BLOCK = 220
 const PAGE_TURN_TRAVEL_PX_BLOCK = 40
 
@@ -211,6 +227,43 @@ export default function EpubDocumentBlock({
   const turnWheelRef = useRef(handleTurnWheelBlock)
   turnWheelRef.current = handleTurnWheelBlock
 
+  /* A swipe turns one page with the leaf. foliate's own touch handling drags
+     the page strip under the finger and snaps it, which is a slide, not a
+     turn; where the leaf plays, the swipe is taken here first (capture) and
+     foliate never sees it. Everything else stays foliate's: scrolled reading,
+     right-to-left books, phones, and two fingers (pinch). */
+  const swipeRef = useRef<{ x: number; y: number; turned: boolean } | null>(null)
+  const handleSwipeBlock = useCallback((event: TouchEvent) => {
+    const view = viewRef.current
+    const rtl = (view?.book as { dir?: string } | undefined)?.dir === 'rtl'
+    const zoomed = (window.visualViewport?.scale ?? 1) > 1
+    if (flowRef.current !== 'paginated' || rtl || zoomed || isTouchPhoneBlock() || event.touches.length > 1) {
+      swipeRef.current = null
+      return
+    }
+    event.stopPropagation()
+    const touch = event.changedTouches[0]
+    if (event.type === 'touchstart') {
+      swipeRef.current = touch ? { x: touch.screenX, y: touch.screenY, turned: false } : null
+      return
+    }
+    const swipe = swipeRef.current
+    if (event.type !== 'touchmove') {
+      swipeRef.current = null
+      return
+    }
+    if (!swipe || !touch) return
+    const dx = swipe.x - touch.screenX
+    const dy = swipe.y - touch.screenY
+    /* Sideways travel is the book's; the page behind must not pan with it. */
+    if (event.cancelable && Math.abs(dx) > Math.abs(dy)) event.preventDefault()
+    if (swipe.turned || Math.abs(dx) < PAGE_TURN_SWIPE_PX_BLOCK || Math.abs(dx) < Math.abs(dy) * 1.5) return
+    swipe.turned = true
+    turnPageRef.current(dx > 0 ? 1 : -1)
+  }, [])
+  const swipeHandlerRef = useRef(handleSwipeBlock)
+  swipeHandlerRef.current = handleSwipeBlock
+
   useEffect(() => {
     const desk = deskRef.current
     if (!desk) return
@@ -220,11 +273,14 @@ export default function EpubDocumentBlock({
     })
     observer.observe(desk)
     desk.addEventListener('wheel', handleTurnWheelBlock, { passive: false })
+    const touchTypes = ['touchstart', 'touchmove', 'touchend', 'touchcancel'] as const
+    for (const type of touchTypes) desk.addEventListener(type, handleSwipeBlock, { capture: true, passive: false })
     return () => {
       observer.disconnect()
       desk.removeEventListener('wheel', handleTurnWheelBlock)
+      for (const type of touchTypes) desk.removeEventListener(type, handleSwipeBlock, { capture: true })
     }
-  }, [handleTurnWheelBlock])
+  }, [handleTurnWheelBlock, handleSwipeBlock])
 
   /* The latest look, read by the open effect without re-opening the book. */
   const available = Math.max(0, deskSize.width - DESK_PADDING_PX_BLOCK * 2)
@@ -235,22 +291,21 @@ export default function EpubDocumentBlock({
     && available / availableHeight >= SPREAD_MIN_ASPECT_BLOCK
   const bookWidth = spread
     ? Math.min(available, SPREAD_MAX_WIDTH_PX_BLOCK, availableHeight * SPREAD_MAX_ASPECT_BLOCK)
-    : Math.min(available, SINGLE_MAX_WIDTH_PX_BLOCK, paged ? availableHeight * SINGLE_MAX_ASPECT_BLOCK : Infinity)
+    : Math.min(available, paged ? availableHeight * SINGLE_MAX_ASPECT_BLOCK : SCROLLED_MAX_WIDTH_PX_BLOCK)
   const lookRef = useRef({ prefs, paperTheme: look, spread })
   lookRef.current = { prefs, paperTheme: look, spread }
 
   /* Paged reading turns with the 3D leaf (epubPageFlipBlock). Left to
      foliate's own slide: continuous scroll, right-to-left books (the leaf is
-     staged left-to-right), and touch-first devices, where per-turn page
-     copies cost memory the iOS budget does not have. */
+     staged left-to-right), and phones, where per-turn page copies cost
+     memory the iOS budget does not have. */
   turnPageRef.current = (direction) => {
     const view = viewRef.current
     if (!view?.renderer) return
     const live = () => (direction > 0 ? view.next() : view.prev())
     const stage = bookRef.current
     const rtl = (view.book as { dir?: string } | undefined)?.dir === 'rtl'
-    const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false
-    if (!stage || prefs.flow !== 'paginated' || rtl || coarse) {
+    if (!stage || prefs.flow !== 'paginated' || rtl || isTouchPhoneBlock()) {
       void live()
       return
     }
@@ -330,6 +385,9 @@ export default function EpubDocumentBlock({
         view.addEventListener('load', (event) => {
           const doc = (event as CustomEvent<{ doc: Document }>).detail.doc
           doc.addEventListener('wheel', (wheelEvent) => turnWheelRef.current(wheelEvent), { passive: false })
+          for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel'] as const) {
+            doc.addEventListener(type, (touchEvent) => swipeHandlerRef.current(touchEvent), { capture: true, passive: false })
+          }
           doc.addEventListener('keydown', (keyEvent) => {
             if (keyEvent.key === 'ArrowLeft') turnPageRef.current(-1)
             if (keyEvent.key === 'ArrowRight') turnPageRef.current(1)
@@ -344,7 +402,7 @@ export default function EpubDocumentBlock({
            jump cut. */
         view.renderer.setAttribute('animated', '')
         view.renderer.setAttribute('margin', '36px')
-        applyPageMarginsBlock(view.renderer, lookRef.current.spread)
+        applyPageMarginsBlock(view.renderer, lookRef.current.spread, currentPrefs.flow === 'paginated')
         view.renderer.setStyles?.(buildEpubReaderCssBlock(currentPrefs, currentTheme, lookRef.current.spread))
         setToc(flattenTocBlock(book.toc))
 
@@ -373,9 +431,9 @@ export default function EpubDocumentBlock({
     const view = viewRef.current
     if (!view?.renderer) return
     view.renderer.setAttribute('flow', prefs.flow)
-    applyPageMarginsBlock(view.renderer, spread)
+    applyPageMarginsBlock(view.renderer, spread, paged)
     view.renderer.setStyles?.(buildEpubReaderCssBlock(prefs, look, spread))
-  }, [prefs, look, spread])
+  }, [prefs, look, spread, paged])
 
   const applyPrefsBlock = useCallback((next: EpubReaderPrefsBlock) => {
     setPrefs(next)
