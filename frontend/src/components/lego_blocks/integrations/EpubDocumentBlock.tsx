@@ -110,12 +110,15 @@ const SPREAD_MIN_ASPECT_BLOCK = 1.15
 const SPREAD_MAX_ASPECT_BLOCK = 1.5
 const SINGLE_MAX_ASPECT_BLOCK = 0.8
 
-/* Stacked page edges: alternating paper and edge strokes off both sides. */
-function pageEdgesShadowBlock(paper: string, edge: string, night: boolean): string {
+/* Stacked page edges: alternating paper and edge strokes off the book's
+   outer sides. A spread (or a scrolled book) has two; a single page of a
+   spread has one — the other side is its spine, where no pages show. */
+function pageEdgesShadowBlock(paper: string, edge: string, night: boolean, outer: 'both' | 'left' | 'right' = 'both'): string {
   const strokes: string[] = []
   for (let i = 1; i <= 6; i += 1) {
     const color = i % 2 === 0 ? edge : paper
-    strokes.push(`${-i}px 0 0 ${color}`, `${i}px 0 0 ${color}`)
+    if (outer !== 'right') strokes.push(`${-i}px 0 0 ${color}`)
+    if (outer !== 'left') strokes.push(`${i}px 0 0 ${color}`)
   }
   /* On white the book needs a little more lift than on a toned desk. */
   strokes.push(night
@@ -323,6 +326,10 @@ export default function EpubDocumentBlock({
   const bookWidth = spread
     ? Math.min(available, SPREAD_MAX_WIDTH_PX_BLOCK, availableHeight * SPREAD_MAX_ASPECT_BLOCK)
     : Math.min(available, paged ? availableHeight * SINGLE_MAX_ASPECT_BLOCK : SCROLLED_MAX_WIDTH_PX_BLOCK)
+  /* The side a single paged page is on, where it is drawn as one side of a
+     spread (spine on the inner edge, page stack on the outer); null for a
+     spread, a scrolled book, and a phone, whose margins are too narrow. */
+  const singleSide = !spread && paged && !isTouchPhoneBlock() ? pageSide : null
   const lookRef = useRef({ prefs, paperTheme: look, spread })
   lookRef.current = { prefs, paperTheme: look, spread }
 
@@ -682,7 +689,13 @@ export default function EpubDocumentBlock({
           style={{
             width: bookWidth || '100%',
             background: PDF_PAPER_THEME_BACKGROUNDS_BLOCK[look],
-            boxShadow: pageEdgesShadowBlock(PDF_PAPER_THEME_BACKGROUNDS_BLOCK[look], PAGE_EDGE_BLOCK[look], look === 'night'),
+            boxShadow: pageEdgesShadowBlock(
+              PDF_PAPER_THEME_BACKGROUNDS_BLOCK[look],
+              PAGE_EDGE_BLOCK[look],
+              look === 'night',
+              /* A left-hand page's stack of pages is on its left. */
+              singleSide ?? 'both',
+            ),
           }}
         >
           <div ref={hostRef} className="h-full w-full" />
@@ -715,7 +728,7 @@ export default function EpubDocumentBlock({
               }}
             />
           )}
-          {!spread && paged && pageSide && !isTouchPhoneBlock() && (
+          {singleSide && (
             /* One page of a spread: its half of the same fold shadow, on the
                edge that is bound — the right of a left-hand page, the left of
                a right-hand one. A turn hides this and carries the spine
@@ -726,7 +739,7 @@ export default function EpubDocumentBlock({
               {...{ [EPUB_SPINE_ATTR_BLOCK]: '' }}
               className="pointer-events-none absolute inset-y-0 z-[4] -translate-x-1/2"
               style={{
-                left: pageSide === 'left' ? '100%' : 0,
+                left: singleSide === 'left' ? '100%' : 0,
                 width: EPUB_SPINE_BAND_PX_BLOCK,
                 background: epubSpineGradientBlock(look === 'night'),
               }}

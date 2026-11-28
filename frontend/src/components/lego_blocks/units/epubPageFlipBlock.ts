@@ -275,20 +275,19 @@ export async function flipEpubPageBlock(params: {
   const timing = { duration: FLIP_DURATION_MS_BLOCK, easing: FLIP_EASING_BLOCK }
   const hiddenSpines: HTMLElement[] = [...stage.querySelectorAll<HTMLElement>(`[${EPUB_TURN_HIDDEN_ATTR_BLOCK}]`)]
 
-  /* One page at a time. The page is still one side of a spread, with its
-     spine on its inner edge, and every turn is one leaf moving at that spine:
-     - forward from a right-hand page, back from a left-hand one: the page
-       showing folds away into its spine, and the next is under it;
-     - forward from a left-hand page, back from a right-hand one: the page
-       coming unfolds out of the spine, over the one showing.
-     Either way the leaf's free edge travels the way the reader swiped.
+  /* One page at a time. Every turn is the same leaf, hinged on the book's
+     left edge: forward, the page showing folds away to the left and the next
+     is under it; back, the previous page unfolds from the left over the one
+     showing. The page is still drawn as one side of a spread — its spine
+     shadow and page stack switch edges page by page — but the hinge does not
+     follow the spine: hinged at the spine, the turn came from one edge on
+     one swipe and the other edge on the next, and read as erratic.
 
      Drawn flat (no perspective): a leaf as wide as the whole book, swung in
      perspective, grew toward the reader and was cut off at the book's top and
-     bottom. Two earlier shapes are gone for the same reader's eye
-     (2026-11-27): a slide across the spine alternating with a leaf turn read
-     as two different animations, and a leaf carried across the view left a
-     blank sheet showing at the middle of the turn. */
+     bottom. Also gone (all 2026-11-27): a slide across the spine alternating
+     with a leaf turn, and a leaf carried across the view, which left a blank
+     sheet showing at the middle of the turn. */
   const buildSingleBlock = (): (() => Animation) => {
     const width = stageRect.width
     const pageSpec = (shift: number): GhostSpecBlock => (
@@ -302,7 +301,7 @@ export async function flipEpubPageBlock(params: {
     }
     hiddenSpines.push(...stage.querySelectorAll<HTMLElement>(`[${EPUB_SPINE_ATTR_BLOCK}]`))
     const spineLeft = epubSinglePageSideBlock(renderer.page) === 'right'
-    const foldsAway = spineLeft === (direction > 0)
+    const foldsAway = direction > 0
 
     /* The live view turns at once. A leaf folding away uncovers it; a leaf
        unfolding needs the page showing kept still beneath it. */
@@ -310,7 +309,7 @@ export async function flipEpubPageBlock(params: {
     const leaf = boxBlock(stage, {
       left: '0',
       width: `${width}px`,
-      transformOrigin: spineLeft ? 'left center' : 'right center',
+      transformOrigin: 'left center',
       zIndex: '3',
       visibility: 'hidden',
     })
@@ -321,7 +320,7 @@ export async function flipEpubPageBlock(params: {
       left: '0',
       width: `${width}px`,
       opacity: '0',
-      background: `linear-gradient(to ${spineLeft ? 'right' : 'left'}, rgba(0,0,0,${night ? 0.25 : 0.08}), rgba(0,0,0,${night ? 0.6 : 0.3}))`,
+      background: `linear-gradient(to right, rgba(0,0,0,${night ? 0.25 : 0.08}), rgba(0,0,0,${night ? 0.6 : 0.3}))`,
     })
     /* The spine stays where the page showing has it for the whole turn; the
        book's own layer, already on the other edge, fades in after. */
@@ -334,7 +333,7 @@ export async function flipEpubPageBlock(params: {
     })
     created.push(turnSpine)
 
-    const edgeOn = `rotateY(${spineLeft ? -90 : 90}deg)`
+    const edgeOn = 'rotateY(-90deg)'
     const flat = 'rotateY(0deg)'
     const from = foldsAway ? flat : edgeOn
     const to = foldsAway ? edgeOn : flat
