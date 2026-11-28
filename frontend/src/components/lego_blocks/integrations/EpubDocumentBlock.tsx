@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import type { FoliateRelocateDetail, FoliateTocItem, View } from '@/vendor/foliate-js/view.js'
@@ -11,6 +11,11 @@ import {
   finishActiveEpubFlipBlock,
   flipEpubPageBlock,
   type EpubPageFlipRendererBlock,
+  EPUB_SPINE_ATTR_BLOCK,
+  EPUB_SPINE_BAND_PX_BLOCK,
+  EPUB_TURN_HIDDEN_ATTR_BLOCK,
+  epubSinglePageSideBlock,
+  epubSpineGradientBlock,
 } from '@/components/lego_blocks/units/epubPageFlipBlock'
 import { readEpubDocumentOrch } from '@/services/orchestrators/epubDocumentsOrch'
 import { openExternalUrlOrch } from '@/services/orchestrators/fileSystemOrch'
@@ -135,6 +140,15 @@ function isTouchPhoneBlock(): boolean {
 const PAGE_TURN_GESTURE_GAP_MS_BLOCK = 220
 const PAGE_TURN_TRAVEL_PX_BLOCK = 40
 
+interface EpubSlotBlock {
+  key: string
+  left: number
+  top: number
+  width: number
+  height: number
+  data: Record<string, string>
+}
+
 interface EpubDocumentBlockProps {
   /** The book's vault path; also the key its reading position is kept under. */
   path: string
@@ -145,6 +159,13 @@ interface EpubDocumentBlockProps {
   /** First refusal on a link that leaves the book (any href with a scheme).
    *  Return true when handled; otherwise it goes out the external-URL gate. */
   onExternalLink?: (href: string) => boolean
+  /** Places in the book's text that the caller fills with something live.
+   *  Book content never runs script (SECURITY.md), so a live thing cannot be
+   *  inside the book; the book reserves an element for it (matched by
+   *  `slotSelector`) and the reader lays `renderSlot`'s output over that
+   *  element while its page is showing. Paged reading only. */
+  slotSelector?: string
+  renderSlot?: (data: Record<string, string>) => ReactNode
   active?: boolean
   /** Where the document header wants the toolbar docked; null floats it. */
   toolbarHost?: HTMLElement | null
@@ -171,6 +192,8 @@ export default function EpubDocumentBlock({
   path,
   loadFile,
   onExternalLink,
+  slotSelector,
+  renderSlot,
   active = true,
   toolbarHost = null,
   topInset = 0,
@@ -188,6 +211,13 @@ export default function EpubDocumentBlock({
   const viewRef = useRef<View | null>(null)
   /* The desk's content box (inside its padding), where the book sits. */
   const [deskSize, setDeskSize] = useState({ width: 0, height: 0 })
+  /* The slots on the page showing, in the book's coordinates. */
+  const [slots, setSlots] = useState<EpubSlotBlock[]>([])
+  const slotSelectorRef = useRef(slotSelector)
+  slotSelectorRef.current = slotSelector
+  /* Which side of its spread the page showing is; drawn only for a single
+     paged page, whose spine sits on that page's inner edge. */
+  const [pageSide, setPageSide] = useState<'left' | 'right' | null>(null)
   const turnRef = useRef({ travel: 0, locked: false, lastAt: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -255,8 +285,9 @@ export default function EpubDocumentBlock({
     if (!swipe || !touch) return
     const dx = swipe.x - touch.screenX
     const dy = swipe.y - touch.screenY
-    /* Sideways travel is the book's; the page behind must not pan with it. */
-    if (event.cancelable && Math.abs(dx) > Math.abs(dy)) event.preventDefault()
+    /* A paged book does not scroll, in either direction: a drag on it must
+       not pan the app page behind (foliate cancelled every move too). */
+    if (event.cancelable) event.preventDefault()
     if (swipe.turned || Math.abs(dx) < PAGE_TURN_SWIPE_PX_BLOCK || Math.abs(dx) < Math.abs(dy) * 1.5) return
     swipe.turned = true
     turnPageRef.current(dx > 0 ? 1 : -1)
@@ -295,6 +326,54 @@ export default function EpubDocumentBlock({
   const lookRef = useRef({ prefs, paperTheme: look, spread })
   lookRef.current = { prefs, paperTheme: look, spread }
 
+  const measureSlotsBlock = useCallback(() => {
+    const selector = slotSelectorRef.current
+    const view = viewRef.current
+    const stage = bookRef.current
+    const next: EpubSlotBlock[] = []
+    if (selector && view?.renderer && stage && flowRef.current === 'paginated') {
+      const renderer = view.renderer as unknown as EpubPageFlipRendererBlock
+      const stageRect = stage.getBoundingClientRect()
+      /* The pages showing: foliate centres them in the renderer. A slot on
+         a neighbouring page lies outside this band. */
+      const rendererRect = renderer.getBoundingClientRect()
+      const pagesLeft = rendererRect.left + (rendererRect.width - renderer.size) / 2
+      for (const { doc, index } of renderer.getContents()) {
+        const frame = doc.defaultView?.frameElement
+        if (!frame) continue
+        const frameRect = frame.getBoundingClientRect()
+        doc.querySelectorAll<HTMLElement>(selector).forEach((element, order) => {
+          const rect = element.getBoundingClientRect()
+          const centre = frameRect.left + rect.left + rect.width / 2
+          if (rect.width < 1 || rect.height < 1 || centre < pagesLeft || centre > pagesLeft + renderer.size) return
+          next.push({
+            key: `${index}:${order}`,
+            left: Math.round(frameRect.left + rect.left - stageRect.left),
+            top: Math.round(frameRect.top + rect.top - stageRect.top),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+            data: { ...element.dataset } as Record<string, string>,
+          })
+        })
+      }
+    }
+    setSlots((prev) => (
+      prev.length === next.length && prev.every((slot, i) => {
+        const other = next[i]
+        return slot.key === other.key && slot.left === other.left && slot.top === other.top
+          && slot.width === other.width && slot.height === other.height
+      }) ? prev : next
+    ))
+  }, [])
+  const measureSlotsRef = useRef(measureSlotsBlock)
+  measureSlotsRef.current = measureSlotsBlock
+  /* A change of size or look lays the book out again; the slots follow once
+     it has settled. */
+  useEffect(() => {
+    const timer = window.setTimeout(measureSlotsBlock, 400)
+    return () => window.clearTimeout(timer)
+  }, [measureSlotsBlock, deskSize, prefs, look, spread, slotSelector])
+
   /* Paged reading turns with the 3D leaf (epubPageFlipBlock). Left to
      foliate's own slide: continuous scroll, right-to-left books (the leaf is
      staged left-to-right), and phones, where per-turn page copies cost
@@ -303,10 +382,15 @@ export default function EpubDocumentBlock({
     const view = viewRef.current
     if (!view?.renderer) return
     const live = () => (direction > 0 ? view.next() : view.prev())
+    /* What is laid over this page leaves with it; the next page's slots are
+       measured when the book reports where it landed (and once more after,
+       for a turn that went nowhere). */
+    setSlots((prev) => (prev.length > 0 ? [] : prev))
+    const settle = () => { window.setTimeout(() => measureSlotsRef.current(), 60) }
     const stage = bookRef.current
     const rtl = (view.book as { dir?: string } | undefined)?.dir === 'rtl'
     if (!stage || prefs.flow !== 'paginated' || rtl || isTouchPhoneBlock()) {
-      void live()
+      void Promise.resolve(live()).finally(settle)
       return
     }
     void flipEpubPageBlock({
@@ -325,7 +409,7 @@ export default function EpubDocumentBlock({
           view.renderer.setAttribute('animated', '')
         }
       },
-    })
+    }).finally(settle)
   }
 
   useEffect(() => {
@@ -372,6 +456,9 @@ export default function EpubDocumentBlock({
           const fraction = detail.fraction ?? 0
           setLocation({ fraction, chapter: detail.tocItem?.label?.trim() ?? '', href: detail.tocItem?.href ?? null })
           if (detail.cfi) writeEpubReadingPositionBlock(path, detail.cfi, fraction)
+          const page = (view?.renderer as unknown as EpubPageFlipRendererBlock | undefined)?.page
+          setPageSide(typeof page === 'number' ? epubSinglePageSideBlock(page) : null)
+          window.requestAnimationFrame(() => measureSlotsRef.current())
         })
         /* Links out of the book leave through the same gate as every other
            external URL (http/https only), never window.open. */
@@ -599,6 +686,21 @@ export default function EpubDocumentBlock({
           }}
         >
           <div ref={hostRef} className="h-full w-full" />
+          {renderSlot && (
+            /* Live things laid over the places the book reserved for them.
+               Hidden by every turn: the turning copies show the empty place. */
+            <div {...{ [EPUB_TURN_HIDDEN_ATTR_BLOCK]: '' }} className="pointer-events-none absolute inset-0 z-[2]">
+              {slots.map((slot) => (
+                <div
+                  key={slot.key}
+                  className="pointer-events-auto absolute overflow-hidden rounded-md"
+                  style={{ left: slot.left, top: slot.top, width: slot.width, height: slot.height, background: PDF_PAPER_THEME_BACKGROUNDS_BLOCK[look] }}
+                >
+                  {renderSlot(slot.data)}
+                </div>
+              ))}
+            </div>
+          )}
           {spread && (
             /* The spine: a soft fold shadow as if the pages curve down into
                the binding. Above everything, a turning leaf included — the
@@ -609,9 +711,24 @@ export default function EpubDocumentBlock({
               aria-hidden="true"
               className="pointer-events-none absolute inset-y-0 left-1/2 z-[4] w-32 -translate-x-1/2"
               style={{
-                background: look === 'night'
-                  ? 'linear-gradient(to right, transparent, rgba(0,0,0,0.25) 42%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.25) 58%, transparent)'
-                  : 'linear-gradient(to right, transparent, rgba(60,45,20,0.03) 30%, rgba(60,45,20,0.08) 42%, rgba(60,45,20,0.16) 49%, rgba(60,45,20,0.16) 51%, rgba(60,45,20,0.08) 58%, rgba(60,45,20,0.03) 70%, transparent)',
+                background: epubSpineGradientBlock(look === 'night'),
+              }}
+            />
+          )}
+          {!spread && paged && pageSide && !isTouchPhoneBlock() && (
+            /* One page of a spread: its half of the same fold shadow, on the
+               edge that is bound — the right of a left-hand page, the left of
+               a right-hand one. A turn hides this and carries the spine
+               across itself (epubPageFlipBlock). Not on a phone, whose
+               margins are narrower than the shadow. */
+            <div
+              aria-hidden="true"
+              {...{ [EPUB_SPINE_ATTR_BLOCK]: '' }}
+              className="pointer-events-none absolute inset-y-0 z-[4] -translate-x-1/2"
+              style={{
+                left: pageSide === 'left' ? '100%' : 0,
+                width: EPUB_SPINE_BAND_PX_BLOCK,
+                background: epubSpineGradientBlock(look === 'night'),
               }}
             />
           )}

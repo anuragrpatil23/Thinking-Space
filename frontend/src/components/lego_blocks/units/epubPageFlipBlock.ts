@@ -35,6 +35,27 @@ const FLIP_DURATION_MS_BLOCK = 620
 const FLIP_EASING_BLOCK = 'cubic-bezier(0.3, 0.15, 0.2, 1)'
 const GHOST_LOAD_TIMEOUT_MS_BLOCK = 400
 
+/** The binding's fold shadow, drawn across a band centred on the spine. */
+export function epubSpineGradientBlock(night: boolean): string {
+  return night
+    ? 'linear-gradient(to right, transparent, rgba(0,0,0,0.25) 42%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.25) 58%, transparent)'
+    : 'linear-gradient(to right, transparent, rgba(60,45,20,0.03) 30%, rgba(60,45,20,0.08) 42%, rgba(60,45,20,0.16) 49%, rgba(60,45,20,0.16) 51%, rgba(60,45,20,0.08) 58%, rgba(60,45,20,0.03) 70%, transparent)'
+}
+export const EPUB_SPINE_BAND_PX_BLOCK = 128
+/** Marks the book's own spine layers; a single-page turn hides them while it
+    carries the spine across the page itself. */
+export const EPUB_SPINE_ATTR_BLOCK = 'data-epub-spine'
+/** Marks layers the reader draws over the page (live slots); every turn hides
+    them, since they are not part of the copies that turn. */
+export const EPUB_TURN_HIDDEN_ATTR_BLOCK = 'data-epub-turn-hidden'
+
+/** Shown one at a time, a book's pages still face each other: odd pages are
+    left-hand pages (spine on their right), even pages right-hand ones — the
+    same pairing the two-page spread shows. */
+export function epubSinglePageSideBlock(page: number): 'left' | 'right' {
+  return page % 2 === 1 ? 'left' : 'right'
+}
+
 let activeFlipCleanupBlock: (() => void) | null = null
 
 /** Ends any running flip at once; the live view is already on its page. */
@@ -187,81 +208,162 @@ export async function flipEpubPageBlock(params: {
     const pageStart = sheetLeft < spine ? viewLeft : viewLeft + size / 2
     return { left: pageStart - sheetLeft, width: size / 2 }
   }
-  const leaf = document.createElement('div')
-  Object.assign(leaf.style, {
-    position: 'absolute',
-    left: `${leafLeft}px`,
-    top: '0',
-    width: `${leafWidth}px`,
-    height: `${sheetHeight}px`,
-    transformStyle: 'preserve-3d',
-    transformOrigin: direction > 0 ? 'left center' : 'right center',
-    pointerEvents: 'none',
-    zIndex: '3',
-    visibility: 'hidden',
-  })
-  stage.append(leaf)
-  created.push(leaf)
-  /* From the book's larger side: scaled to width alone, a tall narrow book
-     put the eye so close that a turning page ballooned toward it. */
-  stage.style.perspective = `${Math.round(Math.max(stageRect.width, stageRect.height) * (spread ? 2.4 : 3))}px`
-
-  const faceBlock = (spec: GhostSpecBlock | null, back: boolean): HTMLElement => {
-    const face = spec
-      ? makeGhostBlock({ ...spec, left: 0 }, leaf)
-      : (() => {
-        const blank = document.createElement('div')
-        Object.assign(blank.style, { position: 'absolute', left: '0', top: '0', width: `${leafWidth}px`, height: `${sheetHeight}px`, background: paper })
-        leaf.append(blank)
-        return blank
-      })()
-    face.style.backfaceVisibility = 'hidden'
-    if (back) face.style.transform = 'rotateY(180deg)'
-    /* Shading, played with the turn: the lifted part of the page darkens,
-       the way light falls across a curving sheet. */
-    const shade = document.createElement('div')
-    Object.assign(shade.style, {
+  const buildSpreadBlock = () => {
+    const leaf = document.createElement('div')
+    Object.assign(leaf.style, {
       position: 'absolute',
-      inset: '0',
+      left: `${leafLeft}px`,
+      top: '0',
+      width: `${leafWidth}px`,
+      height: `${sheetHeight}px`,
+      transformStyle: 'preserve-3d',
+      transformOrigin: direction > 0 ? 'left center' : 'right center',
       pointerEvents: 'none',
-      opacity: '0',
-      /* Darkest at the page's outer edge, the part lifting off the book.
-         Darkened at the binding instead, the shade faded out as the page
-         landed and the spine read as going light at the end of a turn; the
-         binding's shadow is the book's own spine layer, which never changes. */
-      background: `linear-gradient(to ${(direction > 0) !== back ? 'right' : 'left'}, rgba(0,0,0,0) 40%, rgba(0,0,0,${night ? 0.5 : 0.22}))`,
+      zIndex: '3',
+      visibility: 'hidden',
     })
-    face.append(shade)
-    return shade
-  }
+    stage.append(leaf)
+    created.push(leaf)
+    /* From the book's larger side: scaled to width alone, a tall narrow book
+       put the eye so close that a turning page ballooned toward it. */
+    stage.style.perspective = `${Math.round(Math.max(stageRect.width, stageRect.height) * 2.4)}px`
 
-  let frontShade: HTMLElement
-  let backShade: HTMLElement
-  if (direction > 0) {
-    if (spread) {
+    const faceBlock = (spec: GhostSpecBlock | null, back: boolean): HTMLElement => {
+      const face = spec
+        ? makeGhostBlock({ ...spec, left: 0 }, leaf)
+        : (() => {
+          const blank = document.createElement('div')
+          Object.assign(blank.style, { position: 'absolute', left: '0', top: '0', width: `${leafWidth}px`, height: `${sheetHeight}px`, background: paper })
+          leaf.append(blank)
+          return blank
+        })()
+      face.style.backfaceVisibility = 'hidden'
+      if (back) face.style.transform = 'rotateY(180deg)'
+      /* Shading, played with the turn: the lifted part of the page darkens,
+         the way light falls across a curving sheet. */
+      const shade = document.createElement('div')
+      Object.assign(shade.style, {
+        position: 'absolute',
+        inset: '0',
+        pointerEvents: 'none',
+        opacity: '0',
+        /* Darkest at the page's outer edge, the part lifting off the book.
+           Darkened at the binding instead, the shade faded out as the page
+           landed and the spine read as going light at the end of a turn; the
+           binding's shadow is the book's own spine layer, which never changes. */
+        background: `linear-gradient(to ${(direction > 0) !== back ? 'right' : 'left'}, rgba(0,0,0,0) 40%, rgba(0,0,0,${night ? 0.5 : 0.22}))`,
+      })
+      face.append(shade)
+      return shade
+    }
+
+    if (direction > 0) {
       /* The current left page stays; the live view behind it has moved on. */
       makeGhostBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, 0), window: windowForBlock(0) })
-      frontShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(spine, 0), window: windowForBlock(spine) }, false)
-      backShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, size), window: windowForBlock(0) }, true)
-    } else {
-      frontShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, 0), window: windowForBlock(0) }, false)
-      backShade = faceBlock(null, true)
+      const frontShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(spine, 0), window: windowForBlock(spine) }, false)
+      const backShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, size), window: windowForBlock(0) }, true)
+      return { leaf, frontShade, backShade }
     }
-  } else if (spread) {
     makeGhostBlock({ left: spine, width: sheetWidth, offset: docAtBlock(spine, 0), window: windowForBlock(spine) })
-    frontShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, 0), window: windowForBlock(0) }, false)
-    backShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(spine, -size), window: windowForBlock(spine) }, true)
-  } else {
-    /* Going back a single page: the previous page comes back over the
-       current one, from edge-on to flat. */
-    makeGhostBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, 0), window: windowForBlock(0) })
-    frontShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, -size), window: windowForBlock(0) }, false)
-    backShade = faceBlock(null, true)
-    leaf.style.transformOrigin = 'left center'
+    const frontShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(0, 0), window: windowForBlock(0) }, false)
+    const backShade = faceBlock({ left: 0, width: sheetWidth, offset: docAtBlock(spine, -size), window: windowForBlock(spine) }, true)
+    return { leaf, frontShade, backShade }
   }
+
+  const timing = { duration: FLIP_DURATION_MS_BLOCK, easing: FLIP_EASING_BLOCK }
+  const hiddenSpines: HTMLElement[] = [...stage.querySelectorAll<HTMLElement>(`[${EPUB_TURN_HIDDEN_ATTR_BLOCK}]`)]
+
+  /* One page at a time. The page is still one side of a spread, so there are
+     two different turns, as with a book held half open:
+     - across the spine (left page on, right page back): no leaf moves; the
+       view passes over the binding to the facing page.
+     - over the leaf (right page on, left page back): the leaf turns over the
+       spine, and the spine crosses the view as it goes, so the page lands
+       with its binding on the other side.
+     The book's own spine layer is hidden for the turn and the spine drawn
+     here, moving with the pages. */
+  const buildSingleBlock = (): (() => Animation) => {
+    const width = stageRect.width
+    const pageSpec = (shift: number, left = 0): GhostSpecBlock => (
+      { left, width, offset: docAtBlock(0, shift), window: windowForBlock(0) }
+    )
+    const boxBlock = (parent: HTMLElement, style: Partial<CSSStyleDeclaration>): HTMLElement => {
+      const box = document.createElement('div')
+      Object.assign(box.style, { position: 'absolute', top: '0', height: `${sheetHeight}px`, pointerEvents: 'none' }, style)
+      parent.append(box)
+      return box
+    }
+    const spineBlock = (parent: HTMLElement, x: number) => boxBlock(parent, {
+      left: `${x - EPUB_SPINE_BAND_PX_BLOCK / 2}px`,
+      width: `${EPUB_SPINE_BAND_PX_BLOCK}px`,
+      background: epubSpineGradientBlock(night),
+    })
+    hiddenSpines.push(...stage.querySelectorAll<HTMLElement>(`[${EPUB_SPINE_ATTR_BLOCK}]`))
+    const leftPage = epubSinglePageSideBlock(renderer.page) === 'left'
+
+    if (leftPage === (direction > 0)) {
+      /* Across the spine: the pair side by side, sliding one page-width. */
+      const strip = boxBlock(stage, { left: '0', width: `${width * 2}px`, zIndex: '3', visibility: 'hidden' })
+      created.push(strip)
+      makeGhostBlock(pageSpec(direction > 0 ? 0 : -size), strip)
+      makeGhostBlock(pageSpec(direction > 0 ? size : 0, width), strip)
+      spineBlock(strip, width)
+      const at = (shown: 'left' | 'right') => `translateX(${shown === 'left' ? 0 : -width}px)`
+      const from = at(direction > 0 ? 'left' : 'right')
+      strip.style.transform = from
+      return () => strip.animate([{ transform: from }, { transform: at(direction > 0 ? 'right' : 'left') }], timing)
+    }
+
+    /* Over the leaf. `turned` 0 is the leaf lying as the right-hand page
+       (spine at the view's left edge), 1 as the left-hand page (spine at the
+       right edge). Under it, plain paper in shadow: the pages beneath are
+       not loaded as copies, and are seen for a fraction of a second. */
+    stage.style.perspective = `${Math.round(Math.max(stageRect.width, stageRect.height) * 3)}px`
+    const under = boxBlock(stage, { left: '0', width: `${width}px`, background: paper, zIndex: '1', visibility: 'hidden' })
+    boxBlock(under, { left: '0', width: `${width}px`, background: `rgba(0,0,0,${night ? 0.4 : 0.14})` })
+    created.push(under)
+    const mover = boxBlock(stage, { left: '0', width: `${width}px`, transformStyle: 'preserve-3d', zIndex: '3', visibility: 'hidden' })
+    created.push(mover)
+    const leaf = boxBlock(mover, { left: '0', width: `${width}px`, transformStyle: 'preserve-3d', transformOrigin: 'left center' })
+    const faceBlock = (shift: number, back: boolean): HTMLElement => {
+      const face = makeGhostBlock(pageSpec(shift), leaf)
+      face.style.backfaceVisibility = 'hidden'
+      face.style.setProperty('-webkit-backface-visibility', 'hidden')
+      if (back) face.style.transform = 'rotateY(180deg)'
+      /* Darkest at the edge away from the spine, the part lifted highest. */
+      return boxBlock(face, {
+        left: '0',
+        width: `${width}px`,
+        opacity: '0',
+        background: `linear-gradient(to ${back ? 'left' : 'right'}, rgba(0,0,0,0) 40%, rgba(0,0,0,${night ? 0.5 : 0.22}))`,
+      })
+    }
+    /* Front: the right-hand page. Back: the left-hand page after it. */
+    const frontShade = faceBlock(direction > 0 ? 0 : -size, false)
+    const backShade = faceBlock(direction > 0 ? size : 0, true)
+    spineBlock(mover, 0)
+    const from = direction > 0 ? 0 : 1
+    const to = 1 - from
+    const slide = (turned: number) => `translateX(${turned * width}px)`
+    const swing = (turned: number) => `rotateY(${-180 * turned}deg)`
+    mover.style.transform = slide(from)
+    leaf.style.transform = swing(from)
+    return () => {
+      mover.animate([{ transform: slide(from) }, { transform: slide(to) }], timing)
+      const lifted = [{ opacity: 0 }, { opacity: 1, offset: 0.5 }, { opacity: 1 }]
+      const landing = [{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0 }]
+      frontShade.animate(direction > 0 ? lifted : landing, timing)
+      backShade.animate(direction > 0 ? landing : lifted, timing)
+      return leaf.animate([{ transform: swing(from) }, { transform: swing(to) }], timing)
+    }
+  }
+
+  const spreadParts = spread ? buildSpreadBlock() : null
+  const playSingle = spread ? null : buildSingleBlock()
 
   const cleanupBlock = () => {
     for (const element of created) element.remove()
+    for (const element of hiddenSpines) element.style.visibility = ''
     URL.revokeObjectURL(url)
     stage.style.perspective = ''
   }
@@ -280,6 +382,7 @@ export async function flipEpubPageBlock(params: {
   /* Reveal every copy in one frame — over the live page they are
      indistinguishable from it — and only then turn the live view beneath. */
   for (const element of created) element.style.visibility = ''
+  for (const element of hiddenSpines) element.style.visibility = 'hidden'
   await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)))
   if (activeFlipCleanupBlock !== cleanupBlock) return
 
@@ -293,21 +396,15 @@ export async function flipEpubPageBlock(params: {
     return
   }
 
-  /* A single page lifts away to edge-on and stops there (and comes back
-     from edge-on): it has no facing page to land on. Swung the full 180° a
-     page-wide leaf came at the viewer and sprawled across the next page. */
-  const singleBack = direction < 0 && !spread
-  const single = !spread
-  const from = singleBack ? 'rotateY(-90deg)' : 'rotateY(0deg)'
-  const to = single
-    ? (singleBack ? 'rotateY(0deg)' : 'rotateY(-90deg)')
-    : `rotateY(${direction > 0 ? -180 : 180}deg)`
-  const timing = { duration: FLIP_DURATION_MS_BLOCK, easing: FLIP_EASING_BLOCK }
-  const motion = leaf.animate([{ transform: from }, { transform: to }], timing)
-  frontShade.animate(single
-    ? [{ opacity: singleBack ? 1 : 0 }, { opacity: singleBack ? 0 : 1 }]
-    : [{ opacity: 0 }, { opacity: 1, offset: 0.5 }, { opacity: 1 }], timing)
-  backShade.animate([{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0 }], timing)
+  let motion: Animation
+  if (playSingle) {
+    motion = playSingle()
+  } else {
+    const { leaf, frontShade, backShade } = spreadParts!
+    motion = leaf.animate([{ transform: 'rotateY(0deg)' }, { transform: `rotateY(${direction > 0 ? -180 : 180}deg)` }], timing)
+    frontShade.animate([{ opacity: 0 }, { opacity: 1, offset: 0.5 }, { opacity: 1 }], timing)
+    backShade.animate([{ opacity: 1 }, { opacity: 1, offset: 0.5 }, { opacity: 0 }], timing)
+  }
 
   await motion.finished.catch(() => undefined)
   if (activeFlipCleanupBlock === cleanupBlock) finishActiveEpubFlipBlock()

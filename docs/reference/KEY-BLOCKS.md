@@ -188,6 +188,19 @@ pdf.js directly so the bitmap can be decoupled from the layout box.
   copies), not a measured kill — measure before removing it. A paged single
   page takes the window's width, held to a page shape; only scrolled flow is
   capped at 720px.
+  A single page is still one side of a spread (`epubSinglePageSideBlock`: odd
+  = left-hand, spine on its right edge), so it has two turns: across the
+  spine to the facing page (a slide, no leaf) and over the leaf (the leaf
+  turns while the spine crosses the view). The reader's single-page spine
+  layer is hidden for the turn; the flip draws the moving one.
+- EPUB live slots (2026-11-27): something live (a textbook's interactive
+  page) is never put inside a book section, which runs no script. The book
+  reserves an element; `EpubDocumentBlock` (`slotSelector` / `renderSlot`)
+  measures the reserved elements on the page showing after each `relocate`
+  and lays the caller's output over them in a layer marked
+  `EPUB_TURN_HIDDEN_ATTR_BLOCK`, which every page turn hides (the turning
+  copies show the empty place). Paged flow only; scrolled flow keeps the
+  book's own fallback text and link.
 - EPUB reader (`EpubDocumentBlock.tsx`, 2026-10): foliate-js vendored at a
   pinned commit in `src/vendor/foliate-js/` (provenance, local patch and update
   steps in its README; the PDF backend is not vendored). It shares the PDF
