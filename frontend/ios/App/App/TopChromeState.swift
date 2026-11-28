@@ -75,6 +75,11 @@ final class TopChromeState: ObservableObject {
     /// (RailWebullIcon, the exact WebullNavIcon SVG from App.tsx).
     @Published var webullTabIconText: String = ""
 
+    /// Route ids of the optional rail tabs this web build has (Textbooks,
+    /// si-research). nil until React reports — RailState then keeps showing
+    /// what the last launch reported.
+    @Published var optionalNavItemIds: [String]? = nil
+
     /// True when the native push-navigation stack has more than one entry
     /// — i.e., the user has drilled into content and a back action is
     /// meaningful. Drives the morph from hamburger → chevron-back on the

@@ -59,6 +59,7 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
         let canGitPush = call.getBool("canGitPush")
         let webullTabLabel = call.getString("webullTabLabel")
         let webullTabIconText = call.getString("webullTabIconText")
+        let optionalNavItemIds = call.getString("optionalNavItemIds")
 
         DispatchQueue.main.async {
             guard let state = self.chromeState else {
@@ -152,6 +153,17 @@ public class TopChromePlugin: CAPPlugin, CAPBridgedPlugin {
             if let webullTabIconText {
                 state.webullTabIconText = webullTabIconText
                     .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            // Comma-joined route ids; empty is meaningful (this build has none).
+            if let optionalNavItemIds {
+                let ids = optionalNavItemIds
+                    .split(separator: ",")
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                if state.optionalNavItemIds != ids {
+                    state.optionalNavItemIds = ids
+                }
             }
 
             call.resolve()

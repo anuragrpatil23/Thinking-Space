@@ -28,8 +28,47 @@ struct RailTab: Identifiable, Equatable {
 }
 
 final class RailState: ObservableObject {
-    @Published var tabs: [RailTab] = RailState.defaultTabs
+    @Published var tabs: [RailTab] = RailState.visibleTabs(
+        from: RailState.defaultTabs,
+        optionalIds: RailState.storedOptionalIds()
+    )
     @Published var selectedId: String = "/"
+
+    /// Every tab, with any label/icon override applied; `tabs` is this list
+    /// minus the optional tabs this build does not have.
+    private var allTabs: [RailTab] = RailState.defaultTabs
+    private var availableOptionalIds: Set<String> = RailState.storedOptionalIds()
+
+    /// Tabs that exist only when the web build carries them (the private
+    /// folder's Textbooks and si-research — see privatePersonalBlock.ts).
+    /// React reports which ones it has through TopChrome.setState
+    /// (`optionalNavItemIds`); until it does, the last reported answer is used
+    /// so the rows do not pop in on every launch.
+    static let optionalTabIds: Set<String> = ["/textbooks", "/si-research"]
+    private static let optionalIdsDefaultsKey = "rail.optionalNavItemIds"
+
+    private static func storedOptionalIds() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: optionalIdsDefaultsKey) ?? [])
+            .intersection(optionalTabIds)
+    }
+
+    private static func visibleTabs(from all: [RailTab], optionalIds: Set<String>) -> [RailTab] {
+        all.filter { !optionalTabIds.contains($0.id) || optionalIds.contains($0.id) }
+    }
+
+    /// Show exactly the optional tabs React says this build has.
+    func setAvailableOptionalTabs(_ ids: [String]) {
+        let next = Set(ids).intersection(RailState.optionalTabIds)
+        guard next != availableOptionalIds else { return }
+        availableOptionalIds = next
+        UserDefaults.standard.set(Array(next).sorted(), forKey: RailState.optionalIdsDefaultsKey)
+        tabs = RailState.visibleTabs(from: allTabs, optionalIds: next)
+    }
+
+    private func replaceTab(at idx: Int, with tab: RailTab) {
+        allTabs[idx] = tab
+        tabs = RailState.visibleTabs(from: allTabs, optionalIds: availableOptionalIds)
+    }
 
     /// MANUAL SYNC REQUIRED: this list is hardcoded and must be kept in sync by
     /// hand with the React nav source of truth — `PRIMARY_NAV_ITEMS` and
@@ -54,6 +93,8 @@ final class RailState: ObservableObject {
     ///                    swaps to .text when webullTabIconText is set — see
     ///                    RootShellViewController's chrome-state subscription)
     ///   Thinking Organizer RailOrganizerIcon ↔ phosphor TreeView
+    ///   Textbooks        RailTextbooksIcon ↔ lucide LibraryBig   (optional, see optionalTabIds)
+    ///   si-research      RailSiResearchIcon ↔ lucide FlaskConical (optional, see optionalTabIds)
     ///   Tools            RailToolsIcon     ↔ ToolsShapesNavIcon (Shapes)
     static let defaultTabs: [RailTab] = [
         RailTab(id: "/",                   title: "Home",               icon: .asset("RailHomeIcon"),                  activePaths: []),
@@ -61,6 +102,8 @@ final class RailState: ObservableObject {
         RailTab(id: "/new-thought",        title: "New Note",           icon: .template("RailNewNoteIcon"),            activePaths: []),
         RailTab(id: "/webull",             title: "Webull",             icon: .template("RailWebullIcon"),             activePaths: []),
         RailTab(id: "/thinking-organizer", title: "Thinking Organizer", icon: .template("RailOrganizerIcon"),          activePaths: ["/file-organizer"]),
+        RailTab(id: "/textbooks",          title: "Textbooks",          icon: .template("RailTextbooksIcon"),          activePaths: []),
+        RailTab(id: "/si-research",        title: "si-research",        icon: .template("RailSiResearchIcon"),         activePaths: []),
         RailTab(id: "/tools",              title: "Tools",              icon: .template("RailToolsIcon"),              activePaths: [
             "/ai/chat", "/ai/schedules", "/web", "/git-insights",
             "/excalidraw-plus", "/capabilities", "/extension-builder",
@@ -88,19 +131,19 @@ final class RailState: ObservableObject {
     /// label (e.g. the user-renamed Webull → "F9"). No-op if no tab matches.
     func setLabel(forPath path: String, _ label: String) {
         guard !label.isEmpty else { return }
-        guard let idx = tabs.firstIndex(where: { $0.id == path }) else { return }
-        let old = tabs[idx]
+        guard let idx = allTabs.firstIndex(where: { $0.id == path }) else { return }
+        let old = allTabs[idx]
         guard old.title != label else { return }
-        tabs[idx] = RailTab(id: old.id, title: label, icon: old.icon, activePaths: old.activePaths)
+        replaceTab(at: idx, with: RailTab(id: old.id, title: label, icon: old.icon, activePaths: old.activePaths))
     }
 
     /// Override the icon for a tab. Used when React pushes the user-configured
     /// Webull icon text (or clears it back to the horns mark).
     func setIcon(forPath path: String, _ icon: RailIcon) {
-        guard let idx = tabs.firstIndex(where: { $0.id == path }) else { return }
-        let old = tabs[idx]
+        guard let idx = allTabs.firstIndex(where: { $0.id == path }) else { return }
+        let old = allTabs[idx]
         guard old.icon != icon else { return }
-        tabs[idx] = RailTab(id: old.id, title: old.title, icon: icon, activePaths: old.activePaths)
+        replaceTab(at: idx, with: RailTab(id: old.id, title: old.title, icon: icon, activePaths: old.activePaths))
     }
 }
 

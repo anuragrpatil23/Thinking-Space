@@ -391,6 +391,13 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
   ...(PrivateSiResearchBlock ? [{ to: '/si-research', label: 'si-research', icon: FlaskConical }] : []),
 ].filter(item => !isHiddenInStaticWebBuildBlock(item.to))
 
+// The native iOS rail is a fixed list (RailView.swift); these two rows show
+// there only when this build has the tab, so it is told which ones exist.
+const NATIVE_OPTIONAL_NAV_ITEM_IDS = PRIMARY_NAV_ITEMS
+  .map(item => item.to)
+  .filter(to => to === '/textbooks' || to === '/si-research')
+  .join(',')
+
 const TOOLS_NAV_ITEM: NavItem = {
   to: '/tools',
   label: 'Tools',
@@ -1051,6 +1058,8 @@ function App() {
       case '/thinking-space':
       case '/new-thought':
       case '/webull':
+      case '/textbooks':
+      case '/si-research':
       case '/settings':
         return location.pathname
       case '/tools':
@@ -2336,6 +2345,7 @@ function App() {
     canGitPush: !syncActionRunning && !gitActionRunning && !needsVaultSetup && gitSyncToolsSupported,
     webullTabLabel,
     webullTabIconText,
+    optionalNavItemIds: NATIVE_OPTIONAL_NAV_ITEM_IDS,
     onMenuTap: () => {
       // The mobile drawer is intentionally disabled on iPhone; iPad still
       // opens it from the native menu button. iPhone uses the bottom tab

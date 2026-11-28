@@ -23,6 +23,7 @@ final class RootShellViewController: UIViewController {
     private var activeNavItemCancellable: AnyCancellable?
     private var webullLabelCancellable: AnyCancellable?
     private var webullIconCancellable: AnyCancellable?
+    private var optionalNavItemsCancellable: AnyCancellable?
     private var topBarDarkCancellable: AnyCancellable?
     private var bottomChromeHeightConstraint: NSLayoutConstraint?
 
@@ -241,6 +242,12 @@ final class RootShellViewController: UIViewController {
                     forPath: "/webull",
                     iconText.isEmpty ? .template("RailWebullIcon") : .text(iconText)
                 )
+            }
+        optionalNavItemsCancellable = chromeState.$optionalNavItemIds
+            .receive(on: RunLoop.main)
+            .sink { [weak self] ids in
+                guard let ids else { return }
+                self?.railState.setAvailableOptionalTabs(ids)
             }
     }
 

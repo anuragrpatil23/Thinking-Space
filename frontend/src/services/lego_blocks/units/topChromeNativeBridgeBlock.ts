@@ -40,6 +40,10 @@ export interface TopChromeStateBlock {
    *  icon text, e.g. "f9"). Empty string means unset — the native side falls
    *  back to the Webull-horns mark, mirroring Electron's WebullNavIcon. */
   webullTabIconText?: string
+  /** Comma-joined route ids of the optional rail tabs this build has (the
+   *  private folder's Textbooks and si-research). The native rail lists them
+   *  only when named here; an empty string means the build has none. */
+  optionalNavItemIds?: string
   /** True when the content under the status bar is dark (night backdrop or
    *  dark app theme) — flips the native status-bar glyphs + top scrim. */
   topBarDark?: boolean
